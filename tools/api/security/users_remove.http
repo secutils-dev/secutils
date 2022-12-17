@@ -1,0 +1,9 @@
+### Remove user
+POST {{host}}/api/users/remove
+Accept: application/json
+Content-Type: application/json
+Authorization: {{api-credentials}}
+
+{
+  "username": "user@secutils.dev"
+}

@@ -1,0 +1,62 @@
+[package]
+name = "secutils"
+version = "0.1.0"
+authors = ["Secutils <dev@secutils.dev>"]
+edition = "2021"
+
+[[bin]]
+name = "secutils"
+path = "src/main.rs"
+
+[dependencies]
+actix-http = "3.2.2"
+actix-identity = "0.5.2"
+actix-rt = "2.7.0"
+actix-session = "0.7.2"
+actix-utils = "3.0.1"
+actix-web = "4.2.1"
+actix-web-httpauth = "0.8.0"
+actix-server = "2.1.1"
+anyhow = "1.0.66"
+argon2 = "0.4.1"
+bytes = "1.3.0"
+clap = "4.0.29"
+dirs = "4.0.0"
+dotenv = "0.15.0"
+env_logger = "0.10.0"
+hex = "0.4.3"
+lettre = "0.10.1"
+log = "0.4.17"
+openssl = "0.10.44"
+rand_core = "0.6.4"
+reqwest = { version = "0.11.13", default-features = false }
+serde = "1.0.150"
+serde_derive = "1.0.150"
+serde_json = "1.0.89"
+tantivy = "0.19.0"
+time = "0.3.17"
+
+[dev-dependencies]
+insta = "1.23.0"
+
+[features]
+default = [
+    "actix-session/cookie-session",
+    "actix-web/cookies",
+    "actix-web/secure-cookies",
+    "actix-web/rustls",
+    "bytes/serde",
+    "clap/env",
+    "insta/redactions",
+    "insta/json",
+    "openssl/vendored",
+    "rand_core/std",
+    "reqwest/native-tls-vendored",
+    "reqwest/json",
+    "time/formatting",
+    "time/macros",
+    "serde_json/arbitrary_precision"
+]
+
+[profile.release]
+strip = true

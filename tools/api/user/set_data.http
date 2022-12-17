@@ -1,0 +1,23 @@
+### Update data
+POST {{host}}/api/user/data
+Accept: application/json
+Content-Type: application/json
+Authorization: {{api-credentials}}
+
+{
+  "data": {
+    "hp.ar": "{\"myresponder\":{\"a\":\"myresponder\",\"m\":\"o\",\"s\":300,\"h\":[[\"Authorization\",\"Basic\"]]},\"myresponder2\":{\"a\":\"myresponder2\",\"m\":\"d\",\"s\":500,\"h\":[]},\"myresponder3\":{\"a\":\"myresponder3\",\"m\":\"g\",\"s\":200,\"h\":[]}}"
+  }
+}
+
+### Update data
+POST {{host}}/api/user/data
+Accept: application/json
+Content-Type: application/json
+Authorization: {{api-credentials}}
+
+{
+  "data": {
+    "hp.ar": "{}"
+  }
+}

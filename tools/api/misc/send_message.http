@@ -1,0 +1,9 @@
+### Signup user
+POST {{host}}/api/send_message
+Accept: application/json
+Content-Type: application/json
+
+{
+  "message": "Aloha",
+  "email": "call-me-back@secutils.dev"
+}

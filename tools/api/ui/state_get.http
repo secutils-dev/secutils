@@ -1,0 +1,13 @@
+### Get parameters (authenticated)
+GET {{host}}/api/ui/state
+Accept: application/json
+Authorization: {{api-credentials}}
+
+### Get parameters (authenticated via cookie)
+GET {{host}}/api/ui/state
+Accept: application/json
+Cookie: {{cookie-credentials}}
+
+### Get parameters (unauthenticated)
+GET {{host}}/api/ui/state
+Accept: application/json

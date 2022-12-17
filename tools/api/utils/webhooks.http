@@ -1,0 +1,11 @@
+### Test webhook.
+GET {{host}}/api/webhooks/ar/323c9f98b2e86fd9/redirect
+Accept: application/json
+Content-Type: application/json
+
+{
+  "request": {
+    "type":  "certificates",
+    "value": { "type": "generateRsaKeyPair" }
+  }
+}
