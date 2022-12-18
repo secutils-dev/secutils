@@ -24,6 +24,7 @@ jobs:
         run: |
           rustup toolchain install ${{ matrix.rust }}
           rustup override set ${{ matrix.rust }}
+          rustup component add clippy rustfmt
 
       - name: Check format
         run:  cargo fmt --all -- --check
