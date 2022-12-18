@@ -3,8 +3,11 @@ name: Secutils
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    paths-ignore:
+      - 'assets/**'
+      - 'tools/**'
+      - 'LICENSE'
+      - '*.md'
 
 env:
   CARGO_TERM_COLOR: always
@@ -25,6 +28,9 @@ jobs:
           rustup toolchain install ${{ matrix.rust }}
           rustup override set ${{ matrix.rust }}
           rustup component add clippy rustfmt
+
+      - name: Cache Dependencies
+        uses: Swatinem/rust-cache@v2
 
       - name: Check format
         run:  cargo fmt --all -- --check
