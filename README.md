@@ -33,4 +33,4 @@ The main goal of this project is to provide application security engineers with 
 
 - ❓ Ask questions on [GitHub Discussions](https://github.com/secutils-dev/secutils/discussions)
 - 🐛 Report bugs on [GitHub Issues](https://github.com/secutils-dev/secutils/issues)
-- 📣 Stay up to date on new features and announcements on [Twitter](https://twitter.com/secutils-dev) or [Mastodon](https://fosstodon.org/@secutils)
+- 📣 Stay up to date on new features and announcements on [Twitter](https://twitter.com/secutils) or [Mastodon](https://fosstodon.org/@secutils)
