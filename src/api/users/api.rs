@@ -83,14 +83,11 @@ impl<'a> UsersApi<'a> {
 </head>
 <body>
     <div style="display: flex; flex-direction: column; align-items: center;">
-        <p style="font-family: Arial, Helvetica, sans-serif;">Activation code: <a href="https://secutils.dev/activation/{}">{}</a>!</p>
+        <p style="font-family: Arial, Helvetica, sans-serif;">Activation code: <a href="https://secutils.dev/activation/{activation_code}">{activation_code}</a>!</p>
     </div>
 </body>
-</html>"#,
-                    activation_code,
-                    activation_code
-                ),
-                fallback: format!("Activation code: {}", activation_code),
+</html>"#),
+                fallback: format!("Activation code: {activation_code}"),
             },
         ).with_timestamp(SystemTime::now()))?;
 

@@ -38,7 +38,7 @@ pub async fn user_data_set(
                 user.handle,
                 err
             );
-            return HttpResponse::BadRequest().json(json!({ "error": format!("{:#}", err) }));
+            return HttpResponse::BadRequest().json(json!({ "error": format!("{err:#}") }));
         }
     };
 
