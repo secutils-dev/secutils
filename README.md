@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://secutils.dev/" target="_blank">
-    <img alt="Secutils.dev logo" src="https://raw.githubusercontent.com/secutils-dev/secutils/main/assets/logo/secutils-logo-initials.png" width="400">
+    <img alt="Secutils.dev logo" src="https://raw.githubusercontent.com/secutils-dev/secutils/main/assets/logo/secutils-logo-initials.png" width="100">
   </a>
 </p>
 
