@@ -1,13 +1,6 @@
-![Build Status](https://github.com/secutils-dev/secutils/actions/workflows/ci.yml/badge.svg)
+# <img src="https://raw.githubusercontent.com/secutils-dev/secutils/main/assets/logo/secutils-logo-initials.png" alt="Secutils.dev" width="22"> [Secutils.dev](https://secutils.dev) &middot; [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://github.com/secutils-dev/secutils/blob/main/LICENSE) [![Build Status](https://github.com/secutils-dev/secutils/actions/workflows/ci.yml/badge.svg)](https://github.com/secutils-dev/secutils/actions)
 
-<p align="center">
-  <a href="https://secutils.dev/" target="_blank">
-    <img alt="Secutils.dev logo" src="https://raw.githubusercontent.com/secutils-dev/secutils/main/assets/logo/secutils-logo-initials.png" width="100">
-  </a>
-</p>
-
-# Secutils.dev
-[Secutils.dev](https://secutils.dev) is an open-source, versatile, yet simple toolbox for application security engineers.
+Secutils.dev is an open-source, versatile, yet simple toolbox for application security engineers.
 
 __NOTE:__ The project isn't yet ready for general consumption. Please stay tuned for updates!
 
