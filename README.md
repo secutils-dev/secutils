@@ -2,6 +2,8 @@
 
 Secutils.dev is an open-source, versatile, yet simple toolbox for application security engineers.
 
+Refer to [secutils-dev/secutils-webui](https://github.com/secutils-dev/secutils-webui) for the web interface component of Secutils.dev.
+
 __NOTE:__ The project isn't yet ready for general consumption. Please stay tuned for updates!
 
 ## Benefits
