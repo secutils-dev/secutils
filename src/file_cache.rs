@@ -27,10 +27,10 @@ impl FileCache {
         dirs::cache_dir()
             .with_context(|| "Cache directory is not available.".to_string())
             .and_then(|cache_root| {
-                let cache_dir = cache_root.join("secutils-dev");
+                let cache_dir = cache_root.join("secutils");
 
                 fs::create_dir_all(&cache_dir)
-                    .with_context(|| "Cannot create cache dir.".to_string())?;
+                    .with_context(|| format!("Cannot create cache dir: {:?}.", cache_dir))?;
 
                 Ok(cache_dir)
             })
