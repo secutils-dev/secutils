@@ -6,6 +6,7 @@ on:
     paths-ignore:
       - 'assets/**'
       - 'tools/**'
+      - 'Dockerfile'
       - 'LICENSE'
       - '*.md'
 
