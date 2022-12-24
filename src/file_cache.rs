@@ -30,7 +30,7 @@ impl FileCache {
                 let cache_dir = cache_root.join("secutils");
 
                 fs::create_dir_all(&cache_dir)
-                    .with_context(|| format!("Cannot create cache dir: {:?}.", cache_dir))?;
+                    .with_context(|| format!("Cannot create cache dir: {cache_dir:?}."))?;
 
                 Ok(cache_dir)
             })
