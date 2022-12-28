@@ -29,8 +29,8 @@ pub async fn security_login(
         }
     };
 
-    match Identity::login(&request.extensions(), user.email) {
-        Ok(_) => HttpResponse::Ok().json(json!({ "status": "ok" })),
+    match Identity::login(&request.extensions(), user.email.clone()) {
+        Ok(_) => HttpResponse::Ok().json(json!({ "user": user })),
         Err(err) => {
             log::error!("Failed to log in user: {:?}", err);
             HttpResponse::Unauthorized().json(json!({ "status": "failed" }))
