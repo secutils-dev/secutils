@@ -4,6 +4,6 @@ Accept: application/json
 Content-Type: application/json
 
 {
-  "message": "Aloha",
-  "email": "call-me-back@secutils.dev"
+  "message": "message",
+  "email": "hello@secutils.dev"
 }
