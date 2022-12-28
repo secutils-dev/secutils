@@ -56,11 +56,13 @@ fn process_command(matches: ArgMatches) -> Result<(), anyhow::Error> {
             }
         })?;
 
+    let secure_cookies = !matches.get_flag("SESSION_USE_INSECURE_COOKIES");
+
     let builtin_users = matches
         .get_one::<String>("BUILTIN_USERS")
         .map(|value| value.to_string());
 
-    server::run(config, session_key, builtin_users)
+    server::run(config, session_key, secure_cookies, builtin_users)
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -77,6 +79,14 @@ fn main() -> Result<(), anyhow::Error> {
                 .global(true)
                 .env("SECUTILS_SESSION_KEY")
                 .help("Session encryption key."),
+        )
+        .arg(
+            Arg::new("SESSION_USE_INSECURE_COOKIES")
+                .long("use-insecure-cookies")
+                .action(clap::ArgAction::SetTrue)
+                .global(true)
+                .env("SECUTILS_SESSION_USE_INSECURE_COOKIES")
+                .help("Indicates that server shouldn't set `Secure` flag on the session cookie (do not use in production)."),
         )
         .arg(
             Arg::new("SMTP_USERNAME")

@@ -16,6 +16,7 @@ use anyhow::Context;
 pub async fn run(
     config: Config,
     session_key: [u8; 64],
+    secure_cookies: bool,
     builtin_users: Option<String>,
 ) -> Result<(), anyhow::Error> {
     let api = Api::new(
@@ -38,10 +39,11 @@ pub async fn run(
             // The session middleware must be mounted AFTER the identity middleware: `actix-web`
             // invokes middleware in the OPPOSITE order of registration when it receives an incoming
             // request.
-            .wrap(SessionMiddleware::new(
-                CookieSessionStore::default(),
-                Key::from(&session_key),
-            ))
+            .wrap(
+                SessionMiddleware::builder(CookieSessionStore::default(), Key::from(&session_key))
+                    .cookie_secure(secure_cookies)
+                    .build(),
+            )
             .app_data(state.clone())
             .service(
                 web::scope("/api")
