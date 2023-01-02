@@ -83,12 +83,9 @@ mod tests {
                 .map(|role| role.to_string())
                 .collect()
         );
-        assert_eq!(
-            parsed_user
-                .password_hash
-                .starts_with("$argon2id$v=19$m=4096,t=3,p=1$"),
-            true
-        );
+        assert!(parsed_user
+            .password_hash
+            .starts_with("$argon2id$v=19$m=4096,t=3,p=1$"));
 
         Ok(())
     }
@@ -101,12 +98,9 @@ mod tests {
             parsed_user.roles,
             ["one"].into_iter().map(|role| role.to_string()).collect()
         );
-        assert_eq!(
-            parsed_user
-                .password_hash
-                .starts_with("$argon2id$v=19$m=4096,t=3,p=1$"),
-            true
-        );
+        assert!(parsed_user
+            .password_hash
+            .starts_with("$argon2id$v=19$m=4096,t=3,p=1$"));
 
         Ok(())
     }
@@ -116,30 +110,24 @@ mod tests {
         let parsed_user = BuiltinUser::try_from("su@secutils.dev:password:")?;
         assert_eq!(parsed_user.email, "su@secutils.dev");
         assert_eq!(parsed_user.roles, HashSet::new());
-        assert_eq!(
-            parsed_user
-                .password_hash
-                .starts_with("$argon2id$v=19$m=4096,t=3,p=1$"),
-            true
-        );
+        assert!(parsed_user
+            .password_hash
+            .starts_with("$argon2id$v=19$m=4096,t=3,p=1$"));
 
         let parsed_user = BuiltinUser::try_from("su@secutils.dev:password")?;
         assert_eq!(parsed_user.email, "su@secutils.dev");
         assert_eq!(parsed_user.roles, HashSet::new());
-        assert_eq!(
-            parsed_user
-                .password_hash
-                .starts_with("$argon2id$v=19$m=4096,t=3,p=1$"),
-            true
-        );
+        assert!(parsed_user
+            .password_hash
+            .starts_with("$argon2id$v=19$m=4096,t=3,p=1$"));
 
         Ok(())
     }
 
     #[test]
     fn fails_if_malformed() -> anyhow::Result<()> {
-        assert_eq!(BuiltinUser::try_from("su@secutils.dev:").is_err(), true);
-        assert_eq!(BuiltinUser::try_from("su@secutils.dev").is_err(), true);
+        assert!(BuiltinUser::try_from("su@secutils.dev:").is_err());
+        assert!(BuiltinUser::try_from("su@secutils.dev").is_err());
 
         Ok(())
     }

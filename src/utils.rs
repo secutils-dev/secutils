@@ -35,11 +35,18 @@ pub mod tests {
                 auto_responder: AutoResponder {
                     alias: alias.into(),
                     method,
+                    requests_to_track: None,
                     status_code,
                     headers: None,
                     body: None,
+                    delay: None,
                 },
             }
+        }
+
+        pub fn set_requests_to_track(mut self, requests_to_track: usize) -> Self {
+            self.auto_responder.requests_to_track = Some(requests_to_track);
+            self
         }
 
         pub fn set_headers(mut self, headers: Vec<(String, String)>) -> Self {
@@ -49,6 +56,11 @@ pub mod tests {
 
         pub fn set_body<B: Into<String>>(mut self, body: B) -> Self {
             self.auto_responder.body = Some(body.into());
+            self
+        }
+
+        pub fn set_delay(mut self, delay: usize) -> Self {
+            self.auto_responder.delay = Some(delay);
             self
         }
 

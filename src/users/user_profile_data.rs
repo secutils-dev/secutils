@@ -162,18 +162,22 @@ mod tests {
             MockAutoResponder::new("test-1-alias", AutoResponderMethod::Post, 300).build();
         let auto_responder_two =
             MockAutoResponder::new("test-2-alias", AutoResponderMethod::Post, 300)
+                .set_requests_to_track(10)
                 .set_body("body")
                 .set_headers(vec![(
                     "Content-Type".to_string(),
                     "application/json".to_string(),
                 )])
+                .set_delay(1000)
                 .build();
         let auto_responder_two_existing =
             MockAutoResponder::new("test-2-alias", AutoResponderMethod::Get, 300)
                 .set_body("body")
                 .build();
         let auto_responder_three_existing =
-            MockAutoResponder::new("test-3-alias", AutoResponderMethod::Options, 403).build();
+            MockAutoResponder::new("test-3-alias", AutoResponderMethod::Options, 403)
+                .set_delay(2000)
+                .build();
 
         // Fill empty data.
         assert_eq!(

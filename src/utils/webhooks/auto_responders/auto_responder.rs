@@ -7,12 +7,16 @@ pub struct AutoResponder {
     pub alias: String,
     #[serde(rename = "m")]
     pub method: AutoResponderMethod,
+    #[serde(rename = "t", skip_serializing_if = "Option::is_none")]
+    pub requests_to_track: Option<usize>,
     #[serde(rename = "s")]
     pub status_code: u16,
     #[serde(rename = "b", skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
     #[serde(rename = "h", skip_serializing_if = "Option::is_none")]
     pub headers: Option<Vec<(String, String)>>,
+    #[serde(rename = "d", skip_serializing_if = "Option::is_none")]
+    pub delay: Option<usize>,
 }
 
 impl AutoResponder {
@@ -33,9 +37,11 @@ mod tests {
         assert_json_snapshot!(AutoResponder {
             alias: "some-alias".to_string(),
             method: AutoResponderMethod::Post,
+            requests_to_track: None,
             status_code: 123,
             body: None,
             headers: None,
+            delay: None
         }, @r###"
         {
           "a": "some-alias",
@@ -47,13 +53,16 @@ mod tests {
         assert_json_snapshot!(AutoResponder {
             alias: "some-alias".to_string(),
             method: AutoResponderMethod::Post,
+             requests_to_track: Some(10),
             status_code: 123,
             body: Some("body".to_string()),
             headers: Some(vec![("key".to_string(), "value".to_string())]),
+            delay: Some(1000)
         }, @r###"
         {
           "a": "some-alias",
           "m": "p",
+          "t": 10,
           "s": 123,
           "b": "body",
           "h": [
@@ -61,7 +70,8 @@ mod tests {
               "key",
               "value"
             ]
-          ]
+          ],
+          "d": 1000
         }
         "###);
 
@@ -77,22 +87,26 @@ mod tests {
             AutoResponder {
                 alias: "some-alias".to_string(),
                 method: AutoResponderMethod::Post,
+                requests_to_track: None,
                 status_code: 123,
                 body: None,
                 headers: None,
+                delay: None
             }
         );
 
         assert_eq!(
             serde_json::from_str::<AutoResponder>(
-                &json!({ "a": "some-alias", "m": "p", "s": 123, "b": "body", "h": [["key", "value"]] }).to_string()
+                &json!({ "a": "some-alias", "m": "p", "t": 10, "s": 123, "b": "body", "h": [["key", "value"]], "d": 1000 }).to_string()
             )?,
             AutoResponder {
                 alias: "some-alias".to_string(),
                 method: AutoResponderMethod::Post,
+                requests_to_track: Some(10),
                 status_code: 123,
                 body: Some("body".to_string()),
                 headers: Some(vec![("key".to_string(), "value".to_string())]),
+                delay: Some(1000)
             }
         );
 
@@ -106,9 +120,11 @@ mod tests {
                 AutoResponder {
                     alias: alias.to_string(),
                     method: AutoResponderMethod::Post,
+                    requests_to_track: None,
                     status_code: 123,
                     body: None,
                     headers: None,
+                    delay: None,
                 }
                 .is_valid(),
                 is_valid
@@ -124,9 +140,11 @@ mod tests {
                 AutoResponder {
                     alias: "some-alias".to_string(),
                     method,
+                    requests_to_track: None,
                     status_code: 123,
                     body: None,
                     headers: None,
+                    delay: None,
                 }
                 .is_valid(),
                 is_valid
@@ -148,26 +166,27 @@ mod tests {
                 AutoResponder {
                     alias: "some-alias".to_string(),
                     method: AutoResponderMethod::Post,
+                    requests_to_track: None,
                     status_code,
                     body: None,
                     headers: None,
+                    delay: None,
                 }
                 .is_valid(),
                 is_valid
             );
         }
 
-        assert_eq!(
-            AutoResponder {
-                alias: "some-alias".to_string(),
-                method: AutoResponderMethod::Any,
-                status_code: 123,
-                body: Some("body".to_string()),
-                headers: Some(vec![("key".to_string(), "value".to_string())]),
-            }
-            .is_valid(),
-            true
-        );
+        assert!(AutoResponder {
+            alias: "some-alias".to_string(),
+            method: AutoResponderMethod::Any,
+            requests_to_track: Some(10),
+            status_code: 123,
+            body: Some("body".to_string()),
+            headers: Some(vec![("key".to_string(), "value".to_string())]),
+            delay: Some(1000)
+        }
+        .is_valid());
 
         Ok(())
     }

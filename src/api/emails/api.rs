@@ -289,16 +289,13 @@ mod tests {
 
     #[test]
     fn can_build_transport() -> anyhow::Result<()> {
-        assert_eq!(
-            EmailsApi::<&Config>::build_transport(&SmtpConfig {
-                username: "smtp@secutils.dev".to_string(),
-                password: "changeme".to_string(),
-                address: "smtp_server.secutils.dev".to_string(),
-                catch_all_recipient: None,
-            })
-            .is_ok(),
-            true
-        );
+        assert!(EmailsApi::<&Config>::build_transport(&SmtpConfig {
+            username: "smtp@secutils.dev".to_string(),
+            password: "changeme".to_string(),
+            address: "smtp_server.secutils.dev".to_string(),
+            catch_all_recipient: None,
+        })
+        .is_ok());
 
         Ok(())
     }

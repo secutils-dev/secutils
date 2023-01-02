@@ -562,7 +562,7 @@ mod tests {
         );
         assert_eq!(
             index.search(UsersSearchFilter::default().with_activation_code("SOME-code"))?,
-            vec![user_dev.clone()]
+            vec![user_dev]
         );
 
         assert_eq!(
@@ -571,7 +571,7 @@ mod tests {
         );
         assert_eq!(
             index.search(UsersSearchFilter::default().with_activation_code("OTHER-code"))?,
-            vec![user_prod.clone()]
+            vec![user_prod]
         );
 
         assert_eq!(
