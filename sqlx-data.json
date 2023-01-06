@@ -1,0 +1,239 @@
+{
+  "db": "SQLite",
+  "94ba9c7770d4238f4d81f06693c12055df88b5853e3c6c02defd15e625b1368c": {
+    "describe": {
+      "columns": [
+        {
+          "name": "email",
+          "ordinal": 0,
+          "type_info": "Text"
+        },
+        {
+          "name": "handle",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "password_hash",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "created",
+          "ordinal": 3,
+          "type_info": "Int64"
+        },
+        {
+          "name": "roles",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "activation_code",
+          "ordinal": 5,
+          "type_info": "Text"
+        },
+        {
+          "name": "profile",
+          "ordinal": 6,
+          "type_info": "Blob"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "parameters": {
+        "Right": 1
+      }
+    },
+    "query": "\nSELECT email, handle, password_hash, created, roles, activation_code, profile\nFROM users\nWHERE email = ?1\n                "
+  },
+  "9aff187bb539d2fbe6b2ad5aa837035a1f50392a8daf665e114466e7d8b6108f": {
+    "describe": {
+      "columns": [
+        {
+          "name": "email!",
+          "ordinal": 0,
+          "type_info": "Text"
+        },
+        {
+          "name": "handle!",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "password_hash!",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "created!",
+          "ordinal": 3,
+          "type_info": "Int64"
+        },
+        {
+          "name": "roles",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "activation_code",
+          "ordinal": 5,
+          "type_info": "Text"
+        },
+        {
+          "name": "profile",
+          "ordinal": 6,
+          "type_info": "Blob"
+        }
+      ],
+      "nullable": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "parameters": {
+        "Right": 1
+      }
+    },
+    "query": "\nDELETE FROM users\nWHERE email = ?1\nRETURNING email as \"email!\", handle as \"handle!\", password_hash as \"password_hash!\", created as \"created!\", roles, activation_code, profile\n            "
+  },
+  "c71062a5f54068ccdc2c2151c68420b60237138462a2d91631985ac1c2a5229c": {
+    "describe": {
+      "columns": [
+        {
+          "name": "email",
+          "ordinal": 0,
+          "type_info": "Text"
+        },
+        {
+          "name": "handle",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "password_hash",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "created",
+          "ordinal": 3,
+          "type_info": "Int64"
+        },
+        {
+          "name": "roles",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "activation_code",
+          "ordinal": 5,
+          "type_info": "Text"
+        },
+        {
+          "name": "profile",
+          "ordinal": 6,
+          "type_info": "Blob"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "parameters": {
+        "Right": 1
+      }
+    },
+    "query": "\nSELECT email, handle, password_hash, created, roles, activation_code, profile\nFROM users\nWHERE handle = ?1\n             "
+  },
+  "d88a1f956b3802a8b6055cdce5afad041b4b36faf45cc2659cb13cdfdae4afa4": {
+    "describe": {
+      "columns": [
+        {
+          "name": "email",
+          "ordinal": 0,
+          "type_info": "Text"
+        },
+        {
+          "name": "handle",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "password_hash",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "created",
+          "ordinal": 3,
+          "type_info": "Int64"
+        },
+        {
+          "name": "roles",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "activation_code",
+          "ordinal": 5,
+          "type_info": "Text"
+        },
+        {
+          "name": "profile",
+          "ordinal": 6,
+          "type_info": "Blob"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "parameters": {
+        "Right": 1
+      }
+    },
+    "query": "\nSELECT email, handle, password_hash, created, roles, activation_code, profile\nFROM users\nWHERE activation_code = ?1\n            "
+  },
+  "efb8c2a886e43678e3bee66e13c0a066c3851455862de06e140d1d5e995d937b": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Right": 7
+      }
+    },
+    "query": "\nINSERT INTO users (email, handle, password_hash, created, roles, activation_code, profile)\nVALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7 )\nON CONFLICT(email) DO UPDATE SET handle=excluded.handle, password_hash=excluded.password_hash, created=excluded.created, roles=excluded.roles, activation_code=excluded.activation_code, profile=excluded.profile\n        "
+  },
+  "f2186987ab6b7025f8ed837f14cd369c4d09a4ddd9c2630de29b809683188fe3": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Right": 0
+      }
+    },
+    "query": "\nCREATE TABLE IF NOT EXISTS users\n(\n    email           TEXT PRIMARY KEY NOT NULL COLLATE NOCASE,\n    handle          TEXT NOT NULL COLLATE NOCASE,\n    password_hash   TEXT NOT NULL,\n    created         INTEGER NOT NULL,\n    roles           TEXT,\n    activation_code TEXT COLLATE NOCASE,\n    profile         BLOB\n) STRICT;"
+  }
+}

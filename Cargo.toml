@@ -57,6 +57,7 @@ default = [
     "reqwest/native-tls-vendored",
     "serde_json/arbitrary_precision",
     "sqlx/json",
+    "sqlx/offline",
     "sqlx/runtime-actix-rustls",
     "sqlx/sqlite",
     "time/formatting",
