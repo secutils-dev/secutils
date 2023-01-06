@@ -67,7 +67,7 @@ fn process_command(matches: ArgMatches) -> Result<(), anyhow::Error> {
 }
 
 fn main() -> Result<(), anyhow::Error> {
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
     env_logger::init();
 
     let matches = Command::new("Secutils.dev API server")
