@@ -28,6 +28,7 @@ pub async fn security_users_signup(
         .api
         .users()
         .signup(&body_params.username, &body_params.password)
+        .await
     {
         Ok(user) => {
             log::info!("Successfully signed up user: {:?}", user);

@@ -2,6 +2,7 @@
 
 FROM --platform=$BUILDPLATFORM rust:alpine3.17 as SERVER_BUILDER
 ARG TARGETPLATFORM
+ENV DATABASE_URL="sqlite://sqlx_users.db"
 WORKDIR /app
 RUN set -x && apk add --no-cache musl-dev openssl-dev perl make curl
 # Prepare environment for the cross-compilation to arm64.
@@ -11,7 +12,7 @@ RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; \
          tar xzf ./aarch64-linux-musl-cross.tgz && \
          rustup target add aarch64-unknown-linux-musl; \
     fi
-COPY ["./Cargo.lock", "./Cargo.toml", "./"]
+COPY ["./Cargo.lock", "./Cargo.toml", "./tools/db/sqlx_users.db", "./"]
 RUN set -x && cargo fetch
 COPY ["./src", "./src"]
 RUN --mount=type=cache,target=/app/target if [ "$TARGETPLATFORM" = "linux/arm64" ]; \

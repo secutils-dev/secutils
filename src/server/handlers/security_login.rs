@@ -21,6 +21,7 @@ pub async fn security_login(
         .api
         .users()
         .authenticate(&body_params.username, &body_params.password)
+        .await
     {
         Ok(user) => user,
         Err(err) => {

@@ -1,7 +1,7 @@
 use crate::{
     api::{Email, EmailBody, EmailsApi},
     config::Config,
-    datastore::{UsersIndex, UsersSearchFilter},
+    datastore::PrimaryDb,
     users::{BuiltinUser, User},
 };
 use anyhow::{anyhow, bail, Context};
@@ -16,15 +16,15 @@ const ACTIVATION_CODE_LENGTH_BYTES: usize = 32;
 
 pub struct UsersApi<'a> {
     emails: EmailsApi<&'a Config>,
-    users_index: Cow<'a, UsersIndex>,
+    primary_db: Cow<'a, PrimaryDb>,
 }
 
 impl<'a> UsersApi<'a> {
     /// Creates Users API.
-    pub fn new(users_index: &'a UsersIndex, emails: EmailsApi<&'a Config>) -> Self {
+    pub fn new(primary_db: &'a PrimaryDb, emails: EmailsApi<&'a Config>) -> Self {
         Self {
             emails,
-            users_index: Cow::Borrowed(users_index),
+            primary_db: Cow::Borrowed(primary_db),
         }
     }
 
@@ -35,7 +35,7 @@ impl<'a> UsersApi<'a> {
     /// after 7 days, then after 14 days, and after 30 days we'll terminate account with a large
     /// warning in the application. Users will be able to request another activation link from their
     /// profile page.
-    pub fn signup<E: Into<String>, P: AsRef<str>>(
+    pub async fn signup<E: Into<String>, P: AsRef<str>>(
         &self,
         user_email: E,
         user_password: P,
@@ -50,7 +50,7 @@ impl<'a> UsersApi<'a> {
         }
 
         // Prevent multiple signup requests from the same user.
-        if let Some(user) = self.users_index.get(&user_email)? {
+        if let Some(user) = self.primary_db.get_user(&user_email).await? {
             bail!(
                 "Cannot signup user: a user {} with the same email already exists.",
                 user.handle
@@ -60,7 +60,7 @@ impl<'a> UsersApi<'a> {
         let activation_code = Self::generate_activation_code();
         let user = User {
             email: user_email,
-            handle: self.generate_user_handle()?,
+            handle: self.generate_user_handle().await?,
             password_hash: Self::generate_user_password_hash(user_password)?,
             created: OffsetDateTime::now_utc(),
             roles: HashSet::with_capacity(0),
@@ -69,6 +69,7 @@ impl<'a> UsersApi<'a> {
         };
 
         // TODO: Activation code should be URL encoded.
+        // TODO: Don't hardcode `secutils.dev` in activation email - make it configurable
         self.emails.send(Email::new(
             &user.email,
             "Activate you Secutils.dev account",
@@ -91,7 +92,7 @@ impl<'a> UsersApi<'a> {
             },
         ).with_timestamp(SystemTime::now()))?;
 
-        self.users_index.upsert(&user).with_context(|| {
+        self.primary_db.upsert_user(&user).await.with_context(|| {
             format!("Cannot signup user: failed to upsert user {}", user.handle)
         })?;
 
@@ -99,12 +100,12 @@ impl<'a> UsersApi<'a> {
     }
 
     /// Authenticates user with the specified email and password.
-    pub fn authenticate<EP: AsRef<str>>(
+    pub async fn authenticate<EP: AsRef<str>>(
         &self,
         user_email: EP,
         user_password: EP,
     ) -> anyhow::Result<User> {
-        let user = if let Some(user) = self.users_index.get(user_email.as_ref())? {
+        let user = if let Some(user) = self.primary_db.get_user(user_email.as_ref()).await? {
             user
         } else {
             bail!(
@@ -129,10 +130,11 @@ impl<'a> UsersApi<'a> {
     }
 
     /// Activates user using the specified activation code.
-    pub fn activate<A: AsRef<str>>(&self, activation_code: A) -> anyhow::Result<User> {
+    pub async fn activate<A: AsRef<str>>(&self, activation_code: A) -> anyhow::Result<User> {
         let mut users = self
-            .users_index
-            .search(UsersSearchFilter::default().with_activation_code(activation_code.as_ref()))?;
+            .primary_db
+            .get_users_by_activation_code(activation_code.as_ref())
+            .await?;
         if users.is_empty() {
             bail!(
                 "Cannot activate user: cannot find user to activate for the code {}.",
@@ -150,8 +152,9 @@ impl<'a> UsersApi<'a> {
         let mut user_to_activate = users.remove(0);
         user_to_activate.activation_code.take();
 
-        self.users_index
-            .upsert(&user_to_activate)
+        self.primary_db
+            .upsert_user(&user_to_activate)
+            .await
             .with_context(|| {
                 format!(
                     "Cannot activate user: failed to store activated user {}",
@@ -163,23 +166,26 @@ impl<'a> UsersApi<'a> {
     }
 
     /// Retrieves the user using the specified email.
-    pub fn get<E: AsRef<str>>(&self, user_email: E) -> anyhow::Result<Option<User>> {
-        self.users_index.get(user_email)
+    pub async fn get<E: AsRef<str>>(&self, user_email: E) -> anyhow::Result<Option<User>> {
+        self.primary_db.get_user(user_email).await
     }
 
     /// Retrieves the user using the specified handle.
-    pub fn get_by_handle<E: AsRef<str>>(&self, user_handle: E) -> anyhow::Result<Option<User>> {
-        self.users_index.get_by_handle(user_handle)
+    pub async fn get_by_handle<E: AsRef<str>>(
+        &self,
+        user_handle: E,
+    ) -> anyhow::Result<Option<User>> {
+        self.primary_db.get_user_by_handle(user_handle).await
     }
 
     /// Inserts or updates user in the `Users` store.
-    pub fn upsert<U: AsRef<User>>(&self, user: U) -> anyhow::Result<()> {
-        self.users_index.upsert(user)
+    pub async fn upsert<U: AsRef<User>>(&self, user: U) -> anyhow::Result<()> {
+        self.primary_db.upsert_user(user).await
     }
 
     /// Inserts or updates user in the `Users` store using `BuiltinUser`.
-    pub fn upsert_builtin(&self, builtin_user: BuiltinUser) -> anyhow::Result<()> {
-        let user = match self.get(&builtin_user.email)? {
+    pub async fn upsert_builtin(&self, builtin_user: BuiltinUser) -> anyhow::Result<()> {
+        let user = match self.primary_db.get_user(&builtin_user.email).await? {
             Some(user) => User {
                 email: user.email,
                 handle: user.handle,
@@ -191,7 +197,7 @@ impl<'a> UsersApi<'a> {
             },
             None => User {
                 email: builtin_user.email,
-                handle: self.generate_user_handle()?,
+                handle: self.generate_user_handle().await?,
                 password_hash: builtin_user.password_hash,
                 created: OffsetDateTime::now_utc(),
                 roles: builtin_user.roles,
@@ -200,24 +206,12 @@ impl<'a> UsersApi<'a> {
             },
         };
 
-        self.upsert(user)
+        self.primary_db.upsert_user(user).await
     }
 
     /// Removes the user with the specified email.
-    pub fn remove<E: AsRef<str>>(&self, user_email: E) -> anyhow::Result<Option<User>> {
-        self.users_index.remove(user_email)
-    }
-
-    /// Generates random user handle (8 bytes).
-    fn generate_user_handle(&self) -> anyhow::Result<String> {
-        let mut bytes = [0u8; USER_HANDLE_LENGTH_BYTES];
-        loop {
-            OsRng.fill_bytes(&mut bytes);
-            let handle = bytes.encode_hex::<String>();
-            if self.users_index.get_by_handle(&handle)?.is_none() {
-                return Ok(handle);
-            }
-        }
+    pub async fn remove<E: AsRef<str>>(&self, user_email: E) -> anyhow::Result<Option<User>> {
+        self.primary_db.remove_user(user_email).await
     }
 
     /// Generates user password hash.
@@ -229,6 +223,18 @@ impl<'a> UsersApi<'a> {
             )
             .map(|hash| hash.to_string())
             .map_err(|err| anyhow!("Failed to generate a password hash: {}", err))
+    }
+
+    /// Generates a random user handle (8 bytes).
+    async fn generate_user_handle(&self) -> anyhow::Result<String> {
+        let mut bytes = [0u8; USER_HANDLE_LENGTH_BYTES];
+        loop {
+            OsRng.fill_bytes(&mut bytes);
+            let handle = bytes.encode_hex::<String>();
+            if self.primary_db.get_user_by_handle(&handle).await?.is_none() {
+                return Ok(handle);
+            }
+        }
     }
 
     fn generate_activation_code() -> String {

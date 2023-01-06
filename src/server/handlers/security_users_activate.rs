@@ -18,7 +18,12 @@ pub async fn security_users_activate(
         return HttpResponse::BadRequest().json(json!({ "status": "failed" }));
     }
 
-    match state.api.users().activate(&body_params.activation_code) {
+    match state
+        .api
+        .users()
+        .activate(&body_params.activation_code)
+        .await
+    {
         Ok(user) => {
             log::info!("Successfully activated user: {:?}", user);
             HttpResponse::Ok().json(json!({ "status": "ok" }))

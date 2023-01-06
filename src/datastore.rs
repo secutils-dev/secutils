@@ -1,6 +1,10 @@
-mod users;
+mod primary_db;
+mod search_index;
 
-pub use self::users::{UsersIndex, UsersSchemaFields, UsersSearchFilter};
+pub use self::{
+    primary_db::PrimaryDb,
+    search_index::{SearchFilter, SearchIndex, SearchIndexSchemaFields},
+};
 use crate::file_cache::FileCache;
 use std::path::Path;
 use tantivy::{
@@ -13,15 +17,29 @@ use time::OffsetDateTime;
 
 #[derive(Clone)]
 pub struct Datastore {
-    pub users: UsersIndex,
+    pub primary_db: PrimaryDb,
+    pub search_index: SearchIndex,
 }
 
 impl Datastore {
-    pub fn open<P: AsRef<Path>>(root_data_path: P) -> anyhow::Result<Self> {
+    pub async fn open<P: AsRef<Path>>(root_data_path: P) -> anyhow::Result<Self> {
         Ok(Self {
-            users: UsersIndex::open(|schema| {
-                open_index(root_data_path.as_ref().join("users"), schema)
+            search_index: SearchIndex::open(|schema| {
+                open_index(root_data_path.as_ref().join("search_index"), schema)
             })?,
+            primary_db: PrimaryDb::open(|| {
+                root_data_path
+                    .as_ref()
+                    .to_str()
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "Cannot stringify database folder {:?}",
+                            root_data_path.as_ref()
+                        )
+                    })
+                    .map(|db_dir| format!("sqlite:{}/primary.db?mode=rwc", db_dir))
+            })
+            .await?,
         })
     }
 }

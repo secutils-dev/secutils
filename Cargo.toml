@@ -25,6 +25,7 @@ dirs = "4.0.0"
 dotenv = "0.15.0"
 env_logger = "0.10.0"
 hex = "0.4.3"
+itertools = "0.10.5"
 lettre = "0.10.1"
 log = "0.4.17"
 openssl = "0.10.45"
@@ -33,6 +34,7 @@ reqwest = { version = "0.11.13", default-features = false }
 serde = "1.0.152"
 serde_derive = "1.0.152"
 serde_json = "1.0.91"
+sqlx = "0.6.2"
 tantivy = "0.19.0"
 time = "0.3.17"
 
@@ -43,19 +45,22 @@ insta = "1.23.0"
 default = [
     "actix-session/cookie-session",
     "actix-web/cookies",
-    "actix-web/secure-cookies",
     "actix-web/rustls",
+    "actix-web/secure-cookies",
     "bytes/serde",
     "clap/env",
-    "insta/redactions",
     "insta/json",
+    "insta/redactions",
     "openssl/vendored",
     "rand_core/std",
-    "reqwest/native-tls-vendored",
     "reqwest/json",
+    "reqwest/native-tls-vendored",
+    "serde_json/arbitrary_precision",
+    "sqlx/json",
+    "sqlx/runtime-actix-rustls",
+    "sqlx/sqlite",
     "time/formatting",
     "time/macros",
-    "serde_json/arbitrary_precision"
 ]
 
 [profile.release]

@@ -25,7 +25,7 @@ pub async fn webhooks_auto_responders(
 ) -> impl Responder {
     let PathParams { user_handle, alias } = path_params.into_inner();
     // 1. Try to find a user with such a handle.
-    let user = match state.api.users().get_by_handle(&user_handle) {
+    let user = match state.api.users().get_by_handle(&user_handle).await {
         Ok(Some(user)) => user,
         Ok(None) => return HttpResponse::NotFound().finish(),
         Err(err) => {

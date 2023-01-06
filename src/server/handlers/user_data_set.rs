@@ -47,7 +47,7 @@ pub async fn user_data_set(
         ..user
     };
 
-    match state.api.users().upsert(&user_to_update) {
+    match state.api.users().upsert(&user_to_update).await {
         Ok(_) => {
             log::debug!("Updated data for user {}.", user_to_update.handle);
             HttpResponse::Ok().json(json!({ "status": "ok" }))

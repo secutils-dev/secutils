@@ -1,3 +1,4 @@
+mod search;
 mod security_login;
 mod security_logout;
 mod security_users_activate;
@@ -12,6 +13,7 @@ mod user_get;
 mod utils_execute;
 mod webhooks_auto_responders;
 
+pub use search::search;
 pub use security_login::security_login;
 pub use security_logout::security_logout;
 pub use security_users_activate::security_users_activate;

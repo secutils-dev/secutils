@@ -1,4 +1,4 @@
-use crate::api::{Api, UsersApi};
+use crate::api::UsersApi;
 use anyhow::bail;
 use std::collections::HashSet;
 
@@ -44,27 +44,6 @@ impl TryFrom<&str> for BuiltinUser {
             },
         })
     }
-}
-
-pub fn initialize_builtin_users<BU: AsRef<str>>(
-    api: &Api,
-    builtin_users: BU,
-) -> anyhow::Result<()> {
-    log::info!("Initializing builtin users");
-    let users = api.users();
-
-    let mut initialized_builtin_users = 0;
-    for builtin_user_str in builtin_users.as_ref().split('|') {
-        users.upsert_builtin(BuiltinUser::try_from(builtin_user_str)?)?;
-        initialized_builtin_users += 1;
-    }
-
-    log::info!(
-        "Successfully initialized {} builtin users.",
-        initialized_builtin_users
-    );
-
-    Ok(())
 }
 
 #[cfg(test)]

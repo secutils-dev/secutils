@@ -12,6 +12,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  DATABASE_URL: sqlite://tools/db/sqlx_users.db
 
 jobs:
   ci:

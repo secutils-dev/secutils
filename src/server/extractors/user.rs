@@ -23,6 +23,7 @@ impl FromRequest for User {
                         .api
                         .users()
                         .authenticate(basic_auth.user_id(), password)
+                        .await
                     {
                         Ok(user) => Ok(user),
                         Err(err) => {
@@ -41,6 +42,7 @@ impl FromRequest for User {
                     .api
                     .users()
                     .get(identity_id)
+                    .await
                     .and_then(|user| {
                         if let Some(user) = user {
                             Ok(user)

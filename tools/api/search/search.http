@@ -1,0 +1,8 @@
+### Site-wide search
+POST {{host}}/api/search
+Accept: application/json
+Content-Type: application/json
+
+{
+  "query": "handle"
+}

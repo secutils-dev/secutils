@@ -5,7 +5,7 @@ mod status;
 
 use crate::{
     api::Api, config::Config, datastore::Datastore, file_cache::FileCache,
-    server::app_state::AppState, users::initialize_builtin_users,
+    search::search_initializer, server::app_state::AppState, users::builtin_users_initializer,
 };
 use actix_identity::IdentityMiddleware;
 use actix_session::{storage::CookieSessionStore, SessionMiddleware};
@@ -19,14 +19,14 @@ pub async fn run(
     secure_cookies: bool,
     builtin_users: Option<String>,
 ) -> Result<(), anyhow::Error> {
-    let api = Api::new(
-        config.clone(),
-        FileCache::ensure_cache_dir_exists("indices").and_then(Datastore::open)?,
-    );
+    let indices_dir = FileCache::ensure_cache_dir_exists("data")?;
+    let api = Api::new(config.clone(), Datastore::open(indices_dir).await?);
 
     if let Some(ref builtin_users) = builtin_users {
-        initialize_builtin_users(&api, builtin_users)
+        builtin_users_initializer(&api, builtin_users)
+            .await
             .with_context(|| "Cannot initialize builtin users")?;
+        search_initializer(&api)?;
     }
 
     let http_server_url = format!("0.0.0.0:{}", config.http_port);
@@ -49,6 +49,7 @@ pub async fn run(
                 web::scope("/api")
                     .route("/status", web::get().to(handlers::status_get))
                     .route("/status", web::post().to(handlers::status_set))
+                    .route("/search", web::post().to(handlers::search))
                     .route("/send_message", web::post().to(handlers::send_message))
                     .route("/login", web::post().to(handlers::security_login))
                     .route("/logout", web::post().to(handlers::security_logout))

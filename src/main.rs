@@ -5,6 +5,7 @@ mod config;
 mod datastore;
 mod error;
 mod file_cache;
+mod search;
 mod server;
 mod users;
 mod utils;
@@ -140,6 +141,7 @@ fn main() -> Result<(), anyhow::Error> {
 mod tests {
     use crate::{
         datastore::initialize_index,
+        search::SearchItem,
         users::{User, UserProfile},
     };
     use std::collections::HashSet;
@@ -193,6 +195,33 @@ mod tests {
 
         pub fn build(self) -> User {
             self.user
+        }
+    }
+
+    pub struct MockSearchItemBuilder {
+        item: SearchItem,
+    }
+
+    impl MockSearchItemBuilder {
+        pub fn new<I: Into<String>>(id: I, content: I, timestamp: OffsetDateTime) -> Self {
+            Self {
+                item: SearchItem {
+                    id: id.into(),
+                    content: content.into(),
+                    user_handle: None,
+                    timestamp,
+                },
+            }
+        }
+
+        pub fn set_user_handle<I: Into<String>>(mut self, user_handle: I) -> Self {
+            self.item.user_handle = Some(user_handle.into());
+
+            self
+        }
+
+        pub fn build(self) -> SearchItem {
+            self.item
         }
     }
 }
