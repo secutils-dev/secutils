@@ -55,6 +55,7 @@ pub async fn run(
                     .route("/logout", web::post().to(handlers::security_logout))
                     .route("/user", web::get().to(handlers::user_get))
                     .route("/user/data", web::post().to(handlers::user_data_set))
+                    .route("/user/data", web::get().to(handlers::user_data_get))
                     .route(
                         "/webhooks/ar/{user_handle}/{alias}",
                         web::route().to(handlers::webhooks_auto_responders),

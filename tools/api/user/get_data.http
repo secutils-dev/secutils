@@ -1,0 +1,4 @@
+### Get data
+GET {{host}}/api/user/data?dataType=autoResponders
+Accept: application/json
+Authorization: {{api-credentials}}

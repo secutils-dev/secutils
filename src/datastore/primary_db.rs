@@ -1,10 +1,13 @@
 mod raw_user;
+mod raw_user_data;
 
-use crate::users::User;
-use anyhow::bail;
+use crate::users::{User, UserDataType};
+use anyhow::{bail, Context};
+use serde::{de::DeserializeOwned, Serialize};
 use sqlx::{query, query_as, sqlite::SqlitePool, Pool, Sqlite};
 
 use raw_user::RawUser;
+use raw_user_data::RawUserData;
 
 #[derive(Clone)]
 pub struct PrimaryDb {
@@ -16,26 +19,12 @@ impl PrimaryDb {
     pub async fn open<I: FnOnce() -> anyhow::Result<String>>(
         initializer: I,
     ) -> anyhow::Result<Self> {
-        let db_location = initializer()?;
+        let pool = SqlitePool::connect(&initializer()?).await?;
 
-        let pool = SqlitePool::connect(&db_location).await?;
-
-        let mut conn = pool.acquire().await?;
-        query!(
-            r#"
-CREATE TABLE IF NOT EXISTS users
-(
-    email           TEXT PRIMARY KEY NOT NULL COLLATE NOCASE,
-    handle          TEXT NOT NULL COLLATE NOCASE,
-    password_hash   TEXT NOT NULL,
-    created         INTEGER NOT NULL,
-    roles           TEXT,
-    activation_code TEXT COLLATE NOCASE,
-    profile         BLOB
-) STRICT;"#
-        )
-        .execute(&mut conn)
-        .await?;
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .with_context(|| "Failed to migrate database")?;
 
         Ok(PrimaryDb { pool })
     }
@@ -46,7 +35,7 @@ CREATE TABLE IF NOT EXISTS users
         query_as!(
             RawUser,
             r#"
-SELECT email, handle, password_hash, created, roles, activation_code, profile
+SELECT email, handle, password_hash, created, roles, activation_code
 FROM users
 WHERE email = ?1
                 "#,
@@ -67,7 +56,7 @@ WHERE email = ?1
         let mut raw_users = query_as!(
             RawUser,
             r#"
-SELECT email, handle, password_hash, created, roles, activation_code, profile
+SELECT email, handle, password_hash, created, roles, activation_code
 FROM users
 WHERE handle = ?1
              "#,
@@ -103,7 +92,7 @@ WHERE handle = ?1
         query_as!(
             RawUser,
             r#"
-SELECT email, handle, password_hash, created, roles, activation_code, profile
+SELECT email, handle, password_hash, created, roles, activation_code
 FROM users
 WHERE activation_code = ?1
             "#,
@@ -123,17 +112,16 @@ WHERE activation_code = ?1
         let mut conn = self.pool.acquire().await?;
 
         query!(r#"
-INSERT INTO users (email, handle, password_hash, created, roles, activation_code, profile)
-VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7 )
-ON CONFLICT(email) DO UPDATE SET handle=excluded.handle, password_hash=excluded.password_hash, created=excluded.created, roles=excluded.roles, activation_code=excluded.activation_code, profile=excluded.profile
+INSERT INTO users (email, handle, password_hash, created, roles, activation_code)
+VALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )
+ON CONFLICT(email) DO UPDATE SET handle=excluded.handle, password_hash=excluded.password_hash, created=excluded.created, roles=excluded.roles, activation_code=excluded.activation_code
         "#,
             raw_user.email,
             raw_user.handle,
             raw_user.password_hash,
             raw_user.created,
             raw_user.roles,
-            raw_user.activation_code,
-            raw_user.profile
+            raw_user.activation_code
         )
         .execute(&mut conn)
         .await?;
@@ -150,7 +138,7 @@ ON CONFLICT(email) DO UPDATE SET handle=excluded.handle, password_hash=excluded.
             r#"
 DELETE FROM users
 WHERE email = ?1
-RETURNING email as "email!", handle as "handle!", password_hash as "password_hash!", created as "created!", roles, activation_code, profile
+RETURNING email as "email!", handle as "handle!", password_hash as "password_hash!", created as "created!", roles, activation_code
             "#,
             email
         )
@@ -159,11 +147,90 @@ RETURNING email as "email!", handle as "handle!", password_hash as "password_has
             .map(|raw_user| raw_user.try_into())
             .transpose()
     }
+
+    /// Retrieves user data from the `UserData` table using user email and data key.
+    pub async fn get_user_data<T: AsRef<str>, R: DeserializeOwned>(
+        &self,
+        user_email: T,
+        data_type: UserDataType,
+    ) -> anyhow::Result<Option<R>> {
+        let user_email = user_email.as_ref();
+        let user_data_key = data_type.get_data_key();
+        query_as!(
+            RawUserData,
+            r#"
+SELECT data_value
+FROM user_data
+INNER JOIN users on user_data.user_id = users.id
+WHERE users.email = ?1 AND user_data.data_key = ?2
+                "#,
+            user_email,
+            user_data_key
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .map(|raw_user_data| {
+            serde_json::from_slice::<R>(&raw_user_data.data_value)
+                .with_context(|| format!("Cannot deserialize user data ({}).", user_data_key))
+        })
+        .transpose()
+    }
+
+    /// Sets user data in the `UserData` table using user email and data key.
+    pub async fn upsert_user_data<T: AsRef<str>, R: Serialize>(
+        &self,
+        user_email: T,
+        data_type: UserDataType,
+        data_value: R,
+    ) -> anyhow::Result<()> {
+        let user_data_key = data_type.get_data_key();
+        let user_data_value = serde_json::ser::to_vec(&data_value)
+            .with_context(|| format!("Failed to serialize user data ({})", user_data_key))?;
+        let user_email = user_email.as_ref();
+
+        let mut conn = self.pool.acquire().await?;
+        query!(
+            r#"
+INSERT INTO user_data (user_id, data_key, data_value)
+VALUES ( (SELECT users.id FROM users WHERE users.email = ?1), ?2, ?3 )
+ON CONFLICT(user_id, data_key) DO UPDATE SET data_value=excluded.data_value
+        "#,
+            user_email,
+            user_data_key,
+            user_data_value
+        )
+        .execute(&mut conn)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Deletes user data from the `UserData` table using user email and data key.
+    pub async fn remove_user_data<T: AsRef<str>>(
+        &self,
+        user_email: T,
+        data_type: UserDataType,
+    ) -> anyhow::Result<()> {
+        let user_email = user_email.as_ref();
+        let user_data_key = data_type.get_data_key();
+        query!(
+            r#"
+DELETE FROM user_data
+WHERE user_id = (SELECT users.id FROM users WHERE users.email = ?1) AND data_key = ?2
+            "#,
+            user_email,
+            user_data_key
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{datastore::PrimaryDb, tests::MockUserBuilder, users::UserProfile};
+    use crate::{datastore::PrimaryDb, tests::MockUserBuilder};
     use insta::assert_debug_snapshot;
     use time::OffsetDateTime;
 
@@ -199,7 +266,6 @@ mod tests {
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             )
             .set_activation_code("some-user-code")
-            .set_profile(UserProfile::default())
             .add_role("Power-User")
             .build(),
         ];
@@ -215,7 +281,6 @@ mod tests {
                 password_hash: "hash",
                 roles: {},
                 created: 2000-01-01 10:00:00.0 +00:00:00,
-                profile: None,
                 activation_code: None,
             },
         )
@@ -230,7 +295,6 @@ mod tests {
                     "admin",
                 },
                 created: 2010-01-01 10:00:00.0 +00:00:00,
-                profile: None,
                 activation_code: Some(
                     "some-code",
                 ),
@@ -247,11 +311,6 @@ mod tests {
                     "power-user",
                 },
                 created: 2000-01-01 10:00:00.0 +00:00:00,
-                profile: Some(
-                    UserProfile {
-                        data: None,
-                    },
-                ),
                 activation_code: Some(
                     "some-user-code",
                 ),
@@ -336,7 +395,6 @@ mod tests {
                 password_hash: "hash",
                 roles: {},
                 created: 2000-01-01 10:00:00.0 +00:00:00,
-                profile: None,
                 activation_code: None,
             },
         )
@@ -351,7 +409,6 @@ mod tests {
                 OffsetDateTime::from_unix_timestamp(1262340000)?,
             )
             .set_activation_code("some-code")
-            .set_profile(UserProfile::default())
             .add_role("admin")
             .build(),
         )
@@ -366,11 +423,6 @@ mod tests {
                     "admin",
                 },
                 created: 2010-01-01 10:00:00.0 +00:00:00,
-                profile: Some(
-                    UserProfile {
-                        data: None,
-                    },
-                ),
                 activation_code: Some(
                     "some-code",
                 ),

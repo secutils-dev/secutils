@@ -1,13 +1,17 @@
 use crate::{
-    api::{Email, EmailBody, EmailsApi},
+    api::{
+        users::{AutoRespondersUserDataSetter, UserDataSetter},
+        Email, EmailBody, EmailsApi,
+    },
     config::Config,
     datastore::PrimaryDb,
-    users::{BuiltinUser, User},
+    users::{BuiltinUser, User, UserDataType},
 };
 use anyhow::{anyhow, bail, Context};
 use argon2::{password_hash::SaltString, Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use hex::ToHex;
 use rand_core::{OsRng, RngCore};
+use serde::de::DeserializeOwned;
 use std::{borrow::Cow, collections::HashSet, time::SystemTime};
 use time::OffsetDateTime;
 
@@ -64,7 +68,6 @@ impl<'a> UsersApi<'a> {
             password_hash: Self::generate_user_password_hash(user_password)?,
             created: OffsetDateTime::now_utc(),
             roles: HashSet::with_capacity(0),
-            profile: None,
             activation_code: Some(activation_code.clone()),
         };
 
@@ -190,7 +193,6 @@ impl<'a> UsersApi<'a> {
                 email: user.email,
                 handle: user.handle,
                 created: user.created,
-                profile: user.profile,
                 password_hash: builtin_user.password_hash,
                 roles: builtin_user.roles,
                 activation_code: None,
@@ -201,12 +203,11 @@ impl<'a> UsersApi<'a> {
                 password_hash: builtin_user.password_hash,
                 created: OffsetDateTime::now_utc(),
                 roles: builtin_user.roles,
-                profile: None,
                 activation_code: None,
             },
         };
 
-        self.primary_db.upsert_user(user).await
+        self.upsert(user).await
     }
 
     /// Removes the user with the specified email.
@@ -223,6 +224,30 @@ impl<'a> UsersApi<'a> {
             )
             .map(|hash| hash.to_string())
             .map_err(|err| anyhow!("Failed to generate a password hash: {}", err))
+    }
+
+    /// Retrieves data of the specified type for the user with the specified email.
+    pub async fn get_data<E: AsRef<str>, R: DeserializeOwned>(
+        &self,
+        user_email: E,
+        data_type: UserDataType,
+    ) -> anyhow::Result<Option<R>> {
+        self.primary_db.get_user_data(user_email, data_type).await
+    }
+
+    /// Sets user data of the specified type for the user with the specified email.
+    pub async fn set_data<E: AsRef<str>>(
+        &self,
+        user_email: E,
+        data_type: UserDataType,
+        serialized_data_value: Vec<u8>,
+    ) -> anyhow::Result<()> {
+        let user_data_setter = UserDataSetter::new(user_email.as_ref(), &self.primary_db);
+        match data_type {
+            UserDataType::AutoResponders => {
+                AutoRespondersUserDataSetter::upsert(&user_data_setter, serialized_data_value).await
+            }
+        }
     }
 
     /// Generates a random user handle (8 bytes).

@@ -14,7 +14,7 @@ pub use self::{
     utils_executor::UtilsExecutor,
     utils_request::UtilsRequest,
     utils_response::UtilsResponse,
-    webhooks::{AutoResponder, AutoResponderMethod, USER_PROFILE_DATA_KEY_AUTO_RESPONDERS},
+    webhooks::{AutoResponder, AutoResponderMethod},
 };
 
 #[cfg(test)]

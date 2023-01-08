@@ -1,7 +1,4 @@
-use crate::{
-    server::app_state::AppState,
-    utils::{AutoResponder, USER_PROFILE_DATA_KEY_AUTO_RESPONDERS},
-};
+use crate::{server::app_state::AppState, users::UserDataType, utils::AutoResponder};
 use actix_http::body::MessageBody;
 use actix_web::{
     http::header::{HeaderName, HeaderValue},
@@ -40,32 +37,13 @@ pub async fn webhooks_auto_responders(
     };
 
     // 2. Check if user has any responders.
-    let auto_responders = user
-        .profile
-        .and_then(|mut profile| profile.data.take())
-        .and_then(|mut profile_data| profile_data.remove(USER_PROFILE_DATA_KEY_AUTO_RESPONDERS));
-    let auto_responder = if let Some(auto_responder) = auto_responders {
-        auto_responder
-    } else {
-        log::error!("User {} doesn't have responders configured.", user_handle);
-        return HttpResponse::NotFound().finish();
-    };
-
-    // 3. Check if user has a responder with a specified alias.
-    let auto_responder = match serde_json::from_str::<BTreeMap<String, AutoResponder>>(
-        &auto_responder,
-    )
-    .map(|mut auto_responders| auto_responders.remove(&alias))
+    let auto_responders: Option<BTreeMap<String, AutoResponder>> = match state
+        .api
+        .users()
+        .get_data(&user.email, UserDataType::AutoResponders)
+        .await
     {
-        Ok(Some(auto_responder)) => auto_responder,
-        Ok(None) => {
-            log::error!(
-                "User {} doesn't have responder for alias {} configured.",
-                user_handle,
-                alias
-            );
-            return HttpResponse::NotFound().finish();
-        }
+        Ok(auto_responders) => auto_responders,
         Err(err) => {
             log::error!(
                 "Failed to deserialize responders for user {}: {:#}",
@@ -73,7 +51,27 @@ pub async fn webhooks_auto_responders(
                 err
             );
             return HttpResponse::InternalServerError()
-                    .json(json!({ "error": "Responder couldn't handle request. It's likely a bug, please report it." }));
+                .json(json!({ "error": "Responder couldn't handle request. It's likely a bug, please report it." }));
+        }
+    };
+
+    let mut auto_responders = if let Some(auto_responders) = auto_responders {
+        auto_responders
+    } else {
+        log::error!("User {} doesn't have responders configured.", user_handle);
+        return HttpResponse::NotFound().finish();
+    };
+
+    // 3. Check if user has a responder with a specified alias.
+    let auto_responder = match auto_responders.remove(&alias) {
+        Some(auto_responder) => auto_responder,
+        None => {
+            log::error!(
+                "User {} doesn't have responder for alias {} configured.",
+                user_handle,
+                alias
+            );
+            return HttpResponse::NotFound().finish();
         }
     };
 

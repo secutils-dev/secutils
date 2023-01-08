@@ -139,11 +139,7 @@ fn main() -> Result<(), anyhow::Error> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        datastore::initialize_index,
-        search::SearchItem,
-        users::{User, UserProfile},
-    };
+    use crate::{datastore::initialize_index, search::SearchItem, users::User};
     use std::collections::HashSet;
     use tantivy::{schema::Schema, Index, IndexReader};
     use time::OffsetDateTime;
@@ -171,7 +167,6 @@ mod tests {
                     password_hash: password_hash.into(),
                     created,
                     roles: HashSet::new(),
-                    profile: None,
                     activation_code: None,
                 },
             }
@@ -180,11 +175,6 @@ mod tests {
         pub fn set_activation_code<I: Into<String>>(mut self, activation_code: I) -> Self {
             self.user.activation_code = Some(activation_code.into());
 
-            self
-        }
-
-        pub fn set_profile(mut self, profile: UserProfile) -> Self {
-            self.user.profile = Some(profile);
             self
         }
 

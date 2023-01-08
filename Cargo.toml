@@ -32,6 +32,7 @@ openssl = "0.10.45"
 rand_core = "0.6.4"
 reqwest = { version = "0.11.13", default-features = false }
 serde = "1.0.152"
+serde_bytes = "0.11.8"
 serde_derive = "1.0.152"
 serde_json = "1.0.91"
 sqlx = "0.6.2"
@@ -57,6 +58,7 @@ default = [
     "reqwest/native-tls-vendored",
     "serde_json/arbitrary_precision",
     "sqlx/json",
+    "sqlx/migrate",
     "sqlx/offline",
     "sqlx/runtime-actix-rustls",
     "sqlx/sqlite",

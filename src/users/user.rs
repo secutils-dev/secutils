@@ -1,4 +1,3 @@
-use crate::users::UserProfile;
 use serde_derive::Serialize;
 use std::collections::HashSet;
 use time::OffsetDateTime;
@@ -12,7 +11,6 @@ pub struct User {
     pub roles: HashSet<String>,
     #[serde(with = "time::serde::timestamp")]
     pub created: OffsetDateTime,
-    pub profile: Option<UserProfile>,
     #[serde(skip_serializing)]
     pub activation_code: Option<String>,
 }
@@ -25,7 +23,7 @@ impl AsRef<User> for User {
 
 #[cfg(test)]
 mod tests {
-    use crate::{tests::MockUserBuilder, users::UserProfile};
+    use crate::tests::MockUserBuilder;
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
 
@@ -39,14 +37,6 @@ mod tests {
             OffsetDateTime::from_unix_timestamp(1262340000)?,
         )
         .set_activation_code("some-code")
-        .set_profile(UserProfile {
-            data: Some(
-                [("one", "data")]
-                    .into_iter()
-                    .map(|(key, value)| (key.to_string(), value.to_string()))
-                    .collect(),
-            ),
-        })
         .add_role("ADMIN")
         .build();
 
@@ -58,12 +48,7 @@ mod tests {
               "roles": [
                 "admin"
               ],
-              "created": 1262340000,
-              "profile": {
-                "data": {
-                  "one": "data"
-                }
-              }
+              "created": 1262340000
             }
             "###);
         });
