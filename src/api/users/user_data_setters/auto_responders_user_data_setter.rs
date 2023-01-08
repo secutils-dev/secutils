@@ -46,7 +46,7 @@ mod tests {
         api::users::{AutoRespondersUserDataSetter, UserDataSetter},
         datastore::PrimaryDb,
         tests::MockUserBuilder,
-        users::{User, UserDataType},
+        users::{User, UserDataType, UserId},
         utils::{tests::MockAutoResponder, AutoResponder, AutoResponderMethod},
     };
     use std::collections::BTreeMap;
@@ -54,6 +54,7 @@ mod tests {
 
     fn create_mock_user() -> User {
         MockUserBuilder::new(
+            UserId::empty(),
             "dev@secutils.dev",
             "dev-handle",
             "hash",

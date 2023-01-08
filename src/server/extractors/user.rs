@@ -41,7 +41,7 @@ impl FromRequest for User {
                 return state
                     .api
                     .users()
-                    .get(identity_id)
+                    .get_by_email(identity_id)
                     .await
                     .and_then(|user| {
                         if let Some(user) = user {

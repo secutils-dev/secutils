@@ -139,7 +139,11 @@ fn main() -> Result<(), anyhow::Error> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{datastore::initialize_index, search::SearchItem, users::User};
+    use crate::{
+        datastore::initialize_index,
+        search::SearchItem,
+        users::{User, UserId},
+    };
     use std::collections::HashSet;
     use tantivy::{schema::Schema, Index, IndexReader};
     use time::OffsetDateTime;
@@ -154,6 +158,7 @@ mod tests {
 
     impl MockUserBuilder {
         pub fn new<I: Into<String>>(
+            id: UserId,
             email: I,
             handle: I,
             password_hash: I,
@@ -162,6 +167,7 @@ mod tests {
             let email = email.into();
             Self {
                 user: User {
+                    id,
                     email,
                     handle: handle.into(),
                     password_hash: password_hash.into(),

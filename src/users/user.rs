@@ -1,9 +1,12 @@
+use crate::users::UserId;
 use serde_derive::Serialize;
 use std::collections::HashSet;
 use time::OffsetDateTime;
 
 #[derive(Serialize, Debug, Eq, PartialEq, Clone)]
 pub struct User {
+    #[serde(skip_serializing)]
+    pub id: UserId,
     pub email: String,
     pub handle: String,
     #[serde(skip_serializing)]
@@ -23,13 +26,14 @@ impl AsRef<User> for User {
 
 #[cfg(test)]
 mod tests {
-    use crate::tests::MockUserBuilder;
+    use crate::{tests::MockUserBuilder, users::UserId};
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
         let user = MockUserBuilder::new(
+            UserId(1),
             "my-email",
             "my-handle",
             "my-pass-hash",

@@ -22,7 +22,12 @@ pub async fn security_users_remove(
         );
     }
 
-    match state.api.users().remove(&body_params.username).await {
+    match state
+        .api
+        .users()
+        .remove_by_email(&body_params.username)
+        .await
+    {
         Ok(Some(user)) => {
             log::info!("Successfully removed user: {:?}", user);
         }

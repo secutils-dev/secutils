@@ -5,7 +5,7 @@ use crate::{
     },
     config::Config,
     datastore::PrimaryDb,
-    users::{BuiltinUser, User, UserDataType},
+    users::{BuiltinUser, User, UserDataType, UserId},
 };
 use anyhow::{anyhow, bail, Context};
 use argon2::{password_hash::SaltString, Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
@@ -54,7 +54,7 @@ impl<'a> UsersApi<'a> {
         }
 
         // Prevent multiple signup requests from the same user.
-        if let Some(user) = self.primary_db.get_user(&user_email).await? {
+        if let Some(user) = self.primary_db.get_user_by_email(&user_email).await? {
             bail!(
                 "Cannot signup user: a user {} with the same email already exists.",
                 user.handle
@@ -63,6 +63,7 @@ impl<'a> UsersApi<'a> {
 
         let activation_code = Self::generate_activation_code();
         let user = User {
+            id: UserId::empty(),
             email: user_email,
             handle: self.generate_user_handle().await?,
             password_hash: Self::generate_user_password_hash(user_password)?,
@@ -95,11 +96,14 @@ impl<'a> UsersApi<'a> {
             },
         ).with_timestamp(SystemTime::now()))?;
 
-        self.primary_db.upsert_user(&user).await.with_context(|| {
+        let user_id = self.primary_db.upsert_user(&user).await.with_context(|| {
             format!("Cannot signup user: failed to upsert user {}", user.handle)
         })?;
 
-        Ok(user)
+        Ok(User {
+            id: user_id,
+            ..user
+        })
     }
 
     /// Authenticates user with the specified email and password.
@@ -108,7 +112,11 @@ impl<'a> UsersApi<'a> {
         user_email: EP,
         user_password: EP,
     ) -> anyhow::Result<User> {
-        let user = if let Some(user) = self.primary_db.get_user(user_email.as_ref()).await? {
+        let user = if let Some(user) = self
+            .primary_db
+            .get_user_by_email(user_email.as_ref())
+            .await?
+        {
             user
         } else {
             bail!(
@@ -169,8 +177,8 @@ impl<'a> UsersApi<'a> {
     }
 
     /// Retrieves the user using the specified email.
-    pub async fn get<E: AsRef<str>>(&self, user_email: E) -> anyhow::Result<Option<User>> {
-        self.primary_db.get_user(user_email).await
+    pub async fn get_by_email<E: AsRef<str>>(&self, user_email: E) -> anyhow::Result<Option<User>> {
+        self.primary_db.get_user_by_email(user_email).await
     }
 
     /// Retrieves the user using the specified handle.
@@ -182,14 +190,19 @@ impl<'a> UsersApi<'a> {
     }
 
     /// Inserts or updates user in the `Users` store.
-    pub async fn upsert<U: AsRef<User>>(&self, user: U) -> anyhow::Result<()> {
+    pub async fn upsert<U: AsRef<User>>(&self, user: U) -> anyhow::Result<UserId> {
         self.primary_db.upsert_user(user).await
     }
 
     /// Inserts or updates user in the `Users` store using `BuiltinUser`.
-    pub async fn upsert_builtin(&self, builtin_user: BuiltinUser) -> anyhow::Result<()> {
-        let user = match self.primary_db.get_user(&builtin_user.email).await? {
+    pub async fn upsert_builtin(&self, builtin_user: BuiltinUser) -> anyhow::Result<UserId> {
+        let user = match self
+            .primary_db
+            .get_user_by_email(&builtin_user.email)
+            .await?
+        {
             Some(user) => User {
+                id: user.id,
                 email: user.email,
                 handle: user.handle,
                 created: user.created,
@@ -198,6 +211,7 @@ impl<'a> UsersApi<'a> {
                 activation_code: None,
             },
             None => User {
+                id: UserId::empty(),
                 email: builtin_user.email,
                 handle: self.generate_user_handle().await?,
                 password_hash: builtin_user.password_hash,
@@ -207,12 +221,15 @@ impl<'a> UsersApi<'a> {
             },
         };
 
-        self.upsert(user).await
+        self.upsert(&user).await
     }
 
     /// Removes the user with the specified email.
-    pub async fn remove<E: AsRef<str>>(&self, user_email: E) -> anyhow::Result<Option<User>> {
-        self.primary_db.remove_user(user_email).await
+    pub async fn remove_by_email<E: AsRef<str>>(
+        &self,
+        user_email: E,
+    ) -> anyhow::Result<Option<User>> {
+        self.primary_db.remove_user_by_email(user_email).await
     }
 
     /// Generates user password hash.

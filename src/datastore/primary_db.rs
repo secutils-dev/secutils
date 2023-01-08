@@ -1,13 +1,15 @@
 mod raw_user;
 mod raw_user_data;
+mod raw_user_to_upsert;
 
-use crate::users::{User, UserDataType};
+use crate::users::{User, UserDataType, UserId};
 use anyhow::{bail, Context};
 use serde::{de::DeserializeOwned, Serialize};
-use sqlx::{query, query_as, sqlite::SqlitePool, Pool, Sqlite};
+use sqlx::{query, query_as, query_scalar, sqlite::SqlitePool, Pool, Sqlite};
 
 use raw_user::RawUser;
 use raw_user_data::RawUserData;
+use raw_user_to_upsert::RawUserToUpsert;
 
 #[derive(Clone)]
 pub struct PrimaryDb {
@@ -30,12 +32,12 @@ impl PrimaryDb {
     }
 
     /// Retrieves user from the `Users` table using user email.
-    pub async fn get_user<T: AsRef<str>>(&self, email: T) -> anyhow::Result<Option<User>> {
+    pub async fn get_user_by_email<T: AsRef<str>>(&self, email: T) -> anyhow::Result<Option<User>> {
         let email = email.as_ref();
         query_as!(
             RawUser,
             r#"
-SELECT email, handle, password_hash, created, roles, activation_code
+SELECT id, email, handle, password_hash, created, roles, activation_code
 FROM users
 WHERE email = ?1
                 "#,
@@ -43,7 +45,7 @@ WHERE email = ?1
         )
         .fetch_optional(&self.pool)
         .await?
-        .map(|raw_user| raw_user.try_into())
+        .map(User::try_from)
         .transpose()
     }
 
@@ -56,7 +58,7 @@ WHERE email = ?1
         let mut raw_users = query_as!(
             RawUser,
             r#"
-SELECT email, handle, password_hash, created, roles, activation_code
+SELECT id, email, handle, password_hash, created, roles, activation_code
 FROM users
 WHERE handle = ?1
              "#,
@@ -77,10 +79,7 @@ WHERE handle = ?1
             );
         }
 
-        raw_users
-            .pop()
-            .map(|raw_user| raw_user.try_into())
-            .transpose()
+        raw_users.pop().map(User::try_from).transpose()
     }
 
     /// Retrieves users from the `Users` table using activation code.
@@ -92,7 +91,7 @@ WHERE handle = ?1
         query_as!(
             RawUser,
             r#"
-SELECT email, handle, password_hash, created, roles, activation_code
+SELECT id, email, handle, password_hash, created, roles, activation_code
 FROM users
 WHERE activation_code = ?1
             "#,
@@ -101,20 +100,19 @@ WHERE activation_code = ?1
         .fetch_all(&self.pool)
         .await?
         .into_iter()
-        .map(|raw_user| raw_user.try_into())
+        .map(User::try_from)
         .collect()
     }
 
     /// Inserts or updates user in the `Users` index.
-    pub async fn upsert_user<U: AsRef<User>>(&self, user: U) -> anyhow::Result<()> {
-        // TODO: Remove `clone`!
-        let raw_user: RawUser = user.as_ref().clone().try_into()?;
-        let mut conn = self.pool.acquire().await?;
+    pub async fn upsert_user<U: AsRef<User>>(&self, user: U) -> anyhow::Result<UserId> {
+        let raw_user = RawUserToUpsert::try_from(user.as_ref())?;
 
-        query!(r#"
+        let user_id: i64 = query_scalar!(r#"
 INSERT INTO users (email, handle, password_hash, created, roles, activation_code)
 VALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )
 ON CONFLICT(email) DO UPDATE SET handle=excluded.handle, password_hash=excluded.password_hash, created=excluded.created, roles=excluded.roles, activation_code=excluded.activation_code
+RETURNING id
         "#,
             raw_user.email,
             raw_user.handle,
@@ -123,14 +121,17 @@ ON CONFLICT(email) DO UPDATE SET handle=excluded.handle, password_hash=excluded.
             raw_user.roles,
             raw_user.activation_code
         )
-        .execute(&mut conn)
+        .fetch_one(&self.pool)
         .await?;
 
-        Ok(())
+        Ok(UserId(user_id))
     }
 
     /// Removes user with the specified email from the `Users` table.
-    pub async fn remove_user<T: AsRef<str>>(&self, email: T) -> anyhow::Result<Option<User>> {
+    pub async fn remove_user_by_email<T: AsRef<str>>(
+        &self,
+        email: T,
+    ) -> anyhow::Result<Option<User>> {
         let email = email.as_ref();
         let mut conn = self.pool.acquire().await?;
         query_as!(
@@ -138,13 +139,13 @@ ON CONFLICT(email) DO UPDATE SET handle=excluded.handle, password_hash=excluded.
             r#"
 DELETE FROM users
 WHERE email = ?1
-RETURNING email as "email!", handle as "handle!", password_hash as "password_hash!", created as "created!", roles, activation_code
+RETURNING id as "id!", email as "email!", handle as "handle!", password_hash as "password_hash!", created as "created!", roles, activation_code
             "#,
             email
         )
         .fetch_optional(&mut conn)
             .await?
-            .map(|raw_user| raw_user.try_into())
+            .map(User::try_from)
             .transpose()
     }
 
@@ -230,17 +231,22 @@ WHERE user_id = (SELECT users.id FROM users WHERE users.email = ?1) AND data_key
 
 #[cfg(test)]
 mod tests {
-    use crate::{datastore::PrimaryDb, tests::MockUserBuilder};
+    use crate::{
+        datastore::PrimaryDb,
+        tests::MockUserBuilder,
+        users::{User, UserId},
+    };
     use insta::assert_debug_snapshot;
     use time::OffsetDateTime;
 
     #[actix_rt::test]
     async fn can_add_and_retrieve_users() -> anyhow::Result<()> {
         let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
-        assert_eq!(db.get_user("some-id").await?, None);
+        assert_eq!(db.get_user_by_email("some-id").await?, None);
 
         let users = vec![
             MockUserBuilder::new(
+                UserId::empty(),
                 "dev@secutils.dev",
                 "dev-handle",
                 "hash",
@@ -249,6 +255,7 @@ mod tests {
             )
             .build(),
             MockUserBuilder::new(
+                UserId::empty(),
                 "prod@secutils.dev",
                 "prod-handle",
                 "hash_prod",
@@ -259,6 +266,7 @@ mod tests {
             .add_role("admin")
             .build(),
             MockUserBuilder::new(
+                UserId::empty(),
                 "user@secutils.dev",
                 "handle",
                 "hash",
@@ -273,9 +281,12 @@ mod tests {
             db.upsert_user(&user).await?;
         }
 
-        assert_debug_snapshot!(db.get_user("dev@secutils.dev").await?, @r###"
+        assert_debug_snapshot!(db.get_user_by_email("dev@secutils.dev").await?, @r###"
         Some(
             User {
+                id: UserId(
+                    1,
+                ),
                 email: "dev@secutils.dev",
                 handle: "dev-handle",
                 password_hash: "hash",
@@ -285,9 +296,12 @@ mod tests {
             },
         )
         "###);
-        assert_debug_snapshot!(db.get_user("prod@secutils.dev").await?, @r###"
+        assert_debug_snapshot!(db.get_user_by_email("prod@secutils.dev").await?, @r###"
         Some(
             User {
+                id: UserId(
+                    2,
+                ),
                 email: "prod@secutils.dev",
                 handle: "prod-handle",
                 password_hash: "hash_prod",
@@ -301,9 +315,12 @@ mod tests {
             },
         )
         "###);
-        assert_debug_snapshot!(db.get_user("user@secutils.dev").await?, @r###"
+        assert_debug_snapshot!(db.get_user_by_email("user@secutils.dev").await?, @r###"
         Some(
             User {
+                id: UserId(
+                    3,
+                ),
                 email: "user@secutils.dev",
                 handle: "handle",
                 password_hash: "hash",
@@ -317,7 +334,7 @@ mod tests {
             },
         )
         "###);
-        assert_eq!(db.get_user("unknown@secutils.dev").await?, None);
+        assert_eq!(db.get_user_by_email("unknown@secutils.dev").await?, None);
 
         Ok(())
     }
@@ -325,6 +342,7 @@ mod tests {
     #[actix_rt::test]
     async fn ignores_email_case() -> anyhow::Result<()> {
         let user = MockUserBuilder::new(
+            UserId::empty(),
             "DeV@secutils.dev",
             "DeV-handle",
             "hash",
@@ -335,11 +353,20 @@ mod tests {
         .add_role("Power-User")
         .build();
         let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
-        db.upsert_user(&user).await?;
+        let id = db.upsert_user(&user).await?;
 
-        assert_eq!(db.get_user("dev@secutils.dev").await?, Some(user.clone()));
-        assert_eq!(db.get_user("DEV@secutils.dev").await?, Some(user.clone()));
-        assert_eq!(db.get_user("DeV@secutils.dev").await?, Some(user));
+        assert_eq!(
+            db.get_user_by_email("dev@secutils.dev").await?,
+            Some(User { id, ..user.clone() })
+        );
+        assert_eq!(
+            db.get_user_by_email("DEV@secutils.dev").await?,
+            Some(User { id, ..user.clone() })
+        );
+        assert_eq!(
+            db.get_user_by_email("DeV@secutils.dev").await?,
+            Some(User { id, ..user })
+        );
 
         Ok(())
     }
@@ -347,6 +374,7 @@ mod tests {
     #[actix_rt::test]
     async fn ignores_handle_case() -> anyhow::Result<()> {
         let user = MockUserBuilder::new(
+            UserId::empty(),
             "DeV@secutils.dev",
             "DeV-handle",
             "hash",
@@ -357,17 +385,20 @@ mod tests {
         .add_role("Power-User")
         .build();
         let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
-        db.upsert_user(&user).await?;
+        let id = db.upsert_user(&user).await?;
 
         assert_eq!(
             db.get_user_by_handle("dev-handle").await?,
-            Some(user.clone())
+            Some(User { id, ..user.clone() })
         );
         assert_eq!(
             db.get_user_by_handle("DEV-handle").await?,
-            Some(user.clone())
+            Some(User { id, ..user.clone() })
         );
-        assert_eq!(db.get_user_by_handle("DeV-handle").await?, Some(user));
+        assert_eq!(
+            db.get_user_by_handle("DeV-handle").await?,
+            Some(User { id, ..user })
+        );
 
         Ok(())
     }
@@ -378,6 +409,7 @@ mod tests {
 
         db.upsert_user(
             &MockUserBuilder::new(
+                UserId::empty(),
                 "dev@secutils.dev",
                 "dev-handle",
                 "hash",
@@ -387,9 +419,12 @@ mod tests {
             .build(),
         )
         .await?;
-        assert_debug_snapshot!(db.get_user("dev@secutils.dev").await?, @r###"
+        assert_debug_snapshot!(db.get_user_by_email("dev@secutils.dev").await?, @r###"
         Some(
             User {
+                id: UserId(
+                    1,
+                ),
                 email: "dev@secutils.dev",
                 handle: "dev-handle",
                 password_hash: "hash",
@@ -402,6 +437,7 @@ mod tests {
 
         db.upsert_user(
             &MockUserBuilder::new(
+                UserId(100),
                 "DEV@secutils.dev",
                 "DEV-handle",
                 "new-hash",
@@ -413,9 +449,12 @@ mod tests {
             .build(),
         )
         .await?;
-        assert_debug_snapshot!(db.get_user("dev@secutils.dev").await?, @r###"
+        assert_debug_snapshot!(db.get_user_by_email("dev@secutils.dev").await?, @r###"
         Some(
             User {
+                id: UserId(
+                    1,
+                ),
                 email: "dev@secutils.dev",
                 handle: "DEV-handle",
                 password_hash: "new-hash",
@@ -431,8 +470,8 @@ mod tests {
         "###);
 
         assert_eq!(
-            db.get_user("dev@secutils.dev").await?,
-            db.get_user("DEV@secutils.dev").await?
+            db.get_user_by_email("dev@secutils.dev").await?,
+            db.get_user_by_email("DEV@secutils.dev").await?
         );
 
         Ok(())
@@ -441,10 +480,11 @@ mod tests {
     #[actix_rt::test]
     async fn can_remove_user() -> anyhow::Result<()> {
         let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
-        assert_eq!(db.get_user("dev@secutils.dev").await?, None);
-        assert_eq!(db.get_user("prod@secutils.dev").await?, None);
+        assert_eq!(db.get_user_by_email("dev@secutils.dev").await?, None);
+        assert_eq!(db.get_user_by_email("prod@secutils.dev").await?, None);
 
         let user_dev = MockUserBuilder::new(
+            UserId::empty(),
             "dev@secutils.dev",
             "dev-handle",
             "hash",
@@ -453,6 +493,7 @@ mod tests {
         )
         .build();
         let user_prod = MockUserBuilder::new(
+            UserId::empty(),
             "prod@secutils.dev",
             "prod-handle",
             "hash_prod",
@@ -462,29 +503,50 @@ mod tests {
         .set_activation_code("some-code")
         .build();
 
-        db.upsert_user(&user_dev).await?;
-        db.upsert_user(&user_prod).await?;
+        let dev_user_id = db.upsert_user(&user_dev).await?;
+        let prod_user_id = db.upsert_user(&user_prod).await?;
 
         assert_eq!(
-            db.get_user("dev@secutils.dev").await?,
-            Some(user_dev.clone())
+            db.get_user_by_email("dev@secutils.dev").await?,
+            Some(User {
+                id: dev_user_id,
+                ..user_dev.clone()
+            })
         );
         assert_eq!(
-            db.get_user("prod@secutils.dev").await?,
-            Some(user_prod.clone())
+            db.get_user_by_email("prod@secutils.dev").await?,
+            Some(User {
+                id: prod_user_id,
+                ..user_prod.clone()
+            })
         );
 
-        assert_eq!(db.remove_user("dev@secutils.dev").await?, Some(user_dev));
-        assert_eq!(db.get_user("dev@secutils.dev").await?, None);
-        assert_eq!(db.remove_user("dev@secutils.dev").await?, None);
         assert_eq!(
-            db.get_user("prod@secutils.dev").await?,
-            Some(user_prod.clone())
+            db.remove_user_by_email("dev@secutils.dev").await?,
+            Some(User {
+                id: dev_user_id,
+                ..user_dev
+            })
+        );
+        assert_eq!(db.get_user_by_email("dev@secutils.dev").await?, None);
+        assert_eq!(db.remove_user_by_email("dev@secutils.dev").await?, None);
+        assert_eq!(
+            db.get_user_by_email("prod@secutils.dev").await?,
+            Some(User {
+                id: prod_user_id,
+                ..user_prod.clone()
+            })
         );
 
-        assert_eq!(db.remove_user("prod@secutils.dev").await?, Some(user_prod));
-        assert_eq!(db.get_user("prod@secutils.dev").await?, None);
-        assert_eq!(db.remove_user("prod@secutils.dev").await?, None);
+        assert_eq!(
+            db.remove_user_by_email("prod@secutils.dev").await?,
+            Some(User {
+                id: prod_user_id,
+                ..user_prod
+            })
+        );
+        assert_eq!(db.get_user_by_email("prod@secutils.dev").await?, None);
+        assert_eq!(db.remove_user_by_email("prod@secutils.dev").await?, None);
 
         Ok(())
     }
@@ -493,6 +555,7 @@ mod tests {
     async fn can_search_users() -> anyhow::Result<()> {
         let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
         let user_dev = MockUserBuilder::new(
+            UserId::empty(),
             "dev@secutils.dev",
             "dev-handle",
             "hash",
@@ -502,6 +565,7 @@ mod tests {
         .set_activation_code("some-code")
         .build();
         let user_prod = MockUserBuilder::new(
+            UserId::empty(),
             "prod@secutils.dev",
             "prod-handle",
             "hash_prod",
@@ -511,25 +575,37 @@ mod tests {
         .set_activation_code("OTHER-code")
         .build();
 
-        db.upsert_user(&user_dev).await?;
-        db.upsert_user(&user_prod).await?;
+        let dev_user_id = db.upsert_user(&user_dev).await?;
+        let prod_user_id = db.upsert_user(&user_prod).await?;
 
         assert_eq!(
             db.get_users_by_activation_code("some-code").await?,
-            vec![user_dev.clone()]
+            vec![User {
+                id: dev_user_id,
+                ..user_dev.clone()
+            }]
         );
         assert_eq!(
             db.get_users_by_activation_code("SOME-code").await?,
-            vec![user_dev]
+            vec![User {
+                id: dev_user_id,
+                ..user_dev
+            }]
         );
 
         assert_eq!(
             db.get_users_by_activation_code("other-code").await?,
-            vec![user_prod.clone()]
+            vec![User {
+                id: prod_user_id,
+                ..user_prod.clone()
+            }]
         );
         assert_eq!(
             db.get_users_by_activation_code("OTHER-code").await?,
-            vec![user_prod]
+            vec![User {
+                id: prod_user_id,
+                ..user_prod
+            }]
         );
 
         assert_eq!(
