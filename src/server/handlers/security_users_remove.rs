@@ -36,7 +36,7 @@ pub async fn security_users_remove(
         }
         Err(err) => {
             log::error!(
-                "Failed to signup user (`{}`): {:?}",
+                "Failed to remove user (`{}`): {:?}",
                 body_params.username,
                 err
             );
