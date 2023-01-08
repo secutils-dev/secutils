@@ -149,23 +149,21 @@ RETURNING id as "id!", email as "email!", handle as "handle!", password_hash as 
             .transpose()
     }
 
-    /// Retrieves user data from the `UserData` table using user email and data key.
-    pub async fn get_user_data<T: AsRef<str>, R: DeserializeOwned>(
+    /// Retrieves user data from the `UserData` table using user id and data key.
+    pub async fn get_user_data<R: DeserializeOwned>(
         &self,
-        user_email: T,
+        user_id: UserId,
         data_type: UserDataType,
     ) -> anyhow::Result<Option<R>> {
-        let user_email = user_email.as_ref();
         let user_data_key = data_type.get_data_key();
         query_as!(
             RawUserData,
             r#"
 SELECT data_value
 FROM user_data
-INNER JOIN users on user_data.user_id = users.id
-WHERE users.email = ?1 AND user_data.data_key = ?2
+WHERE user_id = ?1 AND data_key = ?2
                 "#,
-            user_email,
+            user_id.0,
             user_data_key
         )
         .fetch_optional(&self.pool)
@@ -177,26 +175,25 @@ WHERE users.email = ?1 AND user_data.data_key = ?2
         .transpose()
     }
 
-    /// Sets user data in the `UserData` table using user email and data key.
-    pub async fn upsert_user_data<T: AsRef<str>, R: Serialize>(
+    /// Sets user data in the `UserData` table using user id and data key.
+    pub async fn upsert_user_data<R: Serialize>(
         &self,
-        user_email: T,
+        user_id: UserId,
         data_type: UserDataType,
         data_value: R,
     ) -> anyhow::Result<()> {
         let user_data_key = data_type.get_data_key();
         let user_data_value = serde_json::ser::to_vec(&data_value)
             .with_context(|| format!("Failed to serialize user data ({})", user_data_key))?;
-        let user_email = user_email.as_ref();
 
         let mut conn = self.pool.acquire().await?;
         query!(
             r#"
 INSERT INTO user_data (user_id, data_key, data_value)
-VALUES ( (SELECT users.id FROM users WHERE users.email = ?1), ?2, ?3 )
+VALUES ( ?1, ?2, ?3 )
 ON CONFLICT(user_id, data_key) DO UPDATE SET data_value=excluded.data_value
         "#,
-            user_email,
+            user_id.0,
             user_data_key,
             user_data_value
         )
@@ -206,20 +203,19 @@ ON CONFLICT(user_id, data_key) DO UPDATE SET data_value=excluded.data_value
         Ok(())
     }
 
-    /// Deletes user data from the `UserData` table using user email and data key.
-    pub async fn remove_user_data<T: AsRef<str>>(
+    /// Deletes user data from the `UserData` table using user id and data key.
+    pub async fn remove_user_data(
         &self,
-        user_email: T,
+        user_id: UserId,
         data_type: UserDataType,
     ) -> anyhow::Result<()> {
-        let user_email = user_email.as_ref();
         let user_data_key = data_type.get_data_key();
         query!(
             r#"
 DELETE FROM user_data
-WHERE user_id = (SELECT users.id FROM users WHERE users.email = ?1) AND data_key = ?2
+WHERE user_id = ?1 AND data_key = ?2
             "#,
-            user_email,
+            user_id.0,
             user_data_key
         )
         .execute(&self.pool)

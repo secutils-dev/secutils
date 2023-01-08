@@ -33,7 +33,7 @@ pub async fn user_data_set(
     match state
         .api
         .users()
-        .set_data(&user.email, query_params.data_type, body_params.data_value)
+        .set_data(user.id, query_params.data_type, body_params.data_value)
         .await
     {
         Ok(_) => {

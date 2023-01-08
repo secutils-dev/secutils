@@ -1,33 +1,5 @@
 {
   "db": "SQLite",
-  "339649795bc8caa5508b1b7e0477d6af2faf94111ce55acb9d7b313a74edfcfe": {
-    "describe": {
-      "columns": [
-        {
-          "name": "data_value",
-          "ordinal": 0,
-          "type_info": "Blob"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Right": 2
-      }
-    },
-    "query": "\nSELECT data_value\nFROM user_data\nINNER JOIN users on user_data.user_id = users.id\nWHERE users.email = ?1 AND user_data.data_key = ?2\n                "
-  },
-  "42644c42d0340fd77e777d4df3e11f5be589f4defe574f052a307779ade47e01": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Right": 2
-      }
-    },
-    "query": "\nDELETE FROM user_data\nWHERE user_id = (SELECT users.id FROM users WHERE users.email = ?1) AND data_key = ?2\n            "
-  },
   "5aaf4fa9d03efef1f6a0c255d8d845269e8b76259c89bf774a91305788218519": {
     "describe": {
       "columns": [
@@ -208,15 +180,33 @@
     },
     "query": "\nDELETE FROM users\nWHERE email = ?1\nRETURNING id as \"id!\", email as \"email!\", handle as \"handle!\", password_hash as \"password_hash!\", created as \"created!\", roles, activation_code\n            "
   },
-  "d065a0a48103f3f8598539ef2f4b4c2f6ba0fe58776b819c82f0c4cf95d27799": {
+  "90653060e4d473bd48a0023435b046a8c65c407d1524b41aea999a2d49785dd6": {
+    "describe": {
+      "columns": [
+        {
+          "name": "data_value",
+          "ordinal": 0,
+          "type_info": "Blob"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Right": 2
+      }
+    },
+    "query": "\nSELECT data_value\nFROM user_data\nWHERE user_id = ?1 AND data_key = ?2\n                "
+  },
+  "c32783f681dd607eb7f1779bedfe20cafcf95f200951af907015c87e03afb9f7": {
     "describe": {
       "columns": [],
       "nullable": [],
       "parameters": {
-        "Right": 3
+        "Right": 2
       }
     },
-    "query": "\nINSERT INTO user_data (user_id, data_key, data_value)\nVALUES ( (SELECT users.id FROM users WHERE users.email = ?1), ?2, ?3 )\nON CONFLICT(user_id, data_key) DO UPDATE SET data_value=excluded.data_value\n        "
+    "query": "\nDELETE FROM user_data\nWHERE user_id = ?1 AND data_key = ?2\n            "
   },
   "db72299c4c715e46b0be6343d3e360a3302f842c15a3c0a734f5decc0eb0091b": {
     "describe": {
@@ -271,5 +261,15 @@
       }
     },
     "query": "\nSELECT id, email, handle, password_hash, created, roles, activation_code\nFROM users\nWHERE email = ?1\n                "
+  },
+  "ed083933808efb0ed7d6947997035b2ade5fb79cb04da5e681dae8df818c294a": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Right": 3
+      }
+    },
+    "query": "\nINSERT INTO user_data (user_id, data_key, data_value)\nVALUES ( ?1, ?2, ?3 )\nON CONFLICT(user_id, data_key) DO UPDATE SET data_value=excluded.data_value\n        "
   }
 }

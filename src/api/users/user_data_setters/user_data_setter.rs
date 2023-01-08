@@ -1,17 +1,20 @@
-use crate::{datastore::PrimaryDb, users::UserDataType};
+use crate::{
+    datastore::PrimaryDb,
+    users::{UserDataType, UserId},
+};
 use serde::{de::DeserializeOwned, Serialize};
 
 /// Abstracts away database and methods bound to a specific user from the data setters.
 pub struct UserDataSetter<'a> {
-    user_email: &'a str,
+    user_id: UserId,
     primary_db: &'a PrimaryDb,
 }
 
 impl<'a> UserDataSetter<'a> {
-    /// Creates a data setter bound to a user with the specified email.
-    pub fn new(user_email: &'a str, primary_db: &'a PrimaryDb) -> Self {
+    /// Creates a data setter bound to a user with the specified id.
+    pub fn new(user_id: UserId, primary_db: &'a PrimaryDb) -> Self {
         Self {
-            user_email,
+            user_id,
             primary_db,
         }
     }
@@ -21,9 +24,7 @@ impl<'a> UserDataSetter<'a> {
         &self,
         data_type: UserDataType,
     ) -> anyhow::Result<Option<R>> {
-        self.primary_db
-            .get_user_data(self.user_email, data_type)
-            .await
+        self.primary_db.get_user_data(self.user_id, data_type).await
     }
 
     /// Inserts new or updates existing user data of the specified type.
@@ -33,14 +34,14 @@ impl<'a> UserDataSetter<'a> {
         data_value: R,
     ) -> anyhow::Result<()> {
         self.primary_db
-            .upsert_user_data(self.user_email, data_type, data_value)
+            .upsert_user_data(self.user_id, data_type, data_value)
             .await
     }
 
     /// Removes existing user data of the specified type.
     pub async fn remove(&self, data_type: UserDataType) -> anyhow::Result<()> {
         self.primary_db
-            .remove_user_data(self.user_email, data_type)
+            .remove_user_data(self.user_id, data_type)
             .await
     }
 }

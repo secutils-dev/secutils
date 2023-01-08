@@ -54,7 +54,7 @@ mod tests {
 
     fn create_mock_user() -> User {
         MockUserBuilder::new(
-            UserId::empty(),
+            UserId(1),
             "dev@secutils.dev",
             "dev-handle",
             "hash",
@@ -72,7 +72,7 @@ mod tests {
     async fn can_merge_auto_responders_data() -> anyhow::Result<()> {
         let mock_user = create_mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let user_data_setter = UserDataSetter::new(&mock_user.email, &mock_db);
+        let user_data_setter = UserDataSetter::new(mock_user.id, &mock_db);
 
         let auto_responder_one =
             MockAutoResponder::new("test-1-alias", AutoResponderMethod::Post, 300).build();

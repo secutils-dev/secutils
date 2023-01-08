@@ -21,7 +21,7 @@ pub async fn user_data_get(
     match state
         .api
         .users()
-        .get_data(&user.email, query_params.data_type)
+        .get_data(user.id, query_params.data_type)
         .await
     {
         Ok(value) => HttpResponse::Ok().json(

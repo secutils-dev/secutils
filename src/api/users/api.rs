@@ -243,23 +243,23 @@ impl<'a> UsersApi<'a> {
             .map_err(|err| anyhow!("Failed to generate a password hash: {}", err))
     }
 
-    /// Retrieves data of the specified type for the user with the specified email.
-    pub async fn get_data<E: AsRef<str>, R: DeserializeOwned>(
+    /// Retrieves data of the specified type for the user with the specified id.
+    pub async fn get_data<R: DeserializeOwned>(
         &self,
-        user_email: E,
+        user_id: UserId,
         data_type: UserDataType,
     ) -> anyhow::Result<Option<R>> {
-        self.primary_db.get_user_data(user_email, data_type).await
+        self.primary_db.get_user_data(user_id, data_type).await
     }
 
-    /// Sets user data of the specified type for the user with the specified email.
-    pub async fn set_data<E: AsRef<str>>(
+    /// Sets user data of the specified type for the user with the specified id.
+    pub async fn set_data(
         &self,
-        user_email: E,
+        user_id: UserId,
         data_type: UserDataType,
         serialized_data_value: Vec<u8>,
     ) -> anyhow::Result<()> {
-        let user_data_setter = UserDataSetter::new(user_email.as_ref(), &self.primary_db);
+        let user_data_setter = UserDataSetter::new(user_id, &self.primary_db);
         match data_type {
             UserDataType::AutoResponders => {
                 AutoRespondersUserDataSetter::upsert(&user_data_setter, serialized_data_value).await

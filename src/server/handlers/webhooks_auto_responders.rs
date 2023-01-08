@@ -40,7 +40,7 @@ pub async fn webhooks_auto_responders(
     let auto_responders: Option<BTreeMap<String, AutoResponder>> = match state
         .api
         .users()
-        .get_data(&user.email, UserDataType::AutoResponders)
+        .get_data(user.id, UserDataType::AutoResponders)
         .await
     {
         Ok(auto_responders) => auto_responders,
