@@ -14,6 +14,7 @@ RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; \
 COPY ["./Cargo.lock", "./Cargo.toml", "./sqlx-data.json", "./"]
 RUN set -x && cargo fetch
 COPY ["./src", "./src"]
+COPY ["./migrations", "./migrations"]
 RUN --mount=type=cache,target=/app/target if [ "$TARGETPLATFORM" = "linux/arm64" ]; \
     then set -x && \
          export PATH="/app/aarch64-linux-musl-cross/bin:${PATH}" && \
