@@ -12,6 +12,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  DATABASE_URL: sqlite://ci-sqlx.db
 
 jobs:
   ci:
@@ -39,7 +40,11 @@ jobs:
         run:  cargo +nightly fmt --all -- --check
 
       - name: Check database schema
-        run:  cargo install sqlx-cli && cargo sqlx prepare --check
+        run: |
+          cargo install sqlx-cli
+          cargo sqlx database create
+          cargo sqlx migrate run
+          cargo sqlx prepare --check
 
       - name: Test (default features)
         run:  cargo test
