@@ -1,29 +1,26 @@
-use crate::{api::users::UserDataSetter, users::UserDataType, utils::AutoResponder};
-use anyhow::{bail, Context};
+use crate::{api::users::UserDataSetter, users::UserDataType, utils::RootCertificate};
+use anyhow::Context;
 use std::collections::BTreeMap;
 
-pub struct AutoRespondersUserDataSetter;
-impl AutoRespondersUserDataSetter {
+pub struct RootCertificatesUserDataSetter;
+impl RootCertificatesUserDataSetter {
     pub async fn upsert(
         data_setter: &UserDataSetter<'_>,
         serialized_data_value: Vec<u8>,
     ) -> anyhow::Result<()> {
-        let from_value = serde_json::from_slice::<BTreeMap<String, Option<AutoResponder>>>(
+        let from_value = serde_json::from_slice::<BTreeMap<String, Option<RootCertificate>>>(
             &serialized_data_value,
         )
-        .with_context(|| "Cannot deserialize new responders data".to_string())?;
+        .with_context(|| "Cannot deserialize new root certificate data".to_string())?;
 
         let mut to_value: BTreeMap<_, _> = data_setter
-            .get(UserDataType::AutoResponders)
+            .get(UserDataType::RootCertificates)
             .await
-            .with_context(|| "Cannot retrieve stored responders data".to_string())?
+            .with_context(|| "Cannot retrieve stored root certificates data".to_string())?
             .unwrap_or_default();
 
         for (alias, entry) in from_value {
             if let Some(entry) = entry {
-                if !entry.is_valid() {
-                    bail!("Responder is not valid: {:?}", entry);
-                }
                 to_value.insert(alias, entry);
             } else {
                 to_value.remove(&alias);
@@ -31,10 +28,10 @@ impl AutoRespondersUserDataSetter {
         }
 
         if to_value.is_empty() {
-            data_setter.remove(UserDataType::AutoResponders).await
+            data_setter.remove(UserDataType::RootCertificates).await
         } else {
             data_setter
-                .upsert(UserDataType::AutoResponders, to_value)
+                .upsert(UserDataType::RootCertificates, to_value)
                 .await
         }
     }
@@ -43,11 +40,13 @@ impl AutoRespondersUserDataSetter {
 #[cfg(test)]
 mod tests {
     use crate::{
-        api::users::{AutoRespondersUserDataSetter, UserDataSetter},
+        api::users::{RootCertificatesUserDataSetter, UserDataSetter},
         datastore::PrimaryDb,
         tests::MockUserBuilder,
         users::{User, UserDataType, UserId},
-        utils::{tests::MockAutoResponder, AutoResponder, AutoResponderMethod},
+        utils::{
+            tests::MockRootCertificate, PublicKeyAlgorithm, RootCertificate, SignatureAlgorithm,
+        },
     };
     use std::collections::BTreeMap;
     use time::OffsetDateTime;
@@ -74,24 +73,55 @@ mod tests {
         let mock_db = initialize_mock_db(&mock_user).await?;
         let user_data_setter = UserDataSetter::new(mock_user.id, &mock_db);
 
-        let item_one =
-            MockAutoResponder::new("test-1-alias", AutoResponderMethod::Post, 300).build();
-        let item_two = MockAutoResponder::new("test-2-alias", AutoResponderMethod::Post, 300)
-            .set_requests_to_track(10)
-            .set_body("body")
-            .set_headers(vec![(
-                "Content-Type".to_string(),
-                "application/json".to_string(),
-            )])
-            .set_delay(1000)
-            .build();
-        let item_two_conflict =
-            MockAutoResponder::new("test-2-alias", AutoResponderMethod::Get, 300)
-                .set_body("body")
-                .build();
-        let item_three = MockAutoResponder::new("test-3-alias", AutoResponderMethod::Options, 403)
-            .set_delay(2000)
-            .build();
+        // January 1, 2000 11:00:00
+        let not_valid_before = OffsetDateTime::from_unix_timestamp(946720800)?;
+        // January 1, 2010 11:00:00
+        let not_valid_after = OffsetDateTime::from_unix_timestamp(1262340000)?;
+
+        let item_one = MockRootCertificate::new(
+            "test-1-alias",
+            PublicKeyAlgorithm::Rsa,
+            SignatureAlgorithm::Sha256,
+            not_valid_before,
+            not_valid_after,
+            1,
+        )
+        .build();
+        let item_two = MockRootCertificate::new(
+            "test-2-alias",
+            PublicKeyAlgorithm::Ed25519,
+            SignatureAlgorithm::Ed25519,
+            not_valid_before,
+            not_valid_after,
+            3,
+        )
+        .set_common_name("CA Issuer")
+        .set_country("US")
+        .set_state_or_province("California")
+        .set_locality("San Francisco")
+        .set_organization("CA Issuer, Inc")
+        .set_organization_unit("CA Org Unit")
+        .build();
+        let item_two_conflict = MockRootCertificate::new(
+            "test-2-alias",
+            PublicKeyAlgorithm::Rsa,
+            SignatureAlgorithm::Sha384,
+            not_valid_before,
+            not_valid_after.replace_year(2050)?,
+            2,
+        )
+        .set_country("DE")
+        .build();
+        let item_three = MockRootCertificate::new(
+            "test-3-alias",
+            PublicKeyAlgorithm::Dsa,
+            SignatureAlgorithm::Md5,
+            not_valid_before,
+            not_valid_after,
+            1,
+        )
+        .set_common_name("Old CA Issuer")
+        .build();
 
         // Fill empty data.
         let initial_items = [
@@ -100,13 +130,13 @@ mod tests {
         ]
         .into_iter()
         .collect::<BTreeMap<_, _>>();
-        AutoRespondersUserDataSetter::upsert(
+        RootCertificatesUserDataSetter::upsert(
             &user_data_setter,
             serde_json::ser::to_vec(&initial_items)?,
         )
         .await?;
         assert_eq!(
-            user_data_setter.get(UserDataType::AutoResponders).await?,
+            user_data_setter.get(UserDataType::RootCertificates).await?,
             Some(initial_items)
         );
 
@@ -117,13 +147,13 @@ mod tests {
         )]
         .into_iter()
         .collect::<BTreeMap<_, _>>();
-        AutoRespondersUserDataSetter::upsert(
+        RootCertificatesUserDataSetter::upsert(
             &user_data_setter,
             serde_json::ser::to_vec(&conflicting_items)?,
         )
         .await?;
         assert_eq!(
-            user_data_setter.get(UserDataType::AutoResponders).await?,
+            user_data_setter.get(UserDataType::RootCertificates).await?,
             Some(
                 [
                     (item_one.alias.to_string(), item_one.clone(),),
@@ -144,13 +174,13 @@ mod tests {
         ]
         .into_iter()
         .collect::<BTreeMap<_, _>>();
-        AutoRespondersUserDataSetter::upsert(
+        RootCertificatesUserDataSetter::upsert(
             &user_data_setter,
             serde_json::ser::to_vec(&conflicting_items)?,
         )
         .await?;
         assert_eq!(
-            user_data_setter.get(UserDataType::AutoResponders).await?,
+            user_data_setter.get(UserDataType::RootCertificates).await?,
             Some(
                 [
                     (item_one.alias.to_string(), item_one.clone(),),
@@ -164,15 +194,15 @@ mod tests {
         // Delete full slot.
         let conflicting_items = [(item_one.alias.clone(), None), (item_three.alias, None)]
             .into_iter()
-            .collect::<BTreeMap<_, Option<AutoResponder>>>();
-        AutoRespondersUserDataSetter::upsert(
+            .collect::<BTreeMap<_, Option<RootCertificate>>>();
+        RootCertificatesUserDataSetter::upsert(
             &user_data_setter,
             serde_json::ser::to_vec(&conflicting_items)?,
         )
         .await?;
         assert_eq!(
             user_data_setter
-                .get::<BTreeMap<String, AutoResponder>>(UserDataType::AutoResponders)
+                .get::<BTreeMap<String, RootCertificate>>(UserDataType::RootCertificates)
                 .await?,
             None
         );
@@ -180,15 +210,15 @@ mod tests {
         // Does nothing if there is nothing to delete.
         let conflicting_items = [(item_one.alias, None)]
             .into_iter()
-            .collect::<BTreeMap<_, Option<AutoResponder>>>();
-        AutoRespondersUserDataSetter::upsert(
+            .collect::<BTreeMap<_, Option<RootCertificate>>>();
+        RootCertificatesUserDataSetter::upsert(
             &user_data_setter,
             serde_json::ser::to_vec(&conflicting_items)?,
         )
         .await?;
         assert_eq!(
             user_data_setter
-                .get::<BTreeMap<String, AutoResponder>>(UserDataType::AutoResponders)
+                .get::<BTreeMap<String, RootCertificate>>(UserDataType::AutoResponders)
                 .await?,
             None
         );
