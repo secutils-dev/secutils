@@ -1,12 +1,22 @@
-use crate::utils::{UtilsCertificatesExecutor, UtilsRequest, UtilsResponse};
+use crate::{
+    api::Api,
+    users::User,
+    utils::{UtilsCertificatesExecutor, UtilsRequest, UtilsResponse},
+};
 
 pub struct UtilsExecutor {}
 impl UtilsExecutor {
-    pub async fn execute(request: UtilsRequest) -> anyhow::Result<UtilsResponse> {
+    pub async fn execute(
+        user: User,
+        api: &Api,
+        request: UtilsRequest,
+    ) -> anyhow::Result<UtilsResponse> {
         match request {
-            UtilsRequest::Certificates(request) => UtilsCertificatesExecutor::execute(request)
-                .await
-                .map(UtilsResponse::Certificates),
+            UtilsRequest::Certificates(request) => {
+                UtilsCertificatesExecutor::execute(user, api, request)
+                    .await
+                    .map(UtilsResponse::Certificates)
+            }
         }
     }
 }

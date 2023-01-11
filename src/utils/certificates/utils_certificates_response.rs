@@ -5,7 +5,7 @@ use serde_derive::Serialize;
 #[serde(tag = "type", content = "value")]
 pub enum UtilsCertificatesResponse {
     #[serde(rename_all = "camelCase")]
-    GenerateCA {
+    GenerateSelfSignedCertificate {
         private_key: Vec<u8>,
         public_key: Vec<u8>,
         cert: Vec<u8>,

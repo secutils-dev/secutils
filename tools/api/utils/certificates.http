@@ -1,5 +1,6 @@
 ### Generate RSA key pair.
 POST {{host}}/api/utils/execute
+Authorization: {{api-credentials}}
 Accept: application/json
 Content-Type: application/json
 
@@ -11,7 +12,8 @@ Content-Type: application/json
 }
 
 ### Generate self-signed CA.
-POST {host}}/api/utils/execute
+POST {{host}}/api/utils/execute
+Authorization: {{api-credentials}}
 Accept: application/json
 Content-Type: application/json
 
@@ -19,19 +21,8 @@ Content-Type: application/json
   "request": {
     "type": "certificates",
     "value": {
-      "type": "generateCa",
-      "value": {
-        "version": 3,
-        "publicKeyAlgorithm": "rsa",
-        "signatureAlgorithm": "sha256",
-        "notValidBefore": 1631561613,
-        "commonName": "CA Issuer",
-        "country": "US",
-        "stateOrProvince": "California",
-        "locality": "San Francisco",
-        "organization": "CA Issuer, Inc",
-        "organizationalUnit": ""
-      }
+      "type": "generateSelfSignedCertificate",
+      "value": { "templateName": "temp" }
     }
   }
 }
