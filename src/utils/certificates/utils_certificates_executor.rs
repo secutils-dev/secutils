@@ -173,8 +173,7 @@ impl UtilsCertificatesExecutor {
 
                 Ok(UtilsCertificatesResponse::GenerateSelfSignedCertificate {
                     private_key: key_pair.private_key_to_pem_pkcs8()?,
-                    public_key: key_pair.public_key_to_pem()?,
-                    cert: cert.to_pem()?,
+                    certificate: cert.to_pem()?,
                 })
             }
             UtilsCertificatesRequest::GenerateRsaKeyPair => {
