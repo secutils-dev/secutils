@@ -1,6 +1,8 @@
 use crate::{
     api::{
-        users::{AutoRespondersUserDataSetter, RootCertificatesUserDataSetter, UserDataSetter},
+        users::{
+            AutoRespondersUserDataSetter, SelfSignedCertificatesUserDataSetter, UserDataSetter,
+        },
         Email, EmailBody, EmailsApi,
     },
     config::Config,
@@ -264,9 +266,12 @@ impl<'a> UsersApi<'a> {
             UserDataType::AutoResponders => {
                 AutoRespondersUserDataSetter::upsert(&user_data_setter, serialized_data_value).await
             }
-            UserDataType::RootCertificates => {
-                RootCertificatesUserDataSetter::upsert(&user_data_setter, serialized_data_value)
-                    .await
+            UserDataType::SelfSignedCertificates => {
+                SelfSignedCertificatesUserDataSetter::upsert(
+                    &user_data_setter,
+                    serialized_data_value,
+                )
+                .await
             }
         }
     }

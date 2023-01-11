@@ -2,11 +2,11 @@ use crate::utils::{PublicKeyAlgorithm, SignatureAlgorithm};
 use serde_derive::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
-/// Describes stored root certificate descriptor.
+/// Describes stored self-signed certificate template.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct RootCertificate {
-    #[serde(rename = "a")]
-    pub alias: String,
+pub struct SelfSignedCertificate {
+    #[serde(rename = "n")]
+    pub name: String,
     #[serde(rename = "cn", skip_serializing_if = "Option::is_none")]
     pub common_name: Option<String>,
     #[serde(rename = "c", skip_serializing_if = "Option::is_none")]
@@ -34,7 +34,8 @@ pub struct RootCertificate {
 #[cfg(test)]
 mod tests {
     use crate::utils::{
-        tests::MockRootCertificate, PublicKeyAlgorithm, RootCertificate, SignatureAlgorithm,
+        tests::MockSelfSignedCertificate, PublicKeyAlgorithm, SelfSignedCertificate,
+        SignatureAlgorithm,
     };
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
@@ -47,8 +48,8 @@ mod tests {
         let not_valid_after = OffsetDateTime::from_unix_timestamp(1262340000)?;
 
         assert_json_snapshot!(
-            MockRootCertificate::new(
-                "alias",
+            MockSelfSignedCertificate::new(
+                "name",
                 PublicKeyAlgorithm::Rsa,
                 SignatureAlgorithm::Sha256,
                 not_valid_before,
@@ -57,7 +58,7 @@ mod tests {
             ).build(),
             @r###"
         {
-          "a": "alias",
+          "n": "name",
           "pka": "rsa",
           "sa": "sha256",
           "nb": 946720800,
@@ -67,8 +68,8 @@ mod tests {
         "###
         );
         assert_json_snapshot!(
-            MockRootCertificate::new(
-                "test-2-alias",
+            MockSelfSignedCertificate::new(
+                "test-2-name",
                 PublicKeyAlgorithm::Ed25519,
                 SignatureAlgorithm::Ed25519,
                 not_valid_before,
@@ -84,7 +85,7 @@ mod tests {
             .build(),
             @r###"
         {
-          "a": "test-2-alias",
+          "n": "test-2-name",
           "cn": "CA Issuer",
           "c": "US",
           "s": "California",
@@ -111,10 +112,10 @@ mod tests {
         let not_valid_after = OffsetDateTime::from_unix_timestamp(1262340000)?;
 
         assert_eq!(
-            serde_json::from_str::<RootCertificate>(
+            serde_json::from_str::<SelfSignedCertificate>(
                 r###"
         {
-          "a": "alias",
+          "n": "name",
           "pka": "rsa",
           "sa": "sha256",
           "nb": 946720800,
@@ -123,8 +124,8 @@ mod tests {
         }
         "###
             )?,
-            MockRootCertificate::new(
-                "alias",
+            MockSelfSignedCertificate::new(
+                "name",
                 PublicKeyAlgorithm::Rsa,
                 SignatureAlgorithm::Sha256,
                 not_valid_before,
@@ -134,10 +135,10 @@ mod tests {
             .build()
         );
         assert_eq!(
-            serde_json::from_str::<RootCertificate>(
+            serde_json::from_str::<SelfSignedCertificate>(
                 r###"
         {
-          "a": "test-2-alias",
+          "n": "test-2-name",
           "cn": "CA Issuer",
           "c": "US",
           "s": "California",
@@ -152,8 +153,8 @@ mod tests {
         }
         "###
             )?,
-            MockRootCertificate::new(
-                "test-2-alias",
+            MockSelfSignedCertificate::new(
+                "test-2-name",
                 PublicKeyAlgorithm::Ed25519,
                 SignatureAlgorithm::Ed25519,
                 not_valid_before,

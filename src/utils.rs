@@ -7,7 +7,7 @@ mod webhooks;
 
 pub use self::{
     certificates::{
-        PublicKeyAlgorithm, RootCertificate, SignatureAlgorithm, UtilsCertificatesExecutor,
+        PublicKeyAlgorithm, SelfSignedCertificate, SignatureAlgorithm, UtilsCertificatesExecutor,
         UtilsCertificatesRequest, UtilsCertificatesResponse,
     },
     util::Util,
@@ -20,7 +20,8 @@ pub use self::{
 #[cfg(test)]
 pub mod tests {
     use crate::utils::{
-        AutoResponder, AutoResponderMethod, PublicKeyAlgorithm, RootCertificate, SignatureAlgorithm,
+        AutoResponder, AutoResponderMethod, PublicKeyAlgorithm, SelfSignedCertificate,
+        SignatureAlgorithm,
     };
     use time::OffsetDateTime;
 
@@ -72,18 +73,18 @@ pub mod tests {
         }
     }
 
-    pub struct MockRootCertificate(RootCertificate);
-    impl MockRootCertificate {
-        pub fn new<A: Into<String>>(
-            alias: A,
+    pub struct MockSelfSignedCertificate(SelfSignedCertificate);
+    impl MockSelfSignedCertificate {
+        pub fn new<N: Into<String>>(
+            name: N,
             public_key_algorithm: PublicKeyAlgorithm,
             signature_algorithm: SignatureAlgorithm,
             not_valid_before: OffsetDateTime,
             not_valid_after: OffsetDateTime,
             version: u8,
         ) -> Self {
-            Self(RootCertificate {
-                alias: alias.into(),
+            Self(SelfSignedCertificate {
+                name: name.into(),
                 common_name: None,
                 country: None,
                 state_or_province: None,
@@ -128,7 +129,7 @@ pub mod tests {
             self
         }
 
-        pub fn build(self) -> RootCertificate {
+        pub fn build(self) -> SelfSignedCertificate {
             self.0
         }
     }

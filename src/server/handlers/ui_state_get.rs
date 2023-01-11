@@ -72,8 +72,8 @@ pub async fn ui_state_get(
                 name: "Digital Certificates".to_string(),
                 icon: Some("securityApp".to_string()),
                 utils: Some(vec![Util {
-                    id: "certificates__root".to_string(),
-                    name: "Root certificates".to_string(),
+                    id: "certificates__self_signed_certificates".to_string(),
+                    name: "Self-signed certificates".to_string(),
                     icon: None,
                     utils: None,
                 }]),

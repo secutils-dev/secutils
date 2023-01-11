@@ -4,14 +4,14 @@ use serde_derive::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub enum UserDataType {
     AutoResponders,
-    RootCertificates,
+    SelfSignedCertificates,
 }
 
 impl UserDataType {
     pub fn get_data_key(&self) -> &str {
         match self {
             UserDataType::AutoResponders => "autoResponders",
-            UserDataType::RootCertificates => "rootCertificates",
+            UserDataType::SelfSignedCertificates => "selfSignedCertificates",
         }
     }
 }
@@ -25,7 +25,7 @@ mod tests {
     fn serialization() -> anyhow::Result<()> {
         insta::with_settings!({ sort_maps => true }, {
             assert_json_snapshot!(UserDataType::AutoResponders, @r###""autoResponders""###);
-            assert_json_snapshot!(UserDataType::RootCertificates, @r###""rootCertificates""###);
+            assert_json_snapshot!(UserDataType::SelfSignedCertificates, @r###""selfSignedCertificates""###);
         });
 
         Ok(())
@@ -39,8 +39,8 @@ mod tests {
         );
 
         assert_eq!(
-            serde_json::from_str::<UserDataType>(r###""rootCertificates""###)?,
-            UserDataType::RootCertificates
+            serde_json::from_str::<UserDataType>(r###""selfSignedCertificates""###)?,
+            UserDataType::SelfSignedCertificates
         );
 
         Ok(())

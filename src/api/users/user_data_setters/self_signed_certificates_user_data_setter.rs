@@ -1,37 +1,39 @@
-use crate::{api::users::UserDataSetter, users::UserDataType, utils::RootCertificate};
+use crate::{api::users::UserDataSetter, users::UserDataType, utils::SelfSignedCertificate};
 use anyhow::Context;
 use std::collections::BTreeMap;
 
-pub struct RootCertificatesUserDataSetter;
-impl RootCertificatesUserDataSetter {
+pub struct SelfSignedCertificatesUserDataSetter;
+impl SelfSignedCertificatesUserDataSetter {
     pub async fn upsert(
         data_setter: &UserDataSetter<'_>,
         serialized_data_value: Vec<u8>,
     ) -> anyhow::Result<()> {
-        let from_value = serde_json::from_slice::<BTreeMap<String, Option<RootCertificate>>>(
+        let from_value = serde_json::from_slice::<BTreeMap<String, Option<SelfSignedCertificate>>>(
             &serialized_data_value,
         )
-        .with_context(|| "Cannot deserialize new root certificate data".to_string())?;
+        .with_context(|| "Cannot deserialize new self-signed certificate data".to_string())?;
 
         let mut to_value: BTreeMap<_, _> = data_setter
-            .get(UserDataType::RootCertificates)
+            .get(UserDataType::SelfSignedCertificates)
             .await
-            .with_context(|| "Cannot retrieve stored root certificates data".to_string())?
+            .with_context(|| "Cannot retrieve stored self-signed certificates data".to_string())?
             .unwrap_or_default();
 
-        for (alias, entry) in from_value {
+        for (name, entry) in from_value {
             if let Some(entry) = entry {
-                to_value.insert(alias, entry);
+                to_value.insert(name, entry);
             } else {
-                to_value.remove(&alias);
+                to_value.remove(&name);
             }
         }
 
         if to_value.is_empty() {
-            data_setter.remove(UserDataType::RootCertificates).await
+            data_setter
+                .remove(UserDataType::SelfSignedCertificates)
+                .await
         } else {
             data_setter
-                .upsert(UserDataType::RootCertificates, to_value)
+                .upsert(UserDataType::SelfSignedCertificates, to_value)
                 .await
         }
     }
@@ -40,12 +42,13 @@ impl RootCertificatesUserDataSetter {
 #[cfg(test)]
 mod tests {
     use crate::{
-        api::users::{RootCertificatesUserDataSetter, UserDataSetter},
+        api::users::{SelfSignedCertificatesUserDataSetter, UserDataSetter},
         datastore::PrimaryDb,
         tests::MockUserBuilder,
         users::{User, UserDataType, UserId},
         utils::{
-            tests::MockRootCertificate, PublicKeyAlgorithm, RootCertificate, SignatureAlgorithm,
+            tests::MockSelfSignedCertificate, PublicKeyAlgorithm, SelfSignedCertificate,
+            SignatureAlgorithm,
         },
     };
     use std::collections::BTreeMap;
@@ -78,8 +81,8 @@ mod tests {
         // January 1, 2010 11:00:00
         let not_valid_after = OffsetDateTime::from_unix_timestamp(1262340000)?;
 
-        let item_one = MockRootCertificate::new(
-            "test-1-alias",
+        let item_one = MockSelfSignedCertificate::new(
+            "test-1-name",
             PublicKeyAlgorithm::Rsa,
             SignatureAlgorithm::Sha256,
             not_valid_before,
@@ -87,8 +90,8 @@ mod tests {
             1,
         )
         .build();
-        let item_two = MockRootCertificate::new(
-            "test-2-alias",
+        let item_two = MockSelfSignedCertificate::new(
+            "test-2-name",
             PublicKeyAlgorithm::Ed25519,
             SignatureAlgorithm::Ed25519,
             not_valid_before,
@@ -102,8 +105,8 @@ mod tests {
         .set_organization("CA Issuer, Inc")
         .set_organization_unit("CA Org Unit")
         .build();
-        let item_two_conflict = MockRootCertificate::new(
-            "test-2-alias",
+        let item_two_conflict = MockSelfSignedCertificate::new(
+            "test-2-name",
             PublicKeyAlgorithm::Rsa,
             SignatureAlgorithm::Sha384,
             not_valid_before,
@@ -112,8 +115,8 @@ mod tests {
         )
         .set_country("DE")
         .build();
-        let item_three = MockRootCertificate::new(
-            "test-3-alias",
+        let item_three = MockSelfSignedCertificate::new(
+            "test-3-name",
             PublicKeyAlgorithm::Dsa,
             SignatureAlgorithm::Md5,
             not_valid_before,
@@ -125,40 +128,44 @@ mod tests {
 
         // Fill empty data.
         let initial_items = [
-            (item_one.alias.to_string(), item_one.clone()),
-            (item_two.alias.to_string(), item_two.clone()),
+            (item_one.name.to_string(), item_one.clone()),
+            (item_two.name.to_string(), item_two.clone()),
         ]
         .into_iter()
         .collect::<BTreeMap<_, _>>();
-        RootCertificatesUserDataSetter::upsert(
+        SelfSignedCertificatesUserDataSetter::upsert(
             &user_data_setter,
             serde_json::ser::to_vec(&initial_items)?,
         )
         .await?;
         assert_eq!(
-            user_data_setter.get(UserDataType::RootCertificates).await?,
+            user_data_setter
+                .get(UserDataType::SelfSignedCertificates)
+                .await?,
             Some(initial_items)
         );
 
         // Overwrite existing data and preserve non-conflicting existing data.
         let conflicting_items = [(
-            item_two_conflict.alias.to_string(),
+            item_two_conflict.name.to_string(),
             item_two_conflict.clone(),
         )]
         .into_iter()
         .collect::<BTreeMap<_, _>>();
-        RootCertificatesUserDataSetter::upsert(
+        SelfSignedCertificatesUserDataSetter::upsert(
             &user_data_setter,
             serde_json::ser::to_vec(&conflicting_items)?,
         )
         .await?;
         assert_eq!(
-            user_data_setter.get(UserDataType::RootCertificates).await?,
+            user_data_setter
+                .get(UserDataType::SelfSignedCertificates)
+                .await?,
             Some(
                 [
-                    (item_one.alias.to_string(), item_one.clone(),),
+                    (item_one.name.to_string(), item_one.clone(),),
                     (
-                        item_two_conflict.alias.to_string(),
+                        item_two_conflict.name.to_string(),
                         item_two_conflict.clone(),
                     )
                 ]
@@ -169,22 +176,24 @@ mod tests {
 
         // Delete existing data.
         let conflicting_items = [
-            (item_two.alias.to_string(), None),
-            (item_three.alias.to_string(), Some(item_three.clone())),
+            (item_two.name.to_string(), None),
+            (item_three.name.to_string(), Some(item_three.clone())),
         ]
         .into_iter()
         .collect::<BTreeMap<_, _>>();
-        RootCertificatesUserDataSetter::upsert(
+        SelfSignedCertificatesUserDataSetter::upsert(
             &user_data_setter,
             serde_json::ser::to_vec(&conflicting_items)?,
         )
         .await?;
         assert_eq!(
-            user_data_setter.get(UserDataType::RootCertificates).await?,
+            user_data_setter
+                .get(UserDataType::SelfSignedCertificates)
+                .await?,
             Some(
                 [
-                    (item_one.alias.to_string(), item_one.clone(),),
-                    (item_three.alias.to_string(), item_three.clone(),)
+                    (item_one.name.to_string(), item_one.clone(),),
+                    (item_three.name.to_string(), item_three.clone(),)
                 ]
                 .into_iter()
                 .collect::<BTreeMap<_, _>>()
@@ -192,33 +201,35 @@ mod tests {
         );
 
         // Delete full slot.
-        let conflicting_items = [(item_one.alias.clone(), None), (item_three.alias, None)]
+        let conflicting_items = [(item_one.name.clone(), None), (item_three.name, None)]
             .into_iter()
-            .collect::<BTreeMap<_, Option<RootCertificate>>>();
-        RootCertificatesUserDataSetter::upsert(
+            .collect::<BTreeMap<_, Option<SelfSignedCertificate>>>();
+        SelfSignedCertificatesUserDataSetter::upsert(
             &user_data_setter,
             serde_json::ser::to_vec(&conflicting_items)?,
         )
         .await?;
         assert_eq!(
             user_data_setter
-                .get::<BTreeMap<String, RootCertificate>>(UserDataType::RootCertificates)
+                .get::<BTreeMap<String, SelfSignedCertificate>>(
+                    UserDataType::SelfSignedCertificates
+                )
                 .await?,
             None
         );
 
         // Does nothing if there is nothing to delete.
-        let conflicting_items = [(item_one.alias, None)]
+        let conflicting_items = [(item_one.name, None)]
             .into_iter()
-            .collect::<BTreeMap<_, Option<RootCertificate>>>();
-        RootCertificatesUserDataSetter::upsert(
+            .collect::<BTreeMap<_, Option<SelfSignedCertificate>>>();
+        SelfSignedCertificatesUserDataSetter::upsert(
             &user_data_setter,
             serde_json::ser::to_vec(&conflicting_items)?,
         )
         .await?;
         assert_eq!(
             user_data_setter
-                .get::<BTreeMap<String, RootCertificate>>(UserDataType::AutoResponders)
+                .get::<BTreeMap<String, SelfSignedCertificate>>(UserDataType::AutoResponders)
                 .await?,
             None
         );
