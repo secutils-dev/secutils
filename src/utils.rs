@@ -7,8 +7,8 @@ mod webhooks;
 
 pub use self::{
     certificates::{
-        PublicKeyAlgorithm, SelfSignedCertificate, SignatureAlgorithm, UtilsCertificatesExecutor,
-        UtilsCertificatesRequest, UtilsCertificatesResponse,
+        CertificateFormat, PublicKeyAlgorithm, SelfSignedCertificate, SignatureAlgorithm,
+        UtilsCertificatesExecutor, UtilsCertificatesRequest, UtilsCertificatesResponse,
     },
     util::Util,
     utils_executor::UtilsExecutor,
