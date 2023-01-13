@@ -146,6 +146,69 @@ fn generate_key(public_key_algorithm: PublicKeyAlgorithm) -> anyhow::Result<PKey
     Ok(private_key)
 }
 
+fn generate_x509_certificate(
+    certificate_template: &SelfSignedCertificate,
+    key: &PKey<Private>,
+) -> anyhow::Result<X509> {
+    let mut x509_name = X509NameBuilder::new()?;
+    set_name_attribute(&mut x509_name, "CN", &certificate_template.common_name)?;
+    set_name_attribute(&mut x509_name, "C", &certificate_template.country)?;
+    set_name_attribute(
+        &mut x509_name,
+        "ST",
+        &certificate_template.state_or_province,
+    )?;
+    set_name_attribute(&mut x509_name, "L", &certificate_template.locality)?;
+    set_name_attribute(&mut x509_name, "O", &certificate_template.organization)?;
+    set_name_attribute(
+        &mut x509_name,
+        "OU",
+        &certificate_template.organizational_unit,
+    )?;
+    let x509_name = x509_name.build();
+
+    let mut x509 = X509::builder()?;
+    x509.set_subject_name(&x509_name)?;
+    x509.set_issuer_name(&x509_name)?;
+    x509.set_version((certificate_template.version - 1) as i32)?;
+
+    let serial_number = {
+        let mut serial = BigNum::new()?;
+        serial.rand(159, MsbOption::MAYBE_ZERO, false)?;
+        serial.to_asn1_integer()?
+    };
+    x509.set_serial_number(&serial_number)?;
+
+    x509.set_pubkey(key)?;
+    let not_before = Asn1Time::from_unix(certificate_template.not_valid_before.unix_timestamp())?;
+    x509.set_not_before(&not_before)?;
+    let not_after = Asn1Time::from_unix(certificate_template.not_valid_after.unix_timestamp())?;
+    x509.set_not_after(&not_after)?;
+
+    x509.append_extension(BasicConstraints::new().critical().ca().build()?)?;
+    x509.append_extension(
+        KeyUsage::new()
+            .critical()
+            .key_cert_sign()
+            .crl_sign()
+            .build()?,
+    )?;
+
+    let subject_key_identifier =
+        SubjectKeyIdentifier::new().build(&x509.x509v3_context(None, None))?;
+    x509.append_extension(subject_key_identifier)?;
+
+    x509.sign(
+        key,
+        message_digest(
+            certificate_template.public_key_algorithm,
+            certificate_template.signature_algorithm,
+        )?,
+    )?;
+
+    Ok(x509.build())
+}
+
 pub struct UtilsCertificatesExecutor;
 impl UtilsCertificatesExecutor {
     pub async fn execute(
@@ -159,15 +222,13 @@ impl UtilsCertificatesExecutor {
                 format,
                 passphrase,
             } => {
-                let certificate_templates = api
+                let certificate_template = api
                     .users()
                     .get_data::<BTreeMap<String, SelfSignedCertificate>>(
                         user.id,
                         UserDataType::SelfSignedCertificates,
                     )
-                    .await?;
-
-                let certificate_template = certificate_templates
+                    .await?
                     .and_then(|mut map| map.remove(&template_name))
                     .ok_or_else(|| {
                         anyhow!(
@@ -176,77 +237,15 @@ impl UtilsCertificatesExecutor {
                         )
                     })?;
 
-                let mut x509_name = X509NameBuilder::new()?;
-                set_name_attribute(&mut x509_name, "CN", &certificate_template.common_name)?;
-                set_name_attribute(&mut x509_name, "C", &certificate_template.country)?;
-                set_name_attribute(
-                    &mut x509_name,
-                    "ST",
-                    &certificate_template.state_or_province,
-                )?;
-                set_name_attribute(&mut x509_name, "L", &certificate_template.locality)?;
-                set_name_attribute(&mut x509_name, "O", &certificate_template.organization)?;
-                set_name_attribute(
-                    &mut x509_name,
-                    "OU",
-                    &certificate_template.organizational_unit,
-                )?;
-                let x509_name = x509_name.build();
-
-                let private_key = generate_key(certificate_template.public_key_algorithm)?;
-
-                let mut x509 = X509::builder()?;
-                x509.set_subject_name(&x509_name)?;
-                x509.set_issuer_name(&x509_name)?;
-                x509.set_version((certificate_template.version - 1) as i32)?;
-
-                let serial_number = {
-                    let mut serial = BigNum::new()?;
-                    serial.rand(159, MsbOption::MAYBE_ZERO, false)?;
-                    serial.to_asn1_integer()?
-                };
-                x509.set_serial_number(&serial_number)?;
-
-                x509.set_pubkey(&private_key)?;
-                let not_before =
-                    Asn1Time::from_unix(certificate_template.not_valid_before.unix_timestamp())?;
-                x509.set_not_before(&not_before)?;
-                let not_after =
-                    Asn1Time::from_unix(certificate_template.not_valid_after.unix_timestamp())?;
-                x509.set_not_after(&not_after)?;
-
-                x509.append_extension(BasicConstraints::new().critical().ca().build()?)?;
-                x509.append_extension(
-                    KeyUsage::new()
-                        .critical()
-                        .key_cert_sign()
-                        .crl_sign()
-                        .build()?,
-                )?;
-
-                let subject_key_identifier =
-                    SubjectKeyIdentifier::new().build(&x509.x509v3_context(None, None))?;
-                x509.append_extension(subject_key_identifier)?;
-
-                x509.sign(
-                    &private_key,
-                    message_digest(
-                        certificate_template.public_key_algorithm,
-                        certificate_template.signature_algorithm,
-                    )?,
-                )?;
-
-                let x509_certificate = x509.build();
+                let key = generate_key(certificate_template.public_key_algorithm)?;
+                let x509_certificate = generate_x509_certificate(&certificate_template, &key)?;
                 let certificate = match format {
                     CertificateFormat::Pem => {
-                        convert_to_pem_archive(x509_certificate, private_key, passphrase)?
+                        convert_to_pem_archive(x509_certificate, key, passphrase)?
                     }
-                    CertificateFormat::Pkcs12 => convert_to_pkcs12(
-                        certificate_template,
-                        x509_certificate,
-                        private_key,
-                        passphrase,
-                    )?,
+                    CertificateFormat::Pkcs12 => {
+                        convert_to_pkcs12(certificate_template, x509_certificate, key, passphrase)?
+                    }
                 };
 
                 log::info!("Serialized certificate ({} bytes).", certificate.len());
@@ -269,10 +268,17 @@ impl UtilsCertificatesExecutor {
 #[cfg(test)]
 mod tests {
     use super::generate_key;
-    use crate::utils::PublicKeyAlgorithm;
+    use crate::utils::{
+        certificates::utils_certificates_executor::{generate_x509_certificate, message_digest},
+        tests::MockSelfSignedCertificate,
+        PublicKeyAlgorithm, SignatureAlgorithm,
+    };
+    use insta::assert_debug_snapshot;
+    use openssl::hash::MessageDigest;
+    use time::OffsetDateTime;
 
     #[test]
-    fn key_generation() -> anyhow::Result<()> {
+    fn correctly_generate_keys() -> anyhow::Result<()> {
         let rsa_key = generate_key(PublicKeyAlgorithm::Rsa)?;
         let rsa_key = rsa_key.rsa()?;
 
@@ -291,6 +297,76 @@ mod tests {
 
         let ed25519_key = generate_key(PublicKeyAlgorithm::Ed25519)?;
         assert_eq!(ed25519_key.bits(), 253);
+
+        Ok(())
+    }
+
+    #[test]
+    fn picks_correct_message_digest() -> anyhow::Result<()> {
+        assert!(
+            message_digest(PublicKeyAlgorithm::Rsa, SignatureAlgorithm::Md5)?
+                == MessageDigest::md5()
+        );
+
+        for pk_algorithm in [
+            PublicKeyAlgorithm::Rsa,
+            PublicKeyAlgorithm::Dsa,
+            PublicKeyAlgorithm::Ecdsa,
+        ] {
+            assert!(
+                message_digest(pk_algorithm, SignatureAlgorithm::Sha1)? == MessageDigest::sha1()
+            );
+            assert!(
+                message_digest(pk_algorithm, SignatureAlgorithm::Sha256)?
+                    == MessageDigest::sha256()
+            );
+        }
+
+        for pk_algorithm in [PublicKeyAlgorithm::Rsa, PublicKeyAlgorithm::Ecdsa] {
+            assert!(
+                message_digest(pk_algorithm, SignatureAlgorithm::Sha384)?
+                    == MessageDigest::sha384()
+            );
+            assert!(
+                message_digest(pk_algorithm, SignatureAlgorithm::Sha512)?
+                    == MessageDigest::sha512()
+            );
+        }
+
+        assert!(
+            message_digest(PublicKeyAlgorithm::Ed25519, SignatureAlgorithm::Ed25519)?
+                == MessageDigest::null()
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn correctly_generates_x509_certificate() -> anyhow::Result<()> {
+        // January 1, 2000 11:00:00
+        let not_valid_before = OffsetDateTime::from_unix_timestamp(946720800)?;
+        // January 1, 2010 11:00:00
+        let not_valid_after = OffsetDateTime::from_unix_timestamp(1262340000)?;
+
+        let certificate_template = MockSelfSignedCertificate::new(
+            "test-1-name",
+            PublicKeyAlgorithm::Rsa,
+            SignatureAlgorithm::Sha256,
+            not_valid_before,
+            not_valid_after,
+            1,
+        )
+        .build();
+        let key = generate_key(PublicKeyAlgorithm::Rsa)?;
+
+        let x509_certificate = generate_x509_certificate(&certificate_template, &key)?;
+
+        assert_debug_snapshot!(x509_certificate.not_before(), @"Jan  1 10:00:00 2000 GMT");
+        assert_debug_snapshot!(x509_certificate.not_after(), @"Jan  1 10:00:00 2010 GMT");
+        assert_eq!(
+            x509_certificate.public_key()?.public_key_to_der()?,
+            key.public_key_to_der()?
+        );
 
         Ok(())
     }
