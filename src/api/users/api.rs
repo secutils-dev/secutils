@@ -1,20 +1,23 @@
 use crate::{
     api::{
-        users::{
-            AutoRespondersUserDataSetter, SelfSignedCertificatesUserDataSetter, UserDataSetter,
-        },
+        users::{DictionaryDataUserDataSetter, UserDataSetter},
         Email, EmailBody, EmailsApi,
     },
     config::Config,
     datastore::PrimaryDb,
     users::{BuiltinUser, User, UserDataType, UserId},
+    utils::{AutoResponder, SelfSignedCertificate},
 };
 use anyhow::{anyhow, bail, Context};
 use argon2::{password_hash::SaltString, Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use hex::ToHex;
 use rand_core::{OsRng, RngCore};
 use serde::de::DeserializeOwned;
-use std::{borrow::Cow, collections::HashSet, time::SystemTime};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, HashSet},
+    time::SystemTime,
+};
 use time::OffsetDateTime;
 
 const USER_HANDLE_LENGTH_BYTES: usize = 8;
@@ -264,16 +267,67 @@ impl<'a> UsersApi<'a> {
         let user_data_setter = UserDataSetter::new(user_id, &self.primary_db);
         match data_type {
             UserDataType::AutoResponders => {
-                AutoRespondersUserDataSetter::upsert(&user_data_setter, serialized_data_value).await
+                Self::set_auto_responders_data(&user_data_setter, serialized_data_value).await
             }
             UserDataType::SelfSignedCertificates => {
-                SelfSignedCertificatesUserDataSetter::upsert(
-                    &user_data_setter,
-                    serialized_data_value,
-                )
-                .await
+                Self::set_self_signed_certificates_data(&user_data_setter, serialized_data_value)
+                    .await
+            }
+            UserDataType::UserSettings => {
+                Self::set_user_settings_data(&user_data_setter, serialized_data_value).await
             }
         }
+    }
+
+    async fn set_auto_responders_data(
+        user_data_setter: &UserDataSetter<'_>,
+        serialized_data_value: Vec<u8>,
+    ) -> anyhow::Result<()> {
+        let auto_responders = serde_json::from_slice::<BTreeMap<String, Option<AutoResponder>>>(
+            &serialized_data_value,
+        )
+        .with_context(|| "Cannot deserialize new autoresponders data".to_string())?;
+        for auto_responder in auto_responders.values().flat_map(|value| value.iter()) {
+            if !auto_responder.is_valid() {
+                bail!("Responder is not valid: {:?}", auto_responder);
+            }
+        }
+        DictionaryDataUserDataSetter::upsert(
+            user_data_setter,
+            UserDataType::AutoResponders,
+            auto_responders,
+        )
+        .await
+    }
+
+    async fn set_user_settings_data(
+        user_data_setter: &UserDataSetter<'_>,
+        serialized_data_value: Vec<u8>,
+    ) -> anyhow::Result<()> {
+        DictionaryDataUserDataSetter::upsert(
+            user_data_setter,
+            UserDataType::UserSettings,
+            serde_json::from_slice::<BTreeMap<String, Option<serde_json::Value>>>(
+                &serialized_data_value,
+            )
+            .with_context(|| "Cannot deserialize new user settings data".to_string())?,
+        )
+        .await
+    }
+
+    async fn set_self_signed_certificates_data(
+        user_data_setter: &UserDataSetter<'_>,
+        serialized_data_value: Vec<u8>,
+    ) -> anyhow::Result<()> {
+        DictionaryDataUserDataSetter::upsert(
+            user_data_setter,
+            UserDataType::SelfSignedCertificates,
+            serde_json::from_slice::<BTreeMap<String, Option<SelfSignedCertificate>>>(
+                &serialized_data_value,
+            )
+            .with_context(|| "Cannot deserialize new self-signed certificates data".to_string())?,
+        )
+        .await
     }
 
     /// Generates a random user handle (8 bytes).

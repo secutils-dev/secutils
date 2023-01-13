@@ -1,0 +1,175 @@
+use crate::{api::users::UserDataSetter, users::UserDataType};
+use anyhow::Context;
+use serde::{de::DeserializeOwned, Serialize};
+use std::collections::BTreeMap;
+
+pub struct DictionaryDataUserDataSetter;
+impl DictionaryDataUserDataSetter {
+    pub async fn upsert<R: DeserializeOwned + Serialize>(
+        data_setter: &UserDataSetter<'_>,
+        data_type: UserDataType,
+        data_value: BTreeMap<String, Option<R>>,
+    ) -> anyhow::Result<()> {
+        let mut existing_value: BTreeMap<_, _> = data_setter
+            .get(data_type)
+            .await
+            .with_context(|| format!("Cannot retrieve stored '{}' data", data_type.get_data_key()))?
+            .unwrap_or_default();
+
+        for (name, entry) in data_value {
+            if let Some(entry) = entry {
+                existing_value.insert(name, entry);
+            } else {
+                existing_value.remove(&name);
+            }
+        }
+
+        if existing_value.is_empty() {
+            data_setter.remove(data_type).await
+        } else {
+            data_setter.upsert(data_type, existing_value).await
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        api::users::{DictionaryDataUserDataSetter, UserDataSetter},
+        datastore::PrimaryDb,
+        tests::MockUserBuilder,
+        users::{User, UserDataType, UserId},
+    };
+    use serde_json::json;
+    use std::collections::BTreeMap;
+    use time::OffsetDateTime;
+
+    fn create_mock_user() -> User {
+        MockUserBuilder::new(
+            UserId(1),
+            "dev@secutils.dev",
+            "dev-handle",
+            "hash",
+            OffsetDateTime::now_utc(),
+        )
+        .build()
+    }
+
+    async fn initialize_mock_db(user: &User) -> anyhow::Result<PrimaryDb> {
+        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        db.upsert_user(user).await.map(|_| db)
+    }
+
+    #[actix_rt::test]
+    async fn can_merge_data() -> anyhow::Result<()> {
+        let mock_user = create_mock_user();
+        let mock_db = initialize_mock_db(&mock_user).await?;
+        let user_data_setter = UserDataSetter::new(mock_user.id, &mock_db);
+
+        let item_one = json!({ "name": "one" });
+        let item_two = json!({ "name": "two" });
+        let item_two_conflict = json!({ "name": "two-conflict" });
+        let item_three = json!({ "name": "three" });
+
+        // Fill empty data.
+        let initial_items = [
+            ("one".to_string(), Some(item_one.clone())),
+            ("two".to_string(), Some(item_two.clone())),
+        ]
+        .into_iter()
+        .collect::<BTreeMap<_, _>>();
+        DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
+            &user_data_setter,
+            UserDataType::UserSettings,
+            initial_items.clone(),
+        )
+        .await?;
+        assert_eq!(
+            user_data_setter.get(UserDataType::UserSettings).await?,
+            Some(initial_items)
+        );
+
+        // Overwrite existing data and preserve non-conflicting existing data.
+        let conflicting_items = [("two".to_string(), Some(item_two_conflict.clone()))]
+            .into_iter()
+            .collect::<BTreeMap<_, _>>();
+        DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
+            &user_data_setter,
+            UserDataType::UserSettings,
+            conflicting_items,
+        )
+        .await?;
+        assert_eq!(
+            user_data_setter.get(UserDataType::UserSettings).await?,
+            Some(
+                [
+                    ("one".to_string(), item_one.clone(),),
+                    ("two".to_string(), item_two_conflict.clone(),)
+                ]
+                .into_iter()
+                .collect::<BTreeMap<_, _>>()
+            )
+        );
+
+        // Delete existing data.
+        let conflicting_items = [
+            ("two".to_string(), None),
+            ("three".to_string(), Some(item_three.clone())),
+        ]
+        .into_iter()
+        .collect::<BTreeMap<_, _>>();
+        DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
+            &user_data_setter,
+            UserDataType::UserSettings,
+            conflicting_items,
+        )
+        .await?;
+        assert_eq!(
+            user_data_setter.get(UserDataType::UserSettings).await?,
+            Some(
+                [
+                    ("one".to_string(), item_one.clone(),),
+                    ("three".to_string(), item_three.clone(),)
+                ]
+                .into_iter()
+                .collect::<BTreeMap<_, _>>()
+            )
+        );
+
+        // Delete full slot.
+        let conflicting_items = [("one".to_string(), None), ("three".to_string(), None)]
+            .into_iter()
+            .collect::<BTreeMap<_, Option<serde_json::Value>>>();
+        DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
+            &user_data_setter,
+            UserDataType::UserSettings,
+            conflicting_items,
+        )
+        .await?;
+        assert_eq!(
+            user_data_setter
+                .get::<BTreeMap<String, serde_json::Value>>(UserDataType::UserSettings)
+                .await?,
+            None
+        );
+
+        // Does nothing if there is nothing to delete.
+        let conflicting_items = [("one".to_string(), None)]
+            .into_iter()
+            .collect::<BTreeMap<_, Option<serde_json::Value>>>();
+        DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
+            &user_data_setter,
+            UserDataType::UserSettings,
+            conflicting_items,
+        )
+        .await?;
+        assert_eq!(
+            user_data_setter
+                .get::<BTreeMap<String, serde_json::Value>>(UserDataType::UserSettings)
+                .await?,
+            None
+        );
+
+        Ok(())
+    }
+}
