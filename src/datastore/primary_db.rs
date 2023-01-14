@@ -230,7 +230,7 @@ mod tests {
     use crate::{
         datastore::PrimaryDb,
         tests::MockUserBuilder,
-        users::{User, UserId},
+        users::{User, UserDataType, UserId},
     };
     use insta::assert_debug_snapshot;
     use time::OffsetDateTime;
@@ -607,6 +607,64 @@ mod tests {
         assert_eq!(
             db.get_users_by_activation_code("unknown-code").await?,
             vec![]
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_manipulate_user_data() -> anyhow::Result<()> {
+        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        let user = MockUserBuilder::new(
+            UserId(1),
+            "dev@secutils.dev",
+            "dev-handle",
+            "hash",
+            OffsetDateTime::now_utc(),
+        )
+        .build();
+
+        // No user and no data yet.
+        assert_eq!(
+            db.get_user_data::<String>(user.id, UserDataType::UserSettings)
+                .await?,
+            None
+        );
+
+        db.upsert_user(&user).await?;
+
+        // Nodata yet.
+        assert_eq!(
+            db.get_user_data::<String>(user.id, UserDataType::UserSettings)
+                .await?,
+            None
+        );
+
+        // Insert data.
+        db.upsert_user_data(user.id, UserDataType::UserSettings, "data")
+            .await?;
+        assert_eq!(
+            db.get_user_data::<String>(user.id, UserDataType::UserSettings)
+                .await?,
+            Some("data".to_string())
+        );
+
+        // Update data.
+        db.upsert_user_data(user.id, UserDataType::UserSettings, "data-new")
+            .await?;
+        assert_eq!(
+            db.get_user_data::<String>(user.id, UserDataType::UserSettings)
+                .await?,
+            Some("data-new".to_string())
+        );
+
+        // Remove data.
+        db.remove_user_data(user.id, UserDataType::UserSettings)
+            .await?;
+        assert_eq!(
+            db.get_user_data::<String>(user.id, UserDataType::UserSettings)
+                .await?,
+            None
         );
 
         Ok(())
