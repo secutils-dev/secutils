@@ -1,7 +1,7 @@
 use crate::{
     error::SecutilsError,
     server::{app_state::AppState, status::Status},
-    users::User,
+    users::{User, UserDataType, UserSettings},
     utils::Util,
 };
 use actix_web::{web, HttpResponse};
@@ -10,17 +10,19 @@ use serde_derive::Serialize;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LicenseJSON {
+struct License {
     max_endpoints: usize,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ParametersJSON {
+struct UiState {
     status: Status,
-    license: LicenseJSON,
+    license: License,
     #[serde(skip_serializing_if = "Option::is_none")]
     user: Option<User>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    settings: Option<UserSettings>,
     utils: Vec<Util>,
 }
 
@@ -28,14 +30,24 @@ pub async fn ui_state_get(
     state: web::Data<AppState>,
     user: Option<User>,
 ) -> Result<HttpResponse, SecutilsError> {
-    Ok(HttpResponse::Ok().json(ParametersJSON {
+    let settings = if let Some(ref user) = user {
+        state
+            .api
+            .users()
+            .get_data(user.id, UserDataType::UserSettings)
+            .await?
+    } else {
+        None
+    };
+    Ok(HttpResponse::Ok().json(UiState {
         status: state
             .status
             .read()
             .map(|status| *status)
             .map_err(|err| anyhow!("Failed to retrieve server status: {:?}.", err))?,
-        license: LicenseJSON { max_endpoints: 1 },
+        license: License { max_endpoints: 1 },
         user,
+        settings,
         utils: vec![
             Util {
                 id: "home".to_string(),
