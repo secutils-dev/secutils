@@ -50,7 +50,7 @@ jobs:
         run:  cargo test
 
       - name: Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Build (default features)
         run: cargo build --release
