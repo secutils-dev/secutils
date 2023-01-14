@@ -5,7 +5,7 @@ Content-Type: application/json
 Authorization: {{api-credentials}}
 
 {
-  "dataValue": "{ \"dontShow\": false }"
+  "dataValue": "{ \"certificates.doNotShowSelfSignedWarning\": true }"
 }
 
 ### Remove data
@@ -15,5 +15,5 @@ Content-Type: application/json
 Authorization: {{api-credentials}}
 
 {
-  "dataValue": "{ \"dontShow\": null }"
+  "dataValue": "{ \"certificates.doNotShowSelfSignedWarning\": null }"
 }

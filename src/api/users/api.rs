@@ -5,7 +5,7 @@ use crate::{
     },
     config::Config,
     datastore::PrimaryDb,
-    users::{BuiltinUser, User, UserDataType, UserId},
+    users::{BuiltinUser, User, UserDataType, UserId, UserSettingsSetter},
     utils::{AutoResponder, SelfSignedCertificate},
 };
 use anyhow::{anyhow, bail, Context};
@@ -304,13 +304,15 @@ impl<'a> UsersApi<'a> {
         user_data_setter: &UserDataSetter<'_>,
         serialized_data_value: Vec<u8>,
     ) -> anyhow::Result<()> {
+        let user_settings = serde_json::from_slice::<UserSettingsSetter>(&serialized_data_value)
+            .with_context(|| "Cannot deserialize new user settings data".to_string())?;
+        if !user_settings.is_valid() {
+            bail!("User settings are not valid: {:?}", user_settings);
+        }
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
             UserDataType::UserSettings,
-            serde_json::from_slice::<BTreeMap<String, Option<serde_json::Value>>>(
-                &serialized_data_value,
-            )
-            .with_context(|| "Cannot deserialize new user settings data".to_string())?,
+            user_settings.into_inner(),
         )
         .await
     }

@@ -7,7 +7,11 @@ mod user_role;
 mod user_settings;
 
 pub use self::{
-    builtin_user::BuiltinUser, builtin_users_initializer::builtin_users_initializer, user::User,
-    user_data_type::UserDataType, user_id::UserId, user_role::UserRole,
-    user_settings::UserSettings,
+    builtin_user::BuiltinUser,
+    builtin_users_initializer::builtin_users_initializer,
+    user::User,
+    user_data_type::UserDataType,
+    user_id::UserId,
+    user_role::UserRole,
+    user_settings::{UserSettings, UserSettingsSetter},
 };
