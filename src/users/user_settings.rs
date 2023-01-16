@@ -6,10 +6,25 @@ struct KnownUserSettingDescriptor {
     setting_value_validator: fn(&serde_json::Value) -> bool,
 }
 
-const KNOWN_USER_SETTINGS: [KnownUserSettingDescriptor; 1] = [KnownUserSettingDescriptor {
-    setting_key: "certificates.doNotShowSelfSignedWarning",
-    setting_value_validator: |value| value.is_boolean(),
-}];
+const KNOWN_USER_SETTINGS: [KnownUserSettingDescriptor; 3] = [
+    KnownUserSettingDescriptor {
+        setting_key: "common.showOnlyFavorites",
+        setting_value_validator: |value| value.is_boolean(),
+    },
+    KnownUserSettingDescriptor {
+        setting_key: "common.uiTheme",
+        setting_value_validator: |value| {
+            value
+                .as_str()
+                .map(|value| value == "light" || value == "dark")
+                .unwrap_or_default()
+        },
+    },
+    KnownUserSettingDescriptor {
+        setting_key: "certificates.doNotShowSelfSignedWarning",
+        setting_value_validator: |value| value.is_boolean(),
+    },
+];
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct UserSettings(BTreeMap<String, serde_json::Value>);
@@ -61,6 +76,41 @@ mod tests {
 
     #[test]
     fn should_properly_validate_values() {
+        let user_settings =
+            UserSettingsSetter([("common.uiTheme".to_string(), None)].into_iter().collect());
+        assert!(user_settings.is_valid());
+
+        let user_settings = UserSettingsSetter(
+            [("common.uiTheme".to_string(), Some(json!("light")))]
+                .into_iter()
+                .collect(),
+        );
+        assert!(user_settings.is_valid());
+
+        let user_settings = UserSettingsSetter(
+            [("common.uiTheme".to_string(), Some(json!("dark")))]
+                .into_iter()
+                .collect(),
+        );
+        assert!(user_settings.is_valid());
+
+        let user_settings = UserSettingsSetter(
+            [("common.uiTheme".to_string(), Some(json!("unknown")))]
+                .into_iter()
+                .collect(),
+        );
+        assert!(!user_settings.is_valid());
+
+        let user_settings = UserSettingsSetter(
+            [("common.uiTheme".to_string(), Some(json!(true)))]
+                .into_iter()
+                .collect(),
+        );
+        assert!(!user_settings.is_valid());
+    }
+
+    #[test]
+    fn should_properly_validate_common_ui_theme() {
         let user_settings = UserSettingsSetter(
             [("certificates.doNotShowSelfSignedWarning".to_string(), None)]
                 .into_iter()
@@ -69,10 +119,13 @@ mod tests {
         assert!(user_settings.is_valid());
 
         let user_settings = UserSettingsSetter(
-            [(
-                "certificates.doNotShowSelfSignedWarning".to_string(),
-                Some(json!(true)),
-            )]
+            [
+                (
+                    "certificates.doNotShowSelfSignedWarning".to_string(),
+                    Some(json!(true)),
+                ),
+                ("common.showOnlyFavorites".to_string(), Some(json!(false))),
+            ]
             .into_iter()
             .collect(),
         );
