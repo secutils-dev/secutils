@@ -1,4 +1,4 @@
 ### Get data
-GET {{host}}/api/user/data?dataType=autoResponders
+GET {{host}}/api/user/data?dataType=userSettings
 Accept: application/json
 Authorization: {{api-credentials}}

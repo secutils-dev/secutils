@@ -5,6 +5,7 @@ use crate::{
 use actix_web::{web, HttpResponse, Responder};
 use serde_derive::Deserialize;
 use serde_json::json;
+use std::collections::BTreeMap;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,22 +31,35 @@ pub async fn user_data_set(
         return HttpResponse::Ok().json(json!({ "status": "ok" }));
     }
 
-    match state
-        .api
-        .users()
+    let users_api = state.api.users();
+
+    if let Err(err) = users_api
         .set_data(user.id, query_params.data_type, body_params.data_value)
         .await
     {
-        Ok(_) => {
-            log::debug!(
-                "Updated data ({}) for user {}.",
-                query_params.data_type.get_data_key(),
-                user.handle
-            );
-            HttpResponse::Ok().json(json!({ "status": "ok" }))
-        }
+        log::error!("Failed to update data for user {}: {:?}.", user.handle, err);
+        return HttpResponse::InternalServerError().json(json!({ "status": "failed" }));
+    }
+
+    log::debug!(
+        "Updated data ({}) for user {}. Retrieving the latest value...",
+        query_params.data_type.get_data_key(),
+        user.handle
+    );
+
+    match users_api.get_data(user.id, query_params.data_type).await {
+        Ok(value) => HttpResponse::Ok().json(
+            [(query_params.data_type.get_data_key().to_string(), value)]
+                .into_iter()
+                .collect::<BTreeMap<String, Option<serde_json::Value>>>(),
+        ),
         Err(err) => {
-            log::error!("Failed to update data for user {}: {:?}.", user.handle, err);
+            log::error!(
+                "Failed to retrieve data ({}) for user {}: {:?}.",
+                query_params.data_type.get_data_key(),
+                user.handle,
+                err
+            );
             HttpResponse::InternalServerError().json(json!({ "status": "failed" }))
         }
     }
