@@ -3,6 +3,7 @@ mod util;
 mod utils_executor;
 mod utils_request;
 mod utils_response;
+mod web_security;
 mod webhooks;
 
 pub use self::{
@@ -14,6 +15,10 @@ pub use self::{
     utils_executor::UtilsExecutor,
     utils_request::UtilsRequest,
     utils_response::UtilsResponse,
+    web_security::{
+        ContentSecurityPolicy, ContentSecurityPolicyDirective,
+        ContentSecurityPolicySandboxDirectiveValue, ContentSecurityPolicyWebrtcDirectiveValue,
+    },
     webhooks::{AutoResponder, AutoResponderMethod},
 };
 

@@ -6,7 +6,7 @@ use crate::{
     config::Config,
     datastore::PrimaryDb,
     users::{BuiltinUser, User, UserDataType, UserId, UserSettingsSetter},
-    utils::{AutoResponder, SelfSignedCertificate},
+    utils::{AutoResponder, ContentSecurityPolicy, SelfSignedCertificate},
 };
 use anyhow::{anyhow, bail, Context};
 use argon2::{password_hash::SaltString, Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
@@ -269,6 +269,10 @@ impl<'a> UsersApi<'a> {
             UserDataType::AutoResponders => {
                 Self::set_auto_responders_data(&user_data_setter, serialized_data_value).await
             }
+            UserDataType::ContentSecurityPolicies => {
+                Self::set_content_security_policies_data(&user_data_setter, serialized_data_value)
+                    .await
+            }
             UserDataType::SelfSignedCertificates => {
                 Self::set_self_signed_certificates_data(&user_data_setter, serialized_data_value)
                     .await
@@ -313,6 +317,21 @@ impl<'a> UsersApi<'a> {
             user_data_setter,
             UserDataType::UserSettings,
             user_settings.into_inner(),
+        )
+        .await
+    }
+
+    async fn set_content_security_policies_data(
+        user_data_setter: &UserDataSetter<'_>,
+        serialized_data_value: Vec<u8>,
+    ) -> anyhow::Result<()> {
+        DictionaryDataUserDataSetter::upsert(
+            user_data_setter,
+            UserDataType::ContentSecurityPolicies,
+            serde_json::from_slice::<BTreeMap<String, Option<ContentSecurityPolicy>>>(
+                &serialized_data_value,
+            )
+            .with_context(|| "Cannot deserialize new content security policies data".to_string())?,
         )
         .await
     }
