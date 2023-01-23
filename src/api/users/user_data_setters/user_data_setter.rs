@@ -1,7 +1,4 @@
-use crate::{
-    datastore::PrimaryDb,
-    users::{UserDataType, UserId},
-};
+use crate::{datastore::PrimaryDb, users::UserId};
 use serde::{de::DeserializeOwned, Serialize};
 
 /// Abstracts away database and methods bound to a specific user from the data setters.
@@ -19,29 +16,22 @@ impl<'a> UserDataSetter<'a> {
         }
     }
 
-    /// Gets user data of the specific data type.
-    pub async fn get<R: DeserializeOwned>(
-        &self,
-        data_type: UserDataType,
-    ) -> anyhow::Result<Option<R>> {
-        self.primary_db.get_user_data(self.user_id, data_type).await
+    /// Gets user data by the specific data key.
+    pub async fn get<R: DeserializeOwned>(&self, data_key: &str) -> anyhow::Result<Option<R>> {
+        self.primary_db.get_user_data(self.user_id, data_key).await
     }
 
-    /// Inserts new or updates existing user data of the specified type.
-    pub async fn upsert<R: Serialize>(
-        &self,
-        data_type: UserDataType,
-        data_value: R,
-    ) -> anyhow::Result<()> {
+    /// Inserts new or updates existing user data by the specified data key.
+    pub async fn upsert<R: Serialize>(&self, data_key: &str, data_value: R) -> anyhow::Result<()> {
         self.primary_db
-            .upsert_user_data(self.user_id, data_type, data_value)
+            .upsert_user_data(self.user_id, data_key, data_value)
             .await
     }
 
-    /// Removes existing user data of the specified type.
-    pub async fn remove(&self, data_type: UserDataType) -> anyhow::Result<()> {
+    /// Removes existing user data by the specified data key.
+    pub async fn remove(&self, data_key: &str) -> anyhow::Result<()> {
         self.primary_db
-            .remove_user_data(self.user_id, data_type)
+            .remove_user_data(self.user_id, data_key)
             .await
     }
 }

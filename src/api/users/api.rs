@@ -254,7 +254,9 @@ impl<'a> UsersApi<'a> {
         user_id: UserId,
         data_type: UserDataType,
     ) -> anyhow::Result<Option<R>> {
-        self.primary_db.get_user_data(user_id, data_type).await
+        self.primary_db
+            .get_user_data(user_id, data_type.get_data_key())
+            .await
     }
 
     /// Sets user data of the specified type for the user with the specified id.
@@ -298,7 +300,7 @@ impl<'a> UsersApi<'a> {
         }
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
-            UserDataType::AutoResponders,
+            UserDataType::AutoResponders.get_data_key(),
             auto_responders,
         )
         .await
@@ -315,7 +317,7 @@ impl<'a> UsersApi<'a> {
         }
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
-            UserDataType::UserSettings,
+            UserDataType::UserSettings.get_data_key(),
             user_settings.into_inner(),
         )
         .await
@@ -327,7 +329,7 @@ impl<'a> UsersApi<'a> {
     ) -> anyhow::Result<()> {
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
-            UserDataType::ContentSecurityPolicies,
+            UserDataType::ContentSecurityPolicies.get_data_key(),
             serde_json::from_slice::<BTreeMap<String, Option<ContentSecurityPolicy>>>(
                 &serialized_data_value,
             )
@@ -342,7 +344,7 @@ impl<'a> UsersApi<'a> {
     ) -> anyhow::Result<()> {
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
-            UserDataType::SelfSignedCertificates,
+            UserDataType::SelfSignedCertificates.get_data_key(),
             serde_json::from_slice::<BTreeMap<String, Option<SelfSignedCertificate>>>(
                 &serialized_data_value,
             )

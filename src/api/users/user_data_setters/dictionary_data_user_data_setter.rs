@@ -1,4 +1,4 @@
-use crate::{api::users::UserDataSetter, users::UserDataType};
+use crate::api::users::UserDataSetter;
 use anyhow::Context;
 use serde::{de::DeserializeOwned, Serialize};
 use std::collections::BTreeMap;
@@ -7,13 +7,13 @@ pub struct DictionaryDataUserDataSetter;
 impl DictionaryDataUserDataSetter {
     pub async fn upsert<R: DeserializeOwned + Serialize>(
         data_setter: &UserDataSetter<'_>,
-        data_type: UserDataType,
+        data_key: &str,
         data_value: BTreeMap<String, Option<R>>,
     ) -> anyhow::Result<()> {
         let mut existing_value: BTreeMap<_, _> = data_setter
-            .get(data_type)
+            .get(data_key)
             .await
-            .with_context(|| format!("Cannot retrieve stored '{}' data", data_type.get_data_key()))?
+            .with_context(|| format!("Cannot retrieve stored '{}' data", data_key))?
             .unwrap_or_default();
 
         for (name, entry) in data_value {
@@ -25,9 +25,9 @@ impl DictionaryDataUserDataSetter {
         }
 
         if existing_value.is_empty() {
-            data_setter.remove(data_type).await
+            data_setter.remove(data_key).await
         } else {
-            data_setter.upsert(data_type, existing_value).await
+            data_setter.upsert(data_key, existing_value).await
         }
     }
 }
@@ -38,7 +38,7 @@ mod tests {
         api::users::{DictionaryDataUserDataSetter, UserDataSetter},
         datastore::PrimaryDb,
         tests::MockUserBuilder,
-        users::{User, UserDataType, UserId},
+        users::{User, UserId},
     };
     use serde_json::json;
     use std::collections::BTreeMap;
@@ -80,14 +80,11 @@ mod tests {
         .collect::<BTreeMap<_, _>>();
         DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
             &user_data_setter,
-            UserDataType::UserSettings,
+            "data-key",
             initial_items.clone(),
         )
         .await?;
-        assert_eq!(
-            user_data_setter.get(UserDataType::UserSettings).await?,
-            Some(initial_items)
-        );
+        assert_eq!(user_data_setter.get("data-key").await?, Some(initial_items));
 
         // Overwrite existing data and preserve non-conflicting existing data.
         let conflicting_items = [("two".to_string(), Some(item_two_conflict.clone()))]
@@ -95,12 +92,12 @@ mod tests {
             .collect::<BTreeMap<_, _>>();
         DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
             &user_data_setter,
-            UserDataType::UserSettings,
+            "data-key",
             conflicting_items,
         )
         .await?;
         assert_eq!(
-            user_data_setter.get(UserDataType::UserSettings).await?,
+            user_data_setter.get("data-key").await?,
             Some(
                 [
                     ("one".to_string(), item_one.clone(),),
@@ -120,12 +117,12 @@ mod tests {
         .collect::<BTreeMap<_, _>>();
         DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
             &user_data_setter,
-            UserDataType::UserSettings,
+            "data-key",
             conflicting_items,
         )
         .await?;
         assert_eq!(
-            user_data_setter.get(UserDataType::UserSettings).await?,
+            user_data_setter.get("data-key").await?,
             Some(
                 [
                     ("one".to_string(), item_one.clone(),),
@@ -142,13 +139,13 @@ mod tests {
             .collect::<BTreeMap<_, Option<serde_json::Value>>>();
         DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
             &user_data_setter,
-            UserDataType::UserSettings,
+            "data-key",
             conflicting_items,
         )
         .await?;
         assert_eq!(
             user_data_setter
-                .get::<BTreeMap<String, serde_json::Value>>(UserDataType::UserSettings)
+                .get::<BTreeMap<String, serde_json::Value>>("data-key")
                 .await?,
             None
         );
@@ -159,13 +156,13 @@ mod tests {
             .collect::<BTreeMap<_, Option<serde_json::Value>>>();
         DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
             &user_data_setter,
-            UserDataType::UserSettings,
+            "data-key",
             conflicting_items,
         )
         .await?;
         assert_eq!(
             user_data_setter
-                .get::<BTreeMap<String, serde_json::Value>>(UserDataType::UserSettings)
+                .get::<BTreeMap<String, serde_json::Value>>("data-key")
                 .await?,
             None
         );

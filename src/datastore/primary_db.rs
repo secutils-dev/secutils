@@ -2,7 +2,7 @@ mod raw_user;
 mod raw_user_data;
 mod raw_user_to_upsert;
 
-use crate::users::{User, UserDataType, UserId};
+use crate::users::{User, UserId};
 use anyhow::{bail, Context};
 use serde::{de::DeserializeOwned, Serialize};
 use sqlx::{query, query_as, query_scalar, sqlite::SqlitePool, Pool, Sqlite};
@@ -153,9 +153,8 @@ RETURNING id as "id!", email as "email!", handle as "handle!", password_hash as 
     pub async fn get_user_data<R: DeserializeOwned>(
         &self,
         user_id: UserId,
-        data_type: UserDataType,
+        user_data_key: &str,
     ) -> anyhow::Result<Option<R>> {
-        let user_data_key = data_type.get_data_key();
         query_as!(
             RawUserData,
             r#"
@@ -179,10 +178,9 @@ WHERE user_id = ?1 AND data_key = ?2
     pub async fn upsert_user_data<R: Serialize>(
         &self,
         user_id: UserId,
-        data_type: UserDataType,
+        user_data_key: &str,
         data_value: R,
     ) -> anyhow::Result<()> {
-        let user_data_key = data_type.get_data_key();
         let user_data_value = serde_json::ser::to_vec(&data_value)
             .with_context(|| format!("Failed to serialize user data ({})", user_data_key))?;
 
@@ -207,9 +205,8 @@ ON CONFLICT(user_id, data_key) DO UPDATE SET data_value=excluded.data_value
     pub async fn remove_user_data(
         &self,
         user_id: UserId,
-        data_type: UserDataType,
+        user_data_key: &str,
     ) -> anyhow::Result<()> {
-        let user_data_key = data_type.get_data_key();
         query!(
             r#"
 DELETE FROM user_data
@@ -230,7 +227,7 @@ mod tests {
     use crate::{
         datastore::PrimaryDb,
         tests::MockUserBuilder,
-        users::{User, UserDataType, UserId},
+        users::{User, UserId},
     };
     use insta::assert_debug_snapshot;
     use time::OffsetDateTime;
@@ -625,47 +622,30 @@ mod tests {
         .build();
 
         // No user and no data yet.
-        assert_eq!(
-            db.get_user_data::<String>(user.id, UserDataType::UserSettings)
-                .await?,
-            None
-        );
+        assert_eq!(db.get_user_data::<String>(user.id, "data-key").await?, None);
 
         db.upsert_user(&user).await?;
 
         // Nodata yet.
-        assert_eq!(
-            db.get_user_data::<String>(user.id, UserDataType::UserSettings)
-                .await?,
-            None
-        );
+        assert_eq!(db.get_user_data::<String>(user.id, "data-key").await?, None);
 
         // Insert data.
-        db.upsert_user_data(user.id, UserDataType::UserSettings, "data")
-            .await?;
+        db.upsert_user_data(user.id, "data-key", "data").await?;
         assert_eq!(
-            db.get_user_data::<String>(user.id, UserDataType::UserSettings)
-                .await?,
+            db.get_user_data::<String>(user.id, "data-key").await?,
             Some("data".to_string())
         );
 
         // Update data.
-        db.upsert_user_data(user.id, UserDataType::UserSettings, "data-new")
-            .await?;
+        db.upsert_user_data(user.id, "data-key", "data-new").await?;
         assert_eq!(
-            db.get_user_data::<String>(user.id, UserDataType::UserSettings)
-                .await?,
+            db.get_user_data::<String>(user.id, "data-key").await?,
             Some("data-new".to_string())
         );
 
         // Remove data.
-        db.remove_user_data(user.id, UserDataType::UserSettings)
-            .await?;
-        assert_eq!(
-            db.get_user_data::<String>(user.id, UserDataType::UserSettings)
-                .await?,
-            None
-        );
+        db.remove_user_data(user.id, "data-key").await?;
+        assert_eq!(db.get_user_data::<String>(user.id, "data-key").await?, None);
 
         Ok(())
     }
