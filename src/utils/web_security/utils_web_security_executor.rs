@@ -28,7 +28,7 @@ impl UtilsWebSecurityExecutor {
         request: UtilsWebSecurityRequest,
     ) -> anyhow::Result<UtilsWebSecurityResponse> {
         match request {
-            UtilsWebSecurityRequest::GenerateContentSecurityPolicySnippet {
+            UtilsWebSecurityRequest::SerializeContentSecurityPolicy {
                 policy_name,
                 source,
             } => {
@@ -47,43 +47,19 @@ impl UtilsWebSecurityExecutor {
                         )
                     })?;
 
-                let snippet = match source {
-                    ContentSecurityPolicySource::Meta => {
-                        format!(
-                            "<meta http-equiv=\"Content-Security-Policy\" content=\"{}\">",
-                            serialize_directives(
-                                policy
-                                    .directives
-                                    .into_iter()
-                                    .filter(|directive| directive.is_supported_for_source(source))
-                            )?
-                        )
-                    }
+                let policy = match source {
+                    ContentSecurityPolicySource::Meta => serialize_directives(
+                        policy
+                            .directives
+                            .into_iter()
+                            .filter(|directive| directive.is_supported_for_source(source)),
+                    )?,
                     ContentSecurityPolicySource::Header => {
-                        let report_to_header = if let Some(
-                            ContentSecurityPolicyDirective::ReportTo([report_group]),
-                        ) = policy.directives.iter().find(|directive| {
-                            matches!(directive, ContentSecurityPolicyDirective::ReportTo(_))
-                        }) {
-                            format!("## Define reporting endpoints\nReport-To: {{\n  \"group\": \"{report_group}\",\n  \"max_age\": 10886400,\n  \"endpoints\": [{{ \"url\": \"https://xxx/reports\" }}]\n}}\n\n")
-                        } else {
-                            "".to_string()
-                        };
-
-                        format!(
-                            "{}## Policy header (enforcing)\nContent-Security-Policy: {policy}\n\n## Policy header (reporting only)\nContent-Security-Policy-Report-Only: {policy}",
-                            report_to_header,
-                            policy = serialize_directives(policy.directives.into_iter())?
-                        )
+                        serialize_directives(policy.directives.into_iter())?
                     }
                 };
 
-                Ok(
-                    UtilsWebSecurityResponse::GenerateContentSecurityPolicySnippet {
-                        snippet,
-                        source,
-                    },
-                )
+                Ok(UtilsWebSecurityResponse::SerializeContentSecurityPolicy { policy, source })
             }
         }
     }

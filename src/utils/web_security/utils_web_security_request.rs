@@ -6,7 +6,7 @@ use serde_derive::Deserialize;
 #[serde(tag = "type", content = "value")]
 pub enum UtilsWebSecurityRequest {
     #[serde(rename_all = "camelCase")]
-    GenerateContentSecurityPolicySnippet {
+    SerializeContentSecurityPolicy {
         policy_name: String,
         source: ContentSecurityPolicySource,
     },
@@ -22,12 +22,12 @@ mod tests {
             serde_json::from_str::<UtilsWebSecurityRequest>(
                 r###"
 {
-    "type": "generateContentSecurityPolicySnippet",
+    "type": "serializeContentSecurityPolicy",
     "value": { "policyName": "policy", "source": "meta" }
 }
           "###
             )?,
-            UtilsWebSecurityRequest::GenerateContentSecurityPolicySnippet {
+            UtilsWebSecurityRequest::SerializeContentSecurityPolicy {
                 policy_name: "policy".to_string(),
                 source: ContentSecurityPolicySource::Meta,
             }
