@@ -1,5 +1,4 @@
-use crate::utils::certificates::UtilsCertificatesResponse;
-
+use crate::utils::{UtilsCertificatesResponse, UtilsWebSecurityResponse};
 use serde_derive::Serialize;
 
 #[derive(Serialize)]
@@ -7,4 +6,5 @@ use serde_derive::Serialize;
 #[serde(tag = "type", content = "value")]
 pub enum UtilsResponse {
     Certificates(UtilsCertificatesResponse),
+    WebSecurity(UtilsWebSecurityResponse),
 }

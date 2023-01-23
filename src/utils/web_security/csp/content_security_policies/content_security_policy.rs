@@ -28,7 +28,8 @@ mod tests {
           "n": "some-name",
           "d": [
             {
-              "child-src": [
+              "n": "child-src",
+              "v": [
                 "'self'"
               ]
             }
@@ -43,7 +44,7 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicy>(
-                &json!({ "n": "some-name", "d": [{"child-src": ["'self'", "https://*"]}] })
+                &json!({ "n": "some-name", "d": [{"n": "child-src", "v": ["'self'", "https://*"]}] })
                     .to_string()
             )?,
             ContentSecurityPolicy {
@@ -58,7 +59,7 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicy>(
-                &json!({ "n": "some-name", "d": [{"sandbox": []}] }).to_string()
+                &json!({ "n": "some-name", "d": [{"n": "sandbox", "v": []}] }).to_string()
             )?,
             ContentSecurityPolicy {
                 name: "some-name".to_string(),

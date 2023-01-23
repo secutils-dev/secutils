@@ -1,4 +1,4 @@
-use crate::utils::certificates::UtilsCertificatesRequest;
+use crate::utils::{certificates::UtilsCertificatesRequest, UtilsWebSecurityRequest};
 use serde_derive::Deserialize;
 
 #[derive(Deserialize)]
@@ -6,4 +6,5 @@ use serde_derive::Deserialize;
 #[serde(tag = "type", content = "value")]
 pub enum UtilsRequest {
     Certificates(UtilsCertificatesRequest),
+    WebSecurity(UtilsWebSecurityRequest),
 }

@@ -1,7 +1,7 @@
 use crate::{
     api::Api,
     users::User,
-    utils::{UtilsCertificatesExecutor, UtilsRequest, UtilsResponse},
+    utils::{UtilsCertificatesExecutor, UtilsRequest, UtilsResponse, UtilsWebSecurityExecutor},
 };
 
 pub struct UtilsExecutor {}
@@ -16,6 +16,11 @@ impl UtilsExecutor {
                 UtilsCertificatesExecutor::execute(user, api, request)
                     .await
                     .map(UtilsResponse::Certificates)
+            }
+            UtilsRequest::WebSecurity(request) => {
+                UtilsWebSecurityExecutor::execute(user, api, request)
+                    .await
+                    .map(UtilsResponse::WebSecurity)
             }
         }
     }
