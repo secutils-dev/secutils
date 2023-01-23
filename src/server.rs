@@ -57,7 +57,7 @@ pub async fn run(
                     .route("/user/data", web::post().to(handlers::user_data_set))
                     .route("/user/data", web::get().to(handlers::user_data_get))
                     .route(
-                        "/webhooks/ar/{user_handle}/{alias}",
+                        "/webhooks/ar/{user_handle}/{name}",
                         web::route().to(handlers::webhooks_auto_responders),
                     )
                     .service(

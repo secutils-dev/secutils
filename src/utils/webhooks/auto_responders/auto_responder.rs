@@ -3,8 +3,8 @@ use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AutoResponder {
-    #[serde(rename = "a")]
-    pub alias: String,
+    #[serde(rename = "n")]
+    pub name: String,
     #[serde(rename = "m")]
     pub method: AutoResponderMethod,
     #[serde(rename = "t", skip_serializing_if = "Option::is_none")]
@@ -22,7 +22,7 @@ pub struct AutoResponder {
 impl AutoResponder {
     /// Checks whether responder is semantically valid.
     pub fn is_valid(&self) -> bool {
-        !self.alias.is_empty() && (100..=999).contains(&self.status_code)
+        !self.name.is_empty() && (100..=999).contains(&self.status_code)
     }
 }
 
@@ -35,7 +35,7 @@ mod tests {
     #[test]
     fn serialization() -> anyhow::Result<()> {
         assert_json_snapshot!(AutoResponder {
-            alias: "some-alias".to_string(),
+            name: "some-name".to_string(),
             method: AutoResponderMethod::Post,
             requests_to_track: None,
             status_code: 123,
@@ -44,14 +44,14 @@ mod tests {
             delay: None
         }, @r###"
         {
-          "a": "some-alias",
+          "n": "some-name",
           "m": "p",
           "s": 123
         }
         "###);
 
         assert_json_snapshot!(AutoResponder {
-            alias: "some-alias".to_string(),
+            name: "some-name".to_string(),
             method: AutoResponderMethod::Post,
              requests_to_track: Some(10),
             status_code: 123,
@@ -60,7 +60,7 @@ mod tests {
             delay: Some(1000)
         }, @r###"
         {
-          "a": "some-alias",
+          "n": "some-name",
           "m": "p",
           "t": 10,
           "s": 123,
@@ -82,10 +82,10 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<AutoResponder>(
-                &json!({ "a": "some-alias", "m": "p", "s": 123 }).to_string()
+                &json!({ "n": "some-name", "m": "p", "s": 123 }).to_string()
             )?,
             AutoResponder {
-                alias: "some-alias".to_string(),
+                name: "some-name".to_string(),
                 method: AutoResponderMethod::Post,
                 requests_to_track: None,
                 status_code: 123,
@@ -97,10 +97,10 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<AutoResponder>(
-                &json!({ "a": "some-alias", "m": "p", "t": 10, "s": 123, "b": "body", "h": [["key", "value"]], "d": 1000 }).to_string()
+                &json!({ "n": "some-name", "m": "p", "t": 10, "s": 123, "b": "body", "h": [["key", "value"]], "d": 1000 }).to_string()
             )?,
             AutoResponder {
-                alias: "some-alias".to_string(),
+                name: "some-name".to_string(),
                 method: AutoResponderMethod::Post,
                 requests_to_track: Some(10),
                 status_code: 123,
@@ -115,10 +115,10 @@ mod tests {
 
     #[test]
     fn properly_check_if_valid() -> anyhow::Result<()> {
-        for (alias, is_valid) in [("some-alias", true), ("a", true), ("", false)] {
+        for (name, is_valid) in [("some-name", true), ("n", true), ("", false)] {
             assert_eq!(
                 AutoResponder {
-                    alias: alias.to_string(),
+                    name: name.to_string(),
                     method: AutoResponderMethod::Post,
                     requests_to_track: None,
                     status_code: 123,
@@ -138,7 +138,7 @@ mod tests {
         ] {
             assert_eq!(
                 AutoResponder {
-                    alias: "some-alias".to_string(),
+                    name: "some-name".to_string(),
                     method,
                     requests_to_track: None,
                     status_code: 123,
@@ -164,7 +164,7 @@ mod tests {
         ] {
             assert_eq!(
                 AutoResponder {
-                    alias: "some-alias".to_string(),
+                    name: "some-name".to_string(),
                     method: AutoResponderMethod::Post,
                     requests_to_track: None,
                     status_code,
@@ -178,7 +178,7 @@ mod tests {
         }
 
         assert!(AutoResponder {
-            alias: "some-alias".to_string(),
+            name: "some-name".to_string(),
             method: AutoResponderMethod::Any,
             requests_to_track: Some(10),
             status_code: 123,

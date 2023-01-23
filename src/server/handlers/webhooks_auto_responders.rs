@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 #[derive(Deserialize)]
 pub struct PathParams {
     pub user_handle: String,
-    pub alias: String,
+    pub name: String,
 }
 
 pub async fn webhooks_auto_responders(
@@ -20,7 +20,7 @@ pub async fn webhooks_auto_responders(
     request: HttpRequest,
     path_params: web::Path<PathParams>,
 ) -> impl Responder {
-    let PathParams { user_handle, alias } = path_params.into_inner();
+    let PathParams { user_handle, name } = path_params.into_inner();
     // 1. Try to find a user with such a handle.
     let user = match state.api.users().get_by_handle(&user_handle).await {
         Ok(Some(user)) => user,
@@ -62,14 +62,14 @@ pub async fn webhooks_auto_responders(
         return HttpResponse::NotFound().finish();
     };
 
-    // 3. Check if user has a responder with a specified alias.
-    let auto_responder = match auto_responders.remove(&alias) {
+    // 3. Check if user has a responder with a specified name.
+    let auto_responder = match auto_responders.remove(&name) {
         Some(auto_responder) => auto_responder,
         None => {
             log::error!(
-                "User {} doesn't have responder for alias {} configured.",
+                "User {} doesn't have responder for name {} configured.",
                 user_handle,
-                alias
+                name
             );
             return HttpResponse::NotFound().finish();
         }
@@ -78,9 +78,9 @@ pub async fn webhooks_auto_responders(
     // 4. Check if responder configured for the HTTP method.
     if !auto_responder.method.matches_http_method(request.method()) {
         log::error!(
-            "User {} has responder for alias {} configured, but for another HTTP method, expected: {:?}, actual: {}.",
+            "User {} has responder for name {} configured, but for another HTTP method, expected: {:?}, actual: {}.",
             user_handle,
-            alias,
+            name,
             auto_responder.method,
             request.method()
         );
@@ -92,9 +92,9 @@ pub async fn webhooks_auto_responders(
         Ok(status_code) => status_code,
         Err(err) => {
             log::error!(
-                "Failed to parse status code for the user {} responder with alias {}: {:#}",
+                "Failed to parse status code for the user {} responder with name {}: {:#}",
                 user_handle,
-                alias,
+                name,
                 err
             );
             return HttpResponse::InternalServerError()
@@ -113,10 +113,10 @@ pub async fn webhooks_auto_responders(
             }
             (Err(err), _) => {
                 log::error!(
-                    "Failed to parse header name {} for the user {} responder with alias {}: {:#}",
+                    "Failed to parse header name {} for the user {} responder with name {}: {:#}",
                     header_name,
                     user_handle,
-                    alias,
+                    name,
                     err
                 );
                 return HttpResponse::InternalServerError()
@@ -124,10 +124,10 @@ pub async fn webhooks_auto_responders(
             }
             (_, Err(err)) => {
                 log::error!(
-                    "Failed to parse header value {} for the user {} responder with alias {}: {:#}",
+                    "Failed to parse header value {} for the user {} responder with name {}: {:#}",
                     header_value,
                     user_handle,
-                    alias,
+                    name,
                     err
                 );
                 return HttpResponse::InternalServerError()
