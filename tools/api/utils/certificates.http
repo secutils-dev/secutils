@@ -1,24 +1,24 @@
 ### Generate RSA key pair.
-POST {{host}}/api/utils/execute
+POST {{host}}/api/utils/action
 Authorization: {{api-credentials}}
 Accept: application/json
 Content-Type: application/json
 
 {
-  "request": {
+  "action": {
     "type":  "certificates",
     "value": { "type": "generateRsaKeyPair" }
   }
 }
 
 ### Generate self-signed CA.
-POST {{host}}/api/utils/execute
+POST {{host}}/api/utils/action
 Authorization: {{api-credentials}}
 Accept: application/json
 Content-Type: application/json
 
 {
-  "request": {
+  "action": {
     "type": "certificates",
     "value": {
       "type": "generateSelfSignedCertificate",

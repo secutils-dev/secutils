@@ -1,7 +1,7 @@
 mod csp;
-mod utils_web_security_executor;
-mod utils_web_security_request;
-mod utils_web_security_response;
+mod utils_web_security_action;
+mod utils_web_security_action_handler;
+mod utils_web_security_action_result;
 
 pub use self::{
     csp::{
@@ -9,7 +9,7 @@ pub use self::{
         ContentSecurityPolicySandboxDirectiveValue, ContentSecurityPolicySource,
         ContentSecurityPolicyWebrtcDirectiveValue,
     },
-    utils_web_security_executor::UtilsWebSecurityExecutor,
-    utils_web_security_request::UtilsWebSecurityRequest,
-    utils_web_security_response::UtilsWebSecurityResponse,
+    utils_web_security_action::UtilsWebSecurityAction,
+    utils_web_security_action_handler::UtilsWebSecurityActionHandler,
+    utils_web_security_action_result::UtilsWebSecurityActionResult,
 };

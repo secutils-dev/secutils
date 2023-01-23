@@ -4,7 +4,7 @@ use serde_derive::Serialize;
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "type", content = "value")]
-pub enum UtilsCertificatesResponse {
+pub enum UtilsCertificatesActionResult {
     #[serde(rename_all = "camelCase")]
     GenerateSelfSignedCertificate {
         certificate: Vec<u8>,
@@ -15,12 +15,12 @@ pub enum UtilsCertificatesResponse {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{CertificateFormat, UtilsCertificatesResponse};
+    use crate::utils::{CertificateFormat, UtilsCertificatesActionResult};
     use insta::assert_json_snapshot;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
-        assert_json_snapshot!(UtilsCertificatesResponse::GenerateSelfSignedCertificate {
+        assert_json_snapshot!(UtilsCertificatesActionResult::GenerateSelfSignedCertificate {
             certificate: vec![1,2,3],
             format: CertificateFormat::Pem
         }, @r###"
@@ -36,7 +36,7 @@ mod tests {
           }
         }
         "###);
-        assert_json_snapshot!(UtilsCertificatesResponse::GenerateRsaKeyPair(vec![1,2,3]), @r###"
+        assert_json_snapshot!(UtilsCertificatesActionResult::GenerateRsaKeyPair(vec![1,2,3]), @r###"
         {
           "type": "generateRsaKeyPair",
           "value": [

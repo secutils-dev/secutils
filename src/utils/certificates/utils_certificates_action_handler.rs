@@ -3,7 +3,7 @@ use crate::{
     users::{User, UserDataType},
     utils::{
         CertificateFormat, PublicKeyAlgorithm, SelfSignedCertificate, SignatureAlgorithm,
-        UtilsCertificatesRequest, UtilsCertificatesResponse,
+        UtilsCertificatesAction, UtilsCertificatesActionResult,
     },
 };
 use anyhow::{anyhow, Context};
@@ -209,15 +209,15 @@ fn generate_x509_certificate(
     Ok(x509.build())
 }
 
-pub struct UtilsCertificatesExecutor;
-impl UtilsCertificatesExecutor {
-    pub async fn execute(
+pub struct UtilsCertificatesActionHandler;
+impl UtilsCertificatesActionHandler {
+    pub async fn handle(
         user: User,
         api: &Api,
-        request: UtilsCertificatesRequest,
-    ) -> anyhow::Result<UtilsCertificatesResponse> {
-        match request {
-            UtilsCertificatesRequest::GenerateSelfSignedCertificate {
+        action: UtilsCertificatesAction,
+    ) -> anyhow::Result<UtilsCertificatesActionResult> {
+        match action {
+            UtilsCertificatesAction::GenerateSelfSignedCertificate {
                 template_name,
                 format,
                 passphrase,
@@ -250,16 +250,20 @@ impl UtilsCertificatesExecutor {
 
                 log::info!("Serialized certificate ({} bytes).", certificate.len());
 
-                Ok(UtilsCertificatesResponse::GenerateSelfSignedCertificate {
-                    format,
-                    certificate,
-                })
+                Ok(
+                    UtilsCertificatesActionResult::GenerateSelfSignedCertificate {
+                        format,
+                        certificate,
+                    },
+                )
             }
-            UtilsCertificatesRequest::GenerateRsaKeyPair => {
+            UtilsCertificatesAction::GenerateRsaKeyPair => {
                 let rsa = Rsa::generate(2048)?;
                 let public_pem = rsa.public_key_to_pem()?;
 
-                Ok(UtilsCertificatesResponse::GenerateRsaKeyPair(public_pem))
+                Ok(UtilsCertificatesActionResult::GenerateRsaKeyPair(
+                    public_pem,
+                ))
             }
         }
     }
@@ -269,7 +273,9 @@ impl UtilsCertificatesExecutor {
 mod tests {
     use super::generate_key;
     use crate::utils::{
-        certificates::utils_certificates_executor::{generate_x509_certificate, message_digest},
+        certificates::utils_certificates_action_handler::{
+            generate_x509_certificate, message_digest,
+        },
         tests::MockSelfSignedCertificate,
         PublicKeyAlgorithm, SignatureAlgorithm,
     };

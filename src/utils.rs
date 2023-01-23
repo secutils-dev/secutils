@@ -1,25 +1,25 @@
 mod certificates;
 mod util;
-mod utils_executor;
-mod utils_request;
-mod utils_response;
+mod utils_action;
+mod utils_action_handler;
+mod utils_action_result;
 mod web_security;
 mod webhooks;
 
 pub use self::{
     certificates::{
         CertificateFormat, PublicKeyAlgorithm, SelfSignedCertificate, SignatureAlgorithm,
-        UtilsCertificatesExecutor, UtilsCertificatesRequest, UtilsCertificatesResponse,
+        UtilsCertificatesAction, UtilsCertificatesActionHandler, UtilsCertificatesActionResult,
     },
     util::Util,
-    utils_executor::UtilsExecutor,
-    utils_request::UtilsRequest,
-    utils_response::UtilsResponse,
+    utils_action::UtilsAction,
+    utils_action_handler::UtilsActionHandler,
+    utils_action_result::UtilsActionResult,
     web_security::{
         ContentSecurityPolicy, ContentSecurityPolicyDirective,
         ContentSecurityPolicySandboxDirectiveValue, ContentSecurityPolicySource,
-        ContentSecurityPolicyWebrtcDirectiveValue, UtilsWebSecurityExecutor,
-        UtilsWebSecurityRequest, UtilsWebSecurityResponse,
+        ContentSecurityPolicyWebrtcDirectiveValue, UtilsWebSecurityAction,
+        UtilsWebSecurityActionHandler, UtilsWebSecurityActionResult,
     },
     webhooks::{AutoResponder, AutoResponderMethod},
 };

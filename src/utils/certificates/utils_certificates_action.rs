@@ -4,7 +4,7 @@ use serde_derive::Deserialize;
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "type", content = "value")]
-pub enum UtilsCertificatesRequest {
+pub enum UtilsCertificatesAction {
     #[serde(rename_all = "camelCase")]
     GenerateSelfSignedCertificate {
         template_name: String,
@@ -16,12 +16,12 @@ pub enum UtilsCertificatesRequest {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{CertificateFormat, UtilsCertificatesRequest};
+    use crate::utils::{CertificateFormat, UtilsCertificatesAction};
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<UtilsCertificatesRequest>(
+            serde_json::from_str::<UtilsCertificatesAction>(
                 r###"
 {
     "type": "generateSelfSignedCertificate",
@@ -29,14 +29,14 @@ mod tests {
 }
           "###
             )?,
-            UtilsCertificatesRequest::GenerateSelfSignedCertificate {
+            UtilsCertificatesAction::GenerateSelfSignedCertificate {
                 template_name: "template".to_string(),
                 format: CertificateFormat::Pem,
                 passphrase: None,
             }
         );
         assert_eq!(
-            serde_json::from_str::<UtilsCertificatesRequest>(
+            serde_json::from_str::<UtilsCertificatesAction>(
                 r###"
 {
     "type": "generateSelfSignedCertificate",
@@ -44,21 +44,21 @@ mod tests {
 }
           "###
             )?,
-            UtilsCertificatesRequest::GenerateSelfSignedCertificate {
+            UtilsCertificatesAction::GenerateSelfSignedCertificate {
                 template_name: "template".to_string(),
                 format: CertificateFormat::Pkcs12,
                 passphrase: Some("phrase".to_string()),
             }
         );
         assert_eq!(
-            serde_json::from_str::<UtilsCertificatesRequest>(
+            serde_json::from_str::<UtilsCertificatesAction>(
                 r###"
 {
     "type": "generateRsaKeyPair"
 }
           "###
             )?,
-            UtilsCertificatesRequest::GenerateRsaKeyPair
+            UtilsCertificatesAction::GenerateRsaKeyPair
         );
 
         Ok(())

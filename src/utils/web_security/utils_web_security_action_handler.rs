@@ -3,7 +3,7 @@ use crate::{
     users::{User, UserDataType},
     utils::{
         ContentSecurityPolicy, ContentSecurityPolicyDirective, ContentSecurityPolicySource,
-        UtilsWebSecurityRequest, UtilsWebSecurityResponse,
+        UtilsWebSecurityAction, UtilsWebSecurityActionResult,
     },
 };
 use anyhow::anyhow;
@@ -20,15 +20,15 @@ fn serialize_directives(
     Ok(serialized_directives.join("; "))
 }
 
-pub struct UtilsWebSecurityExecutor;
-impl UtilsWebSecurityExecutor {
-    pub async fn execute(
+pub struct UtilsWebSecurityActionHandler;
+impl UtilsWebSecurityActionHandler {
+    pub async fn handle(
         user: User,
         api: &Api,
-        request: UtilsWebSecurityRequest,
-    ) -> anyhow::Result<UtilsWebSecurityResponse> {
-        match request {
-            UtilsWebSecurityRequest::SerializeContentSecurityPolicy {
+        action: UtilsWebSecurityAction,
+    ) -> anyhow::Result<UtilsWebSecurityActionResult> {
+        match action {
+            UtilsWebSecurityAction::SerializeContentSecurityPolicy {
                 policy_name,
                 source,
             } => {
@@ -59,7 +59,7 @@ impl UtilsWebSecurityExecutor {
                     }
                 };
 
-                Ok(UtilsWebSecurityResponse::SerializeContentSecurityPolicy { policy, source })
+                Ok(UtilsWebSecurityActionResult::SerializeContentSecurityPolicy { policy, source })
             }
         }
     }
@@ -68,7 +68,7 @@ impl UtilsWebSecurityExecutor {
 #[cfg(test)]
 mod tests {
     use crate::utils::{
-        web_security::utils_web_security_executor::serialize_directives,
+        web_security::utils_web_security_action_handler::serialize_directives,
         ContentSecurityPolicyDirective,
     };
     use insta::assert_debug_snapshot;

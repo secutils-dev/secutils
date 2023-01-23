@@ -71,7 +71,7 @@ pub async fn run(
                     )
                     .service(
                         web::scope("/utils")
-                            .route("/execute", web::post().to(handlers::utils_execute)),
+                            .route("/action", web::post().to(handlers::utils_handle_action)),
                     )
                     .service(
                         web::scope("/ui").route("/state", web::get().to(handlers::ui_state_get)),
