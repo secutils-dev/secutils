@@ -21,7 +21,10 @@ pub use self::{
         ContentSecurityPolicyWebrtcDirectiveValue, UtilsWebSecurityAction,
         UtilsWebSecurityActionHandler, UtilsWebSecurityActionResult,
     },
-    webhooks::{AutoResponder, AutoResponderMethod},
+    webhooks::{
+        AutoResponder, AutoResponderMethod, AutoResponderRequest, UtilsWebhooksAction,
+        UtilsWebhooksActionHandler, UtilsWebhooksActionResult,
+    },
 };
 
 #[cfg(test)]

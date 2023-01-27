@@ -1,4 +1,4 @@
-use crate::utils::{certificates::UtilsCertificatesAction, UtilsWebSecurityAction};
+use crate::utils::{UtilsCertificatesAction, UtilsWebSecurityAction, UtilsWebhooksAction};
 use serde_derive::Deserialize;
 
 #[derive(Deserialize)]
@@ -6,5 +6,6 @@ use serde_derive::Deserialize;
 #[serde(tag = "type", content = "value")]
 pub enum UtilsAction {
     Certificates(UtilsCertificatesAction),
+    Webhooks(UtilsWebhooksAction),
     WebSecurity(UtilsWebSecurityAction),
 }

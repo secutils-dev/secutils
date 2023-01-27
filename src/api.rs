@@ -12,8 +12,8 @@ use crate::{datastore::Datastore, Config};
 
 #[derive(Clone)]
 pub struct Api {
-    datastore: Datastore,
-    config: Config,
+    pub datastore: Datastore,
+    pub config: Config,
 }
 
 impl Api {

@@ -7,8 +7,8 @@ pub struct AutoResponder {
     pub name: String,
     #[serde(rename = "m")]
     pub method: AutoResponderMethod,
-    #[serde(rename = "t", skip_serializing_if = "Option::is_none")]
-    pub requests_to_track: Option<usize>,
+    #[serde(rename = "t")]
+    pub requests_to_track: usize,
     #[serde(rename = "s")]
     pub status_code: u16,
     #[serde(rename = "b", skip_serializing_if = "Option::is_none")]
@@ -22,7 +22,9 @@ pub struct AutoResponder {
 impl AutoResponder {
     /// Checks whether responder is semantically valid.
     pub fn is_valid(&self) -> bool {
-        !self.name.is_empty() && (100..=999).contains(&self.status_code)
+        !self.name.is_empty()
+            && (100..=999).contains(&self.status_code)
+            && (0..=100).contains(&self.requests_to_track)
     }
 }
 
@@ -37,7 +39,7 @@ mod tests {
         assert_json_snapshot!(AutoResponder {
             name: "some-name".to_string(),
             method: AutoResponderMethod::Post,
-            requests_to_track: None,
+            requests_to_track: 10,
             status_code: 123,
             body: None,
             headers: None,
@@ -46,6 +48,7 @@ mod tests {
         {
           "n": "some-name",
           "m": "p",
+          "t": 10,
           "s": 123
         }
         "###);
@@ -53,7 +56,7 @@ mod tests {
         assert_json_snapshot!(AutoResponder {
             name: "some-name".to_string(),
             method: AutoResponderMethod::Post,
-             requests_to_track: Some(10),
+            requests_to_track: 10,
             status_code: 123,
             body: Some("body".to_string()),
             headers: Some(vec![("key".to_string(), "value".to_string())]),
@@ -82,12 +85,12 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<AutoResponder>(
-                &json!({ "n": "some-name", "m": "p", "s": 123 }).to_string()
+                &json!({ "n": "some-name", "m": "p", "t": 10, "s": 123 }).to_string()
             )?,
             AutoResponder {
                 name: "some-name".to_string(),
                 method: AutoResponderMethod::Post,
-                requests_to_track: None,
+                requests_to_track: 10,
                 status_code: 123,
                 body: None,
                 headers: None,
@@ -102,7 +105,7 @@ mod tests {
             AutoResponder {
                 name: "some-name".to_string(),
                 method: AutoResponderMethod::Post,
-                requests_to_track: Some(10),
+                requests_to_track: 10,
                 status_code: 123,
                 body: Some("body".to_string()),
                 headers: Some(vec![("key".to_string(), "value".to_string())]),
@@ -120,7 +123,7 @@ mod tests {
                 AutoResponder {
                     name: name.to_string(),
                     method: AutoResponderMethod::Post,
-                    requests_to_track: None,
+                    requests_to_track: 10,
                     status_code: 123,
                     body: None,
                     headers: None,
@@ -140,7 +143,25 @@ mod tests {
                 AutoResponder {
                     name: "some-name".to_string(),
                     method,
-                    requests_to_track: None,
+                    requests_to_track: 10,
+                    status_code: 123,
+                    body: None,
+                    headers: None,
+                    delay: None,
+                }
+                .is_valid(),
+                is_valid
+            );
+        }
+
+        for (requests_to_track, is_valid) in
+            [(0, true), (1, true), (10, true), (100, true), (101, false)]
+        {
+            assert_eq!(
+                AutoResponder {
+                    name: "some-name".to_string(),
+                    method: AutoResponderMethod::Post,
+                    requests_to_track,
                     status_code: 123,
                     body: None,
                     headers: None,
@@ -166,7 +187,7 @@ mod tests {
                 AutoResponder {
                     name: "some-name".to_string(),
                     method: AutoResponderMethod::Post,
-                    requests_to_track: None,
+                    requests_to_track: 10,
                     status_code,
                     body: None,
                     headers: None,
@@ -180,7 +201,7 @@ mod tests {
         assert!(AutoResponder {
             name: "some-name".to_string(),
             method: AutoResponderMethod::Any,
-            requests_to_track: Some(10),
+            requests_to_track: 10,
             status_code: 123,
             body: Some("body".to_string()),
             headers: Some(vec![("key".to_string(), "value".to_string())]),
