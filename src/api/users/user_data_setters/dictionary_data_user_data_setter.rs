@@ -13,7 +13,7 @@ impl DictionaryDataUserDataSetter {
         let mut existing_value: BTreeMap<_, _> = data_setter
             .get(data_key)
             .await
-            .with_context(|| format!("Cannot retrieve stored '{}' data", data_key))?
+            .with_context(|| format!("Cannot retrieve stored '{data_key}' data"))?
             .unwrap_or_default();
 
         for (name, entry) in data_value {

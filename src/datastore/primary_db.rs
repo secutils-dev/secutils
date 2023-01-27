@@ -169,7 +169,7 @@ WHERE user_id = ?1 AND data_key = ?2
         .await?
         .map(|raw_user_data| {
             serde_json::from_slice::<R>(&raw_user_data.data_value)
-                .with_context(|| format!("Cannot deserialize user data ({}).", user_data_key))
+                .with_context(|| format!("Cannot deserialize user data ({user_data_key})."))
         })
         .transpose()
     }
@@ -182,7 +182,7 @@ WHERE user_id = ?1 AND data_key = ?2
         data_value: R,
     ) -> anyhow::Result<()> {
         let user_data_value = serde_json::ser::to_vec(&data_value)
-            .with_context(|| format!("Failed to serialize user data ({})", user_data_key))?;
+            .with_context(|| format!("Failed to serialize user data ({user_data_key})."))?;
 
         let mut conn = self.pool.acquire().await?;
         query!(

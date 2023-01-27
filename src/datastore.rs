@@ -37,7 +37,7 @@ impl Datastore {
                             root_data_path.as_ref()
                         )
                     })
-                    .map(|db_dir| format!("sqlite:{}/primary.db?mode=rwc", db_dir))
+                    .map(|db_dir| format!("sqlite:{db_dir}/primary.db?mode=rwc"))
             })
             .await?,
         })
