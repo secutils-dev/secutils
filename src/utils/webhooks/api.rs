@@ -42,12 +42,7 @@ impl<'a> AutoRespondersApi<'a> {
         auto_responder: &AutoResponder,
         request: AutoResponderRequest<'_>,
     ) -> anyhow::Result<()> {
-        let requests_data_key = format!(
-            "{}__{}",
-            UserDataType::AutoResponders.get_data_key(),
-            auto_responder.name
-        );
-
+        let requests_data_key = AutoResponder::associated_data_key(&auto_responder.name)?;
         let mut requests = self
             .primary_db
             .get_user_data::<VecDeque<AutoResponderRequest>>(user_id, &requests_data_key)
@@ -70,15 +65,12 @@ impl<'a> AutoRespondersApi<'a> {
         user_id: UserId,
         auto_responder: &AutoResponder,
     ) -> anyhow::Result<Vec<AutoResponderRequest<'static>>> {
-        let requests_data_key = format!(
-            "{}__{}",
-            UserDataType::AutoResponders.get_data_key(),
-            auto_responder.name
-        );
-
         Ok(self
             .primary_db
-            .get_user_data::<VecDeque<AutoResponderRequest>>(user_id, &requests_data_key)
+            .get_user_data::<VecDeque<AutoResponderRequest>>(
+                user_id,
+                &AutoResponder::associated_data_key(&auto_responder.name)?,
+            )
             .await?
             .unwrap_or_default()
             .into())

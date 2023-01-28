@@ -293,11 +293,24 @@ impl<'a> UsersApi<'a> {
             &serialized_data_value,
         )
         .with_context(|| "Cannot deserialize new autoresponders data".to_string())?;
-        for auto_responder in auto_responders.values().flat_map(|value| value.iter()) {
-            if !auto_responder.is_valid() {
-                bail!("Responder is not valid: {:?}", auto_responder);
+
+        for (auto_responder_name, auto_responder) in auto_responders.iter() {
+            match auto_responder {
+                Some(auto_responder) if !auto_responder.is_valid() => {
+                    bail!("Responder `{auto_responder_name}` is not valid: {auto_responder:?}");
+                }
+                Some(auto_responder) => {
+                    log::debug!("Upserting `{auto_responder_name}` responder: {auto_responder:?}");
+                }
+                None => {
+                    log::debug!("Removing `{auto_responder_name}` responder and its requests.");
+                    user_data_setter
+                        .remove(&AutoResponder::associated_data_key(auto_responder_name)?)
+                        .await?;
+                }
             }
         }
+
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
             UserDataType::AutoResponders.get_data_key(),
@@ -369,5 +382,197 @@ impl<'a> UsersApi<'a> {
         let mut bytes = [0u8; ACTIVATION_CODE_LENGTH_BYTES];
         OsRng.fill_bytes(&mut bytes);
         bytes.encode_hex()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        api::{EmailsApi, UsersApi},
+        config::Config,
+        datastore::PrimaryDb,
+        tests::MockUserBuilder,
+        users::{User, UserDataType, UserId},
+        utils::{AutoResponder, AutoResponderMethod, AutoResponderRequest},
+    };
+    use std::{borrow::Cow, collections::BTreeMap};
+    use time::OffsetDateTime;
+
+    fn create_mock_user() -> User {
+        MockUserBuilder::new(
+            UserId(1),
+            "dev@secutils.dev",
+            "dev-handle",
+            "hash",
+            OffsetDateTime::now_utc(),
+        )
+        .build()
+    }
+
+    fn create_mock_config() -> Config {
+        Config {
+            http_port: 1234,
+            smtp: None,
+        }
+    }
+
+    async fn initialize_mock_db(user: &User) -> anyhow::Result<PrimaryDb> {
+        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        db.upsert_user(user).await.map(|_| db)
+    }
+
+    #[actix_rt::test]
+    async fn can_update_auto_responders() -> anyhow::Result<()> {
+        let mock_config = create_mock_config();
+        let mock_user = create_mock_user();
+        let mock_db = initialize_mock_db(&mock_user).await?;
+        let api = UsersApi::new(&mock_db, EmailsApi::new(&mock_config));
+
+        let auto_responder_one = AutoResponder {
+            name: "name-one".to_string(),
+            method: AutoResponderMethod::Any,
+            requests_to_track: 3,
+            status_code: 200,
+            body: None,
+            headers: None,
+            delay: None,
+        };
+        let auto_responder_two = AutoResponder {
+            name: "name-two".to_string(),
+            method: AutoResponderMethod::Any,
+            requests_to_track: 3,
+            status_code: 200,
+            body: None,
+            headers: None,
+            delay: None,
+        };
+        let auto_responder_two_new = AutoResponder {
+            name: "name-two".to_string(),
+            method: AutoResponderMethod::Post,
+            requests_to_track: 10,
+            status_code: 200,
+            body: None,
+            headers: None,
+            delay: None,
+        };
+
+        // Insert auto responders data.
+        api.set_data(
+            mock_user.id,
+            UserDataType::AutoResponders,
+            serde_json::to_vec(
+                &[
+                    (&auto_responder_one.name, auto_responder_one.clone()),
+                    (&auto_responder_two.name, auto_responder_two.clone()),
+                ]
+                .into_iter()
+                .collect::<BTreeMap<_, _>>(),
+            )?,
+        )
+        .await?;
+
+        let request_one = AutoResponderRequest {
+            // January 1, 2000 11:00:00
+            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
+            client_address: Some("127.0.0.1".parse()?),
+            method: Cow::Borrowed("GET"),
+            headers: Some(vec![(Cow::Borrowed("header"), Cow::Borrowed(&[1, 2, 3]))]),
+            body: Some(Cow::Borrowed(&[4, 5, 6])),
+        };
+        let request_two = AutoResponderRequest {
+            // January 1, 2000 11:00:00
+            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
+            client_address: Some("127.0.0.2".parse()?),
+            method: Cow::Borrowed("POST"),
+            headers: Some(vec![(Cow::Borrowed("header"), Cow::Borrowed(&[1, 2, 3]))]),
+            body: Some(Cow::Borrowed(&[4, 5, 6])),
+        };
+
+        // Insert auto responder requests.
+        mock_db
+            .upsert_user_data(
+                mock_user.id,
+                &AutoResponder::associated_data_key(&auto_responder_one.name)?,
+                vec![request_one.clone()],
+            )
+            .await?;
+        mock_db
+            .upsert_user_data(
+                mock_user.id,
+                &AutoResponder::associated_data_key(&auto_responder_two.name)?,
+                vec![request_two.clone()],
+            )
+            .await?;
+
+        // Verify that requests were inserted.
+        assert_eq!(
+            mock_db
+                .get_user_data(
+                    mock_user.id,
+                    &AutoResponder::associated_data_key(&auto_responder_one.name)?
+                )
+                .await?,
+            Some(vec![request_one])
+        );
+        assert_eq!(
+            mock_db
+                .get_user_data(
+                    mock_user.id,
+                    &AutoResponder::associated_data_key(&auto_responder_two.name)?
+                )
+                .await?,
+            Some(vec![request_two.clone()])
+        );
+
+        // Remove one auto responder and update another.
+        api.set_data(
+            mock_user.id,
+            UserDataType::AutoResponders,
+            serde_json::to_vec(
+                &[
+                    (&auto_responder_one.name, None),
+                    (
+                        &auto_responder_two.name,
+                        Some(auto_responder_two_new.clone()),
+                    ),
+                ]
+                .into_iter()
+                .collect::<BTreeMap<_, _>>(),
+            )?,
+        )
+        .await?;
+
+        // Verify that auto responders were correctly updated.
+        assert_eq!(
+            api.get_data(mock_user.id, UserDataType::AutoResponders)
+                .await?,
+            Some(
+                [(auto_responder_two.name, auto_responder_two_new.clone())]
+                    .into_iter()
+                    .collect::<BTreeMap<_, _>>()
+            )
+        );
+
+        // Verify that requests were updated.
+        assert_eq!(
+            mock_db
+                .get_user_data::<Vec<AutoResponderRequest>>(
+                    mock_user.id,
+                    &AutoResponder::associated_data_key(&auto_responder_one.name)?
+                )
+                .await?,
+            None
+        );
+        assert_eq!(
+            mock_db
+                .get_user_data(
+                    mock_user.id,
+                    &AutoResponder::associated_data_key(&auto_responder_two_new.name)?
+                )
+                .await?,
+            Some(vec![request_two])
+        );
+
+        Ok(())
     }
 }
