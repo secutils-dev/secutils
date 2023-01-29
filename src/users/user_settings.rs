@@ -6,10 +6,26 @@ struct KnownUserSettingDescriptor {
     setting_value_validator: fn(&serde_json::Value) -> bool,
 }
 
-const KNOWN_USER_SETTINGS: [KnownUserSettingDescriptor; 3] = [
+const KNOWN_USER_SETTINGS: [KnownUserSettingDescriptor; 4] = [
     KnownUserSettingDescriptor {
         setting_key: "common.showOnlyFavorites",
         setting_value_validator: |value| value.is_boolean(),
+    },
+    KnownUserSettingDescriptor {
+        setting_key: "common.favorites",
+        setting_value_validator: |value| {
+            for favorite in value.as_array().iter().flat_map(|value| value.iter()) {
+                let is_valid_string = favorite
+                    .as_str()
+                    .map(|favorite| !favorite.is_empty())
+                    .unwrap_or_default();
+                if !is_valid_string {
+                    return false;
+                }
+            }
+
+            value.is_array()
+        },
     },
     KnownUserSettingDescriptor {
         setting_key: "common.uiTheme",
@@ -75,7 +91,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     #[test]
-    fn should_properly_validate_values() {
+    fn should_properly_validate_common_ui_theme() {
         let user_settings =
             UserSettingsSetter([("common.uiTheme".to_string(), None)].into_iter().collect());
         assert!(user_settings.is_valid());
@@ -110,7 +126,55 @@ mod tests {
     }
 
     #[test]
-    fn should_properly_validate_common_ui_theme() {
+    fn should_properly_validate_common_favorites() {
+        let user_settings = UserSettingsSetter(
+            [("common.favorites".to_string(), None)]
+                .into_iter()
+                .collect(),
+        );
+        assert!(user_settings.is_valid());
+
+        let user_settings = UserSettingsSetter(
+            [("common.favorites".to_string(), Some(json!(["one", "two"])))]
+                .into_iter()
+                .collect(),
+        );
+        assert!(user_settings.is_valid());
+
+        let user_settings = UserSettingsSetter(
+            [("common.favorites".to_string(), Some(json!([])))]
+                .into_iter()
+                .collect(),
+        );
+        assert!(user_settings.is_valid());
+
+        let user_settings = UserSettingsSetter(
+            [("common.favorites".to_string(), Some(json!(["one", ""])))]
+                .into_iter()
+                .collect(),
+        );
+        assert!(!user_settings.is_valid());
+
+        let user_settings = UserSettingsSetter(
+            [("common.favorites".to_string(), Some(json!(["one", 2])))]
+                .into_iter()
+                .collect(),
+        );
+        assert!(!user_settings.is_valid());
+
+        let user_settings = UserSettingsSetter(
+            [(
+                "common.favorites".to_string(),
+                Some(json!({ "one": "two" })),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        assert!(!user_settings.is_valid());
+    }
+
+    #[test]
+    fn should_properly_validate_certificates_warning() {
         let user_settings = UserSettingsSetter(
             [("certificates.doNotShowSelfSignedWarning".to_string(), None)]
                 .into_iter()
