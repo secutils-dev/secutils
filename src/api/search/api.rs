@@ -18,9 +18,8 @@ impl<'a> SearchApi<'a> {
     }
 
     /// Search using the specified query.
-    pub fn search<Q: AsRef<str>>(&self, query: Q) -> anyhow::Result<Vec<SearchItem>> {
-        self.search_index
-            .search(SearchFilter::default().with_user_handle(query.as_ref()))
+    pub fn search(&self, filter: SearchFilter<'_>) -> anyhow::Result<Vec<SearchItem>> {
+        self.search_index.search(filter)
     }
 
     /// Adds or updates a search item.

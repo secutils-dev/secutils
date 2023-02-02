@@ -4,5 +4,5 @@ Accept: application/json
 Content-Type: application/json
 
 {
-  "query": "handle"
+  "query": "responder"
 }

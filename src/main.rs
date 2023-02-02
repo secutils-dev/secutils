@@ -144,7 +144,7 @@ mod tests {
         search::SearchItem,
         users::{User, UserId},
     };
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
     use tantivy::{schema::Schema, Index, IndexReader};
     use time::OffsetDateTime;
 
@@ -199,20 +199,43 @@ mod tests {
     }
 
     impl MockSearchItemBuilder {
-        pub fn new<I: Into<String>>(id: I, content: I, timestamp: OffsetDateTime) -> Self {
+        pub fn new<I: Into<String>>(
+            id: u64,
+            label: I,
+            category: I,
+            timestamp: OffsetDateTime,
+        ) -> Self {
             Self {
                 item: SearchItem {
-                    id: id.into(),
-                    content: content.into(),
-                    user_handle: None,
+                    id,
+                    label: label.into(),
+                    category: category.into(),
+                    sub_category: None,
+                    keywords: None,
+                    user_id: None,
+                    meta: None,
                     timestamp,
                 },
             }
         }
 
-        pub fn set_user_handle<I: Into<String>>(mut self, user_handle: I) -> Self {
-            self.item.user_handle = Some(user_handle.into());
+        pub fn set_sub_category<I: Into<String>>(mut self, sub_category: I) -> Self {
+            self.item.sub_category = Some(sub_category.into());
+            self
+        }
 
+        pub fn set_keywords<I: Into<String>>(mut self, keywords: I) -> Self {
+            self.item.keywords = Some(keywords.into());
+            self
+        }
+
+        pub fn set_user_id(mut self, user_id: UserId) -> Self {
+            self.item.user_id = Some(user_id);
+            self
+        }
+
+        pub fn set_meta<I: Into<HashMap<String, String>>>(mut self, meta: I) -> Self {
+            self.item.meta = Some(meta.into());
             self
         }
 

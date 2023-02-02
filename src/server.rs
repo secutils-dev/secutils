@@ -26,8 +26,9 @@ pub async fn run(
         builtin_users_initializer(&api, builtin_users)
             .await
             .with_context(|| "Cannot initialize builtin users")?;
-        search_initializer(&api)?;
     }
+
+    search_initializer(&api)?;
 
     let http_server_url = format!("0.0.0.0:{}", config.http_port);
     let state = web::Data::new(AppState::new(config, api));

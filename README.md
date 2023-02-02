@@ -20,6 +20,14 @@ The main goal of this project is to provide application security engineers with 
 
 ***In progress…***
 
+### Re-initialize local database
+
+```shell
+sqlx database drop
+sqlx database create
+sqlx migrate run
+```
+
 ## Documentation
 
 ***In progress…***

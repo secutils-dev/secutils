@@ -1,4 +1,4 @@
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy, Hash)]
 pub struct UserId(pub i64);
 impl UserId {
     pub const fn empty() -> Self {

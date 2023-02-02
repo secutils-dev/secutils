@@ -1,11 +1,13 @@
 mod emails;
 mod search;
 mod users;
+mod utils;
 
 pub use self::{
     emails::{Email, EmailBody, EmailsApi},
     search::SearchApi,
     users::UsersApi,
+    utils::UtilsApi,
 };
 
 use crate::{datastore::Datastore, Config};
@@ -35,6 +37,11 @@ impl Api {
     /// Returns an API to perform application-wide search.
     pub fn search(&self) -> SearchApi {
         SearchApi::new(&self.datastore.search_index)
+    }
+
+    /// Returns an API to retrieve available utils.
+    pub fn utils(&self) -> UtilsApi {
+        UtilsApi::new(&self.datastore.primary_db)
     }
 }
 

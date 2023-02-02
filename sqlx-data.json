@@ -198,6 +198,54 @@
     },
     "query": "\nSELECT data_value\nFROM user_data\nWHERE user_id = ?1 AND data_key = ?2\n                "
   },
+  "b67c74f2a171e42d0cf6134d0dfe79c4435798b58c1ff5675cae789fe941c31e": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int64"
+        },
+        {
+          "name": "handle",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "name",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "keywords",
+          "ordinal": 3,
+          "type_info": "Text"
+        },
+        {
+          "name": "icon",
+          "ordinal": 4,
+          "type_info": "Text"
+        },
+        {
+          "name": "parent_id",
+          "ordinal": 5,
+          "type_info": "Int64"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        true,
+        true
+      ],
+      "parameters": {
+        "Right": 0
+      }
+    },
+    "query": "\nSELECT id, handle, name, keywords, icon, parent_id\nFROM utils\nORDER BY parent_id, id\n            "
+  },
   "c32783f681dd607eb7f1779bedfe20cafcf95f200951af907015c87e03afb9f7": {
     "describe": {
       "columns": [],
