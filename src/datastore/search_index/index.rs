@@ -114,6 +114,14 @@ impl SearchIndex {
         commit_index(&mut index_writer, &self.index_reader)
     }
 
+    /// Removes search item from the `Search` index.
+    pub fn remove(&self, id: u64) -> anyhow::Result<()> {
+        let mut index_writer = self.acquire_index_writer()?;
+        index_writer.delete_term(Term::from_field_u64(self.schema_fields.id, id));
+
+        commit_index(&mut index_writer, &self.index_reader)
+    }
+
     fn acquire_index_writer(&self) -> anyhow::Result<IndexWriter> {
         loop {
             match self.index.writer(3_000_000) {
@@ -149,6 +157,7 @@ impl SearchIndex {
             let mut label: Option<String> = None;
             let mut category: Option<String> = None;
             let mut sub_category: Option<String> = None;
+            let mut keywords: Option<String> = None;
             let mut meta: Option<HashMap<String, String>> = None;
             let mut timestamp: Option<OffsetDateTime> = None;
             for field_value in doc {
@@ -174,6 +183,10 @@ impl SearchIndex {
                     if let Value::Str(field_value_content) = field_value.value {
                         sub_category.replace(field_value_content);
                     }
+                } else if field_value.field == self.schema_fields.keywords {
+                    if let Value::Str(field_value_content) = field_value.value {
+                        keywords.replace(field_value_content);
+                    }
                 } else if field_value.field == self.schema_fields.meta {
                     if let Value::Bytes(field_value_content) = field_value.value {
                         meta.replace(serde_json::from_slice::<HashMap<_, _>>(
@@ -195,7 +208,7 @@ impl SearchIndex {
                         id,
                         user_id,
                         label,
-                        keywords: None,
+                        keywords,
                         category,
                         sub_category,
                         meta,
@@ -270,7 +283,9 @@ mod tests {
             SearchItem {
                 id: 2,
                 label: "other-label",
-                keywords: None,
+                keywords: Some(
+                    "some keywords",
+                ),
                 category: "other-category",
                 sub_category: Some(
                     "some-handle",
@@ -413,6 +428,42 @@ mod tests {
             index.search(SearchFilter::default().with_user_id(UserId(5)))?,
             vec![public_item]
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn can_remove() -> anyhow::Result<()> {
+        let index = SearchIndex::open(open_index)?;
+        let item_1 = MockSearchItemBuilder::new(
+            1,
+            "some-label",
+            "some-category",
+            // January 1, 2000 11:00:00
+            OffsetDateTime::from_unix_timestamp(946720800)?,
+        )
+        .build();
+        let item_2 = MockSearchItemBuilder::new(
+            2,
+            "other-label",
+            "other-category",
+            // January 1, 2010 11:00:00
+            OffsetDateTime::from_unix_timestamp(1262340000)?,
+        )
+        .build();
+
+        index.upsert(&item_1)?;
+        index.upsert(&item_2)?;
+
+        let mut items = index.search(SearchFilter::default())?;
+        items.sort_by(|item_a, item_b| item_a.id.cmp(&item_b.id));
+        assert_eq!(items, vec![item_1.clone(), item_2.clone()]);
+
+        index.remove(item_1.id)?;
+        assert_eq!(index.search(SearchFilter::default())?, vec![item_2.clone()]);
+
+        index.remove(item_2.id)?;
+        assert_eq!(index.search(SearchFilter::default())?, vec![]);
 
         Ok(())
     }

@@ -18,12 +18,17 @@ impl<'a> SearchApi<'a> {
     }
 
     /// Search using the specified query.
-    pub fn search(&self, filter: SearchFilter<'_>) -> anyhow::Result<Vec<SearchItem>> {
+    pub fn search(&self, filter: SearchFilter<'_, '_>) -> anyhow::Result<Vec<SearchItem>> {
         self.search_index.search(filter)
     }
 
     /// Adds or updates a search item.
     pub fn upsert<I: AsRef<SearchItem>>(&self, item: I) -> anyhow::Result<()> {
         self.search_index.upsert(item)
+    }
+
+    /// Removes a search item with the specific id.
+    pub fn remove(&self, id: u64) -> anyhow::Result<()> {
+        self.search_index.remove(id)
     }
 }

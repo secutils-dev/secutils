@@ -20,7 +20,14 @@ impl SearchIndexSchemaFields {
                 id: schema_builder.add_u64_field("id", FAST | INDEXED | STORED),
                 user_id: schema_builder.add_i64_field("user_id", FAST | INDEXED | STORED),
                 label: schema_builder.add_text_field("label", TEXT | STORED),
-                keywords: schema_builder.add_text_field("keywords", TEXT),
+                keywords: schema_builder.add_text_field(
+                    "keywords",
+                    TextOptions::default().set_stored().set_indexing_options(
+                        TextFieldIndexing::default()
+                            .set_tokenizer("en_stem")
+                            .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+                    ),
+                ),
                 category: schema_builder.add_text_field(
                     "category",
                     TextOptions::default()

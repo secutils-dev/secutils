@@ -6,12 +6,13 @@ use tantivy::{
 };
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct SearchFilter<'q> {
+pub struct SearchFilter<'q, 'c> {
     user_id: Option<UserId>,
     query: Option<&'q str>,
+    category: Option<&'c str>,
 }
 
-impl<'q> SearchFilter<'q> {
+impl<'q, 'c> SearchFilter<'q, 'c> {
     pub fn with_user_id(self, user_id: UserId) -> Self {
         Self {
             user_id: Some(user_id),
@@ -22,6 +23,13 @@ impl<'q> SearchFilter<'q> {
     pub fn with_query(self, query: &'q str) -> Self {
         Self {
             query: Some(query),
+            ..self
+        }
+    }
+
+    pub fn with_category(self, category: &'c str) -> Self {
+        Self {
+            category: Some(category),
             ..self
         }
     }
@@ -51,23 +59,32 @@ impl<'q> SearchFilter<'q> {
             public_query
         };
 
-        let keywords_query: Option<Box<dyn Query>> = if let Some(query) = self.query {
-            Some(
+        let keywords_query = self
+            .query
+            .map(|query| {
                 QueryParser::for_index(index, vec![schema_fields.label, schema_fields.keywords])
-                    .parse_query(query)?,
-            )
-        } else {
-            None
-        };
+                    .parse_query(query)
+            })
+            .transpose()?;
+
+        let category_query = self.category.map(|category| {
+            Box::new(TermQuery::new(
+                Term::from_field_text(schema_fields.category, category),
+                IndexRecordOption::Basic,
+            )) as Box<dyn Query>
+        });
 
         // Return either only public items or public items + items for the specific user.
-        Ok(match keywords_query {
-            Some(keywords_query) => Box::new(BooleanQuery::new(vec![
-                (Occur::Must, user_id_query),
-                (Occur::Must, keywords_query),
-            ])),
-            None => user_id_query,
-        })
+        if keywords_query.is_some() || category_query.is_some() {
+            Ok(Box::new(BooleanQuery::new(
+                [Some(user_id_query), keywords_query, category_query]
+                    .into_iter()
+                    .filter_map(|query| Some((Occur::Must, query?)))
+                    .collect(),
+            )))
+        } else {
+            Ok(user_id_query)
+        }
     }
 }
 
@@ -88,7 +105,8 @@ mod tests {
             default_filter,
             SearchFilter {
                 user_id: None,
-                query: None
+                query: None,
+                category: None
             }
         );
 
@@ -113,7 +131,8 @@ mod tests {
             filter,
             SearchFilter {
                 user_id: Some(UserId(1)),
-                query: None
+                query: None,
+                category: None
             }
         );
 
@@ -149,7 +168,8 @@ mod tests {
             filter,
             SearchFilter {
                 user_id: None,
-                query: Some("Some-Query")
+                query: Some("Some-Query"),
+                category: None
             }
         );
 
@@ -200,7 +220,7 @@ mod tests {
                                             ),
                                             (
                                                 1,
-                                                Term(type=Str, field=3, "query"),
+                                                Term(type=Str, field=3, "queri"),
                                             ),
                                         ],
                                         slop: 0,
@@ -208,6 +228,43 @@ mod tests {
                                 ),
                             ],
                         },
+                    ),
+                ],
+            },
+        )
+        "###
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn filter_with_category() -> anyhow::Result<()> {
+        let (index, _) = open_index(SearchIndexSchemaFields::build().1)?;
+        let filter = SearchFilter::default().with_category("Some-Category");
+        assert_eq!(
+            filter,
+            SearchFilter {
+                user_id: None,
+                query: None,
+                category: Some("Some-Category")
+            }
+        );
+
+        let (schema_fields, _) = SearchIndexSchemaFields::build();
+        assert_debug_snapshot!(
+            filter.into_query(&index, &schema_fields),
+            @r###"
+        Ok(
+            BooleanQuery {
+                subqueries: [
+                    (
+                        Must,
+                        TermQuery(Term(type=I64, field=1, -1)),
+                    ),
+                    (
+                        Must,
+                        TermQuery(Term(type=Str, field=4, "Some-Category")),
                     ),
                 ],
             },
@@ -228,7 +285,8 @@ mod tests {
             filter,
             SearchFilter {
                 user_id: Some(UserId(1)),
-                query: Some("Some-Query")
+                query: Some("Some-Query"),
+                category: None
             }
         );
 
@@ -290,7 +348,7 @@ mod tests {
                                             ),
                                             (
                                                 1,
-                                                Term(type=Str, field=3, "query"),
+                                                Term(type=Str, field=3, "queri"),
                                             ),
                                         ],
                                         slop: 0,
@@ -298,6 +356,90 @@ mod tests {
                                 ),
                             ],
                         },
+                    ),
+                ],
+            },
+        )
+        "###
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn filter_with_category_and_query() -> anyhow::Result<()> {
+        let (index, _) = open_index(SearchIndexSchemaFields::build().1)?;
+        let filter = SearchFilter::default()
+            .with_category("Some-Category")
+            .with_query("Some-Query");
+        assert_eq!(
+            filter,
+            SearchFilter {
+                user_id: None,
+                query: Some("Some-Query"),
+                category: Some("Some-Category")
+            }
+        );
+
+        let (schema_fields, _) = SearchIndexSchemaFields::build();
+        assert_debug_snapshot!(
+            filter.into_query(&index, &schema_fields),
+            @r###"
+        Ok(
+            BooleanQuery {
+                subqueries: [
+                    (
+                        Must,
+                        TermQuery(Term(type=I64, field=1, -1)),
+                    ),
+                    (
+                        Must,
+                        BooleanQuery {
+                            subqueries: [
+                                (
+                                    Should,
+                                    PhraseQuery {
+                                        field: Field(
+                                            2,
+                                        ),
+                                        phrase_terms: [
+                                            (
+                                                0,
+                                                Term(type=Str, field=2, "some"),
+                                            ),
+                                            (
+                                                1,
+                                                Term(type=Str, field=2, "query"),
+                                            ),
+                                        ],
+                                        slop: 0,
+                                    },
+                                ),
+                                (
+                                    Should,
+                                    PhraseQuery {
+                                        field: Field(
+                                            3,
+                                        ),
+                                        phrase_terms: [
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some"),
+                                            ),
+                                            (
+                                                1,
+                                                Term(type=Str, field=3, "queri"),
+                                            ),
+                                        ],
+                                        slop: 0,
+                                    },
+                                ),
+                            ],
+                        },
+                    ),
+                    (
+                        Must,
+                        TermQuery(Term(type=Str, field=4, "Some-Category")),
                     ),
                 ],
             },

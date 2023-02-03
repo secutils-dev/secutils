@@ -5,7 +5,8 @@ mod status;
 
 use crate::{
     api::Api, config::Config, datastore::Datastore, file_cache::FileCache,
-    search::search_initializer, server::app_state::AppState, users::builtin_users_initializer,
+    search::search_index_initializer, server::app_state::AppState,
+    users::builtin_users_initializer,
 };
 use actix_identity::IdentityMiddleware;
 use actix_session::{storage::CookieSessionStore, SessionMiddleware};
@@ -28,7 +29,7 @@ pub async fn run(
             .with_context(|| "Cannot initialize builtin users")?;
     }
 
-    search_initializer(&api)?;
+    search_index_initializer(&api).await?;
 
     let http_server_url = format!("0.0.0.0:{}", config.http_port);
     let state = web::Data::new(AppState::new(config, api));
