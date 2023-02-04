@@ -7,7 +7,6 @@ pub(super) struct RawUtil {
     pub handle: String,
     pub name: String,
     pub keywords: String,
-    pub icon: Option<String>,
     pub parent_id: Option<i64>,
 }
 
@@ -30,7 +29,6 @@ impl TryFrom<RawUtil> for Util {
             handle: raw_util.handle,
             name: raw_util.name,
             keywords: raw_util.keywords,
-            icon: raw_util.icon,
             utils: None,
         })
     }
@@ -49,7 +47,6 @@ mod tests {
                 handle: "some-handle".to_string(),
                 name: "some-name".to_string(),
                 keywords: "some-keywords".to_string(),
-                icon: None,
                 parent_id: None,
             })?,
             @r###"
@@ -58,7 +55,6 @@ mod tests {
             handle: "some-handle",
             name: "some-name",
             keywords: "some-keywords",
-            icon: None,
             utils: None,
         }
         "###
@@ -75,7 +71,6 @@ mod tests {
                 handle: "some-handle".to_string(),
                 name: "some-name".to_string(),
                 keywords: "some-keywords".to_string(),
-                icon: Some("icon".to_string()),
                 parent_id: Some(2),
             })?,
             @r###"
@@ -84,9 +79,6 @@ mod tests {
             handle: "some-handle",
             name: "some-name",
             keywords: "some-keywords",
-            icon: Some(
-                "icon",
-            ),
             utils: None,
         }
         "###
@@ -102,7 +94,6 @@ mod tests {
             handle: "some-handle".to_string(),
             name: "some-name".to_string(),
             keywords: "some-keywords".to_string(),
-            icon: None,
             parent_id: None,
         })
         .is_err());
@@ -112,7 +103,6 @@ mod tests {
             handle: "".to_string(),
             name: "some-name".to_string(),
             keywords: "some-keywords".to_string(),
-            icon: None,
             parent_id: None,
         })
         .is_err());
@@ -122,7 +112,6 @@ mod tests {
             handle: "some-handle".to_string(),
             name: "".to_string(),
             keywords: "some-keywords".to_string(),
-            icon: None,
             parent_id: None,
         })
         .is_err());
@@ -132,7 +121,6 @@ mod tests {
             handle: "some-handle".to_string(),
             name: "some-name".to_string(),
             keywords: "some-keywords".to_string(),
-            icon: None,
             parent_id: Some(0),
         })
         .is_err());

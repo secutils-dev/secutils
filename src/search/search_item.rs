@@ -13,10 +13,10 @@ pub struct SearchItem {
     pub id: u64,
     #[serde(rename = "l")]
     pub label: String,
-    #[serde(skip_serializing)]
-    pub keywords: Option<String>,
     #[serde(rename = "c")]
     pub category: String,
+    #[serde(skip_serializing)]
+    pub keywords: Option<String>,
     #[serde(rename = "s", skip_serializing_if = "Option::is_none")]
     pub sub_category: Option<String>,
     #[serde(skip_serializing)]
@@ -66,8 +66,8 @@ mod tests {
         let item_without_optional = SearchItem {
             id: 1,
             label: "some-label".to_string(),
-            keywords: None,
             category: "some-category".to_string(),
+            keywords: None,
             sub_category: None,
             user_id: None,
             meta: None,

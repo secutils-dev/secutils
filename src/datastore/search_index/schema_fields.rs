@@ -12,6 +12,13 @@ pub struct SearchIndexSchemaFields {
     pub timestamp: Field,
 }
 
+fn ids_field_option() -> TextOptions {
+    TextOptions::default()
+        .set_fast()
+        .set_stored()
+        .set_indexing_options(TextFieldIndexing::default().set_tokenizer("ids"))
+}
+
 impl SearchIndexSchemaFields {
     pub fn build() -> (Self, Schema) {
         let mut schema_builder = Schema::builder();
@@ -28,20 +35,8 @@ impl SearchIndexSchemaFields {
                             .set_index_option(IndexRecordOption::WithFreqsAndPositions),
                     ),
                 ),
-                category: schema_builder.add_text_field(
-                    "category",
-                    TextOptions::default()
-                        .set_fast()
-                        .set_stored()
-                        .set_indexing_options(TextFieldIndexing::default().set_tokenizer("ids")),
-                ),
-                sub_category: schema_builder.add_text_field(
-                    "sub_category",
-                    TextOptions::default()
-                        .set_fast()
-                        .set_stored()
-                        .set_indexing_options(TextFieldIndexing::default().set_tokenizer("ids")),
-                ),
+                category: schema_builder.add_text_field("category", ids_field_option()),
+                sub_category: schema_builder.add_text_field("sub_category", ids_field_option()),
                 meta: schema_builder.add_bytes_field("meta", STORED),
                 timestamp: schema_builder.add_date_field("timestamp", FAST | STORED),
             },

@@ -269,8 +269,8 @@ mod tests {
             SearchItem {
                 id: 1,
                 label: "some-label",
-                keywords: None,
                 category: "some-category",
+                keywords: None,
                 sub_category: None,
                 user_id: None,
                 meta: None,
@@ -283,10 +283,10 @@ mod tests {
             SearchItem {
                 id: 2,
                 label: "other-label",
+                category: "other-category",
                 keywords: Some(
                     "some keywords",
                 ),
-                category: "other-category",
                 sub_category: Some(
                     "some-handle",
                 ),
@@ -328,8 +328,8 @@ mod tests {
             SearchItem {
                 id: 1,
                 label: "some-label",
-                keywords: None,
                 category: "some-category",
+                keywords: None,
                 sub_category: None,
                 user_id: None,
                 meta: None,
@@ -354,8 +354,8 @@ mod tests {
             SearchItem {
                 id: 1,
                 label: "other-label",
-                keywords: None,
                 category: "other-category",
+                keywords: None,
                 sub_category: Some(
                     "Some-Sub-Category",
                 ),

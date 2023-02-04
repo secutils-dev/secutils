@@ -231,7 +231,7 @@ WHERE user_id = ?1 AND data_key = ?2
         let mut root_utils = query_as!(
             RawUtil,
             r#"
-SELECT id, handle, name, keywords, icon, parent_id
+SELECT id, handle, name, keywords, parent_id
 FROM utils
 ORDER BY parent_id, id
             "#

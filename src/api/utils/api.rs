@@ -36,9 +36,6 @@ mod tests {
                 handle: "home",
                 name: "Home",
                 keywords: "home start",
-                icon: Some(
-                    "home",
-                ),
                 utils: Some(
                     [
                         Util {
@@ -46,7 +43,6 @@ mod tests {
                             handle: "home__getting_started",
                             name: "Getting started",
                             keywords: "getting started",
-                            icon: None,
                             utils: None,
                         },
                         Util {
@@ -54,7 +50,6 @@ mod tests {
                             handle: "home__whats_new",
                             name: "What's new",
                             keywords: "news updates what's new",
-                            icon: None,
                             utils: None,
                         },
                     ],
@@ -65,9 +60,6 @@ mod tests {
                 handle: "webhooks",
                 name: "Webhooks",
                 keywords: "webhooks hooks",
-                icon: Some(
-                    "node",
-                ),
                 utils: Some(
                     [
                         Util {
@@ -75,7 +67,6 @@ mod tests {
                             handle: "webhooks__responders",
                             name: "Responders",
                             keywords: "responders auto-responders respond http endpoint",
-                            icon: None,
                             utils: None,
                         },
                     ],
@@ -86,9 +77,6 @@ mod tests {
                 handle: "certificates",
                 name: "Digital Certificates",
                 keywords: "digital certificates x509 X.509 ssl tls openssl public private key encryption",
-                icon: Some(
-                    "securityApp",
-                ),
                 utils: Some(
                     [
                         Util {
@@ -96,7 +84,6 @@ mod tests {
                             handle: "certificates__self_signed_certificates",
                             name: "Self-signed certificates",
                             keywords: "digital certificates x509 X.509 ssl tls openssl public private key encryption self-signed",
-                            icon: None,
                             utils: None,
                         },
                     ],
@@ -107,9 +94,6 @@ mod tests {
                 handle: "web_security",
                 name: "Web Security",
                 keywords: "web security",
-                icon: Some(
-                    "globe",
-                ),
                 utils: Some(
                     [
                         Util {
@@ -117,7 +101,6 @@ mod tests {
                             handle: "web_security__csp",
                             name: "CSP",
                             keywords: "csp content security policy",
-                            icon: None,
                             utils: Some(
                                 [
                                     Util {
@@ -125,7 +108,6 @@ mod tests {
                                         handle: "web_security__csp__policies",
                                         name: "Policies",
                                         keywords: "csp policies content security",
-                                        icon: None,
                                         utils: None,
                                     },
                                 ],
@@ -139,9 +121,6 @@ mod tests {
                 handle: "web_scrapping",
                 name: "Web Scrapping",
                 keywords: "scrapping web puppeteer crawl spider",
-                icon: Some(
-                    "cut",
-                ),
                 utils: Some(
                     [
                         Util {
@@ -149,7 +128,6 @@ mod tests {
                             handle: "web_scrapping__resources",
                             name: "Resources scrapper",
                             keywords: "web scrapping scrapper resources",
-                            icon: None,
                             utils: None,
                         },
                     ],

@@ -180,25 +180,7 @@
     },
     "query": "\nDELETE FROM users\nWHERE email = ?1\nRETURNING id as \"id!\", email as \"email!\", handle as \"handle!\", password_hash as \"password_hash!\", created as \"created!\", roles, activation_code\n            "
   },
-  "90653060e4d473bd48a0023435b046a8c65c407d1524b41aea999a2d49785dd6": {
-    "describe": {
-      "columns": [
-        {
-          "name": "data_value",
-          "ordinal": 0,
-          "type_info": "Blob"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Right": 2
-      }
-    },
-    "query": "\nSELECT data_value\nFROM user_data\nWHERE user_id = ?1 AND data_key = ?2\n                "
-  },
-  "b67c74f2a171e42d0cf6134d0dfe79c4435798b58c1ff5675cae789fe941c31e": {
+  "83d9e5e755c9f6708f4a2be5d7f52370b37205d29f731689b1235bea43df8c98": {
     "describe": {
       "columns": [
         {
@@ -222,13 +204,8 @@
           "type_info": "Text"
         },
         {
-          "name": "icon",
-          "ordinal": 4,
-          "type_info": "Text"
-        },
-        {
           "name": "parent_id",
-          "ordinal": 5,
+          "ordinal": 4,
           "type_info": "Int64"
         }
       ],
@@ -237,14 +214,31 @@
         false,
         false,
         false,
-        true,
         true
       ],
       "parameters": {
         "Right": 0
       }
     },
-    "query": "\nSELECT id, handle, name, keywords, icon, parent_id\nFROM utils\nORDER BY parent_id, id\n            "
+    "query": "\nSELECT id, handle, name, keywords, parent_id\nFROM utils\nORDER BY parent_id, id\n            "
+  },
+  "90653060e4d473bd48a0023435b046a8c65c407d1524b41aea999a2d49785dd6": {
+    "describe": {
+      "columns": [
+        {
+          "name": "data_value",
+          "ordinal": 0,
+          "type_info": "Blob"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Right": 2
+      }
+    },
+    "query": "\nSELECT data_value\nFROM user_data\nWHERE user_id = ?1 AND data_key = ?2\n                "
   },
   "c32783f681dd607eb7f1779bedfe20cafcf95f200951af907015c87e03afb9f7": {
     "describe": {

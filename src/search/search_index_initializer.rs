@@ -143,13 +143,11 @@ mod tests {
                 handle: "handle-1".to_string(),
                 name: "name-1".to_string(),
                 keywords: "keywords-1".to_string(),
-                icon: None,
                 utils: Some(vec![Util {
                     id: 2,
                     handle: "handle-1-2".to_string(),
                     name: "name-1-2".to_string(),
                     keywords: "keywords-1-2".to_string(),
-                    icon: None,
                     utils: None,
                 }]),
             },
@@ -158,7 +156,6 @@ mod tests {
                 handle: "handle-3".to_string(),
                 name: "name-3".to_string(),
                 keywords: "keywords-3".to_string(),
-                icon: None,
                 utils: None,
             },
         ];
@@ -194,7 +191,6 @@ mod tests {
             handle: "handle-1".to_string(),
             name: "name-1".to_string(),
             keywords: "keywords-1".to_string(),
-            icon: None,
             utils: None,
         };
 
@@ -287,7 +283,6 @@ mod tests {
                     handle: "handle-1".to_string(),
                     name: "name-1".to_string(),
                     keywords: "keywords-1".to_string(),
-                    icon: None,
                     utils: None,
                 },
                 timestamp
