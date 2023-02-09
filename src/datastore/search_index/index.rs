@@ -28,9 +28,13 @@ fn entity_to_document(
     );
 
     doc.add_text(schema_fields.label, &entity.label);
+    doc.add_text(schema_fields.label_ngram, &entity.label.to_lowercase());
     doc.add_text(schema_fields.category, &entity.category);
     if let Some(ref keywords) = entity.keywords {
         doc.add_text(schema_fields.keywords, keywords);
+        for keyword in keywords.split(' ') {
+            doc.add_text(schema_fields.keywords_ngram, keyword.to_lowercase());
+        }
     }
     if let Some(ref sub_category) = entity.sub_category {
         doc.add_text(schema_fields.sub_category, sub_category);

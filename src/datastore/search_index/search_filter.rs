@@ -62,8 +62,11 @@ impl<'q, 'c> SearchFilter<'q, 'c> {
         let keywords_query = self
             .query
             .map(|query| {
-                QueryParser::for_index(index, vec![schema_fields.label, schema_fields.keywords])
-                    .parse_query(query)
+                QueryParser::for_index(
+                    index,
+                    vec![schema_fields.label_ngram, schema_fields.keywords_ngram],
+                )
+                .parse_query(&query.to_lowercase())
             })
             .transpose()?;
 
@@ -192,16 +195,44 @@ mod tests {
                                     Should,
                                     PhraseQuery {
                                         field: Field(
-                                            2,
+                                            3,
                                         ),
                                         phrase_terms: [
                                             (
                                                 0,
-                                                Term(type=Str, field=2, "some"),
+                                                Term(type=Str, field=3, "so"),
                                             ),
                                             (
-                                                1,
-                                                Term(type=Str, field=2, "query"),
+                                                0,
+                                                Term(type=Str, field=3, "som"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-q"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-qu"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-que"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-quer"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-query"),
                                             ),
                                         ],
                                         slop: 0,
@@ -211,16 +242,44 @@ mod tests {
                                     Should,
                                     PhraseQuery {
                                         field: Field(
-                                            3,
+                                            5,
                                         ),
                                         phrase_terms: [
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some"),
+                                                Term(type=Str, field=5, "so"),
                                             ),
                                             (
-                                                1,
-                                                Term(type=Str, field=3, "queri"),
+                                                0,
+                                                Term(type=Str, field=5, "som"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-q"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-qu"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-que"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-quer"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-query"),
                                             ),
                                         ],
                                         slop: 0,
@@ -264,7 +323,7 @@ mod tests {
                     ),
                     (
                         Must,
-                        TermQuery(Term(type=Str, field=4, "Some-Category")),
+                        TermQuery(Term(type=Str, field=6, "Some-Category")),
                     ),
                 ],
             },
@@ -320,16 +379,44 @@ mod tests {
                                     Should,
                                     PhraseQuery {
                                         field: Field(
-                                            2,
+                                            3,
                                         ),
                                         phrase_terms: [
                                             (
                                                 0,
-                                                Term(type=Str, field=2, "some"),
+                                                Term(type=Str, field=3, "so"),
                                             ),
                                             (
-                                                1,
-                                                Term(type=Str, field=2, "query"),
+                                                0,
+                                                Term(type=Str, field=3, "som"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-q"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-qu"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-que"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-quer"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-query"),
                                             ),
                                         ],
                                         slop: 0,
@@ -339,16 +426,44 @@ mod tests {
                                     Should,
                                     PhraseQuery {
                                         field: Field(
-                                            3,
+                                            5,
                                         ),
                                         phrase_terms: [
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some"),
+                                                Term(type=Str, field=5, "so"),
                                             ),
                                             (
-                                                1,
-                                                Term(type=Str, field=3, "queri"),
+                                                0,
+                                                Term(type=Str, field=5, "som"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-q"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-qu"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-que"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-quer"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-query"),
                                             ),
                                         ],
                                         slop: 0,
@@ -400,16 +515,44 @@ mod tests {
                                     Should,
                                     PhraseQuery {
                                         field: Field(
-                                            2,
+                                            3,
                                         ),
                                         phrase_terms: [
                                             (
                                                 0,
-                                                Term(type=Str, field=2, "some"),
+                                                Term(type=Str, field=3, "so"),
                                             ),
                                             (
-                                                1,
-                                                Term(type=Str, field=2, "query"),
+                                                0,
+                                                Term(type=Str, field=3, "som"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-q"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-qu"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-que"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-quer"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=3, "some-query"),
                                             ),
                                         ],
                                         slop: 0,
@@ -419,16 +562,44 @@ mod tests {
                                     Should,
                                     PhraseQuery {
                                         field: Field(
-                                            3,
+                                            5,
                                         ),
                                         phrase_terms: [
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some"),
+                                                Term(type=Str, field=5, "so"),
                                             ),
                                             (
-                                                1,
-                                                Term(type=Str, field=3, "queri"),
+                                                0,
+                                                Term(type=Str, field=5, "som"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-q"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-qu"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-que"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-quer"),
+                                            ),
+                                            (
+                                                0,
+                                                Term(type=Str, field=5, "some-query"),
                                             ),
                                         ],
                                         slop: 0,
@@ -439,7 +610,7 @@ mod tests {
                     ),
                     (
                         Must,
-                        TermQuery(Term(type=Str, field=4, "Some-Category")),
+                        TermQuery(Term(type=Str, field=6, "Some-Category")),
                     ),
                 ],
             },

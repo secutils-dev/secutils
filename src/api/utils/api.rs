@@ -76,14 +76,14 @@ mod tests {
                 id: 6,
                 handle: "certificates",
                 name: "Digital Certificates",
-                keywords: "digital certificates x509 X.509 ssl tls openssl public private key encryption",
+                keywords: "digital certificates x509 X.509 ssl tls openssl public private key encryption pki",
                 utils: Some(
                     [
                         Util {
                             id: 7,
                             handle: "certificates__self_signed_certificates",
                             name: "Self-signed certificates",
-                            keywords: "digital certificates x509 X.509 ssl tls openssl public private key encryption self-signed",
+                            keywords: "digital certificates x509 X.509 ssl tls openssl public private key encryption self-signed pki",
                             utils: None,
                         },
                     ],

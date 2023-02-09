@@ -10,7 +10,7 @@ use std::path::Path;
 use tantivy::{
     directory::MmapDirectory,
     schema::*,
-    tokenizer::{LowerCaser, RawTokenizer, TextAnalyzer},
+    tokenizer::{LowerCaser, NgramTokenizer, RawTokenizer, TextAnalyzer},
     Index, IndexReader, IndexWriter, ReloadPolicy,
 };
 use time::OffsetDateTime;
@@ -68,9 +68,9 @@ pub fn open_index<P: AsRef<Path>>(
 }
 
 pub fn initialize_index(index: Index) -> anyhow::Result<(Index, IndexReader)> {
-    index
-        .tokenizers()
-        .register("ids", TextAnalyzer::from(RawTokenizer).filter(LowerCaser));
+    let tokenizers = index.tokenizers();
+    tokenizers.register("ids", TextAnalyzer::from(RawTokenizer).filter(LowerCaser));
+    tokenizers.register("ngram2_10", NgramTokenizer::prefix_only(2, 10));
 
     let index_reader = index
         .reader_builder()
