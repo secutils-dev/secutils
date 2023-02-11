@@ -34,9 +34,9 @@ reqwest = { version = "0.11.14", default-features = false }
 serde = "1.0.152"
 serde_bytes = "0.11.9"
 serde_derive = "1.0.152"
-serde_json = "1.0.92"
+serde_json = "1.0.93"
 sqlx = "0.6.2"
-tantivy = "0.19.1"
+tantivy = "0.19.2"
 time = "0.3.17"
 zip = "0.6.4"
 
