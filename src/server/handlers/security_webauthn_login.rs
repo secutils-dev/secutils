@@ -35,6 +35,7 @@ use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use anyhow::Context;
 use serde_derive::Deserialize;
 use serde_json::json;
+use time::OffsetDateTime;
 use webauthn_rs::prelude::PublicKeyCredential;
 
 #[derive(Deserialize)]
@@ -99,6 +100,7 @@ pub async fn security_webauthn_login_start(
         .upsert_webauthn_session(&UserWebAuthnSession {
             email: body_params.email.to_string(),
             value: UserWebAuthnSessionValue::AuthenticationState(auth_state),
+            timestamp: OffsetDateTime::now_utc(),
         })
         .await
         .and_then(|_| {

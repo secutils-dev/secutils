@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS user_data
 CREATE TABLE IF NOT EXISTS user_webauthn_sessions
 (
     email           TEXT PRIMARY KEY NOT NULL UNIQUE COLLATE NOCASE,
-    session_value   BLOB NOT NULL
+    session_value   BLOB NOT NULL,
+    timestamp       INTEGER NOT NULL
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS utils

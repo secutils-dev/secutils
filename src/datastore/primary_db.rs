@@ -260,7 +260,7 @@ WHERE user_id = ?1 AND data_key = ?2
         query_as!(
             RawUserWebAuthnSession,
             r#"
-SELECT email, session_value
+SELECT email, session_value, timestamp
 FROM user_webauthn_sessions
 WHERE email = ?1
                 "#,

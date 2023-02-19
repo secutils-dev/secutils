@@ -1,10 +1,12 @@
 use crate::users::UserWebAuthnSession;
 use anyhow::Context;
+use time::OffsetDateTime;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct RawUserWebAuthnSession {
     pub email: String,
     pub session_value: Vec<u8>,
+    pub timestamp: i64,
 }
 
 impl TryFrom<RawUserWebAuthnSession> for UserWebAuthnSession {
@@ -22,6 +24,7 @@ impl TryFrom<RawUserWebAuthnSession> for UserWebAuthnSession {
         Ok(UserWebAuthnSession {
             email: raw_user_webauthn_session.email,
             value,
+            timestamp: OffsetDateTime::from_unix_timestamp(raw_user_webauthn_session.timestamp)?,
         })
     }
 }
@@ -43,6 +46,8 @@ mod tests {
         let raw_session = RawUserWebAuthnSession {
             email: "test@secutils.dev".to_string(),
             session_value: serde_json::to_vec(&registration_state_value)?,
+            // January 1, 2000 11:00:00
+            timestamp: 946720800,
         };
         assert_debug_snapshot!(UserWebAuthnSession::try_from(raw_session)?,  @r###"
         UserWebAuthnSession {
@@ -109,6 +114,7 @@ mod tests {
                     },
                 },
             ),
+            timestamp: 2000-01-01 10:00:00.0 +00:00:00,
         }
         "###);
 
@@ -118,6 +124,8 @@ mod tests {
         let raw_session = RawUserWebAuthnSession {
             email: "test@secutils.dev".to_string(),
             session_value: serde_json::to_vec(&authentication_state_value)?,
+            // January 1, 2000 11:00:00
+            timestamp: 946720800,
         };
         assert_debug_snapshot!(UserWebAuthnSession::try_from(raw_session)?,  @r###"
         UserWebAuthnSession {
@@ -336,6 +344,7 @@ mod tests {
                     },
                 },
             ),
+            timestamp: 2000-01-01 10:00:00.0 +00:00:00,
         }
         "###);
 

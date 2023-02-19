@@ -10,6 +10,36 @@
     },
     "query": "\nDELETE FROM user_webauthn_sessions\nWHERE email = ?1\n            "
   },
+  "0f0d2a96f3bd6b489a62575fd9817a9ebd702f5aa6b45496822b26dd84a22dcf": {
+    "describe": {
+      "columns": [
+        {
+          "name": "email",
+          "ordinal": 0,
+          "type_info": "Text"
+        },
+        {
+          "name": "session_value",
+          "ordinal": 1,
+          "type_info": "Blob"
+        },
+        {
+          "name": "timestamp",
+          "ordinal": 2,
+          "type_info": "Int64"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false
+      ],
+      "parameters": {
+        "Right": 1
+      }
+    },
+    "query": "\nSELECT email, session_value, timestamp\nFROM user_webauthn_sessions\nWHERE email = ?1\n                "
+  },
   "79686f19e77f78d1570d6618c642566c9be8c593122f85cd92ac8a4e305c8811": {
     "describe": {
       "columns": [],
@@ -287,30 +317,6 @@
       }
     },
     "query": "\nDELETE FROM user_data\nWHERE user_id = ?1 AND data_key = ?2\n            "
-  },
-  "c4a1191980ff7e41f7b08d9978dc04406f304a4137d7ca45249ca23058273aa6": {
-    "describe": {
-      "columns": [
-        {
-          "name": "email",
-          "ordinal": 0,
-          "type_info": "Text"
-        },
-        {
-          "name": "session_value",
-          "ordinal": 1,
-          "type_info": "Blob"
-        }
-      ],
-      "nullable": [
-        false,
-        false
-      ],
-      "parameters": {
-        "Right": 1
-      }
-    },
-    "query": "\nSELECT email, session_value\nFROM user_webauthn_sessions\nWHERE email = ?1\n                "
   },
   "c9d5d6c769742c3fac64349a175d317d9edbf70c6320e3e5f18c3f9f8485f8ca": {
     "describe": {
