@@ -1,0 +1,18 @@
+### Signup user
+POST {{host}}/api/signup
+Accept: application/json
+Content-Type: application/json
+
+{
+  "email": "xicog76257@jopa.com",
+  "password": "changeme"
+}
+
+### Signup user (start WebAuthn registration)
+POST {{host}}/api/webauthn/signup/start
+Accept: application/json
+Content-Type: application/json
+
+{
+  "email": "user@secutils.dev"
+}

@@ -25,8 +25,8 @@ impl Api {
     }
 
     /// Returns an API to work with users.
-    pub fn users(&self) -> UsersApi {
-        UsersApi::new(&self.datastore.primary_db, self.emails())
+    pub fn users(&self) -> UsersApi<&Config> {
+        UsersApi::new(&self.config, &self.datastore.primary_db, self.emails())
     }
 
     /// Returns an API to send emails.

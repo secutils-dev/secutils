@@ -36,6 +36,7 @@ impl DictionaryDataUserDataSetter {
 mod tests {
     use crate::{
         api::users::{DictionaryDataUserDataSetter, UserDataSetter},
+        authentication::StoredCredentials,
         datastore::PrimaryDb,
         tests::MockUserBuilder,
         users::{User, UserId},
@@ -49,7 +50,7 @@ mod tests {
             UserId(1),
             "dev@secutils.dev",
             "dev-handle",
-            "hash",
+            StoredCredentials::try_from_password("pass").unwrap(),
             OffsetDateTime::now_utc(),
         )
         .build()

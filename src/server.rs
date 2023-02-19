@@ -1,11 +1,12 @@
 mod app_state;
 mod extractors;
 mod handlers;
+mod http_errors;
 mod status;
 
 use crate::{
-    api::Api, config::Config, datastore::Datastore, file_cache::FileCache,
-    search::search_index_initializer, server::app_state::AppState,
+    api::Api, authentication::create_webauthn, config::Config, datastore::Datastore,
+    file_cache::FileCache, search::search_index_initializer, server::app_state::AppState,
     users::builtin_users_initializer,
 };
 use actix_identity::IdentityMiddleware;
@@ -32,7 +33,8 @@ pub async fn run(
     search_index_initializer(&api).await?;
 
     let http_server_url = format!("0.0.0.0:{}", config.http_port);
-    let state = web::Data::new(AppState::new(config, api));
+    let webauthn = create_webauthn(&config)?;
+    let state = web::Data::new(AppState::new(config, webauthn, api));
     let http_server = HttpServer::new(move || {
         App::new()
             .wrap(middleware::Compat::new(middleware::Compress::default()))
@@ -55,6 +57,26 @@ pub async fn run(
                     .route("/send_message", web::post().to(handlers::send_message))
                     .route("/login", web::post().to(handlers::security_login))
                     .route("/logout", web::post().to(handlers::security_logout))
+                    .route("/signup", web::post().to(handlers::security_signup))
+                    .service(
+                        web::scope("/webauthn")
+                            .route(
+                                "/signup/start",
+                                web::post().to(handlers::security_webauthn_signup_start),
+                            )
+                            .route(
+                                "/signup/finish",
+                                web::post().to(handlers::security_webauthn_signup_finish),
+                            )
+                            .route(
+                                "/login/start",
+                                web::post().to(handlers::security_webauthn_login_start),
+                            )
+                            .route(
+                                "/login/finish",
+                                web::post().to(handlers::security_webauthn_login_finish),
+                            ),
+                    )
                     .route("/user", web::get().to(handlers::user_get))
                     .route("/user/data", web::post().to(handlers::user_data_set))
                     .route("/user/data", web::get().to(handlers::user_data_get))
@@ -64,7 +86,6 @@ pub async fn run(
                     )
                     .service(
                         web::scope("/users")
-                            .route("/signup", web::post().to(handlers::security_users_signup))
                             .route(
                                 "/activate",
                                 web::post().to(handlers::security_users_activate),

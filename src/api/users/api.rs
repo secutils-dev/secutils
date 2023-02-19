@@ -3,13 +3,14 @@ use crate::{
         users::{DictionaryDataUserDataSetter, UserDataSetter},
         Email, EmailBody, EmailsApi,
     },
+    authentication::StoredCredentials,
     config::Config,
     datastore::PrimaryDb,
-    users::{BuiltinUser, User, UserDataType, UserId, UserSettingsSetter},
+    users::{BuiltinUser, User, UserDataType, UserId, UserSettingsSetter, UserWebAuthnSession},
     utils::{AutoResponder, ContentSecurityPolicy, SelfSignedCertificate},
 };
 use anyhow::{anyhow, bail, Context};
-use argon2::{password_hash::SaltString, Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use hex::ToHex;
 use rand_core::{OsRng, RngCore};
 use serde::de::DeserializeOwned;
@@ -23,47 +24,42 @@ use time::OffsetDateTime;
 const USER_HANDLE_LENGTH_BYTES: usize = 8;
 const ACTIVATION_CODE_LENGTH_BYTES: usize = 32;
 
-pub struct UsersApi<'a> {
+pub struct UsersApi<'a, C: AsRef<Config>> {
+    config: C,
     emails: EmailsApi<&'a Config>,
     primary_db: Cow<'a, PrimaryDb>,
 }
 
-impl<'a> UsersApi<'a> {
+impl<'a, C: AsRef<Config>> UsersApi<'a, C> {
     /// Creates Users API.
-    pub fn new(primary_db: &'a PrimaryDb, emails: EmailsApi<&'a Config>) -> Self {
+    pub fn new(config: C, primary_db: &'a PrimaryDb, emails: EmailsApi<&'a Config>) -> Self {
         Self {
+            config,
             emails,
             primary_db: Cow::Borrowed(primary_db),
         }
     }
 
-    /// Signs up a user with the specified email and password. If the user with such email is
+    /// Signs up a user with the specified email and credentials. If the user with such email is
     /// already registered, this method throws.
     /// NOTE: User isn't required to activate profile right away and can use application without
     /// activation. After signup, we'll send email with the activation code, and will re-send it
     /// after 7 days, then after 14 days, and after 30 days we'll terminate account with a large
     /// warning in the application. Users will be able to request another activation link from their
     /// profile page.
-    pub async fn signup<E: Into<String>, P: AsRef<str>>(
+    pub async fn signup<E: Into<String>>(
         &self,
         user_email: E,
-        user_password: P,
+        user_credentials: StoredCredentials,
     ) -> anyhow::Result<User> {
+        // Perform only basic checks here, consumer is supposed to properly validate all corner cases.
         let user_email = user_email.into();
-        if user_email.is_empty() || !user_email.contains('@') {
+        if user_email.is_empty() {
             bail!("Cannot signup user: invalid user email `{}`.", user_email);
         }
 
-        if user_password.as_ref().is_empty() {
-            bail!("Cannot signup user: empty user password.");
-        }
-
-        // Prevent multiple signup requests from the same user.
-        if let Some(user) = self.primary_db.get_user_by_email(&user_email).await? {
-            bail!(
-                "Cannot signup user: a user {} with the same email already exists.",
-                user.handle
-            );
+        if user_credentials.is_empty() {
+            bail!("Cannot signup user: empty user credentials.");
         }
 
         let activation_code = Self::generate_activation_code();
@@ -71,14 +67,26 @@ impl<'a> UsersApi<'a> {
             id: UserId::empty(),
             email: user_email,
             handle: self.generate_user_handle().await?,
-            password_hash: Self::generate_user_password_hash(user_password)?,
+            credentials: user_credentials,
             created: OffsetDateTime::now_utc(),
             roles: HashSet::with_capacity(0),
             activation_code: Some(activation_code.clone()),
         };
 
-        // TODO: Activation code should be URL encoded.
-        // TODO: Don't hardcode `secutils.dev` in activation email - make it configurable
+        // Use insert instead of upsert here to prevent multiple signup requests from the same user.
+        // Consumer of the API is supposed to perform validation before invoking this method.
+        let user_id = self.primary_db.insert_user(&user).await.with_context(|| {
+            format!(
+                "Cannot signup user, failed to insert new user {}",
+                user.handle
+            )
+        })?;
+
+        let encoded_activation_url = format!(
+            "{}activation/{}",
+            self.config.as_ref().public_url.as_str(),
+            urlencoding::encode(&activation_code)
+        );
         self.emails.send(Email::new(
             &user.email,
             "Activate you Secutils.dev account",
@@ -93,17 +101,13 @@ impl<'a> UsersApi<'a> {
 </head>
 <body>
     <div style="display: flex; flex-direction: column; align-items: center;">
-        <p style="font-family: Arial, Helvetica, sans-serif;">Activation code: <a href="https://secutils.dev/activation/{activation_code}">{activation_code}</a>!</p>
+        <p style="font-family: Arial, Helvetica, sans-serif;">Activation code: <a href="{encoded_activation_url}">{activation_code}</a>!</p>
     </div>
 </body>
 </html>"#),
                 fallback: format!("Activation code: {activation_code}"),
             },
         ).with_timestamp(SystemTime::now()))?;
-
-        let user_id = self.primary_db.upsert_user(&user).await.with_context(|| {
-            format!("Cannot signup user: failed to upsert user {}", user.handle)
-        })?;
 
         Ok(User {
             id: user_id,
@@ -130,8 +134,16 @@ impl<'a> UsersApi<'a> {
             );
         };
 
-        let parsed_hash = PasswordHash::new(&user.password_hash)
-            .map_err(|err| anyhow!("Failed to parse a password hash: {}", err))?;
+        let parsed_hash = if let Some(ref password_hash) = user.credentials.password_hash {
+            PasswordHash::new(password_hash)
+                .map_err(|err| anyhow!("Failed to parse a password hash: {}", err))?
+        } else {
+            bail!(
+                "Cannot authenticate user: a user with {} email doesn't have password-based credentials.",
+                user_email.as_ref()
+            );
+        };
+
         Argon2::default()
             .verify_password(user_password.as_ref().as_bytes(), &parsed_hash)
             .map_err(|err| {
@@ -211,7 +223,7 @@ impl<'a> UsersApi<'a> {
                 email: user.email,
                 handle: user.handle,
                 created: user.created,
-                password_hash: builtin_user.password_hash,
+                credentials: builtin_user.credentials,
                 roles: builtin_user.roles,
                 activation_code: None,
             },
@@ -219,7 +231,7 @@ impl<'a> UsersApi<'a> {
                 id: UserId::empty(),
                 email: builtin_user.email,
                 handle: self.generate_user_handle().await?,
-                password_hash: builtin_user.password_hash,
+                credentials: builtin_user.credentials,
                 created: OffsetDateTime::now_utc(),
                 roles: builtin_user.roles,
                 activation_code: None,
@@ -235,17 +247,6 @@ impl<'a> UsersApi<'a> {
         user_email: E,
     ) -> anyhow::Result<Option<User>> {
         self.primary_db.remove_user_by_email(user_email).await
-    }
-
-    /// Generates user password hash.
-    pub fn generate_user_password_hash<P: AsRef<str>>(user_password: P) -> anyhow::Result<String> {
-        Argon2::default()
-            .hash_password(
-                user_password.as_ref().as_bytes(),
-                &SaltString::generate(&mut OsRng),
-            )
-            .map(|hash| hash.to_string())
-            .map_err(|err| anyhow!("Failed to generate a password hash: {}", err))
     }
 
     /// Retrieves data of the specified type for the user with the specified id.
@@ -283,6 +284,31 @@ impl<'a> UsersApi<'a> {
                 Self::set_user_settings_data(&user_data_setter, serialized_data_value).await
             }
         }
+    }
+
+    /// Retrieves user's WebAuthn session using user email.
+    pub async fn get_webauthn_session_by_email(
+        &self,
+        user_email: &str,
+    ) -> anyhow::Result<Option<UserWebAuthnSession>> {
+        self.primary_db
+            .get_user_webauthn_session_by_email(user_email)
+            .await
+    }
+
+    /// Removes user WebAuthn session with the specified email.
+    pub async fn remove_webauthn_session_by_email(&self, user_email: &str) -> anyhow::Result<()> {
+        self.primary_db
+            .remove_user_webauthn_session_by_email(user_email)
+            .await
+    }
+
+    /// Sets user's WebAuthn session.
+    pub async fn upsert_webauthn_session(
+        &self,
+        session: &UserWebAuthnSession,
+    ) -> anyhow::Result<()> {
+        self.primary_db.upsert_user_webauthn_session(session).await
     }
 
     async fn set_auto_responders_data(
@@ -389,6 +415,7 @@ impl<'a> UsersApi<'a> {
 mod tests {
     use crate::{
         api::{EmailsApi, UsersApi},
+        authentication::StoredCredentials,
         config::Config,
         datastore::PrimaryDb,
         tests::MockUserBuilder,
@@ -397,13 +424,14 @@ mod tests {
     };
     use std::{borrow::Cow, collections::BTreeMap};
     use time::OffsetDateTime;
+    use url::Url;
 
     fn create_mock_user() -> User {
         MockUserBuilder::new(
             UserId(1),
             "dev@secutils.dev",
             "dev-handle",
-            "hash",
+            StoredCredentials::try_from_password("password").unwrap(),
             OffsetDateTime::now_utc(),
         )
         .build()
@@ -412,6 +440,7 @@ mod tests {
     fn create_mock_config() -> Config {
         Config {
             http_port: 1234,
+            public_url: Url::parse("http://localhost:1234").unwrap(),
             smtp: None,
         }
     }
@@ -426,7 +455,7 @@ mod tests {
         let mock_config = create_mock_config();
         let mock_user = create_mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = UsersApi::new(&mock_db, EmailsApi::new(&mock_config));
+        let api = UsersApi::new(&mock_config, &mock_db, EmailsApi::new(&mock_config));
 
         let auto_responder_one = AutoResponder {
             name: "name-one".to_string(),

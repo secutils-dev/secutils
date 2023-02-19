@@ -1,16 +1,16 @@
-use crate::users::UserId;
+use crate::{authentication::StoredCredentials, users::UserId};
 use serde_derive::Serialize;
 use std::collections::HashSet;
 use time::OffsetDateTime;
 
-#[derive(Serialize, Debug, Eq, PartialEq, Clone)]
+#[derive(Serialize, Debug, Clone)]
 pub struct User {
     #[serde(skip_serializing)]
     pub id: UserId,
     pub email: String,
     pub handle: String,
     #[serde(skip_serializing)]
-    pub password_hash: String,
+    pub credentials: StoredCredentials,
     pub roles: HashSet<String>,
     #[serde(with = "time::serde::timestamp")]
     pub created: OffsetDateTime,
@@ -26,7 +26,7 @@ impl AsRef<User> for User {
 
 #[cfg(test)]
 mod tests {
-    use crate::{tests::MockUserBuilder, users::UserId};
+    use crate::{authentication::StoredCredentials, tests::MockUserBuilder, users::UserId};
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
 
@@ -36,7 +36,10 @@ mod tests {
             UserId(1),
             "my-email",
             "my-handle",
-            "my-pass-hash",
+            StoredCredentials {
+                password_hash: Some("my-pass-hash".to_string()),
+                ..Default::default()
+            },
             // January 1, 2010 11:00:00
             OffsetDateTime::from_unix_timestamp(1262340000)?,
         )

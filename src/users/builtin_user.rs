@@ -1,11 +1,11 @@
-use crate::api::UsersApi;
+use crate::authentication::StoredCredentials;
 use anyhow::bail;
 use std::collections::HashSet;
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub struct BuiltinUser {
     pub email: String,
-    pub password_hash: String,
+    pub credentials: StoredCredentials,
     pub roles: HashSet<String>,
 }
 
@@ -26,7 +26,7 @@ impl TryFrom<&str> for BuiltinUser {
 
         Ok(BuiltinUser {
             email: user_email.to_string(),
-            password_hash: UsersApi::generate_user_password_hash(user_password)?,
+            credentials: StoredCredentials::try_from_password(user_password)?,
             roles: if user_properties.len() == 3 {
                 user_properties[2]
                     .split(',')
@@ -63,7 +63,9 @@ mod tests {
                 .collect()
         );
         assert!(parsed_user
+            .credentials
             .password_hash
+            .unwrap()
             .starts_with("$argon2id$v=19$m=4096,t=3,p=1$"));
 
         Ok(())
@@ -78,7 +80,9 @@ mod tests {
             ["one"].into_iter().map(|role| role.to_string()).collect()
         );
         assert!(parsed_user
+            .credentials
             .password_hash
+            .unwrap()
             .starts_with("$argon2id$v=19$m=4096,t=3,p=1$"));
 
         Ok(())
@@ -90,14 +94,18 @@ mod tests {
         assert_eq!(parsed_user.email, "su@secutils.dev");
         assert_eq!(parsed_user.roles, HashSet::new());
         assert!(parsed_user
+            .credentials
             .password_hash
+            .unwrap()
             .starts_with("$argon2id$v=19$m=4096,t=3,p=1$"));
 
         let parsed_user = BuiltinUser::try_from("su@secutils.dev:password")?;
         assert_eq!(parsed_user.email, "su@secutils.dev");
         assert_eq!(parsed_user.roles, HashSet::new());
         assert!(parsed_user
+            .credentials
             .password_hash
+            .unwrap()
             .starts_with("$argon2id$v=19$m=4096,t=3,p=1$"));
 
         Ok(())

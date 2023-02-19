@@ -1,5 +1,7 @@
 mod smtp_config;
 
+use url::Url;
+
 pub use self::smtp_config::SmtpConfig;
 
 /// Main server config.
@@ -7,6 +9,8 @@ pub use self::smtp_config::SmtpConfig;
 pub struct Config {
     /// HTTP port to bind API server to.
     pub http_port: u16,
+    /// External/public URL through which service is being accessed.
+    pub public_url: Url,
     /// Configuration for the SMTP functionality.
     pub smtp: Option<SmtpConfig>,
 }

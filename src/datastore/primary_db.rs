@@ -1,16 +1,18 @@
 mod raw_user;
 mod raw_user_data;
 mod raw_user_to_upsert;
+mod raw_user_webauthn_session;
 mod raw_util;
 
 use crate::{
-    users::{User, UserId},
+    users::{User, UserId, UserWebAuthnSession},
     utils::Util,
 };
 use anyhow::{bail, Context};
 use raw_user::RawUser;
 use raw_user_data::RawUserData;
 use raw_user_to_upsert::RawUserToUpsert;
+use raw_user_webauthn_session::RawUserWebAuthnSession;
 use raw_util::RawUtil;
 use serde::{de::DeserializeOwned, Serialize};
 use sqlx::{query, query_as, query_scalar, sqlite::SqlitePool, Pool, Sqlite};
@@ -42,7 +44,7 @@ impl PrimaryDb {
         query_as!(
             RawUser,
             r#"
-SELECT id, email, handle, password_hash, created, roles, activation_code
+SELECT id, email, handle, credentials, created, roles, activation_code
 FROM users
 WHERE email = ?1
                 "#,
@@ -63,7 +65,7 @@ WHERE email = ?1
         let mut raw_users = query_as!(
             RawUser,
             r#"
-SELECT id, email, handle, password_hash, created, roles, activation_code
+SELECT id, email, handle, credentials, created, roles, activation_code
 FROM users
 WHERE handle = ?1
              "#,
@@ -96,7 +98,7 @@ WHERE handle = ?1
         query_as!(
             RawUser,
             r#"
-SELECT id, email, handle, password_hash, created, roles, activation_code
+SELECT id, email, handle, credentials, created, roles, activation_code
 FROM users
 WHERE activation_code = ?1
             "#,
@@ -109,19 +111,42 @@ WHERE activation_code = ?1
         .collect()
     }
 
-    /// Inserts or updates user in the `Users` index.
-    pub async fn upsert_user<U: AsRef<User>>(&self, user: U) -> anyhow::Result<UserId> {
+    /// Inserts user to the `Users` tables, fails if user already exists.
+    pub async fn insert_user<U: AsRef<User>>(&self, user: U) -> anyhow::Result<UserId> {
         let raw_user = RawUserToUpsert::try_from(user.as_ref())?;
 
-        let user_id: i64 = query_scalar!(r#"
-INSERT INTO users (email, handle, password_hash, created, roles, activation_code)
+        let user_id: i64 = query_scalar!(
+            r#"
+INSERT INTO users (email, handle, credentials, created, roles, activation_code)
 VALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )
-ON CONFLICT(email) DO UPDATE SET handle=excluded.handle, password_hash=excluded.password_hash, created=excluded.created, roles=excluded.roles, activation_code=excluded.activation_code
 RETURNING id
         "#,
             raw_user.email,
             raw_user.handle,
-            raw_user.password_hash,
+            raw_user.credentials,
+            raw_user.created,
+            raw_user.roles,
+            raw_user.activation_code
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(UserId(user_id))
+    }
+
+    /// Inserts or updates user in the `Users` table.
+    pub async fn upsert_user<U: AsRef<User>>(&self, user: U) -> anyhow::Result<UserId> {
+        let raw_user = RawUserToUpsert::try_from(user.as_ref())?;
+
+        let user_id: i64 = query_scalar!(r#"
+INSERT INTO users (email, handle, credentials, created, roles, activation_code)
+VALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )
+ON CONFLICT(email) DO UPDATE SET handle=excluded.handle, credentials=excluded.credentials, created=excluded.created, roles=excluded.roles, activation_code=excluded.activation_code
+RETURNING id
+        "#,
+            raw_user.email,
+            raw_user.handle,
+            raw_user.credentials,
             raw_user.created,
             raw_user.roles,
             raw_user.activation_code
@@ -144,7 +169,7 @@ RETURNING id
             r#"
 DELETE FROM users
 WHERE email = ?1
-RETURNING id as "id!", email as "email!", handle as "handle!", password_hash as "password_hash!", created as "created!", roles, activation_code
+RETURNING id as "id!", email as "email!", handle as "handle!", credentials as "credentials!", created as "created!", roles, activation_code
             "#,
             email
         )
@@ -226,6 +251,69 @@ WHERE user_id = ?1 AND data_key = ?2
         Ok(())
     }
 
+    /// Retrieves user's WebAuthn session from the `UserWebAuthnSessions` table using user email.
+    pub async fn get_user_webauthn_session_by_email<E: AsRef<str>>(
+        &self,
+        email: E,
+    ) -> anyhow::Result<Option<UserWebAuthnSession>> {
+        let email = email.as_ref();
+        query_as!(
+            RawUserWebAuthnSession,
+            r#"
+SELECT email, session_value
+FROM user_webauthn_sessions
+WHERE email = ?1
+                "#,
+            email
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .map(UserWebAuthnSession::try_from)
+        .transpose()
+    }
+
+    /// Sets user's WebAuthn session in the `UserWebAuthnSessions` table.
+    pub async fn upsert_user_webauthn_session(
+        &self,
+        session: &UserWebAuthnSession,
+    ) -> anyhow::Result<()> {
+        let raw_session_value = serde_json::ser::to_vec(&session.value).with_context(|| {
+            format!(
+                "Failed to serialize user WebAuthn session ({}).",
+                session.email
+            )
+        })?;
+
+        query!(
+            r#"
+INSERT INTO user_webauthn_sessions (email, session_value)
+VALUES (?1, ?2)
+ON CONFLICT(email) DO UPDATE SET session_value=excluded.session_value
+        "#,
+            session.email,
+            raw_session_value
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Deletes user's WebAuthn session from the `UserWebAuthnSessions` table using user email.
+    pub async fn remove_user_webauthn_session_by_email(&self, email: &str) -> anyhow::Result<()> {
+        query!(
+            r#"
+DELETE FROM user_webauthn_sessions
+WHERE email = ?1
+            "#,
+            email
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
     /// Retrieves all utils from the `Utils` table.
     pub async fn get_utils(&self) -> anyhow::Result<Vec<Util>> {
         let mut root_utils = query_as!(
@@ -286,9 +374,8 @@ ORDER BY parent_id, id
 #[cfg(test)]
 mod tests {
     use crate::{
-        datastore::PrimaryDb,
-        tests::MockUserBuilder,
-        users::{User, UserId},
+        authentication::StoredCredentials, datastore::PrimaryDb, tests::MockUserBuilder,
+        users::UserId,
     };
     use insta::assert_debug_snapshot;
     use time::OffsetDateTime;
@@ -296,14 +383,17 @@ mod tests {
     #[actix_rt::test]
     async fn can_add_and_retrieve_users() -> anyhow::Result<()> {
         let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
-        assert_eq!(db.get_user_by_email("some-id").await?, None);
+        assert!(db.get_user_by_email("some-id").await?.is_none());
 
         let users = vec![
             MockUserBuilder::new(
                 UserId::empty(),
                 "dev@secutils.dev",
                 "dev-handle",
-                "hash",
+                StoredCredentials {
+                    password_hash: Some("hash".to_string()),
+                    ..Default::default()
+                },
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             )
@@ -312,7 +402,10 @@ mod tests {
                 UserId::empty(),
                 "prod@secutils.dev",
                 "prod-handle",
-                "hash_prod",
+                StoredCredentials {
+                    password_hash: Some("hash_prod".to_string()),
+                    ..Default::default()
+                },
                 // January 1, 2010 11:00:00
                 OffsetDateTime::from_unix_timestamp(1262340000)?,
             )
@@ -323,7 +416,10 @@ mod tests {
                 UserId::empty(),
                 "user@secutils.dev",
                 "handle",
-                "hash",
+                StoredCredentials {
+                    password_hash: Some("hash".to_string()),
+                    ..Default::default()
+                },
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             )
@@ -343,7 +439,12 @@ mod tests {
                 ),
                 email: "dev@secutils.dev",
                 handle: "dev-handle",
-                password_hash: "hash",
+                credentials: StoredCredentials {
+                    password_hash: Some(
+                        "hash",
+                    ),
+                    passkey: None,
+                },
                 roles: {},
                 created: 2000-01-01 10:00:00.0 +00:00:00,
                 activation_code: None,
@@ -358,7 +459,12 @@ mod tests {
                 ),
                 email: "prod@secutils.dev",
                 handle: "prod-handle",
-                password_hash: "hash_prod",
+                credentials: StoredCredentials {
+                    password_hash: Some(
+                        "hash_prod",
+                    ),
+                    passkey: None,
+                },
                 roles: {
                     "admin",
                 },
@@ -377,7 +483,12 @@ mod tests {
                 ),
                 email: "user@secutils.dev",
                 handle: "handle",
-                password_hash: "hash",
+                credentials: StoredCredentials {
+                    password_hash: Some(
+                        "hash",
+                    ),
+                    passkey: None,
+                },
                 roles: {
                     "power-user",
                 },
@@ -388,7 +499,10 @@ mod tests {
             },
         )
         "###);
-        assert_eq!(db.get_user_by_email("unknown@secutils.dev").await?, None);
+        assert!(db
+            .get_user_by_email("unknown@secutils.dev")
+            .await?
+            .is_none());
 
         Ok(())
     }
@@ -399,27 +513,47 @@ mod tests {
             UserId::empty(),
             "DeV@secutils.dev",
             "DeV-handle",
-            "hash",
+            StoredCredentials {
+                password_hash: Some("hash".to_string()),
+                ..Default::default()
+            },
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
-        .add_role("user")
         .add_role("Power-User")
         .build();
         let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
         let id = db.upsert_user(&user).await?;
 
+        assert_debug_snapshot!(db.get_user_by_email("dev@secutils.dev").await?,  @r###"
+        Some(
+            User {
+                id: UserId(
+                    1,
+                ),
+                email: "DeV@secutils.dev",
+                handle: "DeV-handle",
+                credentials: StoredCredentials {
+                    password_hash: Some(
+                        "hash",
+                    ),
+                    passkey: None,
+                },
+                roles: {
+                    "power-user",
+                },
+                created: 2000-01-01 10:00:00.0 +00:00:00,
+                activation_code: None,
+            },
+        )
+        "###);
         assert_eq!(
-            db.get_user_by_email("dev@secutils.dev").await?,
-            Some(User { id, ..user.clone() })
+            db.get_user_by_email("DEV@secutils.dev").await?.unwrap().id,
+            id
         );
         assert_eq!(
-            db.get_user_by_email("DEV@secutils.dev").await?,
-            Some(User { id, ..user.clone() })
-        );
-        assert_eq!(
-            db.get_user_by_email("DeV@secutils.dev").await?,
-            Some(User { id, ..user })
+            db.get_user_by_email("DeV@secutils.dev").await?.unwrap().id,
+            id
         );
 
         Ok(())
@@ -431,27 +565,119 @@ mod tests {
             UserId::empty(),
             "DeV@secutils.dev",
             "DeV-handle",
-            "hash",
+            StoredCredentials {
+                password_hash: Some("hash".to_string()),
+                ..Default::default()
+            },
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
-        .add_role("user")
         .add_role("Power-User")
         .build();
         let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
         let id = db.upsert_user(&user).await?;
 
+        assert_debug_snapshot!(db.get_user_by_handle("dev-handle").await?,  @r###"
+        Some(
+            User {
+                id: UserId(
+                    1,
+                ),
+                email: "DeV@secutils.dev",
+                handle: "DeV-handle",
+                credentials: StoredCredentials {
+                    password_hash: Some(
+                        "hash",
+                    ),
+                    passkey: None,
+                },
+                roles: {
+                    "power-user",
+                },
+                created: 2000-01-01 10:00:00.0 +00:00:00,
+                activation_code: None,
+            },
+        )
+        "###);
+        assert_eq!(db.get_user_by_handle("DEV-handle").await?.unwrap().id, id);
+        assert_eq!(db.get_user_by_handle("DeV-handle").await?.unwrap().id, id);
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_insert_user() -> anyhow::Result<()> {
+        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+
+        let user_id = db
+            .insert_user(
+                &MockUserBuilder::new(
+                    UserId::empty(),
+                    "dev@secutils.dev",
+                    "dev-handle",
+                    StoredCredentials {
+                        password_hash: Some("hash".to_string()),
+                        ..Default::default()
+                    },
+                    // January 1, 2000 11:00:00
+                    OffsetDateTime::from_unix_timestamp(946720800)?,
+                )
+                .build(),
+            )
+            .await?;
+        assert_debug_snapshot!(db.get_user_by_email("dev@secutils.dev").await?, @r###"
+        Some(
+            User {
+                id: UserId(
+                    1,
+                ),
+                email: "dev@secutils.dev",
+                handle: "dev-handle",
+                credentials: StoredCredentials {
+                    password_hash: Some(
+                        "hash",
+                    ),
+                    passkey: None,
+                },
+                roles: {},
+                created: 2000-01-01 10:00:00.0 +00:00:00,
+                activation_code: None,
+            },
+        )
+        "###);
+
+        let conflict_error = db
+            .insert_user(
+                &MockUserBuilder::new(
+                    UserId(100),
+                    "DEV@secutils.dev",
+                    "DEV-handle",
+                    StoredCredentials {
+                        password_hash: Some("new-hash".to_string()),
+                        ..Default::default()
+                    },
+                    // January 1, 2000 11:00:00
+                    OffsetDateTime::from_unix_timestamp(1262340000)?,
+                )
+                .set_activation_code("some-code")
+                .add_role("admin")
+                .build(),
+            )
+            .await;
+        assert_debug_snapshot!(conflict_error, @r###"
+        Err(
+            Database(
+                SqliteError {
+                    code: 2067,
+                    message: "UNIQUE constraint failed: users.handle",
+                },
+            ),
+        )
+        "###);
+
         assert_eq!(
-            db.get_user_by_handle("dev-handle").await?,
-            Some(User { id, ..user.clone() })
-        );
-        assert_eq!(
-            db.get_user_by_handle("DEV-handle").await?,
-            Some(User { id, ..user.clone() })
-        );
-        assert_eq!(
-            db.get_user_by_handle("DeV-handle").await?,
-            Some(User { id, ..user })
+            db.get_user_by_email("dev@secutils.dev").await?.unwrap().id,
+            user_id
         );
 
         Ok(())
@@ -466,7 +692,10 @@ mod tests {
                 UserId::empty(),
                 "dev@secutils.dev",
                 "dev-handle",
-                "hash",
+                StoredCredentials {
+                    password_hash: Some("hash".to_string()),
+                    ..Default::default()
+                },
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             )
@@ -481,7 +710,12 @@ mod tests {
                 ),
                 email: "dev@secutils.dev",
                 handle: "dev-handle",
-                password_hash: "hash",
+                credentials: StoredCredentials {
+                    password_hash: Some(
+                        "hash",
+                    ),
+                    passkey: None,
+                },
                 roles: {},
                 created: 2000-01-01 10:00:00.0 +00:00:00,
                 activation_code: None,
@@ -494,7 +728,10 @@ mod tests {
                 UserId(100),
                 "DEV@secutils.dev",
                 "DEV-handle",
-                "new-hash",
+                StoredCredentials {
+                    password_hash: Some("new-hash".to_string()),
+                    ..Default::default()
+                },
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(1262340000)?,
             )
@@ -511,7 +748,12 @@ mod tests {
                 ),
                 email: "dev@secutils.dev",
                 handle: "DEV-handle",
-                password_hash: "new-hash",
+                credentials: StoredCredentials {
+                    password_hash: Some(
+                        "new-hash",
+                    ),
+                    passkey: None,
+                },
                 roles: {
                     "admin",
                 },
@@ -524,8 +766,8 @@ mod tests {
         "###);
 
         assert_eq!(
-            db.get_user_by_email("dev@secutils.dev").await?,
-            db.get_user_by_email("DEV@secutils.dev").await?
+            db.get_user_by_email("dev@secutils.dev").await?.unwrap().id,
+            db.get_user_by_email("DEV@secutils.dev").await?.unwrap().id
         );
 
         Ok(())
@@ -534,14 +776,17 @@ mod tests {
     #[actix_rt::test]
     async fn can_remove_user() -> anyhow::Result<()> {
         let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
-        assert_eq!(db.get_user_by_email("dev@secutils.dev").await?, None);
-        assert_eq!(db.get_user_by_email("prod@secutils.dev").await?, None);
+        assert!(db.get_user_by_email("dev@secutils.dev").await?.is_none());
+        assert!(db.get_user_by_email("prod@secutils.dev").await?.is_none());
 
         let user_dev = MockUserBuilder::new(
             UserId::empty(),
             "dev@secutils.dev",
             "dev-handle",
-            "hash",
+            StoredCredentials {
+                password_hash: Some("hash".to_string()),
+                ..Default::default()
+            },
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
@@ -550,7 +795,10 @@ mod tests {
             UserId::empty(),
             "prod@secutils.dev",
             "prod-handle",
-            "hash_prod",
+            StoredCredentials {
+                password_hash: Some("hash_prod".to_string()),
+                ..Default::default()
+            },
             // January 1, 2010 11:00:00
             OffsetDateTime::from_unix_timestamp(1262340000)?,
         )
@@ -561,46 +809,40 @@ mod tests {
         let prod_user_id = db.upsert_user(&user_prod).await?;
 
         assert_eq!(
-            db.get_user_by_email("dev@secutils.dev").await?,
-            Some(User {
-                id: dev_user_id,
-                ..user_dev.clone()
-            })
+            db.get_user_by_email("dev@secutils.dev").await?.unwrap().id,
+            dev_user_id
         );
         assert_eq!(
-            db.get_user_by_email("prod@secutils.dev").await?,
-            Some(User {
-                id: prod_user_id,
-                ..user_prod.clone()
-            })
+            db.get_user_by_email("prod@secutils.dev").await?.unwrap().id,
+            prod_user_id
         );
 
         assert_eq!(
-            db.remove_user_by_email("dev@secutils.dev").await?,
-            Some(User {
-                id: dev_user_id,
-                ..user_dev
-            })
+            db.remove_user_by_email("dev@secutils.dev")
+                .await?
+                .unwrap()
+                .id,
+            dev_user_id
         );
-        assert_eq!(db.get_user_by_email("dev@secutils.dev").await?, None);
-        assert_eq!(db.remove_user_by_email("dev@secutils.dev").await?, None);
+        assert!(db.get_user_by_email("dev@secutils.dev").await?.is_none());
+        assert!(db.remove_user_by_email("dev@secutils.dev").await?.is_none());
         assert_eq!(
-            db.get_user_by_email("prod@secutils.dev").await?,
-            Some(User {
-                id: prod_user_id,
-                ..user_prod.clone()
-            })
+            db.get_user_by_email("prod@secutils.dev").await?.unwrap().id,
+            prod_user_id
         );
 
         assert_eq!(
-            db.remove_user_by_email("prod@secutils.dev").await?,
-            Some(User {
-                id: prod_user_id,
-                ..user_prod
-            })
+            db.remove_user_by_email("prod@secutils.dev")
+                .await?
+                .unwrap()
+                .id,
+            prod_user_id
         );
-        assert_eq!(db.get_user_by_email("prod@secutils.dev").await?, None);
-        assert_eq!(db.remove_user_by_email("prod@secutils.dev").await?, None);
+        assert!(db.get_user_by_email("prod@secutils.dev").await?.is_none());
+        assert!(db
+            .remove_user_by_email("prod@secutils.dev")
+            .await?
+            .is_none());
 
         Ok(())
     }
@@ -612,7 +854,10 @@ mod tests {
             UserId::empty(),
             "dev@secutils.dev",
             "dev-handle",
-            "hash",
+            StoredCredentials {
+                password_hash: Some("hash".to_string()),
+                ..Default::default()
+            },
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
@@ -622,7 +867,10 @@ mod tests {
             UserId::empty(),
             "prod@secutils.dev",
             "prod-handle",
-            "hash_prod",
+            StoredCredentials {
+                password_hash: Some("hash_prod".to_string()),
+                ..Default::default()
+            },
             // January 1, 2010 11:00:00
             OffsetDateTime::from_unix_timestamp(1262340000)?,
         )
@@ -632,40 +880,34 @@ mod tests {
         let dev_user_id = db.upsert_user(&user_dev).await?;
         let prod_user_id = db.upsert_user(&user_prod).await?;
 
+        let users = db.get_users_by_activation_code("some-code").await?;
         assert_eq!(
-            db.get_users_by_activation_code("some-code").await?,
-            vec![User {
-                id: dev_user_id,
-                ..user_dev.clone()
-            }]
-        );
-        assert_eq!(
-            db.get_users_by_activation_code("SOME-code").await?,
-            vec![User {
-                id: dev_user_id,
-                ..user_dev
-            }]
+            users.into_iter().map(|user| user.id).collect::<Vec<_>>(),
+            vec![dev_user_id]
         );
 
+        let users = db.get_users_by_activation_code("SOME-code").await?;
         assert_eq!(
-            db.get_users_by_activation_code("other-code").await?,
-            vec![User {
-                id: prod_user_id,
-                ..user_prod.clone()
-            }]
-        );
-        assert_eq!(
-            db.get_users_by_activation_code("OTHER-code").await?,
-            vec![User {
-                id: prod_user_id,
-                ..user_prod
-            }]
+            users.into_iter().map(|user| user.id).collect::<Vec<_>>(),
+            vec![dev_user_id]
         );
 
+        let users = db.get_users_by_activation_code("other-code").await?;
         assert_eq!(
-            db.get_users_by_activation_code("unknown-code").await?,
-            vec![]
+            users.into_iter().map(|user| user.id).collect::<Vec<_>>(),
+            vec![prod_user_id]
         );
+
+        let users = db.get_users_by_activation_code("OTHER-code").await?;
+        assert_eq!(
+            users.into_iter().map(|user| user.id).collect::<Vec<_>>(),
+            vec![prod_user_id]
+        );
+
+        assert!(db
+            .get_users_by_activation_code("unknown-code")
+            .await?
+            .is_empty());
 
         Ok(())
     }
@@ -677,7 +919,10 @@ mod tests {
             UserId(1),
             "dev@secutils.dev",
             "dev-handle",
-            "hash",
+            StoredCredentials {
+                password_hash: Some("hash".to_string()),
+                ..Default::default()
+            },
             OffsetDateTime::now_utc(),
         )
         .build();

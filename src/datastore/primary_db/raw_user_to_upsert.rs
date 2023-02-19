@@ -1,11 +1,12 @@
 use crate::users::User;
+use anyhow::Context;
 use itertools::Itertools;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct RawUserToUpsert<'a> {
     pub email: &'a str,
     pub handle: &'a str,
-    pub password_hash: &'a str,
+    pub credentials: Vec<u8>,
     pub created: i64,
     pub roles: Option<String>,
     pub activation_code: Option<&'a str>,
@@ -24,7 +25,9 @@ impl<'a> TryFrom<&'a User> for RawUserToUpsert<'a> {
         Ok(Self {
             email: user.email.as_ref(),
             handle: user.handle.as_ref(),
-            password_hash: user.password_hash.as_ref(),
+            credentials: serde_json::ser::to_vec(&user.credentials).with_context(|| {
+                format!("Failed to serialize user credentials ({}).", user.handle)
+            })?,
             created: user.created.unix_timestamp(),
             roles: raw_roles,
             activation_code: user.activation_code.as_deref(),
@@ -35,6 +38,7 @@ impl<'a> TryFrom<&'a User> for RawUserToUpsert<'a> {
 #[cfg(test)]
 mod tests {
     use crate::{
+        authentication::StoredCredentials,
         datastore::primary_db::raw_user_to_upsert::RawUserToUpsert, tests::MockUserBuilder,
         users::UserId,
     };
@@ -48,7 +52,10 @@ mod tests {
                     UserId(1),
                     "dev@secutils.dev".to_string(),
                     "dev-handle".to_string(),
-                    "password-hash".to_string(),
+                    StoredCredentials {
+                        password_hash: Some("password-hash".to_string()),
+                        ..Default::default()
+                    },
                     OffsetDateTime::from_unix_timestamp(946720800)?,
                 )
                 .build()
@@ -56,7 +63,11 @@ mod tests {
             RawUserToUpsert {
                 email: "dev@secutils.dev",
                 handle: "dev-handle",
-                password_hash: "password-hash",
+                credentials: serde_json::to_vec(&StoredCredentials {
+                    password_hash: Some("password-hash".to_string()),
+                    ..Default::default()
+                })
+                .unwrap(),
                 // January 1, 2000 11:00:00
                 created: 946720800,
                 roles: None,
@@ -75,7 +86,10 @@ mod tests {
                     UserId(1),
                     "dev@secutils.dev".to_string(),
                     "dev-handle".to_string(),
-                    "password-hash".to_string(),
+                    StoredCredentials {
+                        password_hash: Some("password-hash".to_string()),
+                        ..Default::default()
+                    },
                     OffsetDateTime::from_unix_timestamp(946720800)?,
                 )
                 .add_role("admin")
@@ -85,7 +99,11 @@ mod tests {
             RawUserToUpsert {
                 email: "dev@secutils.dev",
                 handle: "dev-handle",
-                password_hash: "password-hash",
+                credentials: serde_json::to_vec(&StoredCredentials {
+                    password_hash: Some("password-hash".to_string()),
+                    ..Default::default()
+                })
+                .unwrap(),
                 // January 1, 2000 11:00:00
                 created: 946720800,
                 roles: Some("admin".to_string()),
@@ -104,7 +122,10 @@ mod tests {
                     UserId(1),
                     "dev@secutils.dev".to_string(),
                     "dev-handle".to_string(),
-                    "password-hash".to_string(),
+                    StoredCredentials {
+                        password_hash: Some("password-hash".to_string()),
+                        ..Default::default()
+                    },
                     OffsetDateTime::from_unix_timestamp(946720800)?,
                 )
                 .add_role("admin")
@@ -114,7 +135,11 @@ mod tests {
             RawUserToUpsert {
                 email: "dev@secutils.dev",
                 handle: "dev-handle",
-                password_hash: "password-hash",
+                credentials: serde_json::to_vec(&StoredCredentials {
+                    password_hash: Some("password-hash".to_string()),
+                    ..Default::default()
+                })
+                .unwrap(),
                 // January 1, 2000 11:00:00
                 created: 946720800,
                 roles: Some("admin:superuser".to_string()),

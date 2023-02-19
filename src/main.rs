@@ -1,6 +1,7 @@
 #![deny(warnings)]
 
 mod api;
+mod authentication;
 mod config;
 mod datastore;
 mod error;
@@ -11,9 +12,10 @@ mod users;
 mod utils;
 
 use crate::config::{Config, SmtpConfig};
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use bytes::Buf;
 use clap::{value_parser, Arg, ArgMatches, Command};
+use url::Url;
 
 fn process_command(matches: ArgMatches) -> Result<(), anyhow::Error> {
     let smtp_config = match (
@@ -39,6 +41,13 @@ fn process_command(matches: ArgMatches) -> Result<(), anyhow::Error> {
         http_port: *matches
             .get_one("HTTP_PORT")
             .ok_or_else(|| anyhow!("<HTTP_PORT> argument is not provided."))?,
+        public_url: matches
+            .get_one::<String>("PUBLIC_URL")
+            .ok_or_else(|| anyhow!("<PUBLIC_URL> argument is not provided."))
+            .and_then(|public_url| {
+                Url::parse(public_url)
+                    .with_context(|| "Cannot parse public URL parameter.".to_string())
+            })?,
     };
 
     let session_key = matches
@@ -132,6 +141,13 @@ fn main() -> Result<(), anyhow::Error> {
                 .default_value("7070")
                 .help("Defines a TCP port to listen on."),
         )
+        .arg(
+            Arg::new("PUBLIC_URL")
+                .long("public-url")
+                .global(true)
+                .env("SECUTILS_PUBLIC_URL")
+                .help("External/public URL through which service is being accessed."),
+        )
         .get_matches();
 
     process_command(matches)
@@ -140,6 +156,7 @@ fn main() -> Result<(), anyhow::Error> {
 #[cfg(test)]
 mod tests {
     use crate::{
+        authentication::StoredCredentials,
         datastore::initialize_index,
         search::SearchItem,
         users::{User, UserId},
@@ -161,7 +178,7 @@ mod tests {
             id: UserId,
             email: I,
             handle: I,
-            password_hash: I,
+            credentials: StoredCredentials,
             created: OffsetDateTime,
         ) -> Self {
             let email = email.into();
@@ -170,7 +187,7 @@ mod tests {
                     id,
                     email,
                     handle: handle.into(),
-                    password_hash: password_hash.into(),
+                    credentials,
                     created,
                     roles: HashSet::new(),
                     activation_code: None,
@@ -242,5 +259,100 @@ mod tests {
         pub fn build(self) -> SearchItem {
             self.item
         }
+    }
+
+    pub mod webauthn {
+        pub const SERIALIZED_PASSKEY: &str = r#"{
+          "cred": {
+            "cred_id": "CVRiuJoJxH66qt-UWSnODqcnrVB4k_PFFHexRPqCroDAnaxn6_1Q01Y8VpYn8A2LcnpUeb6TBpTQaWUc4d1Mfg",
+            "cred": {
+              "type_": "ES256",
+              "key": {
+                "EC_EC2": {
+                  "curve": "SECP256R1",
+                  "x": "oRqUciz1zfd4bwCn-UaQ-KyfVDRfQHO5QIZl7PTPLDk",
+                  "y": "5-fVS4_f1-EpqxAxVdhKJcXBxv1UcGpM0QB-XIR5gV4"
+                }
+              }
+            },
+            "counter": 0,
+            "transports": null,
+            "user_verified": false,
+            "backup_eligible": false,
+            "backup_state": false,
+            "registration_policy": "preferred",
+            "extensions": {
+              "cred_protect": "NotRequested",
+              "hmac_create_secret": "NotRequested",
+              "appid": "NotRequested",
+              "cred_props": "Ignored"
+            },
+            "attestation": {
+              "data": "None",
+              "metadata": "None"
+            },
+            "attestation_format": "None"
+          }
+       }"#;
+
+        pub const SERIALIZED_REGISTRATION_STATE: &str = r#"{
+            "rs": {
+              "policy": "preferred",
+              "exclude_credentials": [],
+              "challenge": "36Fa2w5Kuv80nTzSHEvbA5rVE2Qm_x0ojjcPLYeB9RI",
+              "credential_algorithms": [
+                "ES256",
+                "RS256"
+              ],
+              "require_resident_key": false,
+              "authenticator_attachment": null,
+              "extensions": {
+                "uvm": true,
+                "credProps": true
+              },
+              "experimental_allow_passkeys": true
+            }
+       }"#;
+
+        pub const SERIALIZED_AUTHENTICATION_STATE: &str = r#"{
+            "ast": {
+              "credentials": [
+                {
+                  "cred_id": "fa900N3aOTRX0GThkakdjmLHsJdRTfvNMMxOgQ-hTy6W8-71w5zolJMDPq57ioYn1OM3fki5diO09kYyIBzQOg",
+                  "cred": {
+                    "type_": "ES256",
+                    "key": {
+                      "EC_EC2": {
+                        "curve": "SECP256R1",
+                        "x": "eLI4z21j77kGFYpblzcf5eapu3Wfk-H2eCbOX07EqEw",
+                        "y": "AKYln3mCuIXuz6IsPT6pSU3qeAQkfDEOd5tVr0h--70"
+                      }
+                    }
+                  },
+                  "counter": 0,
+                  "transports": null,
+                  "user_verified": false,
+                  "backup_eligible": false,
+                  "backup_state": false,
+                  "registration_policy": "preferred",
+                  "extensions": {
+                    "cred_protect": "NotRequested",
+                    "hmac_create_secret": "NotRequested",
+                    "appid": "NotRequested",
+                    "cred_props": "Ignored"
+                  },
+                  "attestation": {
+                    "data": "None",
+                    "metadata": "None"
+                  },
+                  "attestation_format": "None"
+                }
+              ],
+              "policy": "preferred",
+              "challenge": "I2B0dgzCcgwkTyuUwA4yByFw5bBAl02axcEEoQNuSVM",
+              "appid": null,
+              "allow_backup_eligible_upgrade": true
+            }
+       }"#;
     }
 }

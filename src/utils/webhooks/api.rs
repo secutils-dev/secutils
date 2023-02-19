@@ -87,6 +87,7 @@ impl Api {
 #[cfg(test)]
 mod tests {
     use crate::{
+        authentication::StoredCredentials,
         datastore::PrimaryDb,
         tests::MockUserBuilder,
         users::{User, UserId},
@@ -102,7 +103,10 @@ mod tests {
             UserId(1),
             "dev@secutils.dev",
             "dev-handle",
-            "hash",
+            StoredCredentials {
+                password_hash: Some("hash".to_string()),
+                ..Default::default()
+            },
             OffsetDateTime::now_utc(),
         )
         .build()

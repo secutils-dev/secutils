@@ -1,9 +1,0 @@
-### Signup user
-POST {{host}}/api/users/signup
-Accept: application/json
-Content-Type: application/json
-
-{
-  "username": "user@secutils.dev",
-  "password": "changeme"
-}
