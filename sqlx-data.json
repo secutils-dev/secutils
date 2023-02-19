@@ -40,15 +40,15 @@
     },
     "query": "\nSELECT email, session_value, timestamp\nFROM user_webauthn_sessions\nWHERE email = ?1\n                "
   },
-  "79686f19e77f78d1570d6618c642566c9be8c593122f85cd92ac8a4e305c8811": {
+  "4dace02b02940ad0278e76fe97ae7e05d562478cf3a077c44b67b39a6d1fab5d": {
     "describe": {
       "columns": [],
       "nullable": [],
       "parameters": {
-        "Right": 2
+        "Right": 3
       }
     },
-    "query": "\nINSERT INTO user_webauthn_sessions (email, session_value)\nVALUES (?1, ?2)\nON CONFLICT(email) DO UPDATE SET session_value=excluded.session_value\n        "
+    "query": "\nINSERT INTO user_webauthn_sessions (email, session_value, timestamp)\nVALUES (?1, ?2, ?3)\nON CONFLICT(email) DO UPDATE SET session_value=excluded.session_value, timestamp=excluded.timestamp\n        "
   },
   "7bd00826670e7d16ac71840b9c1715e8a656e967421f63f385ca7643e1166e57": {
     "describe": {

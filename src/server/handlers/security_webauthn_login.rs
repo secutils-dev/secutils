@@ -181,7 +181,7 @@ pub async fn security_webauthn_login_finish(
 
     // Update credentials counter to protect against cloned authenticators.
     if authentication_result.needs_update() {
-        todo!()
+        log::error!("Not implemented yet.");
     }
 
     // Clear WebAuthn session state since we no longer need it.

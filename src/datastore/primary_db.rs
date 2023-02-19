@@ -283,15 +283,17 @@ WHERE email = ?1
                 session.email
             )
         })?;
+        let raw_session_timestamp = session.timestamp.unix_timestamp();
 
         query!(
             r#"
-INSERT INTO user_webauthn_sessions (email, session_value)
-VALUES (?1, ?2)
-ON CONFLICT(email) DO UPDATE SET session_value=excluded.session_value
+INSERT INTO user_webauthn_sessions (email, session_value, timestamp)
+VALUES (?1, ?2, ?3)
+ON CONFLICT(email) DO UPDATE SET session_value=excluded.session_value, timestamp=excluded.timestamp
         "#,
             session.email,
-            raw_session_value
+            raw_session_value,
+            raw_session_timestamp
         )
         .execute(&self.pool)
         .await?;

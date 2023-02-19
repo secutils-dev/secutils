@@ -24,7 +24,7 @@ pub async fn security_signup(
     if !mailchecker::is_valid(&body_params.email) {
         log::error!("Invalid email was used for signup: {}", body_params.email);
         return HttpResponse::BadRequest().json(json!({
-            "message": "This email appears to be invalid or sent from a disposable/throwaway email service."
+            "message": "Email appears to be invalid or sent from a disposable/throwaway email service."
         }));
     }
 

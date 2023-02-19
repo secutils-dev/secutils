@@ -58,7 +58,7 @@ pub async fn security_webauthn_signup_start(
     if !mailchecker::is_valid(&body_params.email) {
         log::warn!("Invalid email was used for signup: {}", body_params.email);
         return HttpResponse::BadRequest().json(json!({
-            "message": "Email is not valid or coming from a disposable/throwaway email service."
+            "message": "Email appears to be invalid or sent from a disposable/throwaway email service."
         }));
     }
 
