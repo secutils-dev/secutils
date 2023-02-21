@@ -3,10 +3,13 @@ use crate::{
         users::{DictionaryDataUserDataSetter, UserDataSetter},
         Email, EmailBody, EmailsApi,
     },
-    authentication::StoredCredentials,
+    authentication::{
+        Credentials, StoredCredentials, WebAuthnChallenge, WebAuthnChallengeType, WebAuthnSession,
+        WebAuthnSessionValue,
+    },
     config::Config,
     datastore::PrimaryDb,
-    users::{BuiltinUser, User, UserDataType, UserId, UserSettingsSetter, UserWebAuthnSession},
+    users::{BuiltinUser, User, UserDataType, UserId, UserSettingsSetter},
     utils::{AutoResponder, ContentSecurityPolicy, SelfSignedCertificate},
 };
 use anyhow::{anyhow, bail, Context};
@@ -17,24 +20,37 @@ use serde::de::DeserializeOwned;
 use std::{
     borrow::Cow,
     collections::{BTreeMap, HashSet},
-    time::SystemTime,
+    ops::Sub,
+    time::{Duration, SystemTime},
 };
 use time::OffsetDateTime;
+use uuid::Uuid;
+use webauthn_rs::{
+    prelude::{PublicKeyCredential, RegisterPublicKeyCredential},
+    Webauthn,
+};
 
 const USER_HANDLE_LENGTH_BYTES: usize = 8;
 const ACTIVATION_CODE_LENGTH_BYTES: usize = 32;
 
-pub struct UsersApi<'a, C: AsRef<Config>> {
-    config: C,
+pub struct UsersApi<'a> {
+    config: &'a Config,
+    webauthn: &'a Webauthn,
     emails: EmailsApi<&'a Config>,
     primary_db: Cow<'a, PrimaryDb>,
 }
 
-impl<'a, C: AsRef<Config>> UsersApi<'a, C> {
+impl<'a> UsersApi<'a> {
     /// Creates Users API.
-    pub fn new(config: C, primary_db: &'a PrimaryDb, emails: EmailsApi<&'a Config>) -> Self {
+    pub fn new(
+        config: &'a Config,
+        webauthn: &'a Webauthn,
+        primary_db: &'a PrimaryDb,
+        emails: EmailsApi<&'a Config>,
+    ) -> Self {
         Self {
             config,
+            webauthn,
             emails,
             primary_db: Cow::Borrowed(primary_db),
         }
@@ -50,13 +66,64 @@ impl<'a, C: AsRef<Config>> UsersApi<'a, C> {
     pub async fn signup<E: Into<String>>(
         &self,
         user_email: E,
-        user_credentials: StoredCredentials,
+        user_credentials: Credentials,
     ) -> anyhow::Result<User> {
         // Perform only basic checks here, consumer is supposed to properly validate all corner cases.
         let user_email = user_email.into();
         if user_email.is_empty() {
             bail!("Cannot signup user: invalid user email `{}`.", user_email);
         }
+
+        // Check if the user with specified email already exists.
+        if let Some(user) = self
+            .get_by_email(&user_email)
+            .await
+            .with_context(|| "Failed to check if user already exists.")?
+        {
+            bail!("Attempt to register existing user: {}", user.handle);
+        }
+
+        // Validate credentials.
+        let user_credentials = match user_credentials {
+            Credentials::Password(password) => StoredCredentials::try_from_password(&password)?,
+            Credentials::WebAuthnPublicKey(serialized_public_key) => {
+                let webauthn_session = self
+                    .primary_db
+                    .get_user_webauthn_session_by_email(&user_email)
+                    .await?
+                    .ok_or_else(|| anyhow!("Cannot find WebAuthn session in database."))?;
+
+                // Make sure that WebAuthn session was created for registration.
+                let registration_state = if let WebAuthnSessionValue::RegistrationState(state) =
+                    webauthn_session.value
+                {
+                    state
+                } else {
+                    bail!(
+                        "WebAuthn session value isn't suitable for registration: {:?}",
+                        webauthn_session.value
+                    );
+                };
+
+                // Deserialize public key and finish registration and extract passkey.
+                let credentials = self
+                    .webauthn
+                    .finish_passkey_registration(
+                        &serde_json::from_value::<RegisterPublicKeyCredential>(
+                            serialized_public_key,
+                        )?,
+                        &registration_state,
+                    )
+                    .map(StoredCredentials::from_passkey)?;
+
+                // Clear WebAuthn session state since we no longer need it.
+                self.primary_db
+                    .remove_user_webauthn_session_by_email(&user_email)
+                    .await?;
+
+                credentials
+            }
+        };
 
         if user_credentials.is_empty() {
             bail!("Cannot signup user: empty user credentials.");
@@ -84,7 +151,7 @@ impl<'a, C: AsRef<Config>> UsersApi<'a, C> {
 
         let encoded_activation_url = format!(
             "{}activation/{}",
-            self.config.as_ref().public_url.as_str(),
+            self.config.public_url.as_str(),
             urlencoding::encode(&activation_code)
         );
         self.emails.send(Email::new(
@@ -116,12 +183,12 @@ impl<'a, C: AsRef<Config>> UsersApi<'a, C> {
     }
 
     /// Authenticates user with the specified email and password.
-    pub async fn authenticate<EP: AsRef<str>>(
+    pub async fn authenticate<E: AsRef<str>>(
         &self,
-        user_email: EP,
-        user_password: EP,
+        user_email: E,
+        user_credentials: Credentials,
     ) -> anyhow::Result<User> {
-        let user = if let Some(user) = self
+        let mut user = if let Some(user) = self
             .primary_db
             .get_user_by_email(user_email.as_ref())
             .await?
@@ -134,25 +201,76 @@ impl<'a, C: AsRef<Config>> UsersApi<'a, C> {
             );
         };
 
-        let parsed_hash = if let Some(ref password_hash) = user.credentials.password_hash {
-            PasswordHash::new(password_hash)
-                .map_err(|err| anyhow!("Failed to parse a password hash: {}", err))?
-        } else {
-            bail!(
-                "Cannot authenticate user: a user with {} email doesn't have password-based credentials.",
-                user_email.as_ref()
-            );
-        };
+        match user_credentials {
+            Credentials::Password(password) => {
+                let parsed_hash = if let Some(ref password_hash) = user.credentials.password_hash {
+                    PasswordHash::new(password_hash)
+                        .map_err(|err| anyhow!("Failed to parse a password hash: {}", err))?
+                } else {
+                    bail!(
+                        "Cannot authenticate user: a user with {} email doesn't have password-based credentials.",
+                        user.email
+                    );
+                };
 
-        Argon2::default()
-            .verify_password(user_password.as_ref().as_bytes(), &parsed_hash)
-            .map_err(|err| {
-                anyhow!(
-                    "Cannot authenticate user: failed to validate password for user {} due to {}",
-                    user.handle,
-                    err
-                )
-            })?;
+                Argon2::default()
+                    .verify_password(password.as_bytes(), &parsed_hash)
+                    .map_err(|err| {
+                        anyhow!(
+                            "Cannot authenticate user: failed to validate password for user {} due to {}",
+                            user.handle,
+                            err
+                        )
+                    })?;
+            }
+            Credentials::WebAuthnPublicKey(serialized_public_key) => {
+                let webauthn_session = self
+                    .primary_db
+                    .get_user_webauthn_session_by_email(&user.email)
+                    .await?
+                    .ok_or_else(|| anyhow!("Cannot find WebAuthn session in database."))?;
+
+                // Make sure that WebAuthn session was created for authentication.
+                let authentication_state = if let WebAuthnSessionValue::AuthenticationState(state) =
+                    webauthn_session.value
+                {
+                    state
+                } else {
+                    bail!(
+                        "WebAuthn session value isn't suitable for authentication: {:?}",
+                        webauthn_session.value
+                    );
+                };
+
+                // Deserialize public key and finish authentication.
+                let authentication_result = self.webauthn.finish_passkey_authentication(
+                    &serde_json::from_value::<PublicKeyCredential>(serialized_public_key)?,
+                    &authentication_state,
+                )?;
+
+                // Update credentials counter to protect against cloned authenticators.
+                if authentication_result.needs_update() {
+                    if let Some(mut passkey) = user.credentials.passkey.take() {
+                        passkey.update_credential(&authentication_result);
+                        user.credentials.passkey = Some(passkey);
+
+                        self.upsert(&user)
+                            .await
+                            .with_context(|| "Couldn't update passkey credentials.")?;
+                    } else {
+                        bail!(
+                            "Cannot authenticate user: a user with {} email doesn't have passkey credentials.",
+                           user.email
+                        );
+                    }
+                }
+
+                // Clear WebAuthn session state since we no longer need it.
+                self.primary_db
+                    .remove_user_webauthn_session_by_email(&user.email)
+                    .await?;
+            }
+        }
 
         Ok(user)
     }
@@ -191,6 +309,74 @@ impl<'a, C: AsRef<Config>> UsersApi<'a, C> {
             })?;
 
         Ok(user_to_activate)
+    }
+
+    /// Starts WebAuthn handshake by generating a challenge of the specified type for the specified
+    /// user email, and storing WebAuthn session in the database. The result should be returned to
+    /// the user's browser for processing only. This operation also triggers cleanup of the stale
+    /// WebAuthn session from the database.
+    pub async fn start_webauthn_handshake(
+        &self,
+        user_email: &str,
+        challenge_type: WebAuthnChallengeType,
+    ) -> anyhow::Result<WebAuthnChallenge> {
+        // Clean up sessions that are older than 10 minutes, based on the recommended timeout values
+        // suggested in the WebAuthn spec: https://www.w3.org/TR/webauthn-2/#sctn-createCredential.
+        self.primary_db
+            .remove_user_webauthn_sessions(
+                OffsetDateTime::now_utc().sub(Duration::from_secs(60 * 10)),
+            )
+            .await
+            .with_context(|| "Failed to cleanup stale WebAuthn session.")?;
+
+        // Generate challenge response.
+        let (challenge, webauthn_session_value) = match challenge_type {
+            WebAuthnChallengeType::Registration => {
+                let (ccr, reg_state) = self
+                    .webauthn
+                    .start_passkey_registration(Uuid::new_v4(), user_email, user_email, None)
+                    .with_context(|| "Failed to start passkey registration")?;
+
+                (
+                    WebAuthnChallenge::registration(&ccr)?,
+                    WebAuthnSessionValue::RegistrationState(reg_state),
+                )
+            }
+            WebAuthnChallengeType::Authentication => {
+                // Make sure user with specified email exists.
+                let user = self
+                    .get_by_email(user_email)
+                    .await?
+                    .ok_or_else(|| anyhow!("User is not found (`{}`).", user_email))?;
+
+                // Make sure the user has passkey credentials configured.
+                let passkey = user
+                    .credentials
+                    .passkey
+                    .ok_or_else(|| anyhow!("User doesn't have a passkey configured."))?;
+
+                let (ccr, auth_state) = self
+                    .webauthn
+                    .start_passkey_authentication(&[passkey])
+                    .with_context(|| "Failed to start passkey authentication")?;
+
+                (
+                    WebAuthnChallenge::authentication(&ccr)?,
+                    WebAuthnSessionValue::AuthenticationState(auth_state),
+                )
+            }
+        };
+
+        // Store WebAuthn session state in the database during handshake.
+        self.primary_db
+            .upsert_user_webauthn_session(&WebAuthnSession {
+                email: user_email.to_string(),
+                value: webauthn_session_value,
+                timestamp: OffsetDateTime::now_utc(),
+            })
+            .await?;
+
+        Ok(challenge)
     }
 
     /// Retrieves the user using the specified email.
@@ -284,31 +470,6 @@ impl<'a, C: AsRef<Config>> UsersApi<'a, C> {
                 Self::set_user_settings_data(&user_data_setter, serialized_data_value).await
             }
         }
-    }
-
-    /// Retrieves user's WebAuthn session using user email.
-    pub async fn get_webauthn_session_by_email(
-        &self,
-        user_email: &str,
-    ) -> anyhow::Result<Option<UserWebAuthnSession>> {
-        self.primary_db
-            .get_user_webauthn_session_by_email(user_email)
-            .await
-    }
-
-    /// Removes user WebAuthn session with the specified email.
-    pub async fn remove_webauthn_session_by_email(&self, user_email: &str) -> anyhow::Result<()> {
-        self.primary_db
-            .remove_user_webauthn_session_by_email(user_email)
-            .await
-    }
-
-    /// Sets user's WebAuthn session.
-    pub async fn upsert_webauthn_session(
-        &self,
-        session: &UserWebAuthnSession,
-    ) -> anyhow::Result<()> {
-        self.primary_db.upsert_user_webauthn_session(session).await
     }
 
     async fn set_auto_responders_data(
@@ -415,7 +576,7 @@ impl<'a, C: AsRef<Config>> UsersApi<'a, C> {
 mod tests {
     use crate::{
         api::{EmailsApi, UsersApi},
-        authentication::StoredCredentials,
+        authentication::{create_webauthn, StoredCredentials},
         config::Config,
         datastore::PrimaryDb,
         tests::MockUserBuilder,
@@ -455,7 +616,13 @@ mod tests {
         let mock_config = create_mock_config();
         let mock_user = create_mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = UsersApi::new(&mock_config, &mock_db, EmailsApi::new(&mock_config));
+        let mock_webauthn = create_webauthn(&mock_config)?;
+        let api = UsersApi::new(
+            &mock_config,
+            &mock_webauthn,
+            &mock_db,
+            EmailsApi::new(&mock_config),
+        );
 
         let auto_responder_one = AutoResponder {
             name: "name-one".to_string(),

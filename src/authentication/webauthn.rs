@@ -1,6 +1,16 @@
+mod webauthn_challenge;
+mod webauthn_challenge_type;
+mod webauthn_session;
+mod webauthn_session_value;
+
 use crate::config::Config;
 use anyhow::{anyhow, Context};
 use webauthn_rs::{Webauthn, WebauthnBuilder};
+
+pub use self::{
+    webauthn_challenge::WebAuthnChallenge, webauthn_challenge_type::WebAuthnChallengeType,
+    webauthn_session::WebAuthnSession, webauthn_session_value::WebAuthnSessionValue,
+};
 
 /// Name of the session dictionary key used to store intermediate WebAuthn registration and
 /// authentication states.

@@ -1,4 +1,4 @@
-use crate::users::UserWebAuthnSession;
+use crate::authentication::WebAuthnSession;
 use anyhow::Context;
 use time::OffsetDateTime;
 
@@ -9,7 +9,7 @@ pub(super) struct RawUserWebAuthnSession {
     pub timestamp: i64,
 }
 
-impl TryFrom<RawUserWebAuthnSession> for UserWebAuthnSession {
+impl TryFrom<RawUserWebAuthnSession> for WebAuthnSession {
     type Error = anyhow::Error;
 
     fn try_from(raw_user_webauthn_session: RawUserWebAuthnSession) -> Result<Self, Self::Error> {
@@ -21,7 +21,7 @@ impl TryFrom<RawUserWebAuthnSession> for UserWebAuthnSession {
                 )
             },
         )?;
-        Ok(UserWebAuthnSession {
+        Ok(WebAuthnSession {
             email: raw_user_webauthn_session.email,
             value,
             timestamp: OffsetDateTime::from_unix_timestamp(raw_user_webauthn_session.timestamp)?,
@@ -32,15 +32,15 @@ impl TryFrom<RawUserWebAuthnSession> for UserWebAuthnSession {
 #[cfg(test)]
 mod tests {
     use crate::{
+        authentication::{WebAuthnSession, WebAuthnSessionValue},
         datastore::primary_db::raw_user_webauthn_session::RawUserWebAuthnSession,
         tests::webauthn::{SERIALIZED_AUTHENTICATION_STATE, SERIALIZED_REGISTRATION_STATE},
-        users::{UserWebAuthnSession, UserWebAuthnSessionValue},
     };
     use insta::assert_debug_snapshot;
 
     #[test]
     fn can_convert_from_raw_session() -> anyhow::Result<()> {
-        let registration_state_value: UserWebAuthnSessionValue = serde_json::from_str(&format!(
+        let registration_state_value: WebAuthnSessionValue = serde_json::from_str(&format!(
             "{{\"RegistrationState\":{SERIALIZED_REGISTRATION_STATE}}}"
         ))?;
         let raw_session = RawUserWebAuthnSession {
@@ -49,8 +49,8 @@ mod tests {
             // January 1, 2000 11:00:00
             timestamp: 946720800,
         };
-        assert_debug_snapshot!(UserWebAuthnSession::try_from(raw_session)?,  @r###"
-        UserWebAuthnSession {
+        assert_debug_snapshot!(WebAuthnSession::try_from(raw_session)?,  @r###"
+        WebAuthnSession {
             email: "test@secutils.dev",
             value: RegistrationState(
                 PasskeyRegistration {
@@ -118,7 +118,7 @@ mod tests {
         }
         "###);
 
-        let authentication_state_value: UserWebAuthnSessionValue = serde_json::from_str(&format!(
+        let authentication_state_value: WebAuthnSessionValue = serde_json::from_str(&format!(
             "{{\"AuthenticationState\":{SERIALIZED_AUTHENTICATION_STATE}}}"
         ))?;
         let raw_session = RawUserWebAuthnSession {
@@ -127,8 +127,8 @@ mod tests {
             // January 1, 2000 11:00:00
             timestamp: 946720800,
         };
-        assert_debug_snapshot!(UserWebAuthnSession::try_from(raw_session)?,  @r###"
-        UserWebAuthnSession {
+        assert_debug_snapshot!(WebAuthnSession::try_from(raw_session)?,  @r###"
+        WebAuthnSession {
             email: "test@secutils.dev",
             value: AuthenticationState(
                 PasskeyAuthentication {

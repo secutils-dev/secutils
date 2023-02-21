@@ -28,9 +28,8 @@
 //!                  │                     │                      │
 //!                  │                     │                      │
 use crate::{
-    authentication::{StoredCredentials, WEBAUTHN_SESSION_KEY},
+    authentication::{Credentials, WebAuthnChallengeType, WEBAUTHN_SESSION_KEY},
     server::{app_state::AppState, http_errors::generic_internal_server_error},
-    users::{UserWebAuthnSession, UserWebAuthnSessionValue},
 };
 use actix_http::HttpMessage;
 use actix_identity::Identity;
@@ -39,9 +38,6 @@ use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use anyhow::Context;
 use serde_derive::Deserialize;
 use serde_json::json;
-use time::OffsetDateTime;
-use uuid::Uuid;
-use webauthn_rs::prelude::RegisterPublicKeyCredential;
 
 #[derive(Deserialize)]
 pub struct SignupStartParams {
@@ -63,46 +59,26 @@ pub async fn security_webauthn_signup_start(
     }
 
     // Remove any previous registrations that may have occurred from the session.
+    session.remove(WEBAUTHN_SESSION_KEY);
+
+    // Start handshake and return challenge to the client.
     let users_api = state.api.users();
-    if let Some(username) = session.remove(WEBAUTHN_SESSION_KEY) {
-        if let Err(err) = users_api.remove_webauthn_session_by_email(&username).await {
-            log::error!("Failed to remove WebAuthn session: {:?}", err);
-            return generic_internal_server_error();
-        }
-    }
-
-    // Generate challenge response.
-    let (ccr, reg_state) = match state.webauthn.start_passkey_registration(
-        Uuid::new_v4(),
-        &body_params.email,
-        &body_params.email,
-        None,
-    ) {
-        Ok(registration) => registration,
-        Err(err) => {
-            log::error!("Failed to start WebAuthn registration: {:?}", err);
-            return generic_internal_server_error();
-        }
-    };
-
-    let webauthn_session_store_result = users_api
-        .upsert_webauthn_session(&UserWebAuthnSession {
-            email: body_params.email.to_string(),
-            value: UserWebAuthnSessionValue::RegistrationState(reg_state),
-            timestamp: OffsetDateTime::now_utc(),
-        })
+    let webauthn_challenge_result = users_api
+        .start_webauthn_handshake(&body_params.email, WebAuthnChallengeType::Registration)
         .await
-        .and_then(|_| {
+        .and_then(|challenge| {
             session
                 .insert(WEBAUTHN_SESSION_KEY, &body_params.email)
-                .with_context(|| "Failed to store WebAuthn session in cookie.")
+                .with_context(|| "Failed to store WebAuthn session in cookie.")?;
+            Ok(challenge)
         });
-    if let Err(err) = webauthn_session_store_result {
-        log::error!("Failed to store WebAuthn session: {:?}", err);
-        return generic_internal_server_error();
+    match webauthn_challenge_result {
+        Ok(challenge) => HttpResponse::Ok().json(challenge),
+        Err(err) => {
+            log::error!("Failed to start WebAuthn registration: {:?}", err);
+            generic_internal_server_error()
+        }
     }
-
-    HttpResponse::Ok().json(ccr)
 }
 
 /// The final stage of the WebAuthn registration flow.
@@ -110,7 +86,7 @@ pub async fn security_webauthn_signup_finish(
     state: web::Data<AppState>,
     session: Session,
     request: HttpRequest,
-    body_params: web::Json<RegisterPublicKeyCredential>,
+    body_params: web::Json<serde_json::Value>,
 ) -> impl Responder {
     let body_params = body_params.into_inner();
 
@@ -122,71 +98,12 @@ pub async fn security_webauthn_signup_finish(
         return generic_internal_server_error();
     };
 
-    // Then extract stored session state from the DB using user email.
-    let users_api = state.api.users();
-    let webauthn_session = match users_api.get_webauthn_session_by_email(&email).await {
-        Ok(Some(session)) => session,
-        Ok(None) => {
-            log::error!("Cannot find WebAuthn session in database.");
-            return generic_internal_server_error();
-        }
-        Err(err) => {
-            log::error!(
-                "Failed to retrieve WebAuthn session from database: {:?}",
-                err
-            );
-            return generic_internal_server_error();
-        }
-    };
-
-    // Make sure that user is in process of registration.
-    let registration_state =
-        if let UserWebAuthnSessionValue::RegistrationState(registration) = webauthn_session.value {
-            registration
-        } else {
-            log::error!(
-                "WebAuthn session value isn't suitable for registration: {:?}",
-                webauthn_session.value
-            );
-            return generic_internal_server_error();
-        };
-
-    // Finish registration and extract passkey.
-    let credentials = match state
-        .webauthn
-        .finish_passkey_registration(&body_params, &registration_state)
-    {
-        Ok(passkey) => StoredCredentials::from_passkey(passkey),
-        Err(err) => {
-            log::error!("Failed to finish WebAuthn registration: {:?}", err);
-            return generic_internal_server_error();
-        }
-    };
-
-    // Clear WebAuthn session state since we no longer need it.
-    if let Err(err) = users_api.remove_webauthn_session_by_email(&email).await {
-        log::error!("Failed to clear WebAuthn session: {:?}", err);
-        return generic_internal_server_error();
-    }
-
-    // Now we should make sure user isn't registered yet.
-    match users_api.get_by_email(&email).await {
-        Ok(None) => {
-            // User with the provided email doesn't exist yet, move forward.
-        }
-        Ok(Some(user)) => {
-            log::error!("Attempt to register existing user: {}", user.handle);
-            return HttpResponse::BadRequest()
-                .json(json!({ "message": "User with provided email already registered." }));
-        }
-        Err(err) => {
-            log::error!("Failed to check if user exists: {:?}", err);
-            return generic_internal_server_error();
-        }
-    }
-
     // Finally, create user entry in database
-    let user = match state.api.users().signup(&email, credentials).await {
+    let users_api = state.api.users();
+    let user = match users_api
+        .signup(&email, Credentials::WebAuthnPublicKey(body_params))
+        .await
+    {
         Ok(user) => {
             log::info!("Successfully signed up user (`{}`).", user.handle);
             user

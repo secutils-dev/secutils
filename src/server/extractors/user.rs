@@ -1,4 +1,4 @@
-use crate::{server::app_state::AppState, users::User};
+use crate::{authentication::Credentials, server::app_state::AppState, users::User};
 use actix_http::Payload;
 use actix_identity::Identity;
 use actix_web::{error::ErrorUnauthorized, web, Error, FromRequest, HttpRequest};
@@ -22,7 +22,10 @@ impl FromRequest for User {
                     return match state
                         .api
                         .users()
-                        .authenticate(basic_auth.user_id(), password)
+                        .authenticate(
+                            basic_auth.user_id(),
+                            Credentials::Password(password.to_string()),
+                        )
                         .await
                     {
                         Ok(user) => Ok(user),

@@ -22,7 +22,11 @@ pub async fn run(
     builtin_users: Option<String>,
 ) -> Result<(), anyhow::Error> {
     let indices_dir = FileCache::ensure_cache_dir_exists("data")?;
-    let api = Api::new(config.clone(), Datastore::open(indices_dir).await?);
+    let api = Api::new(
+        config.clone(),
+        Datastore::open(indices_dir).await?,
+        create_webauthn(&config)?,
+    );
 
     if let Some(ref builtin_users) = builtin_users {
         builtin_users_initializer(&api, builtin_users)
@@ -33,8 +37,7 @@ pub async fn run(
     search_index_initializer(&api).await?;
 
     let http_server_url = format!("0.0.0.0:{}", config.http_port);
-    let webauthn = create_webauthn(&config)?;
-    let state = web::Data::new(AppState::new(config, webauthn, api));
+    let state = web::Data::new(AppState::new(config, api));
     let http_server = HttpServer::new(move || {
         App::new()
             .wrap(middleware::Compat::new(middleware::Compress::default()))

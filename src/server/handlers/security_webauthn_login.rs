@@ -24,9 +24,8 @@
 //!                  │                     │                      │
 //!                  │                     │                      │
 use crate::{
-    authentication::WEBAUTHN_SESSION_KEY,
+    authentication::{Credentials, WebAuthnChallengeType, WEBAUTHN_SESSION_KEY},
     server::{app_state::AppState, http_errors::generic_internal_server_error},
-    users::{UserWebAuthnSession, UserWebAuthnSessionValue},
 };
 use actix_http::HttpMessage;
 use actix_identity::Identity;
@@ -35,8 +34,6 @@ use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use anyhow::Context;
 use serde_derive::Deserialize;
 use serde_json::json;
-use time::OffsetDateTime;
-use webauthn_rs::prelude::PublicKeyCredential;
 
 #[derive(Deserialize)]
 pub struct LoginStartParams {
@@ -57,63 +54,27 @@ pub async fn security_webauthn_login_start(
         }));
     }
 
-    // Remove any previous registrations that may have occurred from the session.
+    // Remove any previous authentications that may have occurred from the session.
+    session.remove(WEBAUTHN_SESSION_KEY);
+
+    // Start handshake and return challenge to the client.
     let users_api = state.api.users();
-    if let Some(email) = session.remove(WEBAUTHN_SESSION_KEY) {
-        if let Err(err) = users_api.remove_webauthn_session_by_email(&email).await {
-            log::error!("Failed to remove WebAuthn session: {:?}", err);
-            return generic_internal_server_error();
-        }
-    }
-
-    // Retrieve user using provided email.
-    let user = match users_api.get_by_email(&body_params.email).await {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            log::error!("User is not found (`{}`).", body_params.email);
-            return HttpResponse::Unauthorized().json(json!({ "message": "Failed to authenticate user. Please check your credentials and try again, or contact us for assistance." }));
-        }
-        Err(err) => {
-            log::error!("Failed to retrieve user: {:?}", err);
-            return generic_internal_server_error();
-        }
-    };
-
-    // Make sure the user has passkey credentials configured.
-    let passkey = if let Some(passkey) = user.credentials.passkey {
-        passkey
-    } else {
-        log::error!("User doesn't have a passkey configured.",);
-        return HttpResponse::Unauthorized().json(json!({ "message": "Failed to authenticate user. Please check your credentials and try again, or contact us for assistance." }));
-    };
-
-    // Generate challenge response.
-    let (ccr, auth_state) = match state.webauthn.start_passkey_authentication(&[passkey]) {
-        Ok(authentication) => authentication,
-        Err(err) => {
-            log::error!("Failed to start WebAuthn authentication: {:?}", err);
-            return generic_internal_server_error();
-        }
-    };
-
-    let webauthn_session_store_result = users_api
-        .upsert_webauthn_session(&UserWebAuthnSession {
-            email: body_params.email.to_string(),
-            value: UserWebAuthnSessionValue::AuthenticationState(auth_state),
-            timestamp: OffsetDateTime::now_utc(),
-        })
+    let webauthn_challenge_result = users_api
+        .start_webauthn_handshake(&body_params.email, WebAuthnChallengeType::Authentication)
         .await
-        .and_then(|_| {
+        .and_then(|challenge| {
             session
                 .insert(WEBAUTHN_SESSION_KEY, &body_params.email)
-                .with_context(|| "Failed to store WebAuthn session in cookie.")
+                .with_context(|| "Failed to store WebAuthn session in cookie.")?;
+            Ok(challenge)
         });
-    if let Err(err) = webauthn_session_store_result {
-        log::error!("Failed to store WebAuthn session: {:?}", err);
-        return generic_internal_server_error();
+    match webauthn_challenge_result {
+        Ok(challenge) => HttpResponse::Ok().json(challenge),
+        Err(err) => {
+            log::error!("Failed to start WebAuthn authentication: {:?}", err);
+            generic_internal_server_error()
+        }
     }
-
-    HttpResponse::Ok().json(ccr)
 }
 
 /// The final stage of the WebAuthn authentication flow.
@@ -121,7 +82,7 @@ pub async fn security_webauthn_login_finish(
     state: web::Data<AppState>,
     session: Session,
     request: HttpRequest,
-    body_params: web::Json<PublicKeyCredential>,
+    body_params: web::Json<serde_json::Value>,
 ) -> impl Responder {
     let body_params = body_params.into_inner();
 
@@ -133,70 +94,25 @@ pub async fn security_webauthn_login_finish(
         return generic_internal_server_error();
     };
 
-    // Then extract stored session state from the DB using user email.
     let users_api = state.api.users();
-    let webauthn_session = match users_api.get_webauthn_session_by_email(&email).await {
-        Ok(Some(session)) => session,
-        Ok(None) => {
-            log::error!("Cannot find WebAuthn session in database.");
-            return generic_internal_server_error();
-        }
-        Err(err) => {
-            log::error!(
-                "Failed to retrieve WebAuthn session from database: {:?}",
-                err
-            );
-            return generic_internal_server_error();
-        }
-    };
-
-    // Make sure that user is in process of authentication.
-    let authentication_state =
-        if let UserWebAuthnSessionValue::AuthenticationState(authentication) =
-            webauthn_session.value
-        {
-            authentication
-        } else {
-            log::error!(
-                "WebAuthn session value isn't suitable for authentication: {:?}",
-                webauthn_session.value
-            );
-            return generic_internal_server_error();
-        };
-
-    let authentication_result = match state
-        .webauthn
-        .finish_passkey_authentication(&body_params, &authentication_state)
+    let user = match users_api
+        .authenticate(&email, Credentials::WebAuthnPublicKey(body_params))
+        .await
     {
-        Ok(authentication_result) => authentication_result,
+        Ok(user) => user,
         Err(err) => {
-            log::error!(
-                "Failed to finish WebAuthn authentication (`{}`): {:?}",
-                email,
-                err
-            );
-            return HttpResponse::InternalServerError().json(json!({ "status": "failed" }));
+            log::error!("Failed to log in user: {:?}", err);
+            return HttpResponse::Unauthorized().json(json!({ "message": "Failed to authenticate user. Please check your credentials and try again, or contact us for assistance." }));
         }
     };
 
-    // Update credentials counter to protect against cloned authenticators.
-    if authentication_result.needs_update() {
-        log::error!("Not implemented yet.");
-    }
-
-    // Clear WebAuthn session state since we no longer need it.
-    if let Err(err) = users_api.remove_webauthn_session_by_email(&email).await {
-        log::error!("Failed to clear WebAuthn session: {:?}", err);
-        return generic_internal_server_error();
-    }
-
-    match Identity::login(&request.extensions(), email.clone()) {
-        Ok(identity) => {
-            log::debug!("Logged in user (`{}`) as {:?}", email, identity.id());
-            HttpResponse::Ok().finish()
+    match Identity::login(&request.extensions(), user.email.clone()) {
+        Ok(_) => {
+            log::debug!("Successfully logged in user (`{}`).", user.handle);
+            HttpResponse::Ok().json(json!({ "user": user }))
         }
         Err(err) => {
-            log::error!("Failed to log in user (`{}`): {:?}", email, err);
+            log::error!("Failed to log in user (`{}`): {:?}", user.handle, err);
             generic_internal_server_error()
         }
     }

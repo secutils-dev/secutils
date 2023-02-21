@@ -1,5 +1,5 @@
 use crate::{
-    authentication::StoredCredentials,
+    authentication::Credentials,
     server::{app_state::AppState, http_errors::generic_internal_server_error},
 };
 use actix_http::HttpMessage;
@@ -34,35 +34,14 @@ pub async fn security_signup(
             .json(json!({ "message": "Password cannot be empty or shorter than 8 characters." }));
     }
 
-    let credentials = match StoredCredentials::try_from_password(&body_params.password) {
-        Ok(credentials) => credentials,
-        Err(err) => {
-            log::error!(
-                "Password doesn't meet minimal security constraints: {:?}",
-                err
-            );
-            return HttpResponse::BadRequest()
-                .json(json!({ "message": "Password doesn't meet minimal security constraints." }));
-        }
-    };
-
     let users_api = state.api.users();
-    match users_api.get_by_email(&body_params.email).await {
-        Ok(None) => {
-            // User with the provided email doesn't exist yet, move forward.
-        }
-        Ok(Some(user)) => {
-            log::error!("Attempt to register existing user: {}", user.handle);
-            return HttpResponse::BadRequest()
-                .json(json!({ "message": "User with provided email already registered." }));
-        }
-        Err(err) => {
-            log::error!("Failed to check if user exists: {:?}", err);
-            return generic_internal_server_error();
-        }
-    }
-
-    let user = match users_api.signup(&body_params.email, credentials).await {
+    let user = match users_api
+        .signup(
+            &body_params.email,
+            Credentials::Password(body_params.password),
+        )
+        .await
+    {
         Ok(user) => {
             log::info!("Successfully signed up user: {}", user.handle);
             user

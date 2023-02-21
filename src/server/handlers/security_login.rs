@@ -1,4 +1,7 @@
-use crate::server::{app_state::AppState, http_errors::generic_internal_server_error};
+use crate::{
+    authentication::Credentials,
+    server::{app_state::AppState, http_errors::generic_internal_server_error},
+};
 use actix_http::HttpMessage;
 use actix_identity::Identity;
 use actix_web::{web, HttpRequest, HttpResponse, Responder};
@@ -31,7 +34,10 @@ pub async fn security_login(
 
     let users_api = state.api.users();
     let user = match users_api
-        .authenticate(&body_params.email, &body_params.password)
+        .authenticate(
+            &body_params.email,
+            Credentials::Password(body_params.password),
+        )
         .await
     {
         Ok(user) => user,
