@@ -6,4 +6,6 @@ pub async fn security_logout(identity: Option<Identity>) -> impl Responder {
         user.logout();
     }
     HttpResponse::NoContent()
+        .append_header(("Clear-Site-Data", r#""cache", "cookies""#))
+        .finish()
 }
