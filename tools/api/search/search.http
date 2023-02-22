@@ -1,4 +1,5 @@
-### Site-wide search
+# Site-wide search
+# @no-cookie-jar
 POST {{host}}/api/search
 Accept: application/json
 Content-Type: application/json

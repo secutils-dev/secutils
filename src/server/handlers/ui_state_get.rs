@@ -28,14 +28,17 @@ pub async fn ui_state_get(
     state: web::Data<AppState>,
     user: Option<User>,
 ) -> Result<HttpResponse, SecutilsError> {
-    let settings = if let Some(ref user) = user {
-        state
-            .api
-            .users()
-            .get_data(user.id, UserDataType::UserSettings)
-            .await?
+    let (settings, utils) = if let Some(ref user) = user {
+        (
+            state
+                .api
+                .users()
+                .get_data(user.id, UserDataType::UserSettings)
+                .await?,
+            state.api.utils().get_all().await?,
+        )
     } else {
-        None
+        (None, vec![])
     };
     Ok(HttpResponse::Ok().json(UiState {
         status: state
@@ -46,6 +49,6 @@ pub async fn ui_state_get(
         license: License,
         user,
         settings,
-        utils: state.api.utils().get_all().await?,
+        utils,
     }))
 }

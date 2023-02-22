@@ -1,10 +1,9 @@
 use crate::{
-    server::app_state::AppState,
+    server::{app_state::AppState, http_errors::generic_internal_server_error},
     users::{User, UserDataType},
 };
 use actix_web::{web, HttpResponse, Responder};
 use serde_derive::Deserialize;
-use serde_json::json;
 use std::collections::BTreeMap;
 
 #[derive(Deserialize)]
@@ -36,7 +35,7 @@ pub async fn user_data_get(
                 user.handle,
                 err
             );
-            HttpResponse::InternalServerError().json(json!({ "status": "failed" }))
+            generic_internal_server_error()
         }
     }
 }
