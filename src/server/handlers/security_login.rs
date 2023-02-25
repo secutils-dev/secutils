@@ -43,7 +43,7 @@ pub async fn security_login(
         Ok(user) => user,
         Err(err) => {
             log::error!("Failed to log in user: {:?}", err);
-            return HttpResponse::Unauthorized().json(json!({ "message": "Failed to authenticate user. Please check your credentials and try again, or contact us for assistance." }));
+            return HttpResponse::Unauthorized().json(json!({ "message": "Authentication failed. Please check your credentials and try again, or contact us for assistance." }));
         }
     };
 
