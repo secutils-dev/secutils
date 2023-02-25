@@ -62,6 +62,26 @@ pub async fn run(
                     .route("/logout", web::post().to(handlers::security_logout))
                     .route("/signup", web::post().to(handlers::security_signup))
                     .service(
+                        web::scope("/credentials")
+                            .route(
+                                "/{credentials}",
+                                web::delete().to(handlers::security_credentials_remove),
+                            )
+                            .route(
+                                "/password",
+                                web::post().to(handlers::security_credentials_update_password),
+                            )
+                            .route(
+                                "/passkey/start",
+                                web::post().to(handlers::security_credentials_update_passkey_start),
+                            )
+                            .route(
+                                "/passkey/finish",
+                                web::post()
+                                    .to(handlers::security_credentials_update_passkey_finish),
+                            ),
+                    )
+                    .service(
                         web::scope("/webauthn")
                             .route(
                                 "/signup/start",

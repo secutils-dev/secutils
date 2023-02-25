@@ -1,4 +1,6 @@
 mod search;
+mod security_credentials_remove;
+mod security_credentials_update;
 mod security_login;
 mod security_logout;
 mod security_signup;
@@ -18,6 +20,11 @@ mod webhooks_auto_responders;
 
 pub use self::{
     search::search,
+    security_credentials_remove::security_credentials_remove,
+    security_credentials_update::{
+        security_credentials_update_passkey_finish, security_credentials_update_passkey_start,
+        security_credentials_update_password,
+    },
     security_login::security_login,
     security_logout::security_logout,
     security_signup::security_signup,

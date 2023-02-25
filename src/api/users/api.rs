@@ -83,58 +83,15 @@ impl<'a> UsersApi<'a> {
             bail!("Attempt to register existing user: {}", user.handle);
         }
 
-        // Validate credentials.
-        let user_credentials = match user_credentials {
-            Credentials::Password(password) => StoredCredentials::try_from_password(&password)?,
-            Credentials::WebAuthnPublicKey(serialized_public_key) => {
-                let webauthn_session = self
-                    .primary_db
-                    .get_user_webauthn_session_by_email(&user_email)
-                    .await?
-                    .ok_or_else(|| anyhow!("Cannot find WebAuthn session in database."))?;
-
-                // Make sure that WebAuthn session was created for registration.
-                let registration_state = if let WebAuthnSessionValue::RegistrationState(state) =
-                    webauthn_session.value
-                {
-                    state
-                } else {
-                    bail!(
-                        "WebAuthn session value isn't suitable for registration: {:?}",
-                        webauthn_session.value
-                    );
-                };
-
-                // Deserialize public key and finish registration and extract passkey.
-                let credentials = self
-                    .webauthn
-                    .finish_passkey_registration(
-                        &serde_json::from_value::<RegisterPublicKeyCredential>(
-                            serialized_public_key,
-                        )?,
-                        &registration_state,
-                    )
-                    .map(StoredCredentials::from_passkey)?;
-
-                // Clear WebAuthn session state since we no longer need it.
-                self.primary_db
-                    .remove_user_webauthn_session_by_email(&user_email)
-                    .await?;
-
-                credentials
-            }
-        };
-
-        if user_credentials.is_empty() {
-            bail!("Cannot signup user: empty user credentials.");
-        }
-
         let activation_code = Self::generate_activation_code();
+        let credentials = self
+            .validate_credentials(&user_email, user_credentials)
+            .await?;
         let user = User {
             id: UserId::empty(),
             email: user_email,
             handle: self.generate_user_handle().await?,
-            credentials: user_credentials,
+            credentials,
             created: OffsetDateTime::now_utc(),
             roles: HashSet::with_capacity(0),
             activation_code: Some(activation_code.clone()),
@@ -273,6 +230,46 @@ impl<'a> UsersApi<'a> {
         }
 
         Ok(user)
+    }
+
+    /// Adds or updates user credentials.
+    pub async fn update_credentials(
+        &self,
+        user_email: &str,
+        user_credentials: Credentials,
+    ) -> anyhow::Result<User> {
+        // Perform only basic checks here, consumer is supposed to properly validate all corner cases.
+        if user_email.is_empty() {
+            bail!(
+                "Cannot update user credentials: invalid user email `{}`.",
+                user_email
+            );
+        }
+
+        // Retrieve the user to combine new credentials with existing ones.
+        let mut existing_user = self
+            .get_by_email(&user_email)
+            .await
+            .with_context(|| "Failed to retrieve user for credentials change.")?
+            .ok_or_else(|| anyhow!("User to change password for doesn't exist."))?;
+
+        // Merge credentials
+        let user_credentials = self
+            .validate_credentials(user_email, user_credentials)
+            .await?;
+        if user_credentials.password_hash.is_some() {
+            existing_user.credentials.password_hash = user_credentials.password_hash;
+        } else if user_credentials.passkey.is_some() {
+            existing_user.credentials.passkey = user_credentials.passkey;
+        }
+
+        // Update user with new credentials.
+        self.primary_db
+            .upsert_user(&existing_user)
+            .await
+            .with_context(|| format!("Cannot update user (user ID: {:?})", existing_user.id))?;
+
+        Ok(existing_user)
     }
 
     /// Activates user using the specified activation code.
@@ -569,6 +566,59 @@ impl<'a> UsersApi<'a> {
         let mut bytes = [0u8; ACTIVATION_CODE_LENGTH_BYTES];
         OsRng.fill_bytes(&mut bytes);
         bytes.encode_hex()
+    }
+
+    async fn validate_credentials(
+        &self,
+        user_email: &str,
+        user_credentials: Credentials,
+    ) -> anyhow::Result<StoredCredentials> {
+        let user_credentials = match user_credentials {
+            Credentials::Password(password) => StoredCredentials::try_from_password(&password)?,
+            Credentials::WebAuthnPublicKey(serialized_public_key) => {
+                let webauthn_session = self
+                    .primary_db
+                    .get_user_webauthn_session_by_email(user_email)
+                    .await?
+                    .ok_or_else(|| anyhow!("Cannot find WebAuthn session in database."))?;
+
+                // Make sure that WebAuthn session was created for registration.
+                let registration_state = if let WebAuthnSessionValue::RegistrationState(state) =
+                    webauthn_session.value
+                {
+                    state
+                } else {
+                    bail!(
+                        "WebAuthn session value isn't suitable for registration: {:?}",
+                        webauthn_session.value
+                    );
+                };
+
+                // Deserialize public key and finish registration and extract passkey.
+                let credentials = self
+                    .webauthn
+                    .finish_passkey_registration(
+                        &serde_json::from_value::<RegisterPublicKeyCredential>(
+                            serialized_public_key,
+                        )?,
+                        &registration_state,
+                    )
+                    .map(StoredCredentials::from_passkey)?;
+
+                // Clear WebAuthn session state since we no longer need it.
+                self.primary_db
+                    .remove_user_webauthn_session_by_email(user_email)
+                    .await?;
+
+                credentials
+            }
+        };
+
+        if user_credentials.is_empty() {
+            bail!("User credentials are empty.");
+        }
+
+        Ok(user_credentials)
     }
 }
 
