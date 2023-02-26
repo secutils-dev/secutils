@@ -165,7 +165,6 @@ RETURNING id
         email: T,
     ) -> anyhow::Result<Option<User>> {
         let email = email.as_ref();
-        let mut conn = self.pool.acquire().await?;
         query_as!(
             RawUser,
             r#"
@@ -175,7 +174,7 @@ RETURNING id as "id!", email as "email!", handle as "handle!", credentials as "c
             "#,
             email
         )
-        .fetch_optional(&mut conn)
+        .fetch_optional(&self.pool)
             .await?
             .map(User::try_from)
             .transpose()
@@ -215,8 +214,6 @@ WHERE user_id = ?1 AND data_key = ?2
     ) -> anyhow::Result<()> {
         let user_data_value = serde_json::ser::to_vec(&data_value)
             .with_context(|| format!("Failed to serialize user data ({user_data_key})."))?;
-
-        let mut conn = self.pool.acquire().await?;
         query!(
             r#"
 INSERT INTO user_data (user_id, data_key, data_value)
@@ -227,7 +224,7 @@ ON CONFLICT(user_id, data_key) DO UPDATE SET data_value=excluded.data_value
             user_data_key,
             user_data_value
         )
-        .execute(&mut conn)
+        .execute(&self.pool)
         .await?;
 
         Ok(())

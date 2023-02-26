@@ -14,11 +14,11 @@ actix-identity = "0.5.2"
 actix-rt = "2.8.0"
 actix-session = "0.7.2"
 actix-utils = "3.0.1"
-actix-web = "4.3.0"
+actix-web = "4.3.1"
 actix-web-httpauth = "0.8.0"
 actix-server = "2.2.0"
 anyhow = "1.0.69"
-argon2 = "0.4.1"
+argon2 = "0.5.0-pre.0"
 bytes = "1.4.0"
 clap = "4.1.6"
 dirs = "4.0.0"
@@ -36,7 +36,7 @@ serde = "1.0.152"
 serde_bytes = "0.11.9"
 serde_derive = "1.0.152"
 serde_json = "1.0.93"
-sqlx = "0.6.2"
+sqlx = "0.7.0-alpha.1"
 tantivy = "0.19.2"
 time = "0.3.20"
 url = "2.3.1"
@@ -66,8 +66,7 @@ default = [
     "serde_json/arbitrary_precision",
     "sqlx/json",
     "sqlx/migrate",
-    "sqlx/offline",
-    "sqlx/runtime-actix-rustls",
+    "sqlx/runtime-tokio-rustls",
     "sqlx/sqlite",
     "time/formatting",
     "time/macros",
