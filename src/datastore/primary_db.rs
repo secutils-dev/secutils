@@ -3,6 +3,7 @@ mod raw_user_data;
 mod raw_user_to_upsert;
 mod raw_user_webauthn_session;
 mod raw_util;
+mod user_data_key;
 
 use crate::{
     authentication::WebAuthnSession,
@@ -19,6 +20,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use sqlx::{query, query_as, query_scalar, sqlite::SqlitePool, Pool, Sqlite};
 use std::collections::HashMap;
 use time::OffsetDateTime;
+pub use user_data_key::UserDataKey;
 
 #[derive(Clone)]
 pub struct PrimaryDb {
@@ -162,8 +164,9 @@ RETURNING id as "id!", email as "email!", handle as "handle!", credentials as "c
     pub async fn get_user_data<R: DeserializeOwned>(
         &self,
         user_id: UserId,
-        user_data_key: &str,
+        user_data_key: impl Into<UserDataKey<'_>>,
     ) -> anyhow::Result<Option<R>> {
+        let user_data_key = String::try_from(user_data_key.into())?;
         query_as!(
             RawUserData,
             r#"
@@ -187,9 +190,10 @@ WHERE user_id = ?1 AND data_key = ?2
     pub async fn upsert_user_data<R: Serialize>(
         &self,
         user_id: UserId,
-        user_data_key: &str,
+        user_data_key: impl Into<UserDataKey<'_>>,
         data_value: R,
     ) -> anyhow::Result<()> {
+        let user_data_key = String::try_from(user_data_key.into())?;
         let user_data_value = serde_json::ser::to_vec(&data_value)
             .with_context(|| format!("Failed to serialize user data ({user_data_key})."))?;
         query!(
@@ -212,8 +216,9 @@ ON CONFLICT(user_id, data_key) DO UPDATE SET data_value=excluded.data_value
     pub async fn remove_user_data(
         &self,
         user_id: UserId,
-        user_data_key: &str,
+        user_data_key: impl Into<UserDataKey<'_>>,
     ) -> anyhow::Result<()> {
+        let user_data_key = String::try_from(user_data_key.into())?;
         query!(
             r#"
 DELETE FROM user_data
@@ -375,7 +380,7 @@ mod tests {
             webauthn::{SERIALIZED_AUTHENTICATION_STATE, SERIALIZED_REGISTRATION_STATE},
             MockUserBuilder,
         },
-        users::UserId,
+        users::{PublicUserDataType, UserId},
     };
     use insta::assert_debug_snapshot;
     use std::{
@@ -863,30 +868,47 @@ mod tests {
         .build();
 
         // No user and no data yet.
-        assert_eq!(db.get_user_data::<String>(user.id, "data-key").await?, None);
+        assert_eq!(
+            db.get_user_data::<String>(user.id, PublicUserDataType::UserSettings)
+                .await?,
+            None
+        );
 
         db.upsert_user(&user).await?;
 
         // Nodata yet.
-        assert_eq!(db.get_user_data::<String>(user.id, "data-key").await?, None);
+        assert_eq!(
+            db.get_user_data::<String>(user.id, PublicUserDataType::UserSettings)
+                .await?,
+            None
+        );
 
         // Insert data.
-        db.upsert_user_data(user.id, "data-key", "data").await?;
+        db.upsert_user_data(user.id, PublicUserDataType::UserSettings, "data")
+            .await?;
         assert_eq!(
-            db.get_user_data::<String>(user.id, "data-key").await?,
+            db.get_user_data::<String>(user.id, PublicUserDataType::UserSettings)
+                .await?,
             Some("data".to_string())
         );
 
         // Update data.
-        db.upsert_user_data(user.id, "data-key", "data-new").await?;
+        db.upsert_user_data(user.id, PublicUserDataType::UserSettings, "data-new")
+            .await?;
         assert_eq!(
-            db.get_user_data::<String>(user.id, "data-key").await?,
+            db.get_user_data::<String>(user.id, PublicUserDataType::UserSettings)
+                .await?,
             Some("data-new".to_string())
         );
 
         // Remove data.
-        db.remove_user_data(user.id, "data-key").await?;
-        assert_eq!(db.get_user_data::<String>(user.id, "data-key").await?, None);
+        db.remove_user_data(user.id, PublicUserDataType::UserSettings)
+            .await?;
+        assert_eq!(
+            db.get_user_data::<String>(user.id, PublicUserDataType::UserSettings)
+                .await?,
+            None
+        );
 
         Ok(())
     }

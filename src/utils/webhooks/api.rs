@@ -1,7 +1,7 @@
 use crate::{
     api::Api,
     datastore::PrimaryDb,
-    users::{PublicUserDataType, UserDataType, UserId},
+    users::{PublicUserDataType, UserId},
     utils::{webhooks::AutoResponderRequest, AutoResponder},
 };
 use std::{
@@ -29,7 +29,7 @@ impl<'a> AutoRespondersApi<'a> {
         self.primary_db
             .get_user_data::<BTreeMap<String, AutoResponder>>(
                 user_id,
-                UserDataType::from(PublicUserDataType::AutoResponders).get_data_key(),
+                PublicUserDataType::AutoResponders,
             )
             .await
             .map(|auto_responders| auto_responders?.remove(name))
@@ -42,10 +42,15 @@ impl<'a> AutoRespondersApi<'a> {
         auto_responder: &AutoResponder,
         request: AutoResponderRequest<'_>,
     ) -> anyhow::Result<()> {
-        let requests_data_key = AutoResponder::associated_data_key(&auto_responder.name)?;
         let mut requests = self
             .primary_db
-            .get_user_data::<VecDeque<AutoResponderRequest>>(user_id, &requests_data_key)
+            .get_user_data::<VecDeque<AutoResponderRequest>>(
+                user_id,
+                (
+                    PublicUserDataType::AutoResponders,
+                    auto_responder.name.as_str(),
+                ),
+            )
             .await?
             .unwrap_or_default();
         // Enforce request limit and displace the oldest one.
@@ -55,7 +60,14 @@ impl<'a> AutoRespondersApi<'a> {
         requests.push_back(request);
 
         self.primary_db
-            .upsert_user_data(user_id, &requests_data_key, requests)
+            .upsert_user_data(
+                user_id,
+                (
+                    PublicUserDataType::AutoResponders,
+                    auto_responder.name.as_str(),
+                ),
+                requests,
+            )
             .await
     }
 
@@ -69,7 +81,10 @@ impl<'a> AutoRespondersApi<'a> {
             .primary_db
             .get_user_data::<VecDeque<AutoResponderRequest>>(
                 user_id,
-                &AutoResponder::associated_data_key(&auto_responder.name)?,
+                (
+                    PublicUserDataType::AutoResponders,
+                    auto_responder.name.as_str(),
+                ),
             )
             .await?
             .unwrap_or_default()

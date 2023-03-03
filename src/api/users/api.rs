@@ -290,8 +290,7 @@ impl<'a> UsersApi<'a> {
         })?;
 
         // Then, try to retrieve activation code.
-        let activation_code_data_type =
-            UserDataType::from(InternalUserDataType::AccountActivationToken);
+        let activation_code_data_type = InternalUserDataType::AccountActivationToken;
         let activation_code = self
             .get_data::<String>(user_to_activate.id, activation_code_data_type)
             .await?
@@ -317,10 +316,7 @@ impl<'a> UsersApi<'a> {
                 )
             })?;
         self.primary_db
-            .remove_user_data(
-                user_to_activate.id,
-                activation_code_data_type.get_data_key(),
-            )
+            .remove_user_data(user_to_activate.id, activation_code_data_type)
             .await?;
 
         Ok(user_to_activate)
@@ -454,10 +450,10 @@ impl<'a> UsersApi<'a> {
     pub async fn get_data<R: DeserializeOwned>(
         &self,
         user_id: UserId,
-        data_type: impl Into<UserDataType>,
+        user_data_type: impl Into<UserDataType>,
     ) -> anyhow::Result<Option<R>> {
         self.primary_db
-            .get_user_data(user_id, data_type.into().get_data_key())
+            .get_user_data(user_id, user_data_type.into())
             .await
     }
 
@@ -465,11 +461,11 @@ impl<'a> UsersApi<'a> {
     pub async fn set_data(
         &self,
         user_id: UserId,
-        data_type: impl Into<UserDataType>,
+        user_data_type: impl Into<UserDataType>,
         serialized_data_value: Vec<u8>,
     ) -> anyhow::Result<()> {
         let user_data_setter = UserDataSetter::new(user_id, &self.primary_db);
-        let user_data_type = data_type.into();
+        let user_data_type = user_data_type.into();
         match user_data_type {
             UserDataType::Public(data_type) => match data_type {
                 PublicUserDataType::AutoResponders => {
@@ -495,7 +491,7 @@ impl<'a> UsersApi<'a> {
             },
             UserDataType::Internal(_) => {
                 user_data_setter
-                    .upsert(user_data_type.get_data_key(), serialized_data_value)
+                    .upsert(user_data_type, serialized_data_value)
                     .await
             }
         }
@@ -510,7 +506,7 @@ impl<'a> UsersApi<'a> {
         self.primary_db
             .upsert_user_data(
                 user_id,
-                UserDataType::from(InternalUserDataType::AccountActivationToken).get_data_key(),
+                InternalUserDataType::AccountActivationToken,
                 &activation_code,
             )
             .await
@@ -544,7 +540,10 @@ impl<'a> UsersApi<'a> {
                 None => {
                     log::debug!("Removing `{auto_responder_name}` responder and its requests.");
                     user_data_setter
-                        .remove(&AutoResponder::associated_data_key(auto_responder_name)?)
+                        .remove((
+                            PublicUserDataType::AutoResponders,
+                            auto_responder_name.as_str(),
+                        ))
                         .await?;
                 }
             }
@@ -552,7 +551,7 @@ impl<'a> UsersApi<'a> {
 
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
-            UserDataType::from(PublicUserDataType::AutoResponders).get_data_key(),
+            PublicUserDataType::AutoResponders,
             auto_responders,
         )
         .await
@@ -569,7 +568,7 @@ impl<'a> UsersApi<'a> {
         }
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
-            UserDataType::from(PublicUserDataType::UserSettings).get_data_key(),
+            PublicUserDataType::UserSettings,
             user_settings.into_inner(),
         )
         .await
@@ -581,7 +580,7 @@ impl<'a> UsersApi<'a> {
     ) -> anyhow::Result<()> {
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
-            UserDataType::from(PublicUserDataType::ContentSecurityPolicies).get_data_key(),
+            PublicUserDataType::ContentSecurityPolicies,
             serde_json::from_slice::<BTreeMap<String, Option<ContentSecurityPolicy>>>(
                 &serialized_data_value,
             )
@@ -596,7 +595,7 @@ impl<'a> UsersApi<'a> {
     ) -> anyhow::Result<()> {
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
-            UserDataType::from(PublicUserDataType::SelfSignedCertificates).get_data_key(),
+            PublicUserDataType::SelfSignedCertificates,
             serde_json::from_slice::<BTreeMap<String, Option<SelfSignedCertificate>>>(
                 &serialized_data_value,
             )
@@ -787,14 +786,20 @@ mod tests {
         mock_db
             .upsert_user_data(
                 mock_user.id,
-                &AutoResponder::associated_data_key(&auto_responder_one.name)?,
+                (
+                    PublicUserDataType::AutoResponders,
+                    auto_responder_one.name.as_str(),
+                ),
                 vec![request_one.clone()],
             )
             .await?;
         mock_db
             .upsert_user_data(
                 mock_user.id,
-                &AutoResponder::associated_data_key(&auto_responder_two.name)?,
+                (
+                    PublicUserDataType::AutoResponders,
+                    auto_responder_two.name.as_str(),
+                ),
                 vec![request_two.clone()],
             )
             .await?;
@@ -804,7 +809,10 @@ mod tests {
             mock_db
                 .get_user_data(
                     mock_user.id,
-                    &AutoResponder::associated_data_key(&auto_responder_one.name)?
+                    (
+                        PublicUserDataType::AutoResponders,
+                        auto_responder_one.name.as_str(),
+                    )
                 )
                 .await?,
             Some(vec![request_one])
@@ -813,7 +821,10 @@ mod tests {
             mock_db
                 .get_user_data(
                     mock_user.id,
-                    &AutoResponder::associated_data_key(&auto_responder_two.name)?
+                    (
+                        PublicUserDataType::AutoResponders,
+                        auto_responder_two.name.as_str(),
+                    ),
                 )
                 .await?,
             Some(vec![request_two.clone()])
@@ -853,7 +864,10 @@ mod tests {
             mock_db
                 .get_user_data::<Vec<AutoResponderRequest>>(
                     mock_user.id,
-                    &AutoResponder::associated_data_key(&auto_responder_one.name)?
+                    (
+                        PublicUserDataType::AutoResponders,
+                        auto_responder_one.name.as_str(),
+                    ),
                 )
                 .await?,
             None
@@ -862,7 +876,10 @@ mod tests {
             mock_db
                 .get_user_data(
                     mock_user.id,
-                    &AutoResponder::associated_data_key(&auto_responder_two_new.name)?
+                    (
+                        PublicUserDataType::AutoResponders,
+                        auto_responder_two_new.name.as_str(),
+                    ),
                 )
                 .await?,
             Some(vec![request_two])

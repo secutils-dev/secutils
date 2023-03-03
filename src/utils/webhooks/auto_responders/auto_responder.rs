@@ -1,8 +1,4 @@
-use crate::{
-    users::{PublicUserDataType, UserDataType},
-    utils::AutoResponderMethod,
-};
-use anyhow::bail;
+use crate::utils::AutoResponderMethod;
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -29,19 +25,6 @@ impl AutoResponder {
         !self.name.is_empty()
             && (100..=999).contains(&self.status_code)
             && (0..=100).contains(&self.requests_to_track)
-    }
-
-    /// Returns a key for the data associated with the responder with the specified name.
-    pub fn associated_data_key(name: &str) -> anyhow::Result<String> {
-        if name.is_empty() {
-            bail!("Cannot generate requests data key for the empty responder name.");
-        }
-
-        Ok(format!(
-            "{}__{}",
-            UserDataType::from(PublicUserDataType::AutoResponders).get_data_key(),
-            name
-        ))
     }
 }
 
@@ -226,17 +209,6 @@ mod tests {
         }
         .is_valid());
 
-        Ok(())
-    }
-
-    #[test]
-    fn properly_generate_associated_data_key() -> anyhow::Result<()> {
-        assert_eq!(
-            AutoResponder::associated_data_key("my-responder")?,
-            "autoResponders__my-responder"
-        );
-
-        assert!(AutoResponder::associated_data_key("").is_err());
         Ok(())
     }
 }

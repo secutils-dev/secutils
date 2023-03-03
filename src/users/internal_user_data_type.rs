@@ -1,7 +1,7 @@
 use crate::users::UserDataType;
-use serde_derive::{Deserialize, Serialize};
+use serde_derive::Serialize;
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Copy, Clone)]
+#[derive(Serialize, Debug, Eq, PartialEq, Copy, Clone)]
 #[serde(rename_all = "camelCase")]
 pub enum InternalUserDataType {
     AccountActivationToken,
@@ -25,21 +25,6 @@ mod tests {
             assert_json_snapshot!(InternalUserDataType::AccountActivationToken, @r###""accountActivationToken""###);
             assert_json_snapshot!(InternalUserDataType::PasswordResetToken, @r###""passwordResetToken""###);
         });
-
-        Ok(())
-    }
-
-    #[test]
-    fn deserialization() -> anyhow::Result<()> {
-        assert_eq!(
-            serde_json::from_str::<InternalUserDataType>(r###""accountActivationToken""###)?,
-            InternalUserDataType::AccountActivationToken
-        );
-
-        assert_eq!(
-            serde_json::from_str::<InternalUserDataType>(r###""passwordResetToken""###)?,
-            InternalUserDataType::PasswordResetToken
-        );
 
         Ok(())
     }

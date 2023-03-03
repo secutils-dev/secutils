@@ -1,6 +1,6 @@
 use crate::{
     server::{app_state::AppState, http_errors::generic_internal_server_error},
-    users::{PublicUserDataType, User, UserDataType},
+    users::{PublicUserDataType, User},
 };
 use actix_web::{web, HttpResponse, Responder};
 use serde_derive::Deserialize;
@@ -31,10 +31,9 @@ pub async fn user_data_set(
         return HttpResponse::Ok().json(json!({ "status": "ok" }));
     }
 
-    let user_data_type = UserDataType::from(query_params.data_type);
     let users_api = state.api.users();
     if let Err(err) = users_api
-        .set_data(user.id, user_data_type, body_params.data_value)
+        .set_data(user.id, query_params.data_type, body_params.data_value)
         .await
     {
         log::error!(
@@ -46,21 +45,21 @@ pub async fn user_data_set(
     }
 
     log::debug!(
-        "Updated data ({}) for user (user ID: {:?}). Retrieving the latest value...",
-        user_data_type.get_data_key(),
+        "Updated data ({:?}) for user (user ID: {:?}). Retrieving the latest value...",
+        query_params.data_type,
         user.id
     );
 
     match users_api.get_data(user.id, query_params.data_type).await {
         Ok(value) => HttpResponse::Ok().json(
-            [(user_data_type.get_data_key().to_string(), value)]
+            [(query_params.data_type, value)]
                 .into_iter()
-                .collect::<BTreeMap<String, Option<serde_json::Value>>>(),
+                .collect::<BTreeMap<_, Option<serde_json::Value>>>(),
         ),
         Err(err) => {
             log::error!(
-                "Failed to retrieve data ({}) for user (user ID: {:?}): {:?}.",
-                user_data_type.get_data_key(),
+                "Failed to retrieve data ({:?}) for user (user ID: {:?}): {:?}.",
+                query_params.data_type,
                 user.id,
                 err
             );

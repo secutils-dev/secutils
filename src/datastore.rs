@@ -2,7 +2,7 @@ mod primary_db;
 mod search_index;
 
 pub use self::{
-    primary_db::PrimaryDb,
+    primary_db::{PrimaryDb, UserDataKey},
     search_index::{SearchFilter, SearchIndex, SearchIndexSchemaFields},
 };
 use crate::file_cache::FileCache;
