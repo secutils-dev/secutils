@@ -1,6 +1,6 @@
 use crate::{
     api::Api,
-    users::{PublicUserDataType, User},
+    users::{PublicUserDataNamespace, User},
     utils::{
         ContentSecurityPolicy, ContentSecurityPolicyDirective, ContentSecurityPolicySource,
         UtilsWebSecurityAction, UtilsWebSecurityActionResult,
@@ -36,10 +36,10 @@ impl UtilsWebSecurityActionHandler {
                     .users()
                     .get_data::<BTreeMap<String, ContentSecurityPolicy>>(
                         user.id,
-                        PublicUserDataType::ContentSecurityPolicies,
+                        PublicUserDataNamespace::ContentSecurityPolicies,
                     )
                     .await?
-                    .and_then(|mut map| map.remove(&policy_name))
+                    .and_then(|mut map| map.value.remove(&policy_name))
                     .ok_or_else(|| {
                         anyhow!(
                             "Cannot find content security policy with name: {}",

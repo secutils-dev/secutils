@@ -10,8 +10,8 @@ use crate::{
     config::Config,
     datastore::PrimaryDb,
     users::{
-        BuiltinUser, InternalUserDataType, PublicUserDataType, User, UserDataType, UserId,
-        UserSettingsSetter,
+        BuiltinUser, InternalUserDataNamespace, PublicUserDataNamespace, User, UserData,
+        UserDataKey, UserDataNamespace, UserId, UserSettingsSetter,
     },
     utils::{AutoResponder, ContentSecurityPolicy, SelfSignedCertificate},
 };
@@ -290,9 +290,11 @@ impl<'a> UsersApi<'a> {
         })?;
 
         // Then, try to retrieve activation code.
-        let activation_code_data_type = InternalUserDataType::AccountActivationToken;
         let activation_code = self
-            .get_data::<String>(user_to_activate.id, activation_code_data_type)
+            .get_data::<String>(
+                user_to_activate.id,
+                InternalUserDataNamespace::AccountActivationToken,
+            )
             .await?
             .ok_or_else(|| {
                 anyhow!(
@@ -300,7 +302,7 @@ impl<'a> UsersApi<'a> {
                 )
             })?;
 
-        if activation_code != user_activation_code {
+        if activation_code.value != user_activation_code {
             bail!("User activation code is not valid.");
         }
 
@@ -316,7 +318,10 @@ impl<'a> UsersApi<'a> {
                 )
             })?;
         self.primary_db
-            .remove_user_data(user_to_activate.id, activation_code_data_type)
+            .remove_user_data(
+                user_to_activate.id,
+                InternalUserDataNamespace::AccountActivationToken,
+            )
             .await?;
 
         Ok(user_to_activate)
@@ -446,53 +451,41 @@ impl<'a> UsersApi<'a> {
         self.primary_db.remove_user_by_email(user_email).await
     }
 
-    /// Retrieves data of the specified type for the user with the specified id.
+    /// Retrieves data with the specified key for the user with the specified id.
     pub async fn get_data<R: DeserializeOwned>(
         &self,
         user_id: UserId,
-        user_data_type: impl Into<UserDataType>,
-    ) -> anyhow::Result<Option<R>> {
-        self.primary_db
-            .get_user_data(user_id, user_data_type.into())
-            .await
+        user_data_key: impl Into<UserDataKey<'_>>,
+    ) -> anyhow::Result<Option<UserData<R>>> {
+        self.primary_db.get_user_data(user_id, user_data_key).await
     }
 
-    /// Sets user data of the specified type for the user with the specified id.
+    /// Stores data under the specified Key for the user with the specified id.
     pub async fn set_data(
         &self,
         user_id: UserId,
-        user_data_type: impl Into<UserDataType>,
-        serialized_data_value: Vec<u8>,
+        user_data_key: impl Into<UserDataKey<'_>>,
+        user_data: UserData<Vec<u8>>,
     ) -> anyhow::Result<()> {
+        let user_data_key = user_data_key.into();
         let user_data_setter = UserDataSetter::new(user_id, &self.primary_db);
-        let user_data_type = user_data_type.into();
-        match user_data_type {
-            UserDataType::Public(data_type) => match data_type {
-                PublicUserDataType::AutoResponders => {
-                    Self::set_auto_responders_data(&user_data_setter, serialized_data_value).await
+        match user_data_key.namespace {
+            UserDataNamespace::Public(namespace) => match namespace {
+                PublicUserDataNamespace::AutoResponders => {
+                    Self::set_auto_responders_data(&user_data_setter, user_data).await
                 }
-                PublicUserDataType::ContentSecurityPolicies => {
-                    Self::set_content_security_policies_data(
-                        &user_data_setter,
-                        serialized_data_value,
-                    )
-                    .await
+                PublicUserDataNamespace::ContentSecurityPolicies => {
+                    Self::set_content_security_policies_data(&user_data_setter, user_data).await
                 }
-                PublicUserDataType::SelfSignedCertificates => {
-                    Self::set_self_signed_certificates_data(
-                        &user_data_setter,
-                        serialized_data_value,
-                    )
-                    .await
+                PublicUserDataNamespace::SelfSignedCertificates => {
+                    Self::set_self_signed_certificates_data(&user_data_setter, user_data).await
                 }
-                PublicUserDataType::UserSettings => {
-                    Self::set_user_settings_data(&user_data_setter, serialized_data_value).await
+                PublicUserDataNamespace::UserSettings => {
+                    Self::set_user_settings_data(&user_data_setter, user_data).await
                 }
             },
-            UserDataType::Internal(_) => {
-                user_data_setter
-                    .upsert(user_data_type, serialized_data_value)
-                    .await
+            UserDataNamespace::Internal(_) => {
+                user_data_setter.upsert(user_data_key, user_data).await
             }
         }
     }
@@ -506,8 +499,8 @@ impl<'a> UsersApi<'a> {
         self.primary_db
             .upsert_user_data(
                 user_id,
-                InternalUserDataType::AccountActivationToken,
-                &activation_code,
+                InternalUserDataNamespace::AccountActivationToken,
+                UserData::new(&activation_code, OffsetDateTime::now_utc()),
             )
             .await
             .with_context(|| {
@@ -522,10 +515,10 @@ impl<'a> UsersApi<'a> {
 
     async fn set_auto_responders_data(
         user_data_setter: &UserDataSetter<'_>,
-        serialized_data_value: Vec<u8>,
+        serialized_user_data: UserData<Vec<u8>>,
     ) -> anyhow::Result<()> {
         let auto_responders = serde_json::from_slice::<BTreeMap<String, Option<AutoResponder>>>(
-            &serialized_data_value,
+            &serialized_user_data.value,
         )
         .with_context(|| "Cannot deserialize new autoresponders data".to_string())?;
 
@@ -541,7 +534,7 @@ impl<'a> UsersApi<'a> {
                     log::debug!("Removing `{auto_responder_name}` responder and its requests.");
                     user_data_setter
                         .remove((
-                            PublicUserDataType::AutoResponders,
+                            PublicUserDataNamespace::AutoResponders,
                             auto_responder_name.as_str(),
                         ))
                         .await?;
@@ -551,55 +544,66 @@ impl<'a> UsersApi<'a> {
 
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
-            PublicUserDataType::AutoResponders,
-            auto_responders,
+            PublicUserDataNamespace::AutoResponders,
+            UserData::new(auto_responders, serialized_user_data.timestamp),
         )
         .await
     }
 
     async fn set_user_settings_data(
         user_data_setter: &UserDataSetter<'_>,
-        serialized_data_value: Vec<u8>,
+        serialized_user_data: UserData<Vec<u8>>,
     ) -> anyhow::Result<()> {
-        let user_settings = serde_json::from_slice::<UserSettingsSetter>(&serialized_data_value)
-            .with_context(|| "Cannot deserialize new user settings data".to_string())?;
+        let user_settings =
+            serde_json::from_slice::<UserSettingsSetter>(&serialized_user_data.value)
+                .with_context(|| "Cannot deserialize new user settings data".to_string())?;
         if !user_settings.is_valid() {
             bail!("User settings are not valid: {:?}", user_settings);
         }
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
-            PublicUserDataType::UserSettings,
-            user_settings.into_inner(),
+            PublicUserDataNamespace::UserSettings,
+            UserData::new(user_settings.into_inner(), serialized_user_data.timestamp),
         )
         .await
     }
 
     async fn set_content_security_policies_data(
         user_data_setter: &UserDataSetter<'_>,
-        serialized_data_value: Vec<u8>,
+        serialized_user_data: UserData<Vec<u8>>,
     ) -> anyhow::Result<()> {
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
-            PublicUserDataType::ContentSecurityPolicies,
-            serde_json::from_slice::<BTreeMap<String, Option<ContentSecurityPolicy>>>(
-                &serialized_data_value,
-            )
-            .with_context(|| "Cannot deserialize new content security policies data".to_string())?,
+            PublicUserDataNamespace::ContentSecurityPolicies,
+            UserData::new(
+                serde_json::from_slice::<BTreeMap<String, Option<ContentSecurityPolicy>>>(
+                    &serialized_user_data.value,
+                )
+                .with_context(|| {
+                    "Cannot deserialize new content security policies data".to_string()
+                })?,
+                serialized_user_data.timestamp,
+            ),
         )
         .await
     }
 
     async fn set_self_signed_certificates_data(
         user_data_setter: &UserDataSetter<'_>,
-        serialized_data_value: Vec<u8>,
+        serialized_user_data: UserData<Vec<u8>>,
     ) -> anyhow::Result<()> {
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
-            PublicUserDataType::SelfSignedCertificates,
-            serde_json::from_slice::<BTreeMap<String, Option<SelfSignedCertificate>>>(
-                &serialized_data_value,
-            )
-            .with_context(|| "Cannot deserialize new self-signed certificates data".to_string())?,
+            PublicUserDataNamespace::SelfSignedCertificates,
+            UserData::new(
+                serde_json::from_slice::<BTreeMap<String, Option<SelfSignedCertificate>>>(
+                    &serialized_user_data.value,
+                )
+                .with_context(|| {
+                    "Cannot deserialize new self-signed certificates data".to_string()
+                })?,
+                serialized_user_data.timestamp,
+            ),
         )
         .await
     }
@@ -678,7 +682,7 @@ mod tests {
         config::Config,
         datastore::PrimaryDb,
         tests::MockUserBuilder,
-        users::{PublicUserDataType, User, UserId},
+        users::{PublicUserDataNamespace, User, UserData, UserId},
         utils::{AutoResponder, AutoResponderMethod, AutoResponderRequest},
     };
     use std::{borrow::Cow, collections::BTreeMap};
@@ -753,15 +757,18 @@ mod tests {
         // Insert auto responders data.
         api.set_data(
             mock_user.id,
-            PublicUserDataType::AutoResponders,
-            serde_json::to_vec(
-                &[
-                    (&auto_responder_one.name, auto_responder_one.clone()),
-                    (&auto_responder_two.name, auto_responder_two.clone()),
-                ]
-                .into_iter()
-                .collect::<BTreeMap<_, _>>(),
-            )?,
+            PublicUserDataNamespace::AutoResponders,
+            UserData::new(
+                serde_json::to_vec(
+                    &[
+                        (&auto_responder_one.name, auto_responder_one.clone()),
+                        (&auto_responder_two.name, auto_responder_two.clone()),
+                    ]
+                    .into_iter()
+                    .collect::<BTreeMap<_, _>>(),
+                )?,
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            ),
         )
         .await?;
 
@@ -787,20 +794,26 @@ mod tests {
             .upsert_user_data(
                 mock_user.id,
                 (
-                    PublicUserDataType::AutoResponders,
+                    PublicUserDataNamespace::AutoResponders,
                     auto_responder_one.name.as_str(),
                 ),
-                vec![request_one.clone()],
+                UserData::new(
+                    vec![request_one.clone()],
+                    OffsetDateTime::from_unix_timestamp(946720800)?,
+                ),
             )
             .await?;
         mock_db
             .upsert_user_data(
                 mock_user.id,
                 (
-                    PublicUserDataType::AutoResponders,
+                    PublicUserDataNamespace::AutoResponders,
                     auto_responder_two.name.as_str(),
                 ),
-                vec![request_two.clone()],
+                UserData::new(
+                    vec![request_two.clone()],
+                    OffsetDateTime::from_unix_timestamp(946720800)?,
+                ),
             )
             .await?;
 
@@ -810,53 +823,63 @@ mod tests {
                 .get_user_data(
                     mock_user.id,
                     (
-                        PublicUserDataType::AutoResponders,
+                        PublicUserDataNamespace::AutoResponders,
                         auto_responder_one.name.as_str(),
                     )
                 )
                 .await?,
-            Some(vec![request_one])
+            Some(UserData::new(
+                vec![request_one],
+                OffsetDateTime::from_unix_timestamp(946720800)?
+            ))
         );
         assert_eq!(
             mock_db
                 .get_user_data(
                     mock_user.id,
                     (
-                        PublicUserDataType::AutoResponders,
+                        PublicUserDataNamespace::AutoResponders,
                         auto_responder_two.name.as_str(),
                     ),
                 )
                 .await?,
-            Some(vec![request_two.clone()])
+            Some(UserData::new(
+                vec![request_two.clone()],
+                OffsetDateTime::from_unix_timestamp(946720800)?
+            ))
         );
 
         // Remove one auto responder and update another.
         api.set_data(
             mock_user.id,
-            PublicUserDataType::AutoResponders,
-            serde_json::to_vec(
-                &[
-                    (&auto_responder_one.name, None),
-                    (
-                        &auto_responder_two.name,
-                        Some(auto_responder_two_new.clone()),
-                    ),
-                ]
-                .into_iter()
-                .collect::<BTreeMap<_, _>>(),
-            )?,
+            PublicUserDataNamespace::AutoResponders,
+            UserData::new(
+                serde_json::to_vec(
+                    &[
+                        (&auto_responder_one.name, None),
+                        (
+                            &auto_responder_two.name,
+                            Some(auto_responder_two_new.clone()),
+                        ),
+                    ]
+                    .into_iter()
+                    .collect::<BTreeMap<_, _>>(),
+                )?,
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            ),
         )
         .await?;
 
         // Verify that auto responders were correctly updated.
         assert_eq!(
-            api.get_data(mock_user.id, PublicUserDataType::AutoResponders)
+            api.get_data(mock_user.id, PublicUserDataNamespace::AutoResponders)
                 .await?,
-            Some(
+            Some(UserData::new(
                 [(auto_responder_two.name, auto_responder_two_new.clone())]
                     .into_iter()
-                    .collect::<BTreeMap<_, _>>()
-            )
+                    .collect::<BTreeMap<_, _>>(),
+                OffsetDateTime::from_unix_timestamp(946720800)?
+            ))
         );
 
         // Verify that requests were updated.
@@ -865,7 +888,7 @@ mod tests {
                 .get_user_data::<Vec<AutoResponderRequest>>(
                     mock_user.id,
                     (
-                        PublicUserDataType::AutoResponders,
+                        PublicUserDataNamespace::AutoResponders,
                         auto_responder_one.name.as_str(),
                     ),
                 )
@@ -877,12 +900,15 @@ mod tests {
                 .get_user_data(
                     mock_user.id,
                     (
-                        PublicUserDataType::AutoResponders,
+                        PublicUserDataNamespace::AutoResponders,
                         auto_responder_two_new.name.as_str(),
                     ),
                 )
                 .await?,
-            Some(vec![request_two])
+            Some(UserData::new(
+                vec![request_two],
+                OffsetDateTime::from_unix_timestamp(946720800)?
+            ))
         );
 
         Ok(())

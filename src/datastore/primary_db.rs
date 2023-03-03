@@ -3,11 +3,10 @@ mod raw_user_data;
 mod raw_user_to_upsert;
 mod raw_user_webauthn_session;
 mod raw_util;
-mod user_data_key;
 
 use crate::{
     authentication::WebAuthnSession,
-    users::{User, UserId},
+    users::{User, UserData, UserDataKey, UserId},
     utils::Util,
 };
 use anyhow::{bail, Context};
@@ -20,7 +19,6 @@ use serde::{de::DeserializeOwned, Serialize};
 use sqlx::{query, query_as, query_scalar, sqlite::SqlitePool, Pool, Sqlite};
 use std::collections::HashMap;
 use time::OffsetDateTime;
-pub use user_data_key::UserDataKey;
 
 #[derive(Clone)]
 pub struct PrimaryDb {
@@ -165,24 +163,24 @@ RETURNING id as "id!", email as "email!", handle as "handle!", credentials as "c
         &self,
         user_id: UserId,
         user_data_key: impl Into<UserDataKey<'_>>,
-    ) -> anyhow::Result<Option<R>> {
-        let user_data_key = String::try_from(user_data_key.into())?;
+    ) -> anyhow::Result<Option<UserData<R>>> {
+        let user_data_key = user_data_key.into();
+        let namespace = user_data_key.namespace.as_ref();
+        let key = user_data_key.key.unwrap_or_default();
         query_as!(
             RawUserData,
             r#"
-SELECT data_value
+SELECT value, timestamp
 FROM user_data
-WHERE user_id = ?1 AND data_key = ?2
+WHERE user_id = ?1 AND namespace = ?2 AND key = ?3
                 "#,
             user_id.0,
-            user_data_key
+            namespace,
+            key
         )
         .fetch_optional(&self.pool)
         .await?
-        .map(|raw_user_data| {
-            serde_json::from_slice::<R>(&raw_user_data.data_value)
-                .with_context(|| format!("Cannot deserialize user data ({user_data_key})."))
-        })
+        .map(UserData::try_from)
         .transpose()
     }
 
@@ -191,20 +189,23 @@ WHERE user_id = ?1 AND data_key = ?2
         &self,
         user_id: UserId,
         user_data_key: impl Into<UserDataKey<'_>>,
-        data_value: R,
+        user_data: UserData<R>,
     ) -> anyhow::Result<()> {
-        let user_data_key = String::try_from(user_data_key.into())?;
-        let user_data_value = serde_json::ser::to_vec(&data_value)
-            .with_context(|| format!("Failed to serialize user data ({user_data_key})."))?;
+        let user_data_key = user_data_key.into();
+        let namespace = user_data_key.namespace.as_ref();
+        let key = user_data_key.key.unwrap_or_default();
+        let raw_user_data = RawUserData::try_from(&user_data)?;
         query!(
             r#"
-INSERT INTO user_data (user_id, data_key, data_value)
-VALUES ( ?1, ?2, ?3 )
-ON CONFLICT(user_id, data_key) DO UPDATE SET data_value=excluded.data_value
+INSERT INTO user_data (user_id, namespace, key, value, timestamp)
+VALUES ( ?1, ?2, ?3, ?4, ?5 )
+ON CONFLICT(user_id, namespace, key) DO UPDATE SET value=excluded.value, timestamp=excluded.timestamp
         "#,
             user_id.0,
-            user_data_key,
-            user_data_value
+            namespace,
+            key,
+            raw_user_data.value,
+            raw_user_data.timestamp
         )
         .execute(&self.pool)
         .await?;
@@ -218,14 +219,17 @@ ON CONFLICT(user_id, data_key) DO UPDATE SET data_value=excluded.data_value
         user_id: UserId,
         user_data_key: impl Into<UserDataKey<'_>>,
     ) -> anyhow::Result<()> {
-        let user_data_key = String::try_from(user_data_key.into())?;
+        let user_data_key = user_data_key.into();
+        let namespace = user_data_key.namespace.as_ref();
+        let key = user_data_key.key.unwrap_or_default();
         query!(
             r#"
 DELETE FROM user_data
-WHERE user_id = ?1 AND data_key = ?2
+WHERE user_id = ?1 AND namespace = ?2 AND key = ?3
             "#,
             user_id.0,
-            user_data_key
+            namespace,
+            key
         )
         .execute(&self.pool)
         .await?;
@@ -380,7 +384,7 @@ mod tests {
             webauthn::{SERIALIZED_AUTHENTICATION_STATE, SERIALIZED_REGISTRATION_STATE},
             MockUserBuilder,
         },
-        users::{PublicUserDataType, UserId},
+        users::{PublicUserDataNamespace, UserData, UserId},
     };
     use insta::assert_debug_snapshot;
     use std::{
@@ -869,7 +873,7 @@ mod tests {
 
         // No user and no data yet.
         assert_eq!(
-            db.get_user_data::<String>(user.id, PublicUserDataType::UserSettings)
+            db.get_user_data::<String>(user.id, PublicUserDataNamespace::UserSettings)
                 .await?,
             None
         );
@@ -878,34 +882,48 @@ mod tests {
 
         // Nodata yet.
         assert_eq!(
-            db.get_user_data::<String>(user.id, PublicUserDataType::UserSettings)
+            db.get_user_data::<String>(user.id, PublicUserDataNamespace::UserSettings)
                 .await?,
             None
         );
 
         // Insert data.
-        db.upsert_user_data(user.id, PublicUserDataType::UserSettings, "data")
-            .await?;
+        db.upsert_user_data(
+            user.id,
+            PublicUserDataNamespace::UserSettings,
+            UserData::new("data", OffsetDateTime::from_unix_timestamp(946720800)?),
+        )
+        .await?;
         assert_eq!(
-            db.get_user_data::<String>(user.id, PublicUserDataType::UserSettings)
+            db.get_user_data::<String>(user.id, PublicUserDataNamespace::UserSettings)
                 .await?,
-            Some("data".to_string())
+            Some(UserData::new(
+                "data".to_string(),
+                OffsetDateTime::from_unix_timestamp(946720800)?
+            ))
         );
 
         // Update data.
-        db.upsert_user_data(user.id, PublicUserDataType::UserSettings, "data-new")
-            .await?;
+        db.upsert_user_data(
+            user.id,
+            PublicUserDataNamespace::UserSettings,
+            UserData::new("data-new", OffsetDateTime::from_unix_timestamp(946720800)?),
+        )
+        .await?;
         assert_eq!(
-            db.get_user_data::<String>(user.id, PublicUserDataType::UserSettings)
+            db.get_user_data::<String>(user.id, PublicUserDataNamespace::UserSettings)
                 .await?,
-            Some("data-new".to_string())
+            Some(UserData::new(
+                "data-new".to_string(),
+                OffsetDateTime::from_unix_timestamp(946720800)?
+            ))
         );
 
         // Remove data.
-        db.remove_user_data(user.id, PublicUserDataType::UserSettings)
+        db.remove_user_data(user.id, PublicUserDataNamespace::UserSettings)
             .await?;
         assert_eq!(
-            db.get_user_data::<String>(user.id, PublicUserDataType::UserSettings)
+            db.get_user_data::<String>(user.id, PublicUserDataNamespace::UserSettings)
                 .await?,
             None
         );

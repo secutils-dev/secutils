@@ -1,6 +1,6 @@
 use crate::{
-    datastore::{PrimaryDb, UserDataKey},
-    users::UserId,
+    datastore::PrimaryDb,
+    users::{UserData, UserDataKey, UserId},
 };
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -22,26 +22,28 @@ impl<'a> UserDataSetter<'a> {
     /// Gets user data by the specific data key.
     pub async fn get<R: DeserializeOwned>(
         &self,
-        data_key: impl Into<UserDataKey<'_>>,
-    ) -> anyhow::Result<Option<R>> {
-        self.primary_db.get_user_data(self.user_id, data_key).await
+        user_data_key: impl Into<UserDataKey<'_>>,
+    ) -> anyhow::Result<Option<UserData<R>>> {
+        self.primary_db
+            .get_user_data(self.user_id, user_data_key)
+            .await
     }
 
     /// Inserts new or updates existing user data by the specified data key.
     pub async fn upsert<R: Serialize>(
         &self,
-        data_key: impl Into<UserDataKey<'_>>,
-        data_value: R,
+        user_data_key: impl Into<UserDataKey<'_>>,
+        user_data: UserData<R>,
     ) -> anyhow::Result<()> {
         self.primary_db
-            .upsert_user_data(self.user_id, data_key, data_value)
+            .upsert_user_data(self.user_id, user_data_key, user_data)
             .await
     }
 
     /// Removes existing user data by the specified data key.
-    pub async fn remove(&self, data_key: impl Into<UserDataKey<'_>>) -> anyhow::Result<()> {
+    pub async fn remove(&self, user_data_key: impl Into<UserDataKey<'_>>) -> anyhow::Result<()> {
         self.primary_db
-            .remove_user_data(self.user_id, data_key)
+            .remove_user_data(self.user_id, user_data_key)
             .await
     }
 }

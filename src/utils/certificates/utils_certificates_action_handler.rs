@@ -1,6 +1,6 @@
 use crate::{
     api::Api,
-    users::{PublicUserDataType, User},
+    users::{PublicUserDataNamespace, User},
     utils::{
         CertificateFormat, PublicKeyAlgorithm, SelfSignedCertificate, SignatureAlgorithm,
         UtilsCertificatesAction, UtilsCertificatesActionResult,
@@ -226,10 +226,10 @@ impl UtilsCertificatesActionHandler {
                     .users()
                     .get_data::<BTreeMap<String, SelfSignedCertificate>>(
                         user.id,
-                        PublicUserDataType::SelfSignedCertificates,
+                        PublicUserDataNamespace::SelfSignedCertificates,
                     )
                     .await?
-                    .and_then(|mut map| map.remove(&template_name))
+                    .and_then(|mut map| map.value.remove(&template_name))
                     .ok_or_else(|| {
                         anyhow!(
                             "Cannot find self-signed certificate with name: {}",

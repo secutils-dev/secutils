@@ -112,6 +112,16 @@
     },
     "query": "\nSELECT id, email, handle, credentials, created, roles, activated\nFROM users\nWHERE email = ?1\n                "
   },
+  "442adb7fb5acc727a4103fb34af2fdb14c0d15b871531e1bde6e2ef46cdab999": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Right": 5
+      }
+    },
+    "query": "\nINSERT INTO user_data (user_id, namespace, key, value, timestamp)\nVALUES ( ?1, ?2, ?3, ?4, ?5 )\nON CONFLICT(user_id, namespace, key) DO UPDATE SET value=excluded.value, timestamp=excluded.timestamp\n        "
+  },
   "4dace02b02940ad0278e76fe97ae7e05d562478cf3a077c44b67b39a6d1fab5d": {
     "describe": {
       "columns": [],
@@ -176,6 +186,16 @@
     },
     "query": "\nDELETE FROM users\nWHERE email = ?1\nRETURNING id as \"id!\", email as \"email!\", handle as \"handle!\", credentials as \"credentials!\", created as \"created!\", roles, activated\n            "
   },
+  "6f3e9fd76d1ff2f3509334168fc7856d5c8a0c8f60dd9e5d6ec7d944500acfbb": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Right": 3
+      }
+    },
+    "query": "\nDELETE FROM user_data\nWHERE user_id = ?1 AND namespace = ?2 AND key = ?3\n            "
+  },
   "7634c2919032b70faed4ad92fb5d7f49199fb2efa8f10ea8604c2b2fa8f8ad82": {
     "describe": {
       "columns": [],
@@ -227,24 +247,6 @@
       }
     },
     "query": "\nSELECT id, handle, name, keywords, parent_id\nFROM utils\nORDER BY parent_id, id\n            "
-  },
-  "90653060e4d473bd48a0023435b046a8c65c407d1524b41aea999a2d49785dd6": {
-    "describe": {
-      "columns": [
-        {
-          "name": "data_value",
-          "ordinal": 0,
-          "type_info": "Blob"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Right": 2
-      }
-    },
-    "query": "\nSELECT data_value\nFROM user_data\nWHERE user_id = ?1 AND data_key = ?2\n                "
   },
   "94873f4b80446eff326954679365a9f720e376cc88cfb63fb2af598970c402cd": {
     "describe": {
@@ -318,24 +320,28 @@
     },
     "query": "\nSELECT id, email, handle, credentials, created, roles, activated\nFROM users\nWHERE handle = ?1\n             "
   },
-  "c32783f681dd607eb7f1779bedfe20cafcf95f200951af907015c87e03afb9f7": {
+  "f2ecdd60778c18e78ffa3141bf11ea720db711577fff694c57f824c2cbe5177e": {
     "describe": {
-      "columns": [],
-      "nullable": [],
-      "parameters": {
-        "Right": 2
-      }
-    },
-    "query": "\nDELETE FROM user_data\nWHERE user_id = ?1 AND data_key = ?2\n            "
-  },
-  "ed083933808efb0ed7d6947997035b2ade5fb79cb04da5e681dae8df818c294a": {
-    "describe": {
-      "columns": [],
-      "nullable": [],
+      "columns": [
+        {
+          "name": "value",
+          "ordinal": 0,
+          "type_info": "Blob"
+        },
+        {
+          "name": "timestamp",
+          "ordinal": 1,
+          "type_info": "Int64"
+        }
+      ],
+      "nullable": [
+        false,
+        false
+      ],
       "parameters": {
         "Right": 3
       }
     },
-    "query": "\nINSERT INTO user_data (user_id, data_key, data_value)\nVALUES ( ?1, ?2, ?3 )\nON CONFLICT(user_id, data_key) DO UPDATE SET data_value=excluded.data_value\n        "
+    "query": "\nSELECT value, timestamp\nFROM user_data\nWHERE user_id = ?1 AND namespace = ?2 AND key = ?3\n                "
   }
 }

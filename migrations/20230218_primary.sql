@@ -12,9 +12,11 @@ CREATE TABLE IF NOT EXISTS users
 CREATE TABLE IF NOT EXISTS user_data
 (
     user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    data_key    TEXT NOT NULL COLLATE NOCASE,
-    data_value  BLOB NOT NULL,
-    PRIMARY KEY (user_id, data_key)
+    namespace   TEXT NOT NULL COLLATE NOCASE,
+    key         TEXT NOT NULL COLLATE NOCASE,
+    value       BLOB NOT NULL,
+    timestamp   INTEGER NOT NULL,
+    PRIMARY KEY (user_id, namespace, key)
 ) STRICT;
 
 -- Table to store intermediate WebAuthn Relying Party session data during user registration and authentication.

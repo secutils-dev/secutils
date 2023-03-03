@@ -1,13 +1,14 @@
 use crate::{
     api::Api,
     datastore::PrimaryDb,
-    users::{PublicUserDataType, UserId},
+    users::{PublicUserDataNamespace, UserData, UserId},
     utils::{webhooks::AutoResponderRequest, AutoResponder},
 };
 use std::{
     borrow::Cow,
     collections::{BTreeMap, VecDeque},
 };
+use time::OffsetDateTime;
 
 pub struct AutoRespondersApi<'a> {
     primary_db: Cow<'a, PrimaryDb>,
@@ -29,10 +30,10 @@ impl<'a> AutoRespondersApi<'a> {
         self.primary_db
             .get_user_data::<BTreeMap<String, AutoResponder>>(
                 user_id,
-                PublicUserDataType::AutoResponders,
+                PublicUserDataNamespace::AutoResponders,
             )
             .await
-            .map(|auto_responders| auto_responders?.remove(name))
+            .map(|auto_responders| auto_responders?.value.remove(name))
     }
 
     /// Tracks request to the specified auto responder.
@@ -47,11 +48,12 @@ impl<'a> AutoRespondersApi<'a> {
             .get_user_data::<VecDeque<AutoResponderRequest>>(
                 user_id,
                 (
-                    PublicUserDataType::AutoResponders,
+                    PublicUserDataNamespace::AutoResponders,
                     auto_responder.name.as_str(),
                 ),
             )
             .await?
+            .map(|user_data| user_data.value)
             .unwrap_or_default();
         // Enforce request limit and displace the oldest one.
         if requests.len() == auto_responder.requests_to_track {
@@ -63,10 +65,10 @@ impl<'a> AutoRespondersApi<'a> {
             .upsert_user_data(
                 user_id,
                 (
-                    PublicUserDataType::AutoResponders,
+                    PublicUserDataNamespace::AutoResponders,
                     auto_responder.name.as_str(),
                 ),
-                requests,
+                UserData::new(requests, OffsetDateTime::now_utc()),
             )
             .await
     }
@@ -82,11 +84,12 @@ impl<'a> AutoRespondersApi<'a> {
             .get_user_data::<VecDeque<AutoResponderRequest>>(
                 user_id,
                 (
-                    PublicUserDataType::AutoResponders,
+                    PublicUserDataNamespace::AutoResponders,
                     auto_responder.name.as_str(),
                 ),
             )
             .await?
+            .map(|user_data| user_data.value)
             .unwrap_or_default()
             .into())
     }
