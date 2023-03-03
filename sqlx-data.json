@@ -320,6 +320,16 @@
     },
     "query": "\nSELECT id, email, handle, credentials, created, roles, activated\nFROM users\nWHERE handle = ?1\n             "
   },
+  "9f0891feabdd5c69bd4087832395e5e45d0fe3d210f13310890934a49710812a": {
+    "describe": {
+      "columns": [],
+      "nullable": [],
+      "parameters": {
+        "Right": 3
+      }
+    },
+    "query": "\nDELETE FROM user_data\nWHERE namespace = ?1 AND key = ?2 AND timestamp <= ?3\n            "
+  },
   "f2ecdd60778c18e78ffa3141bf11ea720db711577fff694c57f824c2cbe5177e": {
     "describe": {
       "columns": [

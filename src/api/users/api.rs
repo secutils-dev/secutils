@@ -36,6 +36,9 @@ use webauthn_rs::{
 const USER_HANDLE_LENGTH_BYTES: usize = 8;
 const ACTIVATION_CODE_LENGTH_BYTES: usize = 32;
 
+/// Activation code is valid for 14 days.
+const ACTIVATION_CODE_LIFESPAN: Duration = Duration::from_secs(60 * 60 * 24 * 14);
+
 pub struct UsersApi<'a> {
     config: &'a Config,
     webauthn: &'a Webauthn,
@@ -306,6 +309,13 @@ impl<'a> UsersApi<'a> {
             bail!("User activation code is not valid.");
         }
 
+        if activation_code.timestamp < OffsetDateTime::now_utc().sub(ACTIVATION_CODE_LIFESPAN) {
+            bail!(
+                "User activation code has expired (created on {}).",
+                activation_code.timestamp
+            );
+        }
+
         // Update user and remove activation code internal data.
         user_to_activate.activated = true;
         self.primary_db
@@ -496,11 +506,21 @@ impl<'a> UsersApi<'a> {
         OsRng.fill_bytes(&mut bytes);
         let activation_code = bytes.encode_hex();
 
+        let timestamp = OffsetDateTime::now_utc();
+        let namespace = InternalUserDataNamespace::AccountActivationToken;
+
+        // Cleanup already expired activation codes.
+        self.primary_db
+            .cleanup_user_data(namespace, timestamp.sub(ACTIVATION_CODE_LIFESPAN))
+            .await
+            .with_context(|| "Failed to cleanup expired activation codes.")?;
+
+        // Save newly created activation code.
         self.primary_db
             .upsert_user_data(
                 user_id,
-                InternalUserDataNamespace::AccountActivationToken,
-                UserData::new(&activation_code, OffsetDateTime::now_utc()),
+                namespace,
+                UserData::new(&activation_code, timestamp),
             )
             .await
             .with_context(|| {

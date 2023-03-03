@@ -237,6 +237,32 @@ WHERE user_id = ?1 AND namespace = ?2 AND key = ?3
         Ok(())
     }
 
+    /// Deletes user data from the `UserData` table with the specified data key if it's older than
+    /// specified `since` timestamp.
+    pub async fn cleanup_user_data(
+        &self,
+        user_data_key: impl Into<UserDataKey<'_>>,
+        since: OffsetDateTime,
+    ) -> anyhow::Result<()> {
+        let user_data_key = user_data_key.into();
+        let namespace = user_data_key.namespace.as_ref();
+        let key = user_data_key.key.unwrap_or_default();
+        let since = since.unix_timestamp();
+        query!(
+            r#"
+DELETE FROM user_data
+WHERE namespace = ?1 AND key = ?2 AND timestamp <= ?3
+            "#,
+            namespace,
+            key,
+            since
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
     /// Retrieves user's WebAuthn session from the `UserWebAuthnSessions` table using user email.
     pub async fn get_user_webauthn_session_by_email<E: AsRef<str>>(
         &self,
@@ -384,7 +410,7 @@ mod tests {
             webauthn::{SERIALIZED_AUTHENTICATION_STATE, SERIALIZED_REGISTRATION_STATE},
             MockUserBuilder,
         },
-        users::{PublicUserDataNamespace, UserData, UserId},
+        users::{InternalUserDataNamespace, PublicUserDataNamespace, UserData, UserId},
     };
     use insta::assert_debug_snapshot;
     use std::{
@@ -927,6 +953,123 @@ mod tests {
                 .await?,
             None
         );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_remove_old_user_data() -> anyhow::Result<()> {
+        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+
+        // Create test users
+        let users = vec![
+            MockUserBuilder::new(
+                UserId(1),
+                "dev@secutils.dev",
+                "dev-handle",
+                StoredCredentials {
+                    password_hash: Some("hash".to_string()),
+                    ..Default::default()
+                },
+                OffsetDateTime::now_utc(),
+            )
+            .set_activated()
+            .build(),
+            MockUserBuilder::new(
+                UserId(2),
+                "prod@secutils.dev",
+                "prod-handle",
+                StoredCredentials {
+                    password_hash: Some("hash".to_string()),
+                    ..Default::default()
+                },
+                OffsetDateTime::now_utc(),
+            )
+            .set_activated()
+            .build(),
+        ];
+        for user in users {
+            db.upsert_user(&user).await?;
+        }
+
+        // Insert data for both users.
+        db.upsert_user_data(
+            UserId(1),
+            InternalUserDataNamespace::AccountActivationToken,
+            // January 1, 2000 11:00:00
+            UserData::new("data-1", OffsetDateTime::from_unix_timestamp(946720800)?),
+        )
+        .await?;
+        db.upsert_user_data(
+            UserId(2),
+            InternalUserDataNamespace::AccountActivationToken,
+            // January 1, 2010 11:00:00
+            UserData::new("data-2", OffsetDateTime::from_unix_timestamp(1262340000)?),
+        )
+        .await?;
+
+        // Check that data exists.
+        assert_debug_snapshot!(db.get_user_data::<String>(UserId(1), InternalUserDataNamespace::AccountActivationToken)
+                .await?, @r###"
+        Some(
+            UserData {
+                value: "data-1",
+                timestamp: 2000-01-01 10:00:00.0 +00:00:00,
+            },
+        )
+        "###);
+        assert_debug_snapshot!(db.get_user_data::<String>(UserId(2), InternalUserDataNamespace::AccountActivationToken)
+                .await?, @r###"
+        Some(
+            UserData {
+                value: "data-2",
+                timestamp: 2010-01-01 10:00:00.0 +00:00:00,
+            },
+        )
+        "###);
+
+        // Run cleanup
+        db.cleanup_user_data(
+            InternalUserDataNamespace::AccountActivationToken,
+            OffsetDateTime::from_unix_timestamp(946720800)?.sub(Duration::from_secs(60)),
+        )
+        .await?;
+
+        // All data should still stay.
+        assert!(db
+            .get_user_data::<String>(UserId(1), InternalUserDataNamespace::AccountActivationToken)
+            .await?
+            .is_some());
+        assert!(db
+            .get_user_data::<String>(UserId(2), InternalUserDataNamespace::AccountActivationToken)
+            .await?
+            .is_some());
+
+        // Run cleanup with another `since`.
+        db.cleanup_user_data(
+            InternalUserDataNamespace::AccountActivationToken,
+            OffsetDateTime::from_unix_timestamp(946720800)?.add(Duration::from_secs(60)),
+        )
+        .await?;
+        assert!(db
+            .get_user_data::<String>(UserId(1), InternalUserDataNamespace::AccountActivationToken)
+            .await?
+            .is_none());
+        assert!(db
+            .get_user_data::<String>(UserId(2), InternalUserDataNamespace::AccountActivationToken)
+            .await?
+            .is_some());
+
+        // Run cleanup with another `since`.
+        db.cleanup_user_data(
+            InternalUserDataNamespace::AccountActivationToken,
+            OffsetDateTime::from_unix_timestamp(1262340000)?.add(Duration::from_secs(60)),
+        )
+        .await?;
+        assert!(db
+            .get_user_data::<String>(UserId(2), InternalUserDataNamespace::AccountActivationToken)
+            .await?
+            .is_none());
 
         Ok(())
     }
