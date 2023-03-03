@@ -1,10 +1,10 @@
 mod search;
+mod security_activate;
 mod security_credentials_remove;
 mod security_credentials_update;
 mod security_login;
 mod security_logout;
 mod security_signup;
-mod security_users_activate;
 mod security_users_remove;
 mod security_webauthn_login;
 mod security_webauthn_signup;
@@ -20,6 +20,7 @@ mod webhooks_auto_responders;
 
 pub use self::{
     search::search,
+    security_activate::security_activate,
     security_credentials_remove::security_credentials_remove,
     security_credentials_update::{
         security_credentials_update_passkey_finish, security_credentials_update_passkey_start,
@@ -28,7 +29,6 @@ pub use self::{
     security_login::security_login,
     security_logout::security_logout,
     security_signup::security_signup,
-    security_users_activate::security_users_activate,
     security_users_remove::security_users_remove,
     security_webauthn_login::{security_webauthn_login_finish, security_webauthn_login_start},
     security_webauthn_signup::{security_webauthn_signup_finish, security_webauthn_signup_start},

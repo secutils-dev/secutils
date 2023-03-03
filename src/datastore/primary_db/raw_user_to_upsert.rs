@@ -9,7 +9,7 @@ pub(super) struct RawUserToUpsert<'a> {
     pub credentials: Vec<u8>,
     pub created: i64,
     pub roles: Option<String>,
-    pub activation_code: Option<&'a str>,
+    pub activated: i64,
 }
 
 impl<'a> TryFrom<&'a User> for RawUserToUpsert<'a> {
@@ -30,7 +30,7 @@ impl<'a> TryFrom<&'a User> for RawUserToUpsert<'a> {
             })?,
             created: user.created.unix_timestamp(),
             roles: raw_roles,
-            activation_code: user.activation_code.as_deref(),
+            activated: if user.activated { 1 } else { 0 },
         })
     }
 }
@@ -71,7 +71,7 @@ mod tests {
                 // January 1, 2000 11:00:00
                 created: 946720800,
                 roles: None,
-                activation_code: None,
+                activated: 0,
             }
         );
 
@@ -93,7 +93,6 @@ mod tests {
                     OffsetDateTime::from_unix_timestamp(946720800)?,
                 )
                 .add_role("admin")
-                .set_activation_code("code")
                 .build()
             )?,
             RawUserToUpsert {
@@ -107,7 +106,7 @@ mod tests {
                 // January 1, 2000 11:00:00
                 created: 946720800,
                 roles: Some("admin".to_string()),
-                activation_code: Some("code"),
+                activated: 0,
             }
         );
 
@@ -143,7 +142,7 @@ mod tests {
                 // January 1, 2000 11:00:00
                 created: 946720800,
                 roles: Some("admin:superuser".to_string()),
-                activation_code: None,
+                activated: 0,
             }
         );
 

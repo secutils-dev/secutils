@@ -1,7 +1,7 @@
 use crate::{
     error::SecutilsError,
     server::{app_state::AppState, status::Status},
-    users::{User, UserDataType, UserSettings},
+    users::{PublicUserDataType, User, UserSettings},
     utils::Util,
 };
 use actix_web::{web, HttpResponse};
@@ -33,7 +33,7 @@ pub async fn ui_state_get(
             state
                 .api
                 .users()
-                .get_data(user.id, UserDataType::UserSettings)
+                .get_data(user.id, PublicUserDataType::UserSettings)
                 .await?,
             state.api.utils().get_all().await?,
         )

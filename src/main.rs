@@ -190,13 +190,13 @@ mod tests {
                     credentials,
                     created,
                     roles: HashSet::new(),
-                    activation_code: None,
+                    activated: false,
                 },
             }
         }
 
-        pub fn set_activation_code<I: Into<String>>(mut self, activation_code: I) -> Self {
-            self.user.activation_code = Some(activation_code.into());
+        pub fn set_activated(mut self) -> Self {
+            self.user.activated = true;
 
             self
         }

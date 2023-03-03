@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS users
     credentials     BLOB NOT NULL,
     created         INTEGER NOT NULL,
     roles           TEXT,
-    activation_code TEXT COLLATE NOCASE
+    activated       INTEGER NOT NULL
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS user_data

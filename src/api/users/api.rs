@@ -9,7 +9,10 @@ use crate::{
     },
     config::Config,
     datastore::PrimaryDb,
-    users::{BuiltinUser, User, UserDataType, UserId, UserSettingsSetter},
+    users::{
+        BuiltinUser, InternalUserDataType, PublicUserDataType, User, UserDataType, UserId,
+        UserSettingsSetter,
+    },
     utils::{AutoResponder, ContentSecurityPolicy, SelfSignedCertificate},
 };
 use anyhow::{anyhow, bail, Context};
@@ -83,7 +86,6 @@ impl<'a> UsersApi<'a> {
             bail!("Attempt to register existing user: {}", user.handle);
         }
 
-        let activation_code = Self::generate_activation_code();
         let credentials = self
             .validate_credentials(&user_email, user_credentials)
             .await?;
@@ -94,7 +96,7 @@ impl<'a> UsersApi<'a> {
             credentials,
             created: OffsetDateTime::now_utc(),
             roles: HashSet::with_capacity(0),
-            activation_code: Some(activation_code.clone()),
+            activated: false,
         };
 
         // Use insert instead of upsert here to prevent multiple signup requests from the same user.
@@ -106,6 +108,8 @@ impl<'a> UsersApi<'a> {
             )
         })?;
 
+        // Generate an activation code for the user.
+        let activation_code = self.generate_activation_code(user_id).await?;
         let encoded_activation_url = format!(
             "{}activation/{}",
             self.config.public_url.as_str(),
@@ -272,29 +276,37 @@ impl<'a> UsersApi<'a> {
         Ok(existing_user)
     }
 
-    /// Activates user using the specified activation code.
-    pub async fn activate<A: AsRef<str>>(&self, activation_code: A) -> anyhow::Result<User> {
-        let mut users = self
-            .primary_db
-            .get_users_by_activation_code(activation_code.as_ref())
-            .await?;
-        if users.is_empty() {
-            bail!(
-                "Cannot activate user: cannot find user to activate for the code {}.",
-                activation_code.as_ref()
-            );
+    /// Activates user using the specified email and activation code.
+    pub async fn activate(
+        &self,
+        user_email: &str,
+        user_activation_code: &str,
+    ) -> anyhow::Result<User> {
+        // First check if user with the specified email exists.
+        let mut user_to_activate = self.get_by_email(user_email).await?.ok_or_else(|| {
+            anyhow!(
+                "User with the specified email doesn't exist. Account activation isn't possible."
+            )
+        })?;
+
+        // Then, try to retrieve activation code.
+        let activation_code_data_type =
+            UserDataType::from(InternalUserDataType::AccountActivationToken);
+        let activation_code = self
+            .get_data::<String>(user_to_activate.id, activation_code_data_type)
+            .await?
+            .ok_or_else(|| {
+                anyhow!(
+                    "User doesn't have assigned activation code. Account activation isn't possible."
+                )
+            })?;
+
+        if activation_code != user_activation_code {
+            bail!("User activation code is not valid.");
         }
 
-        if users.len() > 1 {
-            bail!(
-                "Cannot activate user: there are multiple users to activate with the same code {}.",
-                activation_code.as_ref()
-            );
-        }
-
-        let mut user_to_activate = users.remove(0);
-        user_to_activate.activation_code.take();
-
+        // Update user and remove activation code internal data.
+        user_to_activate.activated = true;
         self.primary_db
             .upsert_user(&user_to_activate)
             .await
@@ -304,6 +316,12 @@ impl<'a> UsersApi<'a> {
                     user_to_activate.handle
                 )
             })?;
+        self.primary_db
+            .remove_user_data(
+                user_to_activate.id,
+                activation_code_data_type.get_data_key(),
+            )
+            .await?;
 
         Ok(user_to_activate)
     }
@@ -408,7 +426,7 @@ impl<'a> UsersApi<'a> {
                 created: user.created,
                 credentials: builtin_user.credentials,
                 roles: builtin_user.roles,
-                activation_code: None,
+                activated: true,
             },
             None => User {
                 id: UserId::empty(),
@@ -417,7 +435,7 @@ impl<'a> UsersApi<'a> {
                 credentials: builtin_user.credentials,
                 created: OffsetDateTime::now_utc(),
                 roles: builtin_user.roles,
-                activation_code: None,
+                activated: true,
             },
         };
 
@@ -436,10 +454,10 @@ impl<'a> UsersApi<'a> {
     pub async fn get_data<R: DeserializeOwned>(
         &self,
         user_id: UserId,
-        data_type: UserDataType,
+        data_type: impl Into<UserDataType>,
     ) -> anyhow::Result<Option<R>> {
         self.primary_db
-            .get_user_data(user_id, data_type.get_data_key())
+            .get_user_data(user_id, data_type.into().get_data_key())
             .await
     }
 
@@ -447,26 +465,63 @@ impl<'a> UsersApi<'a> {
     pub async fn set_data(
         &self,
         user_id: UserId,
-        data_type: UserDataType,
+        data_type: impl Into<UserDataType>,
         serialized_data_value: Vec<u8>,
     ) -> anyhow::Result<()> {
         let user_data_setter = UserDataSetter::new(user_id, &self.primary_db);
-        match data_type {
-            UserDataType::AutoResponders => {
-                Self::set_auto_responders_data(&user_data_setter, serialized_data_value).await
-            }
-            UserDataType::ContentSecurityPolicies => {
-                Self::set_content_security_policies_data(&user_data_setter, serialized_data_value)
+        let user_data_type = data_type.into();
+        match user_data_type {
+            UserDataType::Public(data_type) => match data_type {
+                PublicUserDataType::AutoResponders => {
+                    Self::set_auto_responders_data(&user_data_setter, serialized_data_value).await
+                }
+                PublicUserDataType::ContentSecurityPolicies => {
+                    Self::set_content_security_policies_data(
+                        &user_data_setter,
+                        serialized_data_value,
+                    )
                     .await
-            }
-            UserDataType::SelfSignedCertificates => {
-                Self::set_self_signed_certificates_data(&user_data_setter, serialized_data_value)
+                }
+                PublicUserDataType::SelfSignedCertificates => {
+                    Self::set_self_signed_certificates_data(
+                        &user_data_setter,
+                        serialized_data_value,
+                    )
                     .await
-            }
-            UserDataType::UserSettings => {
-                Self::set_user_settings_data(&user_data_setter, serialized_data_value).await
+                }
+                PublicUserDataType::UserSettings => {
+                    Self::set_user_settings_data(&user_data_setter, serialized_data_value).await
+                }
+            },
+            UserDataType::Internal(_) => {
+                user_data_setter
+                    .upsert(user_data_type.get_data_key(), serialized_data_value)
+                    .await
             }
         }
+    }
+
+    /// Generates new activation code for the user with the specified ID.
+    pub async fn generate_activation_code(&self, user_id: UserId) -> anyhow::Result<String> {
+        let mut bytes = [0u8; ACTIVATION_CODE_LENGTH_BYTES];
+        OsRng.fill_bytes(&mut bytes);
+        let activation_code = bytes.encode_hex();
+
+        self.primary_db
+            .upsert_user_data(
+                user_id,
+                UserDataType::from(InternalUserDataType::AccountActivationToken).get_data_key(),
+                &activation_code,
+            )
+            .await
+            .with_context(|| {
+                format!(
+                    "Cannot store activation code for the user (user ID: {:?})",
+                    user_id
+                )
+            })?;
+
+        Ok(activation_code)
     }
 
     async fn set_auto_responders_data(
@@ -497,7 +552,7 @@ impl<'a> UsersApi<'a> {
 
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
-            UserDataType::AutoResponders.get_data_key(),
+            UserDataType::from(PublicUserDataType::AutoResponders).get_data_key(),
             auto_responders,
         )
         .await
@@ -514,7 +569,7 @@ impl<'a> UsersApi<'a> {
         }
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
-            UserDataType::UserSettings.get_data_key(),
+            UserDataType::from(PublicUserDataType::UserSettings).get_data_key(),
             user_settings.into_inner(),
         )
         .await
@@ -526,7 +581,7 @@ impl<'a> UsersApi<'a> {
     ) -> anyhow::Result<()> {
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
-            UserDataType::ContentSecurityPolicies.get_data_key(),
+            UserDataType::from(PublicUserDataType::ContentSecurityPolicies).get_data_key(),
             serde_json::from_slice::<BTreeMap<String, Option<ContentSecurityPolicy>>>(
                 &serialized_data_value,
             )
@@ -541,7 +596,7 @@ impl<'a> UsersApi<'a> {
     ) -> anyhow::Result<()> {
         DictionaryDataUserDataSetter::upsert(
             user_data_setter,
-            UserDataType::SelfSignedCertificates.get_data_key(),
+            UserDataType::from(PublicUserDataType::SelfSignedCertificates).get_data_key(),
             serde_json::from_slice::<BTreeMap<String, Option<SelfSignedCertificate>>>(
                 &serialized_data_value,
             )
@@ -560,12 +615,6 @@ impl<'a> UsersApi<'a> {
                 return Ok(handle);
             }
         }
-    }
-
-    fn generate_activation_code() -> String {
-        let mut bytes = [0u8; ACTIVATION_CODE_LENGTH_BYTES];
-        OsRng.fill_bytes(&mut bytes);
-        bytes.encode_hex()
     }
 
     async fn validate_credentials(
@@ -630,7 +679,7 @@ mod tests {
         config::Config,
         datastore::PrimaryDb,
         tests::MockUserBuilder,
-        users::{User, UserDataType, UserId},
+        users::{PublicUserDataType, User, UserId},
         utils::{AutoResponder, AutoResponderMethod, AutoResponderRequest},
     };
     use std::{borrow::Cow, collections::BTreeMap};
@@ -705,7 +754,7 @@ mod tests {
         // Insert auto responders data.
         api.set_data(
             mock_user.id,
-            UserDataType::AutoResponders,
+            PublicUserDataType::AutoResponders,
             serde_json::to_vec(
                 &[
                     (&auto_responder_one.name, auto_responder_one.clone()),
@@ -773,7 +822,7 @@ mod tests {
         // Remove one auto responder and update another.
         api.set_data(
             mock_user.id,
-            UserDataType::AutoResponders,
+            PublicUserDataType::AutoResponders,
             serde_json::to_vec(
                 &[
                     (&auto_responder_one.name, None),
@@ -790,7 +839,7 @@ mod tests {
 
         // Verify that auto responders were correctly updated.
         assert_eq!(
-            api.get_data(mock_user.id, UserDataType::AutoResponders)
+            api.get_data(mock_user.id, PublicUserDataType::AutoResponders)
                 .await?,
             Some(
                 [(auto_responder_two.name, auto_responder_two_new.clone())]

@@ -10,6 +10,24 @@
     },
     "query": "\nDELETE FROM user_webauthn_sessions\nWHERE email = ?1\n            "
   },
+  "082305b1d713f175c5137cb94573226858aa787ee246e25e6ab03a8ce6cd37e2": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int64"
+        }
+      ],
+      "nullable": [
+        false
+      ],
+      "parameters": {
+        "Right": 6
+      }
+    },
+    "query": "\nINSERT INTO users (email, handle, credentials, created, roles, activated)\nVALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )\nRETURNING id\n        "
+  },
   "0f0d2a96f3bd6b489a62575fd9817a9ebd702f5aa6b45496822b26dd84a22dcf": {
     "describe": {
       "columns": [
@@ -40,6 +58,60 @@
     },
     "query": "\nSELECT email, session_value, timestamp\nFROM user_webauthn_sessions\nWHERE email = ?1\n                "
   },
+  "29d840f8dd12bdcbd509fce97b24a2987a661ad2c77734ddc67b242444844a56": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id",
+          "ordinal": 0,
+          "type_info": "Int64"
+        },
+        {
+          "name": "email",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "handle",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "credentials",
+          "ordinal": 3,
+          "type_info": "Blob"
+        },
+        {
+          "name": "created",
+          "ordinal": 4,
+          "type_info": "Int64"
+        },
+        {
+          "name": "roles",
+          "ordinal": 5,
+          "type_info": "Text"
+        },
+        {
+          "name": "activated",
+          "ordinal": 6,
+          "type_info": "Int64"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false
+      ],
+      "parameters": {
+        "Right": 1
+      }
+    },
+    "query": "\nSELECT id, email, handle, credentials, created, roles, activated\nFROM users\nWHERE email = ?1\n                "
+  },
   "4dace02b02940ad0278e76fe97ae7e05d562478cf3a077c44b67b39a6d1fab5d": {
     "describe": {
       "columns": [],
@@ -50,6 +122,60 @@
     },
     "query": "\nINSERT INTO user_webauthn_sessions (email, session_value, timestamp)\nVALUES (?1, ?2, ?3)\nON CONFLICT(email) DO UPDATE SET session_value=excluded.session_value, timestamp=excluded.timestamp\n        "
   },
+  "58f12873d94452607da388d8b2ab7bb71aee5ad4f8b29821b8a52a8509b12f80": {
+    "describe": {
+      "columns": [
+        {
+          "name": "id!",
+          "ordinal": 0,
+          "type_info": "Int64"
+        },
+        {
+          "name": "email!",
+          "ordinal": 1,
+          "type_info": "Text"
+        },
+        {
+          "name": "handle!",
+          "ordinal": 2,
+          "type_info": "Text"
+        },
+        {
+          "name": "credentials!",
+          "ordinal": 3,
+          "type_info": "Blob"
+        },
+        {
+          "name": "created!",
+          "ordinal": 4,
+          "type_info": "Int64"
+        },
+        {
+          "name": "roles",
+          "ordinal": 5,
+          "type_info": "Text"
+        },
+        {
+          "name": "activated",
+          "ordinal": 6,
+          "type_info": "Int64"
+        }
+      ],
+      "nullable": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false
+      ],
+      "parameters": {
+        "Right": 1
+      }
+    },
+    "query": "\nDELETE FROM users\nWHERE email = ?1\nRETURNING id as \"id!\", email as \"email!\", handle as \"handle!\", credentials as \"credentials!\", created as \"created!\", roles, activated\n            "
+  },
   "7634c2919032b70faed4ad92fb5d7f49199fb2efa8f10ea8604c2b2fa8f8ad82": {
     "describe": {
       "columns": [],
@@ -59,24 +185,6 @@
       }
     },
     "query": "\nDELETE FROM user_webauthn_sessions\nWHERE timestamp <= ?1\n            "
-  },
-  "7bd00826670e7d16ac71840b9c1715e8a656e967421f63f385ca7643e1166e57": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int64"
-        }
-      ],
-      "nullable": [
-        false
-      ],
-      "parameters": {
-        "Right": 6
-      }
-    },
-    "query": "\nINSERT INTO users (email, handle, credentials, created, roles, activation_code)\nVALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )\nON CONFLICT(email) DO UPDATE SET handle=excluded.handle, credentials=excluded.credentials, created=excluded.created, roles=excluded.roles, activation_code=excluded.activation_code\nRETURNING id\n        "
   },
   "83d9e5e755c9f6708f4a2be5d7f52370b37205d29f731689b1235bea43df8c98": {
     "describe": {
@@ -138,61 +246,7 @@
     },
     "query": "\nSELECT data_value\nFROM user_data\nWHERE user_id = ?1 AND data_key = ?2\n                "
   },
-  "abee973b910ec688ee30b0929feabe232be08c0ecd0425ed62f275b835b33613": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int64"
-        },
-        {
-          "name": "email",
-          "ordinal": 1,
-          "type_info": "Text"
-        },
-        {
-          "name": "handle",
-          "ordinal": 2,
-          "type_info": "Text"
-        },
-        {
-          "name": "credentials",
-          "ordinal": 3,
-          "type_info": "Blob"
-        },
-        {
-          "name": "created",
-          "ordinal": 4,
-          "type_info": "Int64"
-        },
-        {
-          "name": "roles",
-          "ordinal": 5,
-          "type_info": "Text"
-        },
-        {
-          "name": "activation_code",
-          "ordinal": 6,
-          "type_info": "Text"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        true,
-        true
-      ],
-      "parameters": {
-        "Right": 1
-      }
-    },
-    "query": "\nSELECT id, email, handle, credentials, created, roles, activation_code\nFROM users\nWHERE email = ?1\n                "
-  },
-  "b2ff6db0cdf2f4a666aa3a2da1c1ae02b32f95d5a4a843a2eeaeb062bd1f3217": {
+  "94873f4b80446eff326954679365a9f720e376cc88cfb63fb2af598970c402cd": {
     "describe": {
       "columns": [
         {
@@ -208,63 +262,9 @@
         "Right": 6
       }
     },
-    "query": "\nINSERT INTO users (email, handle, credentials, created, roles, activation_code)\nVALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )\nRETURNING id\n        "
+    "query": "\nINSERT INTO users (email, handle, credentials, created, roles, activated)\nVALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )\nON CONFLICT(email) DO UPDATE SET handle=excluded.handle, credentials=excluded.credentials, created=excluded.created, roles=excluded.roles, activated=excluded.activated\nRETURNING id\n        "
   },
-  "be288753051f0df99de32f5d28b811962023815234d746898f8e396aaf029434": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id!",
-          "ordinal": 0,
-          "type_info": "Int64"
-        },
-        {
-          "name": "email!",
-          "ordinal": 1,
-          "type_info": "Text"
-        },
-        {
-          "name": "handle!",
-          "ordinal": 2,
-          "type_info": "Text"
-        },
-        {
-          "name": "credentials!",
-          "ordinal": 3,
-          "type_info": "Blob"
-        },
-        {
-          "name": "created!",
-          "ordinal": 4,
-          "type_info": "Int64"
-        },
-        {
-          "name": "roles",
-          "ordinal": 5,
-          "type_info": "Text"
-        },
-        {
-          "name": "activation_code",
-          "ordinal": 6,
-          "type_info": "Text"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        true,
-        true
-      ],
-      "parameters": {
-        "Right": 1
-      }
-    },
-    "query": "\nDELETE FROM users\nWHERE email = ?1\nRETURNING id as \"id!\", email as \"email!\", handle as \"handle!\", credentials as \"credentials!\", created as \"created!\", roles, activation_code\n            "
-  },
-  "beb2ef6b43730cce71bee7396ab0e851ce271ac5261fee668905a23b76b7f31d": {
+  "95798077c07f970c73791add9ddac2b892d57c718f0a6a5e472e47c67f534d38": {
     "describe": {
       "columns": [
         {
@@ -298,9 +298,9 @@
           "type_info": "Text"
         },
         {
-          "name": "activation_code",
+          "name": "activated",
           "ordinal": 6,
-          "type_info": "Text"
+          "type_info": "Int64"
         }
       ],
       "nullable": [
@@ -310,13 +310,13 @@
         false,
         false,
         true,
-        true
+        false
       ],
       "parameters": {
         "Right": 1
       }
     },
-    "query": "\nSELECT id, email, handle, credentials, created, roles, activation_code\nFROM users\nWHERE handle = ?1\n             "
+    "query": "\nSELECT id, email, handle, credentials, created, roles, activated\nFROM users\nWHERE handle = ?1\n             "
   },
   "c32783f681dd607eb7f1779bedfe20cafcf95f200951af907015c87e03afb9f7": {
     "describe": {
@@ -327,60 +327,6 @@
       }
     },
     "query": "\nDELETE FROM user_data\nWHERE user_id = ?1 AND data_key = ?2\n            "
-  },
-  "c9d5d6c769742c3fac64349a175d317d9edbf70c6320e3e5f18c3f9f8485f8ca": {
-    "describe": {
-      "columns": [
-        {
-          "name": "id",
-          "ordinal": 0,
-          "type_info": "Int64"
-        },
-        {
-          "name": "email",
-          "ordinal": 1,
-          "type_info": "Text"
-        },
-        {
-          "name": "handle",
-          "ordinal": 2,
-          "type_info": "Text"
-        },
-        {
-          "name": "credentials",
-          "ordinal": 3,
-          "type_info": "Blob"
-        },
-        {
-          "name": "created",
-          "ordinal": 4,
-          "type_info": "Int64"
-        },
-        {
-          "name": "roles",
-          "ordinal": 5,
-          "type_info": "Text"
-        },
-        {
-          "name": "activation_code",
-          "ordinal": 6,
-          "type_info": "Text"
-        }
-      ],
-      "nullable": [
-        false,
-        false,
-        false,
-        false,
-        false,
-        true,
-        true
-      ],
-      "parameters": {
-        "Right": 1
-      }
-    },
-    "query": "\nSELECT id, email, handle, credentials, created, roles, activation_code\nFROM users\nWHERE activation_code = ?1\n            "
   },
   "ed083933808efb0ed7d6947997035b2ade5fb79cb04da5e681dae8df818c294a": {
     "describe": {

@@ -1,7 +1,7 @@
 use crate::{
     api::Api,
     datastore::PrimaryDb,
-    users::{UserDataType, UserId},
+    users::{PublicUserDataType, UserDataType, UserId},
     utils::{webhooks::AutoResponderRequest, AutoResponder},
 };
 use std::{
@@ -29,7 +29,7 @@ impl<'a> AutoRespondersApi<'a> {
         self.primary_db
             .get_user_data::<BTreeMap<String, AutoResponder>>(
                 user_id,
-                UserDataType::AutoResponders.get_data_key(),
+                UserDataType::from(PublicUserDataType::AutoResponders).get_data_key(),
             )
             .await
             .map(|auto_responders| auto_responders?.remove(name))

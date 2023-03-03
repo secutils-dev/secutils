@@ -1,6 +1,6 @@
 use crate::{
     api::Api,
-    users::{User, UserDataType},
+    users::{PublicUserDataType, User},
     utils::{
         CertificateFormat, PublicKeyAlgorithm, SelfSignedCertificate, SignatureAlgorithm,
         UtilsCertificatesAction, UtilsCertificatesActionResult,
@@ -226,7 +226,7 @@ impl UtilsCertificatesActionHandler {
                     .users()
                     .get_data::<BTreeMap<String, SelfSignedCertificate>>(
                         user.id,
-                        UserDataType::SelfSignedCertificates,
+                        PublicUserDataType::SelfSignedCertificates,
                     )
                     .await?
                     .and_then(|mut map| map.remove(&template_name))

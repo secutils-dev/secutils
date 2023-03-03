@@ -1,4 +1,7 @@
-use crate::{users::UserDataType, utils::AutoResponderMethod};
+use crate::{
+    users::{PublicUserDataType, UserDataType},
+    utils::AutoResponderMethod,
+};
 use anyhow::bail;
 use serde_derive::{Deserialize, Serialize};
 
@@ -36,7 +39,7 @@ impl AutoResponder {
 
         Ok(format!(
             "{}__{}",
-            UserDataType::AutoResponders.get_data_key(),
+            UserDataType::from(PublicUserDataType::AutoResponders).get_data_key(),
             name
         ))
     }

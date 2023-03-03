@@ -46,7 +46,7 @@ impl PrimaryDb {
         query_as!(
             RawUser,
             r#"
-SELECT id, email, handle, credentials, created, roles, activation_code
+SELECT id, email, handle, credentials, created, roles, activated
 FROM users
 WHERE email = ?1
                 "#,
@@ -67,7 +67,7 @@ WHERE email = ?1
         let mut raw_users = query_as!(
             RawUser,
             r#"
-SELECT id, email, handle, credentials, created, roles, activation_code
+SELECT id, email, handle, credentials, created, roles, activated
 FROM users
 WHERE handle = ?1
              "#,
@@ -91,35 +91,13 @@ WHERE handle = ?1
         raw_users.pop().map(User::try_from).transpose()
     }
 
-    /// Retrieves users from the `Users` table using activation code.
-    pub async fn get_users_by_activation_code<T: AsRef<str>>(
-        &self,
-        activation_code: T,
-    ) -> anyhow::Result<Vec<User>> {
-        let activation_code = activation_code.as_ref();
-        query_as!(
-            RawUser,
-            r#"
-SELECT id, email, handle, credentials, created, roles, activation_code
-FROM users
-WHERE activation_code = ?1
-            "#,
-            activation_code
-        )
-        .fetch_all(&self.pool)
-        .await?
-        .into_iter()
-        .map(User::try_from)
-        .collect()
-    }
-
     /// Inserts user to the `Users` tables, fails if user already exists.
     pub async fn insert_user<U: AsRef<User>>(&self, user: U) -> anyhow::Result<UserId> {
         let raw_user = RawUserToUpsert::try_from(user.as_ref())?;
 
         let user_id: i64 = query_scalar!(
             r#"
-INSERT INTO users (email, handle, credentials, created, roles, activation_code)
+INSERT INTO users (email, handle, credentials, created, roles, activated)
 VALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )
 RETURNING id
         "#,
@@ -128,7 +106,7 @@ RETURNING id
             raw_user.credentials,
             raw_user.created,
             raw_user.roles,
-            raw_user.activation_code
+            raw_user.activated
         )
         .fetch_one(&self.pool)
         .await?;
@@ -141,9 +119,9 @@ RETURNING id
         let raw_user = RawUserToUpsert::try_from(user.as_ref())?;
 
         let user_id: i64 = query_scalar!(r#"
-INSERT INTO users (email, handle, credentials, created, roles, activation_code)
+INSERT INTO users (email, handle, credentials, created, roles, activated)
 VALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )
-ON CONFLICT(email) DO UPDATE SET handle=excluded.handle, credentials=excluded.credentials, created=excluded.created, roles=excluded.roles, activation_code=excluded.activation_code
+ON CONFLICT(email) DO UPDATE SET handle=excluded.handle, credentials=excluded.credentials, created=excluded.created, roles=excluded.roles, activated=excluded.activated
 RETURNING id
         "#,
             raw_user.email,
@@ -151,7 +129,7 @@ RETURNING id
             raw_user.credentials,
             raw_user.created,
             raw_user.roles,
-            raw_user.activation_code
+            raw_user.activated
         )
         .fetch_one(&self.pool)
         .await?;
@@ -170,7 +148,7 @@ RETURNING id
             r#"
 DELETE FROM users
 WHERE email = ?1
-RETURNING id as "id!", email as "email!", handle as "handle!", credentials as "credentials!", created as "created!", roles, activation_code
+RETURNING id as "id!", email as "email!", handle as "handle!", credentials as "credentials!", created as "created!", roles, activated
             "#,
             email
         )
@@ -423,6 +401,7 @@ mod tests {
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             )
+            .set_activated()
             .build(),
             MockUserBuilder::new(
                 UserId::empty(),
@@ -435,7 +414,6 @@ mod tests {
                 // January 1, 2010 11:00:00
                 OffsetDateTime::from_unix_timestamp(1262340000)?,
             )
-            .set_activation_code("some-code")
             .add_role("admin")
             .build(),
             MockUserBuilder::new(
@@ -449,7 +427,6 @@ mod tests {
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             )
-            .set_activation_code("some-user-code")
             .add_role("Power-User")
             .build(),
         ];
@@ -473,7 +450,7 @@ mod tests {
                 },
                 roles: {},
                 created: 2000-01-01 10:00:00.0 +00:00:00,
-                activation_code: None,
+                activated: true,
             },
         )
         "###);
@@ -495,9 +472,7 @@ mod tests {
                     "admin",
                 },
                 created: 2010-01-01 10:00:00.0 +00:00:00,
-                activation_code: Some(
-                    "some-code",
-                ),
+                activated: false,
             },
         )
         "###);
@@ -519,9 +494,7 @@ mod tests {
                     "power-user",
                 },
                 created: 2000-01-01 10:00:00.0 +00:00:00,
-                activation_code: Some(
-                    "some-user-code",
-                ),
+                activated: false,
             },
         )
         "###);
@@ -547,6 +520,7 @@ mod tests {
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
         .add_role("Power-User")
+        .set_activated()
         .build();
         let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
         let id = db.upsert_user(&user).await?;
@@ -569,7 +543,7 @@ mod tests {
                     "power-user",
                 },
                 created: 2000-01-01 10:00:00.0 +00:00:00,
-                activation_code: None,
+                activated: true,
             },
         )
         "###);
@@ -598,6 +572,7 @@ mod tests {
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
+        .set_activated()
         .add_role("Power-User")
         .build();
         let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
@@ -621,7 +596,7 @@ mod tests {
                     "power-user",
                 },
                 created: 2000-01-01 10:00:00.0 +00:00:00,
-                activation_code: None,
+                activated: true,
             },
         )
         "###);
@@ -648,6 +623,7 @@ mod tests {
                     // January 1, 2000 11:00:00
                     OffsetDateTime::from_unix_timestamp(946720800)?,
                 )
+                .set_activated()
                 .build(),
             )
             .await?;
@@ -667,7 +643,7 @@ mod tests {
                 },
                 roles: {},
                 created: 2000-01-01 10:00:00.0 +00:00:00,
-                activation_code: None,
+                activated: true,
             },
         )
         "###);
@@ -685,7 +661,6 @@ mod tests {
                     // January 1, 2000 11:00:00
                     OffsetDateTime::from_unix_timestamp(1262340000)?,
                 )
-                .set_activation_code("some-code")
                 .add_role("admin")
                 .build(),
             )
@@ -725,6 +700,7 @@ mod tests {
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             )
+            .set_activated()
             .build(),
         )
         .await?;
@@ -744,7 +720,7 @@ mod tests {
                 },
                 roles: {},
                 created: 2000-01-01 10:00:00.0 +00:00:00,
-                activation_code: None,
+                activated: true,
             },
         )
         "###);
@@ -761,7 +737,6 @@ mod tests {
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(1262340000)?,
             )
-            .set_activation_code("some-code")
             .add_role("admin")
             .build(),
         )
@@ -784,9 +759,7 @@ mod tests {
                     "admin",
                 },
                 created: 2010-01-01 10:00:00.0 +00:00:00,
-                activation_code: Some(
-                    "some-code",
-                ),
+                activated: false,
             },
         )
         "###);
@@ -816,6 +789,7 @@ mod tests {
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
+        .set_activated()
         .build();
         let user_prod = MockUserBuilder::new(
             UserId::empty(),
@@ -828,7 +802,6 @@ mod tests {
             // January 1, 2010 11:00:00
             OffsetDateTime::from_unix_timestamp(1262340000)?,
         )
-        .set_activation_code("some-code")
         .build();
 
         let dev_user_id = db.upsert_user(&user_dev).await?;
@@ -874,71 +847,6 @@ mod tests {
     }
 
     #[actix_rt::test]
-    async fn can_search_users() -> anyhow::Result<()> {
-        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
-        let user_dev = MockUserBuilder::new(
-            UserId::empty(),
-            "dev@secutils.dev",
-            "dev-handle",
-            StoredCredentials {
-                password_hash: Some("hash".to_string()),
-                ..Default::default()
-            },
-            // January 1, 2000 11:00:00
-            OffsetDateTime::from_unix_timestamp(946720800)?,
-        )
-        .set_activation_code("some-code")
-        .build();
-        let user_prod = MockUserBuilder::new(
-            UserId::empty(),
-            "prod@secutils.dev",
-            "prod-handle",
-            StoredCredentials {
-                password_hash: Some("hash_prod".to_string()),
-                ..Default::default()
-            },
-            // January 1, 2010 11:00:00
-            OffsetDateTime::from_unix_timestamp(1262340000)?,
-        )
-        .set_activation_code("OTHER-code")
-        .build();
-
-        let dev_user_id = db.upsert_user(&user_dev).await?;
-        let prod_user_id = db.upsert_user(&user_prod).await?;
-
-        let users = db.get_users_by_activation_code("some-code").await?;
-        assert_eq!(
-            users.into_iter().map(|user| user.id).collect::<Vec<_>>(),
-            vec![dev_user_id]
-        );
-
-        let users = db.get_users_by_activation_code("SOME-code").await?;
-        assert_eq!(
-            users.into_iter().map(|user| user.id).collect::<Vec<_>>(),
-            vec![dev_user_id]
-        );
-
-        let users = db.get_users_by_activation_code("other-code").await?;
-        assert_eq!(
-            users.into_iter().map(|user| user.id).collect::<Vec<_>>(),
-            vec![prod_user_id]
-        );
-
-        let users = db.get_users_by_activation_code("OTHER-code").await?;
-        assert_eq!(
-            users.into_iter().map(|user| user.id).collect::<Vec<_>>(),
-            vec![prod_user_id]
-        );
-
-        assert!(db
-            .get_users_by_activation_code("unknown-code")
-            .await?
-            .is_empty());
-
-        Ok(())
-    }
-
-    #[actix_rt::test]
     async fn can_manipulate_user_data() -> anyhow::Result<()> {
         let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
         let user = MockUserBuilder::new(
@@ -951,6 +859,7 @@ mod tests {
             },
             OffsetDateTime::now_utc(),
         )
+        .set_activated()
         .build();
 
         // No user and no data yet.

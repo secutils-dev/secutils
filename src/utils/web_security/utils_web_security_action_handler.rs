@@ -1,6 +1,6 @@
 use crate::{
     api::Api,
-    users::{User, UserDataType},
+    users::{PublicUserDataType, User},
     utils::{
         ContentSecurityPolicy, ContentSecurityPolicyDirective, ContentSecurityPolicySource,
         UtilsWebSecurityAction, UtilsWebSecurityActionResult,
@@ -36,7 +36,7 @@ impl UtilsWebSecurityActionHandler {
                     .users()
                     .get_data::<BTreeMap<String, ContentSecurityPolicy>>(
                         user.id,
-                        UserDataType::ContentSecurityPolicies,
+                        PublicUserDataType::ContentSecurityPolicies,
                     )
                     .await?
                     .and_then(|mut map| map.remove(&policy_name))

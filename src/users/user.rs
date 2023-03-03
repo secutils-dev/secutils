@@ -16,15 +16,6 @@ where
     credentials.end()
 }
 
-/// Serializer that makes sure expected activation code isn't serialized and exposed to the client.
-/// Instead, we produce a boolean indicating whether user has their account or not.
-fn activation_code_safe_serialize<S>(value: &Option<String>, s: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    s.serialize_bool(value.is_none())
-}
-
 #[derive(Serialize, Debug, Clone)]
 pub struct User {
     #[serde(skip_serializing)]
@@ -36,11 +27,7 @@ pub struct User {
     pub roles: HashSet<String>,
     #[serde(with = "time::serde::timestamp")]
     pub created: OffsetDateTime,
-    #[serde(
-        rename = "activated",
-        serialize_with = "activation_code_safe_serialize"
-    )]
-    pub activation_code: Option<String>,
+    pub activated: bool,
 }
 
 impl AsRef<User> for User {
@@ -72,7 +59,6 @@ mod tests {
             // January 1, 2010 11:00:00
             OffsetDateTime::from_unix_timestamp(1262340000)?,
         )
-        .set_activation_code("some-code")
         .add_role("ADMIN")
         .build();
 
@@ -84,6 +70,7 @@ mod tests {
             // January 1, 2010 11:00:00
             OffsetDateTime::from_unix_timestamp(1262340000)?,
         )
+        .set_activated()
         .build();
 
         let user_with_password_and_passkey = MockUserBuilder::new(
@@ -97,6 +84,7 @@ mod tests {
             // January 1, 2010 11:00:00
             OffsetDateTime::from_unix_timestamp(1262340000)?,
         )
+        .set_activated()
         .build();
 
         insta::with_settings!({ sort_maps => true }, {

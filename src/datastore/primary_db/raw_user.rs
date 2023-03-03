@@ -10,7 +10,7 @@ pub(super) struct RawUser {
     pub credentials: Vec<u8>,
     pub created: i64,
     pub roles: Option<String>,
-    pub activation_code: Option<String>,
+    pub activated: i64,
 }
 
 impl TryFrom<RawUser> for User {
@@ -28,7 +28,7 @@ impl TryFrom<RawUser> for User {
                 .map(|roles_str| roles_str.split(':').map(|part| part.to_string()).collect())
                 .unwrap_or_default(),
             created: OffsetDateTime::from_unix_timestamp(raw_user.created)?,
-            activation_code: raw_user.activation_code,
+            activated: raw_user.activated > 0,
         })
     }
 }
@@ -53,7 +53,7 @@ mod tests {
             // January 1, 2000 11:00:00
             created: 946720800,
             roles: None,
-            activation_code: None,
+            activated: 1,
         })?, @r###"
         User {
             id: UserId(
@@ -69,7 +69,7 @@ mod tests {
             },
             roles: {},
             created: 2000-01-01 10:00:00.0 +00:00:00,
-            activation_code: None,
+            activated: true,
         }
         "###);
 
@@ -89,7 +89,7 @@ mod tests {
             // January 1, 2000 11:00:00
             created: 946720800,
             roles: Some("admin".to_string()),
-            activation_code: Some("code".to_string()),
+            activated: 0,
         })?, @r###"
         User {
             id: UserId(
@@ -107,9 +107,7 @@ mod tests {
                 "admin",
             },
             created: 2000-01-01 10:00:00.0 +00:00:00,
-            activation_code: Some(
-                "code",
-            ),
+            activated: false,
         }
         "###);
 
@@ -131,7 +129,7 @@ mod tests {
                 // January 1, 2000 11:00:00
                 created: 946720800,
                 roles: Some("admin:superuser".to_string()),
-                activation_code: None,
+                activated: 1,
             })?
             .roles,
             ["admin".to_string(), "superuser".to_string()]
@@ -155,7 +153,7 @@ mod tests {
             .unwrap(),
             created: time::Date::MIN.midnight().assume_utc().unix_timestamp() - 1,
             roles: None,
-            activation_code: None,
+            activated: 1,
         })
         .is_err());
 
