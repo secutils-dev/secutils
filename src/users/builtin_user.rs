@@ -66,7 +66,7 @@ mod tests {
             .credentials
             .password_hash
             .unwrap()
-            .starts_with("$argon2id$v=19$m=4096,t=3,p=1$"));
+            .starts_with("$argon2id$v=19$m=19456,t=2,p=1$"));
 
         Ok(())
     }
@@ -83,7 +83,7 @@ mod tests {
             .credentials
             .password_hash
             .unwrap()
-            .starts_with("$argon2id$v=19$m=4096,t=3,p=1$"));
+            .starts_with("$argon2id$v=19$m=19456,t=2,p=1$"));
 
         Ok(())
     }
@@ -97,7 +97,7 @@ mod tests {
             .credentials
             .password_hash
             .unwrap()
-            .starts_with("$argon2id$v=19$m=4096,t=3,p=1$"));
+            .starts_with("$argon2id$v=19$m=19456,t=2,p=1$"));
 
         let parsed_user = BuiltinUser::try_from("su@secutils.dev:password")?;
         assert_eq!(parsed_user.email, "su@secutils.dev");
@@ -106,7 +106,7 @@ mod tests {
             .credentials
             .password_hash
             .unwrap()
-            .starts_with("$argon2id$v=19$m=4096,t=3,p=1$"));
+            .starts_with("$argon2id$v=19$m=19456,t=2,p=1$"));
 
         Ok(())
     }

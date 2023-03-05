@@ -59,7 +59,7 @@ mod tests {
         insta::with_settings!({ filters => vec![(r"p=.+", "p=[HASH]")]}, {
              assert_json_snapshot!(credentials, @r###"
              {
-               "password_hash": "$argon2id$v=19$m=4096,t=3,p=[HASH]
+               "password_hash": "$argon2id$v=19$m=19456,t=2,p=[HASH]
              }"###);
         });
 
