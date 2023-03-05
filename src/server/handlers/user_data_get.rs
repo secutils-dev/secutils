@@ -3,7 +3,7 @@ use crate::{
     users::{PublicUserDataNamespace, User},
 };
 use actix_web::{web, HttpResponse, Responder};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use std::collections::BTreeMap;
 
 #[derive(Deserialize)]

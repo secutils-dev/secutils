@@ -5,7 +5,7 @@ use crate::{
     utils::{UtilsAction, UtilsActionHandler},
 };
 use actix_web::{web, HttpResponse};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct BodyParams {

@@ -5,7 +5,7 @@ use crate::{
 use actix_http::HttpMessage;
 use actix_identity::Identity;
 use actix_web::{web, HttpRequest, HttpResponse, Responder};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::json;
 
 #[derive(Deserialize)]

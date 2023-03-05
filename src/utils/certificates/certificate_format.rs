@@ -1,4 +1,4 @@
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 /// Defines a format to use for the generated certificate(s) and keys.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq)]

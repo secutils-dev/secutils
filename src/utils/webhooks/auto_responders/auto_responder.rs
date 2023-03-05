@@ -1,5 +1,5 @@
 use crate::utils::AutoResponderMethod;
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AutoResponder {

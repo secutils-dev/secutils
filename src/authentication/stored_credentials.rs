@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail};
 use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
 use rand_core::OsRng;
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use webauthn_rs::prelude::Passkey;
 
 /// Represents possible stored user credentials.

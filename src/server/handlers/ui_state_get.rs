@@ -6,7 +6,7 @@ use crate::{
 };
 use actix_web::{web, HttpResponse};
 use anyhow::anyhow;
-use serde_derive::Serialize;
+use serde::Serialize;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

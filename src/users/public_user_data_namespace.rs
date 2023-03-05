@@ -1,5 +1,5 @@
 use crate::users::UserDataNamespace;
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Ord, PartialOrd, Copy, Clone)]
 #[serde(rename_all = "camelCase")]

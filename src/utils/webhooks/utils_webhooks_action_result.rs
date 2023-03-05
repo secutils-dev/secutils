@@ -1,5 +1,5 @@
 use crate::utils::AutoResponderRequest;
-use serde_derive::Serialize;
+use serde::Serialize;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

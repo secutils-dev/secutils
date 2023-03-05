@@ -1,5 +1,5 @@
 use crate::utils::{PublicKeyAlgorithm, SignatureAlgorithm};
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
 /// Describes stored self-signed certificate template.

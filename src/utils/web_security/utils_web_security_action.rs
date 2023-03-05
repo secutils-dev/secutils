@@ -1,5 +1,5 @@
 use crate::utils::ContentSecurityPolicySource;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

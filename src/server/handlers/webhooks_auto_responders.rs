@@ -6,7 +6,7 @@ use actix_web::{
 };
 use bytes::Bytes;
 use reqwest::StatusCode;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::json;
 use std::borrow::Cow;
 use time::OffsetDateTime;

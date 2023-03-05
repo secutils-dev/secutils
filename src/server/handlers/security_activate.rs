@@ -1,6 +1,6 @@
 use crate::server::{app_state::AppState, http_errors::generic_internal_server_error};
 use actix_web::{web, HttpResponse, Responder};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::json;
 
 #[derive(Deserialize)]

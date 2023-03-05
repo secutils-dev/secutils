@@ -1,5 +1,5 @@
 use crate::users::UserId;
-use serde_derive::Serialize;
+use serde::Serialize;
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
     hash::{Hash, Hasher},

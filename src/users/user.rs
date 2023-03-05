@@ -1,6 +1,5 @@
 use crate::{authentication::StoredCredentials, users::UserId};
-use serde::{ser::SerializeStruct, Serializer};
-use serde_derive::Serialize;
+use serde::{ser::SerializeStruct, Serialize, Serializer};
 use std::collections::HashSet;
 use time::OffsetDateTime;
 

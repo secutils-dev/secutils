@@ -1,5 +1,5 @@
 use crate::utils::ContentSecurityPolicySource;
-use serde_derive::Serialize;
+use serde::Serialize;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

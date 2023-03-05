@@ -34,7 +34,6 @@ rand_core = "0.6.4"
 reqwest = { version = "0.11.14", default-features = false }
 serde = "1.0.152"
 serde_bytes = "0.11.9"
-serde_derive = "1.0.152"
 serde_json = "1.0.93"
 sqlx = "0.7.0-alpha.1"
 tantivy = "0.19.2"
@@ -63,6 +62,7 @@ default = [
     "rand_core/std",
     "reqwest/json",
     "reqwest/native-tls-vendored",
+    "serde/derive",
     "serde_json/arbitrary_precision",
     "sqlx/json",
     "sqlx/migrate",

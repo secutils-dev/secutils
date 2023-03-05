@@ -1,4 +1,4 @@
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 /// Defines a source by means of which content security policy is delivered.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq)]

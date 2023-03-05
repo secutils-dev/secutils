@@ -32,7 +32,7 @@ use actix_identity::Identity;
 use actix_session::Session;
 use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use anyhow::Context;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::json;
 
 #[derive(Deserialize)]

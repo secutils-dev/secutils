@@ -4,7 +4,7 @@ use crate::{
     server::app_state::AppState,
 };
 use actix_web::{web, HttpResponse};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::json;
 
 #[derive(Deserialize)]

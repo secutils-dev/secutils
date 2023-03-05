@@ -3,7 +3,7 @@ use crate::{
     users::{PublicUserDataNamespace, User, UserData},
 };
 use actix_web::{web, HttpResponse, Responder};
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeMap;
 use time::OffsetDateTime;

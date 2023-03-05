@@ -4,7 +4,7 @@ use crate::{
 };
 use actix_web::{error::ErrorInternalServerError, web, HttpResponse, Responder};
 use anyhow::anyhow;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct SetStatusAPIParams {

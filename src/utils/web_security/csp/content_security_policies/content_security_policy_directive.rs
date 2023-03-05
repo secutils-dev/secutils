@@ -3,7 +3,7 @@ use crate::utils::{
     ContentSecurityPolicyWebrtcDirectiveValue,
 };
 use anyhow::anyhow;
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
