@@ -10,7 +10,7 @@ pub struct ActivateParams {
     pub activation_code: String,
 }
 
-pub async fn security_activate(
+pub async fn security_activation_complete(
     state: web::Data<AppState>,
     body_params: web::Json<ActivateParams>,
 ) -> impl Responder {

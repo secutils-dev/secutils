@@ -104,46 +104,20 @@ impl<'a> UsersApi<'a> {
 
         // Use insert instead of upsert here to prevent multiple signup requests from the same user.
         // Consumer of the API is supposed to perform validation before invoking this method.
-        let user_id = self.primary_db.insert_user(&user).await.with_context(|| {
-            format!(
-                "Cannot signup user, failed to insert new user {}",
-                user.handle
-            )
-        })?;
+        let user = self
+            .primary_db
+            .insert_user(&user)
+            .await
+            .with_context(|| "Cannot signup user, failed to insert a new user.")
+            .map(|user_id| User {
+                id: user_id,
+                ..user
+            })?;
 
-        // Generate an activation code for the user.
-        let activation_code = self.generate_activation_code(user_id).await?;
-        let encoded_activation_url = format!(
-            "{}activation/{}",
-            self.config.public_url.as_str(),
-            urlencoding::encode(&activation_code)
-        );
-        self.emails.send(Email::new(
-            &user.email,
-            "Activate you Secutils.dev account",
-            EmailBody::Html {
-                content: format!(
-                    r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Activate your Secutils.dev account</title>
-</head>
-<body>
-    <div style="display: flex; flex-direction: column; align-items: center;">
-        <p style="font-family: Arial, Helvetica, sans-serif;">Activation code: <a href="{encoded_activation_url}">{activation_code}</a>!</p>
-    </div>
-</body>
-</html>"#),
-                fallback: format!("Activation code: {activation_code}"),
-            },
-        ).with_timestamp(SystemTime::now()))?;
+        // Send an email to the user with the account activation link.
+        self.send_activation_link(&user).await?;
 
-        Ok(User {
-            id: user_id,
-            ..user
-        })
+        Ok(user)
     }
 
     /// Authenticates user with the specified email and password.
@@ -500,11 +474,11 @@ impl<'a> UsersApi<'a> {
         }
     }
 
-    /// Generates new activation code for the user with the specified ID.
-    pub async fn generate_activation_code(&self, user_id: UserId) -> anyhow::Result<String> {
+    /// Generates a new account activation link for the specified user and sends to the user's email.
+    pub async fn send_activation_link(&self, user: &User) -> anyhow::Result<()> {
         let mut bytes = [0u8; ACTIVATION_CODE_LENGTH_BYTES];
         OsRng.fill_bytes(&mut bytes);
-        let activation_code = bytes.encode_hex();
+        let activation_code: String = bytes.encode_hex();
 
         let timestamp = OffsetDateTime::now_utc();
         let namespace = InternalUserDataNamespace::AccountActivationToken;
@@ -518,7 +492,7 @@ impl<'a> UsersApi<'a> {
         // Save newly created activation code.
         self.primary_db
             .upsert_user_data(
-                user_id,
+                user.id,
                 namespace,
                 UserData::new(&activation_code, timestamp),
             )
@@ -526,11 +500,74 @@ impl<'a> UsersApi<'a> {
             .with_context(|| {
                 format!(
                     "Cannot store activation code for the user (user ID: {:?})",
-                    user_id
+                    user.id
                 )
             })?;
 
-        Ok(activation_code)
+        let encoded_activation_link = format!(
+            "{}activate?code={}&email={}",
+            self.config.public_url.as_str(),
+            urlencoding::encode(&activation_code),
+            urlencoding::encode(&user.email)
+        );
+        self.emails.send(Email::new(
+            &user.email,
+            "Activate you Secutils.dev account",
+            EmailBody::Html {
+                content: format!(r#"
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Activate your Secutils.dev account</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body {{
+        font-family: Arial, sans-serif;
+        background-color: #f1f1f1;
+        margin: 0;
+        padding: 0;
+      }}
+      .container {{
+        max-width: 600px;
+        margin: 0 auto;
+        background-color: #fff;
+        padding: 20px;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      }}
+      h1 {{
+        font-size: 24px;
+        margin-top: 0;
+      }}
+      p {{
+        font-size: 16px;
+        line-height: 1.5;
+        margin-bottom: 20px;
+      }}
+      .activate-link {{
+        color: #fff;
+        background-color: #2196F3;
+        padding: 10px 20px;
+        text-decoration: none;
+        border-radius: 5px;
+      }}
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Activate your Secutils.dev account</h1>
+      <p>Thanks for signing up! To activate your account, please click the link below:</p>
+      <a class="activate-link" href="{encoded_activation_link}">Activate my account</a>
+      <p>If the button above doesn't work, you can also copy and paste the following URL into your browser:</p>
+      <p>{encoded_activation_link}</p>
+      <p>If you have any trouble activating your account, please contact us at <a href = "mailto: contact@secutils.dev">contact@secutils.dev</a>.</p>
+    </div>
+  </body>
+</html>"#),
+                fallback: format!("To activate your Secutils.dev account, please click the following link: {encoded_activation_link}"),
+            },
+        ).with_timestamp(SystemTime::now()))
     }
 
     async fn set_auto_responders_data(

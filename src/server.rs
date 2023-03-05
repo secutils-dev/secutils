@@ -61,7 +61,17 @@ pub async fn run(
                     .route("/login", web::post().to(handlers::security_login))
                     .route("/logout", web::post().to(handlers::security_logout))
                     .route("/signup", web::post().to(handlers::security_signup))
-                    .route("/activate", web::post().to(handlers::security_activate))
+                    .service(
+                        web::scope("/activation")
+                            .route(
+                                "/complete",
+                                web::post().to(handlers::security_activation_complete),
+                            )
+                            .route(
+                                "/send_link",
+                                web::post().to(handlers::security_activation_send_link),
+                            ),
+                    )
                     .service(
                         web::scope("/credentials")
                             .route(
