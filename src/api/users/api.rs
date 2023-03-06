@@ -1,6 +1,6 @@
 use crate::{
     api::{
-        users::{DictionaryDataUserDataSetter, UserDataSetter},
+        users::{DictionaryDataUserDataSetter, UserDataSetter, UserSignupError},
         Email, EmailBody, EmailsApi,
     },
     authentication::{
@@ -35,9 +35,12 @@ use webauthn_rs::{
 
 const USER_HANDLE_LENGTH_BYTES: usize = 8;
 const ACTIVATION_CODE_LENGTH_BYTES: usize = 32;
+const CREDENTIALS_RESET_CODE_LENGTH_BYTES: usize = 32;
 
 /// Activation code is valid for 14 days.
 const ACTIVATION_CODE_LIFESPAN: Duration = Duration::from_secs(60 * 60 * 24 * 14);
+/// Credentials reset code is valid for 1 hour.
+const CREDENTIALS_RESET_CODE_LIFESPAN: Duration = Duration::from_secs(60 * 60);
 
 pub struct UsersApi<'a> {
     config: &'a Config,
@@ -86,7 +89,8 @@ impl<'a> UsersApi<'a> {
             .await
             .with_context(|| "Failed to check if user already exists.")?
         {
-            bail!("Attempt to register existing user: {}", user.handle);
+            log::error!("User is already registered (user ID: {:?}).", user.id);
+            return Err(UserSignupError::EmailAlreadyRegistered.into());
         }
 
         let credentials = self
@@ -251,6 +255,57 @@ impl<'a> UsersApi<'a> {
             .with_context(|| format!("Cannot update user (user ID: {:?})", existing_user.id))?;
 
         Ok(existing_user)
+    }
+
+    /// Resets user credentials using the specified email and credentials reset code.
+    pub async fn reset_credentials(
+        &self,
+        user_email: &str,
+        user_credentials: Credentials,
+        user_reset_credentials_code: &str,
+    ) -> anyhow::Result<User> {
+        // First check if user with the specified email exists.
+        let user_to_reset_credentials = self.get_by_email(user_email).await?.ok_or_else(|| {
+            anyhow!(
+                "User with the specified email doesn't exist. Credentials reset isn't possible."
+            )
+        })?;
+
+        // Then, try to retrieve reset code.
+        let reset_code = self
+            .get_data::<String>(
+                user_to_reset_credentials.id,
+                InternalUserDataNamespace::CredentialsResetToken,
+            )
+            .await?
+            .ok_or_else(|| {
+                anyhow!(
+                    "User doesn't have assigned credentials reset code. Credentials reset isn't possible."
+                )
+            })?;
+
+        if reset_code.value != user_reset_credentials_code {
+            bail!("User credentials reset code is not valid.");
+        }
+
+        if reset_code.timestamp < OffsetDateTime::now_utc().sub(CREDENTIALS_RESET_CODE_LIFESPAN) {
+            bail!(
+                "User credentials rest code has expired (created on {}).",
+                reset_code.timestamp
+            );
+        }
+
+        // Update credentials and invalid credentials reset code.
+        self.update_credentials(user_email, user_credentials)
+            .await?;
+        self.primary_db
+            .remove_user_data(
+                user_to_reset_credentials.id,
+                InternalUserDataNamespace::CredentialsResetToken,
+            )
+            .await?;
+
+        Ok(user_to_reset_credentials)
     }
 
     /// Activates user using the specified email and activation code.
@@ -566,6 +621,101 @@ impl<'a> UsersApi<'a> {
   </body>
 </html>"#),
                 fallback: format!("To activate your Secutils.dev account, please click the following link: {encoded_activation_link}"),
+            },
+        ).with_timestamp(SystemTime::now()))
+    }
+
+    /// Generates credentials reset link for the specified user and sends to the user's email.
+    pub async fn send_credentials_reset_link(&self, user: &User) -> anyhow::Result<()> {
+        let mut bytes = [0u8; CREDENTIALS_RESET_CODE_LENGTH_BYTES];
+        OsRng.fill_bytes(&mut bytes);
+        let reset_code: String = bytes.encode_hex();
+
+        let timestamp = OffsetDateTime::now_utc();
+        let namespace = InternalUserDataNamespace::CredentialsResetToken;
+
+        // Cleanup already expired codes.
+        self.primary_db
+            .cleanup_user_data(namespace, timestamp.sub(CREDENTIALS_RESET_CODE_LIFESPAN))
+            .await
+            .with_context(|| "Failed to cleanup expired credentials reset codes.")?;
+
+        // Save newly created credentials reset code.
+        self.primary_db
+            .upsert_user_data(user.id, namespace, UserData::new(&reset_code, timestamp))
+            .await
+            .with_context(|| {
+                format!(
+                    "Cannot store credentials reset code for the user (user ID: {:?})",
+                    user.id
+                )
+            })?;
+
+        // For now we send email tailored for the password reset, but eventually we can allow user
+        // to reset passkey as well.
+        let encoded_reset_link = format!(
+            "{}reset_credentials?code={}&email={}",
+            self.config.public_url.as_str(),
+            urlencoding::encode(&reset_code),
+            urlencoding::encode(&user.email)
+        );
+        self.emails.send(Email::new(
+            &user.email,
+            "Reset password for your Secutils.dev account",
+            EmailBody::Html {
+                content: format!(r#"
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Reset password for your Secutils.dev account</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body {{
+        font-family: Arial, sans-serif;
+        background-color: #f1f1f1;
+        margin: 0;
+        padding: 0;
+      }}
+      .container {{
+        max-width: 600px;
+        margin: 0 auto;
+        background-color: #fff;
+        padding: 20px;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      }}
+      h1 {{
+        font-size: 24px;
+        margin-top: 0;
+      }}
+      p {{
+        font-size: 16px;
+        line-height: 1.5;
+        margin-bottom: 20px;
+      }}
+      .reset-password-link {{
+        color: #fff;
+        background-color: #2196F3;
+        padding: 10px 20px;
+        text-decoration: none;
+        border-radius: 5px;
+      }}
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Reset password for your Secutils.dev account</h1>
+      <p>You recently requested to reset your password. To reset your password, please click the link below:</p>
+      <a class="reset-password-link" href="{encoded_reset_link}">Reset your password</a>
+      <p>If the button above doesn't work, you can also copy and paste the following URL into your browser:</p>
+      <p>{encoded_reset_link}</p>
+      <p>If you did not request to reset your password, please ignore this email and your password will not be changed.</p>
+      <p>If you have any trouble resetting your password, please contact us at <a href = "mailto: contact@secutils.dev">contact@secutils.dev</a>.</p>
+    </div>
+  </body>
+</html>"#),
+                fallback: format!("To reset your Secutils.dev password, please click the following link: {encoded_reset_link}"),
             },
         ).with_timestamp(SystemTime::now()))
     }

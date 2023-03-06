@@ -28,6 +28,7 @@
 //!                  │                     │                      │
 //!                  │                     │                      │
 use crate::{
+    api::UserSignupError,
     authentication::{Credentials, WebAuthnChallengeType, WEBAUTHN_SESSION_KEY},
     server::{app_state::AppState, http_errors::generic_internal_server_error},
 };
@@ -109,8 +110,14 @@ pub async fn security_webauthn_signup_finish(
             user
         }
         Err(err) => {
-            log::error!("Failed to signup user: {:?}", err);
-            return generic_internal_server_error();
+            return match err.downcast_ref::<UserSignupError>() {
+                Some(err) => match err {
+                    UserSignupError::EmailAlreadyRegistered => HttpResponse::BadRequest().json(
+                        json!({ "message": "The email address is already registered. Please try signing in or use a different email address." })
+                    )
+                },
+                None => generic_internal_server_error(),
+            };
         }
     };
 

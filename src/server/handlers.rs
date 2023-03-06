@@ -2,6 +2,8 @@ mod search;
 mod security_activation_complete;
 mod security_activation_send_link;
 mod security_credentials_remove;
+mod security_credentials_reset;
+mod security_credentials_send_link;
 mod security_credentials_update;
 mod security_login;
 mod security_logout;
@@ -24,6 +26,8 @@ pub use self::{
     security_activation_complete::security_activation_complete,
     security_activation_send_link::security_activation_send_link,
     security_credentials_remove::security_credentials_remove,
+    security_credentials_reset::security_credentials_reset_password,
+    security_credentials_send_link::security_credentials_send_link,
     security_credentials_update::{
         security_credentials_update_passkey_finish, security_credentials_update_passkey_start,
         security_credentials_update_password,

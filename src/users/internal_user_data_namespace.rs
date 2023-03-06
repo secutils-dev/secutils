@@ -3,12 +3,14 @@ use crate::users::UserDataNamespace;
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum InternalUserDataNamespace {
     AccountActivationToken,
+    CredentialsResetToken,
 }
 
 impl AsRef<str> for InternalUserDataNamespace {
     fn as_ref(&self) -> &str {
         match self {
             InternalUserDataNamespace::AccountActivationToken => "accountActivationToken",
+            InternalUserDataNamespace::CredentialsResetToken => "credentialsResetToken",
         }
     }
 }
@@ -28,6 +30,11 @@ mod tests {
         assert_eq!(
             InternalUserDataNamespace::AccountActivationToken.as_ref(),
             "accountActivationToken"
+        );
+
+        assert_eq!(
+            InternalUserDataNamespace::CredentialsResetToken.as_ref(),
+            "credentialsResetToken"
         );
 
         Ok(())

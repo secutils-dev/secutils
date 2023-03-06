@@ -6,7 +6,7 @@ mod utils;
 pub use self::{
     emails::{Email, EmailBody, EmailsApi},
     search::SearchApi,
-    users::UsersApi,
+    users::{UserSignupError, UsersApi},
     utils::UtilsApi,
 };
 use webauthn_rs::Webauthn;

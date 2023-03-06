@@ -79,8 +79,16 @@ pub async fn run(
                                 web::delete().to(handlers::security_credentials_remove),
                             )
                             .route(
+                                "/send_link",
+                                web::post().to(handlers::security_credentials_send_link),
+                            )
+                            .route(
                                 "/password",
                                 web::post().to(handlers::security_credentials_update_password),
+                            )
+                            .route(
+                                "/password/reset",
+                                web::post().to(handlers::security_credentials_reset_password),
                             )
                             .route(
                                 "/passkey/start",

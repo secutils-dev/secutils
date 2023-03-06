@@ -4,6 +4,7 @@ use actix_web::{
 };
 use std::fmt::{Debug, Display, Formatter};
 
+// See examples at https://users.rust-lang.org/t/using-actix-and-anyhow-together/40774.
 #[derive(Debug)]
 pub struct SecutilsError {
     err: anyhow::Error,
