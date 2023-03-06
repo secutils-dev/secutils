@@ -5,11 +5,11 @@ mod security_credentials_remove;
 mod security_credentials_reset;
 mod security_credentials_send_link;
 mod security_credentials_update;
-mod security_login;
-mod security_logout;
+mod security_signin;
+mod security_signout;
 mod security_signup;
 mod security_users_remove;
-mod security_webauthn_login;
+mod security_webauthn_signin;
 mod security_webauthn_signup;
 mod send_message;
 mod status_get;
@@ -32,11 +32,11 @@ pub use self::{
         security_credentials_update_passkey_finish, security_credentials_update_passkey_start,
         security_credentials_update_password,
     },
-    security_login::security_login,
-    security_logout::security_logout,
+    security_signin::security_signin,
+    security_signout::security_signout,
     security_signup::security_signup,
     security_users_remove::security_users_remove,
-    security_webauthn_login::{security_webauthn_login_finish, security_webauthn_login_start},
+    security_webauthn_signin::{security_webauthn_signin_finish, security_webauthn_signin_start},
     security_webauthn_signup::{security_webauthn_signup_finish, security_webauthn_signup_start},
     send_message::send_message,
     status_get::status_get,

@@ -58,8 +58,8 @@ pub async fn run(
                     .route("/status", web::post().to(handlers::status_set))
                     .route("/search", web::post().to(handlers::search))
                     .route("/send_message", web::post().to(handlers::send_message))
-                    .route("/login", web::post().to(handlers::security_login))
-                    .route("/logout", web::post().to(handlers::security_logout))
+                    .route("/signin", web::post().to(handlers::security_signin))
+                    .route("/signout", web::post().to(handlers::security_signout))
                     .route("/signup", web::post().to(handlers::security_signup))
                     .service(
                         web::scope("/activation")
@@ -111,12 +111,12 @@ pub async fn run(
                                 web::post().to(handlers::security_webauthn_signup_finish),
                             )
                             .route(
-                                "/login/start",
-                                web::post().to(handlers::security_webauthn_login_start),
+                                "/signin/start",
+                                web::post().to(handlers::security_webauthn_signin_start),
                             )
                             .route(
-                                "/login/finish",
-                                web::post().to(handlers::security_webauthn_login_finish),
+                                "/signin/finish",
+                                web::post().to(handlers::security_webauthn_signin_finish),
                             ),
                     )
                     .route("/user", web::get().to(handlers::user_get))

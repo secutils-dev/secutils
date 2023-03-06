@@ -63,14 +63,14 @@ pub async fn security_signup(
     match Identity::login(&request.extensions(), user.email) {
         Ok(_) => {
             log::debug!(
-                "Successfully signed up and logged in user (`{}`).",
+                "Successfully signed up and signed in user (`{}`).",
                 user.handle
             );
             HttpResponse::Ok().finish()
         }
         Err(err) => {
             log::error!(
-                "Failed to log in user (`{}`) after signup: {:?}",
+                "Failed to sign in user (`{}`) after signup: {:?}",
                 user.handle,
                 err
             );

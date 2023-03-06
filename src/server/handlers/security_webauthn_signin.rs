@@ -36,19 +36,19 @@ use serde::Deserialize;
 use serde_json::json;
 
 #[derive(Deserialize)]
-pub struct LoginStartParams {
+pub struct SigninStartParams {
     pub email: String,
 }
 
 /// The initial stage of the WebAuthn authentication flow.
-pub async fn security_webauthn_login_start(
+pub async fn security_webauthn_signin_start(
     state: web::Data<AppState>,
     session: Session,
-    body_params: web::Json<LoginStartParams>,
+    body_params: web::Json<SigninStartParams>,
 ) -> impl Responder {
     let body_params = body_params.into_inner();
     if body_params.email.is_empty() {
-        log::error!("Invalid email was used for login: {}", body_params.email);
+        log::error!("Invalid email was used for sign-in: {}", body_params.email);
         return HttpResponse::BadRequest().json(json!({
             "message": "This email appears to be invalid."
         }));
@@ -78,7 +78,7 @@ pub async fn security_webauthn_login_start(
 }
 
 /// The final stage of the WebAuthn authentication flow.
-pub async fn security_webauthn_login_finish(
+pub async fn security_webauthn_signin_finish(
     state: web::Data<AppState>,
     session: Session,
     request: HttpRequest,
@@ -101,18 +101,18 @@ pub async fn security_webauthn_login_finish(
     {
         Ok(user) => user,
         Err(err) => {
-            log::error!("Failed to log in user: {:?}", err);
+            log::error!("Failed to sign in user: {:?}", err);
             return HttpResponse::Unauthorized().json(json!({ "message": "Failed to authenticate user. Please check your credentials and try again, or contact us for assistance." }));
         }
     };
 
     match Identity::login(&request.extensions(), user.email.clone()) {
         Ok(_) => {
-            log::debug!("Successfully logged in user (`{}`).", user.handle);
+            log::debug!("Successfully signed in user (`{}`).", user.handle);
             HttpResponse::Ok().json(json!({ "user": user }))
         }
         Err(err) => {
-            log::error!("Failed to log in user (`{}`): {:?}", user.handle, err);
+            log::error!("Failed to sign in user (`{}`): {:?}", user.handle, err);
             generic_internal_server_error()
         }
     }
