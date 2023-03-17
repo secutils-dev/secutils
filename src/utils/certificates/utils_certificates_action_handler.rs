@@ -111,14 +111,12 @@ fn convert_to_pkcs12(
     key_pair: PKey<Private>,
     passphrase: Option<String>,
 ) -> anyhow::Result<Vec<u8>> {
-    let pkcs12_builder = Pkcs12::builder();
+    let mut pkcs12_builder = Pkcs12::builder();
     let pkcs12 = pkcs12_builder
-        .build(
-            &passphrase.unwrap_or_default(),
-            &certificate_template.name,
-            &key_pair,
-            &certificate,
-        )
+        .name(&certificate_template.name)
+        .pkey(&key_pair)
+        .cert(&certificate)
+        .build2(&passphrase.unwrap_or_default())
         .with_context(|| "Cannot build PKCS12 certificate bundle.")?;
 
     pkcs12

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\nINSERT INTO user_webauthn_sessions (email, session_value, timestamp)\nVALUES (?1, ?2, ?3)\nON CONFLICT(email) DO UPDATE SET session_value=excluded.session_value, timestamp=excluded.timestamp\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "4dace02b02940ad0278e76fe97ae7e05d562478cf3a077c44b67b39a6d1fab5d"
+}

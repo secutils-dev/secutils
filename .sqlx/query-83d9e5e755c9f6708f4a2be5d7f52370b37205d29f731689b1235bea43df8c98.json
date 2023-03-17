@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "\nSELECT id, handle, name, keywords, parent_id\nFROM utils\nORDER BY parent_id, id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Int64"
+      },
+      {
+        "name": "handle",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "keywords",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "parent_id",
+        "ordinal": 4,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "83d9e5e755c9f6708f4a2be5d7f52370b37205d29f731689b1235bea43df8c98"
+}

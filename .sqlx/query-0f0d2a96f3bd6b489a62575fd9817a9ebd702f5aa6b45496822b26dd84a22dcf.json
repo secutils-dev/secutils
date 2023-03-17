@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\nSELECT email, session_value, timestamp\nFROM user_webauthn_sessions\nWHERE email = ?1\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "email",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "session_value",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "timestamp",
+        "ordinal": 2,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0f0d2a96f3bd6b489a62575fd9817a9ebd702f5aa6b45496822b26dd84a22dcf"
+}

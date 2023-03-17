@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\nSELECT value, timestamp\nFROM user_data\nWHERE user_id = ?1 AND namespace = ?2 AND key = ?3\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "value",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "timestamp",
+        "ordinal": 1,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "f2ecdd60778c18e78ffa3141bf11ea720db711577fff694c57f824c2cbe5177e"
+}
