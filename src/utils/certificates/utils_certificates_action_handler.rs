@@ -170,6 +170,12 @@ fn generate_x509_certificate(
     x509.set_issuer_name(&x509_name)?;
     x509.set_version((certificate_template.version - 1) as i32)?;
 
+    let mut basic_constraint = BasicConstraints::new();
+    if certificate_template.is_ca {
+        basic_constraint.ca();
+    }
+    x509.append_extension(basic_constraint.critical().build()?)?;
+
     let serial_number = {
         let mut serial = BigNum::new()?;
         serial.rand(159, MsbOption::MAYBE_ZERO, false)?;
@@ -183,7 +189,6 @@ fn generate_x509_certificate(
     let not_after = Asn1Time::from_unix(certificate_template.not_valid_after.unix_timestamp())?;
     x509.set_not_after(&not_after)?;
 
-    x509.append_extension(BasicConstraints::new().critical().ca().build()?)?;
     x509.append_extension(
         KeyUsage::new()
             .critical()

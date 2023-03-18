@@ -55,7 +55,13 @@ pub mod tests {
                 not_valid_before,
                 not_valid_after,
                 version,
+                is_ca: false,
             })
+        }
+
+        pub fn set_is_ca(mut self) -> Self {
+            self.0.is_ca = true;
+            self
         }
 
         pub fn set_common_name<CN: Into<String>>(mut self, value: CN) -> Self {

@@ -29,6 +29,8 @@ pub struct SelfSignedCertificate {
     pub not_valid_after: OffsetDateTime,
     #[serde(rename = "v")]
     pub version: u8,
+    #[serde(rename = "ca")]
+    pub is_ca: bool,
 }
 
 #[cfg(test)]
@@ -63,7 +65,8 @@ mod tests {
           "sa": "sha256",
           "nb": 946720800,
           "na": 1262340000,
-          "v": 1
+          "v": 1,
+          "ca": false
         }
         "###
         );
@@ -76,6 +79,7 @@ mod tests {
                 not_valid_after,
                 3,
             )
+            .set_is_ca()
             .set_common_name("CA Issuer")
             .set_country("US")
             .set_state_or_province("California")
@@ -96,7 +100,8 @@ mod tests {
           "sa": "ed25519",
           "nb": 946720800,
           "na": 1262340000,
-          "v": 3
+          "v": 3,
+          "ca": true
         }
         "###
         );
@@ -120,7 +125,8 @@ mod tests {
           "sa": "sha256",
           "nb": 946720800,
           "na": 1262340000,
-          "v": 1
+          "v": 1,
+          "ca": false
         }
         "###
             )?,
@@ -149,7 +155,8 @@ mod tests {
           "sa": "ed25519",
           "nb": 946720800,
           "na": 1262340000,
-          "v": 3
+          "v": 3,
+          "ca": true
         }
         "###
             )?,
@@ -161,6 +168,7 @@ mod tests {
                 not_valid_after,
                 3,
             )
+            .set_is_ca()
             .set_common_name("CA Issuer")
             .set_country("US")
             .set_state_or_province("California")
