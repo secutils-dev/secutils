@@ -1,3 +1,8 @@
+.github
+assets
 target
 tools/api
-assets
+LICENSE
+*.md
+.env
+.gitignore

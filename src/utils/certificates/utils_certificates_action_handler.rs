@@ -300,7 +300,7 @@ mod tests {
         ecdsa_key.check_key()?;
 
         let ed25519_key = generate_key(PublicKeyAlgorithm::Ed25519)?;
-        assert_eq!(ed25519_key.bits(), 253);
+        assert_eq!(ed25519_key.bits(), 256);
 
         Ok(())
     }

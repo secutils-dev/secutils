@@ -31,7 +31,6 @@ log = "0.4.17"
 mailchecker = "5.0.7"
 openssl = "0.10.46"
 rand_core = "0.6.4"
-reqwest = { version = "0.11.14", default-features = false }
 serde = "1.0.156"
 serde_bytes = "0.11.9"
 serde_json = "1.0.94"
@@ -58,10 +57,7 @@ default = [
     "insta/filters",
     "insta/json",
     "insta/redactions",
-    "openssl/vendored",
     "rand_core/std",
-    "reqwest/json",
-    "reqwest/native-tls-vendored",
     "serde/derive",
     "serde_json/arbitrary_precision",
     "sqlx/json",

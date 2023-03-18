@@ -1,11 +1,10 @@
 use crate::{error::SecutilsError, server::app_state::AppState, utils::AutoResponderRequest};
-use actix_http::body::MessageBody;
+use actix_http::{body::MessageBody, StatusCode};
 use actix_web::{
     http::header::{HeaderName, HeaderValue},
     web, HttpRequest, HttpResponse,
 };
 use bytes::Bytes;
-use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::json;
 use std::borrow::Cow;
