@@ -12,7 +12,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  DATABASE_URL: sqlite://ci-sqlx.db
+  DATABASE_URL: sqlite://${{ github.workspace }}/ci-sqlx.db
 
 jobs:
   ci:
