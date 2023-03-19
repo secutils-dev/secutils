@@ -11,5 +11,5 @@ pub use self::{
     utils_certificates_action::UtilsCertificatesAction,
     utils_certificates_action_handler::UtilsCertificatesActionHandler,
     utils_certificates_action_result::UtilsCertificatesActionResult,
-    x509::{PublicKeyAlgorithm, SignatureAlgorithm},
+    x509::{ExtendedKeyUsage, KeyAlgorithm, KeyUsage, SignatureAlgorithm},
 };

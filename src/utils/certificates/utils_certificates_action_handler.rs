@@ -2,8 +2,8 @@ use crate::{
     api::Api,
     users::{PublicUserDataNamespace, User},
     utils::{
-        CertificateFormat, PublicKeyAlgorithm, SelfSignedCertificate, SignatureAlgorithm,
-        UtilsCertificatesAction, UtilsCertificatesActionResult,
+        CertificateFormat, ExtendedKeyUsage, KeyAlgorithm, KeyUsage, SelfSignedCertificate,
+        SignatureAlgorithm, UtilsCertificatesAction, UtilsCertificatesActionResult,
     },
 };
 use anyhow::{anyhow, Context};
@@ -18,10 +18,7 @@ use openssl::{
     pkey::{PKey, Private},
     rsa::Rsa,
     symm::Cipher,
-    x509::{
-        extension::{BasicConstraints, KeyUsage, SubjectKeyIdentifier},
-        X509NameBuilder, X509,
-    },
+    x509::{extension, X509NameBuilder, X509},
 };
 use std::{
     collections::BTreeMap,
@@ -48,26 +45,25 @@ fn set_name_attribute(
 }
 
 fn message_digest(
-    pk_alg: PublicKeyAlgorithm,
+    pk_alg: KeyAlgorithm,
     sig_alg: SignatureAlgorithm,
 ) -> anyhow::Result<MessageDigest> {
     match (pk_alg, sig_alg) {
-        (PublicKeyAlgorithm::Rsa, SignatureAlgorithm::Md5) => Ok(MessageDigest::md5()),
+        (KeyAlgorithm::Rsa, SignatureAlgorithm::Md5) => Ok(MessageDigest::md5()),
+        (KeyAlgorithm::Rsa | KeyAlgorithm::Dsa | KeyAlgorithm::Ecdsa, SignatureAlgorithm::Sha1) => {
+            Ok(MessageDigest::sha1())
+        }
         (
-            PublicKeyAlgorithm::Rsa | PublicKeyAlgorithm::Dsa | PublicKeyAlgorithm::Ecdsa,
-            SignatureAlgorithm::Sha1,
-        ) => Ok(MessageDigest::sha1()),
-        (
-            PublicKeyAlgorithm::Rsa | PublicKeyAlgorithm::Dsa | PublicKeyAlgorithm::Ecdsa,
+            KeyAlgorithm::Rsa | KeyAlgorithm::Dsa | KeyAlgorithm::Ecdsa,
             SignatureAlgorithm::Sha256,
         ) => Ok(MessageDigest::sha256()),
-        (PublicKeyAlgorithm::Rsa | PublicKeyAlgorithm::Ecdsa, SignatureAlgorithm::Sha384) => {
+        (KeyAlgorithm::Rsa | KeyAlgorithm::Ecdsa, SignatureAlgorithm::Sha384) => {
             Ok(MessageDigest::sha384())
         }
-        (PublicKeyAlgorithm::Rsa | PublicKeyAlgorithm::Ecdsa, SignatureAlgorithm::Sha512) => {
+        (KeyAlgorithm::Rsa | KeyAlgorithm::Ecdsa, SignatureAlgorithm::Sha512) => {
             Ok(MessageDigest::sha512())
         }
-        (PublicKeyAlgorithm::Ed25519, SignatureAlgorithm::Ed25519) => Ok(MessageDigest::null()),
+        (KeyAlgorithm::Ed25519, SignatureAlgorithm::Ed25519) => Ok(MessageDigest::null()),
         _ => Err(anyhow!(
             "Public key ({:?}) and signature ({:?}) algorithms are not compatible",
             pk_alg,
@@ -124,21 +120,21 @@ fn convert_to_pkcs12(
         .with_context(|| "Cannot convert PKCS12 certificate bundle to DER.")
 }
 
-fn generate_key(public_key_algorithm: PublicKeyAlgorithm) -> anyhow::Result<PKey<Private>> {
+fn generate_key(public_key_algorithm: KeyAlgorithm) -> anyhow::Result<PKey<Private>> {
     let private_key = match public_key_algorithm {
-        PublicKeyAlgorithm::Rsa => {
+        KeyAlgorithm::Rsa => {
             let rsa = Rsa::generate(2048)?;
             PKey::from_rsa(rsa)?
         }
-        PublicKeyAlgorithm::Dsa => {
+        KeyAlgorithm::Dsa => {
             let dsa = Dsa::generate(2048)?;
             PKey::from_dsa(dsa)?
         }
-        PublicKeyAlgorithm::Ecdsa => {
+        KeyAlgorithm::Ecdsa => {
             let ec_group = EcGroup::from_curve_name(Nid::SECP256K1)?;
             PKey::from_ec_key(EcKey::generate(&ec_group)?)?
         }
-        PublicKeyAlgorithm::Ed25519 => PKey::generate_ed25519()?,
+        KeyAlgorithm::Ed25519 => PKey::generate_ed25519()?,
     };
 
     Ok(private_key)
@@ -170,7 +166,7 @@ fn generate_x509_certificate(
     x509.set_issuer_name(&x509_name)?;
     x509.set_version((certificate_template.version - 1) as i32)?;
 
-    let mut basic_constraint = BasicConstraints::new();
+    let mut basic_constraint = extension::BasicConstraints::new();
     if certificate_template.is_ca {
         basic_constraint.ca();
     }
@@ -189,22 +185,50 @@ fn generate_x509_certificate(
     let not_after = Asn1Time::from_unix(certificate_template.not_valid_after.unix_timestamp())?;
     x509.set_not_after(&not_after)?;
 
-    x509.append_extension(
-        KeyUsage::new()
-            .critical()
-            .key_cert_sign()
-            .crl_sign()
-            .build()?,
-    )?;
+    if let Some(ref key_usage) = certificate_template.key_usage {
+        let mut key_usage_ext = extension::KeyUsage::new();
+
+        for key_usage in key_usage {
+            match key_usage {
+                KeyUsage::DigitalSignature => key_usage_ext.digital_signature(),
+                KeyUsage::NonRepudiation => key_usage_ext.non_repudiation(),
+                KeyUsage::KeyEncipherment => key_usage_ext.key_encipherment(),
+                KeyUsage::DataEncipherment => key_usage_ext.data_encipherment(),
+                KeyUsage::KeyAgreement => key_usage_ext.key_agreement(),
+                KeyUsage::KeyCertificateSigning => key_usage_ext.key_cert_sign(),
+                KeyUsage::CrlSigning => key_usage_ext.crl_sign(),
+                KeyUsage::EncipherOnly => key_usage_ext.encipher_only(),
+                KeyUsage::DecipherOnly => key_usage_ext.decipher_only(),
+            };
+        }
+
+        x509.append_extension(key_usage_ext.critical().build()?)?;
+    }
+
+    if let Some(ref key_usage) = certificate_template.extended_key_usage {
+        let mut key_usage_ext = extension::ExtendedKeyUsage::new();
+
+        for key_usage in key_usage {
+            match key_usage {
+                ExtendedKeyUsage::TlsWebServerAuthentication => key_usage_ext.server_auth(),
+                ExtendedKeyUsage::TlsWebClientAuthentication => key_usage_ext.client_auth(),
+                ExtendedKeyUsage::CodeSigning => key_usage_ext.code_signing(),
+                ExtendedKeyUsage::EmailProtection => key_usage_ext.email_protection(),
+                ExtendedKeyUsage::TimeStamping => key_usage_ext.time_stamping(),
+            };
+        }
+
+        x509.append_extension(key_usage_ext.critical().build()?)?;
+    }
 
     let subject_key_identifier =
-        SubjectKeyIdentifier::new().build(&x509.x509v3_context(None, None))?;
+        extension::SubjectKeyIdentifier::new().build(&x509.x509v3_context(None, None))?;
     x509.append_extension(subject_key_identifier)?;
 
     x509.sign(
         key,
         message_digest(
-            certificate_template.public_key_algorithm,
+            certificate_template.key_algorithm,
             certificate_template.signature_algorithm,
         )?,
     )?;
@@ -240,7 +264,7 @@ impl UtilsCertificatesActionHandler {
                         )
                     })?;
 
-                let key = generate_key(certificate_template.public_key_algorithm)?;
+                let key = generate_key(certificate_template.key_algorithm)?;
                 let x509_certificate = generate_x509_certificate(&certificate_template, &key)?;
                 let certificate = match format {
                     CertificateFormat::Pem => {
@@ -280,7 +304,7 @@ mod tests {
             generate_x509_certificate, message_digest,
         },
         tests::MockSelfSignedCertificate,
-        PublicKeyAlgorithm, SignatureAlgorithm,
+        KeyAlgorithm, SignatureAlgorithm,
     };
     use insta::assert_debug_snapshot;
     use openssl::hash::MessageDigest;
@@ -288,23 +312,23 @@ mod tests {
 
     #[test]
     fn correctly_generate_keys() -> anyhow::Result<()> {
-        let rsa_key = generate_key(PublicKeyAlgorithm::Rsa)?;
+        let rsa_key = generate_key(KeyAlgorithm::Rsa)?;
         let rsa_key = rsa_key.rsa()?;
 
         assert!(rsa_key.check_key()?);
         assert_eq!(rsa_key.size(), 256);
 
-        let dsa_key = generate_key(PublicKeyAlgorithm::Dsa)?;
+        let dsa_key = generate_key(KeyAlgorithm::Dsa)?;
         let dsa_key = dsa_key.dsa()?;
 
         assert_eq!(dsa_key.size(), 72);
 
-        let ecdsa_key = generate_key(PublicKeyAlgorithm::Ecdsa)?;
+        let ecdsa_key = generate_key(KeyAlgorithm::Ecdsa)?;
         let ecdsa_key = ecdsa_key.ec_key()?;
 
         ecdsa_key.check_key()?;
 
-        let ed25519_key = generate_key(PublicKeyAlgorithm::Ed25519)?;
+        let ed25519_key = generate_key(KeyAlgorithm::Ed25519)?;
         assert_eq!(ed25519_key.bits(), 256);
 
         Ok(())
@@ -313,15 +337,10 @@ mod tests {
     #[test]
     fn picks_correct_message_digest() -> anyhow::Result<()> {
         assert!(
-            message_digest(PublicKeyAlgorithm::Rsa, SignatureAlgorithm::Md5)?
-                == MessageDigest::md5()
+            message_digest(KeyAlgorithm::Rsa, SignatureAlgorithm::Md5)? == MessageDigest::md5()
         );
 
-        for pk_algorithm in [
-            PublicKeyAlgorithm::Rsa,
-            PublicKeyAlgorithm::Dsa,
-            PublicKeyAlgorithm::Ecdsa,
-        ] {
+        for pk_algorithm in [KeyAlgorithm::Rsa, KeyAlgorithm::Dsa, KeyAlgorithm::Ecdsa] {
             assert!(
                 message_digest(pk_algorithm, SignatureAlgorithm::Sha1)? == MessageDigest::sha1()
             );
@@ -331,7 +350,7 @@ mod tests {
             );
         }
 
-        for pk_algorithm in [PublicKeyAlgorithm::Rsa, PublicKeyAlgorithm::Ecdsa] {
+        for pk_algorithm in [KeyAlgorithm::Rsa, KeyAlgorithm::Ecdsa] {
             assert!(
                 message_digest(pk_algorithm, SignatureAlgorithm::Sha384)?
                     == MessageDigest::sha384()
@@ -343,7 +362,7 @@ mod tests {
         }
 
         assert!(
-            message_digest(PublicKeyAlgorithm::Ed25519, SignatureAlgorithm::Ed25519)?
+            message_digest(KeyAlgorithm::Ed25519, SignatureAlgorithm::Ed25519)?
                 == MessageDigest::null()
         );
 
@@ -359,14 +378,14 @@ mod tests {
 
         let certificate_template = MockSelfSignedCertificate::new(
             "test-1-name",
-            PublicKeyAlgorithm::Rsa,
+            KeyAlgorithm::Rsa,
             SignatureAlgorithm::Sha256,
             not_valid_before,
             not_valid_after,
             1,
         )
         .build();
-        let key = generate_key(PublicKeyAlgorithm::Rsa)?;
+        let key = generate_key(KeyAlgorithm::Rsa)?;
 
         let x509_certificate = generate_x509_certificate(&certificate_template, &key)?;
 

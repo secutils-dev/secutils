@@ -1,5 +1,9 @@
-use crate::utils::{PublicKeyAlgorithm, SignatureAlgorithm};
+use crate::utils::{
+    certificates::{ExtendedKeyUsage, KeyUsage},
+    KeyAlgorithm, SignatureAlgorithm,
+};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use time::OffsetDateTime;
 
 /// Describes stored self-signed certificate template.
@@ -19,8 +23,8 @@ pub struct SelfSignedCertificate {
     pub organization: Option<String>,
     #[serde(rename = "ou", skip_serializing_if = "Option::is_none")]
     pub organizational_unit: Option<String>,
-    #[serde(rename = "pka")]
-    pub public_key_algorithm: PublicKeyAlgorithm,
+    #[serde(rename = "ka")]
+    pub key_algorithm: KeyAlgorithm,
     #[serde(rename = "sa")]
     pub signature_algorithm: SignatureAlgorithm,
     #[serde(rename = "nb", with = "time::serde::timestamp")]
@@ -31,13 +35,17 @@ pub struct SelfSignedCertificate {
     pub version: u8,
     #[serde(rename = "ca")]
     pub is_ca: bool,
+    #[serde(rename = "ku", skip_serializing_if = "Option::is_none")]
+    pub key_usage: Option<HashSet<KeyUsage>>,
+    #[serde(rename = "eku", skip_serializing_if = "Option::is_none")]
+    pub extended_key_usage: Option<HashSet<ExtendedKeyUsage>>,
 }
 
 #[cfg(test)]
 mod tests {
     use crate::utils::{
-        tests::MockSelfSignedCertificate, PublicKeyAlgorithm, SelfSignedCertificate,
-        SignatureAlgorithm,
+        tests::MockSelfSignedCertificate, ExtendedKeyUsage, KeyAlgorithm, KeyUsage,
+        SelfSignedCertificate, SignatureAlgorithm,
     };
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
@@ -51,29 +59,8 @@ mod tests {
 
         assert_json_snapshot!(
             MockSelfSignedCertificate::new(
-                "name",
-                PublicKeyAlgorithm::Rsa,
-                SignatureAlgorithm::Sha256,
-                not_valid_before,
-                not_valid_after,
-                1,
-            ).build(),
-            @r###"
-        {
-          "n": "name",
-          "pka": "rsa",
-          "sa": "sha256",
-          "nb": 946720800,
-          "na": 1262340000,
-          "v": 1,
-          "ca": false
-        }
-        "###
-        );
-        assert_json_snapshot!(
-            MockSelfSignedCertificate::new(
                 "test-2-name",
-                PublicKeyAlgorithm::Ed25519,
+                KeyAlgorithm::Ed25519,
                 SignatureAlgorithm::Ed25519,
                 not_valid_before,
                 not_valid_after,
@@ -86,6 +73,8 @@ mod tests {
             .set_locality("San Francisco")
             .set_organization("CA Issuer, Inc")
             .set_organization_unit("CA Org Unit")
+            .add_key_usage(KeyUsage::CrlSigning)
+            .add_extended_key_usage(ExtendedKeyUsage::TlsWebServerAuthentication)
             .build(),
             @r###"
         {
@@ -96,12 +85,39 @@ mod tests {
           "l": "San Francisco",
           "o": "CA Issuer, Inc",
           "ou": "CA Org Unit",
-          "pka": "ed25519",
+          "ka": "ed25519",
           "sa": "ed25519",
           "nb": 946720800,
           "na": 1262340000,
           "v": 3,
-          "ca": true
+          "ca": true,
+          "ku": [
+            "crlSigning"
+          ],
+          "eku": [
+            "tlsWebServerAuthentication"
+          ]
+        }
+        "###
+        );
+        assert_json_snapshot!(
+            MockSelfSignedCertificate::new(
+                "name",
+                KeyAlgorithm::Rsa,
+                SignatureAlgorithm::Sha256,
+                not_valid_before,
+                not_valid_after,
+                1,
+            ).build(),
+            @r###"
+        {
+          "n": "name",
+          "ka": "rsa",
+          "sa": "sha256",
+          "nb": 946720800,
+          "na": 1262340000,
+          "v": 1,
+          "ca": false
         }
         "###
         );
@@ -121,7 +137,7 @@ mod tests {
                 r###"
         {
           "n": "name",
-          "pka": "rsa",
+          "ka": "rsa",
           "sa": "sha256",
           "nb": 946720800,
           "na": 1262340000,
@@ -132,7 +148,7 @@ mod tests {
             )?,
             MockSelfSignedCertificate::new(
                 "name",
-                PublicKeyAlgorithm::Rsa,
+                KeyAlgorithm::Rsa,
                 SignatureAlgorithm::Sha256,
                 not_valid_before,
                 not_valid_after,
@@ -151,18 +167,20 @@ mod tests {
           "l": "San Francisco",
           "o": "CA Issuer, Inc",
           "ou": "CA Org Unit",
-          "pka": "ed25519",
+          "ka": "ed25519",
           "sa": "ed25519",
           "nb": 946720800,
           "na": 1262340000,
           "v": 3,
-          "ca": true
+          "ca": true,
+          "ku": ["crlSigning", "keyCertificateSigning"],
+          "eku": ["tlsWebServerAuthentication"]
         }
         "###
             )?,
             MockSelfSignedCertificate::new(
                 "test-2-name",
-                PublicKeyAlgorithm::Ed25519,
+                KeyAlgorithm::Ed25519,
                 SignatureAlgorithm::Ed25519,
                 not_valid_before,
                 not_valid_after,
@@ -175,6 +193,9 @@ mod tests {
             .set_locality("San Francisco")
             .set_organization("CA Issuer, Inc")
             .set_organization_unit("CA Org Unit")
+            .add_key_usage(KeyUsage::CrlSigning)
+            .add_key_usage(KeyUsage::KeyCertificateSigning)
+            .add_extended_key_usage(ExtendedKeyUsage::TlsWebServerAuthentication)
             .build()
         );
 

@@ -8,8 +8,9 @@ mod webhooks;
 
 pub use self::{
     certificates::{
-        CertificateFormat, PublicKeyAlgorithm, SelfSignedCertificate, SignatureAlgorithm,
-        UtilsCertificatesAction, UtilsCertificatesActionHandler, UtilsCertificatesActionResult,
+        CertificateFormat, ExtendedKeyUsage, KeyAlgorithm, KeyUsage, SelfSignedCertificate,
+        SignatureAlgorithm, UtilsCertificatesAction, UtilsCertificatesActionHandler,
+        UtilsCertificatesActionResult,
     },
     util::Util,
     utils_action::UtilsAction,
@@ -29,14 +30,16 @@ pub use self::{
 
 #[cfg(test)]
 pub mod tests {
-    use crate::utils::{PublicKeyAlgorithm, SelfSignedCertificate, SignatureAlgorithm};
+    use crate::utils::{
+        ExtendedKeyUsage, KeyAlgorithm, KeyUsage, SelfSignedCertificate, SignatureAlgorithm,
+    };
     use time::OffsetDateTime;
 
     pub struct MockSelfSignedCertificate(SelfSignedCertificate);
     impl MockSelfSignedCertificate {
         pub fn new<N: Into<String>>(
             name: N,
-            public_key_algorithm: PublicKeyAlgorithm,
+            public_key_algorithm: KeyAlgorithm,
             signature_algorithm: SignatureAlgorithm,
             not_valid_before: OffsetDateTime,
             not_valid_after: OffsetDateTime,
@@ -50,12 +53,14 @@ pub mod tests {
                 locality: None,
                 organization: None,
                 organizational_unit: None,
-                public_key_algorithm,
+                key_algorithm: public_key_algorithm,
                 signature_algorithm,
                 not_valid_before,
                 not_valid_after,
                 version,
                 is_ca: false,
+                key_usage: None,
+                extended_key_usage: None,
             })
         }
 
@@ -91,6 +96,24 @@ pub mod tests {
 
         pub fn set_organization_unit<L: Into<String>>(mut self, value: L) -> Self {
             self.0.organizational_unit = Some(value.into());
+            self
+        }
+
+        pub fn add_key_usage(mut self, key_usage: KeyUsage) -> Self {
+            if let Some(key_usage_list) = self.0.key_usage.as_mut() {
+                key_usage_list.insert(key_usage);
+            } else {
+                self.0.key_usage = Some([key_usage].into_iter().collect());
+            }
+            self
+        }
+
+        pub fn add_extended_key_usage(mut self, key_usage: ExtendedKeyUsage) -> Self {
+            if let Some(key_usage_list) = self.0.extended_key_usage.as_mut() {
+                key_usage_list.insert(key_usage);
+            } else {
+                self.0.extended_key_usage = Some([key_usage].into_iter().collect());
+            }
             self
         }
 
