@@ -10,6 +10,8 @@ pub enum CertificateFormat {
     /// "-----END CERTIFICATE-----" statements. Server certificates, intermediate certificates, and
     /// private keys can all be put into the PEM format.
     Pem,
+    /// PKCS #8 is a standard syntax for storing private key information.
+    Pkcs8,
     /// PKCS #12 defines an archive file format for storing many cryptography objects as a single
     /// file. It is commonly used to bundle a private key with its X.509 certificate or to bundle
     /// all the members of a chain of trust. A PKCS #12 file may be encrypted and signed. The
@@ -32,6 +34,7 @@ mod tests {
     #[test]
     fn serialization() -> anyhow::Result<()> {
         assert_json_snapshot!(CertificateFormat::Pem, @r###""pem""###);
+        assert_json_snapshot!(CertificateFormat::Pkcs8, @r###""pkcs8""###);
         assert_json_snapshot!(CertificateFormat::Pkcs12, @r###""pkcs12""###);
 
         Ok(())
@@ -42,6 +45,10 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<CertificateFormat>(r###""pem""###)?,
             CertificateFormat::Pem
+        );
+        assert_eq!(
+            serde_json::from_str::<CertificateFormat>(r###""pkcs8""###)?,
+            CertificateFormat::Pkcs8
         );
         assert_eq!(
             serde_json::from_str::<CertificateFormat>(r###""pkcs12""###)?,

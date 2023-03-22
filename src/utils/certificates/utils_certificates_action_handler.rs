@@ -73,10 +73,12 @@ fn message_digest(
 }
 
 fn convert_to_pem_archive(
-    certificate: X509,
+    certificate_template: SelfSignedCertificate,
     key_pair: PKey<Private>,
     passphrase: Option<String>,
 ) -> anyhow::Result<Vec<u8>> {
+    let certificate = generate_x509_certificate(&certificate_template, &key_pair)?;
+
     // 64kb should be more than enough for the certificate + private key.
     let mut zip_buffer = [0; 65536];
     let size = {
@@ -101,12 +103,27 @@ fn convert_to_pem_archive(
     Ok(zip_buffer[..size].to_vec())
 }
 
-fn convert_to_pkcs12(
-    certificate_template: SelfSignedCertificate,
-    certificate: X509,
+fn convert_to_pkcs8(
     key_pair: PKey<Private>,
     passphrase: Option<String>,
 ) -> anyhow::Result<Vec<u8>> {
+    let pkcs8 = if let Some(passphrase) = passphrase {
+        // AEAD ciphers not supported in this command.
+        key_pair.private_key_to_pkcs8_passphrase(Cipher::aes_128_cbc(), passphrase.as_bytes())
+    } else {
+        key_pair.private_key_to_pkcs8()
+    };
+
+    pkcs8.with_context(|| "Cannot convert private key to PKCS8.")
+}
+
+fn convert_to_pkcs12(
+    certificate_template: SelfSignedCertificate,
+    key_pair: PKey<Private>,
+    passphrase: Option<String>,
+) -> anyhow::Result<Vec<u8>> {
+    let certificate = generate_x509_certificate(&certificate_template, &key_pair)?;
+
     let mut pkcs12_builder = Pkcs12::builder();
     let pkcs12 = pkcs12_builder
         .name(&certificate_template.name)
@@ -265,13 +282,13 @@ impl UtilsCertificatesActionHandler {
                     })?;
 
                 let key = generate_key(certificate_template.key_algorithm)?;
-                let x509_certificate = generate_x509_certificate(&certificate_template, &key)?;
                 let certificate = match format {
                     CertificateFormat::Pem => {
-                        convert_to_pem_archive(x509_certificate, key, passphrase)?
+                        convert_to_pem_archive(certificate_template, key, passphrase)?
                     }
+                    CertificateFormat::Pkcs8 => convert_to_pkcs8(key, passphrase)?,
                     CertificateFormat::Pkcs12 => {
-                        convert_to_pkcs12(certificate_template, x509_certificate, key, passphrase)?
+                        convert_to_pkcs12(certificate_template, key, passphrase)?
                     }
                 };
 

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// The key usage extension defines the purpose of the public key contained in the certificate.
-/// See https://www.ietf.org/rfc/rfc2459.html
+/// See https://www.ietf.org/rfc/rfc5280.html
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub enum KeyUsage {

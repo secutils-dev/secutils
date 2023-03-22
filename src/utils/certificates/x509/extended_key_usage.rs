@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// The extended key usage indicates one or more purposes for which the public key may be used, in
 /// addition to or in place of the basic purposes indicated in the key usage.
-/// See https://www.ietf.org/rfc/rfc2459.html
+/// See https://www.ietf.org/rfc/rfc5280.html
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub enum ExtendedKeyUsage {
