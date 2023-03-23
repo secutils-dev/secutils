@@ -148,7 +148,7 @@ fn generate_key(public_key_algorithm: KeyAlgorithm) -> anyhow::Result<PKey<Priva
             PKey::from_dsa(dsa)?
         }
         KeyAlgorithm::Ecdsa => {
-            let ec_group = EcGroup::from_curve_name(Nid::SECP256K1)?;
+            let ec_group = EcGroup::from_curve_name(Nid::SECP384R1)?;
             PKey::from_ec_key(EcKey::generate(&ec_group)?)?
         }
         KeyAlgorithm::Ed25519 => PKey::generate_ed25519()?,
