@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="98"
+   height="16"
+   role="img"
+   version="1.1"
+   viewBox="0 0 98 16"
+   id="svg14"
+   sodipodi:docname="secutils-logo-with-text-source.svg"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs18" />
+  <sodipodi:namedview
+     id="namedview16"
+     pagecolor="#1d1e24"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="13.846939"
+     inkscape:cx="49"
+     inkscape:cy="8.0162122"
+     inkscape:window-width="2560"
+     inkscape:window-height="1371"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg14" />
+  <rect
+     width="16"
+     height="16"
+     rx="3"
+     fill="#fed047"
+     stroke-width="6.8791"
+     id="rect2" />
+  <text
+     x="1.6853113"
+     y="11.893346"
+     fill="#fed047"
+     font-family="'JetBrains Mono NL'"
+     font-size="25.333px"
+     font-weight="300"
+     xml:space="preserve"
+     id="text8">       <tspan
+   x="1.6853113"
+   y="11.893346"
+   fill="#642340"
+   font-family="'JetBrains Mono NL'"
+   font-size="10.667px"
+   font-weight="600"
+   style="font-variant-caps:normal;font-variant-east-asian:normal;font-variant-ligatures:normal;font-variant-numeric:normal"
+   id="tspan6">SU</tspan></text>
+  <text
+     x="20.325935"
+     y="12.117347"
+     fill="#fed047"
+     font-family="'JetBrains Mono NL'"
+     font-size="25.333px"
+     font-weight="300"
+     xml:space="preserve"
+     id="text12"><tspan
+       x="20.325935"
+       y="12.117347"
+       fill="#ffffff"
+       font-family="'JetBrains Mono NL'"
+       font-size="10.667px"
+       font-weight="600"
+       style="font-variant-caps:normal;font-variant-east-asian:normal;font-variant-ligatures:normal;font-variant-numeric:normal"
+       id="tspan10">SECUTILS.DEV</tspan></text>
+</svg>
