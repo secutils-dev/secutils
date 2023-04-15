@@ -21,12 +21,12 @@ impl<'a> UtilsApi<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{api::UtilsApi, datastore::PrimaryDb};
+    use crate::{api::UtilsApi, tests::mock_db};
     use insta::assert_debug_snapshot;
 
     #[actix_rt::test]
     async fn can_get_all_utils() -> anyhow::Result<()> {
-        let mock_db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        let mock_db = mock_db().await?;
         let api = UtilsApi::new(&mock_db);
 
         assert_debug_snapshot!(api.get_all().await?, @r###"

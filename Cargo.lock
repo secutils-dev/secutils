@@ -968,21 +968,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "directories"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74be3be809c18e089de43bdc504652bb2bc473fca8756131f8689db8cf079ba9"
+dependencies = [
+ "dirs-sys 0.4.0",
+]
+
+[[package]]
 name = "dirs"
 version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca3aa72a6f96ea37bbc5aa912f6788242832f75369bdfdadcb0e38423f100059"
 dependencies = [
  "dirs-sys 0.3.7",
-]
-
-[[package]]
-name = "dirs"
-version = "5.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dece029acd3353e3a58ac2e3eb3c8d6c35827a892edc6cc4138ef9c33df46ecd"
-dependencies = [
- "dirs-sys 0.4.0",
 ]
 
 [[package]]
@@ -2556,7 +2556,7 @@ dependencies = [
  "argon2",
  "bytes",
  "clap",
- "dirs 5.0.0",
+ "directories",
  "dotenvy",
  "env_logger",
  "hex",
@@ -2873,7 +2873,7 @@ dependencies = [
  "bytes",
  "crc",
  "digest",
- "dirs 4.0.0",
+ "dirs",
  "dotenvy",
  "either",
  "futures-channel",
@@ -2914,7 +2914,7 @@ dependencies = [
  "bitflags",
  "byteorder",
  "crc",
- "dirs 4.0.0",
+ "dirs",
  "dotenvy",
  "futures-channel",
  "futures-core",

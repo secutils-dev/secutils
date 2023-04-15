@@ -888,7 +888,7 @@ mod tests {
         authentication::{create_webauthn, StoredCredentials},
         config::Config,
         datastore::PrimaryDb,
-        tests::MockUserBuilder,
+        tests::{mock_db, MockUserBuilder},
         users::{PublicUserDataNamespace, User, UserData, UserId},
         utils::{AutoResponder, AutoResponderMethod, AutoResponderRequest},
     };
@@ -916,7 +916,7 @@ mod tests {
     }
 
     async fn initialize_mock_db(user: &User) -> anyhow::Result<PrimaryDb> {
-        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        let db = mock_db().await?;
         db.upsert_user(user).await.map(|_| db)
     }
 

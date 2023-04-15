@@ -6,7 +6,7 @@ mod status;
 
 use crate::{
     api::Api, authentication::create_webauthn, config::Config, datastore::Datastore,
-    file_cache::FileCache, search::search_index_initializer, server::app_state::AppState,
+    directories::Directories, search::search_index_initializer, server::app_state::AppState,
     users::builtin_users_initializer,
 };
 use actix_identity::IdentityMiddleware;
@@ -21,10 +21,15 @@ pub async fn run(
     secure_cookies: bool,
     builtin_users: Option<String>,
 ) -> Result<(), anyhow::Error> {
-    let indices_dir = FileCache::ensure_cache_dir_exists("data")?;
+    let datastore_dir = Directories::ensure_data_dir_exists()?;
+    log::info!(
+        "Secutils.dev data is available at {}",
+        datastore_dir.as_path().display()
+    );
+
     let api = Api::new(
         config.clone(),
-        Datastore::open(indices_dir).await?,
+        Datastore::open(datastore_dir).await?,
         create_webauthn(&config)?,
     );
 

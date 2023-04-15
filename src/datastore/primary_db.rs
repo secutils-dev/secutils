@@ -405,8 +405,8 @@ ORDER BY parent_id, id
 mod tests {
     use crate::{
         authentication::{StoredCredentials, WebAuthnSession, WebAuthnSessionValue},
-        datastore::PrimaryDb,
         tests::{
+            mock_db,
             webauthn::{SERIALIZED_AUTHENTICATION_STATE, SERIALIZED_REGISTRATION_STATE},
             MockUserBuilder,
         },
@@ -421,7 +421,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn can_add_and_retrieve_users() -> anyhow::Result<()> {
-        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        let db = mock_db().await?;
         assert!(db.get_user_by_email("some-id").await?.is_none());
 
         let users = vec![
@@ -557,7 +557,7 @@ mod tests {
         .add_role("Power-User")
         .set_activated()
         .build();
-        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        let db = mock_db().await?;
         let id = db.upsert_user(&user).await?;
 
         assert_debug_snapshot!(db.get_user_by_email("dev@secutils.dev").await?,  @r###"
@@ -610,7 +610,7 @@ mod tests {
         .set_activated()
         .add_role("Power-User")
         .build();
-        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        let db = mock_db().await?;
         let id = db.upsert_user(&user).await?;
 
         assert_debug_snapshot!(db.get_user_by_handle("dev-handle").await?,  @r###"
@@ -643,7 +643,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn can_insert_user() -> anyhow::Result<()> {
-        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        let db = mock_db().await?;
 
         let user_id = db
             .insert_user(
@@ -721,7 +721,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn can_update_user() -> anyhow::Result<()> {
-        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        let db = mock_db().await?;
 
         db.upsert_user(
             &MockUserBuilder::new(
@@ -809,7 +809,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn can_remove_user() -> anyhow::Result<()> {
-        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        let db = mock_db().await?;
         assert!(db.get_user_by_email("dev@secutils.dev").await?.is_none());
         assert!(db.get_user_by_email("prod@secutils.dev").await?.is_none());
 
@@ -883,7 +883,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn can_manipulate_user_data() -> anyhow::Result<()> {
-        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        let db = mock_db().await?;
         let user = MockUserBuilder::new(
             UserId(1),
             "dev@secutils.dev",
@@ -959,7 +959,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn can_remove_old_user_data() -> anyhow::Result<()> {
-        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        let db = mock_db().await?;
 
         // Create test users
         let users = vec![
@@ -1076,7 +1076,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn can_add_and_retrieve_webauthn_sessions() -> anyhow::Result<()> {
-        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        let db = mock_db().await?;
         assert!(db
             .get_user_webauthn_session_by_email("some-id")
             .await?
@@ -1254,7 +1254,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn ignores_email_case_for_webauthn_sessions() -> anyhow::Result<()> {
-        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        let db = mock_db().await?;
 
         db.upsert_user_webauthn_session(&WebAuthnSession {
             email: "dev@secutils.dev".to_string(),
@@ -1286,7 +1286,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn can_update_webauthn_sessions() -> anyhow::Result<()> {
-        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        let db = mock_db().await?;
 
         db.upsert_user_webauthn_session(&WebAuthnSession {
             email: "dev@secutils.dev".to_string(),
@@ -1341,7 +1341,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn can_remove_webauthn_session() -> anyhow::Result<()> {
-        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        let db = mock_db().await?;
         assert!(db
             .get_user_webauthn_session_by_email("dev@secutils.dev")
             .await?
@@ -1399,7 +1399,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn can_remove_old_webauthn_session() -> anyhow::Result<()> {
-        let db = PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await?;
+        let db = mock_db().await?;
         let sessions = vec![
             WebAuthnSession {
                 email: "dev@secutils.dev".to_string(),

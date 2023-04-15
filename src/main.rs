@@ -4,8 +4,8 @@ mod api;
 mod authentication;
 mod config;
 mod datastore;
+mod directories;
 mod error;
-mod file_cache;
 mod search;
 mod server;
 mod users;
@@ -157,7 +157,7 @@ fn main() -> Result<(), anyhow::Error> {
 mod tests {
     use crate::{
         authentication::StoredCredentials,
-        datastore::initialize_index,
+        datastore::{initialize_index, PrimaryDb},
         search::SearchItem,
         users::{User, UserId},
     };
@@ -259,6 +259,10 @@ mod tests {
         pub fn build(self) -> SearchItem {
             self.item
         }
+    }
+
+    pub async fn mock_db() -> anyhow::Result<PrimaryDb> {
+        PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await
     }
 
     pub mod webauthn {

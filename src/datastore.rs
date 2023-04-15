@@ -5,7 +5,7 @@ pub use self::{
     primary_db::PrimaryDb,
     search_index::{SearchFilter, SearchIndex, SearchIndexSchemaFields},
 };
-use crate::file_cache::FileCache;
+use crate::directories::Directories;
 use std::path::Path;
 use tantivy::{
     directory::MmapDirectory,
@@ -37,7 +37,7 @@ impl Datastore {
                             root_data_path.as_ref()
                         )
                     })
-                    .map(|db_dir| format!("sqlite:{db_dir}/primary.db?mode=rwc"))
+                    .map(|db_dir| format!("sqlite:{db_dir}/data.db?mode=rwc"))
             })
             .await?,
         })
@@ -54,7 +54,7 @@ pub fn open_index<P: AsRef<Path>>(
     index_path: P,
     schema: Schema,
 ) -> anyhow::Result<(Index, IndexReader)> {
-    FileCache::ensure_dir_exists(&index_path)?;
+    Directories::ensure_dir_exists(&index_path)?;
 
     let index_directory = MmapDirectory::open(&index_path)?;
 
