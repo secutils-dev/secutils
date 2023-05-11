@@ -35,21 +35,25 @@ mod tests {
                 id: 1,
                 handle: "home",
                 name: "Home",
-                keywords: "home start",
+                keywords: Some(
+                    "home start docs guides changes",
+                ),
+                utils: None,
+            },
+            Util {
+                id: 2,
+                handle: "webhooks",
+                name: "Webhooks",
+                keywords: None,
                 utils: Some(
                     [
                         Util {
-                            id: 2,
-                            handle: "home__getting_started",
-                            name: "Getting started",
-                            keywords: "getting started",
-                            utils: None,
-                        },
-                        Util {
                             id: 3,
-                            handle: "home__whats_new",
-                            name: "What's new",
-                            keywords: "news updates what's new",
+                            handle: "webhooks__responders",
+                            name: "Responders",
+                            keywords: Some(
+                                "hooks webhooks responders auto-responders respond http endpoint",
+                            ),
                             utils: None,
                         },
                     ],
@@ -57,16 +61,18 @@ mod tests {
             },
             Util {
                 id: 4,
-                handle: "webhooks",
-                name: "Webhooks",
-                keywords: "webhooks hooks",
+                handle: "certificates",
+                name: "Digital Certificates",
+                keywords: None,
                 utils: Some(
                     [
                         Util {
                             id: 5,
-                            handle: "webhooks__responders",
-                            name: "Responders",
-                            keywords: "responders auto-responders respond http endpoint",
+                            handle: "certificates__self_signed_certificates",
+                            name: "Self-signed certificates",
+                            keywords: Some(
+                                "digital certificates x509 X.509 ssl tls openssl public private key encryption self-signed pki",
+                            ),
                             utils: None,
                         },
                     ],
@@ -74,40 +80,25 @@ mod tests {
             },
             Util {
                 id: 6,
-                handle: "certificates",
-                name: "Digital Certificates",
-                keywords: "digital certificates x509 X.509 ssl tls openssl public private key encryption pki",
+                handle: "web_security",
+                name: "Web Security",
+                keywords: None,
                 utils: Some(
                     [
                         Util {
                             id: 7,
-                            handle: "certificates__self_signed_certificates",
-                            name: "Self-signed certificates",
-                            keywords: "digital certificates x509 X.509 ssl tls openssl public private key encryption self-signed pki",
-                            utils: None,
-                        },
-                    ],
-                ),
-            },
-            Util {
-                id: 8,
-                handle: "web_security",
-                name: "Web Security",
-                keywords: "web security",
-                utils: Some(
-                    [
-                        Util {
-                            id: 9,
                             handle: "web_security__csp",
                             name: "CSP",
-                            keywords: "csp content security policy",
+                            keywords: None,
                             utils: Some(
                                 [
                                     Util {
-                                        id: 10,
+                                        id: 8,
                                         handle: "web_security__csp__policies",
                                         name: "Policies",
-                                        keywords: "csp policies content security",
+                                        keywords: Some(
+                                            "csp policies content web security",
+                                        ),
                                         utils: None,
                                     },
                                 ],
@@ -117,17 +108,19 @@ mod tests {
                 ),
             },
             Util {
-                id: 11,
+                id: 9,
                 handle: "web_scrapping",
                 name: "Web Scrapping",
-                keywords: "scrapping web puppeteer crawl spider",
+                keywords: None,
                 utils: Some(
                     [
                         Util {
-                            id: 12,
+                            id: 10,
                             handle: "web_scrapping__resources",
                             name: "Resources scrapper",
-                            keywords: "web scrapping scrapper resources",
+                            keywords: Some(
+                                "web scrapping crawl spider scrapper resources",
+                            ),
                             utils: None,
                         },
                     ],

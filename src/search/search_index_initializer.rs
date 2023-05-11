@@ -27,13 +27,15 @@ fn is_update_needed(util: &Util, searchable_util: &SearchItem) -> bool {
         return true;
     };
 
-    util.name != searchable_util.label
-        || util_handle != &util.handle
-        || if let Some(ref keywords) = searchable_util.keywords {
-            keywords != &util.keywords
-        } else {
-            !util.keywords.is_empty()
-        }
+    if util.name != searchable_util.label || util_handle != &util.handle {
+        return true;
+    }
+
+    match (&searchable_util.keywords, &util.keywords) {
+        (Some(searchable_keywords), Some(keywords)) => searchable_keywords != keywords,
+        (None, Some(keywords)) => !keywords.is_empty(),
+        (_, None) => false,
+    }
 }
 
 /// Converts instance of `Util` to `SearchItem`.
@@ -41,7 +43,7 @@ fn util_to_search_item(util: Util, timestamp: OffsetDateTime) -> SearchItem {
     SearchItem {
         id: SearchItem::create_id(&util.name, UTIL_SEARCH_CATEGORY, None, None),
         label: util.name,
-        keywords: Some(util.keywords),
+        keywords: util.keywords,
         category: UTIL_SEARCH_CATEGORY.to_string(),
         sub_category: None,
         user_id: None,
@@ -89,28 +91,32 @@ pub async fn search_index_initializer(api: &Api) -> anyhow::Result<()> {
         };
 
         // Update changed util definition or remove non-existent util definition.
-        if let Some(util) = util {
-            if is_update_needed(&util, &searchable_util) {
-                let updated_searchable_util = util_to_search_item(util, OffsetDateTime::now_utc());
-                log::debug!(
-                    "Search item for util needs to be updated: from {:?} to {:?}",
-                    searchable_util,
-                    updated_searchable_util
-                );
-                search_api.upsert(updated_searchable_util)?;
+        match util {
+            Some(util) if util.keywords.is_some() => {
+                if is_update_needed(&util, &searchable_util) {
+                    let updated_searchable_util =
+                        util_to_search_item(util, OffsetDateTime::now_utc());
+                    log::debug!(
+                        "Search item for util needs to be updated: from {:?} to {:?}",
+                        searchable_util,
+                        updated_searchable_util
+                    );
+                    search_api.upsert(updated_searchable_util)?;
+                }
+                utils_indexed += 1;
             }
-            utils_indexed += 1;
-        } else {
-            log::debug!(
-                "Non-existent search item found for util and will be removed: {:?}",
-                searchable_util
-            );
-            search_api.remove(searchable_util.id)?;
+            Some(_) | None => {
+                log::debug!(
+                    "Non-existent search item found for util and will be removed: {:?}",
+                    searchable_util
+                );
+                search_api.remove(searchable_util.id)?;
+            }
         }
     }
 
     // Insert new util definitions.
-    for util in utils.into_values() {
+    for util in utils.into_values().filter(|util| util.keywords.is_some()) {
         search_api.upsert(util_to_search_item(util, OffsetDateTime::now_utc()))?;
         utils_indexed += 1;
     }
@@ -142,12 +148,12 @@ mod tests {
                 id: 1,
                 handle: "handle-1".to_string(),
                 name: "name-1".to_string(),
-                keywords: "keywords-1".to_string(),
+                keywords: Some("keywords-1".to_string()),
                 utils: Some(vec![Util {
                     id: 2,
                     handle: "handle-1-2".to_string(),
                     name: "name-1-2".to_string(),
-                    keywords: "keywords-1-2".to_string(),
+                    keywords: Some("keywords-1-2".to_string()),
                     utils: None,
                 }]),
             },
@@ -155,7 +161,7 @@ mod tests {
                 id: 3,
                 handle: "handle-3".to_string(),
                 name: "name-3".to_string(),
-                keywords: "keywords-3".to_string(),
+                keywords: Some("keywords-3".to_string()),
                 utils: None,
             },
         ];
@@ -190,7 +196,7 @@ mod tests {
             id: 1,
             handle: "handle-1".to_string(),
             name: "name-1".to_string(),
-            keywords: "keywords-1".to_string(),
+            keywords: Some("keywords-1".to_string()),
             utils: None,
         };
 
@@ -282,7 +288,7 @@ mod tests {
                     id: 1,
                     handle: "handle-1".to_string(),
                     name: "name-1".to_string(),
-                    keywords: "keywords-1".to_string(),
+                    keywords: Some("keywords-1".to_string()),
                     utils: None,
                 },
                 timestamp

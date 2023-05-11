@@ -32,20 +32,18 @@ CREATE TABLE IF NOT EXISTS utils
     id          INTEGER PRIMARY KEY NOT NULL,
     handle      TEXT NOT NULL UNIQUE COLLATE NOCASE,
     name        TEXT NOT NULL,
-    keywords    TEXT NOT NULL,
+    keywords    TEXT,
     parent_id   INTEGER REFERENCES utils(id) ON DELETE CASCADE
 ) STRICT;
 
 INSERT INTO utils (id, handle, name, keywords, parent_id) VALUES
-   (1, 'home', 'Home', 'home start', NULL),
-   (2, 'home__getting_started', 'Getting started', 'getting started', 1),
-   (3, 'home__whats_new', 'What''s new', 'news updates what''s new', 1),
-   (4, 'webhooks', 'Webhooks', 'webhooks hooks', NULL),
-   (5, 'webhooks__responders', 'Responders', 'responders auto-responders respond http endpoint', 4),
-   (6, 'certificates', 'Digital Certificates', 'digital certificates x509 X.509 ssl tls openssl public private key encryption pki', NULL),
-   (7, 'certificates__self_signed_certificates', 'Self-signed certificates', 'digital certificates x509 X.509 ssl tls openssl public private key encryption self-signed pki', 6),
-   (8, 'web_security', 'Web Security', 'web security', NULL),
-   (9, 'web_security__csp', 'CSP', 'csp content security policy', 8),
-   (10, 'web_security__csp__policies', 'Policies', 'csp policies content security', 9),
-   (11, 'web_scrapping', 'Web Scrapping', 'scrapping web puppeteer crawl spider', NULL),
-   (12, 'web_scrapping__resources', 'Resources scrapper', 'web scrapping scrapper resources', 11);
+   (1, 'home', 'Home', 'home start docs guides changes', NULL),
+   (2, 'webhooks', 'Webhooks', NULL, NULL),
+   (3, 'webhooks__responders', 'Responders', 'hooks webhooks responders auto-responders respond http endpoint', 2),
+   (4, 'certificates', 'Digital Certificates', NULL, NULL),
+   (5, 'certificates__self_signed_certificates', 'Self-signed certificates', 'digital certificates x509 X.509 ssl tls openssl public private key encryption self-signed pki', 4),
+   (6, 'web_security', 'Web Security', NULL, NULL),
+   (7, 'web_security__csp', 'CSP', NULL, 6),
+   (8, 'web_security__csp__policies', 'Policies', 'csp policies content web security', 7),
+   (9, 'web_scrapping', 'Web Scrapping', NULL, NULL),
+   (10, 'web_scrapping__resources', 'Resources scrapper', 'web scrapping crawl spider scrapper resources', 9);

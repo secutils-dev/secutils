@@ -6,7 +6,7 @@ pub(super) struct RawUtil {
     pub id: i64,
     pub handle: String,
     pub name: String,
-    pub keywords: String,
+    pub keywords: Option<String>,
     pub parent_id: Option<i64>,
 }
 
@@ -46,7 +46,7 @@ mod tests {
                 id: 1,
                 handle: "some-handle".to_string(),
                 name: "some-name".to_string(),
-                keywords: "some-keywords".to_string(),
+                keywords: None,
                 parent_id: None,
             })?,
             @r###"
@@ -54,7 +54,7 @@ mod tests {
             id: 1,
             handle: "some-handle",
             name: "some-name",
-            keywords: "some-keywords",
+            keywords: None,
             utils: None,
         }
         "###
@@ -70,7 +70,7 @@ mod tests {
                 id: 1,
                 handle: "some-handle".to_string(),
                 name: "some-name".to_string(),
-                keywords: "some-keywords".to_string(),
+                keywords: Some("some-keywords".to_string()),
                 parent_id: Some(2),
             })?,
             @r###"
@@ -78,7 +78,9 @@ mod tests {
             id: 1,
             handle: "some-handle",
             name: "some-name",
-            keywords: "some-keywords",
+            keywords: Some(
+                "some-keywords",
+            ),
             utils: None,
         }
         "###
@@ -93,7 +95,7 @@ mod tests {
             id: 0,
             handle: "some-handle".to_string(),
             name: "some-name".to_string(),
-            keywords: "some-keywords".to_string(),
+            keywords: Some("some-keywords".to_string()),
             parent_id: None,
         })
         .is_err());
@@ -102,7 +104,7 @@ mod tests {
             id: 1,
             handle: "".to_string(),
             name: "some-name".to_string(),
-            keywords: "some-keywords".to_string(),
+            keywords: Some("some-keywords".to_string()),
             parent_id: None,
         })
         .is_err());
@@ -111,7 +113,7 @@ mod tests {
             id: 1,
             handle: "some-handle".to_string(),
             name: "".to_string(),
-            keywords: "some-keywords".to_string(),
+            keywords: Some("some-keywords".to_string()),
             parent_id: None,
         })
         .is_err());
@@ -120,7 +122,7 @@ mod tests {
             id: 1,
             handle: "some-handle".to_string(),
             name: "some-name".to_string(),
-            keywords: "some-keywords".to_string(),
+            keywords: Some("some-keywords".to_string()),
             parent_id: Some(0),
         })
         .is_err());

@@ -7,7 +7,7 @@ pub struct Util {
     pub handle: String,
     pub name: String,
     #[serde(skip_serializing)]
-    pub keywords: String,
+    pub keywords: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub utils: Option<Vec<Util>>,
 }
@@ -23,7 +23,7 @@ mod tests {
             id: 1,
             handle: "some-handle".to_string(),
             name: "some-name".to_string(),
-            keywords: "some keywords".to_string(),
+            keywords: Some("some keywords".to_string()),
             utils: None,
         };
         assert_json_snapshot!(util_without_optional, @r###"
@@ -37,7 +37,7 @@ mod tests {
             id: 1,
             handle: "some-handle".to_string(),
             name: "some-name".to_string(),
-            keywords: "some keywords".to_string(),
+            keywords: Some("some keywords".to_string()),
             utils: Some(vec![util_without_optional]),
         };
         assert_json_snapshot!(util_with_optional, @r###"
