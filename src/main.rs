@@ -17,7 +17,7 @@ use bytes::Buf;
 use clap::{value_parser, Arg, ArgMatches, Command};
 use url::Url;
 
-fn process_command(matches: ArgMatches) -> Result<(), anyhow::Error> {
+fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Error> {
     let smtp_config = match (
         matches.get_one::<String>("SMTP_USERNAME"),
         matches.get_one::<String>("SMTP_PASSWORD"),
@@ -37,6 +37,7 @@ fn process_command(matches: ArgMatches) -> Result<(), anyhow::Error> {
     };
 
     let config = Config {
+        version: version.to_owned(),
         smtp: smtp_config,
         http_port: *matches
             .get_one("HTTP_PORT")
@@ -79,8 +80,10 @@ fn main() -> Result<(), anyhow::Error> {
     dotenvy::dotenv().ok();
     env_logger::init();
 
+    let version = env!("CARGO_PKG_VERSION");
+
     let matches = Command::new("Secutils.dev API server")
-        .version("0.1.0")
+        .version(version)
         .author("Secutils <dev@secutils.dev")
         .about("Secutils.dev API server")
         .arg(
@@ -150,7 +153,7 @@ fn main() -> Result<(), anyhow::Error> {
         )
         .get_matches();
 
-    process_command(matches)
+    process_command(version, matches)
 }
 
 #[cfg(test)]

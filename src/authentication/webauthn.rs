@@ -38,6 +38,7 @@ mod tests {
     #[test]
     fn can_create_webauthn() -> anyhow::Result<()> {
         let config = Config {
+            version: "1.0.0".to_string(),
             http_port: 1234,
             public_url: Url::parse("http://localhost:1234")?,
             smtp: None,

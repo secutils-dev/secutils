@@ -16,10 +16,12 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(config: Config, api: Api) -> Self {
+        let version = config.version.to_string();
         Self {
             config,
 
             status: RwLock::new(Status {
+                version,
                 level: StatusLevel::Available,
             }),
 

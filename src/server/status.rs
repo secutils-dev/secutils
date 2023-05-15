@@ -7,7 +7,8 @@ pub enum StatusLevel {
     Unavailable,
 }
 
-#[derive(Copy, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Status {
+    pub version: String,
     pub level: StatusLevel,
 }

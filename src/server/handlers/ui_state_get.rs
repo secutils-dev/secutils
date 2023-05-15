@@ -7,6 +7,7 @@ use crate::{
 use actix_web::{web, HttpResponse};
 use anyhow::anyhow;
 use serde::Serialize;
+use std::ops::Deref;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -14,8 +15,8 @@ struct License;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct UiState {
-    status: Status,
+struct UiState<'a> {
+    status: &'a Status,
     license: License,
     #[serde(skip_serializing_if = "Option::is_none")]
     user: Option<User>,
@@ -45,8 +46,8 @@ pub async fn ui_state_get(
         status: state
             .status
             .read()
-            .map(|status| *status)
-            .map_err(|err| anyhow!("Failed to retrieve server status: {:?}.", err))?,
+            .map_err(|err| anyhow!("Failed to retrieve server status: {:?}.", err))?
+            .deref(),
         license: License,
         user,
         settings,
