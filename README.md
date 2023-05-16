@@ -4,8 +4,6 @@ Secutils.dev is an open-source, versatile, yet simple toolbox for application se
 
 Refer to [secutils-dev/secutils-webui](https://github.com/secutils-dev/secutils-webui) for the web interface component of Secutils.dev.
 
-__NOTE:__ The project isn't yet ready for general consumption. Please stay tuned for updates!
-
 ## Benefits
 
 The main goal of this project is to provide application security engineers with a user-friendly, all-in-one toolbox for their day-to-day job that adheres to [open security principles](https://en.wikipedia.org/wiki/Open_security). You might want to consider Secutils.dev as a part of your usual development workflow for the following reasons:
@@ -16,9 +14,31 @@ The main goal of this project is to provide application security engineers with 
 * Request bin, CSP builder, certificate generator, web scrapper and more
 * Intuitive and customizable user interface
 
-## Getting Started
+## Getting started
 
-***In progress…***
+Before running the Secutils.dev server locally, you need to provide several required parameters. The easiest way is to specify them through a local `.env` file:
+```dotenv
+# An authenticated session key. For example, can be generated with `openssl rand -hex 32`
+SECUTILS_SESSION_KEY=a1a95f90e375d24ee4abb567c96ec3b053ceb083a4df726c76f8570230311c58
+
+# Defines a pipe-separated (`|`) list of predefined users in the following format: `email:password:role`.
+SECUTILS_BUILTIN_USERS=su@secutils.dev:3efab73129f3d36e:admin
+
+# Path to a local SQLite database file. Refer to https://github.com/launchbadge/sqlx for more details.
+DATABASE_URL=sqlite:///home/user/.local/share/secutils/data.db
+```
+
+Once the .env file is created, you can start the Secutils.dev server with `cargo run`. By default, the server will be accessible via http://localhost:7070. Use `curl` to verify that the server is up and running:
+
+```shell
+curl -XGET http://localhost:7070/api/status
+---
+{"version":"1.0.0-alpha.1","level":"available"}
+```
+
+### Usage
+
+At this point, it is recommended to use the Secutils.dev APIs through the [Web UI](https://github.com/secutils-dev/secutils-webui).
 
 ### Re-initialize local database
 
@@ -30,7 +50,7 @@ sqlx migrate run
 
 ## Documentation
 
-***In progress…***
+The documentation for Secutils.dev is located in [github.com/secutils-dev/secutils-docs](https://github.com/secutils-dev/secutils-docs/) and hosted at [secutils.dev/docs](https://secutils.dev/docs).
 
 ## Community
 
