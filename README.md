@@ -8,7 +8,7 @@ Refer to [secutils-dev/secutils-webui](https://github.com/secutils-dev/secutils-
 
 The main goal of this project is to provide application security engineers with a user-friendly, all-in-one toolbox for their day-to-day job that adheres to [open security principles](https://en.wikipedia.org/wiki/Open_security). You might want to consider Secutils.dev as a part of your usual development workflow for the following reasons:
 
-* Built by application security engineers for application security engineers
+* Built by application security engineer for application security engineers
 * Carefully selected utilities that are commonly used in daily work
 * Guided experience for complex security concepts
 * Request bin, CSP builder, certificate generator, web scrapper and more
@@ -22,7 +22,7 @@ Before running the Secutils.dev server locally, you need to provide several requ
 SECUTILS_SESSION_KEY=a1a95f90e375d24ee4abb567c96ec3b053ceb083a4df726c76f8570230311c58
 
 # Defines a pipe-separated (`|`) list of predefined users in the following format: `email:password:role`.
-SECUTILS_BUILTIN_USERS=su@secutils.dev:3efab73129f3d36e:admin
+SECUTILS_BUILTIN_USERS=user@domain.xyz:3efab73129f3d36e:admin
 
 # Path to a local SQLite database file. Refer to https://github.com/launchbadge/sqlx for more details.
 DATABASE_URL=sqlite:///home/user/.local/share/secutils/data.db
@@ -30,7 +30,7 @@ DATABASE_URL=sqlite:///home/user/.local/share/secutils/data.db
 
 Once the .env file is created, you can start the Secutils.dev server with `cargo run`. By default, the server will be accessible via http://localhost:7070. Use `curl` to verify that the server is up and running:
 
-```shell
+```shellThis command 
 curl -XGET http://localhost:7070/api/status
 ---
 {"version":"1.0.0-alpha.1","level":"available"}
@@ -42,7 +42,12 @@ At this point, it is recommended to use the Secutils.dev APIs through the [Web U
 
 ### Re-initialize local database
 
+To manage the local SQLite database, you need to install the [SQLx's command-line utility](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli):
 ```shell
+cargo install sqlx-cli@0.7.0-alpha.3
+
+# Drops, creates, and migrates the SQLite database
+# referenced in the `DATABASE_URL` from the `.env` file.
 sqlx database drop
 sqlx database create
 sqlx migrate run
