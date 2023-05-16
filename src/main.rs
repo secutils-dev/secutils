@@ -31,7 +31,7 @@ fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Err
             catch_all_recipient: recipient.map(|value| value.to_string()),
         }),
         (username, password, address, _) => {
-            log::error!("SMTP config is not provided or invalid: username ({:?}), password ({:?}), address ({:?}).", username, password, address);
+            log::warn!("SMTP config is not provided or invalid: username ({:?}), password ({:?}), address ({:?}).", username, password, address);
             None
         }
     };
@@ -149,6 +149,7 @@ fn main() -> Result<(), anyhow::Error> {
                 .long("public-url")
                 .global(true)
                 .env("SECUTILS_PUBLIC_URL")
+                .default_value("http://localhost:7070")
                 .help("External/public URL through which service is being accessed."),
         )
         .get_matches();
