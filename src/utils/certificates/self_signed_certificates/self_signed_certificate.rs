@@ -1,5 +1,5 @@
 use crate::utils::{
-    certificates::{ExtendedKeyUsage, KeyUsage},
+    certificates::{ExtendedKeyUsage, KeyUsage, Version},
     KeyAlgorithm, SignatureAlgorithm,
 };
 use serde::{Deserialize, Serialize};
@@ -31,8 +31,8 @@ pub struct SelfSignedCertificate {
     pub not_valid_before: OffsetDateTime,
     #[serde(rename = "na", with = "time::serde::timestamp")]
     pub not_valid_after: OffsetDateTime,
-    #[serde(rename = "v")]
-    pub version: u8,
+    #[serde(rename = "v", default = "Version::latest")]
+    pub version: Version,
     #[serde(rename = "ca")]
     pub is_ca: bool,
     #[serde(rename = "ku", skip_serializing_if = "Option::is_none")]
@@ -45,7 +45,7 @@ pub struct SelfSignedCertificate {
 mod tests {
     use crate::utils::{
         tests::MockSelfSignedCertificate, ExtendedKeyUsage, KeyAlgorithm, KeyUsage,
-        SelfSignedCertificate, SignatureAlgorithm,
+        SelfSignedCertificate, SignatureAlgorithm, Version,
     };
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
@@ -64,7 +64,7 @@ mod tests {
                 SignatureAlgorithm::Ed25519,
                 not_valid_before,
                 not_valid_after,
-                3,
+                Version::Three,
             )
             .set_is_ca()
             .set_common_name("CA Issuer")
@@ -107,7 +107,7 @@ mod tests {
                 SignatureAlgorithm::Sha256,
                 not_valid_before,
                 not_valid_after,
-                1,
+                Version::One,
             ).build(),
             @r###"
         {
@@ -152,7 +152,7 @@ mod tests {
                 SignatureAlgorithm::Sha256,
                 not_valid_before,
                 not_valid_after,
-                1,
+                Version::One,
             )
             .build()
         );
@@ -184,7 +184,7 @@ mod tests {
                 SignatureAlgorithm::Ed25519,
                 not_valid_before,
                 not_valid_after,
-                3,
+                Version::latest(),
             )
             .set_is_ca()
             .set_common_name("CA Issuer")

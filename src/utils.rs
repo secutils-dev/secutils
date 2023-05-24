@@ -10,7 +10,7 @@ pub use self::{
     certificates::{
         CertificateFormat, ExtendedKeyUsage, KeyAlgorithm, KeyUsage, SelfSignedCertificate,
         SignatureAlgorithm, UtilsCertificatesAction, UtilsCertificatesActionHandler,
-        UtilsCertificatesActionResult,
+        UtilsCertificatesActionResult, Version,
     },
     util::Util,
     utils_action::UtilsAction,
@@ -32,6 +32,7 @@ pub use self::{
 pub mod tests {
     use crate::utils::{
         ExtendedKeyUsage, KeyAlgorithm, KeyUsage, SelfSignedCertificate, SignatureAlgorithm,
+        Version,
     };
     use time::OffsetDateTime;
 
@@ -43,7 +44,7 @@ pub mod tests {
             signature_algorithm: SignatureAlgorithm,
             not_valid_before: OffsetDateTime,
             not_valid_after: OffsetDateTime,
-            version: u8,
+            version: Version,
         ) -> Self {
             Self(SelfSignedCertificate {
                 name: name.into(),

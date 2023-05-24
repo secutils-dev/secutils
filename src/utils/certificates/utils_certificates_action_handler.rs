@@ -181,7 +181,7 @@ fn generate_x509_certificate(
     let mut x509 = X509::builder()?;
     x509.set_subject_name(&x509_name)?;
     x509.set_issuer_name(&x509_name)?;
-    x509.set_version((certificate_template.version - 1) as i32)?;
+    x509.set_version(certificate_template.version.value())?;
 
     let mut basic_constraint = extension::BasicConstraints::new();
     if certificate_template.is_ca {
@@ -321,7 +321,7 @@ mod tests {
             generate_x509_certificate, message_digest,
         },
         tests::MockSelfSignedCertificate,
-        KeyAlgorithm, SignatureAlgorithm,
+        KeyAlgorithm, SignatureAlgorithm, Version,
     };
     use insta::assert_debug_snapshot;
     use openssl::hash::MessageDigest;
@@ -399,7 +399,7 @@ mod tests {
             SignatureAlgorithm::Sha256,
             not_valid_before,
             not_valid_after,
-            1,
+            Version::One,
         )
         .build();
         let key = generate_key(KeyAlgorithm::Rsa)?;
