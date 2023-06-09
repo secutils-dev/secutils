@@ -118,7 +118,7 @@ mod tests {
             default_filter.into_query(&index, &schema_fields),
             @r###"
         Ok(
-            TermQuery(Term(type=I64, field=1, -1)),
+            TermQuery(Term(field=1, type=I64, -1)),
         )
         "###
         );
@@ -148,11 +148,11 @@ mod tests {
                 subqueries: [
                     (
                         Should,
-                        TermQuery(Term(type=I64, field=1, -1)),
+                        TermQuery(Term(field=1, type=I64, -1)),
                     ),
                     (
                         Should,
-                        TermQuery(Term(type=I64, field=1, 1)),
+                        TermQuery(Term(field=1, type=I64, 1)),
                     ),
                 ],
             },
@@ -185,7 +185,7 @@ mod tests {
                 subqueries: [
                     (
                         Must,
-                        TermQuery(Term(type=I64, field=1, -1)),
+                        TermQuery(Term(field=1, type=I64, -1)),
                     ),
                     (
                         Must,
@@ -200,39 +200,39 @@ mod tests {
                                         phrase_terms: [
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "so"),
+                                                Term(field=3, type=Str, "so"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "som"),
+                                                Term(field=3, type=Str, "som"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some"),
+                                                Term(field=3, type=Str, "some"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-"),
+                                                Term(field=3, type=Str, "some-"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-q"),
+                                                Term(field=3, type=Str, "some-q"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-qu"),
+                                                Term(field=3, type=Str, "some-qu"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-que"),
+                                                Term(field=3, type=Str, "some-que"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-quer"),
+                                                Term(field=3, type=Str, "some-quer"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-query"),
+                                                Term(field=3, type=Str, "some-query"),
                                             ),
                                         ],
                                         slop: 0,
@@ -247,39 +247,39 @@ mod tests {
                                         phrase_terms: [
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "so"),
+                                                Term(field=5, type=Str, "so"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "som"),
+                                                Term(field=5, type=Str, "som"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some"),
+                                                Term(field=5, type=Str, "some"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-"),
+                                                Term(field=5, type=Str, "some-"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-q"),
+                                                Term(field=5, type=Str, "some-q"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-qu"),
+                                                Term(field=5, type=Str, "some-qu"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-que"),
+                                                Term(field=5, type=Str, "some-que"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-quer"),
+                                                Term(field=5, type=Str, "some-quer"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-query"),
+                                                Term(field=5, type=Str, "some-query"),
                                             ),
                                         ],
                                         slop: 0,
@@ -319,11 +319,11 @@ mod tests {
                 subqueries: [
                     (
                         Must,
-                        TermQuery(Term(type=I64, field=1, -1)),
+                        TermQuery(Term(field=1, type=I64, -1)),
                     ),
                     (
                         Must,
-                        TermQuery(Term(type=Str, field=6, "Some-Category")),
+                        TermQuery(Term(field=6, type=Str, "Some-Category")),
                     ),
                 ],
             },
@@ -362,11 +362,11 @@ mod tests {
                             subqueries: [
                                 (
                                     Should,
-                                    TermQuery(Term(type=I64, field=1, -1)),
+                                    TermQuery(Term(field=1, type=I64, -1)),
                                 ),
                                 (
                                     Should,
-                                    TermQuery(Term(type=I64, field=1, 1)),
+                                    TermQuery(Term(field=1, type=I64, 1)),
                                 ),
                             ],
                         },
@@ -384,39 +384,39 @@ mod tests {
                                         phrase_terms: [
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "so"),
+                                                Term(field=3, type=Str, "so"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "som"),
+                                                Term(field=3, type=Str, "som"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some"),
+                                                Term(field=3, type=Str, "some"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-"),
+                                                Term(field=3, type=Str, "some-"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-q"),
+                                                Term(field=3, type=Str, "some-q"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-qu"),
+                                                Term(field=3, type=Str, "some-qu"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-que"),
+                                                Term(field=3, type=Str, "some-que"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-quer"),
+                                                Term(field=3, type=Str, "some-quer"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-query"),
+                                                Term(field=3, type=Str, "some-query"),
                                             ),
                                         ],
                                         slop: 0,
@@ -431,39 +431,39 @@ mod tests {
                                         phrase_terms: [
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "so"),
+                                                Term(field=5, type=Str, "so"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "som"),
+                                                Term(field=5, type=Str, "som"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some"),
+                                                Term(field=5, type=Str, "some"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-"),
+                                                Term(field=5, type=Str, "some-"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-q"),
+                                                Term(field=5, type=Str, "some-q"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-qu"),
+                                                Term(field=5, type=Str, "some-qu"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-que"),
+                                                Term(field=5, type=Str, "some-que"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-quer"),
+                                                Term(field=5, type=Str, "some-quer"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-query"),
+                                                Term(field=5, type=Str, "some-query"),
                                             ),
                                         ],
                                         slop: 0,
@@ -505,7 +505,7 @@ mod tests {
                 subqueries: [
                     (
                         Must,
-                        TermQuery(Term(type=I64, field=1, -1)),
+                        TermQuery(Term(field=1, type=I64, -1)),
                     ),
                     (
                         Must,
@@ -520,39 +520,39 @@ mod tests {
                                         phrase_terms: [
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "so"),
+                                                Term(field=3, type=Str, "so"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "som"),
+                                                Term(field=3, type=Str, "som"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some"),
+                                                Term(field=3, type=Str, "some"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-"),
+                                                Term(field=3, type=Str, "some-"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-q"),
+                                                Term(field=3, type=Str, "some-q"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-qu"),
+                                                Term(field=3, type=Str, "some-qu"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-que"),
+                                                Term(field=3, type=Str, "some-que"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-quer"),
+                                                Term(field=3, type=Str, "some-quer"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=3, "some-query"),
+                                                Term(field=3, type=Str, "some-query"),
                                             ),
                                         ],
                                         slop: 0,
@@ -567,39 +567,39 @@ mod tests {
                                         phrase_terms: [
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "so"),
+                                                Term(field=5, type=Str, "so"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "som"),
+                                                Term(field=5, type=Str, "som"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some"),
+                                                Term(field=5, type=Str, "some"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-"),
+                                                Term(field=5, type=Str, "some-"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-q"),
+                                                Term(field=5, type=Str, "some-q"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-qu"),
+                                                Term(field=5, type=Str, "some-qu"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-que"),
+                                                Term(field=5, type=Str, "some-que"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-quer"),
+                                                Term(field=5, type=Str, "some-quer"),
                                             ),
                                             (
                                                 0,
-                                                Term(type=Str, field=5, "some-query"),
+                                                Term(field=5, type=Str, "some-query"),
                                             ),
                                         ],
                                         slop: 0,
@@ -610,7 +610,7 @@ mod tests {
                     ),
                     (
                         Must,
-                        TermQuery(Term(type=Str, field=6, "Some-Category")),
+                        TermQuery(Term(field=6, type=Str, "Some-Category")),
                     ),
                 ],
             },

@@ -47,6 +47,7 @@ mod tests {
             smtp: None,
             components: ComponentsConfig {
                 web_scrapper_url: Url::parse("http://localhost:7272")?,
+                search_index_version: 1,
             },
         };
 

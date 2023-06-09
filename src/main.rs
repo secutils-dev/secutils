@@ -57,6 +57,7 @@ fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Err
                     Url::parse(url)
                         .with_context(|| "Cannot parse Web Scrapper URL parameter.".to_string())
                 })?,
+            search_index_version: 1,
         },
     };
 

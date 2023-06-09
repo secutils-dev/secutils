@@ -5,7 +5,7 @@ pub use self::{
     primary_db::PrimaryDb,
     search_index::{SearchFilter, SearchIndex, SearchIndexSchemaFields},
 };
-use crate::directories::Directories;
+use crate::{config::Config, directories::Directories};
 use std::path::Path;
 use tantivy::{
     directory::MmapDirectory,
@@ -22,10 +22,16 @@ pub struct Datastore {
 }
 
 impl Datastore {
-    pub async fn open<P: AsRef<Path>>(root_data_path: P) -> anyhow::Result<Self> {
+    pub async fn open<P: AsRef<Path>>(config: &Config, root_data_path: P) -> anyhow::Result<Self> {
         Ok(Self {
             search_index: SearchIndex::open(|schema| {
-                open_index(root_data_path.as_ref().join("search_index"), schema)
+                open_index(
+                    root_data_path.as_ref().join(format!(
+                        "search_index_v{}",
+                        config.components.search_index_version
+                    )),
+                    schema,
+                )
             })?,
             primary_db: PrimaryDb::open(|| {
                 root_data_path
@@ -61,6 +67,10 @@ pub fn open_index<P: AsRef<Path>>(
     let index = if Index::exists(&index_directory)? {
         Index::open_in_dir(&index_path)?
     } else {
+        log::warn!(
+            "Search index data folder doesn't exist and will be created: {:?}.",
+            index_path.as_ref()
+        );
         Index::create_in_dir(&index_path, schema)?
     };
 
@@ -69,8 +79,15 @@ pub fn open_index<P: AsRef<Path>>(
 
 pub fn initialize_index(index: Index) -> anyhow::Result<(Index, IndexReader)> {
     let tokenizers = index.tokenizers();
-    tokenizers.register("ids", TextAnalyzer::from(RawTokenizer).filter(LowerCaser));
     tokenizers.register("ngram2_10", NgramTokenizer::prefix_only(2, 10));
+
+    let tokenizers = index.fast_field_tokenizer();
+    tokenizers.register(
+        "ids",
+        TextAnalyzer::builder(RawTokenizer::default())
+            .filter(LowerCaser)
+            .build(),
+    );
 
     let index_reader = index
         .reader_builder()

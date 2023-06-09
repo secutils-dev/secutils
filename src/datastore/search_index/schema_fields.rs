@@ -16,7 +16,7 @@ pub struct SearchIndexSchemaFields {
 
 fn ids_field_option() -> TextOptions {
     TextOptions::default()
-        .set_fast()
+        .set_fast(Some("ids"))
         .set_stored()
         .set_indexing_options(TextFieldIndexing::default().set_tokenizer("ids"))
 }

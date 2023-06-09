@@ -29,7 +29,7 @@ pub async fn run(
 
     let api = Api::new(
         config.clone(),
-        Datastore::open(datastore_dir).await?,
+        Datastore::open(&config, datastore_dir).await?,
         create_webauthn(&config)?,
     );
 
