@@ -1,8 +1,9 @@
+mod components_config;
 mod smtp_config;
 
 use url::Url;
 
-pub use self::smtp_config::SmtpConfig;
+pub use self::{components_config::ComponentsConfig, smtp_config::SmtpConfig};
 
 /// Main server config.
 #[derive(Clone, Debug)]
@@ -15,6 +16,8 @@ pub struct Config {
     pub public_url: Url,
     /// Configuration for the SMTP functionality.
     pub smtp: Option<SmtpConfig>,
+    /// Configuration for the components that are deployed separately.
+    pub components: ComponentsConfig,
 }
 
 impl AsRef<Config> for Config {

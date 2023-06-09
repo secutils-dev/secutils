@@ -32,7 +32,10 @@ pub fn create_webauthn(config: &Config) -> anyhow::Result<Webauthn> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{authentication::create_webauthn, config::Config};
+    use crate::{
+        authentication::create_webauthn,
+        config::{ComponentsConfig, Config},
+    };
     use url::Url;
 
     #[test]
@@ -42,6 +45,9 @@ mod tests {
             http_port: 1234,
             public_url: Url::parse("http://localhost:1234")?,
             smtp: None,
+            components: ComponentsConfig {
+                web_scrapper_url: Url::parse("http://localhost:7272")?,
+            },
         };
 
         let webauthn = create_webauthn(&config)?;

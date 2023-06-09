@@ -886,7 +886,7 @@ mod tests {
     use crate::{
         api::{EmailsApi, UsersApi},
         authentication::{create_webauthn, StoredCredentials},
-        config::Config,
+        config::{ComponentsConfig, Config},
         datastore::PrimaryDb,
         tests::{mock_db, MockUserBuilder},
         users::{PublicUserDataNamespace, User, UserData, UserId},
@@ -907,13 +907,16 @@ mod tests {
         .build()
     }
 
-    fn create_mock_config() -> Config {
-        Config {
+    fn create_mock_config() -> anyhow::Result<Config> {
+        Ok(Config {
             version: "1.0.0".to_string(),
             http_port: 1234,
-            public_url: Url::parse("http://localhost:1234").unwrap(),
+            public_url: Url::parse("http://localhost:1234")?,
             smtp: None,
-        }
+            components: ComponentsConfig {
+                web_scrapper_url: Url::parse("http://localhost:7272")?,
+            },
+        })
     }
 
     async fn initialize_mock_db(user: &User) -> anyhow::Result<PrimaryDb> {
@@ -923,7 +926,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn can_update_auto_responders() -> anyhow::Result<()> {
-        let mock_config = create_mock_config();
+        let mock_config = create_mock_config()?;
         let mock_user = create_mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
         let mock_webauthn = create_webauthn(&mock_config)?;

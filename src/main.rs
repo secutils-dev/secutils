@@ -11,7 +11,7 @@ mod server;
 mod users;
 mod utils;
 
-use crate::config::{Config, SmtpConfig};
+use crate::config::{ComponentsConfig, Config, SmtpConfig};
 use anyhow::{anyhow, Context};
 use bytes::Buf;
 use clap::{value_parser, Arg, ArgMatches, Command};
@@ -49,6 +49,15 @@ fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Err
                 Url::parse(public_url)
                     .with_context(|| "Cannot parse public URL parameter.".to_string())
             })?,
+        components: ComponentsConfig {
+            web_scrapper_url: matches
+                .get_one::<String>("COMPONENT_WEB_SCRAPPER_URL")
+                .ok_or_else(|| anyhow!("<COMPONENT_WEB_SCRAPPER_URL> argument is not provided."))
+                .and_then(|url| {
+                    Url::parse(url)
+                        .with_context(|| "Cannot parse Web Scrapper URL parameter.".to_string())
+                })?,
+        },
     };
 
     let session_key = matches
@@ -151,6 +160,14 @@ fn main() -> Result<(), anyhow::Error> {
                 .env("SECUTILS_PUBLIC_URL")
                 .default_value("http://localhost:7070")
                 .help("External/public URL through which service is being accessed."),
+        )
+        .arg(
+            Arg::new("COMPONENT_WEB_SCRAPPER_URL")
+                .long("component-web-scrapper-url")
+                .global(true)
+                .env("SECUTILS_COMPONENT_WEB_SCRAPPER_URL")
+                .default_value("http://localhost:7272")
+                .help("The URL to access the Web Scrapper component."),
         )
         .get_matches();
 
