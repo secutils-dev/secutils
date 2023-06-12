@@ -13,7 +13,7 @@ use crate::{
         BuiltinUser, InternalUserDataNamespace, PublicUserDataNamespace, User, UserData,
         UserDataKey, UserDataNamespace, UserId, UserSettingsSetter,
     },
-    utils::{AutoResponder, ContentSecurityPolicy, SelfSignedCertificate},
+    utils::{AutoResponder, ContentSecurityPolicy, SelfSignedCertificate, WebPageResourcesTracker},
 };
 use anyhow::{anyhow, bail, Context};
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
@@ -516,6 +516,9 @@ impl<'a> UsersApi<'a> {
                 PublicUserDataNamespace::ContentSecurityPolicies => {
                     Self::set_content_security_policies_data(&user_data_setter, user_data).await
                 }
+                PublicUserDataNamespace::WebPageResourcesTrackers => {
+                    Self::set_web_page_resources_trackers_data(&user_data_setter, user_data).await
+                }
                 PublicUserDataNamespace::SelfSignedCertificates => {
                     Self::set_self_signed_certificates_data(&user_data_setter, user_data).await
                 }
@@ -788,6 +791,26 @@ impl<'a> UsersApi<'a> {
                 )
                 .with_context(|| {
                     "Cannot deserialize new content security policies data".to_string()
+                })?,
+                serialized_user_data.timestamp,
+            ),
+        )
+        .await
+    }
+
+    async fn set_web_page_resources_trackers_data(
+        user_data_setter: &UserDataSetter<'_>,
+        serialized_user_data: UserData<Vec<u8>>,
+    ) -> anyhow::Result<()> {
+        DictionaryDataUserDataSetter::upsert(
+            user_data_setter,
+            PublicUserDataNamespace::WebPageResourcesTrackers,
+            UserData::new(
+                serde_json::from_slice::<BTreeMap<String, Option<WebPageResourcesTracker>>>(
+                    &serialized_user_data.value,
+                )
+                .with_context(|| {
+                    "Cannot deserialize new web page resources trackers data".to_string()
                 })?,
                 serialized_user_data.timestamp,
             ),

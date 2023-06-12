@@ -3,6 +3,7 @@ mod util;
 mod utils_action;
 mod utils_action_handler;
 mod utils_action_result;
+mod web_scrapping;
 mod web_security;
 mod webhooks;
 
@@ -16,6 +17,10 @@ pub use self::{
     utils_action::UtilsAction,
     utils_action_handler::UtilsActionHandler,
     utils_action_result::UtilsActionResult,
+    web_scrapping::{
+        UtilsWebScrappingAction, UtilsWebScrappingActionHandler, UtilsWebScrappingActionResult,
+        WebPageResource, WebPageResourcesTracker,
+    },
     web_security::{
         ContentSecurityPolicy, ContentSecurityPolicyDirective,
         ContentSecurityPolicySandboxDirectiveValue, ContentSecurityPolicySource,
