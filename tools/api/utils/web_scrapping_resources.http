@@ -1,0 +1,17 @@
+### Track web page resources
+POST {{host}}/api/utils/action
+Authorization: {{api-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "action": {
+    "type": "webScrapping",
+    "value": {
+      "type": "trackWebPageResources",
+      "value": { "trackerName": "test" }
+    }
+  }
+}
+
+###

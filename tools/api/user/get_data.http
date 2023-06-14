@@ -1,4 +1,9 @@
 ### Get data
-GET {{host}}/api/user/data?dataType=userSettings
+GET {{host}}/api/user/data?namespace=userSettings
+Accept: application/json
+Authorization: {{api-credentials}}
+
+### Get utils data
+GET {{host}}/api/user/data?namespace=webPageResourcesTrackers
 Accept: application/json
 Authorization: {{api-credentials}}

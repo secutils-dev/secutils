@@ -1,5 +1,5 @@
 ### Update data
-POST {{host}}/api/user/data?dataType=userSettings
+POST {{host}}/api/user/data?namespace=userSettings
 Accept: application/json
 Content-Type: application/json
 Authorization: {{api-credentials}}
@@ -9,11 +9,21 @@ Authorization: {{api-credentials}}
 }
 
 ### Remove data
-POST {{host}}/api/user/data?dataType=userSettings
+POST {{host}}/api/user/data?namespace=userSettings
 Accept: application/json
 Content-Type: application/json
 Authorization: {{api-credentials}}
 
 {
   "dataValue": "{ \"certificates.doNotShowSelfSignedWarning\": null }"
+}
+
+### Save utils data
+POST {{host}}/api/user/data?namespace=webPageResourcesTrackers
+Accept: application/json
+Content-Type: application/json
+Authorization: {{api-credentials}}
+
+{
+  "dataValue":"{\"test\":{\"n\":\"test\",\"u\":\"https://secutils.dev\"}}"
 }
