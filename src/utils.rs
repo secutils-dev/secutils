@@ -19,7 +19,7 @@ pub use self::{
     utils_action_result::UtilsActionResult,
     web_scrapping::{
         UtilsWebScrappingAction, UtilsWebScrappingActionHandler, UtilsWebScrappingActionResult,
-        WebPageResource, WebPageResourcesTracker,
+        WebPageResource, WebPageResources, WebPageResourcesTracker,
     },
     web_security::{
         ContentSecurityPolicy, ContentSecurityPolicyDirective,

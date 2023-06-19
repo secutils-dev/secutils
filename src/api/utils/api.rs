@@ -117,9 +117,9 @@ mod tests {
                         Util {
                             id: 10,
                             handle: "web_scrapping__resources",
-                            name: "Resources scrapper",
+                            name: "Resources trackers",
                             keywords: Some(
-                                "web scrapping crawl spider scrapper resources",
+                                "web scrapping crawl spider scrapper resources tracker track javascript css",
                             ),
                             utils: None,
                         },

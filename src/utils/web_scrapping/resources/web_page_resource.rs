@@ -3,8 +3,11 @@ use url::Url;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WebPageResource {
-    #[serde(rename = "u")]
     pub url: Url,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<usize>,
 }
 
 #[cfg(test)]
@@ -18,9 +21,23 @@ mod tests {
     fn serialization() -> anyhow::Result<()> {
         assert_json_snapshot!(WebPageResource {
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
+            digest: Some("some-digest".to_string()),
+            size: Some(123)
         }, @r###"
         {
-          "u": "http://localhost:1234/my/app?q=2"
+          "url": "http://localhost:1234/my/app?q=2",
+          "digest": "some-digest",
+          "size": 123
+        }
+        "###);
+
+        assert_json_snapshot!(WebPageResource {
+            url: Url::parse("http://localhost:1234/my/app?q=2")?,
+            digest: None,
+            size: None
+        }, @r###"
+        {
+          "url": "http://localhost:1234/my/app?q=2"
         }
         "###);
 
@@ -31,19 +48,24 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<WebPageResource>(
-                &json!({ "u": "https://localhost:1234/my/app?q=2" }).to_string()
+                &json!({ "url": "https://localhost:1234/my/app?q=2", "digest": "some-digest", "size": 123 }).to_string()
             )?,
             WebPageResource {
                 url: Url::parse("https://localhost:1234/my/app?q=2")?,
+                digest: Some("some-digest".to_string()),
+                size: Some(123)
             }
         );
 
         assert_eq!(
             serde_json::from_str::<WebPageResource>(
-                &json!({ "u": "https://username:password@localhost:1234/my/app?q=2" }).to_string()
+                &json!({ "url": "https://username:password@localhost:1234/my/app?q=2" })
+                    .to_string()
             )?,
             WebPageResource {
                 url: Url::parse("https://username:password@localhost:1234/my/app?q=2")?,
+                digest: None,
+                size: None
             }
         );
 

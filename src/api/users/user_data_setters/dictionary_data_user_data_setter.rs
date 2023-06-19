@@ -45,25 +45,13 @@ impl DictionaryDataUserDataSetter {
 mod tests {
     use crate::{
         api::users::{DictionaryDataUserDataSetter, UserDataSetter},
-        authentication::StoredCredentials,
         datastore::PrimaryDb,
-        tests::{mock_db, MockUserBuilder},
-        users::{PublicUserDataNamespace, User, UserData, UserId},
+        tests::{mock_db, mock_user},
+        users::{PublicUserDataNamespace, User, UserData},
     };
     use serde_json::json;
     use std::collections::BTreeMap;
     use time::OffsetDateTime;
-
-    fn create_mock_user() -> User {
-        MockUserBuilder::new(
-            UserId(1),
-            "dev@secutils.dev",
-            "dev-handle",
-            StoredCredentials::try_from_password("pass").unwrap(),
-            OffsetDateTime::now_utc(),
-        )
-        .build()
-    }
 
     async fn initialize_mock_db(user: &User) -> anyhow::Result<PrimaryDb> {
         let db = mock_db().await?;
@@ -72,7 +60,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn can_merge_data() -> anyhow::Result<()> {
-        let mock_user = create_mock_user();
+        let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
         let user_data_setter = UserDataSetter::new(mock_user.id, &mock_db);
 

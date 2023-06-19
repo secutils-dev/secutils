@@ -8,10 +8,9 @@ Content-Type: application/json
   "action": {
     "type": "webScrapping",
     "value": {
-      "type": "trackWebPageResources",
-      "value": { "trackerName": "test" }
+      "type": "fetchWebPageResources",
+      "value": { "trackerName": "test", "refresh": false }
     }
   }
 }
 
-###

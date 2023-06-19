@@ -13,6 +13,8 @@ use webauthn_rs::Webauthn;
 
 use crate::{datastore::Datastore, Config};
 
+pub(crate) use self::users::{DictionaryDataUserDataSetter, UserDataSetter};
+
 pub struct Api {
     pub datastore: Datastore,
     pub config: Config,

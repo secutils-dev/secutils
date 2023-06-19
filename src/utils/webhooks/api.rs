@@ -105,30 +105,15 @@ impl Api {
 #[cfg(test)]
 mod tests {
     use crate::{
-        authentication::StoredCredentials,
         datastore::PrimaryDb,
-        tests::{mock_db, MockUserBuilder},
-        users::{User, UserId},
+        tests::{mock_db, mock_user},
+        users::User,
         utils::{
             webhooks::AutoRespondersApi, AutoResponder, AutoResponderMethod, AutoResponderRequest,
         },
     };
     use std::borrow::Cow;
     use time::OffsetDateTime;
-
-    fn create_mock_user() -> User {
-        MockUserBuilder::new(
-            UserId(1),
-            "dev@secutils.dev",
-            "dev-handle",
-            StoredCredentials {
-                password_hash: Some("hash".to_string()),
-                ..Default::default()
-            },
-            OffsetDateTime::now_utc(),
-        )
-        .build()
-    }
 
     async fn initialize_mock_db(user: &User) -> anyhow::Result<PrimaryDb> {
         let db = mock_db().await?;
@@ -137,7 +122,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn properly_tracks_requests() -> anyhow::Result<()> {
-        let mock_user = create_mock_user();
+        let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
         let api = AutoRespondersApi::new(&mock_db);
         let auto_responder = AutoResponder {

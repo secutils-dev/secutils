@@ -13,7 +13,7 @@ use crate::{
         BuiltinUser, InternalUserDataNamespace, PublicUserDataNamespace, User, UserData,
         UserDataKey, UserDataNamespace, UserId, UserSettingsSetter,
     },
-    utils::{AutoResponder, ContentSecurityPolicy, SelfSignedCertificate, WebPageResourcesTracker},
+    utils::{AutoResponder, ContentSecurityPolicy, SelfSignedCertificate},
 };
 use anyhow::{anyhow, bail, Context};
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
@@ -516,14 +516,14 @@ impl<'a> UsersApi<'a> {
                 PublicUserDataNamespace::ContentSecurityPolicies => {
                     Self::set_content_security_policies_data(&user_data_setter, user_data).await
                 }
-                PublicUserDataNamespace::WebPageResourcesTrackers => {
-                    Self::set_web_page_resources_trackers_data(&user_data_setter, user_data).await
-                }
                 PublicUserDataNamespace::SelfSignedCertificates => {
                     Self::set_self_signed_certificates_data(&user_data_setter, user_data).await
                 }
                 PublicUserDataNamespace::UserSettings => {
                     Self::set_user_settings_data(&user_data_setter, user_data).await
+                }
+                namespace => {
+                    bail!("Namespace is not supported: {}.", namespace.as_ref())
                 }
             },
             UserDataNamespace::Internal(_) => {
@@ -798,26 +798,6 @@ impl<'a> UsersApi<'a> {
         .await
     }
 
-    async fn set_web_page_resources_trackers_data(
-        user_data_setter: &UserDataSetter<'_>,
-        serialized_user_data: UserData<Vec<u8>>,
-    ) -> anyhow::Result<()> {
-        DictionaryDataUserDataSetter::upsert(
-            user_data_setter,
-            PublicUserDataNamespace::WebPageResourcesTrackers,
-            UserData::new(
-                serde_json::from_slice::<BTreeMap<String, Option<WebPageResourcesTracker>>>(
-                    &serialized_user_data.value,
-                )
-                .with_context(|| {
-                    "Cannot deserialize new web page resources trackers data".to_string()
-                })?,
-                serialized_user_data.timestamp,
-            ),
-        )
-        .await
-    }
-
     async fn set_self_signed_certificates_data(
         user_data_setter: &UserDataSetter<'_>,
         serialized_user_data: UserData<Vec<u8>>,
@@ -908,27 +888,16 @@ impl<'a> UsersApi<'a> {
 mod tests {
     use crate::{
         api::{EmailsApi, UsersApi},
-        authentication::{create_webauthn, StoredCredentials},
+        authentication::create_webauthn,
         config::{ComponentsConfig, Config},
         datastore::PrimaryDb,
-        tests::{mock_db, MockUserBuilder},
-        users::{PublicUserDataNamespace, User, UserData, UserId},
+        tests::{mock_db, mock_user},
+        users::{PublicUserDataNamespace, User, UserData},
         utils::{AutoResponder, AutoResponderMethod, AutoResponderRequest},
     };
     use std::{borrow::Cow, collections::BTreeMap};
     use time::OffsetDateTime;
     use url::Url;
-
-    fn create_mock_user() -> User {
-        MockUserBuilder::new(
-            UserId(1),
-            "dev@secutils.dev",
-            "dev-handle",
-            StoredCredentials::try_from_password("password").unwrap(),
-            OffsetDateTime::now_utc(),
-        )
-        .build()
-    }
 
     fn create_mock_config() -> anyhow::Result<Config> {
         Ok(Config {
@@ -951,7 +920,7 @@ mod tests {
     #[actix_rt::test]
     async fn can_update_auto_responders() -> anyhow::Result<()> {
         let mock_config = create_mock_config()?;
-        let mock_user = create_mock_user();
+        let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
         let mock_webauthn = create_webauthn(&mock_config)?;
         let api = UsersApi::new(

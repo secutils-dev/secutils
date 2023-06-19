@@ -287,6 +287,20 @@ mod tests {
         PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await
     }
 
+    pub fn mock_user() -> User {
+        MockUserBuilder::new(
+            UserId(1),
+            "dev@secutils.dev",
+            "dev-handle",
+            StoredCredentials {
+                password_hash: Some("hash".to_string()),
+                ..Default::default()
+            },
+            OffsetDateTime::now_utc(),
+        )
+        .build()
+    }
+
     pub mod webauthn {
         pub const SERIALIZED_PASSKEY: &str = r#"{
           "cred": {
