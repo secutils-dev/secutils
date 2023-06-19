@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.2
 
-FROM --platform=$BUILDPLATFORM rust:alpine3.17 as SERVER_BUILDER
+FROM --platform=$BUILDPLATFORM rust:alpine3.18 as SERVER_BUILDER
 ARG TARGETPLATFORM
 
 ## Statically link binary to OpenSSL libraries.
@@ -16,8 +16,8 @@ RUN set -x && apk add --no-cache pkgconfig musl-dev openssl-dev perl make curl
 # Prepare environment: for cross compilation we download toolchain and `aarch64` OpenSSL libs.
 RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; \
     then set -x && \
-        curl --remote-name-all https://musl.cc/aarch64-linux-musl-cross.tgz https://dl-cdn.alpinelinux.org/alpine/v3.17/main/aarch64/openssl-libs-static-3.0.8-r4.apk && \
-        apk add --allow-untrusted openssl-libs-static-3.0.8-r4.apk && \
+        curl --remote-name-all https://musl.cc/aarch64-linux-musl-cross.tgz https://dl-cdn.alpinelinux.org/alpine/v3.18/main/aarch64/openssl-libs-static-3.1.1-r1.apk && \
+        apk add --allow-untrusted openssl-libs-static-3.1.1-r1.apk && \
         tar xzf ./aarch64-linux-musl-cross.tgz && \
         rustup target add aarch64-unknown-linux-musl; \
     else set -x && \
@@ -40,7 +40,7 @@ RUN --mount=type=cache,target=/app/target if [ "$TARGETPLATFORM" = "linux/arm64"
         cp ./target/release/secutils ./; \
     fi
 
-FROM alpine:3.17
+FROM alpine:3.18
 WORKDIR /app
 COPY --from=SERVER_BUILDER ["/app/secutils", "./"]
 CMD [ "./secutils" ]
