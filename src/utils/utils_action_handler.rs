@@ -3,7 +3,7 @@ use crate::{
     users::User,
     utils::{
         UtilsAction, UtilsActionResult, UtilsCertificatesActionHandler,
-        UtilsWebScrappingActionHandler, UtilsWebSecurityActionHandler, UtilsWebhooksActionHandler,
+        UtilsWebScrapingActionHandler, UtilsWebSecurityActionHandler, UtilsWebhooksActionHandler,
     },
 };
 
@@ -23,10 +23,10 @@ impl UtilsActionHandler {
             UtilsAction::Webhooks(action) => UtilsWebhooksActionHandler::handle(user, api, action)
                 .await
                 .map(UtilsActionResult::Webhooks),
-            UtilsAction::WebScrapping(action) => {
-                UtilsWebScrappingActionHandler::handle(user, api, action)
+            UtilsAction::WebScraping(action) => {
+                UtilsWebScrapingActionHandler::handle(user, api, action)
                     .await
-                    .map(UtilsActionResult::WebScrapping)
+                    .map(UtilsActionResult::WebScraping)
             }
             UtilsAction::WebSecurity(action) => {
                 UtilsWebSecurityActionHandler::handle(user, api, action)

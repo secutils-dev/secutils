@@ -11,7 +11,7 @@ The main goal of this project is to provide application security engineers with 
 * Built by application security engineer for application security engineers
 * Carefully selected utilities that are commonly used in daily work
 * Guided experience for complex security concepts
-* Request bin, CSP builder, certificate generator, web scrapper and more
+* Request bin, CSP builder, certificate generator, web scraper and more
 * Intuitive and customizable user interface
 
 ## Getting started

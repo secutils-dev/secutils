@@ -1,6 +1,14 @@
+-- Change "Web Scrapping" to "Web Scraping".
+UPDATE utils
+SET name = 'Web Scraping',
+    handle = 'web_scraping'
+WHERE
+    id = 9;
+
 -- Change "Resources scrapper" to "Resources trackers".
 UPDATE utils
 SET name = 'Resources trackers',
-    keywords = 'web scrapping crawl spider scrapper resources tracker track javascript css'
+    keywords = 'web scraping crawl spider scraper scrape resources tracker track javascript css',
+    handle = 'web_scraping__resources'
 WHERE
-    handle = 'web_scrapping__resources'
+    id = 10

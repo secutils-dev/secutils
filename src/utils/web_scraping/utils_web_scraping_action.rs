@@ -4,7 +4,7 @@ use serde::Deserialize;
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "type", content = "value")]
-pub enum UtilsWebScrappingAction {
+pub enum UtilsWebScrapingAction {
     #[serde(rename_all = "camelCase")]
     FetchWebPageResources {
         tracker_name: String,
@@ -21,13 +21,13 @@ pub enum UtilsWebScrappingAction {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{UtilsWebScrappingAction, WebPageResourcesTracker};
+    use crate::utils::{UtilsWebScrapingAction, WebPageResourcesTracker};
     use url::Url;
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<UtilsWebScrappingAction>(
+            serde_json::from_str::<UtilsWebScrapingAction>(
                 r###"
     {
         "type": "fetchWebPageResources",
@@ -35,14 +35,14 @@ mod tests {
     }
               "###
             )?,
-            UtilsWebScrappingAction::FetchWebPageResources {
+            UtilsWebScrapingAction::FetchWebPageResources {
                 tracker_name: "tracker".to_string(),
                 refresh: false
             }
         );
 
         assert_eq!(
-            serde_json::from_str::<UtilsWebScrappingAction>(
+            serde_json::from_str::<UtilsWebScrapingAction>(
                 r###"
     {
         "type": "fetchWebPageResources",
@@ -50,14 +50,14 @@ mod tests {
     }
               "###
             )?,
-            UtilsWebScrappingAction::FetchWebPageResources {
+            UtilsWebScrapingAction::FetchWebPageResources {
                 tracker_name: "tracker".to_string(),
                 refresh: true
             }
         );
 
         assert_eq!(
-            serde_json::from_str::<UtilsWebScrappingAction>(
+            serde_json::from_str::<UtilsWebScrapingAction>(
                 r###"
     {
         "type": "removeWebPageResources",
@@ -65,13 +65,13 @@ mod tests {
     }
               "###
             )?,
-            UtilsWebScrappingAction::RemoveWebPageResources {
+            UtilsWebScrapingAction::RemoveWebPageResources {
                 tracker_name: "tracker".to_string(),
             }
         );
 
         assert_eq!(
-            serde_json::from_str::<UtilsWebScrappingAction>(
+            serde_json::from_str::<UtilsWebScrapingAction>(
                 r###"
     {
         "type": "saveWebPageResourcesTracker",
@@ -79,7 +79,7 @@ mod tests {
     }
               "###
             )?,
-            UtilsWebScrappingAction::SaveWebPageResourcesTracker {
+            UtilsWebScrapingAction::SaveWebPageResourcesTracker {
                 tracker: WebPageResourcesTracker {
                     name: "some-name".to_string(),
                     url: Url::parse("http://localhost:1234/my/app?q=2")?,
@@ -89,7 +89,7 @@ mod tests {
         );
 
         assert_eq!(
-            serde_json::from_str::<UtilsWebScrappingAction>(
+            serde_json::from_str::<UtilsWebScrapingAction>(
                 r###"
     {
         "type": "removeWebPageResourcesTracker",
@@ -97,7 +97,7 @@ mod tests {
     }
               "###
             )?,
-            UtilsWebScrappingAction::RemoveWebPageResourcesTracker {
+            UtilsWebScrapingAction::RemoveWebPageResourcesTracker {
                 tracker_name: "tracker".to_string(),
             }
         );

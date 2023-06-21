@@ -2,33 +2,33 @@ use serde::Deserialize;
 use time::OffsetDateTime;
 use url::Url;
 
-/// Represents response with scrapped resources.
+/// Represents response with scraped resources.
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct WebScrapperResourcesResponse {
+pub struct WebScraperResourcesResponse {
     /// Timestamp indicating when resources were fetched.
     #[serde(with = "time::serde::timestamp")]
     pub timestamp: OffsetDateTime,
     /// List of JavaScript resources.
-    pub scripts: WebScrapperResourceBundle,
+    pub scripts: WebScraperResourceBundle,
     /// List of CSS resources.
-    pub styles: WebScrapperResourceBundle,
+    pub styles: WebScraperResourceBundle,
 }
 
 /// Represents both external and inline resources of a particular type.
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct WebScrapperResourceBundle {
+pub struct WebScraperResourceBundle {
     /// List of external resources.
-    pub external: Vec<WebScrapperResource>,
+    pub external: Vec<WebScraperResource>,
     /// List of inline resources.
-    pub inline: Vec<WebScrapperResource>,
+    pub inline: Vec<WebScraperResource>,
 }
 
 /// Describes either external or inline resource.
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct WebScrapperResource {
+pub struct WebScraperResource {
     /// The URL resources is loaded from.
     pub url: Option<Url>,
     /// SHA256 digest of the external resource content, if available.
@@ -39,14 +39,14 @@ pub struct WebScrapperResource {
 
 #[cfg(test)]
 mod tests {
-    use super::{WebScrapperResource, WebScrapperResourceBundle, WebScrapperResourcesResponse};
+    use super::{WebScraperResource, WebScraperResourceBundle, WebScraperResourcesResponse};
     use time::OffsetDateTime;
     use url::Url;
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<WebScrapperResourcesResponse>(
+            serde_json::from_str::<WebScraperResourcesResponse>(
                 r###"
 {
     "timestamp": 946720800,
@@ -61,28 +61,28 @@ mod tests {
 }
           "###
             )?,
-            WebScrapperResourcesResponse {
+            WebScraperResourcesResponse {
                 // January 1, 2000 11:00:00
                 timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
-                scripts: WebScrapperResourceBundle {
-                    external: vec![WebScrapperResource {
+                scripts: WebScraperResourceBundle {
+                    external: vec![WebScraperResource {
                         url: Some(Url::parse("https://secutils.dev/script.js")?),
                         digest: Some("some-digest".to_string()),
                         size: Some(123),
                     }],
-                    inline: vec![WebScrapperResource {
+                    inline: vec![WebScraperResource {
                         url: None,
                         digest: Some("another-digest".to_string()),
                         size: Some(321),
                     }]
                 },
-                styles: WebScrapperResourceBundle {
-                    external: vec![WebScrapperResource {
+                styles: WebScraperResourceBundle {
+                    external: vec![WebScraperResource {
                         url: Some(Url::parse("https://secutils.dev/style.css")?),
                         digest: Some("some-css-digest".to_string()),
                         size: Some(456),
                     }],
-                    inline: vec![WebScrapperResource {
+                    inline: vec![WebScraperResource {
                         url: None,
                         digest: Some("another-css-digest".to_string()),
                         size: Some(654),
@@ -97,7 +97,7 @@ mod tests {
     #[test]
     fn deserialization_without_optional_values() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<WebScrapperResourcesResponse>(
+            serde_json::from_str::<WebScraperResourcesResponse>(
                 r###"
 {
     "timestamp": 946720800,
@@ -112,28 +112,28 @@ mod tests {
 }
           "###
             )?,
-            WebScrapperResourcesResponse {
+            WebScraperResourcesResponse {
                 // January 1, 2000 11:00:00
                 timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
-                scripts: WebScrapperResourceBundle {
-                    external: vec![WebScrapperResource {
+                scripts: WebScraperResourceBundle {
+                    external: vec![WebScraperResource {
                         url: Some(Url::parse("https://secutils.dev/script.js")?),
                         digest: None,
                         size: None,
                     }],
-                    inline: vec![WebScrapperResource {
+                    inline: vec![WebScraperResource {
                         url: None,
                         digest: Some("another-digest".to_string()),
                         size: None,
                     }]
                 },
-                styles: WebScrapperResourceBundle {
-                    external: vec![WebScrapperResource {
+                styles: WebScraperResourceBundle {
+                    external: vec![WebScraperResource {
                         url: Some(Url::parse("https://secutils.dev/style.css")?),
                         digest: None,
                         size: None,
                     }],
-                    inline: vec![WebScrapperResource {
+                    inline: vec![WebScraperResource {
                         url: None,
                         digest: Some("another-css-digest".to_string()),
                         size: None,

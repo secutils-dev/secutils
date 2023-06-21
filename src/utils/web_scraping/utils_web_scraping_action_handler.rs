@@ -2,49 +2,49 @@ use crate::{
     api::Api,
     users::{PublicUserDataNamespace, User, UserId},
     utils::{
-        web_scrapping::resources::{
-            WebScrapperResourceBundle, WebScrapperResourcesRequest, WebScrapperResourcesResponse,
+        web_scraping::resources::{
+            WebScraperResourceBundle, WebScraperResourcesRequest, WebScraperResourcesResponse,
         },
-        UtilsWebScrappingAction, UtilsWebScrappingActionResult, WebPageResource, WebPageResources,
+        UtilsWebScrapingAction, UtilsWebScrapingActionResult, WebPageResource, WebPageResources,
         WebPageResourcesTracker,
     },
 };
 use anyhow::anyhow;
 use std::collections::BTreeMap;
 
-pub struct UtilsWebScrappingActionHandler;
-impl UtilsWebScrappingActionHandler {
+pub struct UtilsWebScrapingActionHandler;
+impl UtilsWebScrapingActionHandler {
     pub async fn handle(
         user: User,
         api: &Api,
-        action: UtilsWebScrappingAction,
-    ) -> anyhow::Result<UtilsWebScrappingActionResult> {
+        action: UtilsWebScrapingAction,
+    ) -> anyhow::Result<UtilsWebScrapingActionResult> {
         match action {
-            UtilsWebScrappingAction::SaveWebPageResourcesTracker { tracker } => {
-                Ok(UtilsWebScrappingActionResult::SaveWebPageResourcesTracker {
+            UtilsWebScrapingAction::SaveWebPageResourcesTracker { tracker } => {
+                Ok(UtilsWebScrapingActionResult::SaveWebPageResourcesTracker {
                     tracker: api
-                        .web_scrapping()
+                        .web_scraping()
                         .save_web_page_resources_tracker(user.id, tracker)
                         .await?,
                 })
             }
-            UtilsWebScrappingAction::RemoveWebPageResourcesTracker { tracker_name } => {
-                api.web_scrapping()
+            UtilsWebScrapingAction::RemoveWebPageResourcesTracker { tracker_name } => {
+                api.web_scraping()
                     .remove_web_page_resources_tracker(user.id, &tracker_name)
                     .await?;
-                Ok(UtilsWebScrappingActionResult::RemoveWebPageResourcesTracker)
+                Ok(UtilsWebScrapingActionResult::RemoveWebPageResourcesTracker)
             }
-            UtilsWebScrappingAction::FetchWebPageResources {
+            UtilsWebScrapingAction::FetchWebPageResources {
                 tracker_name,
                 refresh,
             } => {
                 let tracker = Self::get_tracker(api, user.id, &tracker_name).await?;
 
                 // If tracker is configured to persist resource, and client requests refresh, fetch
-                // resources with the scrapper and persist them.
+                // resources with the scraper and persist them.
                 if tracker.revisions > 0 && refresh {
                     let bundle_to_resources =
-                        |bundle: WebScrapperResourceBundle| -> Vec<WebPageResource> {
+                        |bundle: WebScraperResourceBundle| -> Vec<WebPageResource> {
                             // TODO: Return all resources, not just external ones.
                             bundle
                                 .external
@@ -59,50 +59,50 @@ impl UtilsWebScrappingActionHandler {
                                 .collect()
                         };
 
-                    let scrapper_response = reqwest::Client::new()
+                    let scraper_response = reqwest::Client::new()
                         .post(format!(
                             "{}api/resources",
-                            api.config.components.web_scrapper_url.as_str()
+                            api.config.components.web_scraper_url.as_str()
                         ))
-                        .json(&WebScrapperResourcesRequest::with_default_parameters(
+                        .json(&WebScraperResourcesRequest::with_default_parameters(
                             &tracker.url,
                         ))
                         .send()
                         .await?
-                        .json::<WebScrapperResourcesResponse>()
+                        .json::<WebScraperResourcesResponse>()
                         .await?;
 
-                    api.web_scrapping()
+                    api.web_scraping()
                         .save_web_page_resources(
                             user.id,
                             &tracker,
                             WebPageResources {
-                                timestamp: scrapper_response.timestamp,
-                                scripts: bundle_to_resources(scrapper_response.scripts),
-                                styles: bundle_to_resources(scrapper_response.styles),
+                                timestamp: scraper_response.timestamp,
+                                scripts: bundle_to_resources(scraper_response.scripts),
+                                styles: bundle_to_resources(scraper_response.styles),
                             },
                         )
                         .await?;
                 }
 
                 // Retrieve latest persisted resources.
-                Ok(UtilsWebScrappingActionResult::FetchWebPageResources {
+                Ok(UtilsWebScrapingActionResult::FetchWebPageResources {
                     tracker_name,
                     resources: api
-                        .web_scrapping()
+                        .web_scraping()
                         .get_web_page_resources(user.id, &tracker)
                         .await?,
                 })
             }
-            UtilsWebScrappingAction::RemoveWebPageResources { tracker_name } => {
-                api.web_scrapping()
+            UtilsWebScrapingAction::RemoveWebPageResources { tracker_name } => {
+                api.web_scraping()
                     .remove_tracked_web_page_resources(
                         user.id,
                         &Self::get_tracker(api, user.id, &tracker_name).await?,
                     )
                     .await?;
 
-                Ok(UtilsWebScrappingActionResult::RemoveWebPageResources)
+                Ok(UtilsWebScrapingActionResult::RemoveWebPageResources)
             }
         }
     }

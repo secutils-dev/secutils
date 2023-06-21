@@ -50,12 +50,12 @@ fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Err
                     .with_context(|| "Cannot parse public URL parameter.".to_string())
             })?,
         components: ComponentsConfig {
-            web_scrapper_url: matches
-                .get_one::<String>("COMPONENT_WEB_SCRAPPER_URL")
-                .ok_or_else(|| anyhow!("<COMPONENT_WEB_SCRAPPER_URL> argument is not provided."))
+            web_scraper_url: matches
+                .get_one::<String>("COMPONENT_WEB_SCRAPER_URL")
+                .ok_or_else(|| anyhow!("<COMPONENT_WEB_SCRAPER_URL> argument is not provided."))
                 .and_then(|url| {
                     Url::parse(url)
-                        .with_context(|| "Cannot parse Web Scrapper URL parameter.".to_string())
+                        .with_context(|| "Cannot parse Web Scraper URL parameter.".to_string())
                 })?,
             search_index_version: 1,
         },
@@ -163,12 +163,12 @@ fn main() -> Result<(), anyhow::Error> {
                 .help("External/public URL through which service is being accessed."),
         )
         .arg(
-            Arg::new("COMPONENT_WEB_SCRAPPER_URL")
-                .long("component-web-scrapper-url")
+            Arg::new("COMPONENT_WEB_SCRAPER_URL")
+                .long("component-web-scraper-url")
                 .global(true)
-                .env("SECUTILS_COMPONENT_WEB_SCRAPPER_URL")
+                .env("SECUTILS_COMPONENT_WEB_SCRAPER_URL")
                 .default_value("http://localhost:7272")
-                .help("The URL to access the Web Scrapper component."),
+                .help("The URL to access the Web Scraper component."),
         )
         .get_matches();
 

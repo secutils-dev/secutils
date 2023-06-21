@@ -10,12 +10,12 @@ use std::{
 };
 use time::OffsetDateTime;
 
-pub struct WebScrappingApi<'a> {
+pub struct WebScrapingApi<'a> {
     primary_db: Cow<'a, PrimaryDb>,
 }
 
-impl<'a> WebScrappingApi<'a> {
-    /// Creates WebScrapping API.
+impl<'a> WebScrapingApi<'a> {
+    /// Creates WebScraping API.
     pub fn new(primary_db: &'a PrimaryDb) -> Self {
         Self {
             primary_db: Cow::Borrowed(primary_db),
@@ -172,9 +172,9 @@ impl<'a> WebScrappingApi<'a> {
 }
 
 impl Api {
-    /// Returns an API to work with web scrapping data.
-    pub fn web_scrapping(&self) -> WebScrappingApi {
-        WebScrappingApi::new(&self.datastore.primary_db)
+    /// Returns an API to work with web scraping data.
+    pub fn web_scraping(&self) -> WebScrapingApi {
+        WebScrapingApi::new(&self.datastore.primary_db)
     }
 }
 
@@ -186,7 +186,7 @@ mod tests {
         tests::{mock_db, mock_user},
         users::{PublicUserDataNamespace, User},
         utils::{
-            web_scrapping::WebScrappingApi, WebPageResource, WebPageResources,
+            web_scraping::WebScrapingApi, WebPageResource, WebPageResources,
             WebPageResourcesTracker,
         },
     };
@@ -203,7 +203,7 @@ mod tests {
     async fn properly_saves_new_web_page_resource_trackers() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrappingApi::new(&mock_db);
+        let api = WebScrapingApi::new(&mock_db);
 
         let tracker_one = WebPageResourcesTracker {
             name: "name_one".to_string(),
@@ -257,7 +257,7 @@ mod tests {
     async fn properly_updates_existing_web_page_resource_trackers() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrappingApi::new(&mock_db);
+        let api = WebScrapingApi::new(&mock_db);
 
         let tracker_one = WebPageResourcesTracker {
             name: "name_one".to_string(),
@@ -308,7 +308,7 @@ mod tests {
     async fn properly_removes_web_page_resource_trackers() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrappingApi::new(&mock_db);
+        let api = WebScrapingApi::new(&mock_db);
 
         let tracker_one = WebPageResourcesTracker {
             name: "name_one".to_string(),
@@ -374,7 +374,7 @@ mod tests {
     async fn properly_saves_web_page_resources() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrappingApi::new(&mock_db);
+        let api = WebScrapingApi::new(&mock_db);
 
         let tracker_one = WebPageResourcesTracker {
             name: "name_one".to_string(),
@@ -473,7 +473,7 @@ mod tests {
     async fn properly_removes_web_page_resources() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrappingApi::new(&mock_db);
+        let api = WebScrapingApi::new(&mock_db);
 
         let tracker_one = WebPageResourcesTracker {
             name: "name_one".to_string(),
@@ -573,7 +573,7 @@ mod tests {
     async fn properly_removes_web_page_resources_when_tracker_is_removed() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrappingApi::new(&mock_db);
+        let api = WebScrapingApi::new(&mock_db);
 
         let tracker_one = WebPageResourcesTracker {
             name: "name_one".to_string(),
@@ -664,7 +664,7 @@ mod tests {
     async fn properly_removes_web_page_resources_when_tracker_url_changed() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrappingApi::new(&mock_db);
+        let api = WebScrapingApi::new(&mock_db);
 
         let tracker_one = WebPageResourcesTracker {
             name: "name_one".to_string(),

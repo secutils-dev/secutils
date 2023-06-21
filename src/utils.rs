@@ -3,7 +3,7 @@ mod util;
 mod utils_action;
 mod utils_action_handler;
 mod utils_action_result;
-mod web_scrapping;
+mod web_scraping;
 mod web_security;
 mod webhooks;
 
@@ -17,8 +17,8 @@ pub use self::{
     utils_action::UtilsAction,
     utils_action_handler::UtilsActionHandler,
     utils_action_result::UtilsActionResult,
-    web_scrapping::{
-        UtilsWebScrappingAction, UtilsWebScrappingActionHandler, UtilsWebScrappingActionResult,
+    web_scraping::{
+        UtilsWebScrapingAction, UtilsWebScrapingActionHandler, UtilsWebScrapingActionResult,
         WebPageResource, WebPageResources, WebPageResourcesTracker,
     },
     web_security::{

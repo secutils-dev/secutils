@@ -4,7 +4,7 @@ use serde::Serialize;
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "type", content = "value")]
-pub enum UtilsWebScrappingActionResult {
+pub enum UtilsWebScrapingActionResult {
     #[serde(rename_all = "camelCase")]
     FetchWebPageResources {
         tracker_name: String,
@@ -21,7 +21,7 @@ pub enum UtilsWebScrappingActionResult {
 #[cfg(test)]
 mod tests {
     use crate::utils::{
-        UtilsWebScrappingActionResult, WebPageResource, WebPageResources, WebPageResourcesTracker,
+        UtilsWebScrapingActionResult, WebPageResource, WebPageResources, WebPageResourcesTracker,
     };
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
@@ -43,7 +43,7 @@ mod tests {
             }],
         };
 
-        assert_json_snapshot!(UtilsWebScrappingActionResult::FetchWebPageResources {
+        assert_json_snapshot!(UtilsWebScrapingActionResult::FetchWebPageResources {
             tracker_name: "tracker".to_string(),
             resources: vec![web_page_resources]
         }, @r###"
@@ -72,13 +72,13 @@ mod tests {
         }
         "###);
 
-        assert_json_snapshot!(UtilsWebScrappingActionResult::RemoveWebPageResources, @r###"
+        assert_json_snapshot!(UtilsWebScrapingActionResult::RemoveWebPageResources, @r###"
         {
           "type": "removeWebPageResources"
         }
         "###);
 
-        assert_json_snapshot!(UtilsWebScrappingActionResult::SaveWebPageResourcesTracker {
+        assert_json_snapshot!(UtilsWebScrapingActionResult::SaveWebPageResourcesTracker {
             tracker: WebPageResourcesTracker {
                 name: "some-name".to_string(),
                 url: Url::parse("http://localhost:1234/my/app?q=2")?,
@@ -97,7 +97,7 @@ mod tests {
         }
         "###);
 
-        assert_json_snapshot!(UtilsWebScrappingActionResult::RemoveWebPageResourcesTracker, @r###"
+        assert_json_snapshot!(UtilsWebScrapingActionResult::RemoveWebPageResourcesTracker, @r###"
         {
           "type": "removeWebPageResourcesTracker"
         }

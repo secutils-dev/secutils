@@ -109,17 +109,17 @@ mod tests {
             },
             Util {
                 id: 9,
-                handle: "web_scrapping",
-                name: "Web Scrapping",
+                handle: "web_scraping",
+                name: "Web Scraping",
                 keywords: None,
                 utils: Some(
                     [
                         Util {
                             id: 10,
-                            handle: "web_scrapping__resources",
+                            handle: "web_scraping__resources",
                             name: "Resources trackers",
                             keywords: Some(
-                                "web scrapping crawl spider scrapper resources tracker track javascript css",
+                                "web scraping crawl spider scraper scrape resources tracker track javascript css",
                             ),
                             utils: None,
                         },

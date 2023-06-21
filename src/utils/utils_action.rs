@@ -1,5 +1,5 @@
 use crate::utils::{
-    UtilsCertificatesAction, UtilsWebScrappingAction, UtilsWebSecurityAction, UtilsWebhooksAction,
+    UtilsCertificatesAction, UtilsWebScrapingAction, UtilsWebSecurityAction, UtilsWebhooksAction,
 };
 use serde::Deserialize;
 
@@ -9,6 +9,6 @@ use serde::Deserialize;
 pub enum UtilsAction {
     Certificates(UtilsCertificatesAction),
     Webhooks(UtilsWebhooksAction),
-    WebScrapping(UtilsWebScrappingAction),
+    WebScraping(UtilsWebScrapingAction),
     WebSecurity(UtilsWebSecurityAction),
 }

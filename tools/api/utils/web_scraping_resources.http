@@ -6,7 +6,7 @@ Content-Type: application/json
 
 {
   "action": {
-    "type": "webScrapping",
+    "type": "webScraping",
     "value": {
       "type": "fetchWebPageResources",
       "value": { "trackerName": "test", "refresh": false }
