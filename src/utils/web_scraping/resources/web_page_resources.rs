@@ -28,12 +28,12 @@ mod tests {
                 946720800,
             )?,
             scripts: vec![WebPageResource {
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
+            url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
             digest: Some("some-digest".to_string()),
             size: Some(123)
         }],
             styles: vec![WebPageResource {
-            url: Url::parse("http://localhost:1234/my/app.css?q=2")?,
+            url: Some(Url::parse("http://localhost:1234/my/app.css?q=2")?),
             digest: Some("another-digest".to_string()),
             size: Some(321)
         }]
@@ -74,12 +74,12 @@ mod tests {
             WebPageResources {
                 timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
                 scripts: vec![WebPageResource {
-                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
+                    url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
                     digest: None,
                     size: None
                 }],
                 styles: vec![WebPageResource {
-                    url: Url::parse("http://localhost:1234/my/app.css?q=2")?,
+                    url: Some(Url::parse("http://localhost:1234/my/app.css?q=2")?),
                     digest: None,
                     size: None
                 }]

@@ -3,7 +3,7 @@ use crate::{
     users::{PublicUserDataNamespace, User, UserId},
     utils::{
         web_scraping::resources::{
-            WebScraperResourceBundle, WebScraperResourcesRequest, WebScraperResourcesResponse,
+            WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesResponse,
         },
         UtilsWebScrapingAction, UtilsWebScrapingActionResult, WebPageResource, WebPageResources,
         WebPageResourcesTracker,
@@ -43,18 +43,14 @@ impl UtilsWebScrapingActionHandler {
                 // If tracker is configured to persist resource, and client requests refresh, fetch
                 // resources with the scraper and persist them.
                 if tracker.revisions > 0 && refresh {
-                    let bundle_to_resources =
-                        |bundle: WebScraperResourceBundle| -> Vec<WebPageResource> {
-                            // TODO: Return all resources, not just external ones.
-                            bundle
-                                .external
+                    let convert_to_web_page_resources =
+                        |resources: Vec<WebScraperResource>| -> Vec<WebPageResource> {
+                            resources
                                 .into_iter()
-                                .filter_map(|resource| {
-                                    Some(WebPageResource {
-                                        url: resource.url?,
-                                        digest: resource.digest,
-                                        size: resource.size,
-                                    })
+                                .map(|resource| WebPageResource {
+                                    url: resource.url,
+                                    digest: resource.digest,
+                                    size: resource.size,
                                 })
                                 .collect()
                         };
@@ -78,8 +74,8 @@ impl UtilsWebScrapingActionHandler {
                             &tracker,
                             WebPageResources {
                                 timestamp: scraper_response.timestamp,
-                                scripts: bundle_to_resources(scraper_response.scripts),
-                                styles: bundle_to_resources(scraper_response.styles),
+                                scripts: convert_to_web_page_resources(scraper_response.scripts),
+                                styles: convert_to_web_page_resources(scraper_response.styles),
                             },
                         )
                         .await?;

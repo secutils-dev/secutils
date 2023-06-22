@@ -9,7 +9,5 @@ pub use self::{
     web_page_resources::WebPageResources,
     web_page_resources_tracker::WebPageResourcesTracker,
     web_scraper_resources_request::WebScraperResourcesRequest,
-    web_scraper_resources_response::{
-        WebScraperResource, WebScraperResourceBundle, WebScraperResourcesResponse,
-    },
+    web_scraper_resources_response::{WebScraperResource, WebScraperResourcesResponse},
 };

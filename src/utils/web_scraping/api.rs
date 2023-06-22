@@ -403,7 +403,7 @@ mod tests {
         let resources_one = WebPageResources {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![WebPageResource {
-                url: Url::parse("http://localhost:1234/my/app?q=2")?,
+                url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
                 digest: None,
                 size: None,
             }],
@@ -425,7 +425,7 @@ mod tests {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![],
             styles: vec![WebPageResource {
-                url: Url::parse("http://localhost:1234/my/app?q=2")?,
+                url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
                 digest: None,
                 size: None,
             }],
@@ -449,7 +449,7 @@ mod tests {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![],
             styles: vec![WebPageResource {
-                url: Url::parse("http://localhost:4321/my/app?q=2")?,
+                url: Some(Url::parse("http://localhost:4321/my/app?q=2")?),
                 digest: None,
                 size: Some(345),
             }],
@@ -502,7 +502,7 @@ mod tests {
         let resources_one = WebPageResources {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![WebPageResource {
-                url: Url::parse("http://localhost:1234/my/app?q=2")?,
+                url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
                 digest: None,
                 size: None,
             }],
@@ -512,7 +512,7 @@ mod tests {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![],
             styles: vec![WebPageResource {
-                url: Url::parse("http://localhost:1234/my/app?q=2")?,
+                url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
                 digest: None,
                 size: None,
             }],
@@ -521,7 +521,7 @@ mod tests {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![],
             styles: vec![WebPageResource {
-                url: Url::parse("http://localhost:4321/my/app?q=2")?,
+                url: Some(Url::parse("http://localhost:4321/my/app?q=2")?),
                 digest: None,
                 size: Some(345),
             }],
@@ -593,7 +593,7 @@ mod tests {
         let resources_one = WebPageResources {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![WebPageResource {
-                url: Url::parse("http://localhost:1234/my/app?q=2")?,
+                url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
                 digest: None,
                 size: None,
             }],
@@ -603,7 +603,7 @@ mod tests {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![],
             styles: vec![WebPageResource {
-                url: Url::parse("http://localhost:1234/my/app?q=2")?,
+                url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
                 digest: None,
                 size: None,
             }],
@@ -612,7 +612,7 @@ mod tests {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![],
             styles: vec![WebPageResource {
-                url: Url::parse("http://localhost:4321/my/app?q=2")?,
+                url: Some(Url::parse("http://localhost:4321/my/app?q=2")?),
                 digest: None,
                 size: Some(345),
             }],
@@ -684,7 +684,7 @@ mod tests {
         let resources_one = WebPageResources {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![WebPageResource {
-                url: Url::parse("http://localhost:1234/my/app?q=2")?,
+                url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
                 digest: None,
                 size: None,
             }],
@@ -694,7 +694,7 @@ mod tests {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![],
             styles: vec![WebPageResource {
-                url: Url::parse("http://localhost:1234/my/app?q=2")?,
+                url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
                 digest: None,
                 size: None,
             }],
@@ -703,7 +703,7 @@ mod tests {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![],
             styles: vec![WebPageResource {
-                url: Url::parse("http://localhost:4321/my/app?q=2")?,
+                url: Some(Url::parse("http://localhost:4321/my/app?q=2")?),
                 digest: None,
                 size: Some(345),
             }],

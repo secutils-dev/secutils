@@ -32,12 +32,12 @@ mod tests {
         let web_page_resources = WebPageResources {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![WebPageResource {
-                url: Url::parse("http://localhost:1234/script.js")?,
+                url: Some(Url::parse("http://localhost:1234/script.js")?),
                 digest: Some("some-digest".to_string()),
                 size: Some(123),
             }],
             styles: vec![WebPageResource {
-                url: Url::parse("http://localhost:1234/style.css?fonts=2")?,
+                url: Some(Url::parse("http://localhost:1234/style.css?fonts=2")?),
                 digest: None,
                 size: None,
             }],
