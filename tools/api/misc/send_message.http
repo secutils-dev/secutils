@@ -5,5 +5,5 @@ Content-Type: application/json
 
 {
   "message": "message",
-  "email": "hello@secutils.dev"
+  "email": "dev@secutils.dev"
 }
