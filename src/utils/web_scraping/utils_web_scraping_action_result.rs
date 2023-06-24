@@ -21,7 +21,8 @@ pub enum UtilsWebScrapingActionResult {
 #[cfg(test)]
 mod tests {
     use crate::utils::{
-        UtilsWebScrapingActionResult, WebPageResource, WebPageResources, WebPageResourcesTracker,
+        UtilsWebScrapingActionResult, WebPageResource, WebPageResourceContent, WebPageResources,
+        WebPageResourcesTracker,
     };
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
@@ -33,13 +34,14 @@ mod tests {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/script.js")?),
-                digest: Some("some-digest".to_string()),
-                size: Some(123),
+                content: Some(WebPageResourceContent {
+                    digest: "some-digest".to_string(),
+                    size: 123,
+                }),
             }],
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/style.css?fonts=2")?),
-                digest: None,
-                size: None,
+                content: None,
             }],
         };
 
@@ -57,8 +59,10 @@ mod tests {
                 "scripts": [
                   {
                     "url": "http://localhost:1234/script.js",
-                    "digest": "some-digest",
-                    "size": 123
+                    "content": {
+                      "digest": "some-digest",
+                      "size": 123
+                    }
                   }
                 ],
                 "styles": [

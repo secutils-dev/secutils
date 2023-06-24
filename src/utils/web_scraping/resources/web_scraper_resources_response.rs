@@ -1,3 +1,4 @@
+use crate::utils::{WebPageResource, WebPageResourceContent};
 use serde::Deserialize;
 use time::OffsetDateTime;
 use url::Url;
@@ -21,15 +22,41 @@ pub struct WebScraperResourcesResponse {
 pub struct WebScraperResource {
     /// The URL resources is loaded from.
     pub url: Option<Url>,
-    /// SHA256 digest of the external resource content, if available.
-    pub digest: Option<String>,
-    /// Size of the inline resource content, if available, in bytes.
-    pub size: Option<usize>,
+    /// Resource content descriptor (size, digest etc.), if available.
+    pub content: Option<WebScraperResourceContent>,
+}
+
+impl From<WebScraperResource> for WebPageResource {
+    fn from(value: WebScraperResource) -> Self {
+        Self {
+            url: value.url,
+            content: value.content.map(Into::into),
+        }
+    }
+}
+
+/// Describes resource content.
+#[derive(Deserialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WebScraperResourceContent {
+    /// SHA256 digest of the external resource content.
+    pub digest: String,
+    /// Size of the inline resource content, in bytes.
+    pub size: usize,
+}
+
+impl From<WebScraperResourceContent> for WebPageResourceContent {
+    fn from(value: WebScraperResourceContent) -> Self {
+        Self {
+            digest: value.digest,
+            size: value.size,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{WebScraperResource, WebScraperResourcesResponse};
+    use super::{WebScraperResource, WebScraperResourceContent, WebScraperResourcesResponse};
     use time::OffsetDateTime;
     use url::Url;
 
@@ -41,12 +68,12 @@ mod tests {
 {
     "timestamp": 946720800,
     "scripts": [
-        { "url": "https://secutils.dev/script.js", "digest": "some-digest", "size": 123 },
-        { "digest": "another-digest", "size": 321 }
+        { "url": "https://secutils.dev/script.js", "content": { "digest": "some-digest", "size": 123 } },
+        { "content": { "digest": "another-digest", "size": 321 } }
     ],
     "styles": [
-        { "url": "https://secutils.dev/style.css", "digest": "some-css-digest", "size": 456 },
-        { "digest": "another-css-digest", "size": 654 }
+        { "url": "https://secutils.dev/style.css", "content": { "digest": "some-css-digest", "size": 456 } },
+        { "content": { "digest": "another-css-digest", "size": 654 } }
     ]
 }
           "###
@@ -57,25 +84,33 @@ mod tests {
                 scripts: vec![
                     WebScraperResource {
                         url: Some(Url::parse("https://secutils.dev/script.js")?),
-                        digest: Some("some-digest".to_string()),
-                        size: Some(123),
+                        content: Some(WebScraperResourceContent {
+                            digest: "some-digest".to_string(),
+                            size: 123,
+                        })
                     },
                     WebScraperResource {
                         url: None,
-                        digest: Some("another-digest".to_string()),
-                        size: Some(321),
+                        content: Some(WebScraperResourceContent {
+                            digest: "another-digest".to_string(),
+                            size: 321,
+                        })
                     }
                 ],
                 styles: vec![
                     WebScraperResource {
                         url: Some(Url::parse("https://secutils.dev/style.css")?),
-                        digest: Some("some-css-digest".to_string()),
-                        size: Some(456),
+                        content: Some(WebScraperResourceContent {
+                            digest: "some-css-digest".to_string(),
+                            size: 456,
+                        })
                     },
                     WebScraperResource {
                         url: None,
-                        digest: Some("another-css-digest".to_string()),
-                        size: Some(654),
+                        content: Some(WebScraperResourceContent {
+                            digest: "another-css-digest".to_string(),
+                            size: 654,
+                        })
                     }
                 ],
             }
@@ -93,11 +128,11 @@ mod tests {
     "timestamp": 946720800,
     "scripts": [
         { "url": "https://secutils.dev/script.js" },
-        { "digest": "another-digest" }
+        { "content": { "digest": "another-digest", "size": 123 } }
     ],
     "styles": [
         { "url": "https://secutils.dev/style.css" },
-        { "digest": "another-css-digest" }
+        { "content": { "digest": "another-css-digest", "size": 321 } }
     ]
 }
           "###
@@ -108,25 +143,27 @@ mod tests {
                 scripts: vec![
                     WebScraperResource {
                         url: Some(Url::parse("https://secutils.dev/script.js")?),
-                        digest: None,
-                        size: None,
+                        content: None
                     },
                     WebScraperResource {
                         url: None,
-                        digest: Some("another-digest".to_string()),
-                        size: None,
+                        content: Some(WebScraperResourceContent {
+                            digest: "another-digest".to_string(),
+                            size: 123,
+                        })
                     }
                 ],
                 styles: vec![
                     WebScraperResource {
                         url: Some(Url::parse("https://secutils.dev/style.css")?),
-                        digest: None,
-                        size: None,
+                        content: None
                     },
                     WebScraperResource {
                         url: None,
-                        digest: Some("another-css-digest".to_string()),
-                        size: None,
+                        content: Some(WebScraperResourceContent {
+                            digest: "another-css-digest".to_string(),
+                            size: 321,
+                        }),
                     }
                 ],
             }

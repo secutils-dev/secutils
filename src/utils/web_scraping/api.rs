@@ -186,8 +186,8 @@ mod tests {
         tests::{mock_db, mock_user},
         users::{PublicUserDataNamespace, User},
         utils::{
-            web_scraping::WebScrapingApi, WebPageResource, WebPageResources,
-            WebPageResourcesTracker,
+            web_scraping::WebScrapingApi, WebPageResource, WebPageResourceContent,
+            WebPageResources, WebPageResourcesTracker,
         },
     };
     use std::collections::HashMap;
@@ -404,8 +404,7 @@ mod tests {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
-                digest: None,
-                size: None,
+                content: None,
             }],
             styles: vec![],
         };
@@ -426,8 +425,7 @@ mod tests {
             scripts: vec![],
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
-                digest: None,
-                size: None,
+                content: None,
             }],
         };
         api.save_web_page_resources(mock_user.id, &tracker_one, resources_two.clone())
@@ -450,8 +448,10 @@ mod tests {
             scripts: vec![],
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:4321/my/app?q=2")?),
-                digest: None,
-                size: Some(345),
+                content: Some(WebPageResourceContent {
+                    digest: "some-digest".to_string(),
+                    size: 345,
+                }),
             }],
         };
         api.save_web_page_resources(mock_user.id, &tracker_two, resources_three.clone())
@@ -503,8 +503,7 @@ mod tests {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
-                digest: None,
-                size: None,
+                content: None,
             }],
             styles: vec![],
         };
@@ -513,8 +512,7 @@ mod tests {
             scripts: vec![],
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
-                digest: None,
-                size: None,
+                content: None,
             }],
         };
         let resources_three = WebPageResources {
@@ -522,8 +520,10 @@ mod tests {
             scripts: vec![],
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:4321/my/app?q=2")?),
-                digest: None,
-                size: Some(345),
+                content: Some(WebPageResourceContent {
+                    digest: "some-digest".to_string(),
+                    size: 345,
+                }),
             }],
         };
         api.save_web_page_resources(mock_user.id, &tracker_one, resources_one.clone())
@@ -594,8 +594,7 @@ mod tests {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
-                digest: None,
-                size: None,
+                content: None,
             }],
             styles: vec![],
         };
@@ -604,8 +603,7 @@ mod tests {
             scripts: vec![],
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
-                digest: None,
-                size: None,
+                content: None,
             }],
         };
         let resources_three = WebPageResources {
@@ -613,8 +611,10 @@ mod tests {
             scripts: vec![],
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:4321/my/app?q=2")?),
-                digest: None,
-                size: Some(345),
+                content: Some(WebPageResourceContent {
+                    digest: "some-digest".to_string(),
+                    size: 345,
+                }),
             }],
         };
         api.save_web_page_resources(mock_user.id, &tracker_one, resources_one.clone())
@@ -685,8 +685,7 @@ mod tests {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
-                digest: None,
-                size: None,
+                content: None,
             }],
             styles: vec![],
         };
@@ -695,8 +694,7 @@ mod tests {
             scripts: vec![],
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
-                digest: None,
-                size: None,
+                content: None,
             }],
         };
         let resources_three = WebPageResources {
@@ -704,8 +702,10 @@ mod tests {
             scripts: vec![],
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:4321/my/app?q=2")?),
-                digest: None,
-                size: Some(345),
+                content: Some(WebPageResourceContent {
+                    digest: "some-digest".to_string(),
+                    size: 345,
+                }),
             }],
         };
         api.save_web_page_resources(mock_user.id, &tracker_one, resources_one.clone())

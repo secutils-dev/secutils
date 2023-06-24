@@ -15,7 +15,7 @@ pub struct WebPageResources {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{WebPageResource, WebPageResources};
+    use crate::utils::{WebPageResource, WebPageResourceContent, WebPageResources};
     use insta::assert_json_snapshot;
     use serde_json::json;
     use time::OffsetDateTime;
@@ -28,30 +28,38 @@ mod tests {
                 946720800,
             )?,
             scripts: vec![WebPageResource {
-            url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
-            digest: Some("some-digest".to_string()),
-            size: Some(123)
-        }],
-            styles: vec![WebPageResource {
-            url: Some(Url::parse("http://localhost:1234/my/app.css?q=2")?),
-            digest: Some("another-digest".to_string()),
-            size: Some(321)
-        }]
+                url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
+                content: Some(WebPageResourceContent{
+                    digest: "some-digest".to_string(),
+                    size: 123
+                })
+            }],
+                styles: vec![WebPageResource {
+                url: Some(Url::parse("http://localhost:1234/my/app.css?q=2")?),
+                content: Some(WebPageResourceContent{
+                    digest: "another-digest".to_string(),
+                    size: 321
+                })
+            }]
         }, @r###"
         {
           "timestamp": 946720800,
           "scripts": [
             {
               "url": "http://localhost:1234/my/app?q=2",
-              "digest": "some-digest",
-              "size": 123
+              "content": {
+                "digest": "some-digest",
+                "size": 123
+              }
             }
           ],
           "styles": [
             {
               "url": "http://localhost:1234/my/app.css?q=2",
-              "digest": "another-digest",
-              "size": 321
+              "content": {
+                "digest": "another-digest",
+                "size": 321
+              }
             }
           ]
         }
@@ -75,13 +83,11 @@ mod tests {
                 timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
                 scripts: vec![WebPageResource {
                     url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
-                    digest: None,
-                    size: None
+                    content: None
                 }],
                 styles: vec![WebPageResource {
                     url: Some(Url::parse("http://localhost:1234/my/app.css?q=2")?),
-                    digest: None,
-                    size: None
+                    content: None
                 }]
             }
         );

@@ -47,11 +47,7 @@ impl UtilsWebScrapingActionHandler {
                         |resources: Vec<WebScraperResource>| -> Vec<WebPageResource> {
                             resources
                                 .into_iter()
-                                .map(|resource| WebPageResource {
-                                    url: resource.url,
-                                    digest: resource.digest,
-                                    size: resource.size,
-                                })
+                                .map(|resource| resource.into())
                                 .collect()
                         };
 
