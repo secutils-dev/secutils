@@ -182,10 +182,12 @@ mod tests {
         datastore::{initialize_index, PrimaryDb},
         search::SearchItem,
         users::{User, UserId},
+        utils::{WebPageResource, WebPageResourceContent},
     };
     use std::collections::{HashMap, HashSet};
     use tantivy::{schema::Schema, Index, IndexReader};
     use time::OffsetDateTime;
+    use url::Url;
 
     pub fn open_index(schema: Schema) -> anyhow::Result<(Index, IndexReader)> {
         initialize_index(Index::create_in_ram(schema))
@@ -280,6 +282,47 @@ mod tests {
 
         pub fn build(self) -> SearchItem {
             self.item
+        }
+    }
+
+    pub struct MockWebPageResourceBuilder {
+        resource: WebPageResource,
+    }
+
+    impl MockWebPageResourceBuilder {
+        pub fn with_content<D: Into<String>>(digest: D, size: usize) -> Self {
+            Self {
+                resource: WebPageResource {
+                    content: Some(WebPageResourceContent {
+                        digest: digest.into(),
+                        size,
+                    }),
+                    url: None,
+                    diff_status: None,
+                },
+            }
+        }
+
+        pub fn with_url(url: Url) -> Self {
+            Self {
+                resource: WebPageResource {
+                    content: None,
+                    url: Some(url),
+                    diff_status: None,
+                },
+            }
+        }
+
+        pub fn set_content<D: Into<String>>(mut self, digest: D, size: usize) -> Self {
+            self.resource.content = Some(WebPageResourceContent {
+                digest: digest.into(),
+                size,
+            });
+            self
+        }
+
+        pub fn build(self) -> WebPageResource {
+            self.resource
         }
     }
 

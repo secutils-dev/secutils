@@ -10,6 +10,8 @@ pub enum UtilsWebScrapingAction {
         tracker_name: String,
         #[serde(default)]
         refresh: bool,
+        #[serde(default)]
+        calculate_diff: bool,
     },
     #[serde(rename_all = "camelCase")]
     RemoveWebPageResources { tracker_name: String },
@@ -37,7 +39,8 @@ mod tests {
             )?,
             UtilsWebScrapingAction::FetchWebPageResources {
                 tracker_name: "tracker".to_string(),
-                refresh: false
+                refresh: false,
+                calculate_diff: false
             }
         );
 
@@ -46,13 +49,14 @@ mod tests {
                 r###"
     {
         "type": "fetchWebPageResources",
-        "value": { "trackerName": "tracker", "refresh": true }
+        "value": { "trackerName": "tracker", "refresh": true, "calculateDiff": true }
     }
               "###
             )?,
             UtilsWebScrapingAction::FetchWebPageResources {
                 tracker_name: "tracker".to_string(),
-                refresh: true
+                refresh: true,
+                calculate_diff: true
             }
         );
 

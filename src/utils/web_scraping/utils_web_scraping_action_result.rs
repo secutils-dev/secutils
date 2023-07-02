@@ -1,4 +1,4 @@
-use crate::utils::{WebPageResources, WebPageResourcesTracker};
+use crate::utils::{WebPageResourcesRevision, WebPageResourcesTracker};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -8,7 +8,7 @@ pub enum UtilsWebScrapingActionResult {
     #[serde(rename_all = "camelCase")]
     FetchWebPageResources {
         tracker_name: String,
-        resources: Vec<WebPageResources>,
+        revisions: Vec<WebPageResourcesRevision>,
     },
     RemoveWebPageResources,
     #[serde(rename_all = "camelCase")]
@@ -21,8 +21,8 @@ pub enum UtilsWebScrapingActionResult {
 #[cfg(test)]
 mod tests {
     use crate::utils::{
-        UtilsWebScrapingActionResult, WebPageResource, WebPageResourceContent, WebPageResources,
-        WebPageResourcesTracker,
+        UtilsWebScrapingActionResult, WebPageResource, WebPageResourceContent,
+        WebPageResourcesRevision, WebPageResourcesTracker,
     };
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
@@ -30,7 +30,7 @@ mod tests {
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
-        let web_page_resources = WebPageResources {
+        let web_page_resources = WebPageResourcesRevision {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             scripts: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/script.js")?),
@@ -38,22 +38,24 @@ mod tests {
                     digest: "some-digest".to_string(),
                     size: 123,
                 }),
+                diff_status: None,
             }],
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/style.css?fonts=2")?),
                 content: None,
+                diff_status: None,
             }],
         };
 
         assert_json_snapshot!(UtilsWebScrapingActionResult::FetchWebPageResources {
             tracker_name: "tracker".to_string(),
-            resources: vec![web_page_resources]
+            revisions: vec![web_page_resources]
         }, @r###"
         {
           "type": "fetchWebPageResources",
           "value": {
             "trackerName": "tracker",
-            "resources": [
+            "revisions": [
               {
                 "timestamp": 946720800,
                 "scripts": [

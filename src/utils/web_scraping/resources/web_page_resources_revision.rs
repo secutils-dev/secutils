@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct WebPageResources {
+pub struct WebPageResourcesRevision {
     /// Timestamp indicating when resources were fetched.
     #[serde(with = "time::serde::timestamp")]
     pub timestamp: OffsetDateTime,
@@ -15,7 +15,7 @@ pub struct WebPageResources {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{WebPageResource, WebPageResourceContent, WebPageResources};
+    use crate::utils::{WebPageResource, WebPageResourceContent, WebPageResourcesRevision};
     use insta::assert_json_snapshot;
     use serde_json::json;
     use time::OffsetDateTime;
@@ -23,7 +23,7 @@ mod tests {
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
-        assert_json_snapshot!(WebPageResources {
+        assert_json_snapshot!(WebPageResourcesRevision {
             timestamp: OffsetDateTime::from_unix_timestamp(
                 946720800,
             )?,
@@ -32,14 +32,16 @@ mod tests {
                 content: Some(WebPageResourceContent{
                     digest: "some-digest".to_string(),
                     size: 123
-                })
+                }),
+                diff_status: None,
             }],
                 styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/my/app.css?q=2")?),
                 content: Some(WebPageResourceContent{
                     digest: "another-digest".to_string(),
                     size: 321
-                })
+                }),
+                diff_status: None,
             }]
         }, @r###"
         {
@@ -71,7 +73,7 @@ mod tests {
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<WebPageResources>(
+            serde_json::from_str::<WebPageResourcesRevision>(
                 &json!({
                     "timestamp": 946720800,
                     "scripts": [{ "url": "http://localhost:1234/my/app?q=2" }],
@@ -79,15 +81,17 @@ mod tests {
                 })
                 .to_string()
             )?,
-            WebPageResources {
+            WebPageResourcesRevision {
                 timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
                 scripts: vec![WebPageResource {
                     url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
-                    content: None
+                    content: None,
+                    diff_status: None,
                 }],
                 styles: vec![WebPageResource {
                     url: Some(Url::parse("http://localhost:1234/my/app.css?q=2")?),
-                    content: None
+                    content: None,
+                    diff_status: None,
                 }]
             }
         );

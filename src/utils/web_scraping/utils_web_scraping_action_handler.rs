@@ -3,10 +3,11 @@ use crate::{
     users::{PublicUserDataNamespace, User, UserId},
     utils::{
         web_scraping::resources::{
-            WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesResponse,
+            web_page_resources_revisions_diff, WebScraperResource, WebScraperResourcesRequest,
+            WebScraperResourcesResponse,
         },
-        UtilsWebScrapingAction, UtilsWebScrapingActionResult, WebPageResource, WebPageResources,
-        WebPageResourcesTracker,
+        UtilsWebScrapingAction, UtilsWebScrapingActionResult, WebPageResource,
+        WebPageResourcesRevision, WebPageResourcesTracker,
     },
 };
 use anyhow::anyhow;
@@ -37,6 +38,7 @@ impl UtilsWebScrapingActionHandler {
             UtilsWebScrapingAction::FetchWebPageResources {
                 tracker_name,
                 refresh,
+                calculate_diff,
             } => {
                 let tracker = Self::get_tracker(api, user.id, &tracker_name).await?;
 
@@ -68,7 +70,7 @@ impl UtilsWebScrapingActionHandler {
                         .save_web_page_resources(
                             user.id,
                             &tracker,
-                            WebPageResources {
+                            WebPageResourcesRevision {
                                 timestamp: scraper_response.timestamp,
                                 scripts: convert_to_web_page_resources(scraper_response.scripts),
                                 styles: convert_to_web_page_resources(scraper_response.styles),
@@ -77,13 +79,19 @@ impl UtilsWebScrapingActionHandler {
                         .await?;
                 }
 
+                let revisions = api
+                    .web_scraping()
+                    .get_web_page_resources(user.id, &tracker)
+                    .await?;
+
                 // Retrieve latest persisted resources.
                 Ok(UtilsWebScrapingActionResult::FetchWebPageResources {
                     tracker_name,
-                    resources: api
-                        .web_scraping()
-                        .get_web_page_resources(user.id, &tracker)
-                        .await?,
+                    revisions: if calculate_diff {
+                        web_page_resources_revisions_diff(revisions)
+                    } else {
+                        revisions
+                    },
                 })
             }
             UtilsWebScrapingAction::RemoveWebPageResources { tracker_name } => {

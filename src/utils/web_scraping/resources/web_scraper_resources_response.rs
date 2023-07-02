@@ -31,6 +31,7 @@ impl From<WebScraperResource> for WebPageResource {
         Self {
             url: value.url,
             content: value.content.map(Into::into),
+            diff_status: None,
         }
     }
 }
@@ -39,7 +40,7 @@ impl From<WebScraperResource> for WebPageResource {
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WebScraperResourceContent {
-    /// SHA256 digest of the external resource content.
+    /// SHA-1 digest of the external resource content.
     pub digest: String,
     /// Size of the inline resource content, in bytes.
     pub size: usize,

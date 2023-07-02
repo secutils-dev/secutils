@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WebPageResourceContent {
-    /// SHA256 digest of the external resource content.
+    /// SHA-1 digest of the external resource content.
     pub digest: String,
     /// Size of the inline resource content, in bytes.
     pub size: usize,
