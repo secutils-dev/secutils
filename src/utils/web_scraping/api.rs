@@ -143,10 +143,19 @@ impl<'a> WebScrapingApi<'a> {
             .await?
             .map(|user_data| user_data.value)
             .unwrap_or_default();
-        if revisions.len() == tracker.revisions {
-            revisions.pop_front();
+
+        // Check if there is a revision with the same timestamp. If so, we need to replace it.
+        if let Some(position) = revisions
+            .iter()
+            .position(|r| r.timestamp == revision.timestamp)
+        {
+            revisions[position] = revision;
+        } else {
+            if revisions.len() == tracker.revisions {
+                revisions.pop_front();
+            }
+            revisions.push_back(revision);
         }
-        revisions.push_back(revision);
 
         user_data_setter
             .upsert(
@@ -422,7 +431,7 @@ mod tests {
         assert!(tracker_two_resources.is_empty());
 
         let resources_two = WebPageResourcesRevision {
-            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
+            timestamp: OffsetDateTime::from_unix_timestamp(946720900)?,
             scripts: vec![],
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
@@ -473,6 +482,85 @@ mod tests {
     }
 
     #[actix_rt::test]
+    async fn properly_replaces_web_page_resources_with_the_same_revision() -> anyhow::Result<()> {
+        let mock_user = mock_user();
+        let mock_db = initialize_mock_db(&mock_user).await?;
+        let api = WebScrapingApi::new(&mock_db);
+
+        let tracker_one = WebPageResourcesTracker {
+            name: "name_one".to_string(),
+            url: Url::parse("http://localhost:1234/my/app?q=2")?,
+            revisions: 3,
+        };
+        api.save_web_page_resources_tracker(mock_user.id, tracker_one.clone())
+            .await?;
+
+        let tracker_one_resources = api
+            .get_web_page_resources(mock_user.id, &tracker_one)
+            .await?;
+        assert!(tracker_one_resources.is_empty());
+
+        let resources_one = WebPageResourcesRevision {
+            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
+            scripts: vec![WebPageResource {
+                url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
+                content: None,
+                diff_status: None,
+            }],
+            styles: vec![],
+        };
+        api.save_web_page_resources(mock_user.id, &tracker_one, resources_one.clone())
+            .await?;
+
+        let tracker_one_resources = api
+            .get_web_page_resources(mock_user.id, &tracker_one)
+            .await?;
+        assert_eq!(tracker_one_resources, vec![resources_one.clone()]);
+
+        let resources_two = WebPageResourcesRevision {
+            timestamp: OffsetDateTime::from_unix_timestamp(946720900)?,
+            scripts: vec![],
+            styles: vec![WebPageResource {
+                url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
+                content: None,
+                diff_status: None,
+            }],
+        };
+        api.save_web_page_resources(mock_user.id, &tracker_one, resources_two.clone())
+            .await?;
+
+        let tracker_one_resources = api
+            .get_web_page_resources(mock_user.id, &tracker_one)
+            .await?;
+        assert_eq!(
+            tracker_one_resources,
+            vec![resources_one.clone(), resources_two.clone()]
+        );
+
+        let resources_three = WebPageResourcesRevision {
+            timestamp: OffsetDateTime::from_unix_timestamp(946720900)?,
+            scripts: vec![],
+            styles: vec![WebPageResource {
+                url: Some(Url::parse("http://localhost:4321/my/app?q=3")?),
+                content: Some(WebPageResourceContent {
+                    digest: "some-digest".to_string(),
+                    size: 345,
+                }),
+                diff_status: None,
+            }],
+        };
+        api.save_web_page_resources(mock_user.id, &tracker_one, resources_three.clone())
+            .await?;
+
+        let tracker_one_resources = api
+            .get_web_page_resources(mock_user.id, &tracker_one)
+            .await?;
+        assert_eq!(tracker_one_resources, vec![resources_one, resources_three]);
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
     async fn properly_removes_web_page_resources() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
@@ -503,7 +591,7 @@ mod tests {
         assert!(tracker_two_resources.is_empty());
 
         let resources_one = WebPageResourcesRevision {
-            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
+            timestamp: OffsetDateTime::from_unix_timestamp(946720700)?,
             scripts: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
                 content: None,
@@ -521,7 +609,7 @@ mod tests {
             }],
         };
         let resources_three = WebPageResourcesRevision {
-            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
+            timestamp: OffsetDateTime::from_unix_timestamp(946720900)?,
             scripts: vec![],
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:4321/my/app?q=2")?),
@@ -597,7 +685,7 @@ mod tests {
             .await?;
 
         let resources_one = WebPageResourcesRevision {
-            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
+            timestamp: OffsetDateTime::from_unix_timestamp(946720700)?,
             scripts: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
                 content: None,
@@ -615,7 +703,7 @@ mod tests {
             }],
         };
         let resources_three = WebPageResourcesRevision {
-            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
+            timestamp: OffsetDateTime::from_unix_timestamp(946720900)?,
             scripts: vec![],
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:4321/my/app?q=2")?),
@@ -691,7 +779,7 @@ mod tests {
             .await?;
 
         let resources_one = WebPageResourcesRevision {
-            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
+            timestamp: OffsetDateTime::from_unix_timestamp(946720700)?,
             scripts: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
                 content: None,
@@ -709,7 +797,7 @@ mod tests {
             }],
         };
         let resources_three = WebPageResourcesRevision {
-            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
+            timestamp: OffsetDateTime::from_unix_timestamp(946720900)?,
             scripts: vec![],
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:4321/my/app?q=2")?),
