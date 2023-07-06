@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::time::Duration;
 use url::Url;
 
 /// Represents request to scrap web page resources.
@@ -14,7 +15,7 @@ pub struct WebScraperResourcesRequest<'a> {
 
     /// Number of milliseconds to wait after page enters "idle" state.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub delay: Option<usize>,
+    pub delay: Option<u128>,
 
     /// Optional CSS selector to wait for before extracting resources.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -30,6 +31,14 @@ impl<'a> WebScraperResourcesRequest<'a> {
             timeout: None,
             delay: None,
             wait_selector: None,
+        }
+    }
+
+    /// Sets the delay to wait after web page enters "idle" state to start tracking resources.
+    pub fn set_delay(self, delay: Duration) -> Self {
+        Self {
+            delay: Some(delay.as_millis()),
+            ..self
         }
     }
 }

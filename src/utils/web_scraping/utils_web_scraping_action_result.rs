@@ -25,6 +25,7 @@ mod tests {
         WebPageResourcesRevision, WebPageResourcesTracker,
     };
     use insta::assert_json_snapshot;
+    use std::time::Duration;
     use time::OffsetDateTime;
     use url::Url;
 
@@ -88,7 +89,8 @@ mod tests {
             tracker: WebPageResourcesTracker {
                 name: "some-name".to_string(),
                 url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                revisions: 3
+                revisions: 3,
+                delay: Duration::from_millis(2000),
             }
         }, @r###"
         {
@@ -97,7 +99,8 @@ mod tests {
             "tracker": {
               "name": "some-name",
               "url": "http://localhost:1234/my/app?q=2",
-              "revisions": 3
+              "revisions": 3,
+              "delay": 2000
             }
           }
         }

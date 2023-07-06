@@ -24,6 +24,7 @@ pub enum UtilsWebScrapingAction {
 #[cfg(test)]
 mod tests {
     use crate::utils::{UtilsWebScrapingAction, WebPageResourcesTracker};
+    use std::time::Duration;
     use url::Url;
 
     #[test]
@@ -79,7 +80,7 @@ mod tests {
                 r###"
     {
         "type": "saveWebPageResourcesTracker",
-        "value": { "tracker": { "name": "some-name", "url": "http://localhost:1234/my/app?q=2", "revisions": 3 } }
+        "value": { "tracker": { "name": "some-name", "url": "http://localhost:1234/my/app?q=2", "revisions": 3, "delay": 2000 } }
     }
               "###
             )?,
@@ -87,7 +88,8 @@ mod tests {
                 tracker: WebPageResourcesTracker {
                     name: "some-name".to_string(),
                     url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    revisions: 3
+                    revisions: 3,
+                    delay: Duration::from_millis(2000),
                 }
             }
         );

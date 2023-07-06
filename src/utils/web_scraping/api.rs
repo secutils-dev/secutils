@@ -199,7 +199,7 @@ mod tests {
             WebPageResourcesRevision, WebPageResourcesTracker,
         },
     };
-    use std::collections::HashMap;
+    use std::{collections::HashMap, time::Duration};
     use time::OffsetDateTime;
     use url::Url;
 
@@ -218,6 +218,7 @@ mod tests {
             name: "name_one".to_string(),
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
             revisions: 3,
+            delay: Duration::from_millis(2000),
         };
         api.save_web_page_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
@@ -239,6 +240,7 @@ mod tests {
             name: "name_two".to_string(),
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
             revisions: 3,
+            delay: Duration::from_millis(2000),
         };
         api.save_web_page_resources_tracker(mock_user.id, tracker_two.clone())
             .await?;
@@ -272,6 +274,7 @@ mod tests {
             name: "name_one".to_string(),
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
             revisions: 3,
+            delay: Duration::from_millis(2000),
         };
         api.save_web_page_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
@@ -293,6 +296,7 @@ mod tests {
             name: "name_one".to_string(),
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
             revisions: 2,
+            delay: Duration::from_millis(2000),
         };
         api.save_web_page_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
@@ -323,11 +327,13 @@ mod tests {
             name: "name_one".to_string(),
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
             revisions: 3,
+            delay: Duration::from_millis(2000),
         };
         let tracker_two = WebPageResourcesTracker {
             name: "name_two".to_string(),
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
             revisions: 3,
+            delay: Duration::from_millis(2000),
         };
         api.save_web_page_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
@@ -389,11 +395,13 @@ mod tests {
             name: "name_one".to_string(),
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
             revisions: 3,
+            delay: Duration::from_millis(2000),
         };
         let tracker_two = WebPageResourcesTracker {
             name: "name_two".to_string(),
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
             revisions: 3,
+            delay: Duration::from_millis(2000),
         };
         api.save_web_page_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
@@ -491,6 +499,7 @@ mod tests {
             name: "name_one".to_string(),
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
             revisions: 3,
+            delay: Duration::from_millis(2000),
         };
         api.save_web_page_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
@@ -570,11 +579,13 @@ mod tests {
             name: "name_one".to_string(),
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
             revisions: 3,
+            delay: Duration::from_millis(2000),
         };
         let tracker_two = WebPageResourcesTracker {
             name: "name_two".to_string(),
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
             revisions: 3,
+            delay: Duration::from_millis(2000),
         };
         api.save_web_page_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
@@ -673,11 +684,13 @@ mod tests {
             name: "name_one".to_string(),
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
             revisions: 3,
+            delay: Duration::from_millis(2000),
         };
         let tracker_two = WebPageResourcesTracker {
             name: "name_two".to_string(),
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
             revisions: 3,
+            delay: Duration::from_millis(2000),
         };
         api.save_web_page_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
@@ -767,11 +780,13 @@ mod tests {
             name: "name_one".to_string(),
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
             revisions: 3,
+            delay: Duration::from_millis(2000),
         };
         let tracker_two = WebPageResourcesTracker {
             name: "name_two".to_string(),
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
             revisions: 3,
+            delay: Duration::from_millis(2000),
         };
         api.save_web_page_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
@@ -832,6 +847,7 @@ mod tests {
             name: "name_one".to_string(),
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
             revisions: 4,
+            delay: Duration::from_millis(2000),
         };
         api.save_web_page_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
@@ -850,6 +866,7 @@ mod tests {
             name: "name_one".to_string(),
             url: Url::parse("http://localhost:1235/my/app?q=2")?,
             revisions: 4,
+            delay: Duration::from_millis(2000),
         };
         api.save_web_page_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
@@ -868,6 +885,7 @@ mod tests {
             name: "name_two".to_string(),
             url: Url::parse("http://localhost:1235/my/app?q=2")?,
             revisions: 3,
+            delay: Duration::from_millis(2000),
         };
         api.save_web_page_resources_tracker(mock_user.id, tracker_two.clone())
             .await?;

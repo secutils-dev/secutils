@@ -58,9 +58,10 @@ impl UtilsWebScrapingActionHandler {
                             "{}api/resources",
                             api.config.components.web_scraper_url.as_str()
                         ))
-                        .json(&WebScraperResourcesRequest::with_default_parameters(
-                            &tracker.url,
-                        ))
+                        .json(
+                            &WebScraperResourcesRequest::with_default_parameters(&tracker.url)
+                                .set_delay(tracker.delay),
+                        )
                         .send()
                         .await?
                         .json::<WebScraperResourcesResponse>()
