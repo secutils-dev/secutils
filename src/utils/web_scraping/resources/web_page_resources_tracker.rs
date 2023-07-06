@@ -3,6 +3,12 @@ use serde_with::{serde_as, DurationMilliSeconds};
 use std::time::Duration;
 use url::Url;
 
+/// We currently support up to 10 revisions of the resources.
+pub const MAX_WEB_PAGE_RESOURCES_TRACKER_REVISIONS: usize = 10;
+
+/// We currently wait up to 60 seconds before starting to track resources.
+pub const MAX_WEB_PAGE_RESOURCES_TRACKER_DELAY: Duration = Duration::from_secs(60);
+
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WebPageResourcesTracker {

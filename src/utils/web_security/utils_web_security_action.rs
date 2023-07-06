@@ -1,4 +1,6 @@
-use crate::utils::ContentSecurityPolicySource;
+use crate::utils::{
+    utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH, ContentSecurityPolicySource,
+};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -12,9 +14,32 @@ pub enum UtilsWebSecurityAction {
     },
 }
 
+impl UtilsWebSecurityAction {
+    /// Validates action parameters and throws if action parameters aren't valid.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        match self {
+            UtilsWebSecurityAction::SerializeContentSecurityPolicy { policy_name, .. } => {
+                if policy_name.is_empty() {
+                    anyhow::bail!("Policy name cannot be empty");
+                }
+
+                if policy_name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
+                    anyhow::bail!(
+                        "Policy name cannot be longer than {} characters",
+                        MAX_UTILS_ENTITY_NAME_LENGTH
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::utils::{ContentSecurityPolicySource, UtilsWebSecurityAction};
+    use insta::assert_debug_snapshot;
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
@@ -32,6 +57,38 @@ mod tests {
                 source: ContentSecurityPolicySource::Meta,
             }
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn validation() -> anyhow::Result<()> {
+        assert!(UtilsWebSecurityAction::SerializeContentSecurityPolicy {
+            policy_name: "a".repeat(100),
+            source: ContentSecurityPolicySource::Meta,
+        }
+        .validate()
+        .is_ok());
+
+        assert_debug_snapshot!(UtilsWebSecurityAction::SerializeContentSecurityPolicy {
+            policy_name: "".to_string(),
+            source: ContentSecurityPolicySource::Meta,
+        }
+        .validate(), @r###"
+        Err(
+            "Policy name cannot be empty",
+        )
+        "###);
+
+        assert_debug_snapshot!(UtilsWebSecurityAction::SerializeContentSecurityPolicy {
+            policy_name: "a".repeat(101),
+            source: ContentSecurityPolicySource::Meta,
+        }
+        .validate(), @r###"
+        Err(
+            "Policy name cannot be longer than 100 characters",
+        )
+        "###);
 
         Ok(())
     }
