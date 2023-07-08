@@ -22,7 +22,7 @@ pub enum UtilsWebScrapingActionResult {
 mod tests {
     use crate::utils::{
         UtilsWebScrapingActionResult, WebPageResource, WebPageResourceContent,
-        WebPageResourcesRevision, WebPageResourcesTracker,
+        WebPageResourceContentData, WebPageResourcesRevision, WebPageResourcesTracker,
     };
     use insta::assert_json_snapshot;
     use std::time::Duration;
@@ -36,7 +36,7 @@ mod tests {
             scripts: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/script.js")?),
                 content: Some(WebPageResourceContent {
-                    digest: "some-digest".to_string(),
+                    data: WebPageResourceContentData::Sha1("some-digest".to_string()),
                     size: 123,
                 }),
                 diff_status: None,
@@ -63,7 +63,10 @@ mod tests {
                   {
                     "url": "http://localhost:1234/script.js",
                     "content": {
-                      "digest": "some-digest",
+                      "data": {
+                        "type": "sha1",
+                        "value": "some-digest"
+                      },
                       "size": 123
                     }
                   }

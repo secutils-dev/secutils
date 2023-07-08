@@ -27,6 +27,7 @@ impl WebPageResource {
 mod tests {
     use crate::utils::{
         web_scraping::WebPageResourceDiffStatus, WebPageResource, WebPageResourceContent,
+        WebPageResourceContentData,
     };
     use insta::assert_json_snapshot;
     use serde_json::json;
@@ -36,14 +37,17 @@ mod tests {
     fn serialization() -> anyhow::Result<()> {
         assert_json_snapshot!(WebPageResource {
             url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
-            content: Some(WebPageResourceContent { digest:"some-digest".to_string(), size: 123 }),
+            content: Some(WebPageResourceContent { data: WebPageResourceContentData::Sha1("some-digest".to_string()), size: 123 }),
             diff_status: Some(WebPageResourceDiffStatus::Added),
 
         }, @r###"
         {
           "url": "http://localhost:1234/my/app?q=2",
           "content": {
-            "digest": "some-digest",
+            "data": {
+              "type": "sha1",
+              "value": "some-digest"
+            },
             "size": 123
           },
           "diffStatus": "added"
@@ -52,12 +56,15 @@ mod tests {
 
         assert_json_snapshot!(WebPageResource {
             url: None,
-            content: Some(WebPageResourceContent { digest:"some-digest".to_string(), size: 123 }),
+            content: Some(WebPageResourceContent { data: WebPageResourceContentData::Sha1("some-digest".to_string()), size: 123 }),
             diff_status: None,
         }, @r###"
         {
           "content": {
-            "digest": "some-digest",
+            "data": {
+              "type": "sha1",
+              "value": "some-digest"
+            },
             "size": 123
           }
         }
@@ -76,11 +83,11 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<WebPageResource>(
-                &json!({ "url": "https://localhost:1234/my/app?q=2", "content": { "digest": "some-digest", "size": 123 } }).to_string()
+                &json!({ "url": "https://localhost:1234/my/app?q=2", "content": { "data": { "type": "sha1", "value": "some-digest" }, "size": 123 } }).to_string()
             )?,
             WebPageResource {
                 url: Some(Url::parse("https://localhost:1234/my/app?q=2")?),
-                content: Some(WebPageResourceContent { digest:"some-digest".to_string(), size: 123 }),
+                content: Some(WebPageResourceContent { data: WebPageResourceContentData::Sha1("some-digest".to_string()), size: 123 }),
                 diff_status: None,
             }
         );
@@ -101,12 +108,12 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<WebPageResource>(
-                &json!({ "content": { "digest": "some-digest", "size": 123 } }).to_string()
+                &json!({ "content": { "data": { "type": "sha1", "value": "some-digest" }, "size": 123 } }).to_string()
             )?,
             WebPageResource {
                 url: None,
                 content: Some(WebPageResourceContent {
-                    digest: "some-digest".to_string(),
+                    data: WebPageResourceContentData::Sha1("some-digest".to_string()),
                     size: 123
                 }),
                 diff_status: None,
@@ -121,7 +128,7 @@ mod tests {
         let resource_without_status = WebPageResource {
             url: Some(Url::parse("http://localhost:1234/one")?),
             content: Some(WebPageResourceContent {
-                digest: "some-digest".to_string(),
+                data: WebPageResourceContentData::Sha1("some-digest".to_string()),
                 size: 123,
             }),
             diff_status: None,
@@ -129,7 +136,7 @@ mod tests {
         let resource_with_status = WebPageResource {
             url: Some(Url::parse("http://localhost:1234/one")?),
             content: Some(WebPageResourceContent {
-                digest: "some-digest".to_string(),
+                data: WebPageResourceContentData::Sha1("some-digest".to_string()),
                 size: 123,
             }),
             diff_status: Some(WebPageResourceDiffStatus::Added),

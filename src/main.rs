@@ -182,7 +182,7 @@ mod tests {
         datastore::{initialize_index, PrimaryDb},
         search::SearchItem,
         users::{User, UserId},
-        utils::{WebPageResource, WebPageResourceContent},
+        utils::{WebPageResource, WebPageResourceContent, WebPageResourceContentData},
     };
     use std::collections::{HashMap, HashSet};
     use tantivy::{schema::Schema, Index, IndexReader};
@@ -290,13 +290,10 @@ mod tests {
     }
 
     impl MockWebPageResourceBuilder {
-        pub fn with_content<D: Into<String>>(digest: D, size: usize) -> Self {
+        pub fn with_content(data: WebPageResourceContentData, size: usize) -> Self {
             Self {
                 resource: WebPageResource {
-                    content: Some(WebPageResourceContent {
-                        digest: digest.into(),
-                        size,
-                    }),
+                    content: Some(WebPageResourceContent { data, size }),
                     url: None,
                     diff_status: None,
                 },
@@ -313,11 +310,8 @@ mod tests {
             }
         }
 
-        pub fn set_content<D: Into<String>>(mut self, digest: D, size: usize) -> Self {
-            self.resource.content = Some(WebPageResourceContent {
-                digest: digest.into(),
-                size,
-            });
+        pub fn set_content(mut self, data: WebPageResourceContentData, size: usize) -> Self {
+            self.resource.content = Some(WebPageResourceContent { data, size });
             self
         }
 

@@ -196,7 +196,7 @@ mod tests {
         users::{PublicUserDataNamespace, User},
         utils::{
             web_scraping::WebScrapingApi, WebPageResource, WebPageResourceContent,
-            WebPageResourcesRevision, WebPageResourcesTracker,
+            WebPageResourceContentData, WebPageResourcesRevision, WebPageResourcesTracker,
         },
     };
     use std::{collections::HashMap, time::Duration};
@@ -468,7 +468,7 @@ mod tests {
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:4321/my/app?q=2")?),
                 content: Some(WebPageResourceContent {
-                    digest: "some-digest".to_string(),
+                    data: WebPageResourceContentData::Sha1("some-digest".to_string()),
                     size: 345,
                 }),
                 diff_status: None,
@@ -552,7 +552,7 @@ mod tests {
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:4321/my/app?q=3")?),
                 content: Some(WebPageResourceContent {
-                    digest: "some-digest".to_string(),
+                    data: WebPageResourceContentData::Sha1("some-digest".to_string()),
                     size: 345,
                 }),
                 diff_status: None,
@@ -625,7 +625,7 @@ mod tests {
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:4321/my/app?q=2")?),
                 content: Some(WebPageResourceContent {
-                    digest: "some-digest".to_string(),
+                    data: WebPageResourceContentData::Sha1("some-digest".to_string()),
                     size: 345,
                 }),
                 diff_status: None,
@@ -721,7 +721,7 @@ mod tests {
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:4321/my/app?q=2")?),
                 content: Some(WebPageResourceContent {
-                    digest: "some-digest".to_string(),
+                    data: WebPageResourceContentData::Sha1("some-digest".to_string()),
                     size: 345,
                 }),
                 diff_status: None,
@@ -817,7 +817,7 @@ mod tests {
             styles: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:4321/my/app?q=2")?),
                 content: Some(WebPageResourceContent {
-                    digest: "some-digest".to_string(),
+                    data: WebPageResourceContentData::Sha1("some-digest".to_string()),
                     size: 345,
                 }),
                 diff_status: None,

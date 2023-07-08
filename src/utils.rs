@@ -20,8 +20,8 @@ pub use self::{
     utils_action_result::UtilsActionResult,
     web_scraping::{
         UtilsWebScrapingAction, UtilsWebScrapingActionHandler, UtilsWebScrapingActionResult,
-        WebPageResource, WebPageResourceContent, WebPageResourceDiffStatus,
-        WebPageResourcesRevision, WebPageResourcesTracker,
+        WebPageResource, WebPageResourceContent, WebPageResourceContentData,
+        WebPageResourceDiffStatus, WebPageResourcesRevision, WebPageResourcesTracker,
     },
     web_security::{
         ContentSecurityPolicy, ContentSecurityPolicyDirective,

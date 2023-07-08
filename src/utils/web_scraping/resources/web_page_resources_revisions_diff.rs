@@ -101,7 +101,7 @@ fn web_page_resources_to_map(
     for resource in resources {
         let resource_key = match (&resource.url, &resource.content) {
             (Some(url), _) => url.to_string(),
-            (_, Some(content)) => content.digest.to_string(),
+            (_, Some(content)) => content.data.value().to_string(),
             _ => {
                 log::warn!("Resource is missing both URL and content: {:?}", resource);
                 continue;
@@ -127,7 +127,7 @@ mod tests {
                 web_page_resources_revisions_diff,
                 web_page_resources_revisions_diff::web_page_resources_diff,
             },
-            WebPageResourcesRevision,
+            WebPageResourceContentData, WebPageResourcesRevision,
         },
     };
     use insta::assert_json_snapshot;
@@ -138,19 +138,40 @@ mod tests {
     fn correctly_collects_resources_to_map() -> anyhow::Result<()> {
         let resource_one =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/one")?)
-                .set_content("one-digest", 123)
+                .set_content(
+                    WebPageResourceContentData::Sha1("one-digest".to_string()),
+                    123,
+                )
                 .build();
         let resource_two =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/two")?)
-                .set_content("two-digest", 321)
+                .set_content(
+                    WebPageResourceContentData::Sha1("two-digest".to_string()),
+                    321,
+                )
                 .build();
-        let resource_three = MockWebPageResourceBuilder::with_content("three-digest", 456).build();
+        let resource_three = MockWebPageResourceBuilder::with_content(
+            WebPageResourceContentData::Sha1("three-digest".to_string()),
+            456,
+        )
+        .build();
         let resource_four =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/two")?)
-                .set_content("two-digest", 321)
+                .set_content(
+                    WebPageResourceContentData::Sha1("two-digest".to_string()),
+                    321,
+                )
                 .build();
-        let resource_five = MockWebPageResourceBuilder::with_content("four-digest", 456).build();
-        let resource_six = MockWebPageResourceBuilder::with_content("three-digest", 456).build();
+        let resource_five = MockWebPageResourceBuilder::with_content(
+            WebPageResourceContentData::Sha1("four-digest".to_string()),
+            456,
+        )
+        .build();
+        let resource_six = MockWebPageResourceBuilder::with_content(
+            WebPageResourceContentData::Sha1("three-digest".to_string()),
+            456,
+        )
+        .build();
 
         let resources_map = web_page_resources_to_map(vec![
             resource_one.clone(),
@@ -187,28 +208,45 @@ mod tests {
         // 4. Inline, multiple resources
         let resource_one_rev_1 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/one")?)
-                .set_content("one-digest-no-change", 123)
+                .set_content(
+                    WebPageResourceContentData::Sha1("one-digest-no-change".to_string()),
+                    123,
+                )
                 .build();
-        let resource_one_inline_rev_1 =
-            MockWebPageResourceBuilder::with_content("one-digest-inline-no-change", 123).build();
+        let resource_one_inline_rev_1 = MockWebPageResourceBuilder::with_content(
+            WebPageResourceContentData::Sha1("one-digest-inline-no-change".to_string()),
+            123,
+        )
+        .build();
         let resource_one_multiple_one_rev_1 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/one-multiple")?)
-                .set_content("one-digest-multiple-no-change", 123)
+                .set_content(
+                    WebPageResourceContentData::Sha1("one-digest-multiple-no-change".to_string()),
+                    123,
+                )
                 .build();
-        let resource_one_multiple_inline_rev_1 =
-            MockWebPageResourceBuilder::with_content("one-digest-multiple-inline-no-change", 123)
-                .build();
+        let resource_one_multiple_inline_rev_1 = MockWebPageResourceBuilder::with_content(
+            WebPageResourceContentData::Sha1("one-digest-multiple-inline-no-change".to_string()),
+            123,
+        )
+        .build();
 
         // Changed resources:
         // 1. External, single resource
         // 2. External, multiple resources
         let resource_two_rev_1 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/two")?)
-                .set_content("two-digest", 321)
+                .set_content(
+                    WebPageResourceContentData::Sha1("two-digest".to_string()),
+                    321,
+                )
                 .build();
         let resource_two_multiple_rev_1 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/two-multiple")?)
-                .set_content("two-digest-multiple", 321)
+                .set_content(
+                    WebPageResourceContentData::Sha1("two-digest-multiple".to_string()),
+                    321,
+                )
                 .build();
 
         // Removed resources:
@@ -218,40 +256,68 @@ mod tests {
         // 4. Inline, multiple resources
         let resource_three_rev_1 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/three-removed")?)
-                .set_content("three-digest-removed", 321)
+                .set_content(
+                    WebPageResourceContentData::Sha1("three-digest-removed".to_string()),
+                    321,
+                )
                 .build();
-        let resource_three_inline_rev_1 =
-            MockWebPageResourceBuilder::with_content("three-digest-inline-removed", 123).build();
+        let resource_three_inline_rev_1 = MockWebPageResourceBuilder::with_content(
+            WebPageResourceContentData::Sha1("three-digest-inline-removed".to_string()),
+            123,
+        )
+        .build();
         let resource_three_multiple_rev_1 = MockWebPageResourceBuilder::with_url(Url::parse(
             "http://localhost/three-multiple-removed",
         )?)
-        .set_content("three-digest-multiple-removed", 321)
+        .set_content(
+            WebPageResourceContentData::Sha1("three-digest-multiple-removed".to_string()),
+            321,
+        )
         .build();
-        let resource_three_multiple_inline_rev_1 =
-            MockWebPageResourceBuilder::with_content("three-digest-multiple-inline-removed", 123)
-                .build();
+        let resource_three_multiple_inline_rev_1 = MockWebPageResourceBuilder::with_content(
+            WebPageResourceContentData::Sha1("three-digest-multiple-inline-removed".to_string()),
+            123,
+        )
+        .build();
 
         let resource_one_rev_2 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/one")?)
-                .set_content("one-digest-no-change", 123)
+                .set_content(
+                    WebPageResourceContentData::Sha1("one-digest-no-change".to_string()),
+                    123,
+                )
                 .build();
-        let resource_one_inline_rev_2 =
-            MockWebPageResourceBuilder::with_content("one-digest-inline-no-change", 123).build();
+        let resource_one_inline_rev_2 = MockWebPageResourceBuilder::with_content(
+            WebPageResourceContentData::Sha1("one-digest-inline-no-change".to_string()),
+            123,
+        )
+        .build();
         let resource_one_multiple_one_rev_2 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/one-multiple")?)
-                .set_content("one-digest-multiple-no-change", 123)
+                .set_content(
+                    WebPageResourceContentData::Sha1("one-digest-multiple-no-change".to_string()),
+                    123,
+                )
                 .build();
-        let resource_one_multiple_inline_rev_2 =
-            MockWebPageResourceBuilder::with_content("one-digest-multiple-inline-no-change", 123)
-                .build();
+        let resource_one_multiple_inline_rev_2 = MockWebPageResourceBuilder::with_content(
+            WebPageResourceContentData::Sha1("one-digest-multiple-inline-no-change".to_string()),
+            123,
+        )
+        .build();
 
         let resource_two_rev_2 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/two")?)
-                .set_content("two-digest-changed", 321)
+                .set_content(
+                    WebPageResourceContentData::Sha1("two-digest-changed".to_string()),
+                    321,
+                )
                 .build();
         let resource_two_multiple_rev_2 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/two-multiple")?)
-                .set_content("two-digest-multiple-changed", 321)
+                .set_content(
+                    WebPageResourceContentData::Sha1("two-digest-multiple-changed".to_string()),
+                    321,
+                )
                 .build();
 
         // Added resources:
@@ -261,17 +327,28 @@ mod tests {
         // 4. Inline, multiple resources
         let resource_three_rev_2 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/three")?)
-                .set_content("three-digest-added", 321)
+                .set_content(
+                    WebPageResourceContentData::Sha1("three-digest-added".to_string()),
+                    321,
+                )
                 .build();
-        let resource_three_inline_rev_2 =
-            MockWebPageResourceBuilder::with_content("three-digest-inline-added", 123).build();
+        let resource_three_inline_rev_2 = MockWebPageResourceBuilder::with_content(
+            WebPageResourceContentData::Sha1("three-digest-inline-added".to_string()),
+            123,
+        )
+        .build();
         let resource_three_multiple_rev_2 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/three-multiple")?)
-                .set_content("three-digest-multiple-added", 321)
+                .set_content(
+                    WebPageResourceContentData::Sha1("three-digest-multiple-added".to_string()),
+                    321,
+                )
                 .build();
-        let resource_three_multiple_inline_rev_2 =
-            MockWebPageResourceBuilder::with_content("three-digest-multiple-inline-added", 123)
-                .build();
+        let resource_three_multiple_inline_rev_2 = MockWebPageResourceBuilder::with_content(
+            WebPageResourceContentData::Sha1("three-digest-multiple-inline-added".to_string()),
+            123,
+        )
+        .build();
 
         let diff = web_page_resources_diff(
             vec![
@@ -319,7 +396,10 @@ mod tests {
           {
             "url": "http://localhost/one",
             "content": {
-              "digest": "one-digest-no-change",
+              "data": {
+                "type": "sha1",
+                "value": "one-digest-no-change"
+              },
               "size": 123
             }
           }
@@ -331,7 +411,10 @@ mod tests {
         [
           {
             "content": {
-              "digest": "one-digest-inline-no-change",
+              "data": {
+                "type": "sha1",
+                "value": "one-digest-inline-no-change"
+              },
               "size": 123
             }
           }
@@ -344,14 +427,20 @@ mod tests {
           {
             "url": "http://localhost/one-multiple",
             "content": {
-              "digest": "one-digest-multiple-no-change",
+              "data": {
+                "type": "sha1",
+                "value": "one-digest-multiple-no-change"
+              },
               "size": 123
             }
           },
           {
             "url": "http://localhost/one-multiple",
             "content": {
-              "digest": "one-digest-multiple-no-change",
+              "data": {
+                "type": "sha1",
+                "value": "one-digest-multiple-no-change"
+              },
               "size": 123
             }
           }
@@ -363,13 +452,19 @@ mod tests {
         [
           {
             "content": {
-              "digest": "one-digest-multiple-inline-no-change",
+              "data": {
+                "type": "sha1",
+                "value": "one-digest-multiple-inline-no-change"
+              },
               "size": 123
             }
           },
           {
             "content": {
-              "digest": "one-digest-multiple-inline-no-change",
+              "data": {
+                "type": "sha1",
+                "value": "one-digest-multiple-inline-no-change"
+              },
               "size": 123
             }
           }
@@ -382,7 +477,10 @@ mod tests {
           {
             "url": "http://localhost/two",
             "content": {
-              "digest": "two-digest-changed",
+              "data": {
+                "type": "sha1",
+                "value": "two-digest-changed"
+              },
               "size": 321
             },
             "diffStatus": "changed"
@@ -396,14 +494,20 @@ mod tests {
           {
             "url": "http://localhost/two-multiple",
             "content": {
-              "digest": "two-digest-multiple",
+              "data": {
+                "type": "sha1",
+                "value": "two-digest-multiple"
+              },
               "size": 321
             }
           },
           {
             "url": "http://localhost/two-multiple",
             "content": {
-              "digest": "two-digest-multiple-changed",
+              "data": {
+                "type": "sha1",
+                "value": "two-digest-multiple-changed"
+              },
               "size": 321
             },
             "diffStatus": "changed"
@@ -417,7 +521,10 @@ mod tests {
           {
             "url": "http://localhost/three",
             "content": {
-              "digest": "three-digest-added",
+              "data": {
+                "type": "sha1",
+                "value": "three-digest-added"
+              },
               "size": 321
             },
             "diffStatus": "added"
@@ -430,7 +537,10 @@ mod tests {
         [
           {
             "content": {
-              "digest": "three-digest-inline-added",
+              "data": {
+                "type": "sha1",
+                "value": "three-digest-inline-added"
+              },
               "size": 123
             },
             "diffStatus": "added"
@@ -444,7 +554,10 @@ mod tests {
           {
             "url": "http://localhost/three-multiple",
             "content": {
-              "digest": "three-digest-multiple-added",
+              "data": {
+                "type": "sha1",
+                "value": "three-digest-multiple-added"
+              },
               "size": 321
             },
             "diffStatus": "added"
@@ -452,7 +565,10 @@ mod tests {
           {
             "url": "http://localhost/three-multiple",
             "content": {
-              "digest": "three-digest-multiple-added",
+              "data": {
+                "type": "sha1",
+                "value": "three-digest-multiple-added"
+              },
               "size": 321
             },
             "diffStatus": "added"
@@ -465,14 +581,20 @@ mod tests {
         [
           {
             "content": {
-              "digest": "three-digest-multiple-inline-added",
+              "data": {
+                "type": "sha1",
+                "value": "three-digest-multiple-inline-added"
+              },
               "size": 123
             },
             "diffStatus": "added"
           },
           {
             "content": {
-              "digest": "three-digest-multiple-inline-added",
+              "data": {
+                "type": "sha1",
+                "value": "three-digest-multiple-inline-added"
+              },
               "size": 123
             },
             "diffStatus": "added"
@@ -486,7 +608,10 @@ mod tests {
           {
             "url": "http://localhost/three-removed",
             "content": {
-              "digest": "three-digest-removed",
+              "data": {
+                "type": "sha1",
+                "value": "three-digest-removed"
+              },
               "size": 321
             },
             "diffStatus": "removed"
@@ -499,7 +624,10 @@ mod tests {
         [
           {
             "content": {
-              "digest": "three-digest-inline-removed",
+              "data": {
+                "type": "sha1",
+                "value": "three-digest-inline-removed"
+              },
               "size": 123
             },
             "diffStatus": "removed"
@@ -513,7 +641,10 @@ mod tests {
           {
             "url": "http://localhost/three-multiple-removed",
             "content": {
-              "digest": "three-digest-multiple-removed",
+              "data": {
+                "type": "sha1",
+                "value": "three-digest-multiple-removed"
+              },
               "size": 321
             },
             "diffStatus": "removed"
@@ -521,7 +652,10 @@ mod tests {
           {
             "url": "http://localhost/three-multiple-removed",
             "content": {
-              "digest": "three-digest-multiple-removed",
+              "data": {
+                "type": "sha1",
+                "value": "three-digest-multiple-removed"
+              },
               "size": 321
             },
             "diffStatus": "removed"
@@ -534,14 +668,20 @@ mod tests {
         [
           {
             "content": {
-              "digest": "three-digest-multiple-inline-removed",
+              "data": {
+                "type": "sha1",
+                "value": "three-digest-multiple-inline-removed"
+              },
               "size": 123
             },
             "diffStatus": "removed"
           },
           {
             "content": {
-              "digest": "three-digest-multiple-inline-removed",
+              "data": {
+                "type": "sha1",
+                "value": "three-digest-multiple-inline-removed"
+              },
               "size": 123
             },
             "diffStatus": "removed"
@@ -556,49 +696,82 @@ mod tests {
     fn correctly_calculates_web_page_revisions_diff() -> anyhow::Result<()> {
         let resource_one_rev_1 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/one")?)
-                .set_content("one-digest-no-change", 123)
+                .set_content(
+                    WebPageResourceContentData::Sha1("one-digest-no-change".to_string()),
+                    123,
+                )
                 .build();
         let resource_two_rev_1 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/two")?)
-                .set_content("two-digest", 321)
+                .set_content(
+                    WebPageResourceContentData::Sha1("two-digest".to_string()),
+                    321,
+                )
                 .build();
         let resource_three_rev_1 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/three-removed")?)
-                .set_content("three-digest-removed", 321)
+                .set_content(
+                    WebPageResourceContentData::Sha1("three-digest-removed".to_string()),
+                    321,
+                )
                 .build();
         let resource_four_rev_1 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/four")?)
-                .set_content("four-digest", 321)
+                .set_content(
+                    WebPageResourceContentData::Sha1("four-digest".to_string()),
+                    321,
+                )
                 .build();
 
         let resource_one_rev_2 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/one")?)
-                .set_content("one-digest-no-change", 123)
+                .set_content(
+                    WebPageResourceContentData::Sha1("one-digest-no-change".to_string()),
+                    123,
+                )
                 .build();
         let resource_two_rev_2 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/two")?)
-                .set_content("two-digest-changed", 321)
+                .set_content(
+                    WebPageResourceContentData::Sha1("two-digest-changed".to_string()),
+                    321,
+                )
                 .build();
         let resource_three_rev_2 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/three")?)
-                .set_content("three-digest-added", 321)
+                .set_content(
+                    WebPageResourceContentData::Sha1("three-digest-added".to_string()),
+                    321,
+                )
                 .build();
         let resource_four_rev_2 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/four")?)
-                .set_content("four-digest-changed", 321)
+                .set_content(
+                    WebPageResourceContentData::Sha1("four-digest-changed".to_string()),
+                    321,
+                )
                 .build();
 
         let resource_one_rev_3 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/five")?)
-                .set_content("five-digest-added", 123)
+                .set_content(
+                    WebPageResourceContentData::Sha1("five-digest-added".to_string()),
+                    123,
+                )
                 .build();
         let resource_two_rev_3 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/two")?)
-                .set_content("two-digest-changed", 321)
+                .set_content(
+                    WebPageResourceContentData::Sha1("two-digest-changed".to_string()),
+                    321,
+                )
                 .build();
         let resource_three_rev_3 =
             MockWebPageResourceBuilder::with_url(Url::parse("http://localhost/three")?)
-                .set_content("three-digest-changed", 321)
+                .set_content(
+                    WebPageResourceContentData::Sha1("three-digest-changed".to_string()),
+                    321,
+                )
                 .build();
 
         let diff = web_page_resources_revisions_diff(vec![
@@ -628,21 +801,30 @@ mod tests {
             {
               "url": "http://localhost/one",
               "content": {
-                "digest": "one-digest-no-change",
+                "data": {
+                  "type": "sha1",
+                  "value": "one-digest-no-change"
+                },
                 "size": 123
               }
             },
             {
               "url": "http://localhost/three-removed",
               "content": {
-                "digest": "three-digest-removed",
+                "data": {
+                  "type": "sha1",
+                  "value": "three-digest-removed"
+                },
                 "size": 321
               }
             },
             {
               "url": "http://localhost/two",
               "content": {
-                "digest": "two-digest",
+                "data": {
+                  "type": "sha1",
+                  "value": "two-digest"
+                },
                 "size": 321
               }
             }
@@ -651,7 +833,10 @@ mod tests {
             {
               "url": "http://localhost/four",
               "content": {
-                "digest": "four-digest",
+                "data": {
+                  "type": "sha1",
+                  "value": "four-digest"
+                },
                 "size": 321
               }
             }
@@ -665,14 +850,20 @@ mod tests {
             {
               "url": "http://localhost/one",
               "content": {
-                "digest": "one-digest-no-change",
+                "data": {
+                  "type": "sha1",
+                  "value": "one-digest-no-change"
+                },
                 "size": 123
               }
             },
             {
               "url": "http://localhost/three",
               "content": {
-                "digest": "three-digest-added",
+                "data": {
+                  "type": "sha1",
+                  "value": "three-digest-added"
+                },
                 "size": 321
               },
               "diffStatus": "added"
@@ -680,7 +871,10 @@ mod tests {
             {
               "url": "http://localhost/three-removed",
               "content": {
-                "digest": "three-digest-removed",
+                "data": {
+                  "type": "sha1",
+                  "value": "three-digest-removed"
+                },
                 "size": 321
               },
               "diffStatus": "removed"
@@ -688,7 +882,10 @@ mod tests {
             {
               "url": "http://localhost/two",
               "content": {
-                "digest": "two-digest-changed",
+                "data": {
+                  "type": "sha1",
+                  "value": "two-digest-changed"
+                },
                 "size": 321
               },
               "diffStatus": "changed"
@@ -698,7 +895,10 @@ mod tests {
             {
               "url": "http://localhost/four",
               "content": {
-                "digest": "four-digest-changed",
+                "data": {
+                  "type": "sha1",
+                  "value": "four-digest-changed"
+                },
                 "size": 321
               },
               "diffStatus": "changed"
@@ -713,7 +913,10 @@ mod tests {
             {
               "url": "http://localhost/five",
               "content": {
-                "digest": "five-digest-added",
+                "data": {
+                  "type": "sha1",
+                  "value": "five-digest-added"
+                },
                 "size": 123
               },
               "diffStatus": "added"
@@ -721,7 +924,10 @@ mod tests {
             {
               "url": "http://localhost/one",
               "content": {
-                "digest": "one-digest-no-change",
+                "data": {
+                  "type": "sha1",
+                  "value": "one-digest-no-change"
+                },
                 "size": 123
               },
               "diffStatus": "removed"
@@ -729,7 +935,10 @@ mod tests {
             {
               "url": "http://localhost/three",
               "content": {
-                "digest": "three-digest-changed",
+                "data": {
+                  "type": "sha1",
+                  "value": "three-digest-changed"
+                },
                 "size": 321
               },
               "diffStatus": "changed"
@@ -737,7 +946,10 @@ mod tests {
             {
               "url": "http://localhost/two",
               "content": {
-                "digest": "two-digest-changed",
+                "data": {
+                  "type": "sha1",
+                  "value": "two-digest-changed"
+                },
                 "size": 321
               }
             }
@@ -746,7 +958,10 @@ mod tests {
             {
               "url": "http://localhost/four",
               "content": {
-                "digest": "four-digest-changed",
+                "data": {
+                  "type": "sha1",
+                  "value": "four-digest-changed"
+                },
                 "size": 321
               },
               "diffStatus": "removed"
