@@ -24,6 +24,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         name: Checkout
+        with:
+          submodules: recursive
 
       # Always install nightly toolchain for `Rustfmt`.
       - name: Install toolchain ${{ matrix.rust }}
