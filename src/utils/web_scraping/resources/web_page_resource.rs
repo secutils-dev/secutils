@@ -21,13 +21,24 @@ impl WebPageResource {
             ..self
         }
     }
+
+    /// Checks if the resource is external (i.e. has URL that's not a data URL or a blob URL).
+    pub fn is_external_resource(&self) -> bool {
+        self.url
+            .as_ref()
+            .map(|url| url.scheme() != "data" && url.scheme() != "blob")
+            .unwrap_or_default()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{
-        web_scraping::WebPageResourceDiffStatus, WebPageResource, WebPageResourceContent,
-        WebPageResourceContentData,
+    use crate::{
+        tests::MockWebPageResourceBuilder,
+        utils::{
+            web_scraping::WebPageResourceDiffStatus, WebPageResource, WebPageResourceContent,
+            WebPageResourceContentData,
+        },
     };
     use insta::assert_json_snapshot;
     use serde_json::json;
@@ -197,6 +208,33 @@ mod tests {
                 ..resource_with_status
             }
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn correctly_determines_external_resource() -> anyhow::Result<()> {
+        for resource in [
+            MockWebPageResourceBuilder::with_url(Url::parse("https://localhost:1234/one")?).build(),
+            MockWebPageResourceBuilder::with_url(Url::parse("http://127.0.0.1")?).build(),
+            MockWebPageResourceBuilder::with_url(Url::parse("file://host/path")?).build(),
+        ] {
+            assert!(resource.is_external_resource());
+        }
+
+        for resource in [
+            MockWebPageResourceBuilder::with_content(WebPageResourceContentData::Raw("some-data".to_string()), 123).build(),
+            MockWebPageResourceBuilder::with_url(Url::parse(
+                "blob:[T16EA0020625914D256FCEFB48581C10163480057470935CDE900D52FC00457F1013E450]",
+            )?)
+                .build(),
+            MockWebPageResourceBuilder::with_url(Url::parse(
+                "data:text/css,[T110A02222C3020C0330CB800FA0B2800B8A32088880382FE83C38C02C020E00020238FA]",
+            )?)
+                .build(),
+        ] {
+            assert!(!resource.is_external_resource());
+        }
 
         Ok(())
     }

@@ -89,7 +89,7 @@ impl UtilsWebScrapingActionHandler {
                 Ok(UtilsWebScrapingActionResult::FetchWebPageResources {
                     tracker_name,
                     revisions: if calculate_diff {
-                        web_page_resources_revisions_diff(revisions)
+                        web_page_resources_revisions_diff(revisions)?
                     } else {
                         revisions
                     },
