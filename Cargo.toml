@@ -32,14 +32,15 @@ mailchecker = "5.0.9"
 openssl = "0.10.55"
 rand_core = "0.6.4"
 reqwest = "0.11.18"
-serde = "1.0.164"
+serde = "1.0.169"
 serde_bytes = "0.11.9"
 serde_json = "1.0.99"
 serde_repr = "0.1.12"
 serde_with = "3.0.0"
 sqlx = "0.7.0-alpha.3"
 tantivy = "0.20.2"
-time = "0.3.22"
+time = "0.3.23"
+tlsh2 = "0.2.1"
 url = "2.4.0"
 urlencoding = "2.1.2"
 uuid = "1.4.0"
@@ -48,6 +49,9 @@ zip = "0.6.6"
 
 [dev-dependencies]
 insta = "1.30.0"
+
+[patch.crates-io]
+tlsh2 = { path = "./vendor/tlsh" }
 
 [features]
 default = [
@@ -71,6 +75,7 @@ default = [
     "sqlx/sqlite",
     "time/formatting",
     "time/macros",
+    "tlsh2/diff",
     "url/serde",
     "webauthn-rs/danger-allow-state-serialisation"
 ]
