@@ -24,6 +24,9 @@ RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; \
         set -x && apk add --no-cache openssl-libs-static; \
     fi
 
+# Copy vendored crates.
+COPY ["./vendor", "./vendor"]
+
 # Fetch dependencies if they change.
 COPY ["./Cargo.lock", "./Cargo.toml", "./"]
 RUN set -x && cargo fetch
