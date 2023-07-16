@@ -44,7 +44,7 @@ At this point, it is recommended to use the Secutils.dev APIs through the [Web U
 
 To manage the local SQLite database, you need to install the [SQLx's command-line utility](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli):
 ```shell
-cargo install sqlx-cli@0.7.0-alpha.3
+cargo install --force sqlx-cli
 
 # Drops, creates, and migrates the SQLite database
 # referenced in the `DATABASE_URL` from the `.env` file.
