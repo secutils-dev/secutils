@@ -1,4 +1,8 @@
-use crate::utils::utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH;
+use crate::{
+    api::Api,
+    users::User,
+    utils::{utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH, UtilsWebhooksActionResult},
+};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -30,6 +34,28 @@ impl UtilsWebhooksAction {
         }
 
         Ok(())
+    }
+
+    pub async fn handle(self, user: User, api: &Api) -> anyhow::Result<UtilsWebhooksActionResult> {
+        match self {
+            UtilsWebhooksAction::GetAutoRespondersRequests {
+                auto_responder_name,
+            } => {
+                let auto_responders_api = api.auto_responders();
+                let requests = if let Some(auto_responder) = auto_responders_api
+                    .get_auto_responder(user.id, &auto_responder_name)
+                    .await?
+                {
+                    auto_responders_api
+                        .get_requests(user.id, &auto_responder)
+                        .await?
+                } else {
+                    Vec::with_capacity(0)
+                };
+
+                Ok(UtilsWebhooksActionResult::GetAutoRespondersRequests { requests })
+            }
+        }
     }
 }
 

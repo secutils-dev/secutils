@@ -5,8 +5,14 @@ mod http_errors;
 mod status;
 
 use crate::{
-    api::Api, authentication::create_webauthn, config::Config, datastore::Datastore,
-    directories::Directories, search::search_index_initializer, server::app_state::AppState,
+    api::Api,
+    authentication::create_webauthn,
+    config::Config,
+    datastore::Datastore,
+    directories::Directories,
+    network::{Network, TokioDnsResolver},
+    search::search_index_initializer,
+    server::app_state::AppState,
     users::builtin_users_initializer,
 };
 use actix_identity::IdentityMiddleware;
@@ -42,7 +48,11 @@ pub async fn run(
     search_index_initializer(&api).await?;
 
     let http_server_url = format!("0.0.0.0:{}", config.http_port);
-    let state = web::Data::new(AppState::new(config, api));
+    let state = web::Data::new(AppState::new(
+        config,
+        api,
+        Network::new(TokioDnsResolver::create()?),
+    ));
     let http_server = HttpServer::new(move || {
         App::new()
             .wrap(middleware::Compat::new(middleware::Compress::default()))

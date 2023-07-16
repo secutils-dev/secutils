@@ -6,6 +6,7 @@ mod config;
 mod datastore;
 mod directories;
 mod error;
+mod network;
 mod search;
 mod server;
 mod users;
@@ -188,6 +189,8 @@ mod tests {
     use tantivy::{schema::Schema, Index, IndexReader};
     use time::OffsetDateTime;
     use url::Url;
+
+    pub use crate::network::tests::MockResolver;
 
     pub fn open_index(schema: Schema) -> anyhow::Result<(Index, IndexReader)> {
         initialize_index(Index::create_in_ram(schema))

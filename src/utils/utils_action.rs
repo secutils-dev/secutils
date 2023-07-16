@@ -1,5 +1,11 @@
-use crate::utils::{
-    UtilsCertificatesAction, UtilsWebScrapingAction, UtilsWebSecurityAction, UtilsWebhooksAction,
+use crate::{
+    api::Api,
+    network::{DnsResolver, Network},
+    users::User,
+    utils::{
+        UtilsActionResult, UtilsCertificatesAction, UtilsWebScrapingAction, UtilsWebSecurityAction,
+        UtilsWebhooksAction,
+    },
 };
 use serde::Deserialize;
 
@@ -15,29 +21,72 @@ pub enum UtilsAction {
 
 impl UtilsAction {
     /// Validates action parameters and throws if action parameters aren't valid.
-    pub fn validate(&self) -> anyhow::Result<()> {
+    pub async fn validate<DR: DnsResolver>(&self, network: &Network<DR>) -> anyhow::Result<()> {
         match self {
             UtilsAction::Certificates(action) => action.validate(),
             UtilsAction::Webhooks(action) => action.validate(),
-            UtilsAction::WebScraping(action) => action.validate(),
+            UtilsAction::WebScraping(action) => action.validate(network).await,
             UtilsAction::WebSecurity(action) => action.validate(),
+        }
+    }
+
+    /// Consumes and handles action.
+    pub async fn handle<DR: DnsResolver>(
+        self,
+        user: User,
+        api: &Api,
+        network: &Network<DR>,
+    ) -> anyhow::Result<UtilsActionResult> {
+        match self {
+            UtilsAction::Certificates(action) => action
+                .handle(user, api)
+                .await
+                .map(UtilsActionResult::Certificates),
+            UtilsAction::Webhooks(action) => action
+                .handle(user, api)
+                .await
+                .map(UtilsActionResult::Webhooks),
+            UtilsAction::WebScraping(action) => action
+                .handle(user, api, network)
+                .await
+                .map(UtilsActionResult::WebScraping),
+            UtilsAction::WebSecurity(action) => action
+                .handle(user, api)
+                .await
+                .map(UtilsActionResult::WebSecurity),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{
-        CertificateFormat, ContentSecurityPolicySource, UtilsAction, UtilsCertificatesAction,
-        UtilsWebScrapingAction, UtilsWebSecurityAction, UtilsWebhooksAction,
-        WebPageResourcesTracker,
+    use crate::{
+        network::Network,
+        tests::MockResolver,
+        utils::{
+            CertificateFormat, ContentSecurityPolicySource, UtilsAction, UtilsCertificatesAction,
+            UtilsWebScrapingAction, UtilsWebSecurityAction, UtilsWebhooksAction,
+            WebPageResourcesTracker,
+        },
     };
     use insta::assert_debug_snapshot;
-    use std::time::Duration;
+    use std::{net::Ipv4Addr, time::Duration};
+    use trust_dns_resolver::{
+        proto::rr::{RData, Record},
+        Name,
+    };
     use url::Url;
 
-    #[test]
-    fn validation_certificates() -> anyhow::Result<()> {
+    fn mock_network() -> Network<MockResolver> {
+        Network::new(MockResolver::new())
+    }
+
+    fn mock_network_with_records<const N: usize>(records: Vec<Record>) -> Network<MockResolver<N>> {
+        Network::new(MockResolver::new_with_records::<N>(records))
+    }
+
+    #[actix_rt::test]
+    async fn validation_certificates() -> anyhow::Result<()> {
         assert!(UtilsAction::Certificates(
             UtilsCertificatesAction::GenerateSelfSignedCertificate {
                 template_name: "a".repeat(100),
@@ -45,14 +94,15 @@ mod tests {
                 passphrase: None,
             }
         )
-        .validate()
+        .validate(&mock_network())
+        .await
         .is_ok());
 
         assert_debug_snapshot!(UtilsAction::Certificates(UtilsCertificatesAction::GenerateSelfSignedCertificate {
             template_name: "".to_string(),
             format: CertificateFormat::Pem,
             passphrase: None,
-        }).validate(), @r###"
+        }).validate(&mock_network()).await, @r###"
         Err(
             "Template name cannot be empty",
         )
@@ -61,20 +111,21 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn validation_webhooks() -> anyhow::Result<()> {
+    #[actix_rt::test]
+    async fn validation_webhooks() -> anyhow::Result<()> {
         assert!(
             UtilsAction::Webhooks(UtilsWebhooksAction::GetAutoRespondersRequests {
                 auto_responder_name: "a".repeat(100),
             })
-            .validate()
+            .validate(&mock_network())
+            .await
             .is_ok()
         );
 
         assert_debug_snapshot!(UtilsAction::Webhooks(UtilsWebhooksAction::GetAutoRespondersRequests {
             auto_responder_name: "".to_string(),
         })
-        .validate(), @r###"
+        .validate(&mock_network()).await, @r###"
         Err(
             "Auto responder name cannot be empty",
         )
@@ -83,18 +134,23 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn validation_web_scraping() -> anyhow::Result<()> {
+    #[actix_rt::test]
+    async fn validation_web_scraping() -> anyhow::Result<()> {
         assert!(
             UtilsAction::WebScraping(UtilsWebScrapingAction::SaveWebPageResourcesTracker {
                 tracker: WebPageResourcesTracker {
                     name: "a".repeat(100),
-                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
+                    url: Url::parse("http://google.com/my/app?q=2")?,
                     revisions: 0,
                     delay: Duration::from_millis(0),
                 }
             })
-            .validate()
+            .validate(&mock_network_with_records::<1>(vec![Record::from_rdata(
+                Name::new(),
+                300,
+                RData::A(Ipv4Addr::new(172, 32, 0, 2)),
+            )]))
+            .await
             .is_ok()
         );
 
@@ -103,7 +159,7 @@ mod tests {
             refresh: false,
             calculate_diff: false
         })
-        .validate(), @r###"
+        .validate(&mock_network()).await, @r###"
         Err(
             "Tracker name cannot be empty",
         )
@@ -112,14 +168,15 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn validation_web_security() -> anyhow::Result<()> {
+    #[actix_rt::test]
+    async fn validation_web_security() -> anyhow::Result<()> {
         assert!(
             UtilsAction::WebSecurity(UtilsWebSecurityAction::SerializeContentSecurityPolicy {
                 policy_name: "a".repeat(100),
                 source: ContentSecurityPolicySource::Meta,
             })
-            .validate()
+            .validate(&mock_network())
+            .await
             .is_ok()
         );
 
@@ -127,7 +184,7 @@ mod tests {
             policy_name: "".to_string(),
             source: ContentSecurityPolicySource::Meta,
         })
-        .validate(), @r###"
+        .validate(&mock_network()).await, @r###"
         Err(
             "Policy name cannot be empty",
         )

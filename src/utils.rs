@@ -1,7 +1,6 @@
 mod certificates;
 mod util;
 mod utils_action;
-mod utils_action_handler;
 mod utils_action_result;
 mod utils_action_validation;
 mod web_scraping;
@@ -11,27 +10,25 @@ mod webhooks;
 pub use self::{
     certificates::{
         CertificateFormat, ExtendedKeyUsage, KeyAlgorithm, KeyUsage, SelfSignedCertificate,
-        SignatureAlgorithm, UtilsCertificatesAction, UtilsCertificatesActionHandler,
-        UtilsCertificatesActionResult, Version,
+        SignatureAlgorithm, UtilsCertificatesAction, UtilsCertificatesActionResult, Version,
     },
     util::Util,
     utils_action::UtilsAction,
-    utils_action_handler::UtilsActionHandler,
     utils_action_result::UtilsActionResult,
     web_scraping::{
-        UtilsWebScrapingAction, UtilsWebScrapingActionHandler, UtilsWebScrapingActionResult,
-        WebPageResource, WebPageResourceContent, WebPageResourceContentData,
-        WebPageResourceDiffStatus, WebPageResourcesRevision, WebPageResourcesTracker,
+        UtilsWebScrapingAction, UtilsWebScrapingActionResult, WebPageResource,
+        WebPageResourceContent, WebPageResourceContentData, WebPageResourceDiffStatus,
+        WebPageResourcesRevision, WebPageResourcesTracker,
     },
     web_security::{
         ContentSecurityPolicy, ContentSecurityPolicyDirective,
         ContentSecurityPolicySandboxDirectiveValue, ContentSecurityPolicySource,
         ContentSecurityPolicyWebrtcDirectiveValue, UtilsWebSecurityAction,
-        UtilsWebSecurityActionHandler, UtilsWebSecurityActionResult,
+        UtilsWebSecurityActionResult,
     },
     webhooks::{
         AutoResponder, AutoResponderMethod, AutoResponderRequest, UtilsWebhooksAction,
-        UtilsWebhooksActionHandler, UtilsWebhooksActionResult,
+        UtilsWebhooksActionResult,
     },
 };
 

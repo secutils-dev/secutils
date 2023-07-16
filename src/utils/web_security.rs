@@ -1,6 +1,5 @@
 mod csp;
 mod utils_web_security_action;
-mod utils_web_security_action_handler;
 mod utils_web_security_action_result;
 
 pub use self::{
@@ -10,6 +9,5 @@ pub use self::{
         ContentSecurityPolicyWebrtcDirectiveValue,
     },
     utils_web_security_action::UtilsWebSecurityAction,
-    utils_web_security_action_handler::UtilsWebSecurityActionHandler,
     utils_web_security_action_result::UtilsWebSecurityActionResult,
 };
