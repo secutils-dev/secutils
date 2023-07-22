@@ -176,7 +176,16 @@ impl UtilsWebScrapingAction {
                         .send()
                         .await?
                         .json::<WebScraperResourcesResponse>()
-                        .await?;
+                        .await
+                        .map_err(|err| {
+                            log::error!(
+                                "Cannot fetch resources for `{}` ({}): {:?}",
+                                tracker.url,
+                                tracker.name,
+                                err
+                            );
+                            anyhow!("Tracker cannot fetch resources due to unexpected error")
+                        })?;
 
                     api.web_scraping()
                         .save_web_page_resources(
