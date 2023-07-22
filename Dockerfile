@@ -16,8 +16,8 @@ RUN set -x && apk add --no-cache pkgconfig musl-dev openssl-dev perl make curl
 # Prepare environment: for cross compilation we download toolchain and `aarch64` OpenSSL libs.
 RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; \
     then set -x && \
-        curl --remote-name-all https://musl.cc/aarch64-linux-musl-cross.tgz https://dl-cdn.alpinelinux.org/alpine/v3.18/main/aarch64/openssl-libs-static-3.1.1-r1.apk && \
-        apk add --allow-untrusted openssl-libs-static-3.1.1-r1.apk && \
+        curl --remote-name-all https://musl.cc/aarch64-linux-musl-cross.tgz https://dl-cdn.alpinelinux.org/alpine/v3.18/main/aarch64/openssl-libs-static-3.1.1-r3.apk && \
+        apk add --allow-untrusted openssl-libs-static-3.1.1-r3.apk && \
         tar xzf ./aarch64-linux-musl-cross.tgz && \
         rustup target add aarch64-unknown-linux-musl; \
     else set -x && \
