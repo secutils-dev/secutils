@@ -1,3 +1,0 @@
-[submodule "vendor/tlsh"]
-	path = vendor/tlsh
-	url = git@github.com:secutils-dev/tlsh.git

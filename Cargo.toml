@@ -41,7 +41,7 @@ serde_with = "3.1.0"
 sqlx = "0.7.1"
 tantivy = "0.20.2"
 time = "0.3.23"
-tlsh2 = "0.2.1"
+tlsh2 = "0.3.0"
 trust-dns-resolver = "0.22.0"
 url = "2.4.0"
 urlencoding = "2.1.3"
@@ -51,9 +51,6 @@ zip = "0.6.6"
 
 [dev-dependencies]
 insta = "1.31.0"
-
-[patch.crates-io]
-tlsh2 = { path = "./vendor/tlsh" }
 
 [features]
 default = [
