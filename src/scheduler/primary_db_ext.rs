@@ -1,6 +1,4 @@
-mod raw_scheduler_job_and_next_tick;
 mod raw_scheduler_job_stored_data;
-mod raw_scheduler_notification;
 
 use crate::datastore::PrimaryDb;
 use anyhow::bail;
@@ -12,11 +10,7 @@ use tokio_cron_scheduler::{
     NotificationId,
 };
 
-use self::{
-    raw_scheduler_job_and_next_tick::RawSchedulerJobAndNextTick,
-    raw_scheduler_job_stored_data::RawSchedulerJobStoredData,
-    raw_scheduler_notification::RawSchedulerNotification,
-};
+use self::raw_scheduler_job_stored_data::RawSchedulerJobStoredData;
 
 /// Extends primary DB with the Scheduler-related methods.
 impl PrimaryDb {
@@ -92,8 +86,7 @@ WHERE id = ?1
     /// Retrieves next scheduled jobs from `scheduler_jobs` table.
     pub async fn get_next_scheduler_jobs(&self) -> anyhow::Result<Vec<JobAndNextTick>> {
         let now = OffsetDateTime::now_utc().unix_timestamp();
-        let jobs = query_as!(
-            RawSchedulerJobAndNextTick,
+        let jobs = query!(
             r#"
 SELECT id as "id: uuid::fmt::Hyphenated", job_type, next_tick, last_tick
 FROM scheduler_jobs
@@ -104,7 +97,15 @@ WHERE next_tick > 0 AND next_tick < ?1
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(jobs.into_iter().map(JobAndNextTick::from).collect())
+        Ok(jobs
+            .into_iter()
+            .map(|record| JobAndNextTick {
+                id: Some(record.id.into_uuid().into()),
+                last_tick: record.last_tick.map(|ts| ts as u64),
+                next_tick: record.next_tick.unwrap_or_default() as u64,
+                job_type: record.job_type as i32,
+            })
+            .collect())
     }
 
     /// Updates scheduler job ticks in the `scheduler_jobs` table.
@@ -170,8 +171,7 @@ ORDER BY next_tick ASC
         id: NotificationId,
     ) -> anyhow::Result<Option<NotificationData>> {
         let id = id.hyphenated();
-        let notification = query_as!(
-            RawSchedulerNotification,
+        let notification = query!(
             r#"
 SELECT job_id as "job_id: uuid::fmt::Hyphenated", extra
 FROM scheduler_notifications
