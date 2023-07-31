@@ -7,6 +7,7 @@ mod datastore;
 mod directories;
 mod error;
 mod network;
+mod scheduler;
 mod search;
 mod server;
 mod users;

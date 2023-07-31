@@ -11,6 +11,7 @@ use crate::{
     datastore::Datastore,
     directories::Directories,
     network::{Network, TokioDnsResolver},
+    scheduler::Scheduler,
     search::search_index_initializer,
     server::app_state::AppState,
     users::builtin_users_initializer,
@@ -33,11 +34,8 @@ pub async fn run(
         datastore_dir.as_path().display()
     );
 
-    let api = Api::new(
-        config.clone(),
-        Datastore::open(&config, datastore_dir).await?,
-        create_webauthn(&config)?,
-    );
+    let datastore = Datastore::open(&config, datastore_dir).await?;
+    let api = Api::new(config.clone(), datastore.clone(), create_webauthn(&config)?);
 
     if let Some(ref builtin_users) = builtin_users {
         builtin_users_initializer(&api, builtin_users)
@@ -52,6 +50,7 @@ pub async fn run(
         config,
         api,
         Network::new(TokioDnsResolver::create()?),
+        Scheduler::start(datastore).await?,
     ));
     let http_server = HttpServer::new(move || {
         App::new()

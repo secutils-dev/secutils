@@ -1,0 +1,3 @@
+[submodule "vendor/tokio-cron-scheduler"]
+	path = vendor/tokio-cron-scheduler
+	url = git@github.com:secutils-dev/tokio-cron-scheduler.git
