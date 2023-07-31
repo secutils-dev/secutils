@@ -31,9 +31,9 @@ impl TryFrom<RawUserWebAuthnSession> for WebAuthnSession {
 
 #[cfg(test)]
 mod tests {
+    use super::RawUserWebAuthnSession;
     use crate::{
         authentication::{WebAuthnSession, WebAuthnSessionValue},
-        datastore::primary_db::raw_user_webauthn_session::RawUserWebAuthnSession,
         tests::webauthn::{SERIALIZED_AUTHENTICATION_STATE, SERIALIZED_REGISTRATION_STATE},
     };
     use insta::assert_debug_snapshot;

@@ -36,7 +36,8 @@ impl TryFrom<RawUtil> for Util {
 
 #[cfg(test)]
 mod tests {
-    use crate::{datastore::primary_db::raw_util::RawUtil, utils::Util};
+    use super::RawUtil;
+    use crate::utils::Util;
     use insta::assert_debug_snapshot;
 
     #[test]

@@ -35,7 +35,8 @@ impl<'u, V: Serialize> TryFrom<&'u UserData<V>> for RawUserData {
 
 #[cfg(test)]
 mod tests {
-    use crate::{datastore::primary_db::raw_user_data::RawUserData, users::UserData};
+    use super::RawUserData;
+    use crate::users::UserData;
     use insta::assert_debug_snapshot;
     use time::OffsetDateTime;
 

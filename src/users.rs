@@ -1,6 +1,7 @@
 mod builtin_user;
 mod builtin_users_initializer;
 mod internal_user_data_namespace;
+mod primary_db_ext;
 mod public_user_data_namespace;
 mod user;
 mod user_data;

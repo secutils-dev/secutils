@@ -1,4 +1,5 @@
 mod credentials;
+mod primary_db_ext;
 mod stored_credentials;
 mod webauthn;
 

@@ -35,9 +35,8 @@ impl TryFrom<RawUser> for User {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        authentication::StoredCredentials, datastore::primary_db::raw_user::RawUser, users::User,
-    };
+    use super::RawUser;
+    use crate::{authentication::StoredCredentials, users::User};
     use insta::assert_debug_snapshot;
 
     #[test]
