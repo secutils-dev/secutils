@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\nUPDATE scheduler_jobs\nSET next_tick=?2, last_tick=?3\nWHERE id = ?1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "02bedd0de7dc0866203cb7e245cef632bb77dcbbdaff389ec519a91c1096ad9a"
+}

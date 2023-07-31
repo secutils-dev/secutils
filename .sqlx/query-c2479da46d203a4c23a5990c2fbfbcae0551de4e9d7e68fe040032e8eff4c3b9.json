@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\nSELECT job_id as \"job_id: uuid::fmt::Hyphenated\", extra\nFROM scheduler_notifications\nWHERE id = ?1\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "job_id: uuid::fmt::Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "extra",
+        "ordinal": 1,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "c2479da46d203a4c23a5990c2fbfbcae0551de4e9d7e68fe040032e8eff4c3b9"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\nINSERT INTO scheduler_jobs (id, last_updated, next_tick, job_type, count, ran, stopped, schedule,\n                            repeating, repeated_every, extra, last_tick)\nVALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)\nON CONFLICT(id) DO UPDATE SET last_updated=excluded.last_updated, next_tick=excluded.next_tick,\n                            job_type=excluded.job_type, count=excluded.count, ran=excluded.ran,\n                            stopped=excluded.stopped, schedule=excluded.schedule,\n                            repeating=excluded.repeating, repeated_every=excluded.repeated_every,\n                            extra=excluded.extra, last_tick=excluded.last_tick\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 12
+    },
+    "nullable": []
+  },
+  "hash": "34a6010c2a3416fb66e62fe26e7f50d1433e8b3d97426e55aaea33330ec70bdf"
+}

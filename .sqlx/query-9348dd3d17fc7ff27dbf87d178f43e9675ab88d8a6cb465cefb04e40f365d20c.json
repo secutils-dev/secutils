@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\nSELECT DISTINCT id as \"id!: uuid::fmt::Hyphenated\"\nFROM scheduler_notifications\nWHERE job_id = ?1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: uuid::fmt::Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9348dd3d17fc7ff27dbf87d178f43e9675ab88d8a6cb465cefb04e40f365d20c"
+}

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\nSELECT state\nFROM scheduler_notification_states\nWHERE id = ?1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "state",
+        "ordinal": 0,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "8e378c308459492aaecb871578de3217b0ddc7a16e8fcdbe1beb51b9853670ae"
+}

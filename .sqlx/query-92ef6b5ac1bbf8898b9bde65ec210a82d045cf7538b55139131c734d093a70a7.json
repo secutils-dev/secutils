@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\nDELETE FROM scheduler_notifications\nWHERE job_id = ?1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "92ef6b5ac1bbf8898b9bde65ec210a82d045cf7538b55139131c734d093a70a7"
+}

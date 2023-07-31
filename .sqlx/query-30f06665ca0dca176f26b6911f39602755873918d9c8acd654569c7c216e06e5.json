@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\nSELECT id as \"id: uuid::fmt::Hyphenated\", job_type, next_tick, last_tick\nFROM scheduler_jobs\nWHERE next_tick > 0 AND next_tick < ?1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: uuid::fmt::Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "job_type",
+        "ordinal": 1,
+        "type_info": "Int64"
+      },
+      {
+        "name": "next_tick",
+        "ordinal": 2,
+        "type_info": "Int64"
+      },
+      {
+        "name": "last_tick",
+        "ordinal": 3,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "30f06665ca0dca176f26b6911f39602755873918d9c8acd654569c7c216e06e5"
+}
