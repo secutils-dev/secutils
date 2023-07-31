@@ -11,7 +11,6 @@ use tokio_cron_scheduler::{
     JobAndNextTick, JobId, JobIdAndNotification, JobNotification, JobStoredData, NotificationData,
     NotificationId,
 };
-use uuid::Uuid;
 
 use self::{
     raw_scheduler_job_and_next_tick::RawSchedulerJobAndNextTick,
@@ -75,7 +74,7 @@ ON CONFLICT(id) DO UPDATE SET last_updated=excluded.last_updated, next_tick=excl
     }
 
     /// Removes scheduler job from the `scheduler_jobs` table using Job ID.
-    pub async fn remove_scheduler_job(&self, id: Uuid) -> anyhow::Result<()> {
+    pub async fn remove_scheduler_job(&self, id: JobId) -> anyhow::Result<()> {
         let id = id.hyphenated();
         query!(
             r#"
@@ -111,7 +110,7 @@ WHERE next_tick > 0 AND next_tick < ?1
     /// Updates scheduler job ticks in the `scheduler_jobs` table.
     pub async fn set_scheduler_job_ticks(
         &self,
-        id: Uuid,
+        id: JobId,
         next_tick: Option<OffsetDateTime>,
         last_tick: Option<OffsetDateTime>,
     ) -> anyhow::Result<()> {
@@ -168,7 +167,7 @@ ORDER BY next_tick ASC
     /// Retrieves scheduler notification from the `scheduler_notifications` table using Notification ID.
     pub async fn get_scheduler_notification(
         &self,
-        id: Uuid,
+        id: NotificationId,
     ) -> anyhow::Result<Option<NotificationData>> {
         let id = id.hyphenated();
         let notification = query_as!(
@@ -266,7 +265,7 @@ ON CONFLICT(id) DO UPDATE SET job_id=excluded.job_id, extra=excluded.extra
     }
 
     /// Removes scheduler notification from the `scheduler_notifications` table using notification ID.
-    pub async fn remove_scheduler_notification(&self, id: Uuid) -> anyhow::Result<()> {
+    pub async fn remove_scheduler_notification(&self, id: NotificationId) -> anyhow::Result<()> {
         let id = id.hyphenated();
         query!(
             r#"
@@ -334,7 +333,7 @@ WHERE job_id = ?1
     /// Removes scheduler notification from the `scheduler_notifications` table using notification ID.
     pub async fn remove_scheduler_notification_for_state(
         &self,
-        notification_id: Uuid,
+        notification_id: NotificationId,
         state: JobNotification,
     ) -> anyhow::Result<bool> {
         let notification_id = notification_id.hyphenated();
@@ -354,7 +353,7 @@ WHERE id = ?1 AND state = ?2
     }
 
     /// Removes scheduler notification from the `scheduler_notifications` table using notification ID.
-    pub async fn remove_scheduler_notification_for_job(&self, job_id: Uuid) -> anyhow::Result<()> {
+    pub async fn remove_scheduler_notification_for_job(&self, job_id: JobId) -> anyhow::Result<()> {
         let job_id = job_id.hyphenated();
         query!(
             r#"
