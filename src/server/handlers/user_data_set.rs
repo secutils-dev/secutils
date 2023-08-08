@@ -35,9 +35,8 @@ pub async fn user_data_set(
     let users_api = state.api.users();
     if let Err(err) = users_api
         .set_data(
-            user.id,
             query_params.namespace,
-            UserData::new(body_params.data_value, OffsetDateTime::now_utc()),
+            UserData::new(user.id, body_params.data_value, OffsetDateTime::now_utc()),
         )
         .await
     {

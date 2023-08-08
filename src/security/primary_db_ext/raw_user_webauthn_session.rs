@@ -1,4 +1,4 @@
-use crate::authentication::WebAuthnSession;
+use crate::security::WebAuthnSession;
 use anyhow::Context;
 use time::OffsetDateTime;
 
@@ -33,7 +33,7 @@ impl TryFrom<RawUserWebAuthnSession> for WebAuthnSession {
 mod tests {
     use super::RawUserWebAuthnSession;
     use crate::{
-        authentication::{WebAuthnSession, WebAuthnSessionValue},
+        security::{WebAuthnSession, WebAuthnSessionValue},
         tests::webauthn::{SERIALIZED_AUTHENTICATION_STATE, SERIALIZED_REGISTRATION_STATE},
     };
     use insta::assert_debug_snapshot;

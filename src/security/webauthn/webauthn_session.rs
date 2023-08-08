@@ -1,4 +1,4 @@
-use crate::authentication::WebAuthnSessionValue;
+use crate::security::WebAuthnSessionValue;
 use time::OffsetDateTime;
 
 #[derive(Debug, Clone)]

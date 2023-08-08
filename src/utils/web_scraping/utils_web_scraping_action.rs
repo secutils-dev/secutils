@@ -16,8 +16,10 @@ use crate::{
     },
 };
 use anyhow::anyhow;
+use cron::Schedule;
+use humantime::format_duration;
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::Duration};
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -102,6 +104,32 @@ impl UtilsWebScrapingAction {
                 if !is_public_host_name {
                     anyhow::bail!("Tracker URL must have a valid public reachable domain name");
                 }
+
+                if let Some(schedule) = &tracker.schedule {
+                    // Validate that the schedule is a valid cron expression.
+                    let schedule = match Schedule::try_from(schedule.as_str()) {
+                        Ok(schedule) => schedule,
+                        Err(err) => {
+                            log::error!("Failed to parse schedule `{}`: {:?}", schedule, err);
+                            anyhow::bail!("Tracker schedule must be a valid cron expression");
+                        }
+                    };
+
+                    // Check if the interval between 10 next occurrences is at least 1 hour.
+                    let next_occurrences =
+                        schedule.upcoming(chrono::Utc).take(10).collect::<Vec<_>>();
+                    let minimum_interval = Duration::from_secs(60 * 60);
+                    for (index, occurrence) in next_occurrences.iter().enumerate().skip(1) {
+                        let interval = (*occurrence - next_occurrences[index - 1]).to_std()?;
+                        if interval < minimum_interval {
+                            anyhow::bail!(
+                                "Tracker schedule must have at least {} between occurrences, detected {}", 
+                                format_duration(minimum_interval),
+                                format_duration(interval)
+                            );
+                        }
+                    }
+                }
             }
         }
 
@@ -119,13 +147,13 @@ impl UtilsWebScrapingAction {
                 Ok(UtilsWebScrapingActionResult::SaveWebPageResourcesTracker {
                     tracker: api
                         .web_scraping()
-                        .save_web_page_resources_tracker(user.id, tracker)
+                        .upsert_resources_tracker(user.id, tracker)
                         .await?,
                 })
             }
             UtilsWebScrapingAction::RemoveWebPageResourcesTracker { tracker_name } => {
                 api.web_scraping()
-                    .remove_web_page_resources_tracker(user.id, &tracker_name)
+                    .remove_resources_tracker(user.id, &tracker_name)
                     .await?;
                 Ok(UtilsWebScrapingActionResult::RemoveWebPageResourcesTracker)
             }
@@ -188,7 +216,7 @@ impl UtilsWebScrapingAction {
                         })?;
 
                     api.web_scraping()
-                        .save_web_page_resources(
+                        .save_resources(
                             user.id,
                             &tracker,
                             WebPageResourcesRevision {
@@ -200,10 +228,7 @@ impl UtilsWebScrapingAction {
                         .await?;
                 }
 
-                let revisions = api
-                    .web_scraping()
-                    .get_web_page_resources(user.id, &tracker)
-                    .await?;
+                let revisions = api.web_scraping().get_resources(user.id, &tracker).await?;
 
                 // Retrieve latest persisted resources.
                 Ok(UtilsWebScrapingActionResult::FetchWebPageResources {
@@ -217,7 +242,7 @@ impl UtilsWebScrapingAction {
             }
             UtilsWebScrapingAction::RemoveWebPageResources { tracker_name } => {
                 api.web_scraping()
-                    .remove_tracked_web_page_resources(
+                    .remove_tracked_resources(
                         user.id,
                         &Self::get_tracker(api, user.id, &tracker_name).await?,
                     )
@@ -335,6 +360,27 @@ mod tests {
                     url: Url::parse("http://localhost:1234/my/app?q=2")?,
                     revisions: 3,
                     delay: Duration::from_millis(2000),
+                    schedule: None,
+                }
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<UtilsWebScrapingAction>(
+                r###"
+    {
+        "type": "saveWebPageResourcesTracker",
+        "value": { "tracker": { "name": "some-name", "url": "http://localhost:1234/my/app?q=2", "revisions": 3, "delay": 2000, "schedule": "0 0 * * * *" } }
+    }
+              "###
+            )?,
+            UtilsWebScrapingAction::SaveWebPageResourcesTracker {
+                tracker: WebPageResourcesTracker {
+                    name: "some-name".to_string(),
+                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
+                    revisions: 3,
+                    delay: Duration::from_millis(2000),
+                    schedule: Some("0 0 * * * *".to_string()),
                 }
             }
         );
@@ -402,6 +448,7 @@ mod tests {
                 url: Url::parse("http://google.com/my/app?q=2")?,
                 revisions: 10,
                 delay: Duration::from_millis(60000),
+                schedule: None,
             }
         }
         .validate(&network)
@@ -414,6 +461,20 @@ mod tests {
                 url: Url::parse("http://google.com/my/app?q=2")?,
                 revisions: 0,
                 delay: Duration::from_millis(0),
+                schedule: None,
+            }
+        }
+        .validate(&network)
+        .await
+        .is_ok());
+
+        assert!(UtilsWebScrapingAction::SaveWebPageResourcesTracker {
+            tracker: WebPageResourcesTracker {
+                name: "a".repeat(100),
+                url: Url::parse("http://google.com/my/app?q=2")?,
+                revisions: 0,
+                delay: Duration::from_millis(0),
+                schedule: Some("0 0 0 * * *".to_string()),
             }
         }
         .validate(&network)
@@ -426,6 +487,7 @@ mod tests {
                 url: Url::parse("ftp://google.com/my/app?q=2")?,
                 revisions: 0,
                 delay: Duration::from_millis(0),
+                schedule: None,
             }
         }
             .validate(&network)
@@ -446,12 +508,29 @@ mod tests {
                 url: Url::parse("http://localhost/my/app?q=2")?,
                 revisions: 0,
                 delay: Duration::from_millis(0),
+                schedule: None,
             }
         }
             .validate(&network_with_local)
             .await, @r###"
         Err(
             "Tracker URL must have a valid public reachable domain name",
+        )
+        "###);
+
+        assert_debug_snapshot!(UtilsWebScrapingAction::SaveWebPageResourcesTracker {
+            tracker: WebPageResourcesTracker {
+                name: "a".repeat(100),
+                url: Url::parse("http://google.com/my/app?q=2")?,
+                revisions: 0,
+                delay: Duration::from_millis(0),
+                schedule: Some("0 * * * * *".to_string()),
+            }
+        }
+        .validate(&network)
+        .await, @r###"
+        Err(
+            "Tracker schedule must have at least 1h between occurrences, detected 1m",
         )
         "###);
 
@@ -519,6 +598,7 @@ mod tests {
                 url: Url::parse("http://localhost:1234/my/app?q=2")?,
                 revisions: 3,
                 delay: Duration::from_millis(2000),
+                schedule: None,
             }
         }
         .validate(&network).await, @r###"
@@ -533,6 +613,7 @@ mod tests {
                 url: Url::parse("http://localhost:1234/my/app?q=2")?,
                 revisions: 3,
                 delay: Duration::from_millis(2000),
+                schedule: None,
             }
         }
         .validate(&network).await, @r###"
@@ -547,6 +628,7 @@ mod tests {
                 url: Url::parse("http://localhost:1234/my/app?q=2")?,
                 revisions: 11,
                 delay: Duration::from_millis(2000),
+                schedule: None,
             }
         }
         .validate(&network).await, @r###"
@@ -561,6 +643,7 @@ mod tests {
                 url: Url::parse("http://localhost:1234/my/app?q=2")?,
                 revisions: 10,
                 delay: Duration::from_millis(60001),
+                schedule: None,
             }
         }
         .validate(&network).await, @r###"

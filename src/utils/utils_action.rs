@@ -143,6 +143,7 @@ mod tests {
                     url: Url::parse("http://google.com/my/app?q=2")?,
                     revisions: 0,
                     delay: Duration::from_millis(0),
+                    schedule: Some("0 0 0 1 * *".to_string()),
                 }
             })
             .validate(&mock_network_with_records::<1>(vec![Record::from_rdata(

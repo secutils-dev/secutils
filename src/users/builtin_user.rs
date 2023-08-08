@@ -1,10 +1,11 @@
-use crate::authentication::StoredCredentials;
+use crate::security::StoredCredentials;
 use anyhow::bail;
 use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 pub struct BuiltinUser {
     pub email: String,
+    pub handle: String,
     pub credentials: StoredCredentials,
     pub roles: HashSet<String>,
 }
@@ -14,21 +15,23 @@ impl TryFrom<&str> for BuiltinUser {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let user_properties = value.split(':').collect::<Vec<_>>();
-        if user_properties.len() < 2 || user_properties.len() > 3 {
+        if user_properties.len() < 3 || user_properties.len() > 4 {
             bail!("Builtin user is malformed.");
         }
 
         let user_email = user_properties[0].trim();
         let user_password = user_properties[1].trim();
-        if user_password.is_empty() || user_email.is_empty() {
-            bail!("Builtin user cannot have empty password or username.");
+        let user_handle = user_properties[2].trim();
+        if user_password.is_empty() || user_email.is_empty() || user_handle.is_empty() {
+            bail!("Builtin user cannot have empty password, username, or handle.");
         }
 
         Ok(BuiltinUser {
             email: user_email.to_string(),
+            handle: user_handle.to_string(),
             credentials: StoredCredentials::try_from_password(user_password)?,
-            roles: if user_properties.len() == 3 {
-                user_properties[2]
+            roles: if user_properties.len() == 4 {
+                user_properties[3]
                     .split(',')
                     .filter_map(|role_str| {
                         let role_str = role_str.trim();
@@ -53,8 +56,9 @@ mod tests {
 
     #[test]
     fn can_parse_builtin_user_with_multiple_roles() -> anyhow::Result<()> {
-        let parsed_user = BuiltinUser::try_from("su@secutils.dev:password:one,Two")?;
+        let parsed_user = BuiltinUser::try_from("su@secutils.dev:password:su_handle:one,Two")?;
         assert_eq!(parsed_user.email, "su@secutils.dev");
+        assert_eq!(parsed_user.handle, "su_handle");
         assert_eq!(
             parsed_user.roles,
             ["one", "two"]
@@ -73,8 +77,9 @@ mod tests {
 
     #[test]
     fn can_parse_builtin_user_with_single_roles() -> anyhow::Result<()> {
-        let parsed_user = BuiltinUser::try_from("su@secutils.dev:password:one")?;
+        let parsed_user = BuiltinUser::try_from("su@secutils.dev:password:su_handle:one")?;
         assert_eq!(parsed_user.email, "su@secutils.dev");
+        assert_eq!(parsed_user.handle, "su_handle");
         assert_eq!(
             parsed_user.roles,
             ["one"].into_iter().map(|role| role.to_string()).collect()
@@ -90,8 +95,9 @@ mod tests {
 
     #[test]
     fn can_parse_builtin_user_without_roles() -> anyhow::Result<()> {
-        let parsed_user = BuiltinUser::try_from("su@secutils.dev:password:")?;
+        let parsed_user = BuiltinUser::try_from("su@secutils.dev:password:su_handle:")?;
         assert_eq!(parsed_user.email, "su@secutils.dev");
+        assert_eq!(parsed_user.handle, "su_handle");
         assert_eq!(parsed_user.roles, HashSet::new());
         assert!(parsed_user
             .credentials
@@ -99,8 +105,9 @@ mod tests {
             .unwrap()
             .starts_with("$argon2id$v=19$m=19456,t=2,p=1$"));
 
-        let parsed_user = BuiltinUser::try_from("su@secutils.dev:password")?;
+        let parsed_user = BuiltinUser::try_from("su@secutils.dev:password:su_handle")?;
         assert_eq!(parsed_user.email, "su@secutils.dev");
+        assert_eq!(parsed_user.handle, "su_handle");
         assert_eq!(parsed_user.roles, HashSet::new());
         assert!(parsed_user
             .credentials

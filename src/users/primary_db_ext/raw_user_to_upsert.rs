@@ -38,7 +38,7 @@ impl<'a> TryFrom<&'a User> for RawUserToUpsert<'a> {
 #[cfg(test)]
 mod tests {
     use super::RawUserToUpsert;
-    use crate::{authentication::StoredCredentials, tests::MockUserBuilder, users::UserId};
+    use crate::{security::StoredCredentials, tests::MockUserBuilder, users::UserId};
     use time::OffsetDateTime;
 
     #[test]

@@ -1,6 +1,6 @@
 mod raw_user_webauthn_session;
 
-use crate::{authentication::WebAuthnSession, datastore::PrimaryDb};
+use crate::{datastore::PrimaryDb, security::WebAuthnSession};
 use anyhow::Context;
 use raw_user_webauthn_session::RawUserWebAuthnSession;
 use sqlx::{query, query_as};
@@ -93,7 +93,7 @@ WHERE timestamp <= ?1
 #[cfg(test)]
 mod tests {
     use crate::{
-        authentication::{WebAuthnSession, WebAuthnSessionValue},
+        security::{WebAuthnSession, WebAuthnSessionValue},
         tests::{
             mock_db,
             webauthn::{SERIALIZED_AUTHENTICATION_STATE, SERIALIZED_REGISTRATION_STATE},

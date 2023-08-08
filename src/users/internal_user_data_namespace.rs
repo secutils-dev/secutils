@@ -4,6 +4,7 @@ use crate::users::UserDataNamespace;
 pub enum InternalUserDataNamespace {
     AccountActivationToken,
     CredentialsResetToken,
+    WebPageResourcesTrackersJobs,
 }
 
 impl AsRef<str> for InternalUserDataNamespace {
@@ -11,6 +12,9 @@ impl AsRef<str> for InternalUserDataNamespace {
         match self {
             InternalUserDataNamespace::AccountActivationToken => "accountActivationToken",
             InternalUserDataNamespace::CredentialsResetToken => "credentialsResetToken",
+            InternalUserDataNamespace::WebPageResourcesTrackersJobs => {
+                "webPageResourcesTrackersJobs"
+            }
         }
     }
 }
@@ -35,6 +39,11 @@ mod tests {
         assert_eq!(
             InternalUserDataNamespace::CredentialsResetToken.as_ref(),
             "credentialsResetToken"
+        );
+
+        assert_eq!(
+            InternalUserDataNamespace::WebPageResourcesTrackersJobs.as_ref(),
+            "webPageResourcesTrackersJobs"
         );
 
         Ok(())

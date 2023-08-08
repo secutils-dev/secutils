@@ -6,13 +6,13 @@ mod status;
 
 use crate::{
     api::Api,
-    authentication::create_webauthn,
     config::Config,
     datastore::Datastore,
     directories::Directories,
     network::{Network, TokioDnsResolver},
     scheduler::Scheduler,
     search::search_index_initializer,
+    security::{create_webauthn, Security},
     server::app_state::AppState,
     users::builtin_users_initializer,
 };
@@ -35,7 +35,7 @@ pub async fn run(
     );
 
     let datastore = Datastore::open(&config, datastore_dir).await?;
-    let api = Api::new(config.clone(), datastore.clone(), create_webauthn(&config)?);
+    let api = Api::new(config.clone(), datastore.clone());
 
     if let Some(ref builtin_users) = builtin_users {
         builtin_users_initializer(&api, builtin_users)
@@ -43,14 +43,22 @@ pub async fn run(
             .with_context(|| "Cannot initialize builtin users")?;
     }
 
+    let security = Security::new(
+        config.clone(),
+        datastore.primary_db.clone(),
+        create_webauthn(&config)?,
+    );
+
     search_index_initializer(&api).await?;
+
+    Scheduler::start(Api::new(config.clone(), datastore.clone())).await?;
 
     let http_server_url = format!("0.0.0.0:{}", config.http_port);
     let state = web::Data::new(AppState::new(
         config,
+        security,
         api,
         Network::new(TokioDnsResolver::create()?),
-        Scheduler::start(datastore).await?,
     ));
     let http_server = HttpServer::new(move || {
         App::new()

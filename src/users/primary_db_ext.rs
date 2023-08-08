@@ -5,9 +5,9 @@ mod raw_user_to_upsert;
 use self::{raw_user::RawUser, raw_user_data::RawUserData, raw_user_to_upsert::RawUserToUpsert};
 use crate::{
     datastore::PrimaryDb,
-    users::{User, UserData, UserDataKey, UserId},
+    users::{User, UserData, UserDataKey, UserDataNamespace, UserId},
 };
-use anyhow::bail;
+use anyhow::{bail, Context};
 use serde::{de::DeserializeOwned, Serialize};
 use sqlx::{query, query_as, query_scalar};
 use time::OffsetDateTime;
@@ -144,7 +144,7 @@ RETURNING id as "id!", email as "email!", handle as "handle!", credentials as "c
         query_as!(
             RawUserData,
             r#"
-SELECT value, timestamp
+SELECT user_id, key, value, timestamp
 FROM user_data
 WHERE user_id = ?1 AND namespace = ?2 AND key = ?3
                 "#,
@@ -161,7 +161,6 @@ WHERE user_id = ?1 AND namespace = ?2 AND key = ?3
     /// Sets user data in the `UserData` table using user id and data key.
     pub async fn upsert_user_data<R: Serialize>(
         &self,
-        user_id: UserId,
         user_data_key: impl Into<UserDataKey<'_>>,
         user_data: UserData<R>,
     ) -> anyhow::Result<()> {
@@ -175,7 +174,7 @@ INSERT INTO user_data (user_id, namespace, key, value, timestamp)
 VALUES ( ?1, ?2, ?3, ?4, ?5 )
 ON CONFLICT(user_id, namespace, key) DO UPDATE SET value=excluded.value, timestamp=excluded.timestamp
         "#,
-            user_id.0,
+            raw_user_data.user_id,
             namespace,
             key,
             raw_user_data.value,
@@ -236,14 +235,43 @@ WHERE namespace = ?1 AND key = ?2 AND timestamp <= ?3
 
         Ok(())
     }
+
+    /// Searches user data with the specified namespace and value.
+    pub async fn search_user_data<TValue: Serialize + DeserializeOwned>(
+        &self,
+        namespace: UserDataNamespace,
+        value: TValue,
+    ) -> anyhow::Result<Vec<UserData<TValue>>> {
+        let namespace = namespace.as_ref();
+        let value =
+            serde_json::ser::to_vec(&value).with_context(|| "Cannot serialize user data value")?;
+        query_as!(
+            RawUserData,
+            r#"
+SELECT user_id, key, value, timestamp
+FROM user_data
+WHERE value = ?1 AND namespace = ?2
+                "#,
+            value,
+            namespace
+        )
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .map(UserData::try_from)
+        .collect()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        authentication::StoredCredentials,
-        tests::{mock_db, MockUserBuilder},
-        users::{InternalUserDataNamespace, PublicUserDataNamespace, UserData, UserId},
+        security::StoredCredentials,
+        tests::{mock_db, mock_user, MockUserBuilder},
+        users::{
+            InternalUserDataNamespace, PublicUserDataNamespace, User, UserData, UserDataNamespace,
+            UserId,
+        },
     };
     use insta::assert_debug_snapshot;
     use std::{
@@ -748,15 +776,19 @@ mod tests {
 
         // Insert data.
         db.upsert_user_data(
-            user.id,
             PublicUserDataNamespace::UserSettings,
-            UserData::new("data", OffsetDateTime::from_unix_timestamp(946720800)?),
+            UserData::new(
+                user.id,
+                "data",
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            ),
         )
         .await?;
         assert_eq!(
             db.get_user_data::<String>(user.id, PublicUserDataNamespace::UserSettings)
                 .await?,
             Some(UserData::new(
+                user.id,
                 "data".to_string(),
                 OffsetDateTime::from_unix_timestamp(946720800)?
             ))
@@ -764,15 +796,19 @@ mod tests {
 
         // Update data.
         db.upsert_user_data(
-            user.id,
             PublicUserDataNamespace::UserSettings,
-            UserData::new("data-new", OffsetDateTime::from_unix_timestamp(946720800)?),
+            UserData::new(
+                user.id,
+                "data-new",
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            ),
         )
         .await?;
         assert_eq!(
             db.get_user_data::<String>(user.id, PublicUserDataNamespace::UserSettings)
                 .await?,
             Some(UserData::new(
+                user.id,
                 "data-new".to_string(),
                 OffsetDateTime::from_unix_timestamp(946720800)?
             ))
@@ -827,17 +863,23 @@ mod tests {
 
         // Insert data for both users.
         db.upsert_user_data(
-            UserId(1),
             InternalUserDataNamespace::AccountActivationToken,
             // January 1, 2000 11:00:00
-            UserData::new("data-1", OffsetDateTime::from_unix_timestamp(946720800)?),
+            UserData::new(
+                UserId(1),
+                "data-1",
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            ),
         )
         .await?;
         db.upsert_user_data(
-            UserId(2),
             InternalUserDataNamespace::AccountActivationToken,
             // January 1, 2010 11:00:00
-            UserData::new("data-2", OffsetDateTime::from_unix_timestamp(1262340000)?),
+            UserData::new(
+                UserId(2),
+                "data-2",
+                OffsetDateTime::from_unix_timestamp(1262340000)?,
+            ),
         )
         .await?;
 
@@ -846,6 +888,10 @@ mod tests {
                 .await?, @r###"
         Some(
             UserData {
+                user_id: UserId(
+                    1,
+                ),
+                key: None,
                 value: "data-1",
                 timestamp: 2000-01-01 10:00:00.0 +00:00:00,
             },
@@ -855,6 +901,10 @@ mod tests {
                 .await?, @r###"
         Some(
             UserData {
+                user_id: UserId(
+                    2,
+                ),
+                key: None,
                 value: "data-2",
                 timestamp: 2010-01-01 10:00:00.0 +00:00:00,
             },
@@ -903,6 +953,101 @@ mod tests {
             .get_user_data::<String>(UserId(2), InternalUserDataNamespace::AccountActivationToken)
             .await?
             .is_none());
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_search_user_data() -> anyhow::Result<()> {
+        let db = mock_db().await?;
+        let user_one = mock_user();
+        let user_two = User {
+            id: UserId(2),
+            email: "dev-2@secutils.dev".to_string(),
+            handle: "dev-2-handle".to_string(),
+            ..mock_user()
+        };
+
+        // No user and no data yet.
+        assert_eq!(
+            db.search_user_data::<Option<String>>(
+                UserDataNamespace::Public(PublicUserDataNamespace::UserSettings),
+                Some("data-bingo".to_string())
+            )
+            .await?,
+            vec![]
+        );
+
+        db.upsert_user(&user_one).await?;
+        db.upsert_user(&user_two).await?;
+
+        // Nodata yet.
+        assert_eq!(
+            db.search_user_data::<Option<String>>(
+                UserDataNamespace::Public(PublicUserDataNamespace::UserSettings),
+                Some("data-bingo".to_string())
+            )
+            .await?,
+            vec![]
+        );
+
+        // Insert data.
+        for (index, (user_id, user_data)) in [
+            (user_one.id, "data-bingo"),
+            (user_two.id, "data-2"),
+            (user_one.id, "data-3"),
+            (user_two.id, "data-bingo"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            db.upsert_user_data(
+                (
+                    PublicUserDataNamespace::UserSettings,
+                    format!("sub-key-{}", index).as_ref(),
+                ),
+                UserData::new(
+                    user_id,
+                    user_data,
+                    OffsetDateTime::from_unix_timestamp(946720800)?,
+                ),
+            )
+            .await?;
+        }
+
+        assert_debug_snapshot!(
+            db.search_user_data::<Option<String>>(
+                UserDataNamespace::Public(PublicUserDataNamespace::UserSettings),
+                Some("data-bingo".to_string())
+            )
+            .await?, @r###"
+        [
+            UserData {
+                user_id: UserId(
+                    1,
+                ),
+                key: Some(
+                    "sub-key-0",
+                ),
+                value: Some(
+                    "data-bingo",
+                ),
+                timestamp: 2000-01-01 10:00:00.0 +00:00:00,
+            },
+            UserData {
+                user_id: UserId(
+                    2,
+                ),
+                key: Some(
+                    "sub-key-3",
+                ),
+                value: Some(
+                    "data-bingo",
+                ),
+                timestamp: 2000-01-01 10:00:00.0 +00:00:00,
+            },
+        ]
+        "###);
 
         Ok(())
     }

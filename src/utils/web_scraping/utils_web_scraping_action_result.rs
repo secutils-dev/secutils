@@ -94,6 +94,7 @@ mod tests {
                 url: Url::parse("http://localhost:1234/my/app?q=2")?,
                 revisions: 3,
                 delay: Duration::from_millis(2000),
+                schedule: Some("0 0 0 1 * *".to_string()),
             }
         }, @r###"
         {
@@ -103,7 +104,8 @@ mod tests {
               "name": "some-name",
               "url": "http://localhost:1234/my/app?q=2",
               "revisions": 3,
-              "delay": 2000
+              "delay": 2000,
+              "schedule": "0 0 0 1 * *"
             }
           }
         }

@@ -63,12 +63,16 @@ impl<'a> AutoRespondersApi<'a> {
 
         self.primary_db
             .upsert_user_data(
-                user_id,
                 (
                     PublicUserDataNamespace::AutoResponders,
                     auto_responder.name.as_str(),
                 ),
-                UserData::new(requests, OffsetDateTime::now_utc()),
+                UserData::new_with_key(
+                    user_id,
+                    &auto_responder.name,
+                    requests,
+                    OffsetDateTime::now_utc(),
+                ),
             )
             .await
     }

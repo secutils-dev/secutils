@@ -1,5 +1,5 @@
 use crate::{
-    authentication::Credentials,
+    security::Credentials,
     server::{app_state::AppState, http_errors::generic_internal_server_error},
 };
 use actix_web::{web, HttpResponse, Responder};
@@ -31,8 +31,8 @@ pub async fn security_credentials_reset_password(
             .json(json!({ "message": "Password cannot be empty or shorter than 8 characters." }));
     }
 
-    let users_api = state.api.users();
-    match users_api
+    match state
+        .security
         .reset_credentials(
             &body_params.email,
             Credentials::Password(body_params.password),

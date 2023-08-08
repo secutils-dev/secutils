@@ -49,6 +49,13 @@ impl<'p> From<(PublicUserDataNamespace, &'p str)> for UserDataKey<'p> {
     }
 }
 
+/// Implementation for the internal user data with the non-default data key.
+impl<'p> From<(InternalUserDataNamespace, &'p str)> for UserDataKey<'p> {
+    fn from((namespace, key): (InternalUserDataNamespace, &'p str)) -> Self {
+        (UserDataNamespace::from(namespace), key).into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::users::{
@@ -78,6 +85,18 @@ mod tests {
             UserDataKey {
                 namespace: UserDataNamespace::Public(PublicUserDataNamespace::AutoResponders),
                 key: Some("my-responder")
+            }
+        );
+        assert_eq!(
+            UserDataKey::from((
+                InternalUserDataNamespace::WebPageResourcesTrackersJobs,
+                "my-tracker"
+            )),
+            UserDataKey {
+                namespace: UserDataNamespace::Internal(
+                    InternalUserDataNamespace::WebPageResourcesTrackersJobs
+                ),
+                key: Some("my-tracker")
             }
         );
 

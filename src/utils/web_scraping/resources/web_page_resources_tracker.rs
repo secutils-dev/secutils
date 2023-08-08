@@ -21,6 +21,9 @@ pub struct WebPageResourcesTracker {
     /// Number of milliseconds to wait after web page enters "idle" state to start tracking resources.
     #[serde_as(as = "DurationMilliSeconds<u64>")]
     pub delay: Duration,
+    /// Optional schedule to track resources on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schedule: Option<String>,
 }
 
 #[cfg(test)]
@@ -38,12 +41,29 @@ mod tests {
             url: Url::parse("http://localhost:1234/my/app?q=2")?,
             revisions: 3,
             delay: Duration::from_millis(2500),
+            schedule: None,
         }, @r###"
         {
           "name": "some-name",
           "url": "http://localhost:1234/my/app?q=2",
           "revisions": 3,
           "delay": 2500
+        }
+        "###);
+
+        assert_json_snapshot!(WebPageResourcesTracker {
+            name: "some-name".to_string(),
+            url: Url::parse("http://localhost:1234/my/app?q=2")?,
+            revisions: 3,
+            delay: Duration::from_millis(2500),
+            schedule: Some("0 0 * * *".to_string()),
+        }, @r###"
+        {
+          "name": "some-name",
+          "url": "http://localhost:1234/my/app?q=2",
+          "revisions": 3,
+          "delay": 2500,
+          "schedule": "0 0 * * *"
         }
         "###);
 
@@ -62,6 +82,21 @@ mod tests {
                 url: Url::parse("http://localhost:1234/my/app?q=2")?,
                 revisions: 3,
                 delay: Duration::from_millis(2000),
+                schedule: None,
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<WebPageResourcesTracker>(
+                &json!({ "name": "some-name", "url": "http://localhost:1234/my/app?q=2", "revisions": 3, "delay": 2000, "schedule": "0 0 * * *" })
+                    .to_string()
+            )?,
+            WebPageResourcesTracker {
+                name: "some-name".to_string(),
+                url: Url::parse("http://localhost:1234/my/app?q=2")?,
+                revisions: 3,
+                delay: Duration::from_millis(2000),
+                schedule: Some("0 0 * * *".to_string()),
             }
         );
 

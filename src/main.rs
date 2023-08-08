@@ -1,7 +1,6 @@
 #![deny(warnings)]
 
 mod api;
-mod authentication;
 mod config;
 mod datastore;
 mod directories;
@@ -9,14 +8,16 @@ mod error;
 mod network;
 mod scheduler;
 mod search;
+mod security;
 mod server;
 mod users;
 mod utils;
 
-use crate::config::{ComponentsConfig, Config, SmtpConfig};
+use crate::config::{ComponentsConfig, Config, SchedulerJobsConfig, SmtpConfig};
 use anyhow::{anyhow, Context};
 use bytes::Buf;
 use clap::{value_parser, Arg, ArgMatches, Command};
+use cron::Schedule;
 use url::Url;
 
 fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Error> {
@@ -60,6 +61,17 @@ fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Err
                         .with_context(|| "Cannot parse Web Scraper URL parameter.".to_string())
                 })?,
             search_index_version: 1,
+        },
+        jobs: SchedulerJobsConfig {
+            resources_trackers_dispatch_schedule: matches
+                .get_one::<String>("JOBS_RESOURCES_TRACKERS_DISPATCH_SCHEDULE")
+                .ok_or_else(|| {
+                    anyhow!("<JOBS_RESOURCES_TRACKERS_DISPATCH_SCHEDULE> argument is not provided.")
+                })
+                .and_then(|schedule| {
+                    Schedule::try_from(schedule.as_str())
+                        .with_context(|| "Cannot parse resources trackers dispatch job schedule.")
+                })?,
         },
     };
 
@@ -172,6 +184,14 @@ fn main() -> Result<(), anyhow::Error> {
                 .default_value("http://localhost:7272")
                 .help("The URL to access the Web Scraper component."),
         )
+        .arg(
+            Arg::new("JOBS_RESOURCES_TRACKERS_DISPATCH_SCHEDULE")
+                .long("jobs-resources-trackers-dispatch-schedule")
+                .global(true)
+                .env("SECUTILS_JOBS_RESOURCES_TRACKERS_DISPATCH_SCHEDULE")
+                .default_value("0 * * * * * *")
+                .help("The cron schedule to use for the resources trackers dispatch job."),
+        )
         .get_matches();
 
     process_command(version, matches)
@@ -180,12 +200,15 @@ fn main() -> Result<(), anyhow::Error> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        authentication::StoredCredentials,
-        datastore::{initialize_index, PrimaryDb},
+        api::Api,
+        config::{ComponentsConfig, Config, SchedulerJobsConfig},
+        datastore::{initialize_index, Datastore, PrimaryDb, SearchIndex},
         search::SearchItem,
+        security::StoredCredentials,
         users::{User, UserId},
         utils::{WebPageResource, WebPageResourceContent, WebPageResourceContentData},
     };
+    use cron::Schedule;
     use std::collections::{HashMap, HashSet};
     use tantivy::{schema::Schema, Index, IndexReader};
     use time::OffsetDateTime;
@@ -340,6 +363,36 @@ mod tests {
             OffsetDateTime::now_utc(),
         )
         .build()
+    }
+
+    pub fn mock_config() -> anyhow::Result<Config> {
+        Ok(Config {
+            version: "1.0.0".to_string(),
+            http_port: 1234,
+            public_url: Url::parse("http://localhost:1234")?,
+            smtp: None,
+            components: ComponentsConfig {
+                web_scraper_url: Url::parse("http://localhost:7272")?,
+                search_index_version: 1,
+            },
+            jobs: SchedulerJobsConfig {
+                resources_trackers_dispatch_schedule: Schedule::try_from("0 * * * * * *")?,
+            },
+        })
+    }
+
+    pub async fn mock_api() -> anyhow::Result<Api> {
+        mock_api_with_config(mock_config()?).await
+    }
+
+    pub async fn mock_api_with_config(config: Config) -> anyhow::Result<Api> {
+        Ok(Api::new(
+            config,
+            Datastore {
+                primary_db: mock_db().await?,
+                search_index: SearchIndex::open(open_index)?,
+            },
+        ))
     }
 
     pub mod webauthn {

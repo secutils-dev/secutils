@@ -1,5 +1,5 @@
 use crate::{
-    authentication::Credentials,
+    security::Credentials,
     server::{app_state::AppState, http_errors::generic_internal_server_error},
 };
 use actix_http::HttpMessage;
@@ -32,8 +32,8 @@ pub async fn security_signin(
         return HttpResponse::BadRequest().json(json!({ "message": "Password cannot be empty." }));
     }
 
-    let users_api = state.api.users();
-    let user = match users_api
+    let user = match state
+        .security
         .authenticate(
             &body_params.email,
             Credentials::Password(body_params.password),

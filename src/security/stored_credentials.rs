@@ -45,7 +45,7 @@ impl StoredCredentials {
 
 #[cfg(test)]
 mod tests {
-    use crate::{authentication::StoredCredentials, tests::webauthn::SERIALIZED_PASSKEY};
+    use crate::{security::StoredCredentials, tests::webauthn::SERIALIZED_PASSKEY};
     use insta::assert_json_snapshot;
 
     #[test]

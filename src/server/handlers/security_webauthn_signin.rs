@@ -24,7 +24,7 @@
 //!                  │                     │                      │
 //!                  │                     │                      │
 use crate::{
-    authentication::{Credentials, WebAuthnChallengeType, WEBAUTHN_SESSION_KEY},
+    security::{Credentials, WebAuthnChallengeType, WEBAUTHN_SESSION_KEY},
     server::{app_state::AppState, http_errors::generic_internal_server_error},
 };
 use actix_http::HttpMessage;
@@ -58,8 +58,8 @@ pub async fn security_webauthn_signin_start(
     session.remove(WEBAUTHN_SESSION_KEY);
 
     // Start handshake and return challenge to the client.
-    let users_api = state.api.users();
-    let webauthn_challenge_result = users_api
+    let webauthn_challenge_result = state
+        .security
         .start_webauthn_handshake(&body_params.email, WebAuthnChallengeType::Authentication)
         .await
         .and_then(|challenge| {
@@ -94,8 +94,8 @@ pub async fn security_webauthn_signin_finish(
         return generic_internal_server_error();
     };
 
-    let users_api = state.api.users();
-    let user = match users_api
+    let user = match state
+        .security
         .authenticate(&email, Credentials::WebAuthnPublicKey(body_params))
         .await
     {

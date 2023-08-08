@@ -1,4 +1,4 @@
-use crate::{authentication::Credentials, server::app_state::AppState, users::User};
+use crate::{security::Credentials, server::app_state::AppState, users::User};
 use actix_http::Payload;
 use actix_identity::Identity;
 use actix_web::{error::ErrorUnauthorized, web, Error, FromRequest, HttpRequest};
@@ -20,8 +20,7 @@ impl FromRequest for User {
             if let Some(basic_auth) = basic_auth {
                 if let Some(password) = basic_auth.password() {
                     return match state
-                        .api
-                        .users()
+                        .security
                         .authenticate(
                             basic_auth.user_id(),
                             Credentials::Password(password.to_string()),

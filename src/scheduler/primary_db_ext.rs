@@ -2,6 +2,8 @@ mod raw_scheduler_job_stored_data;
 
 use crate::datastore::PrimaryDb;
 use anyhow::bail;
+use async_stream::try_stream;
+use futures::Stream;
 use sqlx::{query, query_as, QueryBuilder, Sqlite};
 use std::time::Duration;
 use time::OffsetDateTime;
@@ -81,6 +83,43 @@ WHERE id = ?1
         .await?;
 
         Ok(())
+    }
+
+    /// Retrieves the scheduled jobs from `scheduler_jobs` table based on .
+    pub fn get_scheduler_jobs(
+        &self,
+        page_size: usize,
+    ) -> impl Stream<Item = anyhow::Result<JobStoredData>> + '_ {
+        let page_limit = page_size as i64;
+        try_stream! {
+            let mut last_id = "".to_string();
+
+            loop {
+                 let jobs = query_as!(RawSchedulerJobStoredData,
+r#"
+SELECT id as "id: uuid::fmt::Hyphenated", last_updated, next_tick, last_tick, job_type as "job_type!", count,
+       ran, stopped, schedule, repeating, repeated_every, extra
+FROM scheduler_jobs
+WHERE id > ?1
+ORDER BY id
+LIMIT ?2;
+"#,
+            last_id, page_limit
+        )
+            .fetch_all(&self.pool)
+            .await?;
+
+                let is_last_page = jobs.len() < page_size;
+                for job in jobs {
+                    last_id = job.id.to_string();
+                    yield JobStoredData::try_from(job)?;
+                }
+
+                if is_last_page {
+                    break;
+                }
+            }
+        }
     }
 
     /// Retrieves next scheduled jobs from `scheduler_jobs` table.
@@ -372,6 +411,7 @@ WHERE job_id = ?1
 #[cfg(test)]
 mod tests {
     use crate::tests::mock_db;
+    use futures::{Stream, StreamExt};
     use insta::assert_debug_snapshot;
     use std::time::Duration;
     use time::OffsetDateTime;
@@ -1053,6 +1093,50 @@ mod tests {
             )
             .await?,
             None
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_retrieve_all_jobs() -> anyhow::Result<()> {
+        let db = mock_db().await?;
+
+        let jobs = db.get_scheduler_jobs(2);
+        assert_eq!(jobs.size_hint(), (0, None));
+        assert_eq!(jobs.collect::<Vec<_>>().await.len(), 0);
+
+        for n in 0..=9 {
+            let job = JobStoredData {
+                id: Some(
+                    uuid::Uuid::parse_str(&format!("67e55044-10b1-426f-9247-bb680e5fe0c{}", n))?
+                        .into(),
+                ),
+                last_updated: Some(946720800u64 + n),
+                last_tick: Some(946720700u64),
+                next_tick: 946720900u64,
+                count: n as u32,
+                job_type: JobType::Cron as i32,
+                extra: vec![1, 2, 3, n as u8],
+                ran: true,
+                stopped: false,
+                job: Some(JobStored::CronJob(CronJob {
+                    schedule: format!("{} 0 0 1 1 * *", n),
+                })),
+            };
+
+            db.upsert_scheduler_job(&job).await?;
+        }
+
+        let jobs = db.get_scheduler_jobs(2).collect::<Vec<_>>().await;
+        assert_eq!(jobs.len(), 10);
+
+        assert_eq!(
+            jobs.into_iter()
+                .map(|job| job.map(|job| job.last_updated))
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap(),
+            (0..=9).map(|n| Some(946720800u64 + n)).collect::<Vec<_>>()
         );
 
         Ok(())

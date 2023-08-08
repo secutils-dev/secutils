@@ -1,9 +1,13 @@
 mod components_config;
+mod scheduler_jobs_config;
 mod smtp_config;
 
 use url::Url;
 
-pub use self::{components_config::ComponentsConfig, smtp_config::SmtpConfig};
+pub use self::{
+    components_config::ComponentsConfig, scheduler_jobs_config::SchedulerJobsConfig,
+    smtp_config::SmtpConfig,
+};
 
 /// Main server config.
 #[derive(Clone, Debug)]
@@ -18,6 +22,8 @@ pub struct Config {
     pub smtp: Option<SmtpConfig>,
     /// Configuration for the components that are deployed separately.
     pub components: ComponentsConfig,
+    /// Configuration for the scheduler jobs.
+    pub jobs: SchedulerJobsConfig,
 }
 
 impl AsRef<Config> for Config {

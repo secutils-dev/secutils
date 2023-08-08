@@ -2,7 +2,7 @@ use crate::{
     api::Api,
     config::Config,
     network::{DnsResolver, Network, TokioDnsResolver},
-    scheduler::Scheduler,
+    security::Security,
     server::status::{Status, StatusLevel},
     users::{User, UserRole},
 };
@@ -15,21 +15,21 @@ pub struct AppState<DR: DnsResolver = TokioDnsResolver> {
     pub status: RwLock<Status>,
     pub api: Api,
     pub network: Network<DR>,
-    pub scheduler: Scheduler,
+    pub security: Security,
 }
 
 impl<DR: DnsResolver> AppState<DR> {
-    pub fn new(config: Config, api: Api, network: Network<DR>, scheduler: Scheduler) -> Self {
+    pub fn new(config: Config, security: Security, api: Api, network: Network<DR>) -> Self {
         let version = config.version.to_string();
         Self {
             config,
+            security,
             status: RwLock::new(Status {
                 version,
                 level: StatusLevel::Available,
             }),
             api,
             network,
-            scheduler,
         }
     }
 

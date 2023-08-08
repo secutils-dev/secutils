@@ -20,8 +20,8 @@ pub async fn security_activation_complete(
             .json(json!({ "message": "User email and activation code should not be empty." }));
     }
 
-    let users_api = state.api.users();
-    match users_api
+    match state
+        .security
         .activate(&body_params.email, &body_params.activation_code)
         .await
     {

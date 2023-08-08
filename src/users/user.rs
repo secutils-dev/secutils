@@ -1,4 +1,4 @@
-use crate::{authentication::StoredCredentials, users::UserId};
+use crate::{security::StoredCredentials, users::UserId};
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use std::collections::HashSet;
 use time::OffsetDateTime;
@@ -38,7 +38,7 @@ impl AsRef<User> for User {
 #[cfg(test)]
 mod tests {
     use crate::{
-        authentication::StoredCredentials,
+        security::StoredCredentials,
         tests::{webauthn::SERIALIZED_PASSKEY, MockUserBuilder},
         users::UserId,
     };

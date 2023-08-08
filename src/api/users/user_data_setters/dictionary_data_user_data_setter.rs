@@ -1,5 +1,5 @@
 use crate::{
-    api::users::UserDataSetter,
+    datastore::PrimaryDb,
     users::{UserData, UserDataKey},
 };
 use serde::{de::DeserializeOwned, Serialize};
@@ -8,14 +8,14 @@ use std::collections::BTreeMap;
 pub struct DictionaryDataUserDataSetter;
 impl DictionaryDataUserDataSetter {
     pub async fn upsert<R: DeserializeOwned + Serialize>(
-        data_setter: &UserDataSetter<'_>,
+        primary_db: &PrimaryDb,
         user_data_key: impl Into<UserDataKey<'_>>,
         user_data: UserData<BTreeMap<String, Option<R>>>,
     ) -> anyhow::Result<()> {
         let user_data_key = user_data_key.into();
 
-        let mut merged_user_data_value: BTreeMap<_, _> = data_setter
-            .get(user_data_key)
+        let mut merged_user_data_value: BTreeMap<_, _> = primary_db
+            .get_user_data(user_data.user_id, user_data_key)
             .await?
             .map(|user_data| user_data.value)
             .unwrap_or_default();
@@ -29,12 +29,20 @@ impl DictionaryDataUserDataSetter {
         }
 
         if merged_user_data_value.is_empty() {
-            data_setter.remove(user_data_key).await.map(|_| ())
+            primary_db
+                .remove_user_data(user_data.user_id, user_data_key)
+                .await
+                .map(|_| ())
         } else {
-            data_setter
-                .upsert(
+            primary_db
+                .upsert_user_data(
                     user_data_key,
-                    UserData::new(merged_user_data_value, user_data.timestamp),
+                    UserData {
+                        user_id: user_data.user_id,
+                        key: user_data.key,
+                        value: merged_user_data_value,
+                        timestamp: user_data.timestamp,
+                    },
                 )
                 .await
         }
@@ -44,7 +52,7 @@ impl DictionaryDataUserDataSetter {
 #[cfg(test)]
 mod tests {
     use crate::{
-        api::users::{DictionaryDataUserDataSetter, UserDataSetter},
+        api::users::DictionaryDataUserDataSetter,
         datastore::PrimaryDb,
         tests::{mock_db, mock_user},
         users::{PublicUserDataNamespace, User, UserData},
@@ -62,7 +70,6 @@ mod tests {
     async fn can_merge_data() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let user_data_setter = UserDataSetter::new(mock_user.id, &mock_db);
 
         let item_one = json!({ "name": "one" });
         let item_two = json!({ "name": "two" });
@@ -77,19 +84,21 @@ mod tests {
         .into_iter()
         .collect::<BTreeMap<_, _>>();
         DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
-            &user_data_setter,
+            &mock_db,
             PublicUserDataNamespace::UserSettings,
             UserData::new(
+                mock_user.id,
                 initial_items.clone(),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
         )
         .await?;
         assert_eq!(
-            user_data_setter
-                .get(PublicUserDataNamespace::UserSettings)
+            mock_db
+                .get_user_data(mock_user.id, PublicUserDataNamespace::UserSettings)
                 .await?,
             Some(UserData::new(
+                mock_user.id,
                 initial_items,
                 OffsetDateTime::from_unix_timestamp(946720800)?
             ))
@@ -100,19 +109,21 @@ mod tests {
             .into_iter()
             .collect::<BTreeMap<_, _>>();
         DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
-            &user_data_setter,
+            &mock_db,
             PublicUserDataNamespace::UserSettings,
             UserData::new(
+                mock_user.id,
                 conflicting_items,
                 OffsetDateTime::from_unix_timestamp(857720800)?,
             ),
         )
         .await?;
         assert_eq!(
-            user_data_setter
-                .get(PublicUserDataNamespace::UserSettings)
+            mock_db
+                .get_user_data(mock_user.id, PublicUserDataNamespace::UserSettings)
                 .await?,
             Some(UserData::new(
+                mock_user.id,
                 [
                     ("one".to_string(), item_one.clone(),),
                     ("two".to_string(), item_two_conflict.clone(),)
@@ -131,19 +142,21 @@ mod tests {
         .into_iter()
         .collect::<BTreeMap<_, _>>();
         DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
-            &user_data_setter,
+            &mock_db,
             PublicUserDataNamespace::UserSettings,
             UserData::new(
+                mock_user.id,
                 conflicting_items,
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
         )
         .await?;
         assert_eq!(
-            user_data_setter
-                .get(PublicUserDataNamespace::UserSettings)
+            mock_db
+                .get_user_data(mock_user.id, PublicUserDataNamespace::UserSettings)
                 .await?,
             Some(UserData::new(
+                mock_user.id,
                 [
                     ("one".to_string(), item_one.clone(),),
                     ("three".to_string(), item_three.clone(),)
@@ -159,17 +172,21 @@ mod tests {
             .into_iter()
             .collect::<BTreeMap<_, Option<serde_json::Value>>>();
         DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
-            &user_data_setter,
+            &mock_db,
             PublicUserDataNamespace::UserSettings,
             UserData::new(
+                mock_user.id,
                 conflicting_items,
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
         )
         .await?;
         assert_eq!(
-            user_data_setter
-                .get::<BTreeMap<String, serde_json::Value>>(PublicUserDataNamespace::UserSettings)
+            mock_db
+                .get_user_data::<BTreeMap<String, serde_json::Value>>(
+                    mock_user.id,
+                    PublicUserDataNamespace::UserSettings
+                )
                 .await?,
             None
         );
@@ -179,17 +196,21 @@ mod tests {
             .into_iter()
             .collect::<BTreeMap<_, Option<serde_json::Value>>>();
         DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
-            &user_data_setter,
+            &mock_db,
             PublicUserDataNamespace::UserSettings,
             UserData::new(
+                mock_user.id,
                 conflicting_items,
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
         )
         .await?;
         assert_eq!(
-            user_data_setter
-                .get::<BTreeMap<String, serde_json::Value>>(PublicUserDataNamespace::UserSettings)
+            mock_db
+                .get_user_data::<BTreeMap<String, serde_json::Value>>(
+                    mock_user.id,
+                    PublicUserDataNamespace::UserSettings
+                )
                 .await?,
             None
         );
