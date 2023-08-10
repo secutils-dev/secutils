@@ -22,7 +22,7 @@ anyhow = "1.0.72"
 argon2 = "0.5.1"
 bytes = "1.4.0"
 clap = "4.3.21"
-chrono = "0.4.26"
+chrono = { version = "0.4.26", default-features = false }
 cron = "0.12.0"
 directories = "5.0.1"
 dotenvy = "0.15.7"
