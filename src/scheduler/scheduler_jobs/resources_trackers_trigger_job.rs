@@ -69,8 +69,43 @@ impl ResourcesTrackersTriggerJob {
     /// Creates a new `ResourcesTrackersTrigger` job.
     pub async fn create(_: Arc<Api>, schedule: impl AsRef<str>) -> anyhow::Result<Job> {
         // Now, create and schedule new job.
-        let mut job = Job::new(schedule.as_ref(), move |uuid, _| {
-            log::debug!("Running resources tracker check job: {}", uuid);
+        let mut job = Job::new_async(schedule.as_ref(), move |uuid, scheduler| {
+            Box::pin(async move {
+                let mut store = scheduler.context.metadata_storage.write().await;
+                let mut job_data = match store.get(uuid).await {
+                    // If the job is already stopped, it means that it still needs to be processed by the dispatcher job.
+                    Ok(Some(job_data)) if job_data.stopped => {
+                        log::warn!(
+                            "The job `{}` is triggered before previous occurrence processed by the dispatcher job.",
+                            uuid
+                        );
+                        return;
+                    }
+                    Ok(None) => {
+                        log::error!("The job data for `{}` is missing.", uuid);
+                        return;
+                    }
+                    Err(err) => {
+                        log::error!("Error getting the job data for `{}`: {}", uuid, err);
+                        return;
+                    }
+                    Ok(Some(job_data)) => job_data,
+                };
+
+                // Mark job as stopped to indicate that it needs processing. Dispatch job only picks
+                // up stopped jobs, processes them, and then un-stops. Stopped flag is basically
+                // serving as a pending processing flag.
+                job_data.stopped = true;
+
+                if let Err(err) = store.add_or_update(job_data).await {
+                    log::error!(
+                        "Error updating job data for resources tracker trigger job: {}",
+                        err
+                    );
+                } else {
+                    log::debug!("Successfully run the job: {}", uuid);
+                }
+            })
         })?;
 
         let job_data = job.job_data()?;
@@ -87,13 +122,16 @@ impl ResourcesTrackersTriggerJob {
 mod tests {
     use super::ResourcesTrackersTriggerJob;
     use crate::{
-        scheduler::scheduler_job::SchedulerJob,
+        scheduler::{scheduler_job::SchedulerJob, scheduler_store::SchedulerStore},
         tests::{mock_api, mock_user},
         utils::WebPageResourcesTracker,
     };
     use insta::assert_debug_snapshot;
-    use std::{sync::Arc, time::Duration};
-    use tokio_cron_scheduler::{CronJob, JobId, JobStored, JobStoredData, JobType};
+    use std::{sync::Arc, thread, time::Duration};
+    use tokio_cron_scheduler::{
+        CronJob, JobId, JobScheduler, JobStored, JobStoredData, JobType, SimpleJobCode,
+        SimpleNotificationCode, SimpleNotificationStore,
+    };
     use url::Url;
     use uuid::uuid;
 
@@ -119,9 +157,14 @@ mod tests {
         let api = mock_api().await?;
 
         let mut job = ResourcesTrackersTriggerJob::create(Arc::new(api), "0 0 * * * *").await?;
-        let job_data = job
-            .job_data()
-            .map(|job_data| (job_data.job_type, job_data.extra, job_data.job))?;
+        let job_data = job.job_data().map(|job_data| {
+            (
+                job_data.job_type,
+                job_data.extra,
+                job_data.job,
+                job_data.stopped,
+            )
+        })?;
         assert_debug_snapshot!(job_data, @r###"
         (
             0,
@@ -135,6 +178,7 @@ mod tests {
                     },
                 ),
             ),
+            false,
         )
         "###);
 
@@ -359,6 +403,40 @@ mod tests {
             .get_resources_tracker_job_by_id(job_id)
             .await?
             .is_none());
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn marks_job_as_stopped_when_run() -> anyhow::Result<()> {
+        let api = Arc::new(mock_api().await?);
+
+        let mut scheduler = JobScheduler::new_with_storage_and_code(
+            Box::new(SchedulerStore::new(api.datastore.primary_db.clone())),
+            Box::<SimpleNotificationStore>::default(),
+            Box::<SimpleJobCode>::default(),
+            Box::<SimpleNotificationCode>::default(),
+        )
+        .await?;
+
+        let trigger_job_id = scheduler
+            .add(ResourcesTrackersTriggerJob::create(api.clone(), "1/2 * * * * *").await?)
+            .await?;
+
+        // Start scheduler and wait for a few seconds, then stop it.
+        scheduler.start().await?;
+        thread::sleep(Duration::from_secs(5));
+        scheduler.shutdown().await?;
+
+        let trigger_job = api
+            .datastore
+            .primary_db
+            .get_scheduler_job(trigger_job_id)
+            .await?;
+        assert_eq!(
+            trigger_job.map(|job| (job.id, job.stopped)),
+            Some((Some(trigger_job_id.into()), true))
+        );
 
         Ok(())
     }
