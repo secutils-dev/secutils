@@ -69,6 +69,30 @@ ON CONFLICT(id) DO UPDATE SET last_updated=excluded.last_updated, next_tick=excl
         Ok(())
     }
 
+    /// Updates `stopped` job value to the `scheduler_jobs` table.
+    pub async fn set_scheduler_job_stopped_state(
+        &self,
+        id: JobId,
+        stopped: bool,
+    ) -> anyhow::Result<()> {
+        let id = id.hyphenated();
+        let stopped = stopped as i64;
+
+        query!(
+            r#"
+UPDATE scheduler_jobs
+SET stopped = ?2
+WHERE id = ?1
+        "#,
+            id,
+            stopped
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
     /// Removes scheduler job from the `scheduler_jobs` table using Job ID.
     pub async fn remove_scheduler_job(&self, id: JobId) -> anyhow::Result<()> {
         let id = id.hyphenated();
@@ -745,6 +769,124 @@ mod tests {
             },
         )
         "###);
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_update_scheduler_job_stopped_state() -> anyhow::Result<()> {
+        let db = mock_db().await?;
+
+        let job_one_id = uuid!("00000000-0000-0000-0000-000000000001");
+        let job_two_id = uuid!("00000000-0000-0000-0000-000000000002");
+
+        let jobs = vec![
+            JobStoredData {
+                id: Some(job_one_id.into()),
+                last_updated: None,
+                last_tick: None,
+                next_tick: 946720900u64,
+                count: 3,
+                job_type: JobType::Cron as i32,
+                extra: vec![1, 2, 3],
+                ran: true,
+                stopped: false,
+                job: Some(JobStored::CronJob(CronJob {
+                    schedule: "0 0 0 1 1 * *".to_string(),
+                })),
+            },
+            JobStoredData {
+                id: Some(job_two_id.into()),
+                last_updated: None,
+                last_tick: None,
+                next_tick: 946820900u64,
+                count: 0,
+                job_type: JobType::OneShot as i32,
+                extra: vec![1, 2, 3],
+                ran: true,
+                stopped: false,
+                job: Some(JobStored::NonCronJob(NonCronJob {
+                    repeating: false,
+                    repeated_every: 0,
+                })),
+            },
+        ];
+
+        for job in jobs {
+            db.upsert_scheduler_job(&job).await?;
+        }
+
+        let job_one_stopped = db
+            .get_scheduler_job(job_one_id)
+            .await?
+            .map(|job| job.stopped);
+        let job_two_stopped = db
+            .get_scheduler_job(job_two_id)
+            .await?
+            .map(|job| job.stopped);
+        assert_eq!(
+            (job_one_stopped, job_two_stopped),
+            (Some(false), Some(false))
+        );
+
+        db.set_scheduler_job_stopped_state(job_one_id, true).await?;
+
+        let job_one_stopped = db
+            .get_scheduler_job(job_one_id)
+            .await?
+            .map(|job| job.stopped);
+        let job_two_stopped = db
+            .get_scheduler_job(job_two_id)
+            .await?
+            .map(|job| job.stopped);
+        assert_eq!(
+            (job_one_stopped, job_two_stopped),
+            (Some(true), Some(false))
+        );
+
+        db.set_scheduler_job_stopped_state(job_two_id, true).await?;
+
+        let job_one_stopped = db
+            .get_scheduler_job(job_one_id)
+            .await?
+            .map(|job| job.stopped);
+        let job_two_stopped = db
+            .get_scheduler_job(job_two_id)
+            .await?
+            .map(|job| job.stopped);
+        assert_eq!((job_one_stopped, job_two_stopped), (Some(true), Some(true)));
+
+        db.set_scheduler_job_stopped_state(job_two_id, false)
+            .await?;
+
+        let job_one_stopped = db
+            .get_scheduler_job(job_one_id)
+            .await?
+            .map(|job| job.stopped);
+        let job_two_stopped = db
+            .get_scheduler_job(job_two_id)
+            .await?
+            .map(|job| job.stopped);
+        assert_eq!(
+            (job_one_stopped, job_two_stopped),
+            (Some(true), Some(false))
+        );
+
+        db.set_scheduler_job_stopped_state(job_one_id, false)
+            .await?;
+
+        let job_one_stopped = db
+            .get_scheduler_job(job_one_id)
+            .await?
+            .map(|job| job.stopped);
+        let job_two_stopped = db
+            .get_scheduler_job(job_two_id)
+            .await?
+            .map(|job| job.stopped);
+        assert_eq!(
+            (job_one_stopped, job_two_stopped),
+            (Some(false), Some(false))
+        );
 
         Ok(())
     }

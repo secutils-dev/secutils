@@ -67,39 +67,18 @@ impl ResourcesTrackersTriggerJob {
     }
 
     /// Creates a new `ResourcesTrackersTrigger` job.
-    pub async fn create(_: Arc<Api>, schedule: impl AsRef<str>) -> anyhow::Result<Job> {
+    pub async fn create(api: Arc<Api>, schedule: impl AsRef<str>) -> anyhow::Result<Job> {
         // Now, create and schedule new job.
-        let mut job = Job::new_async(schedule.as_ref(), move |uuid, scheduler| {
+        let mut job = Job::new_async(schedule.as_ref(), move |uuid, _| {
+            let db = api.datastore.primary_db.clone();
             Box::pin(async move {
-                let mut store = scheduler.context.metadata_storage.write().await;
-                let mut job_data = match store.get(uuid).await {
-                    // If the job is already stopped, it means that it still needs to be processed by the dispatcher job.
-                    Ok(Some(job_data)) if job_data.stopped => {
-                        log::warn!(
-                            "The job `{}` is triggered before previous occurrence processed by the dispatcher job.",
-                            uuid
-                        );
-                        return;
-                    }
-                    Ok(None) => {
-                        log::error!("The job data for `{}` is missing.", uuid);
-                        return;
-                    }
-                    Err(err) => {
-                        log::error!("Error getting the job data for `{}`: {}", uuid, err);
-                        return;
-                    }
-                    Ok(Some(job_data)) => job_data,
-                };
-
                 // Mark job as stopped to indicate that it needs processing. Dispatch job only picks
                 // up stopped jobs, processes them, and then un-stops. Stopped flag is basically
-                // serving as a pending processing flag.
-                job_data.stopped = true;
-
-                if let Err(err) = store.add_or_update(job_data).await {
+                // serving as a pending processing flag. Eventually we might need to add a separate
+                // table for pending jobs.
+                if let Err(err) = db.set_scheduler_job_stopped_state(uuid, true).await {
                     log::error!(
-                        "Error updating job data for resources tracker trigger job: {}",
+                        "Error marking resources tracker trigger job as pending: {}",
                         err
                     );
                 } else {
