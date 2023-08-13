@@ -1,25 +1,21 @@
 use crate::{
     api::Api,
-    network::{DnsResolver, IpAddrExt, Network},
-    users::{PublicUserDataNamespace, User, UserId},
+    network::{DnsResolver, IpAddrExt},
+    users::User,
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
         web_scraping::{
-            resources::{
-                web_page_resources_revisions_diff, WebScraperResource, WebScraperResourcesRequest,
-                WebScraperResourcesResponse,
-            },
-            MAX_WEB_PAGE_RESOURCES_TRACKER_DELAY, MAX_WEB_PAGE_RESOURCES_TRACKER_REVISIONS,
+            resources::web_page_resources_revisions_diff, MAX_WEB_PAGE_RESOURCES_TRACKER_DELAY,
+            MAX_WEB_PAGE_RESOURCES_TRACKER_REVISIONS,
         },
-        UtilsWebScrapingActionResult, WebPageResource, WebPageResourcesRevision,
-        WebPageResourcesTracker,
+        UtilsWebScrapingActionResult, WebPageResourcesTracker,
     },
 };
 use anyhow::anyhow;
 use cron::Schedule;
 use humantime::format_duration;
 use serde::Deserialize;
-use std::{collections::BTreeMap, time::Duration};
+use std::time::Duration;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -43,7 +39,7 @@ pub enum UtilsWebScrapingAction {
 
 impl UtilsWebScrapingAction {
     /// Validates action parameters and throws if action parameters aren't valid.
-    pub async fn validate<DR: DnsResolver>(&self, network: &Network<DR>) -> anyhow::Result<()> {
+    pub async fn validate<DR: DnsResolver>(&self, api: &Api<DR>) -> anyhow::Result<()> {
         match self {
             UtilsWebScrapingAction::FetchWebPageResources { tracker_name, .. }
             | UtilsWebScrapingAction::RemoveWebPageResources { tracker_name, .. }
@@ -91,7 +87,7 @@ impl UtilsWebScrapingAction {
 
                 // Checks if the specific hostname is a domain and public (not pointing to the local network).
                 let is_public_host_name = if let Some(domain) = tracker.url.domain() {
-                    match network.resolver.lookup_ip(domain).await {
+                    match api.network.resolver.lookup_ip(domain).await {
                         Ok(lookup) => lookup.iter().all(|ip| IpAddrExt::is_global(&ip)),
                         Err(err) => {
                             log::error!("Cannot resolve `{}` domain to IP: {:?}", domain, err);
@@ -139,8 +135,7 @@ impl UtilsWebScrapingAction {
     pub async fn handle<DR: DnsResolver>(
         self,
         user: User,
-        api: &Api,
-        network: &Network<DR>,
+        api: &Api<DR>,
     ) -> anyhow::Result<UtilsWebScrapingActionResult> {
         match self {
             UtilsWebScrapingAction::SaveWebPageResourcesTracker { tracker } => {
@@ -162,73 +157,30 @@ impl UtilsWebScrapingAction {
                 refresh,
                 calculate_diff,
             } => {
-                let tracker = Self::get_tracker(api, user.id, &tracker_name).await?;
+                let web_scraping = api.web_scraping();
+                let tracker = web_scraping
+                    .get_resources_tracker(user.id, &tracker_name)
+                    .await?
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "Cannot find web page resources tracker with name: {}",
+                            tracker_name
+                        )
+                    })?;
 
                 // If tracker is configured to persist resource, and client requests refresh, fetch
                 // resources with the scraper and persist them.
                 if tracker.revisions > 0 && refresh {
-                    // Checks if the specific hostname is a domain and public (not pointing to the local network).
-                    let is_public_host_name = if let Some(domain) = tracker.url.domain() {
-                        match network.resolver.lookup_ip(domain).await {
-                            Ok(lookup) => lookup.iter().all(|ip| IpAddrExt::is_global(&ip)),
-                            Err(err) => {
-                                log::error!("Cannot resolve `{}` domain to IP: {:?}", domain, err);
-                                false
-                            }
-                        }
-                    } else {
-                        false
-                    };
-
-                    if !is_public_host_name {
-                        anyhow::bail!("Tracker URL must have a valid public reachable domain name");
-                    }
-
-                    let convert_to_web_page_resources =
-                        |resources: Vec<WebScraperResource>| -> Vec<WebPageResource> {
-                            resources
-                                .into_iter()
-                                .map(|resource| resource.into())
-                                .collect()
-                        };
-
-                    let scraper_response = reqwest::Client::new()
-                        .post(format!(
-                            "{}api/resources",
-                            api.config.components.web_scraper_url.as_str()
-                        ))
-                        .json(
-                            &WebScraperResourcesRequest::with_default_parameters(&tracker.url)
-                                .set_delay(tracker.delay),
-                        )
-                        .send()
-                        .await?
-                        .json::<WebScraperResourcesResponse>()
-                        .await
-                        .map_err(|err| {
-                            log::error!(
-                                "Cannot fetch resources for `{}` ({}): {:?}",
-                                tracker.url,
-                                tracker.name,
-                                err
-                            );
-                            anyhow!("Tracker cannot fetch resources due to unexpected error")
-                        })?;
-
-                    api.web_scraping()
+                    web_scraping
                         .save_resources(
                             user.id,
                             &tracker,
-                            WebPageResourcesRevision {
-                                timestamp: scraper_response.timestamp,
-                                scripts: convert_to_web_page_resources(scraper_response.scripts),
-                                styles: convert_to_web_page_resources(scraper_response.styles),
-                            },
+                            web_scraping.fetch_resources(&tracker).await?,
                         )
                         .await?;
                 }
 
-                let revisions = api.web_scraping().get_resources(user.id, &tracker).await?;
+                let revisions = web_scraping.get_resources(user.id, &tracker).await?;
 
                 // Retrieve latest persisted resources.
                 Ok(UtilsWebScrapingActionResult::FetchWebPageResources {
@@ -241,44 +193,30 @@ impl UtilsWebScrapingAction {
                 })
             }
             UtilsWebScrapingAction::RemoveWebPageResources { tracker_name } => {
-                api.web_scraping()
-                    .remove_tracked_resources(
-                        user.id,
-                        &Self::get_tracker(api, user.id, &tracker_name).await?,
-                    )
+                let web_scraping = api.web_scraping();
+                let tracker = web_scraping
+                    .get_resources_tracker(user.id, &tracker_name)
+                    .await?
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "Cannot find web page resources tracker with name: {}",
+                            tracker_name
+                        )
+                    })?;
+                web_scraping
+                    .remove_tracked_resources(user.id, &tracker)
                     .await?;
 
                 Ok(UtilsWebScrapingActionResult::RemoveWebPageResources)
             }
         }
     }
-
-    async fn get_tracker(
-        api: &Api,
-        user_id: UserId,
-        tracker_name: &str,
-    ) -> anyhow::Result<WebPageResourcesTracker> {
-        api.users()
-            .get_data::<BTreeMap<String, WebPageResourcesTracker>>(
-                user_id,
-                PublicUserDataNamespace::WebPageResourcesTrackers,
-            )
-            .await?
-            .and_then(|mut map| map.value.remove(tracker_name))
-            .ok_or_else(|| {
-                anyhow!(
-                    "Cannot find web page resources tracker with name: {}",
-                    tracker_name
-                )
-            })
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        network::Network,
-        tests::MockResolver,
+        tests::{mock_api, mock_api_with_network, mock_network_with_records},
         utils::{UtilsWebScrapingAction, WebPageResourcesTracker},
     };
     use insta::assert_debug_snapshot;
@@ -288,14 +226,6 @@ mod tests {
         Name,
     };
     use url::Url;
-
-    fn mock_network() -> Network<MockResolver> {
-        Network::new(MockResolver::new())
-    }
-
-    fn mock_network_with_records<const N: usize>(records: Vec<Record>) -> Network<MockResolver<N>> {
-        Network::new(MockResolver::new_with_records::<N>(records))
-    }
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
@@ -404,32 +334,33 @@ mod tests {
 
     #[actix_rt::test]
     async fn validation() -> anyhow::Result<()> {
-        let network = mock_network_with_records::<1>(vec![Record::from_rdata(
+        let api = mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
             Name::new(),
             300,
             RData::A(Ipv4Addr::new(172, 32, 0, 2)),
-        )]);
+        )]))
+        .await?;
 
         assert!(UtilsWebScrapingAction::FetchWebPageResources {
             tracker_name: "a".repeat(100),
             refresh: false,
             calculate_diff: false
         }
-        .validate(&mock_network())
+        .validate(&mock_api().await?)
         .await
         .is_ok());
 
         assert!(UtilsWebScrapingAction::RemoveWebPageResources {
             tracker_name: "a".repeat(100),
         }
-        .validate(&network)
+        .validate(&api)
         .await
         .is_ok());
 
         assert!(UtilsWebScrapingAction::RemoveWebPageResourcesTracker {
             tracker_name: "a".repeat(100),
         }
-        .validate(&network)
+        .validate(&api)
         .await
         .is_ok());
 
@@ -438,7 +369,7 @@ mod tests {
             refresh: false,
             calculate_diff: false
         }
-        .validate(&network)
+        .validate(&api)
         .await
         .is_ok());
 
@@ -451,7 +382,7 @@ mod tests {
                 schedule: None,
             }
         }
-        .validate(&network)
+        .validate(&api)
         .await
         .is_ok());
 
@@ -464,7 +395,7 @@ mod tests {
                 schedule: None,
             }
         }
-        .validate(&network)
+        .validate(&api)
         .await
         .is_ok());
 
@@ -477,7 +408,7 @@ mod tests {
                 schedule: Some("0 0 0 * * *".to_string()),
             }
         }
-        .validate(&network)
+        .validate(&api)
         .await
         .is_ok());
 
@@ -490,18 +421,20 @@ mod tests {
                 schedule: None,
             }
         }
-            .validate(&network)
+            .validate(&api)
             .await, @r###"
         Err(
             "Tracker URL scheme must be either http or https",
         )
         "###);
 
-        let network_with_local = mock_network_with_records::<1>(vec![Record::from_rdata(
-            Name::new(),
-            300,
-            RData::A(Ipv4Addr::new(127, 0, 0, 1)),
-        )]);
+        let api_with_local_network =
+            mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
+                Name::new(),
+                300,
+                RData::A(Ipv4Addr::new(127, 0, 0, 1)),
+            )]))
+            .await?;
         assert_debug_snapshot!(UtilsWebScrapingAction::SaveWebPageResourcesTracker {
             tracker: WebPageResourcesTracker {
                 name: "a".repeat(100),
@@ -511,7 +444,7 @@ mod tests {
                 schedule: None,
             }
         }
-            .validate(&network_with_local)
+            .validate(&api_with_local_network)
             .await, @r###"
         Err(
             "Tracker URL must have a valid public reachable domain name",
@@ -527,7 +460,7 @@ mod tests {
                 schedule: Some("0 * * * * *".to_string()),
             }
         }
-        .validate(&network)
+        .validate(&api)
         .await, @r###"
         Err(
             "Tracker schedule must have at least 1h between occurrences, detected 1m",
@@ -539,7 +472,7 @@ mod tests {
             refresh: false,
             calculate_diff: false
         }
-        .validate(&network).await, @r###"
+        .validate(&api).await, @r###"
         Err(
             "Tracker name cannot be empty",
         )
@@ -550,7 +483,7 @@ mod tests {
             refresh: false,
             calculate_diff: false
         }
-        .validate(&network).await, @r###"
+        .validate(&api).await, @r###"
         Err(
             "Tracker name cannot be longer than 100 characters",
         )
@@ -559,7 +492,7 @@ mod tests {
         assert_debug_snapshot!(UtilsWebScrapingAction::RemoveWebPageResources {
             tracker_name: "".to_string(),
         }
-        .validate(&network).await, @r###"
+        .validate(&api).await, @r###"
         Err(
             "Tracker name cannot be empty",
         )
@@ -568,7 +501,7 @@ mod tests {
         assert_debug_snapshot!(UtilsWebScrapingAction::RemoveWebPageResources {
             tracker_name: "a".repeat(101),
         }
-        .validate(&network).await, @r###"
+        .validate(&api).await, @r###"
         Err(
             "Tracker name cannot be longer than 100 characters",
         )
@@ -577,7 +510,7 @@ mod tests {
         assert_debug_snapshot!(UtilsWebScrapingAction::RemoveWebPageResourcesTracker {
             tracker_name: "".to_string(),
         }
-        .validate(&network).await, @r###"
+        .validate(&api).await, @r###"
         Err(
             "Tracker name cannot be empty",
         )
@@ -586,7 +519,7 @@ mod tests {
         assert_debug_snapshot!(UtilsWebScrapingAction::RemoveWebPageResourcesTracker {
             tracker_name: "a".repeat(101),
         }
-        .validate(&network).await, @r###"
+        .validate(&api).await, @r###"
         Err(
             "Tracker name cannot be longer than 100 characters",
         )
@@ -601,7 +534,7 @@ mod tests {
                 schedule: None,
             }
         }
-        .validate(&network).await, @r###"
+        .validate(&api).await, @r###"
         Err(
             "Tracker name cannot be empty",
         )
@@ -616,7 +549,7 @@ mod tests {
                 schedule: None,
             }
         }
-        .validate(&network).await, @r###"
+        .validate(&api).await, @r###"
         Err(
             "Tracker name cannot be longer than 100 characters",
         )
@@ -631,7 +564,7 @@ mod tests {
                 schedule: None,
             }
         }
-        .validate(&network).await, @r###"
+        .validate(&api).await, @r###"
         Err(
             "Tracker revisions count cannot be greater than 10",
         )
@@ -646,7 +579,7 @@ mod tests {
                 schedule: None,
             }
         }
-        .validate(&network).await, @r###"
+        .validate(&api).await, @r###"
         Err(
             "Tracker delay cannot be greater than 60000ms",
         )

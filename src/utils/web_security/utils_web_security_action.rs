@@ -1,5 +1,6 @@
 use crate::{
     api::Api,
+    network::DnsResolver,
     users::{PublicUserDataNamespace, User},
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH, ContentSecurityPolicy,
@@ -42,10 +43,10 @@ impl UtilsWebSecurityAction {
         Ok(())
     }
 
-    pub async fn handle(
+    pub async fn handle<DR: DnsResolver>(
         self,
         user: User,
-        api: &Api,
+        api: &Api<DR>,
     ) -> anyhow::Result<UtilsWebSecurityActionResult> {
         match self {
             UtilsWebSecurityAction::SerializeContentSecurityPolicy {

@@ -1,21 +1,21 @@
-use crate::{datastore::PrimaryDb, utils::Util};
+use crate::{database::Database, utils::Util};
 use std::borrow::Cow;
 
 pub struct UtilsApi<'a> {
-    primary_db: Cow<'a, PrimaryDb>,
+    db: Cow<'a, Database>,
 }
 
 impl<'a> UtilsApi<'a> {
     /// Creates Utils API.
-    pub fn new(primary_db: &'a PrimaryDb) -> Self {
+    pub fn new(db: &'a Database) -> Self {
         Self {
-            primary_db: Cow::Borrowed(primary_db),
+            db: Cow::Borrowed(db),
         }
     }
 
     /// Returns all available utils.
     pub async fn get_all(&self) -> anyhow::Result<Vec<Util>> {
-        self.primary_db.get_utils().await
+        self.db.get_utils().await
     }
 }
 

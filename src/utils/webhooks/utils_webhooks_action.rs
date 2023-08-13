@@ -1,5 +1,6 @@
 use crate::{
     api::Api,
+    network::DnsResolver,
     users::User,
     utils::{utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH, UtilsWebhooksActionResult},
 };
@@ -36,7 +37,11 @@ impl UtilsWebhooksAction {
         Ok(())
     }
 
-    pub async fn handle(self, user: User, api: &Api) -> anyhow::Result<UtilsWebhooksActionResult> {
+    pub async fn handle<DR: DnsResolver>(
+        self,
+        user: User,
+        api: &Api<DR>,
+    ) -> anyhow::Result<UtilsWebhooksActionResult> {
         match self {
             UtilsWebhooksAction::GetAutoRespondersRequests {
                 auto_responder_name,

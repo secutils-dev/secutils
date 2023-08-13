@@ -1,13 +1,13 @@
 mod raw_user_webauthn_session;
 
-use crate::{datastore::PrimaryDb, security::WebAuthnSession};
+use crate::{database::Database, security::WebAuthnSession};
 use anyhow::Context;
 use raw_user_webauthn_session::RawUserWebAuthnSession;
 use sqlx::{query, query_as};
 use time::OffsetDateTime;
 
-/// Extends primary DB with the authentication-related methods.
-impl PrimaryDb {
+/// Extends primary database with the authentication-related methods.
+impl Database {
     /// Retrieves user's WebAuthn session from the `UserWebAuthnSessions` table using user email.
     pub async fn get_user_webauthn_session_by_email<E: AsRef<str>>(
         &self,

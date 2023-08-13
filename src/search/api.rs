@@ -1,8 +1,16 @@
 use crate::{
-    datastore::{SearchFilter, SearchIndex},
-    search::SearchItem,
+    api::Api,
+    network::DnsResolver,
+    search::{SearchFilter, SearchIndex, SearchItem},
 };
 use std::borrow::Cow;
+
+impl<DR: DnsResolver> Api<DR> {
+    /// Returns an API to perform application-wide search.
+    pub fn search(&self) -> SearchApi {
+        SearchApi::new(&self.search_index)
+    }
+}
 
 /// API to facilitate interaction with the application-wide search.
 pub struct SearchApi<'a> {

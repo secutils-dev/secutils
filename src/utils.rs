@@ -1,5 +1,5 @@
 mod certificates;
-mod primary_db_ext;
+mod database_ext;
 mod util;
 mod utils_action;
 mod utils_action_result;
@@ -18,8 +18,8 @@ pub use self::{
     utils_action_result::UtilsActionResult,
     web_scraping::{
         UtilsWebScrapingAction, UtilsWebScrapingActionResult, WebPageResource,
-        WebPageResourceContent, WebPageResourceContentData, WebPageResourceDiffStatus,
-        WebPageResourcesRevision, WebPageResourcesTracker,
+        WebPageResourceContent, WebPageResourceContentData, WebPageResourcesRevision,
+        WebPageResourcesTracker,
     },
     web_security::{
         ContentSecurityPolicy, ContentSecurityPolicyDirective,

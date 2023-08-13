@@ -1,13 +1,23 @@
 use crate::{
     api::{Api, DictionaryDataUserDataSetter},
-    datastore::PrimaryDb,
+    config::Config,
+    database::Database,
+    network::{DnsResolver, IpAddrExt, Network},
+    scheduler::SchedulerJob,
     users::{
         InternalUserDataNamespace, PublicUserDataNamespace, UserData, UserDataKey,
         UserDataNamespace, UserId,
     },
-    utils::{WebPageResourcesRevision, WebPageResourcesTracker},
+    utils::{
+        web_scraping::resources::{
+            WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesResponse,
+        },
+        WebPageResource, WebPageResourcesRevision, WebPageResourcesTracker,
+    },
 };
-use anyhow::bail;
+use anyhow::{anyhow, bail};
+use async_stream::try_stream;
+use futures::{pin_mut, Stream, StreamExt};
 use std::{
     borrow::Cow,
     collections::{BTreeMap, VecDeque},
@@ -15,15 +25,22 @@ use std::{
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-pub struct WebScrapingApi<'a> {
-    primary_db: Cow<'a, PrimaryDb>,
+/// Defines a maximum number of jobs that can be retrieved from the database at once.
+const MAX_JOBS_PAGE_SIZE: usize = 1000;
+
+pub struct WebScrapingApi<'a, C: AsRef<Config>, DR: DnsResolver> {
+    config: C,
+    db: Cow<'a, Database>,
+    network: &'a Network<DR>,
 }
 
-impl<'a> WebScrapingApi<'a> {
+impl<'a, C: AsRef<Config>, DR: DnsResolver> WebScrapingApi<'a, C, DR> {
     /// Creates WebScraping API.
-    pub fn new(primary_db: &'a PrimaryDb) -> Self {
+    pub fn new(config: C, db: &'a Database, network: &'a Network<DR>) -> Self {
         Self {
-            primary_db: Cow::Borrowed(primary_db),
+            config,
+            db: Cow::Borrowed(db),
+            network,
         }
     }
 
@@ -36,45 +53,40 @@ impl<'a> WebScrapingApi<'a> {
         // First retrieve tracker and check if it has different URL. If so, we need to remove all
         // tracked resources.
         let existing_tracker = self.get_resources_tracker(user_id, &tracker.name).await?;
-        let mut job_schedule_changed = false;
-        if let Some(existing_tracker) = &existing_tracker {
-            if existing_tracker.url != tracker.url {
-                log::debug!(
-                    "Web resources tracker \"{}\" (user ID: {:?}) changed URL, clearing web resources history.",
-                    existing_tracker.name,
-                    user_id
-                );
-                self.primary_db
-                    .remove_user_data(
-                        user_id,
-                        (
-                            PublicUserDataNamespace::WebPageResourcesTrackers,
-                            existing_tracker.name.as_str(),
-                        ),
-                    )
-                    .await?;
-            }
+        let (changed_tracking, changed_url) = if let Some(existing_tracker) = &existing_tracker {
+            (
+                existing_tracker.schedule != tracker.schedule
+                    || existing_tracker.revisions != tracker.revisions,
+                existing_tracker.url != tracker.url,
+            )
+        } else {
+            (false, false)
+        };
 
-            if existing_tracker.schedule != tracker.schedule {
-                job_schedule_changed = true;
-            }
+        if changed_url {
+            log::debug!(
+                "Web resources tracker \"{}\" (user ID: {:?}) changed URL, clearing web resources history.",
+                tracker.name,
+                user_id
+            );
+            let user_data_key = (
+                PublicUserDataNamespace::WebPageResourcesTrackers,
+                tracker.name.as_str(),
+            );
+            self.db.remove_user_data(user_id, user_data_key).await?;
         }
 
-        // If schedule has changed, or it's a new tracker, we need to either reset or remove scheduled job.
-        match tracker.schedule {
-            Some(_) if job_schedule_changed || existing_tracker.is_none() => {
-                self.upsert_resources_tracker_job(user_id, &tracker.name, None)
-                    .await?;
-            }
-            None if job_schedule_changed => {
-                self.remove_resources_tracker_job(user_id, &tracker.name)
-                    .await?;
-            }
-            _ => {}
+        let should_track = tracker.schedule.is_some() && tracker.revisions > 0;
+        if !should_track && changed_tracking {
+            self.remove_resources_tracker_job(user_id, &tracker.name)
+                .await?;
+        } else if should_track && (changed_tracking || existing_tracker.is_none()) {
+            self.upsert_resources_tracker_job(user_id, &tracker.name, None)
+                .await?;
         }
 
         DictionaryDataUserDataSetter::upsert(
-            &self.primary_db,
+            &self.db,
             PublicUserDataNamespace::WebPageResourcesTrackers,
             UserData::new(
                 user_id,
@@ -96,7 +108,7 @@ impl<'a> WebScrapingApi<'a> {
         tracker_name: &str,
     ) -> anyhow::Result<()> {
         // First delete tracked resources and jobs.
-        self.primary_db
+        self.db
             .remove_user_data(
                 user_id,
                 (
@@ -105,7 +117,7 @@ impl<'a> WebScrapingApi<'a> {
                 ),
             )
             .await?;
-        self.primary_db
+        self.db
             .remove_user_data(
                 user_id,
                 (
@@ -117,7 +129,7 @@ impl<'a> WebScrapingApi<'a> {
 
         // Then delete the tracker itself.
         DictionaryDataUserDataSetter::upsert(
-            &self.primary_db,
+            &self.db,
             PublicUserDataNamespace::WebPageResourcesTrackers,
             UserData::new(
                 user_id,
@@ -137,7 +149,7 @@ impl<'a> WebScrapingApi<'a> {
         tracker_name: &str,
     ) -> anyhow::Result<Option<WebPageResourcesTracker>> {
         Ok(self
-            .primary_db
+            .db
             .get_user_data::<BTreeMap<String, WebPageResourcesTracker>>(
                 user_id,
                 PublicUserDataNamespace::WebPageResourcesTrackers,
@@ -153,7 +165,7 @@ impl<'a> WebScrapingApi<'a> {
         tracker: &WebPageResourcesTracker,
     ) -> anyhow::Result<Vec<WebPageResourcesRevision>> {
         Ok(self
-            .primary_db
+            .db
             .get_user_data::<Vec<WebPageResourcesRevision>>(
                 user_id,
                 (
@@ -180,7 +192,7 @@ impl<'a> WebScrapingApi<'a> {
 
         // Enforce revisions limit and displace the oldest one.
         let mut revisions = self
-            .primary_db
+            .db
             .get_user_data::<VecDeque<WebPageResourcesRevision>>(user_id, user_data_key)
             .await?
             .map(|user_data| user_data.value)
@@ -199,7 +211,7 @@ impl<'a> WebScrapingApi<'a> {
             revisions.push_back(revision);
         }
 
-        self.primary_db
+        self.db
             .upsert_user_data(
                 user_data_key,
                 UserData::new_with_key(
@@ -212,13 +224,75 @@ impl<'a> WebScrapingApi<'a> {
             .await
     }
 
+    /// Fetches resources for the specified web page resources tracker.
+    pub async fn fetch_resources(
+        &self,
+        tracker: &WebPageResourcesTracker,
+    ) -> anyhow::Result<WebPageResourcesRevision> {
+        // If tracker is configured to persist resource, and client requests refresh, fetch
+        // resources with the scraper and persist them.
+        // Checks if the specific hostname is a domain and public (not pointing to the local network).
+        let is_public_host_name = if let Some(domain) = tracker.url.domain() {
+            match self.network.resolver.lookup_ip(domain).await {
+                Ok(lookup) => lookup.iter().all(|ip| IpAddrExt::is_global(&ip)),
+                Err(err) => {
+                    log::error!("Cannot resolve `{}` domain to IP: {:?}", domain, err);
+                    false
+                }
+            }
+        } else {
+            false
+        };
+
+        if !is_public_host_name {
+            bail!("Tracker URL must have a valid public reachable domain name");
+        }
+
+        let convert_to_web_page_resources =
+            |resources: Vec<WebScraperResource>| -> Vec<WebPageResource> {
+                resources
+                    .into_iter()
+                    .map(|resource| resource.into())
+                    .collect()
+            };
+
+        let scraper_response = reqwest::Client::new()
+            .post(format!(
+                "{}api/resources",
+                self.config.as_ref().components.web_scraper_url.as_str()
+            ))
+            .json(
+                &WebScraperResourcesRequest::with_default_parameters(&tracker.url)
+                    .set_delay(tracker.delay),
+            )
+            .send()
+            .await?
+            .json::<WebScraperResourcesResponse>()
+            .await
+            .map_err(|err| {
+                log::error!(
+                    "Cannot fetch resources for `{}` ({}): {:?}",
+                    tracker.url,
+                    tracker.name,
+                    err
+                );
+                anyhow!("Tracker cannot fetch resources due to unexpected error")
+            })?;
+
+        Ok(WebPageResourcesRevision {
+            timestamp: scraper_response.timestamp,
+            scripts: convert_to_web_page_resources(scraper_response.scripts),
+            styles: convert_to_web_page_resources(scraper_response.styles),
+        })
+    }
+
     /// Removes all persisted resources for the specified web page resources tracker.
     pub async fn remove_tracked_resources(
         &self,
         user_id: UserId,
         tracker: &WebPageResourcesTracker,
     ) -> anyhow::Result<()> {
-        self.primary_db
+        self.db
             .remove_user_data(
                 user_id,
                 (
@@ -229,11 +303,11 @@ impl<'a> WebScrapingApi<'a> {
             .await
     }
 
-    /// Returns all web page resources trackers that have jobs that need to be scheduled.
-    pub async fn get_all_pending_resources_tracker_jobs(
+    /// Returns all web page resources tracker job references that have jobs that need to be scheduled.
+    pub async fn get_unscheduled_resources_tracker_jobs(
         &self,
     ) -> anyhow::Result<Vec<UserData<Option<Uuid>>>> {
-        self.primary_db
+        self.db
             .search_user_data(
                 UserDataNamespace::Internal(
                     InternalUserDataNamespace::WebPageResourcesTrackersJobs,
@@ -243,13 +317,38 @@ impl<'a> WebScrapingApi<'a> {
             .await
     }
 
+    /// Returns all web page resources tracker job references that have jobs that need are pending.
+    pub fn get_pending_resources_tracker_jobs(
+        &self,
+    ) -> impl Stream<Item = anyhow::Result<UserData<Uuid>>> + '_ {
+        try_stream! {
+            let jobs = self.db.get_stopped_scheduler_jobs_by_extra(
+                MAX_JOBS_PAGE_SIZE,
+                &[SchedulerJob::ResourcesTrackersTrigger as u8],
+            );
+            pin_mut!(jobs);
+
+            while let Some(job_data) = jobs.next().await {
+                let job_id = job_data?
+                    .id
+                    .ok_or_else(|| anyhow!("Job without ID"))?
+                    .into();
+                if let Some(job) = self.get_resources_tracker_job_by_id(job_id).await? {
+                    yield job;
+                } else {
+                    log::error!("Found job without corresponding web page resources tracker: {}", job_id);
+                }
+            }
+        }
+    }
+
     /// Returns all web page resources trackers that have jobs that need to be scheduled.
     pub async fn get_resources_tracker_job_by_id(
         &self,
         job_id: Uuid,
     ) -> anyhow::Result<Option<UserData<Uuid>>> {
         let mut jobs = self
-            .primary_db
+            .db
             .search_user_data(
                 UserDataNamespace::Internal(
                     InternalUserDataNamespace::WebPageResourcesTrackersJobs,
@@ -275,7 +374,7 @@ impl<'a> WebScrapingApi<'a> {
         tracker_name: &str,
         job_id: Option<Uuid>,
     ) -> anyhow::Result<()> {
-        self.primary_db
+        self.db
             .upsert_user_data(
                 (
                     InternalUserDataNamespace::WebPageResourcesTrackersJobs,
@@ -292,7 +391,7 @@ impl<'a> WebScrapingApi<'a> {
         user_id: UserId,
         tracker_name: &str,
     ) -> anyhow::Result<()> {
-        self.primary_db
+        self.db
             .remove_user_data(
                 user_id,
                 (
@@ -304,18 +403,18 @@ impl<'a> WebScrapingApi<'a> {
     }
 }
 
-impl Api {
+impl<DR: DnsResolver> Api<DR> {
     /// Returns an API to work with web scraping data.
-    pub fn web_scraping(&self) -> WebScrapingApi {
-        WebScrapingApi::new(&self.datastore.primary_db)
+    pub fn web_scraping(&self) -> WebScrapingApi<&Config, DR> {
+        WebScrapingApi::new(&self.config, &self.db, &self.network)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        datastore::PrimaryDb,
-        tests::{mock_db, mock_user},
+        database::Database,
+        tests::{mock_config, mock_db, mock_network, mock_user},
         users::{PublicUserDataNamespace, User},
         utils::{
             web_scraping::WebScrapingApi, WebPageResource, WebPageResourceContent,
@@ -327,7 +426,7 @@ mod tests {
     use url::Url;
     use uuid::uuid;
 
-    async fn initialize_mock_db(user: &User) -> anyhow::Result<PrimaryDb> {
+    async fn initialize_mock_db(user: &User) -> anyhow::Result<Database> {
         let db = mock_db().await?;
         db.upsert_user(user).await.map(|_| db)
     }
@@ -336,7 +435,8 @@ mod tests {
     async fn properly_saves_new_web_page_resource_trackers() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrapingApi::new(&mock_db);
+        let mock_network = mock_network();
+        let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
         let tracker_one = WebPageResourcesTracker {
             name: "name_one".to_string(),
@@ -362,7 +462,7 @@ mod tests {
                 .collect::<HashMap<_, _>>()
         );
 
-        let tracker_jobs = api.get_all_pending_resources_tracker_jobs().await?;
+        let tracker_jobs = api.get_unscheduled_resources_tracker_jobs().await?;
         assert!(tracker_jobs.is_empty());
 
         let tracker_two = WebPageResourcesTracker {
@@ -392,7 +492,7 @@ mod tests {
             .collect::<HashMap<_, _>>()
         );
 
-        let tracker_jobs = api.get_all_pending_resources_tracker_jobs().await?;
+        let tracker_jobs = api.get_unscheduled_resources_tracker_jobs().await?;
         assert_eq!(tracker_jobs.len(), 1);
         assert_eq!(tracker_jobs[0].user_id, mock_user.id);
         assert_eq!(tracker_jobs[0].key, Some(tracker_two.name));
@@ -405,7 +505,8 @@ mod tests {
     async fn properly_updates_existing_web_page_resource_trackers() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrapingApi::new(&mock_db);
+        let mock_network = mock_network();
+        let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
         let tracker_one = WebPageResourcesTracker {
             name: "name_one".to_string(),
@@ -462,7 +563,8 @@ mod tests {
     async fn properly_removes_web_page_resource_trackers() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrapingApi::new(&mock_db);
+        let mock_network = mock_network();
+        let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
         let tracker_one = WebPageResourcesTracker {
             name: "name_one".to_string(),
@@ -535,7 +637,8 @@ mod tests {
     async fn properly_saves_web_page_resources() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrapingApi::new(&mock_db);
+        let mock_network = mock_network();
+        let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
         let tracker_one = WebPageResourcesTracker {
             name: "name_one".to_string(),
@@ -625,7 +728,8 @@ mod tests {
     async fn properly_replaces_web_page_resources_with_the_same_revision() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrapingApi::new(&mock_db);
+        let mock_network = mock_network();
+        let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
         let tracker_one = WebPageResourcesTracker {
             name: "name_one".to_string(),
@@ -698,7 +802,8 @@ mod tests {
     async fn properly_removes_web_page_resources() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrapingApi::new(&mock_db);
+        let mock_network = mock_network();
+        let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
         let tracker_one = WebPageResourcesTracker {
             name: "name_one".to_string(),
@@ -789,7 +894,8 @@ mod tests {
     async fn properly_removes_web_page_resources_when_tracker_is_removed() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrapingApi::new(&mock_db);
+        let mock_network = mock_network();
+        let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
         let tracker_one = WebPageResourcesTracker {
             name: "name_one".to_string(),
@@ -875,7 +981,8 @@ mod tests {
     async fn properly_removes_web_page_resources_when_tracker_url_changed() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrapingApi::new(&mock_db);
+        let mock_network = mock_network();
+        let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
         let tracker_one = WebPageResourcesTracker {
             name: "name_one".to_string(),
@@ -996,7 +1103,8 @@ mod tests {
     async fn properly_updates_job_when_tracker_schedule_changed() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrapingApi::new(&mock_db);
+        let mock_network = mock_network();
+        let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
         let tracker = WebPageResourcesTracker {
             name: "name_one".to_string(),
@@ -1008,7 +1116,7 @@ mod tests {
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
             .await?;
 
-        let tracker_jobs = api.get_all_pending_resources_tracker_jobs().await?;
+        let tracker_jobs = api.get_unscheduled_resources_tracker_jobs().await?;
         assert!(tracker_jobs.is_empty());
 
         // Update tracker without adding schedule.
@@ -1022,7 +1130,7 @@ mod tests {
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
             .await?;
 
-        let tracker_jobs = api.get_all_pending_resources_tracker_jobs().await?;
+        let tracker_jobs = api.get_unscheduled_resources_tracker_jobs().await?;
         assert!(tracker_jobs.is_empty());
 
         // Update tracker with schedule.
@@ -1036,7 +1144,7 @@ mod tests {
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
             .await?;
 
-        let tracker_jobs_rev_1 = api.get_all_pending_resources_tracker_jobs().await?;
+        let tracker_jobs_rev_1 = api.get_unscheduled_resources_tracker_jobs().await?;
         assert_eq!(tracker_jobs_rev_1.len(), 1);
         assert_eq!(tracker_jobs_rev_1[0].user_id, mock_user.id);
         assert_eq!(tracker_jobs_rev_1[0].key, Some(tracker.name));
@@ -1053,7 +1161,7 @@ mod tests {
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
             .await?;
 
-        let tracker_jobs_rev_2 = api.get_all_pending_resources_tracker_jobs().await?;
+        let tracker_jobs_rev_2 = api.get_unscheduled_resources_tracker_jobs().await?;
         assert_eq!(tracker_jobs_rev_1, tracker_jobs_rev_2);
 
         // Update tracker job.
@@ -1063,7 +1171,7 @@ mod tests {
             Some(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c8")),
         )
         .await?;
-        let tracker_jobs_rev_3 = api.get_all_pending_resources_tracker_jobs().await?;
+        let tracker_jobs_rev_3 = api.get_unscheduled_resources_tracker_jobs().await?;
         assert!(tracker_jobs_rev_3.is_empty());
 
         let tracker_job = api
@@ -1082,7 +1190,7 @@ mod tests {
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
             .await?;
 
-        let tracker_jobs_rev_4 = api.get_all_pending_resources_tracker_jobs().await?;
+        let tracker_jobs_rev_4 = api.get_unscheduled_resources_tracker_jobs().await?;
         assert_eq!(tracker_jobs_rev_4.len(), 1);
         assert_eq!(tracker_jobs_rev_4[0].user_id, mock_user.id);
         assert_eq!(tracker_jobs_rev_4[0].key, Some(tracker.name));
@@ -1104,8 +1212,48 @@ mod tests {
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
             .await?;
 
-        let tracker_jobs_rev_5 = api.get_all_pending_resources_tracker_jobs().await?;
+        let tracker_jobs_rev_5 = api.get_unscheduled_resources_tracker_jobs().await?;
         assert!(tracker_jobs_rev_5.is_empty());
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn properly_removes_job_when_tracker_revisions_disabled() -> anyhow::Result<()> {
+        let mock_user = mock_user();
+        let mock_db = initialize_mock_db(&mock_user).await?;
+        let mock_network = mock_network();
+        let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
+
+        let tracker = WebPageResourcesTracker {
+            name: "name_one".to_string(),
+            url: Url::parse("http://localhost:1234/my/app?q=2")?,
+            revisions: 3,
+            delay: Duration::from_millis(2000),
+            schedule: Some("0 0 * * *".to_string()),
+        };
+        api.upsert_resources_tracker(mock_user.id, tracker.clone())
+            .await?;
+
+        let jobs = api.get_unscheduled_resources_tracker_jobs().await?;
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].user_id, mock_user.id);
+        assert_eq!(jobs[0].key, Some(tracker.name));
+        assert!(jobs[0].value.is_none());
+
+        // Disable revisions.
+        let tracker = WebPageResourcesTracker {
+            name: "name_one".to_string(),
+            url: Url::parse("http://localhost:1234/my/app?q=2")?,
+            revisions: 0,
+            delay: Duration::from_millis(2000),
+            schedule: Some("0 0 * * *".to_string()),
+        };
+        api.upsert_resources_tracker(mock_user.id, tracker.clone())
+            .await?;
+
+        let jobs = api.get_unscheduled_resources_tracker_jobs().await?;
+        assert!(jobs.is_empty());
 
         Ok(())
     }
@@ -1114,7 +1262,8 @@ mod tests {
     async fn properly_removes_job_when_tracker_is_removed() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrapingApi::new(&mock_db);
+        let mock_network = mock_network();
+        let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
         // Update tracker with schedule.
         let tracker = WebPageResourcesTracker {
@@ -1127,7 +1276,7 @@ mod tests {
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
             .await?;
 
-        let tracker_jobs = api.get_all_pending_resources_tracker_jobs().await?;
+        let tracker_jobs = api.get_unscheduled_resources_tracker_jobs().await?;
         assert_eq!(tracker_jobs.len(), 1);
         assert_eq!(tracker_jobs[0].user_id, mock_user.id);
         assert_eq!(tracker_jobs[0].key, Some(tracker.name.clone()));
@@ -1136,7 +1285,7 @@ mod tests {
         api.remove_resources_tracker(mock_user.id, &tracker.name)
             .await?;
 
-        let tracker_jobs = api.get_all_pending_resources_tracker_jobs().await?;
+        let tracker_jobs = api.get_unscheduled_resources_tracker_jobs().await?;
         assert!(tracker_jobs.is_empty());
 
         // Update tracker with schedule.
@@ -1156,7 +1305,7 @@ mod tests {
             Some(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c8")),
         )
         .await?;
-        let tracker_jobs = api.get_all_pending_resources_tracker_jobs().await?;
+        let tracker_jobs = api.get_unscheduled_resources_tracker_jobs().await?;
         assert!(tracker_jobs.is_empty());
 
         let tracker_job = api
@@ -1167,7 +1316,7 @@ mod tests {
         api.remove_resources_tracker(mock_user.id, &tracker.name)
             .await?;
 
-        let tracker_jobs = api.get_all_pending_resources_tracker_jobs().await?;
+        let tracker_jobs = api.get_unscheduled_resources_tracker_jobs().await?;
         assert!(tracker_jobs.is_empty());
 
         let tracker_job = api
@@ -1182,16 +1331,18 @@ mod tests {
     async fn can_manipulate_tracker_jobs() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = WebScrapingApi::new(&mock_db);
+        let mock_network = mock_network();
+        let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
+
         let tracker_name = "name_one".to_string();
 
-        let tracker_jobs = api.get_all_pending_resources_tracker_jobs().await?;
+        let tracker_jobs = api.get_unscheduled_resources_tracker_jobs().await?;
         assert!(tracker_jobs.is_empty());
 
         api.upsert_resources_tracker_job(mock_user.id, &tracker_name, None)
             .await?;
 
-        let tracker_jobs = api.get_all_pending_resources_tracker_jobs().await?;
+        let tracker_jobs = api.get_unscheduled_resources_tracker_jobs().await?;
         assert_eq!(tracker_jobs.len(), 1);
         assert_eq!(tracker_jobs[0].user_id, mock_user.id);
         assert_eq!(tracker_jobs[0].key, Some(tracker_name.clone()));
@@ -1204,7 +1355,7 @@ mod tests {
         )
         .await?;
 
-        let tracker_jobs = api.get_all_pending_resources_tracker_jobs().await?;
+        let tracker_jobs = api.get_unscheduled_resources_tracker_jobs().await?;
         assert!(tracker_jobs.is_empty());
 
         let tracker_job = api
@@ -1215,7 +1366,7 @@ mod tests {
         api.remove_resources_tracker_job(mock_user.id, &tracker_name)
             .await?;
 
-        let tracker_jobs = api.get_all_pending_resources_tracker_jobs().await?;
+        let tracker_jobs = api.get_unscheduled_resources_tracker_jobs().await?;
         assert!(tracker_jobs.is_empty());
 
         let tracker_job = api

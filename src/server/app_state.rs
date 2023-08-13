@@ -1,25 +1,24 @@
 use crate::{
     api::Api,
     config::Config,
-    network::{DnsResolver, Network, TokioDnsResolver},
+    network::{DnsResolver, TokioDnsResolver},
     security::Security,
     server::status::{Status, StatusLevel},
     users::{User, UserRole},
 };
 use actix_web::{error::ErrorForbidden, Error};
 use anyhow::anyhow;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 pub struct AppState<DR: DnsResolver = TokioDnsResolver> {
     pub config: Config,
     pub status: RwLock<Status>,
-    pub api: Api,
-    pub network: Network<DR>,
+    pub api: Arc<Api<DR>>,
     pub security: Security,
 }
 
 impl<DR: DnsResolver> AppState<DR> {
-    pub fn new(config: Config, security: Security, api: Api, network: Network<DR>) -> Self {
+    pub fn new(config: Config, security: Security, api: Arc<Api<DR>>) -> Self {
         let version = config.version.to_string();
         Self {
             config,
@@ -29,7 +28,6 @@ impl<DR: DnsResolver> AppState<DR> {
                 level: StatusLevel::Available,
             }),
             api,
-            network,
         }
     }
 

@@ -1,6 +1,6 @@
 mod raw_scheduler_job_stored_data;
 
-use crate::datastore::PrimaryDb;
+use crate::database::Database;
 use anyhow::bail;
 use async_stream::try_stream;
 use futures::Stream;
@@ -14,8 +14,8 @@ use tokio_cron_scheduler::{
 
 use self::raw_scheduler_job_stored_data::RawSchedulerJobStoredData;
 
-/// Extends primary DB with the Scheduler-related methods.
-impl PrimaryDb {
+/// Extends primary database with the Scheduler-related methods.
+impl Database {
     /// Retrieves scheduler job from the `scheduler_jobs` table using Job ID.
     pub async fn get_scheduler_job(&self, id: JobId) -> anyhow::Result<Option<JobStoredData>> {
         let id = id.hyphenated();
@@ -129,6 +129,45 @@ ORDER BY id
 LIMIT ?2;
 "#,
             last_id, page_limit
+        )
+            .fetch_all(&self.pool)
+            .await?;
+
+                let is_last_page = jobs.len() < page_size;
+                for job in jobs {
+                    last_id = job.id.to_string();
+                    yield JobStoredData::try_from(job)?;
+                }
+
+                if is_last_page {
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Retrieves all scheduled jobs from `scheduler_jobs` table that are in a `stopped` state with
+    /// the specified value in the `extra` field.
+    pub fn get_stopped_scheduler_jobs_by_extra<'a>(
+        &'a self,
+        page_size: usize,
+        extra: &'a [u8],
+    ) -> impl Stream<Item = anyhow::Result<JobStoredData>> + '_ {
+        let page_limit = page_size as i64;
+        try_stream! {
+            let mut last_id = "".to_string();
+
+            loop {
+                 let jobs = query_as!(RawSchedulerJobStoredData,
+r#"
+SELECT id as "id: uuid::fmt::Hyphenated", last_updated, next_tick, last_tick, job_type as "job_type!", count,
+       ran, stopped, schedule, repeating, repeated_every, extra
+FROM scheduler_jobs
+WHERE id > ?1 AND stopped = 1 AND extra = ?3
+ORDER BY id
+LIMIT ?2;
+"#,
+            last_id, page_limit, extra
         )
             .fetch_all(&self.pool)
             .await?;
@@ -1279,6 +1318,73 @@ mod tests {
                 .collect::<Result<Vec<_>, _>>()
                 .unwrap(),
             (0..=9).map(|n| Some(946720800u64 + n)).collect::<Vec<_>>()
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_retrieve_all_stopped_jobs() -> anyhow::Result<()> {
+        let db = mock_db().await?;
+
+        let jobs = db
+            .get_stopped_scheduler_jobs_by_extra(2, &[1])
+            .collect::<Vec<_>>()
+            .await;
+        assert_eq!(jobs.len(), 0);
+
+        for n in 0..=9 {
+            let job = JobStoredData {
+                id: Some(
+                    uuid::Uuid::parse_str(&format!("67e55044-10b1-426f-9247-bb680e5fe0c{}", n))?
+                        .into(),
+                ),
+                last_updated: Some(946720800u64 + n),
+                last_tick: Some(946720700u64),
+                next_tick: 946720900u64,
+                count: n as u32,
+                job_type: JobType::Cron as i32,
+                extra: vec![if n % 3 == 0 { 2 } else { 1 }],
+                ran: true,
+                stopped: n % 2 == 0,
+                job: Some(JobStored::CronJob(CronJob {
+                    schedule: format!("{} 0 0 1 1 * *", n),
+                })),
+            };
+
+            db.upsert_scheduler_job(&job).await?;
+        }
+
+        let jobs = db
+            .get_stopped_scheduler_jobs_by_extra(2, &[2])
+            .collect::<Vec<_>>()
+            .await;
+        assert_eq!(jobs.len(), 2);
+        assert_eq!(
+            jobs.into_iter()
+                .map(|job| job.map(|job| job.last_updated))
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap(),
+            [0, 6]
+                .into_iter()
+                .map(|n| Some(946720800u64 + n))
+                .collect::<Vec<_>>()
+        );
+
+        let jobs = db
+            .get_stopped_scheduler_jobs_by_extra(2, &[1])
+            .collect::<Vec<_>>()
+            .await;
+        assert_eq!(jobs.len(), 3);
+        assert_eq!(
+            jobs.into_iter()
+                .map(|job| job.map(|job| job.last_updated))
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap(),
+            [2, 4, 8]
+                .into_iter()
+                .map(|n| Some(946720800u64 + n))
+                .collect::<Vec<_>>()
         );
 
         Ok(())

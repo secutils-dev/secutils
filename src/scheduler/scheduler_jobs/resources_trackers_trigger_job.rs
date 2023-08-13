@@ -1,4 +1,4 @@
-use crate::{api::Api, scheduler::scheduler_job::SchedulerJob};
+use crate::{api::Api, network::DnsResolver, scheduler::scheduler_job::SchedulerJob};
 use anyhow::anyhow;
 use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobId, JobStoredData};
@@ -10,8 +10,8 @@ use tokio_cron_scheduler::{Job, JobId, JobStoredData};
 pub(crate) struct ResourcesTrackersTriggerJob;
 impl ResourcesTrackersTriggerJob {
     /// Tries to resume existing `ResourcesTrackersTrigger` job.
-    pub async fn try_resume(
-        api: Arc<Api>,
+    pub async fn try_resume<DR: DnsResolver>(
+        api: Arc<Api<DR>>,
         job_id: JobId,
         existing_job_data: JobStoredData,
     ) -> anyhow::Result<Option<Job>> {
@@ -67,10 +67,13 @@ impl ResourcesTrackersTriggerJob {
     }
 
     /// Creates a new `ResourcesTrackersTrigger` job.
-    pub async fn create(api: Arc<Api>, schedule: impl AsRef<str>) -> anyhow::Result<Job> {
+    pub async fn create<DR: DnsResolver>(
+        api: Arc<Api<DR>>,
+        schedule: impl AsRef<str>,
+    ) -> anyhow::Result<Job> {
         // Now, create and schedule new job.
         let mut job = Job::new_async(schedule.as_ref(), move |uuid, _| {
-            let db = api.datastore.primary_db.clone();
+            let db = api.db.clone();
             Box::pin(async move {
                 // Mark job as stopped to indicate that it needs processing. Dispatch job only picks
                 // up stopped jobs, processes them, and then un-stops. Stopped flag is basically
@@ -215,7 +218,7 @@ mod tests {
 
         let pending_jobs = api
             .web_scraping()
-            .get_all_pending_resources_tracker_jobs()
+            .get_unscheduled_resources_tracker_jobs()
             .await?;
         assert!(pending_jobs.is_empty());
 
@@ -262,7 +265,7 @@ mod tests {
 
         let pending_jobs = api
             .web_scraping()
-            .get_all_pending_resources_tracker_jobs()
+            .get_unscheduled_resources_tracker_jobs()
             .await?;
         assert_eq!(pending_jobs.len(), 1);
         assert_eq!(pending_jobs[0].user_id, user.id);
@@ -310,7 +313,7 @@ mod tests {
 
         let pending_jobs = api
             .web_scraping()
-            .get_all_pending_resources_tracker_jobs()
+            .get_unscheduled_resources_tracker_jobs()
             .await?;
         assert!(pending_jobs.is_empty());
 
@@ -343,7 +346,7 @@ mod tests {
 
         let pending_jobs = api
             .web_scraping()
-            .get_all_pending_resources_tracker_jobs()
+            .get_unscheduled_resources_tracker_jobs()
             .await?;
         assert!(pending_jobs.is_empty());
 
@@ -373,7 +376,7 @@ mod tests {
 
         let pending_jobs = api
             .web_scraping()
-            .get_all_pending_resources_tracker_jobs()
+            .get_unscheduled_resources_tracker_jobs()
             .await?;
         assert!(pending_jobs.is_empty());
 
@@ -391,7 +394,7 @@ mod tests {
         let api = Arc::new(mock_api().await?);
 
         let mut scheduler = JobScheduler::new_with_storage_and_code(
-            Box::new(SchedulerStore::new(api.datastore.primary_db.clone())),
+            Box::new(SchedulerStore::new(api.db.clone())),
             Box::<SimpleNotificationStore>::default(),
             Box::<SimpleJobCode>::default(),
             Box::<SimpleNotificationCode>::default(),
@@ -407,11 +410,7 @@ mod tests {
         thread::sleep(Duration::from_secs(5));
         scheduler.shutdown().await?;
 
-        let trigger_job = api
-            .datastore
-            .primary_db
-            .get_scheduler_job(trigger_job_id)
-            .await?;
+        let trigger_job = api.db.get_scheduler_job(trigger_job_id).await?;
         assert_eq!(
             trigger_job.map(|job| (job.id, job.stopped)),
             Some((Some(trigger_job_id.into()), true))

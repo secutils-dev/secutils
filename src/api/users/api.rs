@@ -1,6 +1,6 @@
 use crate::{
     api::users::DictionaryDataUserDataSetter,
-    datastore::PrimaryDb,
+    database::Database,
     users::{
         BuiltinUser, PublicUserDataNamespace, User, UserData, UserDataKey, UserDataNamespace,
         UserId, UserSettingsSetter,
@@ -13,20 +13,20 @@ use std::{borrow::Cow, collections::BTreeMap};
 use time::OffsetDateTime;
 
 pub struct UsersApi<'a> {
-    primary_db: Cow<'a, PrimaryDb>,
+    db: Cow<'a, Database>,
 }
 
 impl<'a> UsersApi<'a> {
     /// Creates Users API.
-    pub fn new(primary_db: &'a PrimaryDb) -> Self {
+    pub fn new(db: &'a Database) -> Self {
         Self {
-            primary_db: Cow::Borrowed(primary_db),
+            db: Cow::Borrowed(db),
         }
     }
 
     /// Retrieves the user using the specified email.
     pub async fn get_by_email<E: AsRef<str>>(&self, user_email: E) -> anyhow::Result<Option<User>> {
-        self.primary_db.get_user_by_email(user_email).await
+        self.db.get_user_by_email(user_email).await
     }
 
     /// Retrieves the user using the specified handle.
@@ -34,21 +34,17 @@ impl<'a> UsersApi<'a> {
         &self,
         user_handle: E,
     ) -> anyhow::Result<Option<User>> {
-        self.primary_db.get_user_by_handle(user_handle).await
+        self.db.get_user_by_handle(user_handle).await
     }
 
     /// Inserts or updates user in the `Users` store.
     pub async fn upsert<U: AsRef<User>>(&self, user: U) -> anyhow::Result<UserId> {
-        self.primary_db.upsert_user(user).await
+        self.db.upsert_user(user).await
     }
 
     /// Inserts or updates user in the `Users` store using `BuiltinUser`.
     pub async fn upsert_builtin(&self, builtin_user: BuiltinUser) -> anyhow::Result<UserId> {
-        let user = match self
-            .primary_db
-            .get_user_by_email(&builtin_user.email)
-            .await?
-        {
+        let user = match self.db.get_user_by_email(&builtin_user.email).await? {
             Some(user) => User {
                 id: user.id,
                 email: user.email,
@@ -77,7 +73,7 @@ impl<'a> UsersApi<'a> {
         &self,
         user_email: E,
     ) -> anyhow::Result<Option<User>> {
-        self.primary_db.remove_user_by_email(user_email).await
+        self.db.remove_user_by_email(user_email).await
     }
 
     /// Retrieves data with the specified key for the user with the specified id.
@@ -86,7 +82,7 @@ impl<'a> UsersApi<'a> {
         user_id: UserId,
         user_data_key: impl Into<UserDataKey<'_>>,
     ) -> anyhow::Result<Option<UserData<R>>> {
-        self.primary_db.get_user_data(user_id, user_data_key).await
+        self.db.get_user_data(user_id, user_data_key).await
     }
 
     /// Stores user data under the specified key.
@@ -115,9 +111,7 @@ impl<'a> UsersApi<'a> {
                 }
             },
             UserDataNamespace::Internal(_) => {
-                self.primary_db
-                    .upsert_user_data(user_data_key, user_data)
-                    .await
+                self.db.upsert_user_data(user_data_key, user_data).await
             }
         }
     }
@@ -141,7 +135,7 @@ impl<'a> UsersApi<'a> {
                 }
                 None => {
                     log::debug!("Removing `{auto_responder_name}` responder and its requests.");
-                    self.primary_db
+                    self.db
                         .remove_user_data(
                             serialized_user_data.user_id,
                             (
@@ -155,7 +149,7 @@ impl<'a> UsersApi<'a> {
         }
 
         DictionaryDataUserDataSetter::upsert(
-            &self.primary_db,
+            &self.db,
             PublicUserDataNamespace::AutoResponders,
             UserData::new(
                 serialized_user_data.user_id,
@@ -177,7 +171,7 @@ impl<'a> UsersApi<'a> {
             bail!("User settings are not valid: {:?}", user_settings);
         }
         DictionaryDataUserDataSetter::upsert(
-            &self.primary_db,
+            &self.db,
             PublicUserDataNamespace::UserSettings,
             UserData::new(
                 serialized_user_data.user_id,
@@ -193,7 +187,7 @@ impl<'a> UsersApi<'a> {
         serialized_user_data: UserData<Vec<u8>>,
     ) -> anyhow::Result<()> {
         DictionaryDataUserDataSetter::upsert(
-            &self.primary_db,
+            &self.db,
             PublicUserDataNamespace::ContentSecurityPolicies,
             UserData::new(
                 serialized_user_data.user_id,
@@ -214,7 +208,7 @@ impl<'a> UsersApi<'a> {
         serialized_user_data: UserData<Vec<u8>>,
     ) -> anyhow::Result<()> {
         DictionaryDataUserDataSetter::upsert(
-            &self.primary_db,
+            &self.db,
             PublicUserDataNamespace::SelfSignedCertificates,
             UserData::new(
                 serialized_user_data.user_id,
@@ -235,7 +229,7 @@ impl<'a> UsersApi<'a> {
 mod tests {
     use crate::{
         api::UsersApi,
-        datastore::PrimaryDb,
+        database::Database,
         tests::{mock_db, mock_user},
         users::{PublicUserDataNamespace, User, UserData},
         utils::{AutoResponder, AutoResponderMethod, AutoResponderRequest},
@@ -243,7 +237,7 @@ mod tests {
     use std::{borrow::Cow, collections::BTreeMap};
     use time::OffsetDateTime;
 
-    async fn initialize_mock_db(user: &User) -> anyhow::Result<PrimaryDb> {
+    async fn initialize_mock_db(user: &User) -> anyhow::Result<Database> {
         let db = mock_db().await?;
         db.upsert_user(user).await.map(|_| db)
     }

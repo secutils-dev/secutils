@@ -16,13 +16,13 @@ pub async fn utils_handle_action(
     let user_id = user.id;
 
     let action = body_params.into_inner().action;
-    if let Err(err) = action.validate(&state.network).await {
+    if let Err(err) = action.validate(&state.api).await {
         log::error!("Invalid utility action (user ID: {:?}): {}", user_id, err);
         return Ok(HttpResponse::BadRequest().json(json!({ "message": err.to_string() })));
     }
 
     action
-        .handle(user, &state.api, &state.network)
+        .handle(user, &state.api)
         .await
         .map(|response| HttpResponse::Ok().json(response))
         .or_else(|err| {

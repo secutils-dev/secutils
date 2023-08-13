@@ -1,4 +1,4 @@
-use crate::datastore::PrimaryDb;
+use crate::database::Database;
 use chrono::{DateTime, Utc};
 use std::{future::Future, pin::Pin, time::Duration};
 use time::OffsetDateTime;
@@ -10,11 +10,11 @@ use uuid::Uuid;
 
 /// Implementation of the SQLite storage for the Tokio scheduler.
 pub struct SchedulerStore {
-    db: PrimaryDb,
+    db: Database,
 }
 
 impl SchedulerStore {
-    pub fn new(db: PrimaryDb) -> Self {
+    pub fn new(db: Database) -> Self {
         Self { db }
     }
 }

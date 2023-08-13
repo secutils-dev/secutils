@@ -4,7 +4,7 @@ mod raw_user_to_upsert;
 
 use self::{raw_user::RawUser, raw_user_data::RawUserData, raw_user_to_upsert::RawUserToUpsert};
 use crate::{
-    datastore::PrimaryDb,
+    database::Database,
     users::{User, UserData, UserDataKey, UserDataNamespace, UserId},
 };
 use anyhow::{bail, Context};
@@ -12,8 +12,8 @@ use serde::{de::DeserializeOwned, Serialize};
 use sqlx::{query, query_as, query_scalar};
 use time::OffsetDateTime;
 
-/// Extends primary DB with the user management-related methods.
-impl PrimaryDb {
+/// Extends primary database with the user management-related methods.
+impl Database {
     /// Retrieves user from the `Users` table using user email.
     pub async fn get_user_by_email<T: AsRef<str>>(&self, email: T) -> anyhow::Result<Option<User>> {
         let email = email.as_ref();

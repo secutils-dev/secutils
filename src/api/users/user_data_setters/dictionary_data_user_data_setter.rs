@@ -1,5 +1,5 @@
 use crate::{
-    datastore::PrimaryDb,
+    database::Database,
     users::{UserData, UserDataKey},
 };
 use serde::{de::DeserializeOwned, Serialize};
@@ -8,13 +8,13 @@ use std::collections::BTreeMap;
 pub struct DictionaryDataUserDataSetter;
 impl DictionaryDataUserDataSetter {
     pub async fn upsert<R: DeserializeOwned + Serialize>(
-        primary_db: &PrimaryDb,
+        db: &Database,
         user_data_key: impl Into<UserDataKey<'_>>,
         user_data: UserData<BTreeMap<String, Option<R>>>,
     ) -> anyhow::Result<()> {
         let user_data_key = user_data_key.into();
 
-        let mut merged_user_data_value: BTreeMap<_, _> = primary_db
+        let mut merged_user_data_value: BTreeMap<_, _> = db
             .get_user_data(user_data.user_id, user_data_key)
             .await?
             .map(|user_data| user_data.value)
@@ -29,22 +29,20 @@ impl DictionaryDataUserDataSetter {
         }
 
         if merged_user_data_value.is_empty() {
-            primary_db
-                .remove_user_data(user_data.user_id, user_data_key)
+            db.remove_user_data(user_data.user_id, user_data_key)
                 .await
                 .map(|_| ())
         } else {
-            primary_db
-                .upsert_user_data(
-                    user_data_key,
-                    UserData {
-                        user_id: user_data.user_id,
-                        key: user_data.key,
-                        value: merged_user_data_value,
-                        timestamp: user_data.timestamp,
-                    },
-                )
-                .await
+            db.upsert_user_data(
+                user_data_key,
+                UserData {
+                    user_id: user_data.user_id,
+                    key: user_data.key,
+                    value: merged_user_data_value,
+                    timestamp: user_data.timestamp,
+                },
+            )
+            .await
         }
     }
 }
@@ -53,7 +51,7 @@ impl DictionaryDataUserDataSetter {
 mod tests {
     use crate::{
         api::users::DictionaryDataUserDataSetter,
-        datastore::PrimaryDb,
+        database::Database,
         tests::{mock_db, mock_user},
         users::{PublicUserDataNamespace, User, UserData},
     };
@@ -61,7 +59,7 @@ mod tests {
     use std::collections::BTreeMap;
     use time::OffsetDateTime;
 
-    async fn initialize_mock_db(user: &User) -> anyhow::Result<PrimaryDb> {
+    async fn initialize_mock_db(user: &User) -> anyhow::Result<Database> {
         let db = mock_db().await?;
         db.upsert_user(user).await.map(|_| db)
     }

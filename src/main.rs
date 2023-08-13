@@ -2,7 +2,7 @@
 
 mod api;
 mod config;
-mod datastore;
+mod database;
 mod directories;
 mod error;
 mod network;
@@ -202,7 +202,8 @@ mod tests {
     use crate::{
         api::Api,
         config::{ComponentsConfig, Config, SchedulerJobsConfig},
-        datastore::{initialize_index, Datastore, PrimaryDb, SearchIndex},
+        database::Database,
+        network::{DnsResolver, Network},
         search::SearchItem,
         security::StoredCredentials,
         users::{User, UserId},
@@ -210,15 +211,13 @@ mod tests {
     };
     use cron::Schedule;
     use std::collections::{HashMap, HashSet};
-    use tantivy::{schema::Schema, Index, IndexReader};
+    use tantivy::Index;
     use time::OffsetDateTime;
+    use trust_dns_resolver::proto::rr::Record;
     use url::Url;
 
     pub use crate::network::tests::MockResolver;
-
-    pub fn open_index(schema: Schema) -> anyhow::Result<(Index, IndexReader)> {
-        initialize_index(Index::create_in_ram(schema))
-    }
+    use crate::search::SearchIndex;
 
     pub struct MockUserBuilder {
         user: User,
@@ -347,8 +346,8 @@ mod tests {
         }
     }
 
-    pub async fn mock_db() -> anyhow::Result<PrimaryDb> {
-        PrimaryDb::open(|| Ok("sqlite::memory:".to_string())).await
+    pub async fn mock_db() -> anyhow::Result<Database> {
+        Database::open(|| Ok("sqlite::memory:".to_string())).await
     }
 
     pub fn mock_user() -> User {
@@ -381,17 +380,37 @@ mod tests {
         })
     }
 
-    pub async fn mock_api() -> anyhow::Result<Api> {
+    pub fn mock_network() -> Network<MockResolver> {
+        Network::new(MockResolver::new())
+    }
+
+    pub fn mock_network_with_records<const N: usize>(
+        records: Vec<Record>,
+    ) -> Network<MockResolver<N>> {
+        Network::new(MockResolver::new_with_records::<N>(records))
+    }
+
+    pub async fn mock_api() -> anyhow::Result<Api<MockResolver>> {
         mock_api_with_config(mock_config()?).await
     }
 
-    pub async fn mock_api_with_config(config: Config) -> anyhow::Result<Api> {
+    pub async fn mock_api_with_config(config: Config) -> anyhow::Result<Api<MockResolver>> {
         Ok(Api::new(
             config,
-            Datastore {
-                primary_db: mock_db().await?,
-                search_index: SearchIndex::open(open_index)?,
-            },
+            mock_db().await?,
+            SearchIndex::open(|schema| Ok(Index::create_in_ram(schema)))?,
+            mock_network(),
+        ))
+    }
+
+    pub async fn mock_api_with_network<DR: DnsResolver>(
+        network: Network<DR>,
+    ) -> anyhow::Result<Api<DR>> {
+        Ok(Api::new(
+            mock_config()?,
+            mock_db().await?,
+            SearchIndex::open(|schema| Ok(Index::create_in_ram(schema)))?,
+            network,
         ))
     }
 

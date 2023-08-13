@@ -1,4 +1,4 @@
-mod primary_db_ext;
+mod database_ext;
 mod scheduler_job;
 mod scheduler_jobs;
 mod scheduler_store;
@@ -11,34 +11,33 @@ use uuid::Uuid;
 
 use crate::{
     api::Api,
-    scheduler::{
-        scheduler_job::SchedulerJob,
-        scheduler_jobs::{ResourcesTrackersDispatchJob, ResourcesTrackersTriggerJob},
-    },
+    network::DnsResolver,
+    scheduler::scheduler_jobs::{ResourcesTrackersDispatchJob, ResourcesTrackersTriggerJob},
 };
+pub use scheduler_job::SchedulerJob;
 use scheduler_store::SchedulerStore;
 
 /// Defines a maximum number of jobs that can be retrieved from the database at once.
 const MAX_JOBS_PAGE_SIZE: usize = 1000;
 
 /// The scheduler is responsible for scheduling and executing Secutils.dev jobs.
-pub struct Scheduler {
+pub struct Scheduler<DR: DnsResolver> {
     inner_scheduler: JobScheduler,
-    api: Arc<Api>,
+    api: Arc<Api<DR>>,
 }
 
-impl Scheduler {
+impl<DR: DnsResolver> Scheduler<DR> {
     /// Starts the scheduler resuming existing jobs and adding new ones.
-    pub async fn start(api: Api) -> anyhow::Result<Self> {
+    pub async fn start(api: Arc<Api<DR>>) -> anyhow::Result<Self> {
         let scheduler = Self {
             inner_scheduler: JobScheduler::new_with_storage_and_code(
-                Box::new(SchedulerStore::new(api.datastore.primary_db.clone())),
-                Box::new(SchedulerStore::new(api.datastore.primary_db.clone())),
+                Box::new(SchedulerStore::new(api.db.clone())),
+                Box::new(SchedulerStore::new(api.db.clone())),
                 Box::<SimpleJobCode>::default(),
                 Box::<SimpleNotificationCode>::default(),
             )
             .await?,
-            api: Arc::new(api),
+            api,
         };
 
         // First, try to resume existing jobs.
@@ -56,7 +55,7 @@ impl Scheduler {
 
     /// Resumes existing jobs.
     async fn resume(&self) -> anyhow::Result<HashSet<SchedulerJob>> {
-        let db = &self.api.datastore.primary_db;
+        let db = &self.api.db;
         let jobs = db.get_scheduler_jobs(MAX_JOBS_PAGE_SIZE);
         pin_mut!(jobs);
 
@@ -135,14 +134,13 @@ impl Scheduler {
 mod tests {
     use super::Scheduler;
     use crate::{
-        api::Api,
         scheduler::scheduler_job::SchedulerJob,
         tests::{mock_api, mock_user},
         utils::WebPageResourcesTracker,
     };
     use futures::StreamExt;
     use insta::assert_debug_snapshot;
-    use std::time::Duration;
+    use std::{sync::Arc, time::Duration};
     use tokio_cron_scheduler::{CronJob, JobId, JobStored, JobStoredData, JobType};
     use url::Url;
     use uuid::uuid;
@@ -171,7 +169,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn can_resume_jobs() -> anyhow::Result<()> {
         let user = mock_user();
-        let api = mock_api().await?;
+        let api = Arc::new(mock_api().await?);
 
         let trigger_job_id = uuid!("00000000-0000-0000-0000-000000000001");
         let dispatch_job_id = uuid!("00000000-0000-0000-0000-000000000002");
@@ -195,16 +193,14 @@ mod tests {
             .await?;
 
         // Add job registrations.
-        api.datastore
-            .primary_db
+        api.db
             .upsert_scheduler_job(&mock_job_data(
                 trigger_job_id,
                 SchedulerJob::ResourcesTrackersTrigger,
                 "1 2 3 4 5 6 2030",
             ))
             .await?;
-        api.datastore
-            .primary_db
+        api.db
             .upsert_scheduler_job(&mock_job_data(
                 dispatch_job_id,
                 SchedulerJob::ResourcesTrackersDispatch,
@@ -212,11 +208,7 @@ mod tests {
             ))
             .await?;
 
-        let mut scheduler = Scheduler::start(Api {
-            datastore: api.datastore.clone(),
-            config: api.config.clone(),
-        })
-        .await?;
+        let mut scheduler = Scheduler::start(api.clone()).await?;
 
         assert!(scheduler
             .inner_scheduler
@@ -235,20 +227,10 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn schedules_unique_jobs_if_not_started() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+        let api = Arc::new(mock_api().await?);
+        Scheduler::start(api.clone()).await?;
 
-        Scheduler::start(Api {
-            datastore: api.datastore.clone(),
-            config: api.config.clone(),
-        })
-        .await?;
-
-        let mut jobs = api
-            .datastore
-            .primary_db
-            .get_scheduler_jobs(10)
-            .collect::<Vec<_>>()
-            .await;
+        let mut jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
         assert_eq!(jobs.len(), 1);
 
         let dispatch_job = jobs.remove(0)?;
@@ -273,13 +255,12 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn schedules_unique_jobs_if_cannot_resume() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+        let api = Arc::new(mock_api().await?);
 
         let dispatch_job_id = uuid!("00000000-0000-0000-0000-000000000001");
 
         // Add job registration.
-        api.datastore
-            .primary_db
+        api.db
             .upsert_scheduler_job(&mock_job_data(
                 dispatch_job_id,
                 SchedulerJob::ResourcesTrackersDispatch,
@@ -288,18 +269,9 @@ mod tests {
             ))
             .await?;
 
-        Scheduler::start(Api {
-            datastore: api.datastore.clone(),
-            config: api.config.clone(),
-        })
-        .await?;
+        Scheduler::start(api.clone()).await?;
 
-        let mut jobs = api
-            .datastore
-            .primary_db
-            .get_scheduler_jobs(10)
-            .collect::<Vec<_>>()
-            .await;
+        let mut jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
         assert_eq!(jobs.len(), 1);
 
         let dispatch_job = jobs.remove(0)?;

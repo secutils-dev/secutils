@@ -1,5 +1,5 @@
 use crate::{
-    datastore::SearchFilter,
+    search::SearchFilter,
     server::{app_state::AppState, http_errors::generic_internal_server_error},
     users::User,
 };

@@ -1,33 +1,48 @@
 mod emails;
-mod search;
 mod users;
 mod utils;
 
 pub use self::{
     emails::{Email, EmailBody, EmailsApi},
-    search::SearchApi,
     users::{UserSignupError, UsersApi},
     utils::UtilsApi,
 };
 
-use crate::{datastore::Datastore, Config};
+use crate::{
+    database::Database,
+    network::{DnsResolver, Network},
+    search::SearchIndex,
+    Config,
+};
 
 pub(crate) use self::users::DictionaryDataUserDataSetter;
 
-pub struct Api {
-    pub datastore: Datastore,
+pub struct Api<DR: DnsResolver> {
+    pub db: Database,
+    pub search_index: SearchIndex,
     pub config: Config,
+    pub network: Network<DR>,
 }
 
-impl Api {
+impl<DR: DnsResolver> Api<DR> {
     /// Instantiates APIs collection with the specified config and datastore.
-    pub fn new(config: Config, datastore: Datastore) -> Self {
-        Self { config, datastore }
+    pub fn new(
+        config: Config,
+        database: Database,
+        search_index: SearchIndex,
+        network: Network<DR>,
+    ) -> Self {
+        Self {
+            config,
+            db: database,
+            search_index,
+            network,
+        }
     }
 
     /// Returns an API to work with users.
     pub fn users(&self) -> UsersApi {
-        UsersApi::new(&self.datastore.primary_db)
+        UsersApi::new(&self.db)
     }
 
     /// Returns an API to send emails.
@@ -35,18 +50,13 @@ impl Api {
         EmailsApi::new(&self.config)
     }
 
-    /// Returns an API to perform application-wide search.
-    pub fn search(&self) -> SearchApi {
-        SearchApi::new(&self.datastore.search_index)
-    }
-
     /// Returns an API to retrieve available utils.
     pub fn utils(&self) -> UtilsApi {
-        UtilsApi::new(&self.datastore.primary_db)
+        UtilsApi::new(&self.db)
     }
 }
 
-impl AsRef<Api> for Api {
+impl<DR: DnsResolver> AsRef<Api<DR>> for Api<DR> {
     fn as_ref(&self) -> &Self {
         self
     }

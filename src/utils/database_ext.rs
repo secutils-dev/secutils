@@ -1,13 +1,13 @@
 mod raw_util;
 
-use crate::{datastore::PrimaryDb, utils::Util};
+use crate::{database::Database, utils::Util};
 use anyhow::bail;
 use raw_util::RawUtil;
 use sqlx::query_as;
 use std::collections::HashMap;
 
-/// Extends primary DB with the utility-related methods.
-impl PrimaryDb {
+/// Extends primary database with the utility-related methods.
+impl Database {
     /// Retrieves all utils from the `Utils` table.
     pub async fn get_utils(&self) -> anyhow::Result<Vec<Util>> {
         let mut root_utils = query_as!(

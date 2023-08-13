@@ -1,5 +1,5 @@
 mod credentials;
-mod primary_db_ext;
+mod database_ext;
 mod stored_credentials;
 mod webauthn;
 
@@ -14,7 +14,7 @@ pub use self::{
 use crate::{
     api::{Email, EmailBody, EmailsApi, UserSignupError},
     config::Config,
-    datastore::PrimaryDb,
+    database::Database,
     users::{InternalUserDataNamespace, User, UserData, UserId},
 };
 use anyhow::{anyhow, bail, Context};
@@ -46,16 +46,16 @@ const CREDENTIALS_RESET_CODE_LIFESPAN: Duration = Duration::from_secs(60 * 60);
 /// Secutils.dev security controller.
 pub struct Security {
     config: Config,
-    primary_db: PrimaryDb,
+    db: Database,
     webauthn: Webauthn,
 }
 
 impl Security {
     /// Instantiates security controller.
-    pub fn new(config: Config, primary_db: PrimaryDb, webauthn: Webauthn) -> Self {
+    pub fn new(config: Config, db: Database, webauthn: Webauthn) -> Self {
         Self {
             config,
-            primary_db,
+            db,
             webauthn,
         }
     }
@@ -80,7 +80,7 @@ impl Security {
 
         // Check if the user with specified email already exists.
         if let Some(user) = self
-            .primary_db
+            .db
             .get_user_by_email(&user_email)
             .await
             .with_context(|| "Failed to check if user already exists.")?
@@ -105,7 +105,7 @@ impl Security {
         // Use insert instead of upsert here to prevent multiple signup requests from the same user.
         // Consumer of the API is supposed to perform validation before invoking this method.
         let user = self
-            .primary_db
+            .db
             .insert_user(&user)
             .await
             .with_context(|| "Cannot signup user, failed to insert a new user.")
@@ -126,11 +126,7 @@ impl Security {
         user_email: E,
         user_credentials: Credentials,
     ) -> anyhow::Result<User> {
-        let mut user = if let Some(user) = self
-            .primary_db
-            .get_user_by_email(user_email.as_ref())
-            .await?
-        {
+        let mut user = if let Some(user) = self.db.get_user_by_email(user_email.as_ref()).await? {
             user
         } else {
             bail!(
@@ -163,7 +159,7 @@ impl Security {
             }
             Credentials::WebAuthnPublicKey(serialized_public_key) => {
                 let webauthn_session = self
-                    .primary_db
+                    .db
                     .get_user_webauthn_session_by_email(&user.email)
                     .await?
                     .ok_or_else(|| anyhow!("Cannot find WebAuthn session in database."))?;
@@ -192,7 +188,7 @@ impl Security {
                         passkey.update_credential(&authentication_result);
                         user.credentials.passkey = Some(passkey);
 
-                        self.primary_db
+                        self.db
                             .upsert_user(&user)
                             .await
                             .with_context(|| "Couldn't update passkey credentials.")?;
@@ -205,7 +201,7 @@ impl Security {
                 }
 
                 // Clear WebAuthn session state since we no longer need it.
-                self.primary_db
+                self.db
                     .remove_user_webauthn_session_by_email(&user.email)
                     .await?;
             }
@@ -223,7 +219,7 @@ impl Security {
             Credentials::Password(password) => StoredCredentials::try_from_password(&password)?,
             Credentials::WebAuthnPublicKey(serialized_public_key) => {
                 let webauthn_session = self
-                    .primary_db
+                    .db
                     .get_user_webauthn_session_by_email(user_email)
                     .await?
                     .ok_or_else(|| anyhow!("Cannot find WebAuthn session in database."))?;
@@ -252,7 +248,7 @@ impl Security {
                     .map(StoredCredentials::from_passkey)?;
 
                 // Clear WebAuthn session state since we no longer need it.
-                self.primary_db
+                self.db
                     .remove_user_webauthn_session_by_email(user_email)
                     .await?;
 
@@ -283,7 +279,7 @@ impl Security {
 
         // Retrieve the user to combine new credentials with existing ones.
         let mut existing_user = self
-            .primary_db
+            .db
             .get_user_by_email(&user_email)
             .await
             .with_context(|| "Failed to retrieve user for credentials change.")?
@@ -300,7 +296,7 @@ impl Security {
         }
 
         // Update user with new credentials.
-        self.primary_db
+        self.db
             .upsert_user(&existing_user)
             .await
             .with_context(|| format!("Cannot update user (user ID: {:?})", existing_user.id))?;
@@ -316,18 +312,18 @@ impl Security {
         user_reset_credentials_code: &str,
     ) -> anyhow::Result<User> {
         // First check if user with the specified email exists.
-        let user_to_reset_credentials = self
-            .primary_db
-            .get_user_by_email(user_email)
-            .await?
-            .ok_or_else(|| {
-                anyhow!(
+        let user_to_reset_credentials =
+            self.db
+                .get_user_by_email(user_email)
+                .await?
+                .ok_or_else(|| {
+                    anyhow!(
                 "User with the specified email doesn't exist. Credentials reset isn't possible."
             )
-            })?;
+                })?;
 
         // Then, try to retrieve reset code.
-        let reset_code = self.primary_db.get_user_data::<String>(
+        let reset_code = self.db.get_user_data::<String>(
                 user_to_reset_credentials.id,
                 InternalUserDataNamespace::CredentialsResetToken,
             )
@@ -352,7 +348,7 @@ impl Security {
         // Update credentials and invalid credentials reset code.
         self.update_credentials(user_email, user_credentials)
             .await?;
-        self.primary_db
+        self.db
             .remove_user_data(
                 user_to_reset_credentials.id,
                 InternalUserDataNamespace::CredentialsResetToken,
@@ -369,19 +365,19 @@ impl Security {
         user_activation_code: &str,
     ) -> anyhow::Result<User> {
         // First check if user with the specified email exists.
-        let mut user_to_activate = self
-            .primary_db
-            .get_user_by_email(user_email)
-            .await?
-            .ok_or_else(|| {
-                anyhow!(
+        let mut user_to_activate =
+            self.db
+                .get_user_by_email(user_email)
+                .await?
+                .ok_or_else(|| {
+                    anyhow!(
                 "User with the specified email doesn't exist. Account activation isn't possible."
             )
-            })?;
+                })?;
 
         // Then, try to retrieve activation code.
         let activation_code = self
-            .primary_db
+            .db
             .get_user_data::<String>(
                 user_to_activate.id,
                 InternalUserDataNamespace::AccountActivationToken,
@@ -406,7 +402,7 @@ impl Security {
 
         // Update user and remove activation code internal data.
         user_to_activate.activated = true;
-        self.primary_db
+        self.db
             .upsert_user(&user_to_activate)
             .await
             .with_context(|| {
@@ -415,7 +411,7 @@ impl Security {
                     user_to_activate.handle
                 )
             })?;
-        self.primary_db
+        self.db
             .remove_user_data(
                 user_to_activate.id,
                 InternalUserDataNamespace::AccountActivationToken,
@@ -435,13 +431,13 @@ impl Security {
         let namespace = InternalUserDataNamespace::AccountActivationToken;
 
         // Cleanup already expired activation codes.
-        self.primary_db
+        self.db
             .cleanup_user_data(namespace, timestamp.sub(ACTIVATION_CODE_LIFESPAN))
             .await
             .with_context(|| "Failed to cleanup expired activation codes.")?;
 
         // Save newly created activation code.
-        self.primary_db
+        self.db
             .upsert_user_data(
                 namespace,
                 UserData::new(user.id, &activation_code, timestamp),
@@ -530,13 +526,13 @@ impl Security {
         let namespace = InternalUserDataNamespace::CredentialsResetToken;
 
         // Cleanup already expired codes.
-        self.primary_db
+        self.db
             .cleanup_user_data(namespace, timestamp.sub(CREDENTIALS_RESET_CODE_LIFESPAN))
             .await
             .with_context(|| "Failed to cleanup expired credentials reset codes.")?;
 
         // Save newly created credentials reset code.
-        self.primary_db
+        self.db
             .upsert_user_data(namespace, UserData::new(user.id, &reset_code, timestamp))
             .await
             .with_context(|| {
@@ -626,7 +622,7 @@ impl Security {
     ) -> anyhow::Result<WebAuthnChallenge> {
         // Clean up sessions that are older than 10 minutes, based on the recommended timeout values
         // suggested in the WebAuthn spec: https://www.w3.org/TR/webauthn-2/#sctn-createCredential.
-        self.primary_db
+        self.db
             .remove_user_webauthn_sessions(
                 OffsetDateTime::now_utc().sub(Duration::from_secs(60 * 10)),
             )
@@ -649,7 +645,7 @@ impl Security {
             WebAuthnChallengeType::Authentication => {
                 // Make sure user with specified email exists.
                 let user = self
-                    .primary_db
+                    .db
                     .get_user_by_email(user_email)
                     .await?
                     .ok_or_else(|| anyhow!("User is not found (`{}`).", user_email))?;
@@ -673,7 +669,7 @@ impl Security {
         };
 
         // Store WebAuthn session state in the database during handshake.
-        self.primary_db
+        self.db
             .upsert_user_webauthn_session(&WebAuthnSession {
                 email: user_email.to_string(),
                 value: webauthn_session_value,
@@ -695,7 +691,7 @@ impl Security {
         loop {
             OsRng.fill_bytes(&mut bytes);
             let handle = bytes.encode_hex::<String>();
-            if self.primary_db.get_user_by_handle(&handle).await?.is_none() {
+            if self.db.get_user_by_handle(&handle).await?.is_none() {
                 return Ok(handle);
             }
         }

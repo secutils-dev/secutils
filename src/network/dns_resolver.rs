@@ -7,7 +7,7 @@ use trust_dns_resolver::{
 };
 
 /// Trait describing a facade for a `AsyncResolver` from `trust-dns-resolver`.
-pub trait DnsResolver {
+pub trait DnsResolver: Sync + Send + 'static {
     fn lookup_ip<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<LookupIp, ResolveError>>;
 }
 

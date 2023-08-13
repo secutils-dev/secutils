@@ -1,6 +1,6 @@
 use crate::{
     api::Api,
-    network::{DnsResolver, Network},
+    network::DnsResolver,
     users::User,
     utils::{
         UtilsActionResult, UtilsCertificatesAction, UtilsWebScrapingAction, UtilsWebSecurityAction,
@@ -21,11 +21,11 @@ pub enum UtilsAction {
 
 impl UtilsAction {
     /// Validates action parameters and throws if action parameters aren't valid.
-    pub async fn validate<DR: DnsResolver>(&self, network: &Network<DR>) -> anyhow::Result<()> {
+    pub async fn validate<DR: DnsResolver>(&self, api: &Api<DR>) -> anyhow::Result<()> {
         match self {
             UtilsAction::Certificates(action) => action.validate(),
             UtilsAction::Webhooks(action) => action.validate(),
-            UtilsAction::WebScraping(action) => action.validate(network).await,
+            UtilsAction::WebScraping(action) => action.validate(api).await,
             UtilsAction::WebSecurity(action) => action.validate(),
         }
     }
@@ -34,8 +34,7 @@ impl UtilsAction {
     pub async fn handle<DR: DnsResolver>(
         self,
         user: User,
-        api: &Api,
-        network: &Network<DR>,
+        api: &Api<DR>,
     ) -> anyhow::Result<UtilsActionResult> {
         match self {
             UtilsAction::Certificates(action) => action
@@ -47,7 +46,7 @@ impl UtilsAction {
                 .await
                 .map(UtilsActionResult::Webhooks),
             UtilsAction::WebScraping(action) => action
-                .handle(user, api, network)
+                .handle(user, api)
                 .await
                 .map(UtilsActionResult::WebScraping),
             UtilsAction::WebSecurity(action) => action
@@ -62,7 +61,7 @@ impl UtilsAction {
 mod tests {
     use crate::{
         network::Network,
-        tests::MockResolver,
+        tests::{mock_api, mock_api_with_network, MockResolver},
         utils::{
             CertificateFormat, ContentSecurityPolicySource, UtilsAction, UtilsCertificatesAction,
             UtilsWebScrapingAction, UtilsWebSecurityAction, UtilsWebhooksAction,
@@ -77,10 +76,6 @@ mod tests {
     };
     use url::Url;
 
-    fn mock_network() -> Network<MockResolver> {
-        Network::new(MockResolver::new())
-    }
-
     fn mock_network_with_records<const N: usize>(records: Vec<Record>) -> Network<MockResolver<N>> {
         Network::new(MockResolver::new_with_records::<N>(records))
     }
@@ -94,7 +89,7 @@ mod tests {
                 passphrase: None,
             }
         )
-        .validate(&mock_network())
+        .validate(&mock_api().await?)
         .await
         .is_ok());
 
@@ -102,7 +97,7 @@ mod tests {
             template_name: "".to_string(),
             format: CertificateFormat::Pem,
             passphrase: None,
-        }).validate(&mock_network()).await, @r###"
+        }).validate(&mock_api().await?).await, @r###"
         Err(
             "Template name cannot be empty",
         )
@@ -117,7 +112,7 @@ mod tests {
             UtilsAction::Webhooks(UtilsWebhooksAction::GetAutoRespondersRequests {
                 auto_responder_name: "a".repeat(100),
             })
-            .validate(&mock_network())
+            .validate(&mock_api().await?)
             .await
             .is_ok()
         );
@@ -125,7 +120,7 @@ mod tests {
         assert_debug_snapshot!(UtilsAction::Webhooks(UtilsWebhooksAction::GetAutoRespondersRequests {
             auto_responder_name: "".to_string(),
         })
-        .validate(&mock_network()).await, @r###"
+        .validate(&mock_api().await?).await, @r###"
         Err(
             "Auto responder name cannot be empty",
         )
@@ -146,11 +141,14 @@ mod tests {
                     schedule: Some("0 0 0 1 * *".to_string()),
                 }
             })
-            .validate(&mock_network_with_records::<1>(vec![Record::from_rdata(
-                Name::new(),
-                300,
-                RData::A(Ipv4Addr::new(172, 32, 0, 2)),
-            )]))
+            .validate(
+                &mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
+                    Name::new(),
+                    300,
+                    RData::A(Ipv4Addr::new(172, 32, 0, 2)),
+                )]))
+                .await?
+            )
             .await
             .is_ok()
         );
@@ -160,7 +158,7 @@ mod tests {
             refresh: false,
             calculate_diff: false
         })
-        .validate(&mock_network()).await, @r###"
+        .validate(&mock_api().await?).await, @r###"
         Err(
             "Tracker name cannot be empty",
         )
@@ -176,7 +174,7 @@ mod tests {
                 policy_name: "a".repeat(100),
                 source: ContentSecurityPolicySource::Meta,
             })
-            .validate(&mock_network())
+            .validate(&mock_api().await?)
             .await
             .is_ok()
         );
@@ -185,7 +183,7 @@ mod tests {
             policy_name: "".to_string(),
             source: ContentSecurityPolicySource::Meta,
         })
-        .validate(&mock_network()).await, @r###"
+        .validate(&mock_api().await?).await, @r###"
         Err(
             "Policy name cannot be empty",
         )

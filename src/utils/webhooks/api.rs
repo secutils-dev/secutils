@@ -1,6 +1,7 @@
 use crate::{
     api::Api,
-    datastore::PrimaryDb,
+    database::Database,
+    network::DnsResolver,
     users::{PublicUserDataNamespace, UserData, UserId},
     utils::{webhooks::AutoResponderRequest, AutoResponder},
 };
@@ -11,14 +12,14 @@ use std::{
 use time::OffsetDateTime;
 
 pub struct AutoRespondersApi<'a> {
-    primary_db: Cow<'a, PrimaryDb>,
+    db: Cow<'a, Database>,
 }
 
 impl<'a> AutoRespondersApi<'a> {
     /// Creates WebHooks API.
-    pub fn new(primary_db: &'a PrimaryDb) -> Self {
+    pub fn new(db: &'a Database) -> Self {
         Self {
-            primary_db: Cow::Borrowed(primary_db),
+            db: Cow::Borrowed(db),
         }
     }
 
@@ -27,7 +28,7 @@ impl<'a> AutoRespondersApi<'a> {
         user_id: UserId,
         name: &str,
     ) -> anyhow::Result<Option<AutoResponder>> {
-        self.primary_db
+        self.db
             .get_user_data::<BTreeMap<String, AutoResponder>>(
                 user_id,
                 PublicUserDataNamespace::AutoResponders,
@@ -44,7 +45,7 @@ impl<'a> AutoRespondersApi<'a> {
         request: AutoResponderRequest<'_>,
     ) -> anyhow::Result<()> {
         let mut requests = self
-            .primary_db
+            .db
             .get_user_data::<VecDeque<AutoResponderRequest>>(
                 user_id,
                 (
@@ -61,7 +62,7 @@ impl<'a> AutoRespondersApi<'a> {
         }
         requests.push_back(request);
 
-        self.primary_db
+        self.db
             .upsert_user_data(
                 (
                     PublicUserDataNamespace::AutoResponders,
@@ -84,7 +85,7 @@ impl<'a> AutoRespondersApi<'a> {
         auto_responder: &AutoResponder,
     ) -> anyhow::Result<Vec<AutoResponderRequest<'static>>> {
         Ok(self
-            .primary_db
+            .db
             .get_user_data::<VecDeque<AutoResponderRequest>>(
                 user_id,
                 (
@@ -99,17 +100,17 @@ impl<'a> AutoRespondersApi<'a> {
     }
 }
 
-impl Api {
+impl<DR: DnsResolver> Api<DR> {
     /// Returns an API to work with auto responders.
     pub fn auto_responders(&self) -> AutoRespondersApi {
-        AutoRespondersApi::new(&self.datastore.primary_db)
+        AutoRespondersApi::new(&self.db)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        datastore::PrimaryDb,
+        database::Database,
         tests::{mock_db, mock_user},
         users::User,
         utils::{
@@ -119,7 +120,7 @@ mod tests {
     use std::borrow::Cow;
     use time::OffsetDateTime;
 
-    async fn initialize_mock_db(user: &User) -> anyhow::Result<PrimaryDb> {
+    async fn initialize_mock_db(user: &User) -> anyhow::Result<Database> {
         let db = mock_db().await?;
         db.upsert_user(user).await.map(|_| db)
     }
