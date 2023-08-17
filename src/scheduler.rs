@@ -12,7 +12,9 @@ use uuid::Uuid;
 use crate::{
     api::Api,
     network::DnsResolver,
-    scheduler::scheduler_jobs::{ResourcesTrackersDispatchJob, ResourcesTrackersTriggerJob},
+    scheduler::scheduler_jobs::{
+        ResourcesTrackersFetchJob, ResourcesTrackersScheduleJob, ResourcesTrackersTriggerJob,
+    },
 };
 pub use scheduler_job::SchedulerJob;
 use scheduler_store::SchedulerStore;
@@ -42,10 +44,17 @@ impl<DR: DnsResolver> Scheduler<DR> {
 
         // First, try to resume existing jobs.
         let resumed_unique_jobs = scheduler.resume().await?;
-        if !resumed_unique_jobs.contains(&SchedulerJob::ResourcesTrackersDispatch) {
+        if !resumed_unique_jobs.contains(&SchedulerJob::ResourcesTrackersSchedule) {
             scheduler
                 .inner_scheduler
-                .add(ResourcesTrackersDispatchJob::create(scheduler.api.clone()).await?)
+                .add(ResourcesTrackersScheduleJob::create(scheduler.api.clone()).await?)
+                .await?;
+        }
+
+        if !resumed_unique_jobs.contains(&SchedulerJob::ResourcesTrackersFetch) {
+            scheduler
+                .inner_scheduler
+                .add(ResourcesTrackersFetchJob::create(scheduler.api.clone()).await?)
                 .await?;
         }
 
@@ -100,8 +109,12 @@ impl<DR: DnsResolver> Scheduler<DR> {
                     ResourcesTrackersTriggerJob::try_resume(self.api.clone(), job_id, job_data)
                         .await?
                 }
-                SchedulerJob::ResourcesTrackersDispatch => {
-                    ResourcesTrackersDispatchJob::try_resume(self.api.clone(), job_id, job_data)
+                SchedulerJob::ResourcesTrackersSchedule => {
+                    ResourcesTrackersScheduleJob::try_resume(self.api.clone(), job_id, job_data)
+                        .await?
+                }
+                SchedulerJob::ResourcesTrackersFetch => {
+                    ResourcesTrackersFetchJob::try_resume(self.api.clone(), job_id, job_data)
                         .await?
                 }
             };
@@ -138,6 +151,7 @@ mod tests {
         tests::{mock_api, mock_user},
         utils::WebPageResourcesTracker,
     };
+    use anyhow::anyhow;
     use futures::StreamExt;
     use insta::assert_debug_snapshot;
     use std::{sync::Arc, time::Duration};
@@ -172,7 +186,7 @@ mod tests {
         let api = Arc::new(mock_api().await?);
 
         let trigger_job_id = uuid!("00000000-0000-0000-0000-000000000001");
-        let dispatch_job_id = uuid!("00000000-0000-0000-0000-000000000002");
+        let schedule_job_id = uuid!("00000000-0000-0000-0000-000000000002");
 
         // Create user, trackers and tracker jobs.
         api.users().upsert(user.clone()).await?;
@@ -202,9 +216,9 @@ mod tests {
             .await?;
         api.db
             .upsert_scheduler_job(&mock_job_data(
-                dispatch_job_id,
-                SchedulerJob::ResourcesTrackersDispatch,
-                "0 * * * * * *",
+                schedule_job_id,
+                SchedulerJob::ResourcesTrackersSchedule,
+                "0 * 0 * * * *",
             ))
             .await?;
 
@@ -218,7 +232,7 @@ mod tests {
 
         assert!(scheduler
             .inner_scheduler
-            .next_tick_for_job(dispatch_job_id)
+            .next_tick_for_job(schedule_job_id)
             .await?
             .is_some());
 
@@ -231,10 +245,20 @@ mod tests {
         Scheduler::start(api.clone()).await?;
 
         let mut jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
-        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs.len(), 2);
 
-        let dispatch_job = jobs.remove(0)?;
-        assert_debug_snapshot!((dispatch_job.job_type, dispatch_job.extra, dispatch_job.job), @r###"
+        let first_job_type = jobs[0]
+            .as_ref()
+            .map_err(|_| anyhow!("Cannot extract job"))
+            .and_then(|job| SchedulerJob::try_from(job.extra.as_ref()))?;
+        let (schedule_job, fetch_job) = if first_job_type == SchedulerJob::ResourcesTrackersSchedule
+        {
+            (jobs.remove(0)?, jobs.remove(0)?)
+        } else {
+            (jobs.remove(1)?, jobs.remove(0)?)
+        };
+
+        assert_debug_snapshot!((schedule_job.job_type, schedule_job.extra, schedule_job.job), @r###"
         (
             0,
             [
@@ -243,7 +267,22 @@ mod tests {
             Some(
                 CronJob(
                     CronJob {
-                        schedule: "0 * * * * * *",
+                        schedule: "0 * 0 * * * *",
+                    },
+                ),
+            ),
+        )
+        "###);
+        assert_debug_snapshot!((fetch_job.job_type, fetch_job.extra, fetch_job.job), @r###"
+        (
+            0,
+            [
+                2,
+            ],
+            Some(
+                CronJob(
+                    CronJob {
+                        schedule: "0 * 1 * * * *",
                     },
                 ),
             ),
@@ -257,25 +296,47 @@ mod tests {
     async fn schedules_unique_jobs_if_cannot_resume() -> anyhow::Result<()> {
         let api = Arc::new(mock_api().await?);
 
-        let dispatch_job_id = uuid!("00000000-0000-0000-0000-000000000001");
+        let schedule_job_id = uuid!("00000000-0000-0000-0000-000000000001");
+        let fetch_job_id = uuid!("00000000-0000-0000-0000-000000000002");
 
         // Add job registration.
         api.db
             .upsert_scheduler_job(&mock_job_data(
-                dispatch_job_id,
-                SchedulerJob::ResourcesTrackersDispatch,
+                schedule_job_id,
+                SchedulerJob::ResourcesTrackersSchedule,
                 // Different schedule - every hour, not every minute.
                 "0 0 * * * * *",
+            ))
+            .await?;
+        api.db
+            .upsert_scheduler_job(&mock_job_data(
+                fetch_job_id,
+                SchedulerJob::ResourcesTrackersFetch,
+                // Different schedule - every day, not every minute.
+                "0 0 0 * * * *",
             ))
             .await?;
 
         Scheduler::start(api.clone()).await?;
 
-        let mut jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
-        assert_eq!(jobs.len(), 1);
+        // Old jobs should have been removed.
+        assert!(api.db.get_scheduler_job(schedule_job_id).await?.is_none());
+        assert!(api.db.get_scheduler_job(fetch_job_id).await?.is_none());
 
-        let dispatch_job = jobs.remove(0)?;
-        assert_debug_snapshot!((dispatch_job.job_type, dispatch_job.extra, dispatch_job.job), @r###"
+        let mut jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
+        assert_eq!(jobs.len(), 2);
+        let first_job_type = jobs[0]
+            .as_ref()
+            .map_err(|_| anyhow!("Cannot extract job"))
+            .and_then(|job| SchedulerJob::try_from(job.extra.as_ref()))?;
+        let (schedule_job, fetch_job) = if first_job_type == SchedulerJob::ResourcesTrackersSchedule
+        {
+            (jobs.remove(0)?, jobs.remove(0)?)
+        } else {
+            (jobs.remove(1)?, jobs.remove(0)?)
+        };
+
+        assert_debug_snapshot!((schedule_job.job_type, schedule_job.extra, schedule_job.job), @r###"
         (
             0,
             [
@@ -284,14 +345,27 @@ mod tests {
             Some(
                 CronJob(
                     CronJob {
-                        schedule: "0 * * * * * *",
+                        schedule: "0 * 0 * * * *",
                     },
                 ),
             ),
         )
         "###);
-
-        assert_ne!(dispatch_job.id, Some(dispatch_job_id.into()));
+        assert_debug_snapshot!((fetch_job.job_type, fetch_job.extra, fetch_job.job), @r###"
+        (
+            0,
+            [
+                2,
+            ],
+            Some(
+                CronJob(
+                    CronJob {
+                        schedule: "0 * 1 * * * *",
+                    },
+                ),
+            ),
+        )
+        "###);
 
         Ok(())
     }

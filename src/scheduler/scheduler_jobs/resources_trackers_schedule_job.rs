@@ -3,15 +3,13 @@ use crate::{
     network::DnsResolver,
     scheduler::{scheduler_job::SchedulerJob, scheduler_jobs::ResourcesTrackersTriggerJob},
 };
-use futures::{pin_mut, StreamExt};
 use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobId, JobScheduler, JobStoredData};
 
-/// The job executes every minute by default to check if there are any trackers to schedule or
-/// fetch resources for.
-pub(crate) struct ResourcesTrackersDispatchJob;
-impl ResourcesTrackersDispatchJob {
-    /// Tries to resume existing `ResourcesTrackersDispatch` job.
+/// The job executes every minute by default to check if there are any trackers to schedule jobs for.
+pub(crate) struct ResourcesTrackersScheduleJob;
+impl ResourcesTrackersScheduleJob {
+    /// Tries to resume existing `ResourcesTrackersSchedule` job.
     pub async fn try_resume<DR: DnsResolver>(
         api: Arc<Api<DR>>,
         _: JobId,
@@ -27,16 +25,16 @@ impl ResourcesTrackersDispatchJob {
         })
     }
 
-    /// Creates a new `ResourcesTrackersDispatch` job.
+    /// Creates a new `ResourcesTrackersSchedule` job.
     pub async fn create<DR: DnsResolver>(api: Arc<Api<DR>>) -> anyhow::Result<Job> {
         let mut job = Job::new_async(
-            api.config.jobs.resources_trackers_dispatch_schedule.clone(),
+            api.config.jobs.resources_trackers_schedule.clone(),
             move |_, scheduler| {
                 let api = api.clone();
                 Box::pin(async move {
                     if let Err(err) = Self::execute(api, scheduler).await {
                         log::error!(
-                            "Failed to execute resources trackers dispatch job: {:?}",
+                            "Failed to execute resources trackers schedule job: {:?}",
                             err
                         );
                     }
@@ -46,14 +44,14 @@ impl ResourcesTrackersDispatchJob {
 
         let job_data = job.job_data()?;
         job.set_job_data(JobStoredData {
-            extra: vec![SchedulerJob::ResourcesTrackersDispatch as u8],
+            extra: vec![SchedulerJob::ResourcesTrackersSchedule as u8],
             ..job_data
         })?;
 
         Ok(job)
     }
 
-    /// Executes a `ResourcesTrackersDispatch` job.
+    /// Executes a `ResourcesTrackersSchedule` job.
     async fn execute<DR: DnsResolver>(
         api: Arc<Api<DR>>,
         scheduler: JobScheduler,
@@ -110,62 +108,13 @@ impl ResourcesTrackersDispatchJob {
                 .await?;
         }
 
-        // Fetch all resources trackers jobs that are pending processing.
-        let pending_trackers_jobs = web_scraping.get_pending_resources_tracker_jobs();
-        pin_mut!(pending_trackers_jobs);
-
-        while let Some(tracker_job) = pending_trackers_jobs.next().await {
-            let tracker_job = tracker_job?;
-            let tracker_name = tracker_job.key.as_ref().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Found an pending tracker job without a tracker name: {:?}",
-                    tracker_job
-                )
-            })?;
-
-            let tracker = web_scraping
-                .get_resources_tracker(tracker_job.user_id, tracker_name)
-                .await?
-                .and_then(|tracker| {
-                    if tracker.revisions > 0 && tracker.schedule.is_some() {
-                        Some(tracker)
-                    } else {
-                        None
-                    }
-                });
-            let tracker = if let Some(tracker) = tracker {
-                tracker
-            } else {
-                log::warn!(
-                    "Found an pending tracker job for a tracker that doesn't support tracking, removing: {:?}",
-                    tracker_job
-                );
-                web_scraping
-                    .remove_resources_tracker_job(tracker_job.user_id, tracker_name)
-                    .await?;
-                continue;
-            };
-
-            web_scraping
-                .save_resources(
-                    tracker_job.user_id,
-                    &tracker,
-                    web_scraping.fetch_resources(&tracker).await?,
-                )
-                .await?;
-
-            api.db
-                .set_scheduler_job_stopped_state(tracker_job.value, false)
-                .await?;
-        }
-
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::ResourcesTrackersDispatchJob;
+    use super::ResourcesTrackersScheduleJob;
     use crate::{
         scheduler::{scheduler_job::SchedulerJob, scheduler_store::SchedulerStore},
         tests::{mock_api_with_config, mock_config, mock_user},
@@ -193,7 +142,7 @@ mod tests {
             ran: false,
             stopped: false,
             last_updated: None,
-            extra: vec![SchedulerJob::ResourcesTrackersDispatch as u8],
+            extra: vec![SchedulerJob::ResourcesTrackersSchedule as u8],
             job: Some(JobStored::CronJob(CronJob {
                 schedule: "0 0 * * * *".to_string(),
             })),
@@ -203,11 +152,11 @@ mod tests {
     #[actix_rt::test]
     async fn can_create_job_with_correct_parameters() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.resources_trackers_dispatch_schedule = Schedule::try_from("1/5 * * * * *")?;
+        config.jobs.resources_trackers_schedule = Schedule::try_from("1/5 * * * * *")?;
 
         let api = mock_api_with_config(config).await?;
 
-        let mut job = ResourcesTrackersDispatchJob::create(Arc::new(api)).await?;
+        let mut job = ResourcesTrackersScheduleJob::create(Arc::new(api)).await?;
         let job_data = job
             .job_data()
             .map(|job_data| (job_data.job_type, job_data.extra, job_data.job))?;
@@ -233,14 +182,14 @@ mod tests {
     #[actix_rt::test]
     async fn can_resume_job() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.resources_trackers_dispatch_schedule = Schedule::try_from("0 0 * * * *")?;
+        config.jobs.resources_trackers_schedule = Schedule::try_from("0 0 * * * *")?;
 
         let api = mock_api_with_config(config).await?;
 
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
 
         let job =
-            ResourcesTrackersDispatchJob::try_resume(Arc::new(api), job_id, mock_job_data(job_id))
+            ResourcesTrackersScheduleJob::try_resume(Arc::new(api), job_id, mock_job_data(job_id))
                 .await?;
         let job_data = job
             .and_then(|mut job| job.job_data().ok())
@@ -273,7 +222,7 @@ mod tests {
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
 
         let job =
-            ResourcesTrackersDispatchJob::try_resume(Arc::new(api), job_id, mock_job_data(job_id))
+            ResourcesTrackersScheduleJob::try_resume(Arc::new(api), job_id, mock_job_data(job_id))
                 .await?;
         assert!(job.is_none());
 
@@ -281,9 +230,9 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn can_schedule_pending_trackers_jobs() -> anyhow::Result<()> {
+    async fn can_schedule_trackers_jobs() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.resources_trackers_dispatch_schedule = Schedule::try_from("1/3 * * * * *")?;
+        config.jobs.resources_trackers_schedule = Schedule::try_from("1/3 * * * * *")?;
 
         let user = mock_user();
         let api = Arc::new(mock_api_with_config(config).await?);
@@ -336,8 +285,8 @@ mod tests {
             Box::<SimpleNotificationCode>::default(),
         )
         .await?;
-        let dispatch_job_id = scheduler
-            .add(ResourcesTrackersDispatchJob::create(api.clone()).await?)
+        let schedule_job_id = scheduler
+            .add(ResourcesTrackersScheduleJob::create(api.clone()).await?)
             .await?;
 
         // Start scheduler and wait for a few seconds, then stop it.
@@ -359,7 +308,7 @@ mod tests {
                 .id
                 .ok_or_else(|| anyhow!("Job without ID"))?
                 .into();
-            if job_id == dispatch_job_id {
+            if job_id == schedule_job_id {
                 continue;
             }
 
@@ -374,9 +323,9 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn remove_pending_trackers_jobs_if_schedule_removed() -> anyhow::Result<()> {
+    async fn remove_unscheduled_trackers_jobs_if_schedule_removed() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.resources_trackers_dispatch_schedule = Schedule::try_from("1/3 * * * * *")?;
+        config.jobs.resources_trackers_schedule = Schedule::try_from("1/3 * * * * *")?;
 
         let user = mock_user();
         let api = Arc::new(mock_api_with_config(config).await?);
@@ -429,8 +378,8 @@ mod tests {
             Box::<SimpleNotificationCode>::default(),
         )
         .await?;
-        let dispatch_job_id = scheduler
-            .add(ResourcesTrackersDispatchJob::create(api.clone()).await?)
+        let schedule_job_id = scheduler
+            .add(ResourcesTrackersScheduleJob::create(api.clone()).await?)
             .await?;
 
         // Start scheduler and wait for a few seconds, then stop it.
@@ -447,7 +396,7 @@ mod tests {
 
         let mut jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
         assert_eq!(jobs.len(), 1);
-        assert_eq!(jobs.remove(0)?.id, Some(dispatch_job_id.into()));
+        assert_eq!(jobs.remove(0)?.id, Some(schedule_job_id.into()));
 
         Ok(())
     }
@@ -455,7 +404,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn remove_unscheduled_trackers_jobs_if_revisions_is_zero() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.resources_trackers_dispatch_schedule = Schedule::try_from("1/3 * * * * *")?;
+        config.jobs.resources_trackers_schedule = Schedule::try_from("1/3 * * * * *")?;
 
         let user = mock_user();
         let api = Arc::new(mock_api_with_config(config).await?);
@@ -493,7 +442,7 @@ mod tests {
         )
         .await?;
         scheduler
-            .add(ResourcesTrackersDispatchJob::create(api.clone()).await?)
+            .add(ResourcesTrackersScheduleJob::create(api.clone()).await?)
             .await?;
 
         // Start scheduler and wait for a few seconds, then stop it.
@@ -512,9 +461,9 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn remove_pending_trackers_jobs_if_tracker_do_not_exist() -> anyhow::Result<()> {
+    async fn remove_unscheduled_trackers_jobs_if_tracker_do_not_exist() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.resources_trackers_dispatch_schedule = Schedule::try_from("1/3 * * * * *")?;
+        config.jobs.resources_trackers_schedule = Schedule::try_from("1/3 * * * * *")?;
 
         let user = mock_user();
         let api = Arc::new(mock_api_with_config(config).await?);
@@ -555,8 +504,8 @@ mod tests {
             Box::<SimpleNotificationCode>::default(),
         )
         .await?;
-        let dispatch_job_id = scheduler
-            .add(ResourcesTrackersDispatchJob::create(api.clone()).await?)
+        let schedule_job_id = scheduler
+            .add(ResourcesTrackersScheduleJob::create(api.clone()).await?)
             .await?;
 
         // Start scheduler and wait for a few seconds, then stop it.
@@ -579,7 +528,7 @@ mod tests {
                 .id
                 .ok_or_else(|| anyhow!("Job without ID"))?
                 .into();
-            if job_id == dispatch_job_id {
+            if job_id == schedule_job_id {
                 continue;
             }
 

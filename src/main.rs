@@ -63,14 +63,21 @@ fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Err
             search_index_version: 1,
         },
         jobs: SchedulerJobsConfig {
-            resources_trackers_dispatch_schedule: matches
-                .get_one::<String>("JOBS_RESOURCES_TRACKERS_DISPATCH_SCHEDULE")
+            resources_trackers_schedule: matches
+                .get_one::<String>("JOBS_RESOURCES_TRACKERS_SCHEDULE")
                 .ok_or_else(|| {
-                    anyhow!("<JOBS_RESOURCES_TRACKERS_DISPATCH_SCHEDULE> argument is not provided.")
+                    anyhow!("<JOBS_RESOURCES_TRACKERS_SCHEDULE> argument is not provided.")
                 })
                 .and_then(|schedule| {
                     Schedule::try_from(schedule.as_str())
-                        .with_context(|| "Cannot parse resources trackers dispatch job schedule.")
+                        .with_context(|| "Cannot parse resources trackers schedule job schedule.")
+                })?,
+            resources_trackers_fetch: matches
+                .get_one::<String>("JOBS_RESOURCES_TRACKERS_FETCH")
+                .ok_or_else(|| anyhow!("<JOBS_RESOURCES_TRACKERS_FETCH> argument is not provided."))
+                .and_then(|schedule| {
+                    Schedule::try_from(schedule.as_str())
+                        .with_context(|| "Cannot parse resources trackers fetch job schedule.")
                 })?,
         },
     };
@@ -185,12 +192,20 @@ fn main() -> Result<(), anyhow::Error> {
                 .help("The URL to access the Web Scraper component."),
         )
         .arg(
-            Arg::new("JOBS_RESOURCES_TRACKERS_DISPATCH_SCHEDULE")
-                .long("jobs-resources-trackers-dispatch-schedule")
+            Arg::new("JOBS_RESOURCES_TRACKERS_SCHEDULE")
+                .long("jobs-resources-trackers-schedule")
                 .global(true)
-                .env("SECUTILS_JOBS_RESOURCES_TRACKERS_DISPATCH_SCHEDULE")
+                .env("SECUTILS_JOBS_RESOURCES_TRACKERS_SCHEDULE")
                 .default_value("0 * * * * * *")
-                .help("The cron schedule to use for the resources trackers dispatch job."),
+                .help("The cron schedule to use for the resources trackers schedule job."),
+        )
+        .arg(
+            Arg::new("JOBS_RESOURCES_TRACKERS_FETCH")
+                .long("jobs-resources-trackers-fetch")
+                .global(true)
+                .env("SECUTILS_JOBS_RESOURCES_TRACKERS_FETCH")
+                .default_value("0 * * * * * *")
+                .help("The cron schedule to use for the resources trackers fetch job."),
         )
         .get_matches();
 
@@ -375,7 +390,8 @@ mod tests {
                 search_index_version: 1,
             },
             jobs: SchedulerJobsConfig {
-                resources_trackers_dispatch_schedule: Schedule::try_from("0 * * * * * *")?,
+                resources_trackers_schedule: Schedule::try_from("0 * 0 * * * *")?,
+                resources_trackers_fetch: Schedule::try_from("0 * 1 * * * *")?,
             },
         })
     }

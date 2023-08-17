@@ -5,8 +5,9 @@ use tokio_cron_scheduler::{Job, JobId, JobStoredData};
 
 /// The job that is executed for every web resources tracker with automatic tracking enabled. The
 /// job doesn't do anything except logging, and updating its internal state. This job is supposed to
-/// be as lightweight as possible since we might have thousands of them. There is a dedicated
-/// dispatch job that batches all trackers that need to be checked for changes in resources.
+/// be as lightweight as possible since we might have thousands of them. There are dedicated
+/// schedule and fetch jobs that batch all trackers that need to be scheduled and checked for
+/// changes in resources respectively.
 pub(crate) struct ResourcesTrackersTriggerJob;
 impl ResourcesTrackersTriggerJob {
     /// Tries to resume existing `ResourcesTrackersTrigger` job.
@@ -75,7 +76,7 @@ impl ResourcesTrackersTriggerJob {
         let mut job = Job::new_async(schedule.as_ref(), move |uuid, _| {
             let db = api.db.clone();
             Box::pin(async move {
-                // Mark job as stopped to indicate that it needs processing. Dispatch job only picks
+                // Mark job as stopped to indicate that it needs processing. Schedule job only picks
                 // up stopped jobs, processes them, and then un-stops. Stopped flag is basically
                 // serving as a pending processing flag. Eventually we might need to add a separate
                 // table for pending jobs.

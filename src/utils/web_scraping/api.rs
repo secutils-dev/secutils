@@ -117,14 +117,7 @@ impl<'a, C: AsRef<Config>, DR: DnsResolver> WebScrapingApi<'a, C, DR> {
                 ),
             )
             .await?;
-        self.db
-            .remove_user_data(
-                user_id,
-                (
-                    InternalUserDataNamespace::WebPageResourcesTrackersJobs,
-                    tracker_name,
-                ),
-            )
+        self.remove_resources_tracker_job(user_id, tracker_name)
             .await?;
 
         // Then delete the tracker itself.
