@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "\nSELECT id as \"id: uuid::fmt::Hyphenated\", last_updated, next_tick, last_tick, job_type as \"job_type!\", count,\n       ran, stopped, schedule, repeating, repeated_every, extra\nFROM scheduler_jobs\nWHERE id > ?1 AND stopped = 1 AND extra = ?3\nORDER BY id\nLIMIT ?2;\n",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: uuid::fmt::Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "last_updated",
+        "ordinal": 1,
+        "type_info": "Int64"
+      },
+      {
+        "name": "next_tick",
+        "ordinal": 2,
+        "type_info": "Int64"
+      },
+      {
+        "name": "last_tick",
+        "ordinal": 3,
+        "type_info": "Int64"
+      },
+      {
+        "name": "job_type!",
+        "ordinal": 4,
+        "type_info": "Int64"
+      },
+      {
+        "name": "count",
+        "ordinal": 5,
+        "type_info": "Int64"
+      },
+      {
+        "name": "ran",
+        "ordinal": 6,
+        "type_info": "Int64"
+      },
+      {
+        "name": "stopped",
+        "ordinal": 7,
+        "type_info": "Int64"
+      },
+      {
+        "name": "schedule",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "repeating",
+        "ordinal": 9,
+        "type_info": "Int64"
+      },
+      {
+        "name": "repeated_every",
+        "ordinal": 10,
+        "type_info": "Int64"
+      },
+      {
+        "name": "extra",
+        "ordinal": 11,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "b16078889c0654c386bcaf6838ed2578e4a5976cc0f098639ef3d6c6bee2895a"
+}
