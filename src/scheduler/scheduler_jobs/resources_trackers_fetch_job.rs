@@ -121,11 +121,15 @@ mod tests {
             scheduler_store::SchedulerStore,
         },
         tests::{mock_api_with_config, mock_config, mock_user},
-        utils::WebPageResourcesTracker,
+        utils::{
+            WebPageResourceContent, WebPageResourceContentData, WebPageResourcesTracker,
+            WebScraperResource, WebScraperResourcesResponse,
+        },
     };
     use cron::Schedule;
     use insta::assert_debug_snapshot;
-    use std::{sync::Arc, thread, time::Duration};
+    use std::{ops::Add, sync::Arc, thread, time::Duration};
+    use time::OffsetDateTime;
     use tokio_cron_scheduler::{
         CronJob, JobId, JobScheduler, JobStored, JobStoredData, JobType, SimpleJobCode,
         SimpleNotificationCode, SimpleNotificationStore,
@@ -389,6 +393,179 @@ mod tests {
             .get_resources_tracker_job_by_id(tracker_job_id)
             .await?
             .is_none());
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn can_fetch_resources() -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        config.jobs.resources_trackers_fetch = Schedule::try_from("1/1 * * * * *")?;
+
+        let mut server = mockito::Server::new();
+        config.components.web_scraper_url = Url::parse(&server.url())?;
+
+        let user = mock_user();
+        let api = Arc::new(mock_api_with_config(config).await?);
+        let mut scheduler = JobScheduler::new_with_storage_and_code(
+            Box::new(SchedulerStore::new(api.db.clone())),
+            Box::<SimpleNotificationStore>::default(),
+            Box::<SimpleJobCode>::default(),
+            Box::<SimpleNotificationCode>::default(),
+        )
+        .await?;
+
+        // Make sure that the tracker is only run once during a single minute (2 seconds after the
+        // current second).
+        let tracker_schedule = format!(
+            "{} * * * * *",
+            OffsetDateTime::now_utc()
+                .add(Duration::from_secs(2))
+                .second()
+        );
+
+        // Create user, tracker and tracker job.
+        api.users().upsert(user.clone()).await?;
+
+        let tracker = api
+            .web_scraping()
+            .upsert_resources_tracker(
+                user.id,
+                WebPageResourcesTracker {
+                    name: "tracker-one".to_string(),
+                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
+                    revisions: 1,
+                    delay: Duration::from_millis(2000),
+                    schedule: Some(tracker_schedule.clone()),
+                },
+            )
+            .await?;
+        let trigger_job_id = scheduler
+            .add(ResourcesTrackersTriggerJob::create(api.clone(), tracker_schedule).await?)
+            .await?;
+        api.web_scraping()
+            .upsert_resources_tracker_job(user.id, "tracker-one", Some(trigger_job_id))
+            .await?;
+
+        // Schedule fetch job
+        scheduler
+            .add(ResourcesTrackersFetchJob::create(api.clone()).await?)
+            .await?;
+
+        // Create a mock
+        let resources = WebScraperResourcesResponse {
+            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
+            scripts: vec![WebScraperResource {
+                url: Some(Url::parse("http://localhost:1234/script.js")?),
+                content: Some(WebPageResourceContent {
+                    data: WebPageResourceContentData::Sha1("some-digest".to_string()),
+                    size: 123,
+                }),
+            }],
+            styles: vec![WebScraperResource {
+                url: Some(Url::parse("http://localhost:1234/style.css")?),
+                content: Some(WebPageResourceContent {
+                    data: WebPageResourceContentData::Sha1("some-other-digest".to_string()),
+                    size: 321,
+                }),
+            }],
+        };
+        let mock = server
+            .mock("POST", "/api/resources")
+            .with_status(200)
+            .with_header("Content-Type", "application/json")
+            .with_body(serde_json::to_string(&resources)?)
+            .match_body(mockito::Matcher::JsonString(
+                "{\"url\":\"http://localhost:1234/my/app?q=2\",\"delay\":2000}".to_string(),
+            ))
+            .create();
+
+        // Start scheduler and wait for a few seconds, then stop it.
+        scheduler.start().await?;
+        thread::sleep(Duration::from_secs(5));
+        scheduler.shutdown().await?;
+
+        mock.assert();
+
+        // Check that resources were saved.
+        assert_debug_snapshot!(api.web_scraping().get_resources(user.id, &tracker).await?,  @r###"
+        [
+            WebPageResourcesRevision {
+                timestamp: 2000-01-01 10:00:00.0 +00:00:00,
+                scripts: [
+                    WebPageResource {
+                        url: Some(
+                            Url {
+                                scheme: "http",
+                                cannot_be_a_base: false,
+                                username: "",
+                                password: None,
+                                host: Some(
+                                    Domain(
+                                        "localhost",
+                                    ),
+                                ),
+                                port: Some(
+                                    1234,
+                                ),
+                                path: "/script.js",
+                                query: None,
+                                fragment: None,
+                            },
+                        ),
+                        content: Some(
+                            WebPageResourceContent {
+                                data: Sha1(
+                                    "some-digest",
+                                ),
+                                size: 123,
+                            },
+                        ),
+                        diff_status: None,
+                    },
+                ],
+                styles: [
+                    WebPageResource {
+                        url: Some(
+                            Url {
+                                scheme: "http",
+                                cannot_be_a_base: false,
+                                username: "",
+                                password: None,
+                                host: Some(
+                                    Domain(
+                                        "localhost",
+                                    ),
+                                ),
+                                port: Some(
+                                    1234,
+                                ),
+                                path: "/style.css",
+                                query: None,
+                                fragment: None,
+                            },
+                        ),
+                        content: Some(
+                            WebPageResourceContent {
+                                data: Sha1(
+                                    "some-other-digest",
+                                ),
+                                size: 321,
+                            },
+                        ),
+                        diff_status: None,
+                    },
+                ],
+            },
+        ]
+        "###);
+
+        // Check that the tracker job was marked as NOT stopped.
+        let trigger_job = api.db.get_scheduler_job(trigger_job_id).await?;
+        assert_eq!(
+            trigger_job.map(|job| (job.id, job.stopped)),
+            Some((Some(trigger_job_id.into()), false))
+        );
 
         Ok(())
     }
