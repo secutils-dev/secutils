@@ -275,7 +275,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn remove_pending_trackers_jobs_if_schedule_removed() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.resources_trackers_fetch = Schedule::try_from("1/3 * * * * *")?;
+        config.jobs.resources_trackers_fetch = Schedule::try_from("1/1 * * * * *")?;
 
         let user = mock_user();
         let api = Arc::new(mock_api_with_config(config).await?);
@@ -338,7 +338,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn remove_pending_trackers_jobs_if_zero_revisions() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.resources_trackers_fetch = Schedule::try_from("1/3 * * * * *")?;
+        config.jobs.resources_trackers_fetch = Schedule::try_from("1/1 * * * * *")?;
 
         let user = mock_user();
         let api = Arc::new(mock_api_with_config(config).await?);

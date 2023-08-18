@@ -10,7 +10,8 @@ use crate::{
     },
     utils::{
         web_scraping::resources::{
-            WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesResponse,
+            web_page_resources_revisions_diff, WebScraperResource, WebScraperResourcesRequest,
+            WebScraperResourcesResponse,
         },
         WebPageResource, WebPageResourcesRevision, WebPageResourcesTracker,
     },
@@ -176,14 +177,13 @@ impl<'a, C: AsRef<Config>, DR: DnsResolver> WebScrapingApi<'a, C, DR> {
         &self,
         user_id: UserId,
         tracker: &WebPageResourcesTracker,
-        revision: WebPageResourcesRevision,
+        new_revision: WebPageResourcesRevision,
     ) -> anyhow::Result<()> {
         let user_data_key = UserDataKey::from((
             PublicUserDataNamespace::WebPageResourcesTrackers,
             tracker.name.as_str(),
         ));
 
-        // Enforce revisions limit and displace the oldest one.
         let mut revisions = self
             .db
             .get_user_data::<VecDeque<WebPageResourcesRevision>>(user_id, user_data_key)
@@ -194,14 +194,36 @@ impl<'a, C: AsRef<Config>, DR: DnsResolver> WebScrapingApi<'a, C, DR> {
         // Check if there is a revision with the same timestamp. If so, we need to replace it.
         if let Some(position) = revisions
             .iter()
-            .position(|r| r.timestamp == revision.timestamp)
+            .position(|r| r.timestamp == new_revision.timestamp)
         {
-            revisions[position] = revision;
+            revisions[position] = new_revision;
         } else {
+            // Get the latest revision and check if it's different from the new one. If so, we need to
+            // save a new revision, otherwise just replace the latest.
+            let new_revision = if let Some(latest_revision) = revisions.pop_back() {
+                let revisions_with_diff = web_page_resources_revisions_diff(vec![
+                    latest_revision.clone(),
+                    new_revision.clone(),
+                ])?;
+                let new_revision_with_diff = revisions_with_diff
+                    .get(1)
+                    .ok_or_else(|| anyhow!("Invalid revisions diff result."))?;
+
+                // Return the latest revision back to the queue if it's different from the new one.
+                if new_revision_with_diff.has_diff() {
+                    revisions.push_back(latest_revision);
+                }
+
+                new_revision
+            } else {
+                new_revision
+            };
+
+            // Enforce revisions limit and displace the oldest one.
             if revisions.len() == tracker.revisions {
                 revisions.pop_front();
             }
-            revisions.push_back(revision);
+            revisions.push_back(new_revision);
         }
 
         self.db
@@ -718,7 +740,7 @@ mod tests {
     }
 
     #[actix_rt::test]
-    async fn properly_replaces_web_page_resources_with_the_same_revision() -> anyhow::Result<()> {
+    async fn properly_replaces_web_page_resources_with_the_same_timestamp() -> anyhow::Result<()> {
         let mock_user = mock_user();
         let mock_db = initialize_mock_db(&mock_user).await?;
         let mock_network = mock_network();
@@ -779,6 +801,77 @@ mod tests {
                     data: WebPageResourceContentData::Sha1("some-digest".to_string()),
                     size: 345,
                 }),
+                diff_status: None,
+            }],
+        };
+        api.save_resources(mock_user.id, &tracker_one, resources_three.clone())
+            .await?;
+
+        let tracker_one_resources = api.get_resources(mock_user.id, &tracker_one).await?;
+        assert_eq!(tracker_one_resources, vec![resources_one, resources_three]);
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn properly_replaces_web_page_resources_with_no_diff() -> anyhow::Result<()> {
+        let mock_user = mock_user();
+        let mock_db = initialize_mock_db(&mock_user).await?;
+        let mock_network = mock_network();
+        let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
+
+        let tracker_one = WebPageResourcesTracker {
+            name: "name_one".to_string(),
+            url: Url::parse("http://localhost:1234/my/app?q=2")?,
+            revisions: 3,
+            delay: Duration::from_millis(2000),
+            schedule: None,
+        };
+        api.upsert_resources_tracker(mock_user.id, tracker_one.clone())
+            .await?;
+
+        let tracker_one_resources = api.get_resources(mock_user.id, &tracker_one).await?;
+        assert!(tracker_one_resources.is_empty());
+
+        let resources_one = WebPageResourcesRevision {
+            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
+            scripts: vec![WebPageResource {
+                url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
+                content: None,
+                diff_status: None,
+            }],
+            styles: vec![],
+        };
+        api.save_resources(mock_user.id, &tracker_one, resources_one.clone())
+            .await?;
+
+        let tracker_one_resources = api.get_resources(mock_user.id, &tracker_one).await?;
+        assert_eq!(tracker_one_resources, vec![resources_one.clone()]);
+
+        let resources_two = WebPageResourcesRevision {
+            timestamp: OffsetDateTime::from_unix_timestamp(946720900)?,
+            scripts: vec![],
+            styles: vec![WebPageResource {
+                url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
+                content: None,
+                diff_status: None,
+            }],
+        };
+        api.save_resources(mock_user.id, &tracker_one, resources_two.clone())
+            .await?;
+
+        let tracker_one_resources = api.get_resources(mock_user.id, &tracker_one).await?;
+        assert_eq!(
+            tracker_one_resources,
+            vec![resources_one.clone(), resources_two.clone()]
+        );
+
+        let resources_three = WebPageResourcesRevision {
+            timestamp: OffsetDateTime::from_unix_timestamp(946730900)?,
+            scripts: vec![],
+            styles: vec![WebPageResource {
+                url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
+                content: None,
                 diff_status: None,
             }],
         };
