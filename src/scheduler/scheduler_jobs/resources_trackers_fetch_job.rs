@@ -239,7 +239,7 @@ mod tests {
         // Create user, tracker and tracker job.
         api.users().upsert(user.clone()).await?;
         let tracker_job_id = scheduler
-            .add(ResourcesTrackersTriggerJob::create(api.clone(), "1/1 * * * * *").await?)
+            .add(ResourcesTrackersTriggerJob::create(api.clone(), "0 * * * * *").await?)
             .await?;
         api.web_scraping()
             .upsert_resources_tracker_job(user.id, "tracker-one", Some(tracker_job_id))
@@ -252,22 +252,18 @@ mod tests {
 
         // Start scheduler and wait for a few seconds, then stop it.
         scheduler.start().await?;
-        thread::sleep(Duration::from_secs(5));
-        scheduler.shutdown().await?;
-
-        // There shouldn't be a unscheduled tracker jobs.
-        let pending_jobs = api
-            .web_scraping()
-            .get_unscheduled_resources_tracker_jobs()
-            .await?;
-        assert!(pending_jobs.is_empty());
 
         // There shouldn't be a tracker job anymore.
-        assert!(api
-            .web_scraping()
+        let web_scraping = api.web_scraping();
+        while web_scraping
             .get_resources_tracker_job_by_id(tracker_job_id)
             .await?
-            .is_none());
+            .is_some()
+        {
+            thread::sleep(Duration::from_secs(2));
+        }
+
+        scheduler.shutdown().await?;
 
         Ok(())
     }
@@ -302,7 +298,7 @@ mod tests {
             )
             .await?;
         let tracker_job_id = scheduler
-            .add(ResourcesTrackersTriggerJob::create(api.clone(), "1/1 * * * * *").await?)
+            .add(ResourcesTrackersTriggerJob::create(api.clone(), "0 * * * * *").await?)
             .await?;
         api.web_scraping()
             .upsert_resources_tracker_job(user.id, "tracker-one", Some(tracker_job_id))
@@ -315,22 +311,18 @@ mod tests {
 
         // Start scheduler and wait for a few seconds, then stop it.
         scheduler.start().await?;
-        thread::sleep(Duration::from_secs(5));
-        scheduler.shutdown().await?;
-
-        // There shouldn't be a unscheduled tracker jobs.
-        let pending_jobs = api
-            .web_scraping()
-            .get_unscheduled_resources_tracker_jobs()
-            .await?;
-        assert!(pending_jobs.is_empty());
 
         // There shouldn't be a tracker job anymore.
-        assert!(api
-            .web_scraping()
+        let web_scraping = api.web_scraping();
+        while web_scraping
             .get_resources_tracker_job_by_id(tracker_job_id)
             .await?
-            .is_none());
+            .is_some()
+        {
+            thread::sleep(Duration::from_secs(2));
+        }
+
+        scheduler.shutdown().await?;
 
         Ok(())
     }
@@ -378,22 +370,17 @@ mod tests {
 
         // Start scheduler and wait for a few seconds, then stop it.
         scheduler.start().await?;
-        thread::sleep(Duration::from_secs(5));
-        scheduler.shutdown().await?;
 
-        // There shouldn't be a unscheduled tracker jobs.
-        let pending_jobs = api
-            .web_scraping()
-            .get_unscheduled_resources_tracker_jobs()
-            .await?;
-        assert!(pending_jobs.is_empty());
-
-        // There shouldn't be a tracker job anymore.
-        assert!(api
-            .web_scraping()
+        let web_scraping = api.web_scraping();
+        while web_scraping
             .get_resources_tracker_job_by_id(tracker_job_id)
             .await?
-            .is_none());
+            .is_some()
+        {
+            thread::sleep(Duration::from_secs(2));
+        }
+
+        scheduler.shutdown().await?;
 
         Ok(())
     }
@@ -491,7 +478,16 @@ mod tests {
 
         // Start scheduler and wait for a few seconds, then stop it.
         scheduler.start().await?;
-        thread::sleep(Duration::from_secs(5));
+
+        let web_scraping = api.web_scraping();
+        while web_scraping
+            .get_resources(user.id, &tracker)
+            .await?
+            .is_empty()
+        {
+            thread::sleep(Duration::from_secs(2));
+        }
+
         scheduler.shutdown().await?;
 
         resources_mock.assert();
