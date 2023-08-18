@@ -8,8 +8,8 @@ pub use self::{
     resources::{
         WebPageResource, WebPageResourceContent, WebPageResourceContentData,
         WebPageResourceDiffStatus, WebPageResourcesRevision, WebPageResourcesTracker,
-        WebScraperResource, WebScraperResourcesResponse, MAX_WEB_PAGE_RESOURCES_TRACKER_DELAY,
-        MAX_WEB_PAGE_RESOURCES_TRACKER_REVISIONS,
+        WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesResponse,
+        MAX_WEB_PAGE_RESOURCES_TRACKER_DELAY, MAX_WEB_PAGE_RESOURCES_TRACKER_REVISIONS,
     },
     utils_web_scraping_action::UtilsWebScrapingAction,
     utils_web_scraping_action_result::UtilsWebScrapingActionResult,

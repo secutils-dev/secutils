@@ -19,7 +19,8 @@ pub use self::{
     web_scraping::{
         UtilsWebScrapingAction, UtilsWebScrapingActionResult, WebPageResource,
         WebPageResourceContent, WebPageResourceContentData, WebPageResourcesRevision,
-        WebPageResourcesTracker, WebScraperResource, WebScraperResourcesResponse,
+        WebPageResourcesTracker, WebScraperResource, WebScraperResourcesRequest,
+        WebScraperResourcesResponse,
     },
     web_security::{
         ContentSecurityPolicy, ContentSecurityPolicyDirective,

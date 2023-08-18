@@ -123,10 +123,11 @@ mod tests {
         tests::{mock_api_with_config, mock_config, mock_user},
         utils::{
             WebPageResourceContent, WebPageResourceContentData, WebPageResourcesTracker,
-            WebScraperResource, WebScraperResourcesResponse,
+            WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesResponse,
         },
     };
     use cron::Schedule;
+    use httpmock::MockServer;
     use insta::assert_debug_snapshot;
     use std::{ops::Add, sync::Arc, thread, time::Duration};
     use time::OffsetDateTime;
@@ -402,8 +403,8 @@ mod tests {
         let mut config = mock_config()?;
         config.jobs.resources_trackers_fetch = Schedule::try_from("1/1 * * * * *")?;
 
-        let mut server = mockito::Server::new();
-        config.components.web_scraper_url = Url::parse(&server.url())?;
+        let server = MockServer::start();
+        config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
         let user = mock_user();
         let api = Arc::new(mock_api_with_config(config).await?);
@@ -470,22 +471,30 @@ mod tests {
                 }),
             }],
         };
-        let mock = server
-            .mock("POST", "/api/resources")
-            .with_status(200)
-            .with_header("Content-Type", "application/json")
-            .with_body(serde_json::to_string(&resources)?)
-            .match_body(mockito::Matcher::JsonString(
-                "{\"url\":\"http://localhost:1234/my/app?q=2\",\"delay\":2000}".to_string(),
-            ))
-            .create();
+
+        let resources_mock = server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/resources")
+                .json_body(
+                    serde_json::to_value(WebScraperResourcesRequest {
+                        url: &tracker.url,
+                        timeout: None,
+                        delay: Some(2000),
+                        wait_selector: None,
+                    })
+                    .unwrap(),
+                );
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&resources);
+        });
 
         // Start scheduler and wait for a few seconds, then stop it.
         scheduler.start().await?;
         thread::sleep(Duration::from_secs(5));
         scheduler.shutdown().await?;
 
-        mock.assert();
+        resources_mock.assert();
 
         // Check that resources were saved.
         assert_debug_snapshot!(api.web_scraping().get_resources(user.id, &tracker).await?,  @r###"
