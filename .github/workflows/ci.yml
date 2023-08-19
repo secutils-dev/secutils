@@ -51,8 +51,8 @@ jobs:
       - name: Test (default features)
         run:  cargo test
 
-      - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
-
       - name: Build (default features)
         run: cargo build --release
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
