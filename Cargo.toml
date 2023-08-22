@@ -21,7 +21,7 @@ async-stream = "0.3.5"
 anyhow = "1.0.75"
 argon2 = "0.5.1"
 bytes = "1.4.0"
-clap = "4.3.22"
+clap = "4.3.23"
 chrono = { version = "0.4.26", default-features = false }
 cron = "0.12.0"
 directories = "5.0.1"
@@ -35,6 +35,7 @@ lettre = "0.10.4"
 log = "0.4.20"
 mailchecker = "5.0.9"
 openssl = "0.10.56"
+postcard = { version = "1.0.6", default-features = false  }
 rand_core = "0.6.4"
 reqwest = "0.11.18"
 serde = "1.0.183"
@@ -73,6 +74,7 @@ default = [
     "insta/filters",
     "insta/json",
     "insta/redactions",
+    "postcard/use-std",
     "rand_core/std",
     "reqwest/json",
     "reqwest/rustls",

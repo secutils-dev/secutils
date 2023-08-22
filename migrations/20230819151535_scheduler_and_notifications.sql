@@ -27,3 +27,11 @@ CREATE TABLE IF NOT EXISTS scheduler_notification_states
     state        INTEGER NOT NULL,
     PRIMARY KEY (id, state)
 ) STRICT;
+
+CREATE TABLE IF NOT EXISTS notifications
+(
+    id              INTEGER PRIMARY KEY NOT NULL,
+    destination     BLOB NOT NULL,
+    content         BLOB NOT NULL,
+    scheduled_at    INTEGER NOT NULL
+) STRICT;

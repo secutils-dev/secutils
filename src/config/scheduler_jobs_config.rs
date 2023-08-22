@@ -7,4 +7,6 @@ pub struct SchedulerJobsConfig {
     pub resources_trackers_schedule: Schedule,
     /// The schedule to use for the `ResourcesTrackersFetch` job.
     pub resources_trackers_fetch: Schedule,
+    /// The schedule to use for the `NotificationsSend` job.
+    pub notifications_send: Schedule,
 }

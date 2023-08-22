@@ -232,7 +232,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn can_schedule_trackers_jobs() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.resources_trackers_schedule = Schedule::try_from("1/3 * * * * *")?;
+        config.jobs.resources_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
 
         let user = mock_user();
         let api = Arc::new(mock_api_with_config(config).await?);
@@ -270,13 +270,13 @@ mod tests {
             .upsert_resources_tracker_job(user.id, "tracker-two", None)
             .await?;
 
-        let pending_jobs = api
+        let unscheduled_jobs = api
             .web_scraping()
             .get_unscheduled_resources_tracker_jobs()
             .await?;
-        assert_eq!(pending_jobs.len(), 2);
-        assert_eq!(pending_jobs[0].key, Some("tracker-one".to_string()));
-        assert_eq!(pending_jobs[1].key, Some("tracker-two".to_string()));
+        assert_eq!(unscheduled_jobs.len(), 2);
+        assert_eq!(unscheduled_jobs[0].key, Some("tracker-one".to_string()));
+        assert_eq!(unscheduled_jobs[1].key, Some("tracker-two".to_string()));
 
         let mut scheduler = JobScheduler::new_with_storage_and_code(
             Box::new(SchedulerStore::new(api.db.clone())),
@@ -291,15 +291,22 @@ mod tests {
 
         // Start scheduler and wait for a few seconds, then stop it.
         scheduler.start().await?;
-        thread::sleep(Duration::from_secs(5));
+        while !api
+            .web_scraping()
+            .get_unscheduled_resources_tracker_jobs()
+            .await?
+            .is_empty()
+        {
+            thread::sleep(Duration::from_millis(100));
+        }
         scheduler.shutdown().await?;
 
         // All pending jobs should be scheduled now.
-        let pending_jobs = api
+        let unscheduled_jobs = api
             .web_scraping()
             .get_unscheduled_resources_tracker_jobs()
             .await?;
-        assert!(pending_jobs.is_empty());
+        assert!(unscheduled_jobs.is_empty());
 
         let jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
         assert_eq!(jobs.len(), 3);
@@ -325,7 +332,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn remove_unscheduled_trackers_jobs_if_schedule_removed() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.resources_trackers_schedule = Schedule::try_from("1/3 * * * * *")?;
+        config.jobs.resources_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
 
         let user = mock_user();
         let api = Arc::new(mock_api_with_config(config).await?);
@@ -363,13 +370,13 @@ mod tests {
             .upsert_resources_tracker_job(user.id, "tracker-two", None)
             .await?;
 
-        let pending_jobs = api
+        let unscheduled_jobs = api
             .web_scraping()
             .get_unscheduled_resources_tracker_jobs()
             .await?;
-        assert_eq!(pending_jobs.len(), 2);
-        assert_eq!(pending_jobs[0].key, Some("tracker-one".to_string()));
-        assert_eq!(pending_jobs[1].key, Some("tracker-two".to_string()));
+        assert_eq!(unscheduled_jobs.len(), 2);
+        assert_eq!(unscheduled_jobs[0].key, Some("tracker-one".to_string()));
+        assert_eq!(unscheduled_jobs[1].key, Some("tracker-two".to_string()));
 
         let mut scheduler = JobScheduler::new_with_storage_and_code(
             Box::new(SchedulerStore::new(api.db.clone())),
@@ -384,15 +391,22 @@ mod tests {
 
         // Start scheduler and wait for a few seconds, then stop it.
         scheduler.start().await?;
-        thread::sleep(Duration::from_secs(5));
+        while !api
+            .web_scraping()
+            .get_unscheduled_resources_tracker_jobs()
+            .await?
+            .is_empty()
+        {
+            thread::sleep(Duration::from_millis(100));
+        }
         scheduler.shutdown().await?;
 
         // All pending jobs should be scheduled now.
-        let pending_jobs = api
+        let unscheduled_jobs = api
             .web_scraping()
             .get_unscheduled_resources_tracker_jobs()
             .await?;
-        assert!(pending_jobs.is_empty());
+        assert!(unscheduled_jobs.is_empty());
 
         let mut jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
         assert_eq!(jobs.len(), 1);
@@ -404,7 +418,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn remove_unscheduled_trackers_jobs_if_revisions_is_zero() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.resources_trackers_schedule = Schedule::try_from("1/3 * * * * *")?;
+        config.jobs.resources_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
 
         let user = mock_user();
         let api = Arc::new(mock_api_with_config(config).await?);
@@ -427,12 +441,12 @@ mod tests {
             .upsert_resources_tracker_job(user.id, "tracker-one", None)
             .await?;
 
-        let pending_jobs = api
+        let unscheduled_jobs = api
             .web_scraping()
             .get_unscheduled_resources_tracker_jobs()
             .await?;
-        assert_eq!(pending_jobs.len(), 1);
-        assert_eq!(pending_jobs[0].key, Some("tracker-one".to_string()));
+        assert_eq!(unscheduled_jobs.len(), 1);
+        assert_eq!(unscheduled_jobs[0].key, Some("tracker-one".to_string()));
 
         let mut scheduler = JobScheduler::new_with_storage_and_code(
             Box::new(SchedulerStore::new(api.db.clone())),
@@ -447,15 +461,22 @@ mod tests {
 
         // Start scheduler and wait for a few seconds, then stop it.
         scheduler.start().await?;
-        thread::sleep(Duration::from_secs(5));
+        while !api
+            .web_scraping()
+            .get_unscheduled_resources_tracker_jobs()
+            .await?
+            .is_empty()
+        {
+            thread::sleep(Duration::from_millis(100));
+        }
         scheduler.shutdown().await?;
 
         // All pending jobs should be scheduled now.
-        let pending_jobs = api
+        let unscheduled_jobs = api
             .web_scraping()
             .get_unscheduled_resources_tracker_jobs()
             .await?;
-        assert!(pending_jobs.is_empty());
+        assert!(unscheduled_jobs.is_empty());
 
         Ok(())
     }
@@ -463,14 +484,16 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn remove_unscheduled_trackers_jobs_if_tracker_do_not_exist() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.resources_trackers_schedule = Schedule::try_from("1/3 * * * * *")?;
+        config.jobs.resources_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
 
         let user = mock_user();
         let api = Arc::new(mock_api_with_config(config).await?);
 
         // Create user, trackers and tracker jobs.
         api.users().upsert(user.clone()).await?;
-        api.web_scraping()
+
+        let web_scraping = api.web_scraping();
+        web_scraping
             .upsert_resources_tracker(
                 user.id,
                 WebPageResourcesTracker {
@@ -482,20 +505,19 @@ mod tests {
                 },
             )
             .await?;
-        api.web_scraping()
+        web_scraping
             .upsert_resources_tracker_job(user.id, "tracker-one", None)
             .await?;
-        api.web_scraping()
+        web_scraping
             .upsert_resources_tracker_job(user.id, "tracker-two", None)
             .await?;
 
-        let pending_jobs = api
-            .web_scraping()
+        let unscheduled_jobs = web_scraping
             .get_unscheduled_resources_tracker_jobs()
             .await?;
-        assert_eq!(pending_jobs.len(), 2);
-        assert_eq!(pending_jobs[0].key, Some("tracker-one".to_string()));
-        assert_eq!(pending_jobs[1].key, Some("tracker-two".to_string()));
+        assert_eq!(unscheduled_jobs.len(), 2);
+        assert_eq!(unscheduled_jobs[0].key, Some("tracker-one".to_string()));
+        assert_eq!(unscheduled_jobs[1].key, Some("tracker-two".to_string()));
 
         let mut scheduler = JobScheduler::new_with_storage_and_code(
             Box::new(SchedulerStore::new(api.db.clone())),
@@ -510,15 +532,20 @@ mod tests {
 
         // Start scheduler and wait for a few seconds, then stop it.
         scheduler.start().await?;
-        thread::sleep(Duration::from_secs(5));
+        while !web_scraping
+            .get_unscheduled_resources_tracker_jobs()
+            .await?
+            .is_empty()
+        {
+            thread::sleep(Duration::from_millis(100));
+        }
         scheduler.shutdown().await?;
 
         // All pending jobs should be scheduled now.
-        let pending_jobs = api
-            .web_scraping()
+        let unscheduled_jobs = web_scraping
             .get_unscheduled_resources_tracker_jobs()
             .await?;
-        assert!(pending_jobs.is_empty());
+        assert!(unscheduled_jobs.is_empty());
 
         let jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
         assert_eq!(jobs.len(), 2);
@@ -532,10 +559,7 @@ mod tests {
                 continue;
             }
 
-            let job = api
-                .web_scraping()
-                .get_resources_tracker_job_by_id(job_id)
-                .await?;
+            let job = web_scraping.get_resources_tracker_job_by_id(job_id).await?;
             assert_eq!(job.and_then(|job| job.key), Some("tracker-one".to_string()));
         }
 

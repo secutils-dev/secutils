@@ -6,6 +6,7 @@ mod database;
 mod directories;
 mod error;
 mod network;
+mod notifications;
 mod scheduler;
 mod search;
 mod security;
@@ -78,6 +79,13 @@ fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Err
                 .and_then(|schedule| {
                     Schedule::try_from(schedule.as_str())
                         .with_context(|| "Cannot parse resources trackers fetch job schedule.")
+                })?,
+            notifications_send: matches
+                .get_one::<String>("JOBS_NOTIFICATIONS_SEND")
+                .ok_or_else(|| anyhow!("<JOBS_NOTIFICATIONS_SEND> argument is not provided."))
+                .and_then(|schedule| {
+                    Schedule::try_from(schedule.as_str())
+                        .with_context(|| "Cannot parse notifications send job schedule.")
                 })?,
         },
     };
@@ -206,6 +214,13 @@ fn main() -> Result<(), anyhow::Error> {
                 .env("SECUTILS_JOBS_RESOURCES_TRACKERS_FETCH")
                 .default_value("0 * * * * * *")
                 .help("The cron schedule to use for the resources trackers fetch job."),
+        ).arg(
+        Arg::new("JOBS_NOTIFICATIONS_SEND")
+            .long("jobs-notifications-send")
+            .global(true)
+            .env("SECUTILS_JOBS_NOTIFICATIONS_SEND")
+            .default_value("0 * * * * * *")
+            .help("The cron schedule to use for the notifications send job."),
         )
         .get_matches();
 
@@ -225,7 +240,11 @@ mod tests {
         utils::{WebPageResource, WebPageResourceContent, WebPageResourceContentData},
     };
     use cron::Schedule;
-    use std::collections::{HashMap, HashSet};
+    use std::{
+        collections::{HashMap, HashSet},
+        ops::Add,
+        time::Duration,
+    };
     use tantivy::Index;
     use time::OffsetDateTime;
     use trust_dns_resolver::proto::rr::Record;
@@ -392,6 +411,7 @@ mod tests {
             jobs: SchedulerJobsConfig {
                 resources_trackers_schedule: Schedule::try_from("0 * 0 * * * *")?,
                 resources_trackers_fetch: Schedule::try_from("0 * 1 * * * *")?,
+                notifications_send: Schedule::try_from("0 * 2 * * * *")?,
             },
         })
     }
@@ -428,6 +448,15 @@ mod tests {
             SearchIndex::open(|schema| Ok(Index::create_in_ram(schema)))?,
             network,
         ))
+    }
+
+    pub fn mock_schedule_in_sec(secs: u64) -> String {
+        format!(
+            "{} * * * * *",
+            OffsetDateTime::now_utc()
+                .add(Duration::from_secs(secs))
+                .second()
+        )
     }
 
     pub mod webauthn {

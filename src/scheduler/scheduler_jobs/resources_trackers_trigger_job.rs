@@ -110,7 +110,7 @@ mod tests {
         utils::WebPageResourcesTracker,
     };
     use insta::assert_debug_snapshot;
-    use std::{sync::Arc, thread, time::Duration};
+    use std::{sync::Arc, time::Duration};
     use tokio_cron_scheduler::{
         CronJob, JobId, JobScheduler, JobStored, JobStoredData, JobType, SimpleJobCode,
         SimpleNotificationCode, SimpleNotificationStore,
@@ -403,19 +403,21 @@ mod tests {
         .await?;
 
         let trigger_job_id = scheduler
-            .add(ResourcesTrackersTriggerJob::create(api.clone(), "1/2 * * * * *").await?)
+            .add(ResourcesTrackersTriggerJob::create(api.clone(), "1/1 * * * * *").await?)
             .await?;
 
         // Start scheduler and wait for a few seconds, then stop it.
         scheduler.start().await?;
-        thread::sleep(Duration::from_secs(5));
-        scheduler.shutdown().await?;
 
-        let trigger_job = api.db.get_scheduler_job(trigger_job_id).await?;
-        assert_eq!(
-            trigger_job.map(|job| (job.id, job.stopped)),
-            Some((Some(trigger_job_id.into()), true))
-        );
+        while !api
+            .db
+            .get_scheduler_job(trigger_job_id)
+            .await?
+            .map(|job| job.stopped)
+            .unwrap_or_default()
+        {}
+
+        scheduler.shutdown().await?;
 
         Ok(())
     }

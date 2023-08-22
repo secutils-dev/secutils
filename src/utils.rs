@@ -17,10 +17,10 @@ pub use self::{
     utils_action::UtilsAction,
     utils_action_result::UtilsActionResult,
     web_scraping::{
-        UtilsWebScrapingAction, UtilsWebScrapingActionResult, WebPageResource,
-        WebPageResourceContent, WebPageResourceContentData, WebPageResourcesRevision,
-        WebPageResourcesTracker, WebScraperResource, WebScraperResourcesRequest,
-        WebScraperResourcesResponse,
+        web_page_resources_revisions_diff, UtilsWebScrapingAction, UtilsWebScrapingActionResult,
+        WebPageResource, WebPageResourceContent, WebPageResourceContentData,
+        WebPageResourcesRevision, WebPageResourcesTracker, WebScraperResource,
+        WebScraperResourcesRequest, WebScraperResourcesResponse,
     },
     web_security::{
         ContentSecurityPolicy, ContentSecurityPolicyDirective,

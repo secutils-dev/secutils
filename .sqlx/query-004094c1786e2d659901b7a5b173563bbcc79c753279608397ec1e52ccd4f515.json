@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO notifications (destination, content, scheduled_at) VALUES (?1, ?2, ?3)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "004094c1786e2d659901b7a5b173563bbcc79c753279608397ec1e52ccd4f515"
+}

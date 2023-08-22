@@ -3,11 +3,11 @@ use anyhow::anyhow;
 /// Represents a job that can be scheduled.
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 #[repr(u8)]
-#[allow(clippy::enum_variant_names)]
 pub enum SchedulerJob {
     ResourcesTrackersTrigger = 0,
     ResourcesTrackersSchedule,
     ResourcesTrackersFetch,
+    NotificationsSend,
 }
 
 impl SchedulerJob {
@@ -17,6 +17,7 @@ impl SchedulerJob {
             Self::ResourcesTrackersSchedule => true,
             Self::ResourcesTrackersTrigger => false,
             Self::ResourcesTrackersFetch => true,
+            Self::NotificationsSend => true,
         }
     }
 }
@@ -29,6 +30,7 @@ impl TryFrom<u8> for SchedulerJob {
             0 => Ok(Self::ResourcesTrackersTrigger),
             1 => Ok(Self::ResourcesTrackersSchedule),
             2 => Ok(Self::ResourcesTrackersFetch),
+            3 => Ok(Self::NotificationsSend),
             num => Err(anyhow!("Unknown job type: {}", num)),
         }
     }
@@ -59,6 +61,7 @@ mod tests {
         assert!(!SchedulerJob::ResourcesTrackersTrigger.is_unique());
         assert!(SchedulerJob::ResourcesTrackersSchedule.is_unique());
         assert!(SchedulerJob::ResourcesTrackersFetch.is_unique());
+        assert!(SchedulerJob::NotificationsSend.is_unique());
 
         Ok(())
     }
@@ -77,10 +80,14 @@ mod tests {
             SchedulerJob::try_from(2).ok(),
             Some(SchedulerJob::ResourcesTrackersFetch)
         );
+        assert_eq!(
+            SchedulerJob::try_from(3).ok(),
+            Some(SchedulerJob::NotificationsSend)
+        );
 
-        assert_debug_snapshot!(SchedulerJob::try_from(3), @r###"
+        assert_debug_snapshot!(SchedulerJob::try_from(4), @r###"
         Err(
-            "Unknown job type: 3",
+            "Unknown job type: 4",
         )
         "###);
 
@@ -101,15 +108,19 @@ mod tests {
             SchedulerJob::try_from([2].as_slice()).ok(),
             Some(SchedulerJob::ResourcesTrackersFetch)
         );
+        assert_eq!(
+            SchedulerJob::try_from([3].as_slice()).ok(),
+            Some(SchedulerJob::NotificationsSend)
+        );
 
         assert_debug_snapshot!(SchedulerJob::try_from([].as_slice()), @r###"
         Err(
             "Serialized job type should be exactly 1 byte, but got 0",
         )
         "###);
-        assert_debug_snapshot!(SchedulerJob::try_from([3].as_slice()), @r###"
+        assert_debug_snapshot!(SchedulerJob::try_from([4].as_slice()), @r###"
         Err(
-            "Unknown job type: 3",
+            "Unknown job type: 4",
         )
         "###);
         assert_debug_snapshot!(SchedulerJob::try_from([0, 1].as_slice()), @r###"
