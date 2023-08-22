@@ -222,7 +222,7 @@ mod tests {
     use insta::assert_debug_snapshot;
     use std::{net::Ipv4Addr, time::Duration};
     use trust_dns_resolver::{
-        proto::rr::{RData, Record},
+        proto::rr::{rdata::A, RData, Record},
         Name,
     };
     use url::Url;
@@ -337,7 +337,7 @@ mod tests {
         let api = mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
             Name::new(),
             300,
-            RData::A(Ipv4Addr::new(172, 32, 0, 2)),
+            RData::A(A(Ipv4Addr::new(172, 32, 0, 2))),
         )]))
         .await?;
 
@@ -432,7 +432,7 @@ mod tests {
             mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
                 Name::new(),
                 300,
-                RData::A(Ipv4Addr::new(127, 0, 0, 1)),
+                RData::A(A(Ipv4Addr::new(127, 0, 0, 1))),
             )]))
             .await?;
         assert_debug_snapshot!(UtilsWebScrapingAction::SaveWebPageResourcesTracker {

@@ -18,10 +18,10 @@ pub struct TokioDnsResolver {
 }
 
 impl TokioDnsResolver {
-    pub fn create() -> anyhow::Result<Self> {
-        Ok(Self {
-            inner: TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default())?,
-        })
+    pub fn create() -> Self {
+        Self {
+            inner: TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default()),
+        }
     }
 }
 

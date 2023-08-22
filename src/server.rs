@@ -42,7 +42,7 @@ pub async fn run(
         config.clone(),
         database,
         search_index,
-        Network::new(TokioDnsResolver::create()?),
+        Network::new(TokioDnsResolver::create()),
     ));
 
     if let Some(ref builtin_users) = builtin_users {
