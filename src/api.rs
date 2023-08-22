@@ -1,12 +1,6 @@
 mod emails;
-mod users;
-mod utils;
 
-pub use self::{
-    emails::{Email, EmailBody, EmailsApi},
-    users::{UserSignupError, UsersApi},
-    utils::UtilsApi,
-};
+pub use self::emails::{Email, EmailBody, EmailsApi};
 
 use crate::{
     database::Database,
@@ -14,8 +8,6 @@ use crate::{
     search::SearchIndex,
     Config,
 };
-
-pub(crate) use self::users::DictionaryDataUserDataSetter;
 
 pub struct Api<DR: DnsResolver> {
     pub db: Database,
@@ -40,19 +32,9 @@ impl<DR: DnsResolver> Api<DR> {
         }
     }
 
-    /// Returns an API to work with users.
-    pub fn users(&self) -> UsersApi {
-        UsersApi::new(&self.db)
-    }
-
     /// Returns an API to send emails.
     pub fn emails(&self) -> EmailsApi<&Config> {
         EmailsApi::new(&self.config)
-    }
-
-    /// Returns an API to retrieve available utils.
-    pub fn utils(&self) -> UtilsApi {
-        UtilsApi::new(&self.db)
     }
 }
 

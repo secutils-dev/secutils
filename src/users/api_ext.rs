@@ -1,9 +1,10 @@
 use crate::{
-    api::users::DictionaryDataUserDataSetter,
+    api::Api,
     database::Database,
+    network::DnsResolver,
     users::{
-        BuiltinUser, PublicUserDataNamespace, User, UserData, UserDataKey, UserDataNamespace,
-        UserId, UserSettingsSetter,
+        BuiltinUser, DictionaryDataUserDataSetter, PublicUserDataNamespace, User, UserData,
+        UserDataKey, UserDataNamespace, UserId, UserSettingsSetter,
     },
     utils::{AutoResponder, ContentSecurityPolicy, SelfSignedCertificate},
 };
@@ -11,6 +12,9 @@ use anyhow::{bail, Context};
 use serde::de::DeserializeOwned;
 use std::{borrow::Cow, collections::BTreeMap};
 use time::OffsetDateTime;
+
+pub mod errors;
+pub mod user_data_setters;
 
 pub struct UsersApi<'a> {
     db: Cow<'a, Database>,
@@ -225,10 +229,17 @@ impl<'a> UsersApi<'a> {
     }
 }
 
+impl<DR: DnsResolver> Api<DR> {
+    /// Returns an API to work with users.
+    pub fn users(&self) -> UsersApi {
+        UsersApi::new(&self.db)
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::UsersApi;
     use crate::{
-        api::UsersApi,
         database::Database,
         tests::{mock_db, mock_user},
         users::{PublicUserDataNamespace, User, UserData},

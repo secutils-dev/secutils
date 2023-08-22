@@ -1,12 +1,12 @@
 use crate::{
-    api::{Api, DictionaryDataUserDataSetter},
+    api::Api,
     config::Config,
     database::Database,
     network::{DnsResolver, IpAddrExt, Network},
     scheduler::SchedulerJob,
     users::{
-        InternalUserDataNamespace, PublicUserDataNamespace, UserData, UserDataKey,
-        UserDataNamespace, UserId,
+        DictionaryDataUserDataSetter, InternalUserDataNamespace, PublicUserDataNamespace, UserData,
+        UserDataKey, UserDataNamespace, UserId,
     },
     utils::{
         web_scraping::resources::{

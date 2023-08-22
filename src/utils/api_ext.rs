@@ -1,4 +1,4 @@
-use crate::{database::Database, utils::Util};
+use crate::{api::Api, database::Database, network::DnsResolver, utils::Util};
 use std::borrow::Cow;
 
 pub struct UtilsApi<'a> {
@@ -19,9 +19,17 @@ impl<'a> UtilsApi<'a> {
     }
 }
 
+impl<DR: DnsResolver> Api<DR> {
+    /// Returns an API to retrieve available utils.
+    pub fn utils(&self) -> UtilsApi {
+        UtilsApi::new(&self.db)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{api::UtilsApi, tests::mock_db};
+    use super::UtilsApi;
+    use crate::tests::mock_db;
     use insta::assert_debug_snapshot;
 
     #[actix_rt::test]

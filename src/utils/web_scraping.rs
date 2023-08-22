@@ -1,10 +1,10 @@
-mod api;
+mod api_ext;
 mod resources;
 mod utils_web_scraping_action;
 mod utils_web_scraping_action_result;
 
 pub use self::{
-    api::WebScrapingApi,
+    api_ext::WebScrapingApi,
     resources::{
         web_page_resources_revisions_diff, WebPageResource, WebPageResourceContent,
         WebPageResourceContentData, WebPageResourceDiffStatus, WebPageResourcesRevision,

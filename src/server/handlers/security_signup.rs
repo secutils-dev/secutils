@@ -1,7 +1,7 @@
 use crate::{
-    api::UserSignupError,
     security::Credentials,
     server::{app_state::AppState, http_errors::generic_internal_server_error},
+    users::UserSignupError,
 };
 use actix_http::HttpMessage;
 use actix_identity::Identity;

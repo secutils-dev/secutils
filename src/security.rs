@@ -12,10 +12,10 @@ pub use self::{
     },
 };
 use crate::{
-    api::{Email, EmailBody, EmailsApi, UserSignupError},
+    api::{Email, EmailBody, EmailsApi},
     config::Config,
     database::Database,
-    users::{InternalUserDataNamespace, User, UserData, UserId},
+    users::{InternalUserDataNamespace, User, UserData, UserId, UserSignupError},
 };
 use anyhow::{anyhow, bail, Context};
 use argon2::{Argon2, PasswordHash, PasswordVerifier};

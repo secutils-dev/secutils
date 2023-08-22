@@ -50,10 +50,9 @@ impl DictionaryDataUserDataSetter {
 #[cfg(test)]
 mod tests {
     use crate::{
-        api::users::DictionaryDataUserDataSetter,
         database::Database,
         tests::{mock_db, mock_user},
-        users::{PublicUserDataNamespace, User, UserData},
+        users::{DictionaryDataUserDataSetter, PublicUserDataNamespace, User, UserData},
     };
     use serde_json::json;
     use std::collections::BTreeMap;

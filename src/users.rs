@@ -1,3 +1,4 @@
+pub mod api_ext;
 mod builtin_user;
 mod builtin_users_initializer;
 mod database_ext;
@@ -12,6 +13,7 @@ mod user_role;
 mod user_settings;
 
 pub use self::{
+    api_ext::errors::UserSignupError,
     builtin_user::BuiltinUser,
     builtin_users_initializer::builtin_users_initializer,
     internal_user_data_namespace::InternalUserDataNamespace,
@@ -24,3 +26,5 @@ pub use self::{
     user_role::UserRole,
     user_settings::{UserSettings, UserSettingsSetter},
 };
+
+pub(crate) use self::api_ext::user_data_setters::DictionaryDataUserDataSetter;

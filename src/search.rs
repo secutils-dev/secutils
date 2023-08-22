@@ -1,4 +1,4 @@
-mod api;
+mod api_ext;
 mod search_filter;
 mod search_index;
 mod search_index_initializer;

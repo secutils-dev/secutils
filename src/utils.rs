@@ -1,3 +1,4 @@
+pub mod api_ext;
 mod certificates;
 mod database_ext;
 mod util;
