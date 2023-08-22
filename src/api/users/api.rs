@@ -244,7 +244,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn can_update_auto_responders() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let api = UsersApi::new(&mock_db);
 

@@ -40,7 +40,6 @@ mod tests {
     use crate::{
         security::StoredCredentials,
         tests::{webauthn::SERIALIZED_PASSKEY, MockUserBuilder},
-        users::UserId,
     };
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
@@ -48,7 +47,7 @@ mod tests {
     #[test]
     fn serialization() -> anyhow::Result<()> {
         let user_with_password = MockUserBuilder::new(
-            UserId(1),
+            1.try_into()?,
             "my-email",
             "my-handle",
             StoredCredentials {
@@ -62,7 +61,7 @@ mod tests {
         .build();
 
         let user_with_passkey = MockUserBuilder::new(
-            UserId(1),
+            1.try_into()?,
             "my-email",
             "my-handle",
             StoredCredentials::from_passkey(serde_json::from_str(SERIALIZED_PASSKEY)?),
@@ -73,7 +72,7 @@ mod tests {
         .build();
 
         let user_with_password_and_passkey = MockUserBuilder::new(
-            UserId(1),
+            1.try_into()?,
             "my-email",
             "my-handle",
             StoredCredentials {

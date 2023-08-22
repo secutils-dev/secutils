@@ -82,7 +82,6 @@ mod tests {
         notifications::{NotificationContent, NotificationDestination},
         scheduler::{scheduler_job::SchedulerJob, scheduler_store::SchedulerStore},
         tests::{mock_api_with_config, mock_config, mock_schedule_in_sec},
-        users::UserId,
     };
     use cron::Schedule;
     use futures::StreamExt;
@@ -187,7 +186,7 @@ mod tests {
         for n in 0..=(MAX_NOTIFICATIONS_TO_SEND as i64) {
             api.notifications()
                 .schedule_notification(
-                    NotificationDestination::User(UserId(123)),
+                    NotificationDestination::User(123.try_into()?),
                     NotificationContent::String(format!("{}", n)),
                     OffsetDateTime::from_unix_timestamp(946720800 + n)?,
                 )

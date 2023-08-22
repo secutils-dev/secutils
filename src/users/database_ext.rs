@@ -85,7 +85,7 @@ RETURNING id
         .fetch_one(&self.pool)
         .await?;
 
-        Ok(UserId(user_id))
+        user_id.try_into()
     }
 
     /// Inserts or updates user in the `Users` table.
@@ -108,7 +108,7 @@ RETURNING id
             .fetch_one(&self.pool)
             .await?;
 
-        Ok(UserId(user_id))
+        user_id.try_into()
     }
 
     /// Removes user with the specified email from the `Users` table.
@@ -148,7 +148,7 @@ SELECT user_id, key, value, timestamp
 FROM user_data
 WHERE user_id = ?1 AND namespace = ?2 AND key = ?3
                 "#,
-            user_id.0,
+            *user_id,
             namespace,
             key
         )
@@ -200,7 +200,7 @@ ON CONFLICT(user_id, namespace, key) DO UPDATE SET value=excluded.value, timesta
 DELETE FROM user_data
 WHERE user_id = ?1 AND namespace = ?2 AND key = ?3
             "#,
-            user_id.0,
+            *user_id,
             namespace,
             key
         )
@@ -547,7 +547,7 @@ mod tests {
         let conflict_error = db
             .insert_user(
                 &MockUserBuilder::new(
-                    UserId(100),
+                    100.try_into()?,
                     "DEV@secutils.dev",
                     "DEV-handle",
                     StoredCredentials {
@@ -623,7 +623,7 @@ mod tests {
 
         db.upsert_user(
             &MockUserBuilder::new(
-                UserId(100),
+                100.try_into()?,
                 "DEV@secutils.dev",
                 "DEV-handle",
                 StoredCredentials {
@@ -746,7 +746,7 @@ mod tests {
     async fn can_manipulate_user_data() -> anyhow::Result<()> {
         let db = mock_db().await?;
         let user = MockUserBuilder::new(
-            UserId(1),
+            1.try_into()?,
             "dev@secutils.dev",
             "dev-handle",
             StoredCredentials {
@@ -833,7 +833,7 @@ mod tests {
         // Create test users
         let users = vec![
             MockUserBuilder::new(
-                UserId(1),
+                1.try_into()?,
                 "dev@secutils.dev",
                 "dev-handle",
                 StoredCredentials {
@@ -845,7 +845,7 @@ mod tests {
             .set_activated()
             .build(),
             MockUserBuilder::new(
-                UserId(2),
+                2.try_into()?,
                 "prod@secutils.dev",
                 "prod-handle",
                 StoredCredentials {
@@ -866,7 +866,7 @@ mod tests {
             InternalUserDataNamespace::AccountActivationToken,
             // January 1, 2000 11:00:00
             UserData::new(
-                UserId(1),
+                1.try_into()?,
                 "data-1",
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
@@ -876,7 +876,7 @@ mod tests {
             InternalUserDataNamespace::AccountActivationToken,
             // January 1, 2010 11:00:00
             UserData::new(
-                UserId(2),
+                2.try_into()?,
                 "data-2",
                 OffsetDateTime::from_unix_timestamp(1262340000)?,
             ),
@@ -884,7 +884,7 @@ mod tests {
         .await?;
 
         // Check that data exists.
-        assert_debug_snapshot!(db.get_user_data::<String>(UserId(1), InternalUserDataNamespace::AccountActivationToken)
+        assert_debug_snapshot!(db.get_user_data::<String>(1.try_into()?, InternalUserDataNamespace::AccountActivationToken)
                 .await?, @r###"
         Some(
             UserData {
@@ -897,7 +897,7 @@ mod tests {
             },
         )
         "###);
-        assert_debug_snapshot!(db.get_user_data::<String>(UserId(2), InternalUserDataNamespace::AccountActivationToken)
+        assert_debug_snapshot!(db.get_user_data::<String>(2.try_into()?, InternalUserDataNamespace::AccountActivationToken)
                 .await?, @r###"
         Some(
             UserData {
@@ -920,11 +920,17 @@ mod tests {
 
         // All data should still stay.
         assert!(db
-            .get_user_data::<String>(UserId(1), InternalUserDataNamespace::AccountActivationToken)
+            .get_user_data::<String>(
+                1.try_into()?,
+                InternalUserDataNamespace::AccountActivationToken
+            )
             .await?
             .is_some());
         assert!(db
-            .get_user_data::<String>(UserId(2), InternalUserDataNamespace::AccountActivationToken)
+            .get_user_data::<String>(
+                2.try_into()?,
+                InternalUserDataNamespace::AccountActivationToken
+            )
             .await?
             .is_some());
 
@@ -935,11 +941,17 @@ mod tests {
         )
         .await?;
         assert!(db
-            .get_user_data::<String>(UserId(1), InternalUserDataNamespace::AccountActivationToken)
+            .get_user_data::<String>(
+                1.try_into()?,
+                InternalUserDataNamespace::AccountActivationToken
+            )
             .await?
             .is_none());
         assert!(db
-            .get_user_data::<String>(UserId(2), InternalUserDataNamespace::AccountActivationToken)
+            .get_user_data::<String>(
+                2.try_into()?,
+                InternalUserDataNamespace::AccountActivationToken
+            )
             .await?
             .is_some());
 
@@ -950,7 +962,10 @@ mod tests {
         )
         .await?;
         assert!(db
-            .get_user_data::<String>(UserId(2), InternalUserDataNamespace::AccountActivationToken)
+            .get_user_data::<String>(
+                2.try_into()?,
+                InternalUserDataNamespace::AccountActivationToken
+            )
             .await?
             .is_none());
 
@@ -960,12 +975,12 @@ mod tests {
     #[actix_rt::test]
     async fn can_search_user_data() -> anyhow::Result<()> {
         let db = mock_db().await?;
-        let user_one = mock_user();
+        let user_one = mock_user()?;
         let user_two = User {
-            id: UserId(2),
+            id: 2.try_into()?,
             email: "dev-2@secutils.dev".to_string(),
             handle: "dev-2-handle".to_string(),
-            ..mock_user()
+            ..mock_user()?
         };
 
         // No user and no data yet.

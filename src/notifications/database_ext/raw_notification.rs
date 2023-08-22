@@ -38,10 +38,7 @@ impl TryFrom<&Notification> for RawNotification {
 #[cfg(test)]
 mod tests {
     use super::RawNotification;
-    use crate::{
-        notifications::{Notification, NotificationContent, NotificationDestination},
-        users::UserId,
-    };
+    use crate::notifications::{Notification, NotificationContent, NotificationDestination};
     use time::OffsetDateTime;
 
     #[test]
@@ -55,7 +52,7 @@ mod tests {
             })?,
             Notification {
                 id: 1.try_into()?,
-                destination: NotificationDestination::User(UserId(123)),
+                destination: NotificationDestination::User(123.try_into()?),
                 content: NotificationContent::String("abc".to_string()),
                 scheduled_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             }
@@ -69,7 +66,7 @@ mod tests {
         assert_eq!(
             RawNotification::try_from(&Notification {
                 id: 1.try_into()?,
-                destination: NotificationDestination::User(UserId(123)),
+                destination: NotificationDestination::User(123.try_into()?),
                 content: NotificationContent::String("abc".to_string()),
                 scheduled_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,

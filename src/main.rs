@@ -61,7 +61,7 @@ fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Err
                     Url::parse(url)
                         .with_context(|| "Cannot parse Web Scraper URL parameter.".to_string())
                 })?,
-            search_index_version: 1,
+            search_index_version: 2,
         },
         jobs: SchedulerJobsConfig {
             resources_trackers_schedule: matches
@@ -384,9 +384,9 @@ mod tests {
         Database::open(|| Ok("sqlite::memory:".to_string())).await
     }
 
-    pub fn mock_user() -> User {
-        MockUserBuilder::new(
-            UserId(1),
+    pub fn mock_user() -> anyhow::Result<User> {
+        Ok(MockUserBuilder::new(
+            1.try_into()?,
             "dev@secutils.dev",
             "dev-handle",
             StoredCredentials {
@@ -395,7 +395,7 @@ mod tests {
             },
             OffsetDateTime::now_utc(),
         )
-        .build()
+        .build())
     }
 
     pub fn mock_config() -> anyhow::Result<Config> {
@@ -406,7 +406,7 @@ mod tests {
             smtp: None,
             components: ComponentsConfig {
                 web_scraper_url: Url::parse("http://localhost:7272")?,
-                search_index_version: 1,
+                search_index_version: 2,
             },
             jobs: SchedulerJobsConfig {
                 resources_trackers_schedule: Schedule::try_from("0 * 0 * * * *")?,

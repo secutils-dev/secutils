@@ -66,7 +66,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn can_merge_data() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
 
         let item_one = json!({ "name": "one" });

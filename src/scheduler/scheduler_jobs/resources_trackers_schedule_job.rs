@@ -234,7 +234,7 @@ mod tests {
         let mut config = mock_config()?;
         config.jobs.resources_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
 
-        let user = mock_user();
+        let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(config).await?);
 
         // Create user, trackers and tracker jobs.
@@ -334,7 +334,7 @@ mod tests {
         let mut config = mock_config()?;
         config.jobs.resources_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
 
-        let user = mock_user();
+        let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(config).await?);
 
         // Create user, trackers and tracker jobs.
@@ -420,7 +420,7 @@ mod tests {
         let mut config = mock_config()?;
         config.jobs.resources_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
 
-        let user = mock_user();
+        let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(config).await?);
 
         // Create user, trackers and tracker jobs.
@@ -486,7 +486,7 @@ mod tests {
         let mut config = mock_config()?;
         config.jobs.resources_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
 
-        let user = mock_user();
+        let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(config).await?);
 
         // Create user, trackers and tracker jobs.

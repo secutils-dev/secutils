@@ -191,7 +191,7 @@ mod tests {
     use futures::StreamExt;
     use httpmock::MockServer;
     use insta::assert_debug_snapshot;
-    use std::{ops::Add, sync::Arc, time::Duration};
+    use std::{ops::Add, sync::Arc, thread, time::Duration};
     use time::OffsetDateTime;
     use tokio_cron_scheduler::{
         CronJob, JobId, JobScheduler, JobStored, JobStoredData, JobType, SimpleJobCode,
@@ -289,7 +289,7 @@ mod tests {
         config.jobs.resources_trackers_fetch =
             Schedule::try_from(mock_schedule_in_sec(2).as_str())?;
 
-        let user = mock_user();
+        let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(config).await?);
         let mut scheduler = JobScheduler::new_with_storage_and_code(
             Box::new(SchedulerStore::new(api.db.clone())),
@@ -322,7 +322,9 @@ mod tests {
             .get_resources_tracker_job_by_id(tracker_job_id)
             .await?
             .is_some()
-        {}
+        {
+            thread::sleep(Duration::from_millis(100));
+        }
 
         scheduler.shutdown().await?;
 
@@ -335,7 +337,7 @@ mod tests {
         config.jobs.resources_trackers_fetch =
             Schedule::try_from(mock_schedule_in_sec(2).as_str())?;
 
-        let user = mock_user();
+        let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(config).await?);
         let mut scheduler = JobScheduler::new_with_storage_and_code(
             Box::new(SchedulerStore::new(api.db.clone())),
@@ -380,7 +382,9 @@ mod tests {
             .get_resources_tracker_job_by_id(tracker_job_id)
             .await?
             .is_some()
-        {}
+        {
+            thread::sleep(Duration::from_millis(100));
+        }
 
         scheduler.shutdown().await?;
 
@@ -393,7 +397,7 @@ mod tests {
         config.jobs.resources_trackers_fetch =
             Schedule::try_from(mock_schedule_in_sec(2).as_str())?;
 
-        let user = mock_user();
+        let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(config).await?);
         let mut scheduler = JobScheduler::new_with_storage_and_code(
             Box::new(SchedulerStore::new(api.db.clone())),
@@ -437,7 +441,9 @@ mod tests {
             .get_resources_tracker_job_by_id(tracker_job_id)
             .await?
             .is_some()
-        {}
+        {
+            thread::sleep(Duration::from_millis(100));
+        }
 
         scheduler.shutdown().await?;
 
@@ -453,7 +459,7 @@ mod tests {
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
-        let user = mock_user();
+        let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(config).await?);
         let mut scheduler = JobScheduler::new_with_storage_and_code(
             Box::new(SchedulerStore::new(api.db.clone())),
@@ -539,7 +545,9 @@ mod tests {
             .get_resources(user.id, &tracker)
             .await?
             .is_empty()
-        {}
+        {
+            thread::sleep(Duration::from_millis(100));
+        }
 
         scheduler.shutdown().await?;
 
@@ -647,7 +655,7 @@ mod tests {
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
-        let user = mock_user();
+        let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(config).await?);
         let mut scheduler = JobScheduler::new_with_storage_and_code(
             Box::new(SchedulerStore::new(api.db.clone())),
@@ -739,15 +747,18 @@ mod tests {
         // Start scheduler and wait for a few seconds, then stop it.
         scheduler.start().await?;
 
-        let web_scraping = api.web_scraping();
-        while web_scraping.get_resources(user.id, &tracker).await?.len() < 2
-            || !api
-                .db
-                .get_scheduler_job(trigger_job_id)
-                .await?
-                .map(|job| job.stopped)
-                .unwrap_or_default()
-        {}
+        while api
+            .db
+            .get_notification_ids(
+                OffsetDateTime::now_utc().add(Duration::from_secs(3600 * 24 * 365)),
+                10,
+            )
+            .collect::<Vec<_>>()
+            .await
+            .is_empty()
+        {
+            thread::sleep(Duration::from_millis(100));
+        }
 
         scheduler.shutdown().await?;
 
@@ -778,6 +789,20 @@ mod tests {
             ),
         )
         "###);
+
+        assert_eq!(
+            api.web_scraping()
+                .get_resources(user.id, &tracker)
+                .await?
+                .len(),
+            2
+        );
+        assert!(!api
+            .db
+            .get_scheduler_job(trigger_job_id)
+            .await?
+            .map(|job| job.stopped)
+            .unwrap_or_default());
 
         Ok(())
     }

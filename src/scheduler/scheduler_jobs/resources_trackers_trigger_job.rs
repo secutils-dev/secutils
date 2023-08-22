@@ -170,7 +170,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn can_resume_job() -> anyhow::Result<()> {
-        let user = mock_user();
+        let user = mock_user()?;
         let api = Arc::new(mock_api().await?);
 
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
@@ -236,7 +236,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn resets_job_if_schedule_changes() -> anyhow::Result<()> {
-        let user = mock_user();
+        let user = mock_user()?;
         let api = Arc::new(mock_api().await?);
 
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
@@ -284,7 +284,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn removes_job_if_tracker_no_longer_has_schedule() -> anyhow::Result<()> {
-        let user = mock_user();
+        let user = mock_user()?;
         let api = Arc::new(mock_api().await?);
 
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
@@ -329,7 +329,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn removes_job_if_tracker_no_longer_exists() -> anyhow::Result<()> {
-        let user = mock_user();
+        let user = mock_user()?;
         let api = Arc::new(mock_api().await?);
 
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
@@ -362,7 +362,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn does_not_resume_if_tracker_job_no_longer_exists() -> anyhow::Result<()> {
-        let user = mock_user();
+        let user = mock_user()?;
         let api = Arc::new(mock_api().await?);
 
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");

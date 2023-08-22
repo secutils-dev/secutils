@@ -13,12 +13,11 @@ pub enum NotificationDestination {
 #[cfg(test)]
 mod tests {
     use super::NotificationDestination;
-    use crate::users::UserId;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
         assert_eq!(
-            postcard::to_stdvec(&NotificationDestination::User(UserId(123)))?,
+            postcard::to_stdvec(&NotificationDestination::User(123.try_into()?))?,
             vec![0, 246, 1]
         );
         assert_eq!(
@@ -32,7 +31,7 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             postcard::from_bytes::<NotificationDestination>(&[0, 246, 1])?,
-            NotificationDestination::User(UserId(123))
+            NotificationDestination::User(123.try_into()?)
         );
         assert_eq!(
             postcard::from_bytes::<NotificationDestination>(&[1])?,

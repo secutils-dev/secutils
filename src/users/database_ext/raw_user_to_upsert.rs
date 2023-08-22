@@ -38,7 +38,7 @@ impl<'a> TryFrom<&'a User> for RawUserToUpsert<'a> {
 #[cfg(test)]
 mod tests {
     use super::RawUserToUpsert;
-    use crate::{security::StoredCredentials, tests::MockUserBuilder, users::UserId};
+    use crate::{security::StoredCredentials, tests::MockUserBuilder};
     use time::OffsetDateTime;
 
     #[test]
@@ -46,7 +46,7 @@ mod tests {
         assert_eq!(
             RawUserToUpsert::try_from(
                 &MockUserBuilder::new(
-                    UserId(1),
+                    1.try_into()?,
                     "dev@secutils.dev".to_string(),
                     "dev-handle".to_string(),
                     StoredCredentials {
@@ -80,7 +80,7 @@ mod tests {
         assert_eq!(
             RawUserToUpsert::try_from(
                 &MockUserBuilder::new(
-                    UserId(1),
+                    1.try_into()?,
                     "dev@secutils.dev".to_string(),
                     "dev-handle".to_string(),
                     StoredCredentials {
@@ -115,7 +115,7 @@ mod tests {
         assert_eq!(
             RawUserToUpsert::try_from(
                 &MockUserBuilder::new(
-                    UserId(1),
+                    1.try_into()?,
                     "dev@secutils.dev".to_string(),
                     "dev-handle".to_string(),
                     StoredCredentials {

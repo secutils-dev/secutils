@@ -1,4 +1,4 @@
-use crate::users::{User, UserId};
+use crate::users::User;
 use anyhow::Context;
 use time::OffsetDateTime;
 
@@ -18,7 +18,7 @@ impl TryFrom<RawUser> for User {
 
     fn try_from(raw_user: RawUser) -> Result<Self, Self::Error> {
         Ok(User {
-            id: UserId(raw_user.id),
+            id: raw_user.id.try_into()?,
             email: raw_user.email,
             handle: raw_user.handle,
             credentials: serde_json::from_slice(raw_user.credentials.as_slice())

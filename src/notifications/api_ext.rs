@@ -96,7 +96,7 @@ mod tests {
         database::Database,
         notifications::{Notification, NotificationContent, NotificationDestination},
         tests::{mock_db, mock_user},
-        users::{User, UserId},
+        users::User,
     };
     use insta::assert_debug_snapshot;
     use time::OffsetDateTime;
@@ -108,7 +108,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn properly_schedules_notification() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let api = NotificationsApi::new(&mock_db);
 
@@ -116,12 +116,12 @@ mod tests {
 
         let notifications = vec![
             Notification::new(
-                NotificationDestination::User(UserId(123)),
+                NotificationDestination::User(123.try_into()?),
                 NotificationContent::String("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
             Notification::new(
-                NotificationDestination::User(UserId(123)),
+                NotificationDestination::User(123.try_into()?),
                 NotificationContent::String("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
@@ -179,18 +179,18 @@ mod tests {
 
     #[actix_rt::test]
     async fn properly_sends_all_pending_notifications() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let api = NotificationsApi::new(&mock_db);
 
         let notifications = vec![
             Notification::new(
-                NotificationDestination::User(UserId(123)),
+                NotificationDestination::User(123.try_into()?),
                 NotificationContent::String("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720700)?,
             ),
             Notification::new(
-                NotificationDestination::User(UserId(123)),
+                NotificationDestination::User(123.try_into()?),
                 NotificationContent::String("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
@@ -218,13 +218,13 @@ mod tests {
 
     #[actix_rt::test]
     async fn properly_sends_pending_notifications_in_batches() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let api = NotificationsApi::new(&mock_db);
 
         for n in 0..=9 {
             api.schedule_notification(
-                NotificationDestination::User(UserId(123)),
+                NotificationDestination::User(123.try_into()?),
                 NotificationContent::String(format!("{}", n)),
                 OffsetDateTime::from_unix_timestamp(946720800 + n)?,
             )

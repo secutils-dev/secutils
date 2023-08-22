@@ -127,7 +127,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn properly_tracks_requests() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let api = AutoRespondersApi::new(&mock_db);
         let auto_responder = AutoResponder {

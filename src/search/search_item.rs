@@ -57,7 +57,7 @@ impl AsRef<SearchItem> for SearchItem {
 
 #[cfg(test)]
 mod tests {
-    use crate::{search::SearchItem, users::UserId};
+    use crate::search::SearchItem;
     use insta::{assert_debug_snapshot, assert_json_snapshot};
     use time::OffsetDateTime;
 
@@ -88,7 +88,7 @@ mod tests {
             keywords: Some("some keywords".to_string()),
             category: "some-category".to_string(),
             sub_category: Some("some-sub-category".to_string()),
-            user_id: Some(UserId(2)),
+            user_id: Some(2.try_into()?),
             meta: Some(
                 [("one".to_string(), "two".to_string())]
                     .into_iter()
@@ -116,8 +116,8 @@ mod tests {
     fn can_create_id() -> anyhow::Result<()> {
         assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", None, None), @"9401142304413078507");
         assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", Some("some-sub-category"), None), @"1596497830688235325");
-        assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", None, Some(UserId(1))), @"6964783783018514408");
-        assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", Some("some-sub-category"), Some(UserId(1))), @"3550885080732287254");
+        assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", None, Some(1.try_into()?)), @"6964783783018514408");
+        assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", Some("some-sub-category"), Some(1.try_into()?)), @"3550885080732287254");
 
         Ok(())
     }

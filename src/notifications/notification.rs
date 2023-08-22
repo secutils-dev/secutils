@@ -33,20 +33,20 @@ impl Notification {
 #[cfg(test)]
 mod tests {
     use super::{Notification, NotificationContent, NotificationDestination};
-    use crate::{notifications::NotificationId, users::UserId};
+    use crate::notifications::NotificationId;
     use time::OffsetDateTime;
 
     #[test]
     fn new_notification() -> anyhow::Result<()> {
         assert_eq!(
             Notification::new(
-                NotificationDestination::User(UserId(123)),
+                NotificationDestination::User(123.try_into()?),
                 NotificationContent::String("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?
             ),
             Notification {
                 id: NotificationId::empty(),
-                destination: NotificationDestination::User(UserId(123)),
+                destination: NotificationDestination::User(123.try_into()?),
                 content: NotificationContent::String("abc".to_string()),
                 scheduled_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             }

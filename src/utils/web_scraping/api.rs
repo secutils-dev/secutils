@@ -448,7 +448,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn properly_saves_new_web_page_resource_trackers() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
@@ -518,7 +518,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn properly_updates_existing_web_page_resource_trackers() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
@@ -576,7 +576,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn properly_removes_web_page_resource_trackers() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
@@ -650,7 +650,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn properly_saves_web_page_resources() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
@@ -741,7 +741,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn properly_replaces_web_page_resources_with_the_same_timestamp() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
@@ -815,7 +815,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn properly_replaces_web_page_resources_with_no_diff() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
@@ -886,7 +886,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn properly_removes_web_page_resources() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
@@ -978,7 +978,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn properly_removes_web_page_resources_when_tracker_is_removed() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
@@ -1065,7 +1065,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn properly_removes_web_page_resources_when_tracker_url_changed() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
@@ -1187,7 +1187,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn properly_updates_job_when_tracker_schedule_changed() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
@@ -1306,7 +1306,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn properly_removes_job_when_tracker_revisions_disabled() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
@@ -1346,7 +1346,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn properly_removes_job_when_tracker_is_removed() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
@@ -1415,7 +1415,7 @@ mod tests {
 
     #[actix_rt::test]
     async fn can_manipulate_tracker_jobs() -> anyhow::Result<()> {
-        let mock_user = mock_user();
+        let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);

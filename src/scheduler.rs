@@ -192,7 +192,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn can_resume_jobs() -> anyhow::Result<()> {
-        let user = mock_user();
+        let user = mock_user()?;
         let api = Arc::new(mock_api().await?);
 
         let trigger_job_id = uuid!("00000000-0000-0000-0000-000000000001");

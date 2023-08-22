@@ -103,7 +103,6 @@ mod tests {
     use crate::{
         notifications::{Notification, NotificationContent, NotificationDestination},
         tests::mock_db,
-        users::UserId,
     };
     use futures::StreamExt;
     use insta::assert_debug_snapshot;
@@ -116,12 +115,12 @@ mod tests {
 
         let notifications = vec![
             Notification::new(
-                NotificationDestination::User(UserId(123)),
+                NotificationDestination::User(123.try_into()?),
                 NotificationContent::String("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
             Notification::new(
-                NotificationDestination::User(UserId(123)),
+                NotificationDestination::User(123.try_into()?),
                 NotificationContent::String("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
@@ -178,12 +177,12 @@ mod tests {
 
         let notifications = vec![
             Notification::new(
-                NotificationDestination::User(UserId(123)),
+                NotificationDestination::User(123.try_into()?),
                 NotificationContent::String("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
             Notification::new(
-                NotificationDestination::User(UserId(123)),
+                NotificationDestination::User(123.try_into()?),
                 NotificationContent::String("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
@@ -222,7 +221,7 @@ mod tests {
 
         for n in 0..=19 {
             db.insert_notification(&Notification::new(
-                NotificationDestination::User(UserId(123)),
+                NotificationDestination::User(123.try_into()?),
                 NotificationContent::String(format!("abc{}", n)),
                 OffsetDateTime::from_unix_timestamp(946720700 + n)?,
             ))
