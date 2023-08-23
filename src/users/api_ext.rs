@@ -1,6 +1,5 @@
 use crate::{
     api::Api,
-    database::Database,
     network::DnsResolver,
     users::{
         BuiltinUser, DictionaryDataUserDataSetter, PublicUserDataNamespace, User, UserData,
@@ -10,27 +9,25 @@ use crate::{
 };
 use anyhow::{bail, Context};
 use serde::de::DeserializeOwned;
-use std::{borrow::Cow, collections::BTreeMap};
+use std::collections::BTreeMap;
 use time::OffsetDateTime;
 
 pub mod errors;
 pub mod user_data_setters;
 
-pub struct UsersApi<'a> {
-    db: Cow<'a, Database>,
+pub struct UsersApi<'a, DR: DnsResolver> {
+    api: &'a Api<DR>,
 }
 
-impl<'a> UsersApi<'a> {
+impl<'a, DR: DnsResolver> UsersApi<'a, DR> {
     /// Creates Users API.
-    pub fn new(db: &'a Database) -> Self {
-        Self {
-            db: Cow::Borrowed(db),
-        }
+    pub fn new(api: &'a Api<DR>) -> Self {
+        Self { api }
     }
 
     /// Retrieves the user using the specified email.
     pub async fn get_by_email<E: AsRef<str>>(&self, user_email: E) -> anyhow::Result<Option<User>> {
-        self.db.get_user_by_email(user_email).await
+        self.api.db.get_user_by_email(user_email).await
     }
 
     /// Retrieves the user using the specified handle.
@@ -38,17 +35,17 @@ impl<'a> UsersApi<'a> {
         &self,
         user_handle: E,
     ) -> anyhow::Result<Option<User>> {
-        self.db.get_user_by_handle(user_handle).await
+        self.api.db.get_user_by_handle(user_handle).await
     }
 
     /// Inserts or updates user in the `Users` store.
     pub async fn upsert<U: AsRef<User>>(&self, user: U) -> anyhow::Result<UserId> {
-        self.db.upsert_user(user).await
+        self.api.db.upsert_user(user).await
     }
 
     /// Inserts or updates user in the `Users` store using `BuiltinUser`.
     pub async fn upsert_builtin(&self, builtin_user: BuiltinUser) -> anyhow::Result<UserId> {
-        let user = match self.db.get_user_by_email(&builtin_user.email).await? {
+        let user = match self.api.db.get_user_by_email(&builtin_user.email).await? {
             Some(user) => User {
                 id: user.id,
                 email: user.email,
@@ -77,7 +74,7 @@ impl<'a> UsersApi<'a> {
         &self,
         user_email: E,
     ) -> anyhow::Result<Option<User>> {
-        self.db.remove_user_by_email(user_email).await
+        self.api.db.remove_user_by_email(user_email).await
     }
 
     /// Retrieves data with the specified key for the user with the specified id.
@@ -86,7 +83,7 @@ impl<'a> UsersApi<'a> {
         user_id: UserId,
         user_data_key: impl Into<UserDataKey<'_>>,
     ) -> anyhow::Result<Option<UserData<R>>> {
-        self.db.get_user_data(user_id, user_data_key).await
+        self.api.db.get_user_data(user_id, user_data_key).await
     }
 
     /// Stores user data under the specified key.
@@ -115,7 +112,7 @@ impl<'a> UsersApi<'a> {
                 }
             },
             UserDataNamespace::Internal(_) => {
-                self.db.upsert_user_data(user_data_key, user_data).await
+                self.api.db.upsert_user_data(user_data_key, user_data).await
             }
         }
     }
@@ -139,7 +136,8 @@ impl<'a> UsersApi<'a> {
                 }
                 None => {
                     log::debug!("Removing `{auto_responder_name}` responder and its requests.");
-                    self.db
+                    self.api
+                        .db
                         .remove_user_data(
                             serialized_user_data.user_id,
                             (
@@ -153,7 +151,7 @@ impl<'a> UsersApi<'a> {
         }
 
         DictionaryDataUserDataSetter::upsert(
-            &self.db,
+            &self.api.db,
             PublicUserDataNamespace::AutoResponders,
             UserData::new(
                 serialized_user_data.user_id,
@@ -175,7 +173,7 @@ impl<'a> UsersApi<'a> {
             bail!("User settings are not valid: {:?}", user_settings);
         }
         DictionaryDataUserDataSetter::upsert(
-            &self.db,
+            &self.api.db,
             PublicUserDataNamespace::UserSettings,
             UserData::new(
                 serialized_user_data.user_id,
@@ -191,7 +189,7 @@ impl<'a> UsersApi<'a> {
         serialized_user_data: UserData<Vec<u8>>,
     ) -> anyhow::Result<()> {
         DictionaryDataUserDataSetter::upsert(
-            &self.db,
+            &self.api.db,
             PublicUserDataNamespace::ContentSecurityPolicies,
             UserData::new(
                 serialized_user_data.user_id,
@@ -212,7 +210,7 @@ impl<'a> UsersApi<'a> {
         serialized_user_data: UserData<Vec<u8>>,
     ) -> anyhow::Result<()> {
         DictionaryDataUserDataSetter::upsert(
-            &self.db,
+            &self.api.db,
             PublicUserDataNamespace::SelfSignedCertificates,
             UserData::new(
                 serialized_user_data.user_id,
@@ -231,33 +229,26 @@ impl<'a> UsersApi<'a> {
 
 impl<DR: DnsResolver> Api<DR> {
     /// Returns an API to work with users.
-    pub fn users(&self) -> UsersApi {
-        UsersApi::new(&self.db)
+    pub fn users(&self) -> UsersApi<DR> {
+        UsersApi::new(self)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::UsersApi;
     use crate::{
-        database::Database,
-        tests::{mock_db, mock_user},
-        users::{PublicUserDataNamespace, User, UserData},
+        tests::{mock_api, mock_user},
+        users::{PublicUserDataNamespace, UserData},
         utils::{AutoResponder, AutoResponderMethod, AutoResponderRequest},
     };
     use std::{borrow::Cow, collections::BTreeMap};
     use time::OffsetDateTime;
 
-    async fn initialize_mock_db(user: &User) -> anyhow::Result<Database> {
-        let db = mock_db().await?;
-        db.upsert_user(user).await.map(|_| db)
-    }
-
     #[actix_rt::test]
     async fn can_update_auto_responders() -> anyhow::Result<()> {
         let mock_user = mock_user()?;
-        let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = UsersApi::new(&mock_db);
+        let api = mock_api().await?;
+        api.db.upsert_user(&mock_user).await?;
 
         let auto_responder_one = AutoResponder {
             name: "name-one".to_string(),
@@ -288,22 +279,23 @@ mod tests {
         };
 
         // Insert auto responders data.
-        api.set_data(
-            PublicUserDataNamespace::AutoResponders,
-            UserData::new(
-                mock_user.id,
-                serde_json::to_vec(
-                    &[
-                        (&auto_responder_one.name, auto_responder_one.clone()),
-                        (&auto_responder_two.name, auto_responder_two.clone()),
-                    ]
-                    .into_iter()
-                    .collect::<BTreeMap<_, _>>(),
-                )?,
-                OffsetDateTime::from_unix_timestamp(946720800)?,
-            ),
-        )
-        .await?;
+        api.users()
+            .set_data(
+                PublicUserDataNamespace::AutoResponders,
+                UserData::new(
+                    mock_user.id,
+                    serde_json::to_vec(
+                        &[
+                            (&auto_responder_one.name, auto_responder_one.clone()),
+                            (&auto_responder_two.name, auto_responder_two.clone()),
+                        ]
+                        .into_iter()
+                        .collect::<BTreeMap<_, _>>(),
+                    )?,
+                    OffsetDateTime::from_unix_timestamp(946720800)?,
+                ),
+            )
+            .await?;
 
         let request_one = AutoResponderRequest {
             // January 1, 2000 11:00:00
@@ -323,7 +315,7 @@ mod tests {
         };
 
         // Insert auto responder requests.
-        mock_db
+        api.db
             .upsert_user_data(
                 (
                     PublicUserDataNamespace::AutoResponders,
@@ -337,7 +329,7 @@ mod tests {
                 ),
             )
             .await?;
-        mock_db
+        api.db
             .upsert_user_data(
                 (
                     PublicUserDataNamespace::AutoResponders,
@@ -354,7 +346,7 @@ mod tests {
 
         // Verify that requests were inserted.
         assert_eq!(
-            mock_db
+            api.db
                 .get_user_data(
                     mock_user.id,
                     (
@@ -371,7 +363,7 @@ mod tests {
             ))
         );
         assert_eq!(
-            mock_db
+            api.db
                 .get_user_data(
                     mock_user.id,
                     (
@@ -389,29 +381,31 @@ mod tests {
         );
 
         // Remove one auto responder and update another.
-        api.set_data(
-            PublicUserDataNamespace::AutoResponders,
-            UserData::new(
-                mock_user.id,
-                serde_json::to_vec(
-                    &[
-                        (&auto_responder_one.name, None),
-                        (
-                            &auto_responder_two.name,
-                            Some(auto_responder_two_new.clone()),
-                        ),
-                    ]
-                    .into_iter()
-                    .collect::<BTreeMap<_, _>>(),
-                )?,
-                OffsetDateTime::from_unix_timestamp(946720800)?,
-            ),
-        )
-        .await?;
+        api.users()
+            .set_data(
+                PublicUserDataNamespace::AutoResponders,
+                UserData::new(
+                    mock_user.id,
+                    serde_json::to_vec(
+                        &[
+                            (&auto_responder_one.name, None),
+                            (
+                                &auto_responder_two.name,
+                                Some(auto_responder_two_new.clone()),
+                            ),
+                        ]
+                        .into_iter()
+                        .collect::<BTreeMap<_, _>>(),
+                    )?,
+                    OffsetDateTime::from_unix_timestamp(946720800)?,
+                ),
+            )
+            .await?;
 
         // Verify that auto responders were correctly updated.
         assert_eq!(
-            api.get_data(mock_user.id, PublicUserDataNamespace::AutoResponders)
+            api.users()
+                .get_data(mock_user.id, PublicUserDataNamespace::AutoResponders)
                 .await?,
             Some(UserData::new(
                 mock_user.id,
@@ -424,7 +418,7 @@ mod tests {
 
         // Verify that requests were updated.
         assert_eq!(
-            mock_db
+            api.db
                 .get_user_data::<Vec<AutoResponderRequest>>(
                     mock_user.id,
                     (
@@ -436,7 +430,7 @@ mod tests {
             None
         );
         assert_eq!(
-            mock_db
+            api.db
                 .get_user_data(
                     mock_user.id,
                     (
