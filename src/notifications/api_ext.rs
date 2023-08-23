@@ -1,27 +1,24 @@
 use crate::{
     api::Api,
-    database::Database,
     network::DnsResolver,
     notifications::{Notification, NotificationContent, NotificationDestination, NotificationId},
 };
 use futures::{pin_mut, StreamExt};
-use std::{borrow::Cow, cmp};
+use std::cmp;
 use time::OffsetDateTime;
 
 /// Defines a maximum number of notifications that can be retrieved from the database at once.
 const MAX_NOTIFICATIONS_PAGE_SIZE: usize = 100;
 
 /// Describes the API to work with notifications.
-pub struct NotificationsApi<'a> {
-    db: Cow<'a, Database>,
+pub struct NotificationsApi<'a, DR: DnsResolver> {
+    api: &'a Api<DR>,
 }
 
-impl<'a> NotificationsApi<'a> {
+impl<'a, DR: DnsResolver> NotificationsApi<'a, DR> {
     /// Creates Notifications API.
-    pub fn new(db: &'a Database) -> Self {
-        Self {
-            db: Cow::Borrowed(db),
-        }
+    pub fn new(api: &'a Api<DR>) -> Self {
+        Self { api }
     }
 
     /// Schedules a new notification.
@@ -31,14 +28,15 @@ impl<'a> NotificationsApi<'a> {
         content: NotificationContent,
         scheduled_at: OffsetDateTime,
     ) -> anyhow::Result<NotificationId> {
-        self.db
+        self.api
+            .db
             .insert_notification(&Notification::new(destination, content, scheduled_at))
             .await
     }
 
     /// Sends pending notifications. The max number to send is limited by `limit`.
     pub async fn send_pending_notifications(&self, limit: usize) -> anyhow::Result<usize> {
-        let pending_notification_ids = self.db.get_notification_ids(
+        let pending_notification_ids = self.api.db.get_notification_ids(
             OffsetDateTime::now_utc(),
             cmp::min(MAX_NOTIFICATIONS_PAGE_SIZE, limit),
         );
@@ -46,7 +44,7 @@ impl<'a> NotificationsApi<'a> {
 
         let mut sent_notifications = 0;
         while let Some(notification_id) = pending_notification_ids.next().await {
-            if let Some(notification) = self.db.get_notification(notification_id?).await? {
+            if let Some(notification) = self.api.db.get_notification(notification_id?).await? {
                 if let Err(err) = self.send_notification(&notification).await {
                     log::error!(
                         "Failed to send notification {}: {:?}",
@@ -55,7 +53,7 @@ impl<'a> NotificationsApi<'a> {
                     );
                 } else {
                     sent_notifications += 1;
-                    self.db.remove_notification(notification.id).await?;
+                    self.api.db.remove_notification(notification.id).await?;
                 }
             }
 
@@ -84,35 +82,27 @@ impl<'a> NotificationsApi<'a> {
 
 impl<DR: DnsResolver> Api<DR> {
     /// Returns an API to work with notifications.
-    pub fn notifications(&self) -> NotificationsApi<'_> {
-        NotificationsApi::new(&self.db)
+    pub fn notifications(&self) -> NotificationsApi<'_, DR> {
+        NotificationsApi::new(self)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::NotificationsApi;
     use crate::{
-        database::Database,
         notifications::{Notification, NotificationContent, NotificationDestination},
-        tests::{mock_db, mock_user},
-        users::User,
+        tests::{mock_api, mock_user},
     };
     use insta::assert_debug_snapshot;
     use time::OffsetDateTime;
 
-    async fn initialize_mock_db(user: &User) -> anyhow::Result<Database> {
-        let db = mock_db().await?;
-        db.upsert_user(user).await.map(|_| db)
-    }
-
     #[actix_rt::test]
     async fn properly_schedules_notification() -> anyhow::Result<()> {
         let mock_user = mock_user()?;
-        let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = NotificationsApi::new(&mock_db);
+        let api = mock_api().await?;
+        api.db.upsert_user(&mock_user).await?;
 
-        assert!(mock_db.get_notification(1.try_into()?).await?.is_none());
+        assert!(api.db.get_notification(1.try_into()?).await?.is_none());
 
         let notifications = vec![
             Notification::new(
@@ -128,15 +118,16 @@ mod tests {
         ];
 
         for notification in notifications.into_iter() {
-            api.schedule_notification(
-                notification.destination,
-                notification.content,
-                notification.scheduled_at,
-            )
-            .await?;
+            api.notifications()
+                .schedule_notification(
+                    notification.destination,
+                    notification.content,
+                    notification.scheduled_at,
+                )
+                .await?;
         }
 
-        assert_debug_snapshot!(mock_db.get_notification(1.try_into()?).await?, @r###"
+        assert_debug_snapshot!(api.db.get_notification(1.try_into()?).await?, @r###"
         Some(
             Notification {
                 id: NotificationId(
@@ -154,7 +145,7 @@ mod tests {
             },
         )
         "###);
-        assert_debug_snapshot!(mock_db.get_notification(2.try_into()?).await?, @r###"
+        assert_debug_snapshot!(api.db.get_notification(2.try_into()?).await?, @r###"
         Some(
             Notification {
                 id: NotificationId(
@@ -172,7 +163,7 @@ mod tests {
             },
         )
         "###);
-        assert_debug_snapshot!(mock_db.get_notification(3.try_into()?).await?, @"None");
+        assert_debug_snapshot!(api.db.get_notification(3.try_into()?).await?, @"None");
 
         Ok(())
     }
@@ -180,8 +171,8 @@ mod tests {
     #[actix_rt::test]
     async fn properly_sends_all_pending_notifications() -> anyhow::Result<()> {
         let mock_user = mock_user()?;
-        let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = NotificationsApi::new(&mock_db);
+        let api = mock_api().await?;
+        api.db.upsert_user(&mock_user).await?;
 
         let notifications = vec![
             Notification::new(
@@ -197,21 +188,22 @@ mod tests {
         ];
 
         for notification in notifications.into_iter() {
-            api.schedule_notification(
-                notification.destination,
-                notification.content,
-                notification.scheduled_at,
-            )
-            .await?;
+            api.notifications()
+                .schedule_notification(
+                    notification.destination,
+                    notification.content,
+                    notification.scheduled_at,
+                )
+                .await?;
         }
 
-        assert!(mock_db.get_notification(1.try_into()?).await?.is_some());
-        assert!(mock_db.get_notification(2.try_into()?).await?.is_some());
+        assert!(api.db.get_notification(1.try_into()?).await?.is_some());
+        assert!(api.db.get_notification(2.try_into()?).await?.is_some());
 
-        assert_eq!(api.send_pending_notifications(3).await?, 2);
+        assert_eq!(api.notifications().send_pending_notifications(3).await?, 2);
 
-        assert!(mock_db.get_notification(1.try_into()?).await?.is_none());
-        assert!(mock_db.get_notification(2.try_into()?).await?.is_none());
+        assert!(api.db.get_notification(1.try_into()?).await?.is_none());
+        assert!(api.db.get_notification(2.try_into()?).await?.is_none());
 
         Ok(())
     }
@@ -219,30 +211,32 @@ mod tests {
     #[actix_rt::test]
     async fn properly_sends_pending_notifications_in_batches() -> anyhow::Result<()> {
         let mock_user = mock_user()?;
-        let mock_db = initialize_mock_db(&mock_user).await?;
-        let api = NotificationsApi::new(&mock_db);
+        let api = mock_api().await?;
+        api.db.upsert_user(&mock_user).await?;
 
         for n in 0..=9 {
-            api.schedule_notification(
-                NotificationDestination::User(123.try_into()?),
-                NotificationContent::String(format!("{}", n)),
-                OffsetDateTime::from_unix_timestamp(946720800 + n)?,
-            )
-            .await?;
+            api.notifications()
+                .schedule_notification(
+                    NotificationDestination::User(123.try_into()?),
+                    NotificationContent::String(format!("{}", n)),
+                    OffsetDateTime::from_unix_timestamp(946720800 + n)?,
+                )
+                .await?;
         }
 
         for n in 0..=9 {
-            assert!(mock_db
+            assert!(api
+                .db
                 .get_notification((n + 1).try_into()?)
                 .await?
                 .is_some());
         }
 
-        assert_eq!(api.send_pending_notifications(3).await?, 3);
+        assert_eq!(api.notifications().send_pending_notifications(3).await?, 3);
 
         for n in 0..=9 {
             assert_eq!(
-                mock_db
+                api.db
                     .get_notification((n + 1).try_into()?)
                     .await?
                     .is_some(),
@@ -250,11 +244,11 @@ mod tests {
             );
         }
 
-        assert_eq!(api.send_pending_notifications(3).await?, 3);
+        assert_eq!(api.notifications().send_pending_notifications(3).await?, 3);
 
         for n in 0..=9 {
             assert_eq!(
-                mock_db
+                api.db
                     .get_notification((n + 1).try_into()?)
                     .await?
                     .is_some(),
@@ -262,10 +256,11 @@ mod tests {
             );
         }
 
-        assert_eq!(api.send_pending_notifications(10).await?, 4);
+        assert_eq!(api.notifications().send_pending_notifications(10).await?, 4);
 
         for n in 0..=9 {
-            assert!(mock_db
+            assert!(api
+                .db
                 .get_notification((n + 1).try_into()?)
                 .await?
                 .is_none());
