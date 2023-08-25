@@ -20,6 +20,7 @@ use actix_identity::IdentityMiddleware;
 use actix_session::{storage::CookieSessionStore, SessionMiddleware};
 use actix_web::{cookie::Key, middleware, web, App, HttpServer, Result};
 use anyhow::Context;
+use lettre::{transport::smtp::authentication::Credentials, AsyncSmtpTransport, Tokio1Executor};
 use std::sync::Arc;
 
 #[actix_rt::main]
@@ -37,13 +38,24 @@ pub async fn run(
     )))?;
     let database = Database::open_path(datastore_dir).await?;
 
-    let security = Security::new(config.clone(), database.clone(), create_webauthn(&config)?);
+    let email_transport = if let Some(ref smtp_config) = config.as_ref().smtp {
+        AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp_config.address)?
+            .credentials(Credentials::new(
+                smtp_config.username.clone(),
+                smtp_config.password.clone(),
+            ))
+            .build()
+    } else {
+        AsyncSmtpTransport::<Tokio1Executor>::unencrypted_localhost()
+    };
+
     let api = Arc::new(Api::new(
         config.clone(),
         database,
         search_index,
-        Network::new(TokioDnsResolver::create()),
+        Network::new(TokioDnsResolver::create(), email_transport),
     ));
+    let security = Security::new(api.clone(), create_webauthn(&config)?);
 
     if let Some(ref builtin_users) = builtin_users {
         builtin_users_initializer(&api, builtin_users)

@@ -1,4 +1,9 @@
-use crate::{api::Api, database::Database, network::DnsResolver, utils::Util};
+use crate::{
+    api::Api,
+    database::Database,
+    network::{DnsResolver, EmailTransport},
+    utils::Util,
+};
 use std::borrow::Cow;
 
 pub struct UtilsApi<'a> {
@@ -19,7 +24,7 @@ impl<'a> UtilsApi<'a> {
     }
 }
 
-impl<DR: DnsResolver> Api<DR> {
+impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
     /// Returns an API to retrieve available utils.
     pub fn utils(&self) -> UtilsApi {
         UtilsApi::new(&self.db)

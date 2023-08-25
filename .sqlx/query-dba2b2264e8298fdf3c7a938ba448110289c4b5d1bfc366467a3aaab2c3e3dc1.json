@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "\nSELECT id, email, handle, credentials, created, roles, activated\nFROM users\nWHERE id = ?1\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Int64"
+      },
+      {
+        "name": "email",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "handle",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "credentials",
+        "ordinal": 3,
+        "type_info": "Blob"
+      },
+      {
+        "name": "created",
+        "ordinal": 4,
+        "type_info": "Int64"
+      },
+      {
+        "name": "roles",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "activated",
+        "ordinal": 6,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "dba2b2264e8298fdf3c7a938ba448110289c4b5d1bfc366467a3aaab2c3e3dc1"
+}

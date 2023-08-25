@@ -1,4 +1,8 @@
-use crate::{api::Api, network::DnsResolver, scheduler::scheduler_job::SchedulerJob};
+use crate::{
+    api::Api,
+    network::{DnsResolver, EmailTransport},
+    scheduler::scheduler_job::SchedulerJob,
+};
 use anyhow::anyhow;
 use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobId, JobStoredData};
@@ -11,8 +15,8 @@ use tokio_cron_scheduler::{Job, JobId, JobStoredData};
 pub(crate) struct ResourcesTrackersTriggerJob;
 impl ResourcesTrackersTriggerJob {
     /// Tries to resume existing `ResourcesTrackersTrigger` job.
-    pub async fn try_resume<DR: DnsResolver>(
-        api: Arc<Api<DR>>,
+    pub async fn try_resume<DR: DnsResolver, ET: EmailTransport>(
+        api: Arc<Api<DR, ET>>,
         job_id: JobId,
         existing_job_data: JobStoredData,
     ) -> anyhow::Result<Option<Job>> {
@@ -68,8 +72,8 @@ impl ResourcesTrackersTriggerJob {
     }
 
     /// Creates a new `ResourcesTrackersTrigger` job.
-    pub async fn create<DR: DnsResolver>(
-        api: Arc<Api<DR>>,
+    pub async fn create<DR: DnsResolver, ET: EmailTransport>(
+        api: Arc<Api<DR, ET>>,
         schedule: impl AsRef<str>,
     ) -> anyhow::Result<Job> {
         // Now, create and schedule new job.

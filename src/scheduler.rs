@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::{
     api::Api,
-    network::DnsResolver,
+    network::{DnsResolver, EmailTransport, EmailTransportError},
     scheduler::scheduler_jobs::{
         NotificationsSendJob, ResourcesTrackersFetchJob, ResourcesTrackersScheduleJob,
         ResourcesTrackersTriggerJob,
@@ -24,14 +24,17 @@ use scheduler_store::SchedulerStore;
 const MAX_JOBS_PAGE_SIZE: usize = 1000;
 
 /// The scheduler is responsible for scheduling and executing Secutils.dev jobs.
-pub struct Scheduler<DR: DnsResolver> {
+pub struct Scheduler<DR: DnsResolver, ET: EmailTransport> {
     inner_scheduler: JobScheduler,
-    api: Arc<Api<DR>>,
+    api: Arc<Api<DR, ET>>,
 }
 
-impl<DR: DnsResolver> Scheduler<DR> {
+impl<DR: DnsResolver, ET: EmailTransport> Scheduler<DR, ET>
+where
+    ET::Error: EmailTransportError,
+{
     /// Starts the scheduler resuming existing jobs and adding new ones.
-    pub async fn start(api: Arc<Api<DR>>) -> anyhow::Result<Self> {
+    pub async fn start(api: Arc<Api<DR, ET>>) -> anyhow::Result<Self> {
         let scheduler = Self {
             inner_scheduler: JobScheduler::new_with_storage_and_code(
                 Box::new(SchedulerStore::new(api.db.clone())),

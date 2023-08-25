@@ -1,6 +1,6 @@
 use crate::{
     api::Api,
-    network::DnsResolver,
+    network::{DnsResolver, EmailTransport},
     users::User,
     utils::{
         UtilsActionResult, UtilsCertificatesAction, UtilsWebScrapingAction, UtilsWebSecurityAction,
@@ -21,7 +21,10 @@ pub enum UtilsAction {
 
 impl UtilsAction {
     /// Validates action parameters and throws if action parameters aren't valid.
-    pub async fn validate<DR: DnsResolver>(&self, api: &Api<DR>) -> anyhow::Result<()> {
+    pub async fn validate<DR: DnsResolver, ET: EmailTransport>(
+        &self,
+        api: &Api<DR, ET>,
+    ) -> anyhow::Result<()> {
         match self {
             UtilsAction::Certificates(action) => action.validate(),
             UtilsAction::Webhooks(action) => action.validate(),
@@ -31,10 +34,10 @@ impl UtilsAction {
     }
 
     /// Consumes and handles action.
-    pub async fn handle<DR: DnsResolver>(
+    pub async fn handle<DR: DnsResolver, ET: EmailTransport>(
         self,
         user: User,
-        api: &Api<DR>,
+        api: &Api<DR, ET>,
     ) -> anyhow::Result<UtilsActionResult> {
         match self {
             UtilsAction::Certificates(action) => action
@@ -69,6 +72,7 @@ mod tests {
         },
     };
     use insta::assert_debug_snapshot;
+    use lettre::transport::stub::AsyncStubTransport;
     use std::{net::Ipv4Addr, time::Duration};
     use trust_dns_resolver::{
         proto::rr::{rdata::A, RData, Record},
@@ -76,8 +80,13 @@ mod tests {
     };
     use url::Url;
 
-    fn mock_network_with_records<const N: usize>(records: Vec<Record>) -> Network<MockResolver<N>> {
-        Network::new(MockResolver::new_with_records::<N>(records))
+    fn mock_network_with_records<const N: usize>(
+        records: Vec<Record>,
+    ) -> Network<MockResolver<N>, AsyncStubTransport> {
+        Network::new(
+            MockResolver::new_with_records::<N>(records),
+            AsyncStubTransport::new_ok(),
+        )
     }
 
     #[actix_rt::test]

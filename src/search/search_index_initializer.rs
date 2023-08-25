@@ -1,6 +1,6 @@
 use crate::{
     api::Api,
-    network::DnsResolver,
+    network::{DnsResolver, EmailTransport},
     search::{SearchFilter, SearchItem},
     utils::Util,
 };
@@ -65,7 +65,9 @@ fn util_to_search_item(util: Util, timestamp: OffsetDateTime) -> SearchItem {
 }
 
 /// Initialize search index that powers Secutils app wide search.
-pub async fn populate_search_index<DR: DnsResolver>(api: &Api<DR>) -> anyhow::Result<()> {
+pub async fn populate_search_index<DR: DnsResolver, ET: EmailTransport>(
+    api: &Api<DR, ET>,
+) -> anyhow::Result<()> {
     // Flatten utils tree to a map.
     let mut utils = HashMap::new();
     flatten_utils_tree(api.utils().get_all().await?, &mut utils);

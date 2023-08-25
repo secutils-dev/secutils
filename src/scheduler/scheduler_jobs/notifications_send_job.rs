@@ -1,4 +1,8 @@
-use crate::{api::Api, network::DnsResolver, scheduler::scheduler_job::SchedulerJob};
+use crate::{
+    api::Api,
+    network::{DnsResolver, EmailTransport, EmailTransportError},
+    scheduler::scheduler_job::SchedulerJob,
+};
 use std::{sync::Arc, time::Instant};
 use tokio_cron_scheduler::{Job, JobId, JobScheduler, JobStoredData};
 
@@ -9,11 +13,14 @@ const MAX_NOTIFICATIONS_TO_SEND: usize = 100;
 pub(crate) struct NotificationsSendJob;
 impl NotificationsSendJob {
     /// Tries to resume existing `NotificationsSendJob` job.
-    pub async fn try_resume<DR: DnsResolver>(
-        api: Arc<Api<DR>>,
+    pub async fn try_resume<DR: DnsResolver, ET: EmailTransport>(
+        api: Arc<Api<DR, ET>>,
         _: JobId,
         existing_job_data: JobStoredData,
-    ) -> anyhow::Result<Option<Job>> {
+    ) -> anyhow::Result<Option<Job>>
+    where
+        ET::Error: EmailTransportError,
+    {
         // If we changed the job parameters, we need to remove the old job and create a new one.
         let mut new_job = Self::create(api).await?;
         Ok(if new_job.job_data()?.job == existing_job_data.job {
@@ -25,7 +32,12 @@ impl NotificationsSendJob {
     }
 
     /// Creates a new `NotificationsSendJob` job.
-    pub async fn create<DR: DnsResolver>(api: Arc<Api<DR>>) -> anyhow::Result<Job> {
+    pub async fn create<DR: DnsResolver, ET: EmailTransport>(
+        api: Arc<Api<DR, ET>>,
+    ) -> anyhow::Result<Job>
+    where
+        ET::Error: EmailTransportError,
+    {
         let mut job = Job::new_async(
             api.config.jobs.notifications_send.clone(),
             move |_, scheduler| {
@@ -48,7 +60,13 @@ impl NotificationsSendJob {
     }
 
     /// Executes a `NotificationsSendJob` job.
-    async fn execute<DR: DnsResolver>(api: Arc<Api<DR>>, _: JobScheduler) -> anyhow::Result<()> {
+    async fn execute<DR: DnsResolver, ET: EmailTransport>(
+        api: Arc<Api<DR, ET>>,
+        _: JobScheduler,
+    ) -> anyhow::Result<()>
+    where
+        ET::Error: EmailTransportError,
+    {
         let execute_start = Instant::now();
         match api
             .notifications()
@@ -81,7 +99,7 @@ mod tests {
     use crate::{
         notifications::{NotificationContent, NotificationDestination},
         scheduler::{scheduler_job::SchedulerJob, scheduler_store::SchedulerStore},
-        tests::{mock_api_with_config, mock_config, mock_schedule_in_sec},
+        tests::{mock_api_with_config, mock_config, mock_schedule_in_sec, mock_user},
     };
     use cron::Schedule;
     use futures::StreamExt;
@@ -181,13 +199,15 @@ mod tests {
         let mut config = mock_config()?;
         config.jobs.notifications_send = Schedule::try_from(mock_schedule_in_sec(2).as_str())?;
 
+        let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(config).await?);
+        api.db.upsert_user(&user).await?;
 
         for n in 0..=(MAX_NOTIFICATIONS_TO_SEND as i64) {
             api.notifications()
                 .schedule_notification(
-                    NotificationDestination::User(123.try_into()?),
-                    NotificationContent::String(format!("{}", n)),
+                    NotificationDestination::User(user.id),
+                    NotificationContent::Text(format!("message {}", n)),
                     OffsetDateTime::from_unix_timestamp(946720800 + n)?,
                 )
                 .await?;
@@ -238,6 +258,28 @@ mod tests {
                 .len(),
             1
         );
+
+        let messages = api.network.email_transport.messages().await;
+        assert_eq!(messages.len(), 100);
+        assert_debug_snapshot!(messages[0], @r###"
+        (
+            Envelope {
+                forward_path: [
+                    Address {
+                        serialized: "dev@secutils.dev",
+                        at_start: 3,
+                    },
+                ],
+                reverse_path: Some(
+                    Address {
+                        serialized: "dev@secutils.dev",
+                        at_start: 3,
+                    },
+                ),
+            },
+            "From: dev@secutils.dev\r\nReply-To: dev@secutils.dev\r\nTo: dev@secutils.dev\r\nSubject: [NO SUBJECT]\r\nDate: Sat, 01 Jan 2000 10:00:00 +0000\r\nContent-Transfer-Encoding: 7bit\r\n\r\nmessage 0",
+        )
+        "###);
 
         Ok(())
     }

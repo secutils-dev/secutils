@@ -2,7 +2,7 @@ use crate::{
     api::Api,
     config::Config,
     database::Database,
-    network::{DnsResolver, IpAddrExt, Network},
+    network::{DnsResolver, EmailTransport, IpAddrExt, Network},
     scheduler::SchedulerJob,
     users::{
         DictionaryDataUserDataSetter, InternalUserDataNamespace, PublicUserDataNamespace, UserData,
@@ -29,15 +29,15 @@ use uuid::Uuid;
 /// Defines a maximum number of jobs that can be retrieved from the database at once.
 const MAX_JOBS_PAGE_SIZE: usize = 1000;
 
-pub struct WebScrapingApi<'a, C: AsRef<Config>, DR: DnsResolver> {
+pub struct WebScrapingApi<'a, C: AsRef<Config>, DR: DnsResolver, ET: EmailTransport> {
     config: C,
     db: Cow<'a, Database>,
-    network: &'a Network<DR>,
+    network: &'a Network<DR, ET>,
 }
 
-impl<'a, C: AsRef<Config>, DR: DnsResolver> WebScrapingApi<'a, C, DR> {
+impl<'a, C: AsRef<Config>, DR: DnsResolver, ET: EmailTransport> WebScrapingApi<'a, C, DR, ET> {
     /// Creates WebScraping API.
-    pub fn new(config: C, db: &'a Database, network: &'a Network<DR>) -> Self {
+    pub fn new(config: C, db: &'a Database, network: &'a Network<DR, ET>) -> Self {
         Self {
             config,
             db: Cow::Borrowed(db),
@@ -418,9 +418,9 @@ impl<'a, C: AsRef<Config>, DR: DnsResolver> WebScrapingApi<'a, C, DR> {
     }
 }
 
-impl<DR: DnsResolver> Api<DR> {
+impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
     /// Returns an API to work with web scraping data.
-    pub fn web_scraping(&self) -> WebScrapingApi<&Config, DR> {
+    pub fn web_scraping(&self) -> WebScrapingApi<&Config, DR, ET> {
         WebScrapingApi::new(&self.config, &self.db, &self.network)
     }
 }

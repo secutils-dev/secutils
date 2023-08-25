@@ -1,7 +1,11 @@
-use crate::{api::Api, network::DnsResolver, users::BuiltinUser};
+use crate::{
+    api::Api,
+    network::{DnsResolver, EmailTransport},
+    users::BuiltinUser,
+};
 
-pub async fn builtin_users_initializer<BU: AsRef<str>, DR: DnsResolver>(
-    api: &Api<DR>,
+pub async fn builtin_users_initializer<BU: AsRef<str>, DR: DnsResolver, ET: EmailTransport>(
+    api: &Api<DR, ET>,
     builtin_users: BU,
 ) -> anyhow::Result<()> {
     log::info!("Initializing builtin users");

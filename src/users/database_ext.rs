@@ -14,6 +14,23 @@ use time::OffsetDateTime;
 
 /// Extends primary database with the user management-related methods.
 impl Database {
+    /// Retrieves user from the `Users` table using user ID.
+    pub async fn get_user(&self, id: UserId) -> anyhow::Result<Option<User>> {
+        query_as!(
+            RawUser,
+            r#"
+SELECT id, email, handle, credentials, created, roles, activated
+FROM users
+WHERE id = ?1
+                "#,
+            *id
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .map(User::try_from)
+        .transpose()
+    }
+
     /// Retrieves user from the `Users` table using user email.
     pub async fn get_user_by_email<T: AsRef<str>>(&self, email: T) -> anyhow::Result<Option<User>> {
         let email = email.as_ref();
@@ -330,70 +347,76 @@ mod tests {
             db.upsert_user(&user).await?;
         }
 
-        assert_debug_snapshot!(db.get_user_by_email("dev@secutils.dev").await?, @r###"
-        Some(
-            User {
-                id: UserId(
-                    1,
+        let user_by_id = db.get_user(1.try_into()?).await?.unwrap();
+        let user_by_email = db.get_user_by_email("dev@secutils.dev").await?.unwrap();
+        assert_eq!(user_by_id.id, user_by_email.id);
+        assert_debug_snapshot!(user_by_email, @r###"
+        User {
+            id: UserId(
+                1,
+            ),
+            email: "dev@secutils.dev",
+            handle: "dev-handle",
+            credentials: StoredCredentials {
+                password_hash: Some(
+                    "hash",
                 ),
-                email: "dev@secutils.dev",
-                handle: "dev-handle",
-                credentials: StoredCredentials {
-                    password_hash: Some(
-                        "hash",
-                    ),
-                    passkey: None,
-                },
-                roles: {},
-                created: 2000-01-01 10:00:00.0 +00:00:00,
-                activated: true,
+                passkey: None,
             },
-        )
+            roles: {},
+            created: 2000-01-01 10:00:00.0 +00:00:00,
+            activated: true,
+        }
         "###);
-        assert_debug_snapshot!(db.get_user_by_email("prod@secutils.dev").await?, @r###"
-        Some(
-            User {
-                id: UserId(
-                    2,
+
+        let user_by_id = db.get_user(2.try_into()?).await?.unwrap();
+        let user_by_email = db.get_user_by_email("prod@secutils.dev").await?.unwrap();
+        assert_eq!(user_by_id.id, user_by_email.id);
+        assert_debug_snapshot!(user_by_email, @r###"
+        User {
+            id: UserId(
+                2,
+            ),
+            email: "prod@secutils.dev",
+            handle: "prod-handle",
+            credentials: StoredCredentials {
+                password_hash: Some(
+                    "hash_prod",
                 ),
-                email: "prod@secutils.dev",
-                handle: "prod-handle",
-                credentials: StoredCredentials {
-                    password_hash: Some(
-                        "hash_prod",
-                    ),
-                    passkey: None,
-                },
-                roles: {
-                    "admin",
-                },
-                created: 2010-01-01 10:00:00.0 +00:00:00,
-                activated: false,
+                passkey: None,
             },
-        )
+            roles: {
+                "admin",
+            },
+            created: 2010-01-01 10:00:00.0 +00:00:00,
+            activated: false,
+        }
         "###);
-        assert_debug_snapshot!(db.get_user_by_email("user@secutils.dev").await?, @r###"
-        Some(
-            User {
-                id: UserId(
-                    3,
+
+        let user_by_id = db.get_user(3.try_into()?).await?.unwrap();
+        let user_by_email = db.get_user_by_email("user@secutils.dev").await?.unwrap();
+        assert_eq!(user_by_id.id, user_by_email.id);
+        assert_debug_snapshot!(user_by_email, @r###"
+        User {
+            id: UserId(
+                3,
+            ),
+            email: "user@secutils.dev",
+            handle: "handle",
+            credentials: StoredCredentials {
+                password_hash: Some(
+                    "hash",
                 ),
-                email: "user@secutils.dev",
-                handle: "handle",
-                credentials: StoredCredentials {
-                    password_hash: Some(
-                        "hash",
-                    ),
-                    passkey: None,
-                },
-                roles: {
-                    "power-user",
-                },
-                created: 2000-01-01 10:00:00.0 +00:00:00,
-                activated: false,
+                passkey: None,
             },
-        )
+            roles: {
+                "power-user",
+            },
+            created: 2000-01-01 10:00:00.0 +00:00:00,
+            activated: false,
+        }
         "###);
+
         assert!(db
             .get_user_by_email("unknown@secutils.dev")
             .await?

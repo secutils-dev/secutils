@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use webauthn_rs::prelude::Passkey;
 
 /// Represents possible stored user credentials.
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct StoredCredentials {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password_hash: Option<String>,

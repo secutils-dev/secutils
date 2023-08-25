@@ -41,13 +41,13 @@ mod tests {
         assert_eq!(
             Notification::new(
                 NotificationDestination::User(123.try_into()?),
-                NotificationContent::String("abc".to_string()),
+                NotificationContent::Text("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?
             ),
             Notification {
                 id: NotificationId::empty(),
                 destination: NotificationDestination::User(123.try_into()?),
-                content: NotificationContent::String("abc".to_string()),
+                content: NotificationContent::Text("abc".to_string()),
                 scheduled_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             }
         );

@@ -1,9 +1,17 @@
 use crate::{
     api::Api,
-    network::DnsResolver,
-    notifications::{Notification, NotificationContent, NotificationDestination, NotificationId},
+    network::{DnsResolver, EmailTransport, EmailTransportError},
+    notifications::{
+        notification_content::NotificationEmailContent, Notification, NotificationContent,
+        NotificationDestination, NotificationId,
+    },
 };
+use anyhow::{anyhow, bail, Context};
 use futures::{pin_mut, StreamExt};
+use lettre::{
+    message::{header::ContentType, MultiPart, SinglePart},
+    Message,
+};
 use std::cmp;
 use time::OffsetDateTime;
 
@@ -11,13 +19,16 @@ use time::OffsetDateTime;
 const MAX_NOTIFICATIONS_PAGE_SIZE: usize = 100;
 
 /// Describes the API to work with notifications.
-pub struct NotificationsApi<'a, DR: DnsResolver> {
-    api: &'a Api<DR>,
+pub struct NotificationsApi<'a, DR: DnsResolver, ET: EmailTransport> {
+    api: &'a Api<DR, ET>,
 }
 
-impl<'a, DR: DnsResolver> NotificationsApi<'a, DR> {
+impl<'a, DR: DnsResolver, ET: EmailTransport> NotificationsApi<'a, DR, ET>
+where
+    ET::Error: EmailTransportError,
+{
     /// Creates Notifications API.
-    pub fn new(api: &'a Api<DR>) -> Self {
+    pub fn new(api: &'a Api<DR, ET>) -> Self {
         Self { api }
     }
 
@@ -45,15 +56,16 @@ impl<'a, DR: DnsResolver> NotificationsApi<'a, DR> {
         let mut sent_notifications = 0;
         while let Some(notification_id) = pending_notification_ids.next().await {
             if let Some(notification) = self.api.db.get_notification(notification_id?).await? {
-                if let Err(err) = self.send_notification(&notification).await {
+                let notification_id = notification.id;
+                if let Err(err) = self.send_notification(notification).await {
                     log::error!(
                         "Failed to send notification {}: {:?}",
-                        *notification.id,
+                        *notification_id,
                         err
                     );
                 } else {
                     sent_notifications += 1;
-                    self.api.db.remove_notification(notification.id).await?;
+                    self.api.db.remove_notification(notification_id).await?;
                 }
             }
 
@@ -66,10 +78,29 @@ impl<'a, DR: DnsResolver> NotificationsApi<'a, DR> {
     }
 
     /// Sends notification and removes it from the database, if it was sent successfully.
-    async fn send_notification(&self, notification: &Notification) -> anyhow::Result<()> {
+    async fn send_notification(&self, notification: Notification) -> anyhow::Result<()> {
         match notification.destination {
             NotificationDestination::User(user_id) => {
-                log::info!("Sending notification to {:?}: {:?}", user_id, notification);
+                let user = self
+                    .api
+                    .users()
+                    .get(user_id)
+                    .await?
+                    .ok_or_else(|| anyhow!("User with ID `{}` is not found.", *user_id))?;
+                self.send_email_notification(
+                    user.email,
+                    notification.content.into(),
+                    notification.scheduled_at,
+                )
+                .await?;
+            }
+            NotificationDestination::Email(email_address) => {
+                self.send_email_notification(
+                    email_address,
+                    notification.content.into(),
+                    notification.scheduled_at,
+                )
+                .await?;
             }
             NotificationDestination::ServerLog => {
                 log::info!("Sending notification: {:?}", notification);
@@ -78,11 +109,64 @@ impl<'a, DR: DnsResolver> NotificationsApi<'a, DR> {
 
         Ok(())
     }
+
+    /// Send email notification using configured SMTP server.
+    async fn send_email_notification(
+        &self,
+        recipient: String,
+        email: NotificationEmailContent,
+        timestamp: OffsetDateTime,
+    ) -> anyhow::Result<()> {
+        let smtp_config = if let Some(ref smtp_config) = self.api.config.as_ref().smtp {
+            smtp_config
+        } else {
+            bail!("SMTP is not configured.");
+        };
+
+        let recipient = if let Some(ref catch_all) = smtp_config.catch_all_recipient {
+            catch_all.parse()?
+        } else {
+            recipient
+                .parse()
+                .with_context(|| format!("Cannot parse TO address: {}", recipient))?
+        };
+
+        let message_builder = Message::builder()
+            .from(smtp_config.username.parse()?)
+            .reply_to(smtp_config.username.parse()?)
+            .to(recipient)
+            .subject(&email.subject)
+            .date(timestamp.into());
+
+        let message = match email.html {
+            Some(html) => message_builder.multipart(
+                MultiPart::alternative()
+                    .singlepart(
+                        SinglePart::builder()
+                            .header(ContentType::TEXT_PLAIN)
+                            .body(email.text),
+                    )
+                    .singlepart(
+                        SinglePart::builder()
+                            .header(ContentType::TEXT_HTML)
+                            .body(html),
+                    ),
+            )?,
+            None => message_builder.body(email.text)?,
+        };
+
+        self.api.network.email_transport.send(message).await?;
+
+        Ok(())
+    }
 }
 
-impl<DR: DnsResolver> Api<DR> {
+impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET>
+where
+    ET::Error: EmailTransportError,
+{
     /// Returns an API to work with notifications.
-    pub fn notifications(&self) -> NotificationsApi<'_, DR> {
+    pub fn notifications(&self) -> NotificationsApi<'_, DR, ET> {
         NotificationsApi::new(self)
     }
 }
@@ -90,7 +174,9 @@ impl<DR: DnsResolver> Api<DR> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        notifications::{Notification, NotificationContent, NotificationDestination},
+        notifications::{
+            Notification, NotificationContent, NotificationDestination, NotificationEmailContent,
+        },
         tests::{mock_api, mock_user},
     };
     use insta::assert_debug_snapshot;
@@ -107,12 +193,12 @@ mod tests {
         let notifications = vec![
             Notification::new(
                 NotificationDestination::User(123.try_into()?),
-                NotificationContent::String("abc".to_string()),
+                NotificationContent::Text("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
             Notification::new(
                 NotificationDestination::User(123.try_into()?),
-                NotificationContent::String("abc".to_string()),
+                NotificationContent::Text("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
         ];
@@ -138,7 +224,7 @@ mod tests {
                         123,
                     ),
                 ),
-                content: String(
+                content: Text(
                     "abc",
                 ),
                 scheduled_at: 2000-01-01 10:00:00.0 +00:00:00,
@@ -156,7 +242,7 @@ mod tests {
                         123,
                     ),
                 ),
-                content: String(
+                content: Text(
                     "abc",
                 ),
                 scheduled_at: 2000-01-01 10:00:00.0 +00:00:00,
@@ -176,13 +262,15 @@ mod tests {
 
         let notifications = vec![
             Notification::new(
-                NotificationDestination::User(123.try_into()?),
-                NotificationContent::String("abc".to_string()),
+                NotificationDestination::User(mock_user.id),
+                NotificationContent::Text("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720700)?,
             ),
             Notification::new(
-                NotificationDestination::User(123.try_into()?),
-                NotificationContent::String("abc".to_string()),
+                NotificationDestination::Email("some@secutils.dev".to_string()),
+                NotificationContent::Email(NotificationEmailContent::html(
+                    "subject", "text", "html",
+                )),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
         ];
@@ -205,6 +293,68 @@ mod tests {
         assert!(api.db.get_notification(1.try_into()?).await?.is_none());
         assert!(api.db.get_notification(2.try_into()?).await?.is_none());
 
+        let messages = api.network.email_transport.messages().await;
+        assert_eq!(messages.len(), 2);
+
+        let boundary_regex = regex::Regex::new(r#"boundary=\"(.+)\""#)?;
+        let messages = messages
+            .into_iter()
+            .map(|(envelope, content)| {
+                let boundary = boundary_regex
+                    .captures(&content)
+                    .and_then(|captures| captures.get(1))
+                    .map(|capture| capture.as_str());
+
+                (
+                    envelope,
+                    if let Some(boundary) = boundary {
+                        content.replace(boundary, "BOUNDARY")
+                    } else {
+                        content
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_debug_snapshot!(messages, @r###"
+        [
+            (
+                Envelope {
+                    forward_path: [
+                        Address {
+                            serialized: "dev@secutils.dev",
+                            at_start: 3,
+                        },
+                    ],
+                    reverse_path: Some(
+                        Address {
+                            serialized: "dev@secutils.dev",
+                            at_start: 3,
+                        },
+                    ),
+                },
+                "From: dev@secutils.dev\r\nReply-To: dev@secutils.dev\r\nTo: dev@secutils.dev\r\nSubject: [NO SUBJECT]\r\nDate: Sat, 01 Jan 2000 09:58:20 +0000\r\nContent-Transfer-Encoding: 7bit\r\n\r\nabc",
+            ),
+            (
+                Envelope {
+                    forward_path: [
+                        Address {
+                            serialized: "some@secutils.dev",
+                            at_start: 4,
+                        },
+                    ],
+                    reverse_path: Some(
+                        Address {
+                            serialized: "dev@secutils.dev",
+                            at_start: 3,
+                        },
+                    ),
+                },
+                "From: dev@secutils.dev\r\nReply-To: dev@secutils.dev\r\nTo: some@secutils.dev\r\nSubject: subject\r\nDate: Sat, 01 Jan 2000 10:00:00 +0000\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative;\r\n boundary=\"BOUNDARY\"\r\n\r\n--BOUNDARY\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\ntext\r\n--BOUNDARY\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\nhtml\r\n--BOUNDARY--\r\n",
+            ),
+        ]
+        "###);
+
         Ok(())
     }
 
@@ -217,8 +367,8 @@ mod tests {
         for n in 0..=9 {
             api.notifications()
                 .schedule_notification(
-                    NotificationDestination::User(123.try_into()?),
-                    NotificationContent::String(format!("{}", n)),
+                    NotificationDestination::User(mock_user.id),
+                    NotificationContent::Text(format!("{}", n)),
                     OffsetDateTime::from_unix_timestamp(946720800 + n)?,
                 )
                 .await?;

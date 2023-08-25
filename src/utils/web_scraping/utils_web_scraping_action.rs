@@ -1,6 +1,6 @@
 use crate::{
     api::Api,
-    network::{DnsResolver, IpAddrExt},
+    network::{DnsResolver, EmailTransport, IpAddrExt},
     users::User,
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
@@ -39,7 +39,10 @@ pub enum UtilsWebScrapingAction {
 
 impl UtilsWebScrapingAction {
     /// Validates action parameters and throws if action parameters aren't valid.
-    pub async fn validate<DR: DnsResolver>(&self, api: &Api<DR>) -> anyhow::Result<()> {
+    pub async fn validate<DR: DnsResolver, ET: EmailTransport>(
+        &self,
+        api: &Api<DR, ET>,
+    ) -> anyhow::Result<()> {
         match self {
             UtilsWebScrapingAction::FetchWebPageResources { tracker_name, .. }
             | UtilsWebScrapingAction::RemoveWebPageResources { tracker_name, .. }
@@ -132,10 +135,10 @@ impl UtilsWebScrapingAction {
         Ok(())
     }
 
-    pub async fn handle<DR: DnsResolver>(
+    pub async fn handle<DR: DnsResolver, ET: EmailTransport>(
         self,
         user: User,
-        api: &Api<DR>,
+        api: &Api<DR, ET>,
     ) -> anyhow::Result<UtilsWebScrapingActionResult> {
         match self {
             UtilsWebScrapingAction::SaveWebPageResourcesTracker { tracker } => {

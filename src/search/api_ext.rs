@@ -1,11 +1,11 @@
 use crate::{
     api::Api,
-    network::DnsResolver,
+    network::{DnsResolver, EmailTransport},
     search::{SearchFilter, SearchIndex, SearchItem},
 };
 use std::borrow::Cow;
 
-impl<DR: DnsResolver> Api<DR> {
+impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
     /// Returns an API to perform application-wide search.
     pub fn search(&self) -> SearchApi {
         SearchApi::new(&self.search_index)

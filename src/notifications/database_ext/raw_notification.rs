@@ -53,7 +53,7 @@ mod tests {
             Notification {
                 id: 1.try_into()?,
                 destination: NotificationDestination::User(123.try_into()?),
-                content: NotificationContent::String("abc".to_string()),
+                content: NotificationContent::Text("abc".to_string()),
                 scheduled_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             }
         );
@@ -67,7 +67,7 @@ mod tests {
             RawNotification::try_from(&Notification {
                 id: 1.try_into()?,
                 destination: NotificationDestination::User(123.try_into()?),
-                content: NotificationContent::String("abc".to_string()),
+                content: NotificationContent::Text("abc".to_string()),
                 scheduled_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             RawNotification {

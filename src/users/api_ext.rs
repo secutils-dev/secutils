@@ -1,6 +1,6 @@
 use crate::{
     api::Api,
-    network::DnsResolver,
+    network::{DnsResolver, EmailTransport},
     users::{
         BuiltinUser, DictionaryDataUserDataSetter, PublicUserDataNamespace, User, UserData,
         UserDataKey, UserDataNamespace, UserId, UserSettingsSetter,
@@ -15,14 +15,19 @@ use time::OffsetDateTime;
 pub mod errors;
 pub mod user_data_setters;
 
-pub struct UsersApi<'a, DR: DnsResolver> {
-    api: &'a Api<DR>,
+pub struct UsersApi<'a, DR: DnsResolver, ET: EmailTransport> {
+    api: &'a Api<DR, ET>,
 }
 
-impl<'a, DR: DnsResolver> UsersApi<'a, DR> {
+impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
     /// Creates Users API.
-    pub fn new(api: &'a Api<DR>) -> Self {
+    pub fn new(api: &'a Api<DR, ET>) -> Self {
         Self { api }
+    }
+
+    /// Retrieves the user by the specified ID.
+    pub async fn get(&self, id: UserId) -> anyhow::Result<Option<User>> {
+        self.api.db.get_user(id).await
     }
 
     /// Retrieves the user using the specified email.
@@ -115,6 +120,15 @@ impl<'a, DR: DnsResolver> UsersApi<'a, DR> {
                 self.api.db.upsert_user_data(user_data_key, user_data).await
             }
         }
+    }
+
+    /// Removes data with the specified key for the user with the specified id.
+    pub async fn remove_data(
+        &self,
+        user_id: UserId,
+        user_data_key: impl Into<UserDataKey<'_>>,
+    ) -> anyhow::Result<()> {
+        self.api.db.remove_user_data(user_id, user_data_key).await
     }
 
     async fn set_auto_responders_data(
@@ -227,9 +241,9 @@ impl<'a, DR: DnsResolver> UsersApi<'a, DR> {
     }
 }
 
-impl<DR: DnsResolver> Api<DR> {
+impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
     /// Returns an API to work with users.
-    pub fn users(&self) -> UsersApi<DR> {
+    pub fn users(&self) -> UsersApi<DR, ET> {
         UsersApi::new(self)
     }
 }

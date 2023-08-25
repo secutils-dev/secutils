@@ -12,20 +12,16 @@ pub use self::{
     },
 };
 use crate::{
-    api::{Email, EmailBody, EmailsApi},
-    config::Config,
-    database::Database,
+    api::Api,
+    network::{DnsResolver, EmailTransport, EmailTransportError},
+    notifications::{NotificationContent, NotificationDestination, NotificationEmailContent},
     users::{InternalUserDataNamespace, User, UserData, UserId, UserSignupError},
 };
 use anyhow::{anyhow, bail, Context};
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use hex::ToHex;
 use rand_core::{OsRng, RngCore};
-use std::{
-    collections::HashSet,
-    ops::Sub,
-    time::{Duration, SystemTime},
-};
+use std::{collections::HashSet, ops::Sub, sync::Arc, time::Duration};
 use time::OffsetDateTime;
 use uuid::Uuid;
 use webauthn_rs::{
@@ -44,20 +40,18 @@ const ACTIVATION_CODE_LIFESPAN: Duration = Duration::from_secs(60 * 60 * 24 * 14
 const CREDENTIALS_RESET_CODE_LIFESPAN: Duration = Duration::from_secs(60 * 60);
 
 /// Secutils.dev security controller.
-pub struct Security {
-    config: Config,
-    db: Database,
+pub struct Security<DR: DnsResolver, ET: EmailTransport> {
+    api: Arc<Api<DR, ET>>,
     webauthn: Webauthn,
 }
 
-impl Security {
+impl<DR: DnsResolver, ET: EmailTransport> Security<DR, ET>
+where
+    ET::Error: EmailTransportError,
+{
     /// Instantiates security controller.
-    pub fn new(config: Config, db: Database, webauthn: Webauthn) -> Self {
-        Self {
-            config,
-            db,
-            webauthn,
-        }
+    pub fn new(api: Arc<Api<DR, ET>>, webauthn: Webauthn) -> Self {
+        Self { api, webauthn }
     }
 
     /// Signs up a user with the specified email and credentials. If the user with such email is
@@ -80,8 +74,9 @@ impl Security {
 
         // Check if the user with specified email already exists.
         if let Some(user) = self
-            .db
-            .get_user_by_email(&user_email)
+            .api
+            .users()
+            .get_by_email(&user_email)
             .await
             .with_context(|| "Failed to check if user already exists.")?
         {
@@ -105,6 +100,7 @@ impl Security {
         // Use insert instead of upsert here to prevent multiple signup requests from the same user.
         // Consumer of the API is supposed to perform validation before invoking this method.
         let user = self
+            .api
             .db
             .insert_user(&user)
             .await
@@ -126,14 +122,15 @@ impl Security {
         user_email: E,
         user_credentials: Credentials,
     ) -> anyhow::Result<User> {
-        let mut user = if let Some(user) = self.db.get_user_by_email(user_email.as_ref()).await? {
-            user
-        } else {
-            bail!(
-                "Cannot authenticate user: a user with {} email doesn't exist.",
-                user_email.as_ref()
-            );
-        };
+        let mut user =
+            if let Some(user) = self.api.users().get_by_email(user_email.as_ref()).await? {
+                user
+            } else {
+                bail!(
+                    "Cannot authenticate user: a user with {} email doesn't exist.",
+                    user_email.as_ref()
+                );
+            };
 
         match user_credentials {
             Credentials::Password(password) => {
@@ -159,6 +156,7 @@ impl Security {
             }
             Credentials::WebAuthnPublicKey(serialized_public_key) => {
                 let webauthn_session = self
+                    .api
                     .db
                     .get_user_webauthn_session_by_email(&user.email)
                     .await?
@@ -188,8 +186,9 @@ impl Security {
                         passkey.update_credential(&authentication_result);
                         user.credentials.passkey = Some(passkey);
 
-                        self.db
-                            .upsert_user(&user)
+                        self.api
+                            .users()
+                            .upsert(&user)
                             .await
                             .with_context(|| "Couldn't update passkey credentials.")?;
                     } else {
@@ -201,7 +200,8 @@ impl Security {
                 }
 
                 // Clear WebAuthn session state since we no longer need it.
-                self.db
+                self.api
+                    .db
                     .remove_user_webauthn_session_by_email(&user.email)
                     .await?;
             }
@@ -219,6 +219,7 @@ impl Security {
             Credentials::Password(password) => StoredCredentials::try_from_password(&password)?,
             Credentials::WebAuthnPublicKey(serialized_public_key) => {
                 let webauthn_session = self
+                    .api
                     .db
                     .get_user_webauthn_session_by_email(user_email)
                     .await?
@@ -248,7 +249,8 @@ impl Security {
                     .map(StoredCredentials::from_passkey)?;
 
                 // Clear WebAuthn session state since we no longer need it.
-                self.db
+                self.api
+                    .db
                     .remove_user_webauthn_session_by_email(user_email)
                     .await?;
 
@@ -279,8 +281,9 @@ impl Security {
 
         // Retrieve the user to combine new credentials with existing ones.
         let mut existing_user = self
-            .db
-            .get_user_by_email(&user_email)
+            .api
+            .users()
+            .get_by_email(&user_email)
             .await
             .with_context(|| "Failed to retrieve user for credentials change.")?
             .ok_or_else(|| anyhow!("User to change password for doesn't exist."))?;
@@ -296,8 +299,9 @@ impl Security {
         }
 
         // Update user with new credentials.
-        self.db
-            .upsert_user(&existing_user)
+        self.api
+            .users()
+            .upsert(&existing_user)
             .await
             .with_context(|| format!("Cannot update user (user ID: {:?})", existing_user.id))?;
 
@@ -312,18 +316,19 @@ impl Security {
         user_reset_credentials_code: &str,
     ) -> anyhow::Result<User> {
         // First check if user with the specified email exists.
-        let user_to_reset_credentials =
-            self.db
-                .get_user_by_email(user_email)
-                .await?
-                .ok_or_else(|| {
-                    anyhow!(
+        let user_to_reset_credentials = self
+            .api
+            .users()
+            .get_by_email(user_email)
+            .await?
+            .ok_or_else(|| {
+                anyhow!(
                 "User with the specified email doesn't exist. Credentials reset isn't possible."
             )
-                })?;
+            })?;
 
         // Then, try to retrieve reset code.
-        let reset_code = self.db.get_user_data::<String>(
+        let reset_code = self.api.users().get_data::<String>(
                 user_to_reset_credentials.id,
                 InternalUserDataNamespace::CredentialsResetToken,
             )
@@ -348,8 +353,9 @@ impl Security {
         // Update credentials and invalid credentials reset code.
         self.update_credentials(user_email, user_credentials)
             .await?;
-        self.db
-            .remove_user_data(
+        self.api
+            .users()
+            .remove_data(
                 user_to_reset_credentials.id,
                 InternalUserDataNamespace::CredentialsResetToken,
             )
@@ -365,28 +371,20 @@ impl Security {
         user_activation_code: &str,
     ) -> anyhow::Result<User> {
         // First check if user with the specified email exists.
-        let mut user_to_activate =
-            self.db
-                .get_user_by_email(user_email)
-                .await?
-                .ok_or_else(|| {
-                    anyhow!(
-                "User with the specified email doesn't exist. Account activation isn't possible."
-            )
-                })?;
+        let users = self.api.users();
+        let mut user_to_activate = users.get_by_email(user_email).await?.with_context(|| {
+            "User with the specified email doesn't exist. Account activation isn't possible."
+        })?;
 
         // Then, try to retrieve activation code.
-        let activation_code = self
-            .db
-            .get_user_data::<String>(
+        let activation_code = users
+            .get_data::<String>(
                 user_to_activate.id,
                 InternalUserDataNamespace::AccountActivationToken,
             )
             .await?
-            .ok_or_else(|| {
-                anyhow!(
-                    "User doesn't have assigned activation code. Account activation isn't possible."
-                )
+            .with_context(|| {
+                "User doesn't have assigned activation code. Account activation isn't possible."
             })?;
 
         if activation_code.value != user_activation_code {
@@ -402,17 +400,14 @@ impl Security {
 
         // Update user and remove activation code internal data.
         user_to_activate.activated = true;
-        self.db
-            .upsert_user(&user_to_activate)
-            .await
-            .with_context(|| {
-                format!(
-                    "Cannot activate user: failed to store activated user {}",
-                    user_to_activate.handle
-                )
-            })?;
-        self.db
-            .remove_user_data(
+        users.upsert(&user_to_activate).await.with_context(|| {
+            format!(
+                "Cannot activate user: failed to store activated user {}",
+                user_to_activate.handle
+            )
+        })?;
+        users
+            .remove_data(
                 user_to_activate.id,
                 InternalUserDataNamespace::AccountActivationToken,
             )
@@ -431,13 +426,15 @@ impl Security {
         let namespace = InternalUserDataNamespace::AccountActivationToken;
 
         // Cleanup already expired activation codes.
-        self.db
+        self.api
+            .db
             .cleanup_user_data(namespace, timestamp.sub(ACTIVATION_CODE_LIFESPAN))
             .await
             .with_context(|| "Failed to cleanup expired activation codes.")?;
 
         // Save newly created activation code.
-        self.db
+        self.api
+            .db
             .upsert_user_data(
                 namespace,
                 UserData::new(user.id, &activation_code, timestamp),
@@ -452,15 +449,15 @@ impl Security {
 
         let encoded_activation_link = format!(
             "{}activate?code={}&email={}",
-            self.config.public_url.as_str(),
+            self.api.config.public_url.as_str(),
             urlencoding::encode(&activation_code),
             urlencoding::encode(&user.email)
         );
-        self.emails().send(Email::new(
-            &user.email,
+
+        let notification_content = NotificationContent::Email(NotificationEmailContent::html(
             "Activate you Secutils.dev account",
-            EmailBody::Html {
-                content: format!(r#"
+            format!("To activate your Secutils.dev account, please click the following link: {encoded_activation_link}"),
+            format!(r#"
 <!DOCTYPE html>
 <html>
   <head>
@@ -510,10 +507,19 @@ impl Security {
       <p>If you have any trouble activating your account, please contact us at <a href = "mailto: contact@secutils.dev">contact@secutils.dev</a>.</p>
     </div>
   </body>
-</html>"#),
-                fallback: format!("To activate your Secutils.dev account, please click the following link: {encoded_activation_link}"),
-            },
-        ).with_timestamp(SystemTime::now()))
+</html>"#)
+        ));
+
+        self.api
+            .notifications()
+            .schedule_notification(
+                NotificationDestination::User(user.id),
+                notification_content,
+                OffsetDateTime::now_utc(),
+            )
+            .await?;
+
+        Ok(())
     }
 
     /// Generates credentials reset link for the specified user and sends to the user's email.
@@ -526,13 +532,15 @@ impl Security {
         let namespace = InternalUserDataNamespace::CredentialsResetToken;
 
         // Cleanup already expired codes.
-        self.db
+        self.api
+            .db
             .cleanup_user_data(namespace, timestamp.sub(CREDENTIALS_RESET_CODE_LIFESPAN))
             .await
             .with_context(|| "Failed to cleanup expired credentials reset codes.")?;
 
         // Save newly created credentials reset code.
-        self.db
+        self.api
+            .db
             .upsert_user_data(namespace, UserData::new(user.id, &reset_code, timestamp))
             .await
             .with_context(|| {
@@ -546,15 +554,15 @@ impl Security {
         // to reset passkey as well.
         let encoded_reset_link = format!(
             "{}reset_credentials?code={}&email={}",
-            self.config.public_url.as_str(),
+            self.api.config.public_url.as_str(),
             urlencoding::encode(&reset_code),
             urlencoding::encode(&user.email)
         );
-        self.emails().send(Email::new(
-            &user.email,
+
+        let notification_content = NotificationContent::Email(NotificationEmailContent::html(
             "Reset password for your Secutils.dev account",
-            EmailBody::Html {
-                content: format!(r#"
+            format!("To reset your Secutils.dev password, please click the following link: {encoded_reset_link}"),
+            format!(r#"
 <!DOCTYPE html>
 <html>
   <head>
@@ -606,9 +614,18 @@ impl Security {
     </div>
   </body>
 </html>"#),
-                fallback: format!("To reset your Secutils.dev password, please click the following link: {encoded_reset_link}"),
-            },
-        ).with_timestamp(SystemTime::now()))
+        ));
+
+        self.api
+            .notifications()
+            .schedule_notification(
+                NotificationDestination::User(user.id),
+                notification_content,
+                OffsetDateTime::now_utc(),
+            )
+            .await?;
+
+        Ok(())
     }
 
     /// Starts WebAuthn handshake by generating a challenge of the specified type for the specified
@@ -622,7 +639,8 @@ impl Security {
     ) -> anyhow::Result<WebAuthnChallenge> {
         // Clean up sessions that are older than 10 minutes, based on the recommended timeout values
         // suggested in the WebAuthn spec: https://www.w3.org/TR/webauthn-2/#sctn-createCredential.
-        self.db
+        self.api
+            .db
             .remove_user_webauthn_sessions(
                 OffsetDateTime::now_utc().sub(Duration::from_secs(60 * 10)),
             )
@@ -645,8 +663,9 @@ impl Security {
             WebAuthnChallengeType::Authentication => {
                 // Make sure user with specified email exists.
                 let user = self
-                    .db
-                    .get_user_by_email(user_email)
+                    .api
+                    .users()
+                    .get_by_email(user_email)
                     .await?
                     .ok_or_else(|| anyhow!("User is not found (`{}`).", user_email))?;
 
@@ -669,7 +688,8 @@ impl Security {
         };
 
         // Store WebAuthn session state in the database during handshake.
-        self.db
+        self.api
+            .db
             .upsert_user_webauthn_session(&WebAuthnSession {
                 email: user_email.to_string(),
                 value: webauthn_session_value,
@@ -680,18 +700,13 @@ impl Security {
         Ok(challenge)
     }
 
-    /// Returns an API to send emails.
-    fn emails(&self) -> EmailsApi<&Config> {
-        EmailsApi::new(&self.config)
-    }
-
     /// Generates a random user handle (8 bytes).
     async fn generate_user_handle(&self) -> anyhow::Result<String> {
         let mut bytes = [0u8; USER_HANDLE_LENGTH_BYTES];
         loop {
             OsRng.fill_bytes(&mut bytes);
             let handle = bytes.encode_hex::<String>();
-            if self.db.get_user_by_handle(&handle).await?.is_none() {
+            if self.api.users().get_by_handle(&handle).await?.is_none() {
                 return Ok(handle);
             }
         }

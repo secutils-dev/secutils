@@ -1,6 +1,6 @@
 use crate::{
     api::Api,
-    network::DnsResolver,
+    network::{DnsResolver, EmailTransport},
     scheduler::{scheduler_job::SchedulerJob, scheduler_jobs::ResourcesTrackersTriggerJob},
 };
 use std::sync::Arc;
@@ -10,8 +10,8 @@ use tokio_cron_scheduler::{Job, JobId, JobScheduler, JobStoredData};
 pub(crate) struct ResourcesTrackersScheduleJob;
 impl ResourcesTrackersScheduleJob {
     /// Tries to resume existing `ResourcesTrackersSchedule` job.
-    pub async fn try_resume<DR: DnsResolver>(
-        api: Arc<Api<DR>>,
+    pub async fn try_resume<DR: DnsResolver, ET: EmailTransport>(
+        api: Arc<Api<DR, ET>>,
         _: JobId,
         existing_job_data: JobStoredData,
     ) -> anyhow::Result<Option<Job>> {
@@ -26,7 +26,9 @@ impl ResourcesTrackersScheduleJob {
     }
 
     /// Creates a new `ResourcesTrackersSchedule` job.
-    pub async fn create<DR: DnsResolver>(api: Arc<Api<DR>>) -> anyhow::Result<Job> {
+    pub async fn create<DR: DnsResolver, ET: EmailTransport>(
+        api: Arc<Api<DR, ET>>,
+    ) -> anyhow::Result<Job> {
         let mut job = Job::new_async(
             api.config.jobs.resources_trackers_schedule.clone(),
             move |_, scheduler| {
@@ -52,8 +54,8 @@ impl ResourcesTrackersScheduleJob {
     }
 
     /// Executes a `ResourcesTrackersSchedule` job.
-    async fn execute<DR: DnsResolver>(
-        api: Arc<Api<DR>>,
+    async fn execute<DR: DnsResolver, ET: EmailTransport>(
+        api: Arc<Api<DR, ET>>,
         scheduler: JobScheduler,
     ) -> anyhow::Result<()> {
         // First check if there any trackers to schedule.

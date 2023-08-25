@@ -1,28 +1,24 @@
-mod emails;
-
-pub use self::emails::{Email, EmailBody, EmailsApi};
-
 use crate::{
     database::Database,
-    network::{DnsResolver, Network},
+    network::{DnsResolver, EmailTransport, Network},
     search::SearchIndex,
     Config,
 };
 
-pub struct Api<DR: DnsResolver> {
+pub struct Api<DR: DnsResolver, ET: EmailTransport> {
     pub db: Database,
     pub search_index: SearchIndex,
     pub config: Config,
-    pub network: Network<DR>,
+    pub network: Network<DR, ET>,
 }
 
-impl<DR: DnsResolver> Api<DR> {
+impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
     /// Instantiates APIs collection with the specified config and datastore.
     pub fn new(
         config: Config,
         database: Database,
         search_index: SearchIndex,
-        network: Network<DR>,
+        network: Network<DR, ET>,
     ) -> Self {
         Self {
             config,
@@ -31,14 +27,9 @@ impl<DR: DnsResolver> Api<DR> {
             network,
         }
     }
-
-    /// Returns an API to send emails.
-    pub fn emails(&self) -> EmailsApi<&Config> {
-        EmailsApi::new(&self.config)
-    }
 }
 
-impl<DR: DnsResolver> AsRef<Api<DR>> for Api<DR> {
+impl<DR: DnsResolver, ET: EmailTransport> AsRef<Api<DR, ET>> for Api<DR, ET> {
     fn as_ref(&self) -> &Self {
         self
     }

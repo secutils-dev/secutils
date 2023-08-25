@@ -1,6 +1,6 @@
 use crate::{
     api::Api,
-    network::DnsResolver,
+    network::{DnsResolver, EmailTransport, EmailTransportError},
     notifications::{NotificationContent, NotificationDestination},
     scheduler::scheduler_job::SchedulerJob,
     users::UserData,
@@ -15,11 +15,14 @@ use tokio_cron_scheduler::{Job, JobId, JobScheduler, JobStoredData};
 pub(crate) struct ResourcesTrackersFetchJob;
 impl ResourcesTrackersFetchJob {
     /// Tries to resume existing `ResourcesTrackersFetch` job.
-    pub async fn try_resume<DR: DnsResolver>(
-        api: Arc<Api<DR>>,
+    pub async fn try_resume<DR: DnsResolver, ET: EmailTransport>(
+        api: Arc<Api<DR, ET>>,
         _: JobId,
         existing_job_data: JobStoredData,
-    ) -> anyhow::Result<Option<Job>> {
+    ) -> anyhow::Result<Option<Job>>
+    where
+        ET::Error: EmailTransportError,
+    {
         // If we changed the job parameters, we need to remove the old job and create a new one.
         let mut new_job = Self::create(api).await?;
         Ok(if new_job.job_data()?.job == existing_job_data.job {
@@ -31,7 +34,12 @@ impl ResourcesTrackersFetchJob {
     }
 
     /// Creates a new `ResourcesTrackersFetch` job.
-    pub async fn create<DR: DnsResolver>(api: Arc<Api<DR>>) -> anyhow::Result<Job> {
+    pub async fn create<DR: DnsResolver, ET: EmailTransport>(
+        api: Arc<Api<DR, ET>>,
+    ) -> anyhow::Result<Job>
+    where
+        ET::Error: EmailTransportError,
+    {
         let mut job = Job::new_async(
             api.config.jobs.resources_trackers_fetch.clone(),
             move |_, scheduler| {
@@ -54,10 +62,13 @@ impl ResourcesTrackersFetchJob {
     }
 
     /// Executes a `ResourcesTrackersFetch` job.
-    async fn execute<DR: DnsResolver>(
-        api: Arc<Api<DR>>,
+    async fn execute<DR: DnsResolver, ET: EmailTransport>(
+        api: Arc<Api<DR, ET>>,
         scheduler: JobScheduler,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<()>
+    where
+        ET::Error: EmailTransportError,
+    {
         let execute_start = Instant::now();
 
         // Fetch all resources trackers jobs that are pending processing.
@@ -141,7 +152,7 @@ impl ResourcesTrackersFetchJob {
             // If changes are detected, schedule a notification.
             if changes_detected {
                 let destination = NotificationDestination::User(user_id);
-                let content = NotificationContent::String(format!(
+                let content = NotificationContent::Text(format!(
                     "Web page resources tracker {} ({}, user: {:?}) detected changes in resources.",
                     tracker.name, tracker.url, user_id
                 ));
@@ -783,7 +794,7 @@ mod tests {
                         1,
                     ),
                 ),
-                String(
+                Text(
                     "Web page resources tracker tracker-one (http://localhost:1234/my/app?q=2, user: UserId(1)) detected changes in resources.",
                 ),
             ),

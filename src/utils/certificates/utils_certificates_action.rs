@@ -1,6 +1,6 @@
 use crate::{
     api::Api,
-    network::DnsResolver,
+    network::{DnsResolver, EmailTransport},
     users::{PublicUserDataNamespace, User},
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH, CertificateFormat, ExtendedKeyUsage,
@@ -64,10 +64,10 @@ impl UtilsCertificatesAction {
         Ok(())
     }
 
-    pub async fn handle<DR: DnsResolver>(
+    pub async fn handle<DR: DnsResolver, ET: EmailTransport>(
         self,
         user: User,
-        api: &Api<DR>,
+        api: &Api<DR, ET>,
     ) -> anyhow::Result<UtilsCertificatesActionResult> {
         match self {
             UtilsCertificatesAction::GenerateSelfSignedCertificate {

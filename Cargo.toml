@@ -31,7 +31,7 @@ futures = "0.3.28"
 hex = "0.4.3"
 humantime = "2.1.0"
 itertools = "0.11.0"
-lettre = "0.10.4"
+lettre = { version = "0.10.4", default-features = false  }
 log = "0.4.20"
 mailchecker = "5.0.9"
 openssl = "0.10.56"
@@ -58,6 +58,7 @@ zip = "0.6.6"
 [dev-dependencies]
 httpmock = "0.6.8"
 insta = "1.31.0"
+regex = "1.9.3"
 tokio = "1.32.0"
 
 [patch.crates-io]
@@ -74,6 +75,9 @@ default = [
     "insta/filters",
     "insta/json",
     "insta/redactions",
+    "lettre/builder",
+    "lettre/smtp-transport",
+    "lettre/tokio1-rustls-tls",
     "postcard/use-std",
     "rand_core/std",
     "reqwest/json",

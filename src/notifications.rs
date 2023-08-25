@@ -6,6 +6,8 @@ mod notification_destination;
 mod notification_id;
 
 pub use self::{
-    notification::Notification, notification_content::NotificationContent,
-    notification_destination::NotificationDestination, notification_id::NotificationId,
+    notification::Notification,
+    notification_content::{NotificationContent, NotificationEmailContent},
+    notification_destination::NotificationDestination,
+    notification_id::NotificationId,
 };

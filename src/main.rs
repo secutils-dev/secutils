@@ -231,7 +231,7 @@ fn main() -> Result<(), anyhow::Error> {
 mod tests {
     use crate::{
         api::Api,
-        config::{ComponentsConfig, Config, SchedulerJobsConfig},
+        config::{ComponentsConfig, Config, SchedulerJobsConfig, SmtpConfig},
         database::Database,
         network::{DnsResolver, Network},
         search::SearchItem,
@@ -240,6 +240,7 @@ mod tests {
         utils::{WebPageResource, WebPageResourceContent, WebPageResourceContentData},
     };
     use cron::Schedule;
+    use lettre::transport::stub::AsyncStubTransport;
     use std::{
         collections::{HashMap, HashSet},
         ops::Add,
@@ -403,7 +404,12 @@ mod tests {
             version: "1.0.0".to_string(),
             http_port: 1234,
             public_url: Url::parse("http://localhost:1234")?,
-            smtp: None,
+            smtp: Some(SmtpConfig {
+                username: "dev@secutils.dev".to_string(),
+                password: "password".to_string(),
+                address: "localhost".to_string(),
+                catch_all_recipient: None,
+            }),
             components: ComponentsConfig {
                 web_scraper_url: Url::parse("http://localhost:7272")?,
                 search_index_version: 2,
@@ -416,21 +422,26 @@ mod tests {
         })
     }
 
-    pub fn mock_network() -> Network<MockResolver> {
-        Network::new(MockResolver::new())
+    pub fn mock_network() -> Network<MockResolver, AsyncStubTransport> {
+        Network::new(MockResolver::new(), AsyncStubTransport::new_ok())
     }
 
     pub fn mock_network_with_records<const N: usize>(
         records: Vec<Record>,
-    ) -> Network<MockResolver<N>> {
-        Network::new(MockResolver::new_with_records::<N>(records))
+    ) -> Network<MockResolver<N>, AsyncStubTransport> {
+        Network::new(
+            MockResolver::new_with_records::<N>(records),
+            AsyncStubTransport::new_ok(),
+        )
     }
 
-    pub async fn mock_api() -> anyhow::Result<Api<MockResolver>> {
+    pub async fn mock_api() -> anyhow::Result<Api<MockResolver, AsyncStubTransport>> {
         mock_api_with_config(mock_config()?).await
     }
 
-    pub async fn mock_api_with_config(config: Config) -> anyhow::Result<Api<MockResolver>> {
+    pub async fn mock_api_with_config(
+        config: Config,
+    ) -> anyhow::Result<Api<MockResolver, AsyncStubTransport>> {
         Ok(Api::new(
             config,
             mock_db().await?,
@@ -440,8 +451,8 @@ mod tests {
     }
 
     pub async fn mock_api_with_network<DR: DnsResolver>(
-        network: Network<DR>,
-    ) -> anyhow::Result<Api<DR>> {
+        network: Network<DR, AsyncStubTransport>,
+    ) -> anyhow::Result<Api<DR, AsyncStubTransport>> {
         Ok(Api::new(
             mock_config()?,
             mock_db().await?,

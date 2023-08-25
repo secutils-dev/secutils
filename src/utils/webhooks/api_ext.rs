@@ -1,7 +1,7 @@
 use crate::{
     api::Api,
     database::Database,
-    network::DnsResolver,
+    network::{DnsResolver, EmailTransport},
     users::{PublicUserDataNamespace, UserData, UserId},
     utils::{webhooks::AutoResponderRequest, AutoResponder},
 };
@@ -100,7 +100,7 @@ impl<'a> AutoRespondersApi<'a> {
     }
 }
 
-impl<DR: DnsResolver> Api<DR> {
+impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
     /// Returns an API to work with auto responders.
     pub fn auto_responders(&self) -> AutoRespondersApi {
         AutoRespondersApi::new(&self.db)

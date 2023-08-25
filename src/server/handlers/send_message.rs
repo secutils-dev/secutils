@@ -1,11 +1,12 @@
 use crate::{
-    api::{Email, EmailBody},
     error::SecutilsError,
+    notifications::{NotificationContent, NotificationDestination, NotificationEmailContent},
     server::app_state::AppState,
 };
 use actix_web::{web, HttpResponse};
 use serde::Deserialize;
 use serde_json::json;
+use time::OffsetDateTime;
 
 #[derive(Deserialize)]
 pub struct SendMessageParams {
@@ -23,24 +24,31 @@ pub async fn send_message(
         body_params.message.to_string()
     };
 
-    let email = match state
+    let recipient = match state
         .config
         .smtp
         .as_ref()
         .and_then(|smtp| smtp.catch_all_recipient.as_ref())
     {
-        Some(recipient) => Email::new(
-            recipient,
-            "Secutils contact request",
-            EmailBody::Text(body.clone()),
-        ),
+        Some(recipient) => recipient.clone(),
         None => {
             log::error!("SMTP isn't configured.");
             return Ok(HttpResponse::InternalServerError().json(json!({ "status": "failed" })));
         }
     };
 
-    state.api.emails().send(email)?;
+    state
+        .api
+        .notifications()
+        .schedule_notification(
+            NotificationDestination::Email(recipient),
+            NotificationContent::Email(NotificationEmailContent::text(
+                "Secutils contact request",
+                &body,
+            )),
+            OffsetDateTime::now_utc(),
+        )
+        .await?;
 
     log::info!("Successfully sent message `{}`", body);
     Ok(HttpResponse::NoContent().finish())

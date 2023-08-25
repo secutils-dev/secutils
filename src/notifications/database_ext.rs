@@ -116,12 +116,12 @@ mod tests {
         let notifications = vec![
             Notification::new(
                 NotificationDestination::User(123.try_into()?),
-                NotificationContent::String("abc".to_string()),
+                NotificationContent::Text("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
             Notification::new(
                 NotificationDestination::User(123.try_into()?),
-                NotificationContent::String("abc".to_string()),
+                NotificationContent::Text("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
         ];
@@ -141,7 +141,7 @@ mod tests {
                         123,
                     ),
                 ),
-                content: String(
+                content: Text(
                     "abc",
                 ),
                 scheduled_at: 2000-01-01 10:00:00.0 +00:00:00,
@@ -159,7 +159,7 @@ mod tests {
                         123,
                     ),
                 ),
-                content: String(
+                content: Text(
                     "abc",
                 ),
                 scheduled_at: 2000-01-01 10:00:00.0 +00:00:00,
@@ -178,12 +178,12 @@ mod tests {
         let notifications = vec![
             Notification::new(
                 NotificationDestination::User(123.try_into()?),
-                NotificationContent::String("abc".to_string()),
+                NotificationContent::Text("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
             Notification::new(
                 NotificationDestination::User(123.try_into()?),
-                NotificationContent::String("abc".to_string()),
+                NotificationContent::Text("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
         ];
@@ -222,7 +222,7 @@ mod tests {
         for n in 0..=19 {
             db.insert_notification(&Notification::new(
                 NotificationDestination::User(123.try_into()?),
-                NotificationContent::String(format!("abc{}", n)),
+                NotificationContent::Text(format!("abc{}", n)),
                 OffsetDateTime::from_unix_timestamp(946720700 + n)?,
             ))
             .await?;
