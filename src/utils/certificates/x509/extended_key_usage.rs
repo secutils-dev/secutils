@@ -32,27 +32,27 @@ mod tests {
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<ExtendedKeyUsage>(r###""codeSigning""###)?,
+            serde_json::from_str::<ExtendedKeyUsage>(r#""codeSigning""#)?,
             ExtendedKeyUsage::CodeSigning
         );
 
         assert_eq!(
-            serde_json::from_str::<ExtendedKeyUsage>(r###""emailProtection""###)?,
+            serde_json::from_str::<ExtendedKeyUsage>(r#""emailProtection""#)?,
             ExtendedKeyUsage::EmailProtection
         );
 
         assert_eq!(
-            serde_json::from_str::<ExtendedKeyUsage>(r###""timeStamping""###)?,
+            serde_json::from_str::<ExtendedKeyUsage>(r#""timeStamping""#)?,
             ExtendedKeyUsage::TimeStamping
         );
 
         assert_eq!(
-            serde_json::from_str::<ExtendedKeyUsage>(r###""tlsWebClientAuthentication""###)?,
+            serde_json::from_str::<ExtendedKeyUsage>(r#""tlsWebClientAuthentication""#)?,
             ExtendedKeyUsage::TlsWebClientAuthentication
         );
 
         assert_eq!(
-            serde_json::from_str::<ExtendedKeyUsage>(r###""tlsWebServerAuthentication""###)?,
+            serde_json::from_str::<ExtendedKeyUsage>(r#""tlsWebServerAuthentication""#)?,
             ExtendedKeyUsage::TlsWebServerAuthentication
         );
 

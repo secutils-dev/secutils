@@ -39,52 +39,52 @@ mod tests {
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<KeyUsage>(r###""crlSigning""###)?,
+            serde_json::from_str::<KeyUsage>(r#""crlSigning""#)?,
             KeyUsage::CrlSigning
         );
 
         assert_eq!(
-            serde_json::from_str::<KeyUsage>(r###""dataEncipherment""###)?,
+            serde_json::from_str::<KeyUsage>(r#""dataEncipherment""#)?,
             KeyUsage::DataEncipherment
         );
 
         assert_eq!(
-            serde_json::from_str::<KeyUsage>(r###""decipherOnly""###)?,
+            serde_json::from_str::<KeyUsage>(r#""decipherOnly""#)?,
             KeyUsage::DecipherOnly
         );
 
         assert_eq!(
-            serde_json::from_str::<KeyUsage>(r###""digitalSignature""###)?,
+            serde_json::from_str::<KeyUsage>(r#""digitalSignature""#)?,
             KeyUsage::DigitalSignature
         );
 
         assert_eq!(
-            serde_json::from_str::<KeyUsage>(r###""encipherOnly""###)?,
+            serde_json::from_str::<KeyUsage>(r#""encipherOnly""#)?,
             KeyUsage::EncipherOnly
         );
 
         assert_eq!(
-            serde_json::from_str::<KeyUsage>(r###""keyAgreement""###)?,
+            serde_json::from_str::<KeyUsage>(r#""keyAgreement""#)?,
             KeyUsage::KeyAgreement
         );
 
         assert_eq!(
-            serde_json::from_str::<KeyUsage>(r###""keyCertificateSigning""###)?,
+            serde_json::from_str::<KeyUsage>(r#""keyCertificateSigning""#)?,
             KeyUsage::KeyCertificateSigning
         );
 
         assert_eq!(
-            serde_json::from_str::<KeyUsage>(r###""keyEncipherment""###)?,
+            serde_json::from_str::<KeyUsage>(r#""keyEncipherment""#)?,
             KeyUsage::KeyEncipherment
         );
 
         assert_eq!(
-            serde_json::from_str::<KeyUsage>(r###""crlSigning""###)?,
+            serde_json::from_str::<KeyUsage>(r#""crlSigning""#)?,
             KeyUsage::CrlSigning
         );
 
         assert_eq!(
-            serde_json::from_str::<KeyUsage>(r###""nonRepudiation""###)?,
+            serde_json::from_str::<KeyUsage>(r#""nonRepudiation""#)?,
             KeyUsage::NonRepudiation
         );
 

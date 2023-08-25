@@ -234,12 +234,12 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<UtilsWebScrapingAction>(
-                r###"
+                r#"
     {
         "type": "fetchWebPageResources",
         "value": { "trackerName": "tracker" }
     }
-              "###
+              "#
             )?,
             UtilsWebScrapingAction::FetchWebPageResources {
                 tracker_name: "tracker".to_string(),
@@ -250,12 +250,12 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<UtilsWebScrapingAction>(
-                r###"
+                r#"
     {
         "type": "fetchWebPageResources",
         "value": { "trackerName": "tracker", "refresh": true, "calculateDiff": true }
     }
-              "###
+              "#
             )?,
             UtilsWebScrapingAction::FetchWebPageResources {
                 tracker_name: "tracker".to_string(),
@@ -266,12 +266,12 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<UtilsWebScrapingAction>(
-                r###"
+                r#"
     {
         "type": "removeWebPageResources",
         "value": { "trackerName": "tracker" }
     }
-              "###
+              "#
             )?,
             UtilsWebScrapingAction::RemoveWebPageResources {
                 tracker_name: "tracker".to_string(),
@@ -280,12 +280,12 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<UtilsWebScrapingAction>(
-                r###"
+                r#"
     {
         "type": "saveWebPageResourcesTracker",
         "value": { "tracker": { "name": "some-name", "url": "http://localhost:1234/my/app?q=2", "revisions": 3, "delay": 2000 } }
     }
-              "###
+              "#
             )?,
             UtilsWebScrapingAction::SaveWebPageResourcesTracker {
                 tracker: WebPageResourcesTracker {
@@ -300,12 +300,12 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<UtilsWebScrapingAction>(
-                r###"
+                r#"
     {
         "type": "saveWebPageResourcesTracker",
         "value": { "tracker": { "name": "some-name", "url": "http://localhost:1234/my/app?q=2", "revisions": 3, "delay": 2000, "schedule": "0 0 * * * *" } }
     }
-              "###
+              "#
             )?,
             UtilsWebScrapingAction::SaveWebPageResourcesTracker {
                 tracker: WebPageResourcesTracker {
@@ -320,12 +320,12 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<UtilsWebScrapingAction>(
-                r###"
+                r#"
     {
         "type": "removeWebPageResourcesTracker",
         "value": { "trackerName": "tracker" }
     }
-              "###
+              "#
             )?,
             UtilsWebScrapingAction::RemoveWebPageResourcesTracker {
                 tracker_name: "tracker".to_string(),

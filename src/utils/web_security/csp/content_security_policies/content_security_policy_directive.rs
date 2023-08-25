@@ -321,112 +321,112 @@ mod tests {
         let sources = ["'self'".to_string()].into_iter().collect::<HashSet<_>>();
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "child-src", "v": ["'self'"] }"###
+                r#"{ "n": "child-src", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::ChildSrc(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "connect-src", "v": ["'self'"] }"###
+                r#"{ "n": "connect-src", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::ConnectSrc(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "default-src", "v": ["'self'"] }"###
+                r#"{ "n": "default-src", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::DefaultSrc(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "font-src", "v": ["'self'"] }"###
+                r#"{ "n": "font-src", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::FontSrc(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "frame-src", "v": ["'self'"] }"###
+                r#"{ "n": "frame-src", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::FrameSrc(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "img-src", "v": ["'self'"] }"###
+                r#"{ "n": "img-src", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::ImgSrc(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "manifest-src", "v": ["'self'"] }"###
+                r#"{ "n": "manifest-src", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::ManifestSrc(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "media-src", "v": ["'self'"] }"###
+                r#"{ "n": "media-src", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::MediaSrc(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "object-src", "v": ["'self'"] }"###
+                r#"{ "n": "object-src", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::ObjectSrc(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "script-src", "v": ["'self'"] }"###
+                r#"{ "n": "script-src", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::ScriptSrc(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "script-src-elem", "v": ["'self'"] }"###
+                r#"{ "n": "script-src-elem", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::ScriptSrcElem(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "script-src-attr", "v": ["'self'"] }"###
+                r#"{ "n": "script-src-attr", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::ScriptSrcAttr(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "style-src", "v": ["'self'"] }"###
+                r#"{ "n": "style-src", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::StyleSrc(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "style-src-elem", "v": ["'self'"] }"###
+                r#"{ "n": "style-src-elem", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::StyleSrcElem(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "style-src-attr", "v": ["'self'"] }"###
+                r#"{ "n": "style-src-attr", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::StyleSrcAttr(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "webrtc", "v": ["'allow'"] }"###
+                r#"{ "n": "webrtc", "v": ["'allow'"] }"#
             )?,
             ContentSecurityPolicyDirective::Webrtc([
                 ContentSecurityPolicyWebrtcDirectiveValue::Allow
@@ -435,21 +435,21 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "worker-src", "v": ["'self'"] }"###
+                r#"{ "n": "worker-src", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::WorkerSrc(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "base-uri", "v": ["'self'"] }"###
+                r#"{ "n": "base-uri", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::BaseUri(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "sandbox", "v": ["allow-forms", "allow-top-navigation"] }"###
+                r#"{ "n": "sandbox", "v": ["allow-forms", "allow-top-navigation"] }"#
             )?,
             ContentSecurityPolicyDirective::Sandbox(
                 [
@@ -463,28 +463,28 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "form-action", "v": ["'self'"] }"###
+                r#"{ "n": "form-action", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::FormAction(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "frame-ancestors", "v": ["'self'"] }"###
+                r#"{ "n": "frame-ancestors", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::FrameAncestors(sources.clone())
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "report-to", "v": ["https://google.com"] }"###
+                r#"{ "n": "report-to", "v": ["https://google.com"] }"#
             )?,
             ContentSecurityPolicyDirective::ReportTo(["https://google.com".to_string()])
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
-                r###"{ "n": "report-uri", "v": ["'self'"] }"###
+                r#"{ "n": "report-uri", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::ReportUri(sources)
         );
@@ -495,7 +495,7 @@ mod tests {
     #[test]
     fn deserialization_failures() -> anyhow::Result<()> {
         assert_debug_snapshot!(serde_json::from_str::<ContentSecurityPolicyDirective>(
-            r###"{ "n": "webrtc", "v": ["'allow'", "'block'"] }"###,
+            r#"{ "n": "webrtc", "v": ["'allow'", "'block'"] }"#,
         ), @r###"
         Err(
             Error("trailing characters", line: 1, column: 35),
@@ -503,7 +503,7 @@ mod tests {
         "###);
 
         assert_debug_snapshot!(serde_json::from_str::<ContentSecurityPolicyDirective>(
-            r###"{ "n": "report-to", "v": ["https://google.com", "https://yahoo.com"] }"###
+            r#"{ "n": "report-to", "v": ["https://google.com", "https://yahoo.com"] }"#
         ), @r###"
         Err(
             Error("trailing characters", line: 1, column: 49),

@@ -109,7 +109,7 @@ mod tests {
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         let credentials: StoredCredentials = serde_json::from_str(
-            r###"
+            r#"
         {
           "password_hash": "$argon2id$v=19$m=4096,t=3,p=[HASH]",
           "passkey": {
@@ -145,7 +145,7 @@ mod tests {
             }
           }
         }
-        "###,
+        "#,
         )?;
         assert!(!credentials.is_empty());
         assert_eq!(

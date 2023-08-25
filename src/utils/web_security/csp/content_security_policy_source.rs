@@ -27,11 +27,11 @@ mod tests {
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<ContentSecurityPolicySource>(r###""header""###)?,
+            serde_json::from_str::<ContentSecurityPolicySource>(r#""header""#)?,
             ContentSecurityPolicySource::Header
         );
         assert_eq!(
-            serde_json::from_str::<ContentSecurityPolicySource>(r###""meta""###)?,
+            serde_json::from_str::<ContentSecurityPolicySource>(r#""meta""#)?,
             ContentSecurityPolicySource::Meta
         );
 

@@ -43,15 +43,15 @@ mod tests {
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<CertificateFormat>(r###""pem""###)?,
+            serde_json::from_str::<CertificateFormat>(r#""pem""#)?,
             CertificateFormat::Pem
         );
         assert_eq!(
-            serde_json::from_str::<CertificateFormat>(r###""pkcs8""###)?,
+            serde_json::from_str::<CertificateFormat>(r#""pkcs8""#)?,
             CertificateFormat::Pkcs8
         );
         assert_eq!(
-            serde_json::from_str::<CertificateFormat>(r###""pkcs12""###)?,
+            serde_json::from_str::<CertificateFormat>(r#""pkcs12""#)?,
             CertificateFormat::Pkcs12
         );
 

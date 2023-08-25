@@ -134,7 +134,7 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<SelfSignedCertificate>(
-                r###"
+                r#"
         {
           "n": "name",
           "ka": "rsa",
@@ -144,7 +144,7 @@ mod tests {
           "v": 1,
           "ca": false
         }
-        "###
+        "#
             )?,
             MockSelfSignedCertificate::new(
                 "name",
@@ -158,7 +158,7 @@ mod tests {
         );
         assert_eq!(
             serde_json::from_str::<SelfSignedCertificate>(
-                r###"
+                r#"
         {
           "n": "test-2-name",
           "cn": "CA Issuer",
@@ -176,7 +176,7 @@ mod tests {
           "ku": ["crlSigning", "keyCertificateSigning"],
           "eku": ["tlsWebServerAuthentication"]
         }
-        "###
+        "#
             )?,
             MockSelfSignedCertificate::new(
                 "test-2-name",

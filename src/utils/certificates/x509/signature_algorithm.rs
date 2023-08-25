@@ -31,27 +31,27 @@ mod tests {
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<SignatureAlgorithm>(r###""md5""###)?,
+            serde_json::from_str::<SignatureAlgorithm>(r#""md5""#)?,
             SignatureAlgorithm::Md5
         );
         assert_eq!(
-            serde_json::from_str::<SignatureAlgorithm>(r###""sha1""###)?,
+            serde_json::from_str::<SignatureAlgorithm>(r#""sha1""#)?,
             SignatureAlgorithm::Sha1
         );
         assert_eq!(
-            serde_json::from_str::<SignatureAlgorithm>(r###""sha256""###)?,
+            serde_json::from_str::<SignatureAlgorithm>(r#""sha256""#)?,
             SignatureAlgorithm::Sha256
         );
         assert_eq!(
-            serde_json::from_str::<SignatureAlgorithm>(r###""sha384""###)?,
+            serde_json::from_str::<SignatureAlgorithm>(r#""sha384""#)?,
             SignatureAlgorithm::Sha384
         );
         assert_eq!(
-            serde_json::from_str::<SignatureAlgorithm>(r###""sha512""###)?,
+            serde_json::from_str::<SignatureAlgorithm>(r#""sha512""#)?,
             SignatureAlgorithm::Sha512
         );
         assert_eq!(
-            serde_json::from_str::<SignatureAlgorithm>(r###""ed25519""###)?,
+            serde_json::from_str::<SignatureAlgorithm>(r#""ed25519""#)?,
             SignatureAlgorithm::Ed25519
         );
 

@@ -24,12 +24,12 @@ mod tests {
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<ContentSecurityPolicyWebrtcDirectiveValue>(r###""'allow'""###)?,
+            serde_json::from_str::<ContentSecurityPolicyWebrtcDirectiveValue>(r#""'allow'""#)?,
             ContentSecurityPolicyWebrtcDirectiveValue::Allow
         );
 
         assert_eq!(
-            serde_json::from_str::<ContentSecurityPolicyWebrtcDirectiveValue>(r###""'block'""###)?,
+            serde_json::from_str::<ContentSecurityPolicyWebrtcDirectiveValue>(r#""'block'""#)?,
             ContentSecurityPolicyWebrtcDirectiveValue::Block
         );
 

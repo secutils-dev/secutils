@@ -73,12 +73,12 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<UtilsWebhooksAction>(
-                r###"
+                r#"
 {
     "type": "getAutoRespondersRequests",
     "value": { "autoResponderName": "some-name" }
 }
-          "###
+          "#
             )?,
             UtilsWebhooksAction::GetAutoRespondersRequests {
                 auto_responder_name: "some-name".to_string()

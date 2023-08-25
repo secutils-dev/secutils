@@ -48,7 +48,7 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<WebScraperResourcesResponse>(
-                r###"
+                r#"
 {
     "timestamp": 946720800,
     "scripts": [
@@ -60,7 +60,7 @@ mod tests {
         { "content": { "data": { "type": "sha1", "value": "another-css-digest" }, "size": 654 } }
     ]
 }
-          "###
+          "#
             )?,
             WebScraperResourcesResponse {
                 // January 1, 2000 11:00:00
@@ -109,7 +109,7 @@ mod tests {
     fn deserialization_without_optional_values() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<WebScraperResourcesResponse>(
-                r###"
+                r#"
 {
     "timestamp": 946720800,
     "scripts": [
@@ -121,7 +121,7 @@ mod tests {
         { "content": { "data": { "type": "sha1", "value": "another-css-digest" }, "size": 321 } }
     ]
 }
-          "###
+          "#
             )?,
             WebScraperResourcesResponse {
                 // January 1, 2000 11:00:00

@@ -27,19 +27,19 @@ mod tests {
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<KeyAlgorithm>(r###""rsa""###)?,
+            serde_json::from_str::<KeyAlgorithm>(r#""rsa""#)?,
             KeyAlgorithm::Rsa
         );
         assert_eq!(
-            serde_json::from_str::<KeyAlgorithm>(r###""dsa""###)?,
+            serde_json::from_str::<KeyAlgorithm>(r#""dsa""#)?,
             KeyAlgorithm::Dsa
         );
         assert_eq!(
-            serde_json::from_str::<KeyAlgorithm>(r###""ecdsa""###)?,
+            serde_json::from_str::<KeyAlgorithm>(r#""ecdsa""#)?,
             KeyAlgorithm::Ecdsa
         );
         assert_eq!(
-            serde_json::from_str::<KeyAlgorithm>(r###""ed25519""###)?,
+            serde_json::from_str::<KeyAlgorithm>(r#""ed25519""#)?,
             KeyAlgorithm::Ed25519
         );
 

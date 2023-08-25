@@ -77,7 +77,7 @@ mod tests {
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<AutoResponderRequest>(r###"{ "t": 946720800, "m": "GET" }"###)?,
+            serde_json::from_str::<AutoResponderRequest>(r#"{ "t": 946720800, "m": "GET" }"#)?,
             AutoResponderRequest {
                 // January 1, 2000 11:00:00
                 timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
@@ -90,13 +90,13 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<AutoResponderRequest>(
-                r###"{
+                r#"{
               "t": 946720800,
               "a": "127.0.0.1",
               "m": "POST",
               "h": [["Content-Type", [1, 2, 3]]],
               "b": [4, 5, 6]
-            }"###
+            }"#
             )?,
             AutoResponderRequest {
                 // January 1, 2000 11:00:00

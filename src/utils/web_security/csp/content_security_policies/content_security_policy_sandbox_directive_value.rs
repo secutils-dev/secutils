@@ -47,91 +47,89 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicySandboxDirectiveValue>(
-                r###""allow-downloads""###
+                r#""allow-downloads""#
             )?,
             ContentSecurityPolicySandboxDirectiveValue::AllowDownloads
         );
 
         assert_eq!(
-            serde_json::from_str::<ContentSecurityPolicySandboxDirectiveValue>(
-                r###""allow-forms""###
-            )?,
+            serde_json::from_str::<ContentSecurityPolicySandboxDirectiveValue>(r#""allow-forms""#)?,
             ContentSecurityPolicySandboxDirectiveValue::AllowForms
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicySandboxDirectiveValue>(
-                r###""allow-modals""###
+                r#""allow-modals""#
             )?,
             ContentSecurityPolicySandboxDirectiveValue::AllowModals
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicySandboxDirectiveValue>(
-                r###""allow-orientation-lock""###
+                r#""allow-orientation-lock""#
             )?,
             ContentSecurityPolicySandboxDirectiveValue::AllowOrientationLock
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicySandboxDirectiveValue>(
-                r###""allow-pointer-lock""###
+                r#""allow-pointer-lock""#
             )?,
             ContentSecurityPolicySandboxDirectiveValue::AllowPointerLock
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicySandboxDirectiveValue>(
-                r###""allow-popups""###
+                r#""allow-popups""#
             )?,
             ContentSecurityPolicySandboxDirectiveValue::AllowPopups
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicySandboxDirectiveValue>(
-                r###""allow-popups-to-escape-sandbox""###
+                r#""allow-popups-to-escape-sandbox""#
             )?,
             ContentSecurityPolicySandboxDirectiveValue::AllowPopupsToEscapeSandbox
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicySandboxDirectiveValue>(
-                r###""allow-presentation""###
+                r#""allow-presentation""#
             )?,
             ContentSecurityPolicySandboxDirectiveValue::AllowPresentation
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicySandboxDirectiveValue>(
-                r###""allow-same-origin""###
+                r#""allow-same-origin""#
             )?,
             ContentSecurityPolicySandboxDirectiveValue::AllowSameOrigin
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicySandboxDirectiveValue>(
-                r###""allow-scripts""###
+                r#""allow-scripts""#
             )?,
             ContentSecurityPolicySandboxDirectiveValue::AllowScripts
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicySandboxDirectiveValue>(
-                r###""allow-top-navigation""###
+                r#""allow-top-navigation""#
             )?,
             ContentSecurityPolicySandboxDirectiveValue::AllowTopNavigation
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicySandboxDirectiveValue>(
-                r###""allow-top-navigation-by-user-activation""###
+                r#""allow-top-navigation-by-user-activation""#
             )?,
             ContentSecurityPolicySandboxDirectiveValue::AllowTopNavigationByUserActivation
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicySandboxDirectiveValue>(
-                r###""allow-top-navigation-to-custom-protocols""###
+                r#""allow-top-navigation-to-custom-protocols""#
             )?,
             ContentSecurityPolicySandboxDirectiveValue::AllowTopNavigationToCustomProtocols
         );

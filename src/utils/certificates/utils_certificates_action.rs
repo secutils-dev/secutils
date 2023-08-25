@@ -366,12 +366,12 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<UtilsCertificatesAction>(
-                r###"
+                r#"
 {
     "type": "generateSelfSignedCertificate",
     "value": { "templateName": "template", "format": "pem" }
 }
-          "###
+          "#
             )?,
             UtilsCertificatesAction::GenerateSelfSignedCertificate {
                 template_name: "template".to_string(),
@@ -381,12 +381,12 @@ mod tests {
         );
         assert_eq!(
             serde_json::from_str::<UtilsCertificatesAction>(
-                r###"
+                r#"
 {
     "type": "generateSelfSignedCertificate",
     "value": { "templateName": "template", "format": "pkcs12", "passphrase": "phrase" }
 }
-          "###
+          "#
             )?,
             UtilsCertificatesAction::GenerateSelfSignedCertificate {
                 template_name: "template".to_string(),
@@ -396,11 +396,11 @@ mod tests {
         );
         assert_eq!(
             serde_json::from_str::<UtilsCertificatesAction>(
-                r###"
+                r#"
 {
     "type": "generateRsaKeyPair"
 }
-          "###
+          "#
             )?,
             UtilsCertificatesAction::GenerateRsaKeyPair
         );

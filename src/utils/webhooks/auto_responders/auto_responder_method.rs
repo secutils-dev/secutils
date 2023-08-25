@@ -67,43 +67,43 @@ mod tests {
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<AutoResponderMethod>(r###""a""###)?,
+            serde_json::from_str::<AutoResponderMethod>(r#""a""#)?,
             AutoResponderMethod::Any
         );
         assert_eq!(
-            serde_json::from_str::<AutoResponderMethod>(r###""g""###)?,
+            serde_json::from_str::<AutoResponderMethod>(r#""g""#)?,
             AutoResponderMethod::Get
         );
         assert_eq!(
-            serde_json::from_str::<AutoResponderMethod>(r###""p""###)?,
+            serde_json::from_str::<AutoResponderMethod>(r#""p""#)?,
             AutoResponderMethod::Post
         );
         assert_eq!(
-            serde_json::from_str::<AutoResponderMethod>(r###""pu""###)?,
+            serde_json::from_str::<AutoResponderMethod>(r#""pu""#)?,
             AutoResponderMethod::Put
         );
         assert_eq!(
-            serde_json::from_str::<AutoResponderMethod>(r###""d""###)?,
+            serde_json::from_str::<AutoResponderMethod>(r#""d""#)?,
             AutoResponderMethod::Delete
         );
         assert_eq!(
-            serde_json::from_str::<AutoResponderMethod>(r###""h""###)?,
+            serde_json::from_str::<AutoResponderMethod>(r#""h""#)?,
             AutoResponderMethod::Head
         );
         assert_eq!(
-            serde_json::from_str::<AutoResponderMethod>(r###""o""###)?,
+            serde_json::from_str::<AutoResponderMethod>(r#""o""#)?,
             AutoResponderMethod::Options
         );
         assert_eq!(
-            serde_json::from_str::<AutoResponderMethod>(r###""c""###)?,
+            serde_json::from_str::<AutoResponderMethod>(r#""c""#)?,
             AutoResponderMethod::Connect
         );
         assert_eq!(
-            serde_json::from_str::<AutoResponderMethod>(r###""t""###)?,
+            serde_json::from_str::<AutoResponderMethod>(r#""t""#)?,
             AutoResponderMethod::Trace
         );
         assert_eq!(
-            serde_json::from_str::<AutoResponderMethod>(r###""pa""###)?,
+            serde_json::from_str::<AutoResponderMethod>(r#""pa""#)?,
             AutoResponderMethod::Patch
         );
 

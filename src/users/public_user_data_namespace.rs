@@ -80,27 +80,27 @@ mod tests {
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<PublicUserDataNamespace>(r###""autoResponders""###)?,
+            serde_json::from_str::<PublicUserDataNamespace>(r#""autoResponders""#)?,
             PublicUserDataNamespace::AutoResponders
         );
 
         assert_eq!(
-            serde_json::from_str::<PublicUserDataNamespace>(r###""contentSecurityPolicies""###)?,
+            serde_json::from_str::<PublicUserDataNamespace>(r#""contentSecurityPolicies""#)?,
             PublicUserDataNamespace::ContentSecurityPolicies
         );
 
         assert_eq!(
-            serde_json::from_str::<PublicUserDataNamespace>(r###""selfSignedCertificates""###)?,
+            serde_json::from_str::<PublicUserDataNamespace>(r#""selfSignedCertificates""#)?,
             PublicUserDataNamespace::SelfSignedCertificates
         );
 
         assert_eq!(
-            serde_json::from_str::<PublicUserDataNamespace>(r###""userSettings""###)?,
+            serde_json::from_str::<PublicUserDataNamespace>(r#""userSettings""#)?,
             PublicUserDataNamespace::UserSettings
         );
 
         assert_eq!(
-            serde_json::from_str::<PublicUserDataNamespace>(r###""webPageResourcesTrackers""###)?,
+            serde_json::from_str::<PublicUserDataNamespace>(r#""webPageResourcesTrackers""#)?,
             PublicUserDataNamespace::WebPageResourcesTrackers
         );
 

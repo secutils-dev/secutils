@@ -110,12 +110,12 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<UtilsWebSecurityAction>(
-                r###"
+                r#"
 {
     "type": "serializeContentSecurityPolicy",
     "value": { "policyName": "policy", "source": "meta" }
 }
-          "###
+          "#
             )?,
             UtilsWebSecurityAction::SerializeContentSecurityPolicy {
                 policy_name: "policy".to_string(),
