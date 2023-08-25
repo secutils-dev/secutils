@@ -219,7 +219,7 @@ fn main() -> Result<(), anyhow::Error> {
             .long("jobs-notifications-send")
             .global(true)
             .env("SECUTILS_JOBS_NOTIFICATIONS_SEND")
-            .default_value("0 * * * * * *")
+            .default_value("0/30 * * * * * *")
             .help("The cron schedule to use for the notifications send job."),
         )
         .get_matches();
