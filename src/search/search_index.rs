@@ -189,19 +189,29 @@ impl SearchIndex {
             public_query
         };
 
-        let keywords_query = search_filter
-            .query
-            .map(|query| {
-                QueryParser::for_index(
-                    &self.index,
-                    vec![
-                        self.schema_fields.label_ngram,
-                        self.schema_fields.keywords_ngram,
-                    ],
-                )
-                .parse_query(&query.to_lowercase())
-            })
-            .transpose()?;
+        let keywords_query = search_filter.query.map(|query| {
+            QueryParser::for_index(
+                &self.index,
+                vec![
+                    self.schema_fields.label_ngram,
+                    self.schema_fields.keywords_ngram,
+                ],
+            )
+            .parse_query_lenient(&query.to_lowercase())
+        });
+        let keywords_query = if let Some((keywords_query, errors)) = keywords_query {
+            if !errors.is_empty() {
+                log::warn!(
+                    "Parsed search query with errors ({:?}): {:?}",
+                    search_filter.query,
+                    errors
+                );
+            }
+
+            Some(keywords_query)
+        } else {
+            None
+        };
 
         let category_query = search_filter.category.map(|category| {
             Box::new(TermQuery::new(
