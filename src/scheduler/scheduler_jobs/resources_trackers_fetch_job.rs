@@ -120,8 +120,8 @@ impl ResourcesTrackersFetchJob {
                 Ok(new_revision) => new_revision,
                 Err(err) => {
                     log::error!(
-                        "Failed to fetch resources for web page resources tracker {} ({}, user: {:?}, {} elapsed): {:?}.",
-                        tracker.name, tracker.url, user_id, err, humantime::format_duration(fetch_start.elapsed()),
+                        "Failed to fetch resources for web page resources tracker {} ({}, user: {}, {} elapsed): {:?}.",
+                        tracker.name, tracker.url, *user_id, humantime::format_duration(fetch_start.elapsed()), err
                     );
                     continue;
                 }
