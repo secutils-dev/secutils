@@ -61,7 +61,7 @@ fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Err
                     Url::parse(url)
                         .with_context(|| "Cannot parse Web Scraper URL parameter.".to_string())
                 })?,
-            search_index_version: 2,
+            search_index_version: 3,
         },
         jobs: SchedulerJobsConfig {
             resources_trackers_schedule: matches
@@ -412,7 +412,7 @@ mod tests {
             }),
             components: ComponentsConfig {
                 web_scraper_url: Url::parse("http://localhost:7272")?,
-                search_index_version: 2,
+                search_index_version: 3,
             },
             jobs: SchedulerJobsConfig {
                 resources_trackers_schedule: Schedule::try_from("0 * 0 * * * *")?,

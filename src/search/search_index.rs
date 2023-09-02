@@ -90,16 +90,16 @@ impl SearchIndex {
         let (schema_fields, schema) = SearchIndexSchemaFields::build();
         let index = initializer(schema)?;
 
+        let ids_tokenizer = TextAnalyzer::builder(RawTokenizer::default())
+            .filter(LowerCaser)
+            .build();
+
         let tokenizers = index.tokenizers();
-        tokenizers.register("ngram2_10", NgramTokenizer::prefix_only(2, 10));
+        tokenizers.register("ngram2_10", NgramTokenizer::prefix_only(2, 10)?);
+        tokenizers.register("ids", ids_tokenizer.clone());
 
         let tokenizers = index.fast_field_tokenizer();
-        tokenizers.register(
-            "ids",
-            TextAnalyzer::builder(RawTokenizer::default())
-                .filter(LowerCaser)
-                .build(),
-        );
+        tokenizers.register("ids", ids_tokenizer);
 
         let index_reader = index
             .reader_builder()
