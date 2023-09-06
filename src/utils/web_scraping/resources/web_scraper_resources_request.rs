@@ -6,15 +6,15 @@ use url::Url;
 #[derive(Serialize, Debug, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct WebScraperResourcesRequestScripts<'a> {
-    /// Optional script used to filter resource that need to be tracked.
+    /// Optional script used to `filter_map` resource that needs to be tracked.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub resource_filter: Option<&'a str>,
+    pub resource_filter_map: Option<&'a str>,
 }
 
 impl<'a> WebScraperResourcesRequestScripts<'a> {
     /// Returns `true` if none of the scripts are set.
     pub fn is_empty(&self) -> bool {
-        self.resource_filter.is_none()
+        self.resource_filter_map.is_none()
     }
 }
 
@@ -83,7 +83,7 @@ mod tests {
             delay: Some(200),
             wait_selector: Some("body"),
             scripts: WebScraperResourcesRequestScripts {
-                resource_filter: Some("return resource.url !== undefined;")
+                resource_filter_map: Some("return resource;")
             }
         }, @r###"
         {
@@ -92,7 +92,7 @@ mod tests {
           "delay": 200,
           "waitSelector": "body",
           "scripts": {
-            "resourceFilter": "return resource.url !== undefined;"
+            "resourceFilterMap": "return resource;"
           }
         }
         "###);
@@ -134,12 +134,12 @@ mod tests {
     #[test]
     fn scripts_is_empty() -> anyhow::Result<()> {
         let scripts = WebScraperResourcesRequestScripts {
-            resource_filter: None,
+            resource_filter_map: None,
         };
         assert!(scripts.is_empty());
 
         let scripts = WebScraperResourcesRequestScripts {
-            resource_filter: Some("return resource.url !== undefined;"),
+            resource_filter_map: Some("return resource.url !== undefined;"),
         };
         assert!(!scripts.is_empty());
 

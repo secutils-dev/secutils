@@ -17,7 +17,7 @@ Content-Type: application/json
           "delay": 5000,
           "schedule": "0 0 * * * * *",
           "scripts": {
-            "resourceFilter": "return resource.resourceType === 'script';"
+            "resourceFilterMap": "return resource.resourceType === 'script' ? resource : null;"
           }
         }
       }

@@ -84,7 +84,7 @@ impl UtilsWebScrapingAction {
                     );
                 }
 
-                if let Some(ref resource_filter) = tracker.scripts.resource_filter {
+                if let Some(ref resource_filter) = tracker.scripts.resource_filter_map {
                     if resource_filter.is_empty() {
                         anyhow::bail!("Tracker resource filter script cannot be empty");
                     }
@@ -606,7 +606,7 @@ mod tests {
             10,
         )?
         .with_scripts(WebPageResourcesTrackerScripts {
-            resource_filter: Some("".to_string()),
+            resource_filter_map: Some("".to_string()),
         })
         .build();
         assert_debug_snapshot!(UtilsWebScrapingAction::SaveWebPageResourcesTracker {

@@ -500,7 +500,7 @@ mod tests {
                 )?
                 .with_schedule(&tracker_schedule)
                 .with_scripts(WebPageResourcesTrackerScripts {
-                    resource_filter: Some("return resource.url !== undefined;".to_string()),
+                    resource_filter_map: Some("return resource;".to_string()),
                 })
                 .build(),
             )
@@ -543,7 +543,7 @@ mod tests {
                     serde_json::to_value(
                         WebScraperResourcesRequest::with_default_parameters(&tracker.url)
                             .set_scripts(WebScraperResourcesRequestScripts {
-                                resource_filter: Some("return resource.url !== undefined;"),
+                                resource_filter_map: Some("return resource;"),
                             })
                             .set_delay(Duration::from_millis(2000)),
                     )

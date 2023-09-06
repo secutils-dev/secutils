@@ -84,7 +84,7 @@ mod tests {
         .with_delay_millis(2500)
         .with_schedule("0 0 * * *")
         .with_scripts(WebPageResourcesTrackerScripts {
-            resource_filter: Some("return resource.url !== undefined;".to_string()),
+            resource_filter_map: Some("return resource;".to_string()),
         })
         .build();
         assert_json_snapshot!(tracker, @r###"
@@ -95,7 +95,7 @@ mod tests {
           "delay": 2500,
           "schedule": "0 0 * * *",
           "scripts": {
-            "resourceFilter": "return resource.url !== undefined;"
+            "resourceFilterMap": "return resource;"
           }
         }
         "###);
@@ -160,7 +160,7 @@ mod tests {
         )?
         .with_schedule("0 0 * * *")
         .with_scripts(WebPageResourcesTrackerScripts {
-            resource_filter: Some("return resource.url !== undefined;".to_string()),
+            resource_filter_map: Some("return resource;".to_string()),
         })
         .build();
         assert_eq!(
@@ -171,7 +171,7 @@ mod tests {
                     "revisions": 3,
                     "delay": 2000,
                     "schedule": "0 0 * * *",
-                    "scripts": { "resourceFilter": "return resource.url !== undefined;" }
+                    "scripts": { "resourceFilterMap": "return resource;" }
                 })
                 .to_string()
             )?,

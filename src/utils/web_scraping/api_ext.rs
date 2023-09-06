@@ -272,7 +272,7 @@ impl<'a, C: AsRef<Config>, DR: DnsResolver, ET: EmailTransport> WebScrapingApi<'
         let scraper_request = WebScraperResourcesRequest::with_default_parameters(&tracker.url)
             .set_delay(tracker.delay)
             .set_scripts(WebScraperResourcesRequestScripts {
-                resource_filter: tracker.scripts.resource_filter.as_deref(),
+                resource_filter_map: tracker.scripts.resource_filter_map.as_deref(),
             });
         let scraper_response = reqwest::Client::new()
             .post(format!(
@@ -555,7 +555,7 @@ mod tests {
         )?
         .with_schedule("0 0 * * *")
         .with_scripts(WebPageResourcesTrackerScripts {
-            resource_filter: Some("return resource.url !== undefined;".to_string()),
+            resource_filter_map: Some("return resource.url !== undefined;".to_string()),
         })
         .build();
         api.upsert_resources_tracker(mock_user.id, tracker_one.clone())
@@ -1232,7 +1232,7 @@ mod tests {
         )?
         .with_schedule("0 0 * * *")
         .with_scripts(WebPageResourcesTrackerScripts {
-            resource_filter: Some("script".to_string()),
+            resource_filter_map: Some("script".to_string()),
         })
         .build();
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
