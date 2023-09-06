@@ -251,8 +251,8 @@ mod tests {
     use trust_dns_resolver::proto::rr::Record;
     use url::Url;
 
-    pub use crate::network::tests::MockResolver;
     use crate::search::SearchIndex;
+    pub use crate::{network::tests::*, utils::tests::*};
 
     pub struct MockUserBuilder {
         user: User,

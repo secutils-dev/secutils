@@ -9,11 +9,9 @@ use crate::{
         UserDataKey, UserDataNamespace, UserId,
     },
     utils::{
-        web_scraping::resources::{
-            web_page_resources_revisions_diff, WebScraperResource, WebScraperResourcesRequest,
-            WebScraperResourcesResponse,
-        },
+        web_scraping::resources::{web_page_resources_revisions_diff, WebScraperResource},
         WebPageResource, WebPageResourcesRevision, WebPageResourcesTracker,
+        WebScraperResourcesRequest, WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
     },
 };
 use anyhow::{anyhow, bail};
@@ -271,15 +269,17 @@ impl<'a, C: AsRef<Config>, DR: DnsResolver, ET: EmailTransport> WebScrapingApi<'
                     .collect()
             };
 
+        let scraper_request = WebScraperResourcesRequest::with_default_parameters(&tracker.url)
+            .set_delay(tracker.delay)
+            .set_scripts(WebScraperResourcesRequestScripts {
+                resource_filter: tracker.scripts.resource_filter.as_deref(),
+            });
         let scraper_response = reqwest::Client::new()
             .post(format!(
                 "{}api/resources",
                 self.config.as_ref().components.web_scraper_url.as_str()
             ))
-            .json(
-                &WebScraperResourcesRequest::with_default_parameters(&tracker.url)
-                    .set_delay(tracker.delay),
-            )
+            .json(&scraper_request)
             .send()
             .await?
             .json::<WebScraperResourcesResponse>()
@@ -429,14 +429,17 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 mod tests {
     use crate::{
         database::Database,
-        tests::{mock_config, mock_db, mock_network, mock_user},
+        tests::{
+            mock_config, mock_db, mock_network, mock_user, MockWebPageResourcesTrackerBuilder,
+        },
         users::{PublicUserDataNamespace, User},
         utils::{
             web_scraping::WebScrapingApi, WebPageResource, WebPageResourceContent,
             WebPageResourceContentData, WebPageResourcesRevision, WebPageResourcesTracker,
+            WebPageResourcesTrackerScripts,
         },
     };
-    use std::{collections::HashMap, time::Duration};
+    use std::collections::HashMap;
     use time::OffsetDateTime;
     use url::Url;
     use uuid::uuid;
@@ -453,13 +456,12 @@ mod tests {
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
-        let tracker_one = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
+        let tracker_one = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
 
@@ -480,13 +482,13 @@ mod tests {
         let tracker_jobs = api.get_unscheduled_resources_tracker_jobs().await?;
         assert!(tracker_jobs.is_empty());
 
-        let tracker_two = WebPageResourcesTracker {
-            name: "name_two".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: Some("0 0 * * *".to_string()),
-        };
+        let tracker_two = MockWebPageResourcesTrackerBuilder::create(
+            "name_two",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .with_schedule("0 0 * * *")
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker_two.clone())
             .await?;
 
@@ -523,13 +525,12 @@ mod tests {
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
-        let tracker_one = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
+        let tracker_one = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
 
@@ -547,13 +548,16 @@ mod tests {
                 .collect::<HashMap<_, _>>()
         );
 
-        let tracker_one = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 2,
-            delay: Duration::from_millis(2000),
-            schedule: Some("0 0 * * *".to_string()),
-        };
+        let tracker_one = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            2,
+        )?
+        .with_schedule("0 0 * * *")
+        .with_scripts(WebPageResourcesTrackerScripts {
+            resource_filter: Some("return resource.url !== undefined;".to_string()),
+        })
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
 
@@ -581,20 +585,19 @@ mod tests {
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
-        let tracker_one = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
-        let tracker_two = WebPageResourcesTracker {
-            name: "name_two".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
+        let tracker_one = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
+
+        let tracker_two = MockWebPageResourcesTrackerBuilder::create(
+            "name_two",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
         api.upsert_resources_tracker(mock_user.id, tracker_two.clone())
@@ -655,20 +658,18 @@ mod tests {
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
-        let tracker_one = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
-        let tracker_two = WebPageResourcesTracker {
-            name: "name_two".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
+        let tracker_one = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
+        let tracker_two = MockWebPageResourcesTrackerBuilder::create(
+            "name_two",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
         api.upsert_resources_tracker(mock_user.id, tracker_two.clone())
@@ -746,13 +747,12 @@ mod tests {
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
-        let tracker_one = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
+        let tracker_one = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
 
@@ -820,13 +820,12 @@ mod tests {
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
-        let tracker_one = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
+        let tracker_one = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
 
@@ -891,20 +890,18 @@ mod tests {
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
-        let tracker_one = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
-        let tracker_two = WebPageResourcesTracker {
-            name: "name_two".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
+        let tracker_one = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
+        let tracker_two = MockWebPageResourcesTrackerBuilder::create(
+            "name_two",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
         api.upsert_resources_tracker(mock_user.id, tracker_two.clone())
@@ -983,20 +980,18 @@ mod tests {
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
-        let tracker_one = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
-        let tracker_two = WebPageResourcesTracker {
-            name: "name_two".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
+        let tracker_one = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
+        let tracker_two = MockWebPageResourcesTrackerBuilder::create(
+            "name_two",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
         api.upsert_resources_tracker(mock_user.id, tracker_two.clone())
@@ -1070,20 +1065,18 @@ mod tests {
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
-        let tracker_one = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
-        let tracker_two = WebPageResourcesTracker {
-            name: "name_two".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
+        let tracker_one = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
+        let tracker_two = MockWebPageResourcesTrackerBuilder::create(
+            "name_two",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
         api.upsert_resources_tracker(mock_user.id, tracker_two.clone())
@@ -1135,13 +1128,12 @@ mod tests {
         assert_eq!(tracker_two_resources, vec![resources_three.clone()]);
 
         // Update tracker without changing URL.
-        let tracker_one = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 4,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
+        let tracker_one = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            4,
+        )?
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
 
@@ -1151,13 +1143,12 @@ mod tests {
         assert_eq!(tracker_two_resources, vec![resources_three.clone()]);
 
         // Update tracker with changing URL.
-        let tracker_one = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1235/my/app?q=2")?,
-            revisions: 4,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
+        let tracker_one = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1235/my/app?q=2",
+            4,
+        )?
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker_one.clone())
             .await?;
 
@@ -1167,13 +1158,12 @@ mod tests {
         assert_eq!(tracker_two_resources, vec![resources_three.clone()]);
 
         // Update second tracker with changing URL.
-        let tracker_two = WebPageResourcesTracker {
-            name: "name_two".to_string(),
-            url: Url::parse("http://localhost:1235/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
+        let tracker_two = MockWebPageResourcesTrackerBuilder::create(
+            "name_two",
+            "http://localhost:1235/my/app?q=2",
+            3,
+        )?
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker_two.clone())
             .await?;
 
@@ -1192,13 +1182,12 @@ mod tests {
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
-        let tracker = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
             .await?;
 
@@ -1206,13 +1195,12 @@ mod tests {
         assert!(tracker_jobs.is_empty());
 
         // Update tracker without adding schedule.
-        let tracker = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 4,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            4,
+        )?
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
             .await?;
 
@@ -1220,13 +1208,13 @@ mod tests {
         assert!(tracker_jobs.is_empty());
 
         // Update tracker with schedule.
-        let tracker = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 4,
-            delay: Duration::from_millis(2000),
-            schedule: Some("0 0 * * *".to_string()),
-        };
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            4,
+        )?
+        .with_schedule("0 0 * * *")
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
             .await?;
 
@@ -1237,13 +1225,16 @@ mod tests {
         assert!(tracker_jobs_rev_1[0].value.is_none());
 
         // Update tracker without updating schedule.
-        let tracker = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 5,
-            delay: Duration::from_millis(2000),
-            schedule: Some("0 0 * * *".to_string()),
-        };
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            5,
+        )?
+        .with_schedule("0 0 * * *")
+        .with_scripts(WebPageResourcesTrackerScripts {
+            resource_filter: Some("script".to_string()),
+        })
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
             .await?;
 
@@ -1266,13 +1257,13 @@ mod tests {
         assert!(tracker_job.is_some());
 
         // Update tracker with a new schedule.
-        let tracker = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 5,
-            delay: Duration::from_millis(2000),
-            schedule: Some("0 1 * * *".to_string()),
-        };
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            5,
+        )?
+        .with_schedule("0 1 * * *")
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
             .await?;
 
@@ -1288,13 +1279,12 @@ mod tests {
         assert!(tracker_job.is_none());
 
         // Remove schedule.
-        let tracker = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 5,
-            delay: Duration::from_millis(2000),
-            schedule: None,
-        };
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            5,
+        )?
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
             .await?;
 
@@ -1311,13 +1301,13 @@ mod tests {
         let mock_network = mock_network();
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
-        let tracker = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            schedule: Some("0 0 * * *".to_string()),
-        };
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .with_schedule("0 0 * * *")
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
             .await?;
 
@@ -1328,13 +1318,13 @@ mod tests {
         assert!(jobs[0].value.is_none());
 
         // Disable revisions.
-        let tracker = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 0,
-            delay: Duration::from_millis(2000),
-            schedule: Some("0 0 * * *".to_string()),
-        };
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            0,
+        )?
+        .with_schedule("0 0 * * *")
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
             .await?;
 
@@ -1352,13 +1342,13 @@ mod tests {
         let api = WebScrapingApi::new(mock_config()?, &mock_db, &mock_network);
 
         // Update tracker with schedule.
-        let tracker = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 4,
-            delay: Duration::from_millis(2000),
-            schedule: Some("0 0 * * *".to_string()),
-        };
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            4,
+        )?
+        .with_schedule("0 0 * * *")
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
             .await?;
 
@@ -1375,13 +1365,13 @@ mod tests {
         assert!(tracker_jobs.is_empty());
 
         // Update tracker with schedule.
-        let tracker = WebPageResourcesTracker {
-            name: "name_one".to_string(),
-            url: Url::parse("http://localhost:1234/my/app?q=2")?,
-            revisions: 4,
-            delay: Duration::from_millis(2000),
-            schedule: Some("0 0 * * *".to_string()),
-        };
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "name_one",
+            "http://localhost:1234/my/app?q=2",
+            4,
+        )?
+        .with_schedule("0 0 * * *")
+        .build();
         api.upsert_resources_tracker(mock_user.id, tracker.clone())
             .await?;
 

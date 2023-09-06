@@ -84,6 +84,12 @@ impl UtilsWebScrapingAction {
                     );
                 }
 
+                if let Some(ref resource_filter) = tracker.scripts.resource_filter {
+                    if resource_filter.is_empty() {
+                        anyhow::bail!("Tracker resource filter script cannot be empty");
+                    }
+                }
+
                 if tracker.url.scheme() != "http" && tracker.url.scheme() != "https" {
                     anyhow::bail!("Tracker URL scheme must be either http or https");
                 }
@@ -219,16 +225,18 @@ impl UtilsWebScrapingAction {
 #[cfg(test)]
 mod tests {
     use crate::{
-        tests::{mock_api, mock_api_with_network, mock_network_with_records},
-        utils::{UtilsWebScrapingAction, WebPageResourcesTracker},
+        tests::{
+            mock_api, mock_api_with_network, mock_network_with_records,
+            MockWebPageResourcesTrackerBuilder,
+        },
+        utils::{UtilsWebScrapingAction, WebPageResourcesTrackerScripts},
     };
     use insta::assert_debug_snapshot;
-    use std::{net::Ipv4Addr, time::Duration};
+    use std::net::Ipv4Addr;
     use trust_dns_resolver::{
         proto::rr::{rdata::A, RData, Record},
         Name,
     };
-    use url::Url;
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
@@ -278,6 +286,12 @@ mod tests {
             }
         );
 
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "some-name",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
         assert_eq!(
             serde_json::from_str::<UtilsWebScrapingAction>(
                 r#"
@@ -287,17 +301,16 @@ mod tests {
     }
               "#
             )?,
-            UtilsWebScrapingAction::SaveWebPageResourcesTracker {
-                tracker: WebPageResourcesTracker {
-                    name: "some-name".to_string(),
-                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    schedule: None,
-                }
-            }
+            UtilsWebScrapingAction::SaveWebPageResourcesTracker { tracker }
         );
 
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "some-name",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .with_schedule("0 0 * * * *")
+        .build();
         assert_eq!(
             serde_json::from_str::<UtilsWebScrapingAction>(
                 r#"
@@ -307,15 +320,7 @@ mod tests {
     }
               "#
             )?,
-            UtilsWebScrapingAction::SaveWebPageResourcesTracker {
-                tracker: WebPageResourcesTracker {
-                    name: "some-name".to_string(),
-                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    schedule: Some("0 0 * * * *".to_string()),
-                }
-            }
+            UtilsWebScrapingAction::SaveWebPageResourcesTracker { tracker }
         );
 
         assert_eq!(
@@ -376,53 +381,58 @@ mod tests {
         .await
         .is_ok());
 
-        assert!(UtilsWebScrapingAction::SaveWebPageResourcesTracker {
-            tracker: WebPageResourcesTracker {
-                name: "a".repeat(100),
-                url: Url::parse("http://google.com/my/app?q=2")?,
-                revisions: 10,
-                delay: Duration::from_millis(60000),
-                schedule: None,
-            }
-        }
-        .validate(&api)
-        .await
-        .is_ok());
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "a".repeat(100),
+            "http://google.com/my/app?q=2",
+            10,
+        )?
+        .with_delay_millis(60000)
+        .build();
+        assert!(
+            UtilsWebScrapingAction::SaveWebPageResourcesTracker { tracker }
+                .validate(&api)
+                .await
+                .is_ok()
+        );
 
-        assert!(UtilsWebScrapingAction::SaveWebPageResourcesTracker {
-            tracker: WebPageResourcesTracker {
-                name: "a".repeat(100),
-                url: Url::parse("http://google.com/my/app?q=2")?,
-                revisions: 0,
-                delay: Duration::from_millis(0),
-                schedule: None,
-            }
-        }
-        .validate(&api)
-        .await
-        .is_ok());
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "a".repeat(100),
+            "http://google.com/my/app?q=2",
+            0,
+        )?
+        .with_delay_millis(0)
+        .build();
+        assert!(
+            UtilsWebScrapingAction::SaveWebPageResourcesTracker { tracker }
+                .validate(&api)
+                .await
+                .is_ok()
+        );
 
-        assert!(UtilsWebScrapingAction::SaveWebPageResourcesTracker {
-            tracker: WebPageResourcesTracker {
-                name: "a".repeat(100),
-                url: Url::parse("http://google.com/my/app?q=2")?,
-                revisions: 0,
-                delay: Duration::from_millis(0),
-                schedule: Some("0 0 0 * * *".to_string()),
-            }
-        }
-        .validate(&api)
-        .await
-        .is_ok());
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "a".repeat(100),
+            "http://google.com/my/app?q=2",
+            10,
+        )?
+        .with_delay_millis(0)
+        .with_schedule("0 0 0 * * *")
+        .build();
+        assert!(
+            UtilsWebScrapingAction::SaveWebPageResourcesTracker { tracker }
+                .validate(&api)
+                .await
+                .is_ok()
+        );
 
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "a".repeat(100),
+            "ftp://google.com/my/app?q=2",
+            0,
+        )?
+        .with_delay_millis(0)
+        .build();
         assert_debug_snapshot!(UtilsWebScrapingAction::SaveWebPageResourcesTracker {
-            tracker: WebPageResourcesTracker {
-                name: "a".repeat(100),
-                url: Url::parse("ftp://google.com/my/app?q=2")?,
-                revisions: 0,
-                delay: Duration::from_millis(0),
-                schedule: None,
-            }
+            tracker
         }
             .validate(&api)
             .await, @r###"
@@ -438,14 +448,16 @@ mod tests {
                 RData::A(A(Ipv4Addr::new(127, 0, 0, 1))),
             )]))
             .await?;
+
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "a".repeat(100),
+            "http://google.com/my/app?q=2",
+            0,
+        )?
+        .with_delay_millis(0)
+        .build();
         assert_debug_snapshot!(UtilsWebScrapingAction::SaveWebPageResourcesTracker {
-            tracker: WebPageResourcesTracker {
-                name: "a".repeat(100),
-                url: Url::parse("http://localhost/my/app?q=2")?,
-                revisions: 0,
-                delay: Duration::from_millis(0),
-                schedule: None,
-            }
+            tracker
         }
             .validate(&api_with_local_network)
             .await, @r###"
@@ -454,14 +466,16 @@ mod tests {
         )
         "###);
 
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "a".repeat(100),
+            "http://google.com/my/app?q=2",
+            0,
+        )?
+        .with_delay_millis(0)
+        .with_schedule("0 * * * * *")
+        .build();
         assert_debug_snapshot!(UtilsWebScrapingAction::SaveWebPageResourcesTracker {
-            tracker: WebPageResourcesTracker {
-                name: "a".repeat(100),
-                url: Url::parse("http://google.com/my/app?q=2")?,
-                revisions: 0,
-                delay: Duration::from_millis(0),
-                schedule: Some("0 * * * * *".to_string()),
-            }
+            tracker
         }
         .validate(&api)
         .await, @r###"
@@ -528,14 +542,11 @@ mod tests {
         )
         "###);
 
+        let tracker =
+            MockWebPageResourcesTrackerBuilder::create("", "http://localhost:1234/my/app?q=2", 3)?
+                .build();
         assert_debug_snapshot!(UtilsWebScrapingAction::SaveWebPageResourcesTracker {
-            tracker: WebPageResourcesTracker {
-                name: "".to_string(),
-                url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                revisions: 3,
-                delay: Duration::from_millis(2000),
-                schedule: None,
-            }
+            tracker
         }
         .validate(&api).await, @r###"
         Err(
@@ -543,14 +554,14 @@ mod tests {
         )
         "###);
 
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "a".repeat(101),
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
         assert_debug_snapshot!(UtilsWebScrapingAction::SaveWebPageResourcesTracker {
-            tracker: WebPageResourcesTracker {
-                name: "a".repeat(101),
-                url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                revisions: 3,
-                delay: Duration::from_millis(2000),
-                schedule: None,
-            }
+            tracker
         }
         .validate(&api).await, @r###"
         Err(
@@ -558,14 +569,14 @@ mod tests {
         )
         "###);
 
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "a".repeat(100),
+            "http://localhost:1234/my/app?q=2",
+            11,
+        )?
+        .build();
         assert_debug_snapshot!(UtilsWebScrapingAction::SaveWebPageResourcesTracker {
-            tracker: WebPageResourcesTracker {
-                name: "a".repeat(100),
-                url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                revisions: 11,
-                delay: Duration::from_millis(2000),
-                schedule: None,
-            }
+            tracker
         }
         .validate(&api).await, @r###"
         Err(
@@ -573,18 +584,37 @@ mod tests {
         )
         "###);
 
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "a".repeat(100),
+            "http://localhost:1234/my/app?q=2",
+            10,
+        )?
+        .with_delay_millis(60001)
+        .build();
         assert_debug_snapshot!(UtilsWebScrapingAction::SaveWebPageResourcesTracker {
-            tracker: WebPageResourcesTracker {
-                name: "a".repeat(100),
-                url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                revisions: 10,
-                delay: Duration::from_millis(60001),
-                schedule: None,
-            }
+            tracker
         }
         .validate(&api).await, @r###"
         Err(
             "Tracker delay cannot be greater than 60000ms",
+        )
+        "###);
+
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "a".repeat(100),
+            "http://localhost:1234/my/app?q=2",
+            10,
+        )?
+        .with_scripts(WebPageResourcesTrackerScripts {
+            resource_filter: Some("".to_string()),
+        })
+        .build();
+        assert_debug_snapshot!(UtilsWebScrapingAction::SaveWebPageResourcesTracker {
+            tracker
+        }
+        .validate(&api).await, @r###"
+        Err(
+            "Tracker resource filter script cannot be empty",
         )
         "###);
 

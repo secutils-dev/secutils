@@ -1,4 +1,31 @@
-### Track web page resources
+### Create web page resources tracker
+POST {{host}}/api/utils/action
+Authorization: {{api-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "action": {
+    "type": "webScraping",
+    "value": {
+      "type": "saveWebPageResourcesTracker",
+      "value": {
+        "tracker": {
+          "name": "HackerNewsDemo",
+          "url": "https://news.ycombinator.com/",
+          "revisions": 3,
+          "delay": 5000,
+          "schedule": "0 0 * * * * *",
+          "scripts": {
+            "resourceFilter": "return resource.resourceType === 'script';"
+          }
+        }
+      }
+    }
+  }
+}
+
+### Fetch web page resources
 POST {{host}}/api/utils/action
 Authorization: {{api-credentials}}
 Accept: application/json
@@ -9,7 +36,7 @@ Content-Type: application/json
     "type": "webScraping",
     "value": {
       "type": "fetchWebPageResources",
-      "value": { "trackerName": "test", "refresh": false }
+      "value": { "trackerName": "HackerNewsDemo", "refresh": true }
     }
   }
 }

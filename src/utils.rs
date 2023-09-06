@@ -20,8 +20,9 @@ pub use self::{
     web_scraping::{
         web_page_resources_revisions_diff, UtilsWebScrapingAction, UtilsWebScrapingActionResult,
         WebPageResource, WebPageResourceContent, WebPageResourceContentData,
-        WebPageResourcesRevision, WebPageResourcesTracker, WebScraperResource,
-        WebScraperResourcesRequest, WebScraperResourcesResponse,
+        WebPageResourcesRevision, WebPageResourcesTracker, WebPageResourcesTrackerScripts,
+        WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesRequestScripts,
+        WebScraperResourcesResponse,
     },
     web_security::{
         ContentSecurityPolicy, ContentSecurityPolicyDirective,
@@ -42,6 +43,8 @@ pub mod tests {
         Version,
     };
     use time::OffsetDateTime;
+
+    pub use super::web_scraping::tests::MockWebPageResourcesTrackerBuilder;
 
     pub struct MockSelfSignedCertificate(SelfSignedCertificate);
     impl MockSelfSignedCertificate {

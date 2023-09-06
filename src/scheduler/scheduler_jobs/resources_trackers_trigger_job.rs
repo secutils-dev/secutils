@@ -110,16 +110,14 @@ mod tests {
     use super::ResourcesTrackersTriggerJob;
     use crate::{
         scheduler::{scheduler_job::SchedulerJob, scheduler_store::SchedulerStore},
-        tests::{mock_api, mock_user},
-        utils::WebPageResourcesTracker,
+        tests::{mock_api, mock_user, MockWebPageResourcesTrackerBuilder},
     };
     use insta::assert_debug_snapshot;
-    use std::{sync::Arc, time::Duration};
+    use std::sync::Arc;
     use tokio_cron_scheduler::{
         CronJob, JobId, JobScheduler, JobStored, JobStoredData, JobType, SimpleJobCode,
         SimpleNotificationCode, SimpleNotificationStore,
     };
-    use url::Url;
     use uuid::uuid;
 
     fn mock_job_data(job_id: JobId) -> JobStoredData {
@@ -184,13 +182,13 @@ mod tests {
         api.web_scraping()
             .upsert_resources_tracker(
                 user.id,
-                WebPageResourcesTracker {
-                    name: "tracker".to_string(),
-                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    revisions: 4,
-                    delay: Duration::from_millis(2000),
-                    schedule: Some("0 0 * * * *".to_string()),
-                },
+                MockWebPageResourcesTrackerBuilder::create(
+                    "tracker",
+                    "http://localhost:1234/my/app?q=2",
+                    4,
+                )?
+                .with_schedule("0 0 * * * *")
+                .build(),
             )
             .await?;
         api.web_scraping()
@@ -250,13 +248,13 @@ mod tests {
         api.web_scraping()
             .upsert_resources_tracker(
                 user.id,
-                WebPageResourcesTracker {
-                    name: "tracker".to_string(),
-                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    revisions: 4,
-                    delay: Duration::from_millis(2000),
-                    schedule: Some("1 0 * * * *".to_string()),
-                },
+                MockWebPageResourcesTrackerBuilder::create(
+                    "tracker",
+                    "http://localhost:1234/my/app?q=2",
+                    4,
+                )?
+                .with_schedule("1 0 * * * *")
+                .build(),
             )
             .await?;
         api.web_scraping()
@@ -298,13 +296,12 @@ mod tests {
         api.web_scraping()
             .upsert_resources_tracker(
                 user.id,
-                WebPageResourcesTracker {
-                    name: "tracker".to_string(),
-                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    revisions: 4,
-                    delay: Duration::from_millis(2000),
-                    schedule: None,
-                },
+                MockWebPageResourcesTrackerBuilder::create(
+                    "tracker",
+                    "http://localhost:1234/my/app?q=2",
+                    4,
+                )?
+                .build(),
             )
             .await?;
         api.web_scraping()

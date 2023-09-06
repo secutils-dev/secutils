@@ -64,21 +64,21 @@ impl UtilsAction {
 mod tests {
     use crate::{
         network::Network,
-        tests::{mock_api, mock_api_with_network, MockResolver},
+        tests::{
+            mock_api, mock_api_with_network, MockResolver, MockWebPageResourcesTrackerBuilder,
+        },
         utils::{
             CertificateFormat, ContentSecurityPolicySource, UtilsAction, UtilsCertificatesAction,
             UtilsWebScrapingAction, UtilsWebSecurityAction, UtilsWebhooksAction,
-            WebPageResourcesTracker,
         },
     };
     use insta::assert_debug_snapshot;
     use lettre::transport::stub::AsyncStubTransport;
-    use std::{net::Ipv4Addr, time::Duration};
+    use std::net::Ipv4Addr;
     use trust_dns_resolver::{
         proto::rr::{rdata::A, RData, Record},
         Name,
     };
-    use url::Url;
 
     fn mock_network_with_records<const N: usize>(
         records: Vec<Record>,
@@ -140,15 +140,17 @@ mod tests {
 
     #[actix_rt::test]
     async fn validation_web_scraping() -> anyhow::Result<()> {
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "a".repeat(100),
+            "http://google.com/my/app?q=2",
+            0,
+        )?
+        .with_schedule("0 0 0 1 * *")
+        .with_delay_millis(0)
+        .build();
         assert!(
             UtilsAction::WebScraping(UtilsWebScrapingAction::SaveWebPageResourcesTracker {
-                tracker: WebPageResourcesTracker {
-                    name: "a".repeat(100),
-                    url: Url::parse("http://google.com/my/app?q=2")?,
-                    revisions: 0,
-                    delay: Duration::from_millis(0),
-                    schedule: Some("0 0 0 1 * *".to_string()),
-                }
+                tracker
             })
             .validate(
                 &mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(

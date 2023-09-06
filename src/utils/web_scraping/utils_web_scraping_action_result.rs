@@ -20,12 +20,14 @@ pub enum UtilsWebScrapingActionResult {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{
-        UtilsWebScrapingActionResult, WebPageResource, WebPageResourceContent,
-        WebPageResourceContentData, WebPageResourcesRevision, WebPageResourcesTracker,
+    use crate::{
+        tests::MockWebPageResourcesTrackerBuilder,
+        utils::{
+            UtilsWebScrapingActionResult, WebPageResource, WebPageResourceContent,
+            WebPageResourceContentData, WebPageResourcesRevision,
+        },
     };
     use insta::assert_json_snapshot;
-    use std::time::Duration;
     use time::OffsetDateTime;
     use url::Url;
 
@@ -88,14 +90,15 @@ mod tests {
         }
         "###);
 
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "some-name",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .with_schedule("0 0 0 1 * *")
+        .build();
         assert_json_snapshot!(UtilsWebScrapingActionResult::SaveWebPageResourcesTracker {
-            tracker: WebPageResourcesTracker {
-                name: "some-name".to_string(),
-                url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                revisions: 3,
-                delay: Duration::from_millis(2000),
-                schedule: Some("0 0 0 1 * *".to_string()),
-            }
+            tracker
         }, @r###"
         {
           "type": "saveWebPageResourcesTracker",

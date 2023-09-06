@@ -191,18 +191,21 @@ mod tests {
             scheduler_job::SchedulerJob, scheduler_jobs::ResourcesTrackersTriggerJob,
             scheduler_store::SchedulerStore,
         },
-        tests::{mock_api_with_config, mock_config, mock_schedule_in_sec, mock_user},
+        tests::{
+            mock_api_with_config, mock_config, mock_schedule_in_sec, mock_user,
+            MockWebPageResourcesTrackerBuilder,
+        },
         utils::{
             WebPageResourceContent, WebPageResourceContentData, WebPageResourcesRevision,
-            WebPageResourcesTracker, WebScraperResource, WebScraperResourcesRequest,
-            WebScraperResourcesResponse,
+            WebPageResourcesTrackerScripts, WebScraperResource, WebScraperResourcesRequest,
+            WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
         },
     };
     use cron::Schedule;
     use futures::StreamExt;
     use httpmock::MockServer;
     use insta::assert_debug_snapshot;
-    use std::{ops::Add, sync::Arc, thread, time::Duration};
+    use std::{default::Default, ops::Add, sync::Arc, thread, time::Duration};
     use time::OffsetDateTime;
     use tokio_cron_scheduler::{
         CronJob, JobId, JobScheduler, JobStored, JobStoredData, JobType, SimpleJobCode,
@@ -363,13 +366,12 @@ mod tests {
         api.web_scraping()
             .upsert_resources_tracker(
                 user.id,
-                WebPageResourcesTracker {
-                    name: "tracker-one".to_string(),
-                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    revisions: 1,
-                    delay: Duration::from_millis(2000),
-                    schedule: None,
-                },
+                MockWebPageResourcesTrackerBuilder::create(
+                    "tracker-one",
+                    "http://localhost:1234/my/app?q=2",
+                    1,
+                )?
+                .build(),
             )
             .await?;
         let tracker_job_id = scheduler
@@ -423,13 +425,13 @@ mod tests {
         api.web_scraping()
             .upsert_resources_tracker(
                 user.id,
-                WebPageResourcesTracker {
-                    name: "tracker-one".to_string(),
-                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    revisions: 0,
-                    delay: Duration::from_millis(2000),
-                    schedule: Some("1/1 * * * * *".to_string()),
-                },
+                MockWebPageResourcesTrackerBuilder::create(
+                    "tracker-one",
+                    "http://localhost:1234/my/app?q=2",
+                    0,
+                )?
+                .with_schedule("1/1 * * * * *")
+                .build(),
             )
             .await?;
         let tracker_job_id = scheduler
@@ -491,13 +493,16 @@ mod tests {
             .web_scraping()
             .upsert_resources_tracker(
                 user.id,
-                WebPageResourcesTracker {
-                    name: "tracker-one".to_string(),
-                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    revisions: 1,
-                    delay: Duration::from_millis(2000),
-                    schedule: Some(tracker_schedule.clone()),
-                },
+                MockWebPageResourcesTrackerBuilder::create(
+                    "tracker-one",
+                    "http://localhost:1234/my/app?q=2",
+                    1,
+                )?
+                .with_schedule(&tracker_schedule)
+                .with_scripts(WebPageResourcesTrackerScripts {
+                    resource_filter: Some("return resource.url !== undefined;".to_string()),
+                })
+                .build(),
             )
             .await?;
         let trigger_job_id = scheduler
@@ -535,12 +540,13 @@ mod tests {
             when.method(httpmock::Method::POST)
                 .path("/api/resources")
                 .json_body(
-                    serde_json::to_value(WebScraperResourcesRequest {
-                        url: &tracker.url,
-                        timeout: None,
-                        delay: Some(2000),
-                        wait_selector: None,
-                    })
+                    serde_json::to_value(
+                        WebScraperResourcesRequest::with_default_parameters(&tracker.url)
+                            .set_scripts(WebScraperResourcesRequestScripts {
+                                resource_filter: Some("return resource.url !== undefined;"),
+                            })
+                            .set_delay(Duration::from_millis(2000)),
+                    )
                     .unwrap(),
                 );
             then.status(200)
@@ -687,13 +693,13 @@ mod tests {
             .web_scraping()
             .upsert_resources_tracker(
                 user.id,
-                WebPageResourcesTracker {
-                    name: "tracker-one".to_string(),
-                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    revisions: 2,
-                    delay: Duration::from_millis(2000),
-                    schedule: Some(tracker_schedule.clone()),
-                },
+                MockWebPageResourcesTrackerBuilder::create(
+                    "tracker-one",
+                    "http://localhost:1234/my/app?q=2",
+                    2,
+                )?
+                .with_schedule(&tracker_schedule)
+                .build(),
             )
             .await?;
         api.web_scraping()
@@ -742,12 +748,10 @@ mod tests {
             when.method(httpmock::Method::POST)
                 .path("/api/resources")
                 .json_body(
-                    serde_json::to_value(WebScraperResourcesRequest {
-                        url: &tracker.url,
-                        timeout: None,
-                        delay: Some(2000),
-                        wait_selector: None,
-                    })
+                    serde_json::to_value(
+                        WebScraperResourcesRequest::with_default_parameters(&tracker.url)
+                            .set_delay(Duration::from_millis(2000)),
+                    )
                     .unwrap(),
                 );
             then.status(200)

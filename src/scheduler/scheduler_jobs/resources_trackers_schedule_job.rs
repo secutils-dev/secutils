@@ -119,8 +119,7 @@ mod tests {
     use super::ResourcesTrackersScheduleJob;
     use crate::{
         scheduler::{scheduler_job::SchedulerJob, scheduler_store::SchedulerStore},
-        tests::{mock_api_with_config, mock_config, mock_user},
-        utils::WebPageResourcesTracker,
+        tests::{mock_api_with_config, mock_config, mock_user, MockWebPageResourcesTrackerBuilder},
     };
     use anyhow::anyhow;
     use cron::Schedule;
@@ -131,7 +130,6 @@ mod tests {
         CronJob, JobId, JobScheduler, JobStored, JobStoredData, JobType, SimpleJobCode,
         SimpleNotificationCode, SimpleNotificationStore,
     };
-    use url::Url;
     use uuid::uuid;
 
     fn mock_job_data(job_id: JobId) -> JobStoredData {
@@ -244,25 +242,25 @@ mod tests {
         api.web_scraping()
             .upsert_resources_tracker(
                 user.id,
-                WebPageResourcesTracker {
-                    name: "tracker-one".to_string(),
-                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    revisions: 1,
-                    delay: Duration::from_millis(2000),
-                    schedule: Some("1 2 3 4 5 6 2030".to_string()),
-                },
+                MockWebPageResourcesTrackerBuilder::create(
+                    "tracker-one",
+                    "http://localhost:1234/my/app?q=2",
+                    1,
+                )?
+                .with_schedule("1 2 3 4 5 6 2030")
+                .build(),
             )
             .await?;
         api.web_scraping()
             .upsert_resources_tracker(
                 user.id,
-                WebPageResourcesTracker {
-                    name: "tracker-two".to_string(),
-                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    revisions: 1,
-                    delay: Duration::from_millis(2000),
-                    schedule: Some("1 2 3 4 5 6 2035".to_string()),
-                },
+                MockWebPageResourcesTrackerBuilder::create(
+                    "tracker-two",
+                    "http://localhost:1234/my/app?q=2",
+                    1,
+                )?
+                .with_schedule("1 2 3 4 5 6 2035")
+                .build(),
             )
             .await?;
         api.web_scraping()
@@ -344,25 +342,23 @@ mod tests {
         api.web_scraping()
             .upsert_resources_tracker(
                 user.id,
-                WebPageResourcesTracker {
-                    name: "tracker-one".to_string(),
-                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    revisions: 1,
-                    delay: Duration::from_millis(2000),
-                    schedule: None,
-                },
+                MockWebPageResourcesTrackerBuilder::create(
+                    "tracker-one",
+                    "http://localhost:1234/my/app?q=2",
+                    1,
+                )?
+                .build(),
             )
             .await?;
         api.web_scraping()
             .upsert_resources_tracker(
                 user.id,
-                WebPageResourcesTracker {
-                    name: "tracker-two".to_string(),
-                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    revisions: 1,
-                    delay: Duration::from_millis(2000),
-                    schedule: None,
-                },
+                MockWebPageResourcesTrackerBuilder::create(
+                    "tracker-two",
+                    "http://localhost:1234/my/app?q=2",
+                    1,
+                )?
+                .build(),
             )
             .await?;
         api.web_scraping()
@@ -430,13 +426,13 @@ mod tests {
         api.web_scraping()
             .upsert_resources_tracker(
                 user.id,
-                WebPageResourcesTracker {
-                    name: "tracker-one".to_string(),
-                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    revisions: 0,
-                    delay: Duration::from_millis(2000),
-                    schedule: Some("1 2 3 4 5 6 2030".to_string()),
-                },
+                MockWebPageResourcesTrackerBuilder::create(
+                    "tracker-one",
+                    "http://localhost:1234/my/app?q=2",
+                    0,
+                )?
+                .with_schedule("1 2 3 4 5 6 2030")
+                .build(),
             )
             .await?;
         api.web_scraping()
@@ -498,13 +494,13 @@ mod tests {
         web_scraping
             .upsert_resources_tracker(
                 user.id,
-                WebPageResourcesTracker {
-                    name: "tracker-one".to_string(),
-                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    revisions: 1,
-                    delay: Duration::from_millis(2000),
-                    schedule: Some("1 2 3 4 5 6 2030".to_string()),
-                },
+                MockWebPageResourcesTrackerBuilder::create(
+                    "tracker-one",
+                    "http://localhost:1234/my/app?q=2",
+                    1,
+                )?
+                .with_schedule("1 2 3 4 5 6 2030")
+                .build(),
             )
             .await?;
         web_scraping
