@@ -44,6 +44,18 @@ RUN --mount=type=cache,target=/app/target if [ "$TARGETPLATFORM" = "linux/arm64"
     fi
 
 FROM alpine:3.18
+EXPOSE 7070
+
+ENV APP_USER=secutils
+ENV APP_USER_UID=1001
+
 WORKDIR /app
 COPY --from=SERVER_BUILDER ["/app/secutils", "./"]
+
+# Configure group and user.
+RUN addgroup -S -g $APP_USER_UID $APP_USER \
+    && adduser -S -u $APP_USER_UID -G $APP_USER $APP_USER
+RUN chown -R $APP_USER:$APP_USER ./
+USER $APP_USER
+
 CMD [ "./secutils" ]
