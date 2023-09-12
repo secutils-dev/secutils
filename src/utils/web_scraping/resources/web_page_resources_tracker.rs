@@ -29,6 +29,12 @@ pub struct WebPageResourcesTracker {
     #[serde(skip_serializing_if = "WebPageResourcesTrackerScripts::is_empty")]
     #[serde(default)]
     pub scripts: WebPageResourcesTrackerScripts,
+    /// Indicates that resources change notifications are disabled for this tracker. This property
+    /// intentionally looks inverted to make it easier to drop it once full blown support for custom
+    /// tracker notifications is implemented.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default)]
+    pub disable_change_notifications: bool,
 }
 
 #[cfg(test)]
@@ -119,6 +125,27 @@ mod tests {
         }
         "###);
 
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "some-name",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .with_delay_millis(2500)
+        .with_schedule("0 0 * * *")
+        .with_scripts(WebPageResourcesTrackerScripts::default())
+        .with_disabled_notifications()
+        .build();
+        assert_json_snapshot!(tracker, @r###"
+        {
+          "name": "some-name",
+          "url": "http://localhost:1234/my/app?q=2",
+          "revisions": 3,
+          "delay": 2500,
+          "schedule": "0 0 * * *",
+          "disable_change_notifications": true
+        }
+        "###);
+
         Ok(())
     }
 
@@ -172,6 +199,33 @@ mod tests {
                     "delay": 2000,
                     "schedule": "0 0 * * *",
                     "scripts": { "resourceFilterMap": "return resource;" }
+                })
+                .to_string()
+            )?,
+            tracker
+        );
+
+        let tracker = MockWebPageResourcesTrackerBuilder::create(
+            "some-name",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .with_schedule("0 0 * * *")
+        .with_scripts(WebPageResourcesTrackerScripts {
+            resource_filter_map: Some("return resource;".to_string()),
+        })
+        .with_disabled_notifications()
+        .build();
+        assert_eq!(
+            serde_json::from_str::<WebPageResourcesTracker>(
+                &json!({
+                    "name": "some-name",
+                    "url": "http://localhost:1234/my/app?q=2",
+                    "revisions": 3,
+                    "delay": 2000,
+                    "schedule": "0 0 * * *",
+                    "scripts": { "resourceFilterMap": "return resource;" },
+                    "disable_change_notifications": true
                 })
                 .to_string()
             )?,

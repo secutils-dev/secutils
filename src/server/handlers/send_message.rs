@@ -1,6 +1,6 @@
 use crate::{
     error::SecutilsError,
-    notifications::{NotificationContent, NotificationDestination, NotificationEmailContent},
+    notifications::{EmailNotificationContent, NotificationContent, NotificationDestination},
     server::app_state::AppState,
 };
 use actix_web::{web, HttpResponse};
@@ -42,7 +42,7 @@ pub async fn send_message(
         .notifications()
         .schedule_notification(
             NotificationDestination::Email(recipient),
-            NotificationContent::Email(NotificationEmailContent::text(
+            NotificationContent::Email(EmailNotificationContent::text(
                 "Secutils contact request",
                 &body,
             )),

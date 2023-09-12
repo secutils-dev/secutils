@@ -1,8 +1,5 @@
-mod notification_email_content;
-
+use crate::notifications::EmailNotificationContent;
 use serde::{Deserialize, Serialize};
-
-pub use self::notification_email_content::NotificationEmailContent;
 
 /// Describes the content of a notification.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -10,12 +7,12 @@ pub enum NotificationContent {
     /// Notification content is represented as a string.
     Text(String),
     /// Notification content is represented as an email.
-    Email(NotificationEmailContent),
+    Email(EmailNotificationContent),
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{NotificationContent, NotificationEmailContent};
+    use super::{EmailNotificationContent, NotificationContent};
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
@@ -25,10 +22,10 @@ mod tests {
         );
 
         assert_eq!(
-            postcard::to_stdvec(&NotificationContent::Email(NotificationEmailContent::text(
+            postcard::to_stdvec(&NotificationContent::Email(EmailNotificationContent::text(
                 "abc", "def"
             )))?,
-            vec![1, 3, 97, 98, 99, 3, 100, 101, 102, 0]
+            vec![1, 3, 97, 98, 99, 3, 100, 101, 102, 0, 0]
         );
         Ok(())
     }
@@ -41,8 +38,10 @@ mod tests {
         );
 
         assert_eq!(
-            postcard::from_bytes::<NotificationContent>(&[1, 3, 97, 98, 99, 3, 100, 101, 102, 0])?,
-            NotificationContent::Email(NotificationEmailContent::text("abc", "def"))
+            postcard::from_bytes::<NotificationContent>(&[
+                1, 3, 97, 98, 99, 3, 100, 101, 102, 0, 0
+            ])?,
+            NotificationContent::Email(EmailNotificationContent::text("abc", "def"))
         );
         Ok(())
     }

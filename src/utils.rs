@@ -18,8 +18,8 @@ pub use self::{
     utils_action::UtilsAction,
     utils_action_result::UtilsActionResult,
     web_scraping::{
-        web_page_resources_revisions_diff, UtilsWebScrapingAction, UtilsWebScrapingActionResult,
-        WebPageResource, WebPageResourceContent, WebPageResourceContentData,
+        UtilsWebScrapingAction, UtilsWebScrapingActionResult, WebPageResource,
+        WebPageResourceContent, WebPageResourceContentData, WebPageResourceDiffStatus,
         WebPageResourcesRevision, WebPageResourcesTracker, WebPageResourcesTrackerScripts,
         WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesRequestScripts,
         WebScraperResourcesResponse,

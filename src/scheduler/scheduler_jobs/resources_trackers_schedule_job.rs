@@ -64,10 +64,12 @@ impl ResourcesTrackersScheduleJob {
             .get_unscheduled_resources_tracker_jobs()
             .await?;
 
-        log::debug!(
-            "Found {} unscheduled trackers jobs.",
-            unscheduled_trackers_jobs.len()
-        );
+        if !unscheduled_trackers_jobs.is_empty() {
+            log::debug!(
+                "Found {} unscheduled trackers jobs.",
+                unscheduled_trackers_jobs.len()
+            );
+        }
 
         for tracker_job in unscheduled_trackers_jobs {
             let tracker_name = tracker_job.key.as_ref().ok_or_else(|| {

@@ -176,7 +176,7 @@ impl<'a, C: AsRef<Config>, DR: DnsResolver, ET: EmailTransport> WebScrapingApi<'
         user_id: UserId,
         tracker: &WebPageResourcesTracker,
         new_revision: WebPageResourcesRevision,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Option<WebPageResourcesRevision>> {
         let user_data_key = UserDataKey::from((
             PublicUserDataNamespace::WebPageResourcesTrackers,
             tracker.name.as_str(),
@@ -190,39 +190,44 @@ impl<'a, C: AsRef<Config>, DR: DnsResolver, ET: EmailTransport> WebScrapingApi<'
             .unwrap_or_default();
 
         // Check if there is a revision with the same timestamp. If so, we need to replace it.
-        if let Some(position) = revisions
+        let new_revision_with_diff = if let Some(position) = revisions
             .iter()
             .position(|r| r.timestamp == new_revision.timestamp)
         {
             revisions[position] = new_revision;
+            None
         } else {
             // Get the latest revision and check if it's different from the new one. If so, we need to
             // save a new revision, otherwise just replace the latest.
-            let new_revision = if let Some(latest_revision) = revisions.pop_back() {
-                let revisions_with_diff = web_page_resources_revisions_diff(vec![
-                    latest_revision.clone(),
-                    new_revision.clone(),
-                ])?;
-                let new_revision_with_diff = revisions_with_diff
-                    .get(1)
-                    .ok_or_else(|| anyhow!("Invalid revisions diff result."))?;
+            let (new_revision, new_revision_with_diff) =
+                if let Some(latest_revision) = revisions.pop_back() {
+                    let mut revisions_with_diff = web_page_resources_revisions_diff(vec![
+                        latest_revision.clone(),
+                        new_revision.clone(),
+                    ])?;
+                    let new_revision_with_diff = revisions_with_diff
+                        .pop()
+                        .ok_or_else(|| anyhow!("Invalid revisions diff result."))?;
 
-                // Return the latest revision back to the queue if it's different from the new one.
-                if new_revision_with_diff.has_diff() {
-                    revisions.push_back(latest_revision);
-                }
-
-                new_revision
-            } else {
-                new_revision
-            };
+                    // Return the latest revision back to the queue if it's different from the new one.
+                    if new_revision_with_diff.has_diff() {
+                        revisions.push_back(latest_revision);
+                        (new_revision, Some(new_revision_with_diff))
+                    } else {
+                        (new_revision, None)
+                    }
+                } else {
+                    (new_revision, None)
+                };
 
             // Enforce revisions limit and displace the oldest one.
             if revisions.len() == tracker.revisions {
                 revisions.pop_front();
             }
             revisions.push_back(new_revision);
-        }
+
+            new_revision_with_diff
+        };
 
         self.db
             .upsert_user_data(
@@ -234,7 +239,9 @@ impl<'a, C: AsRef<Config>, DR: DnsResolver, ET: EmailTransport> WebScrapingApi<'
                     OffsetDateTime::now_utc(),
                 ),
             )
-            .await
+            .await?;
+
+        Ok(new_revision_with_diff)
     }
 
     /// Fetches resources for the specified web page resources tracker.
@@ -435,8 +442,8 @@ mod tests {
         users::{PublicUserDataNamespace, User},
         utils::{
             web_scraping::WebScrapingApi, WebPageResource, WebPageResourceContent,
-            WebPageResourceContentData, WebPageResourcesRevision, WebPageResourcesTracker,
-            WebPageResourcesTrackerScripts,
+            WebPageResourceContentData, WebPageResourceDiffStatus, WebPageResourcesRevision,
+            WebPageResourcesTracker, WebPageResourcesTrackerScripts,
         },
     };
     use std::collections::HashMap;
@@ -689,8 +696,10 @@ mod tests {
             }],
             styles: vec![],
         };
-        api.save_resources(mock_user.id, &tracker_one, resources_one.clone())
+        let diff = api
+            .save_resources(mock_user.id, &tracker_one, resources_one.clone())
             .await?;
+        assert!(diff.is_none());
 
         let tracker_one_resources = api.get_resources(mock_user.id, &tracker_one).await?;
         let tracker_two_resources = api.get_resources(mock_user.id, &tracker_two).await?;
@@ -706,8 +715,25 @@ mod tests {
                 diff_status: None,
             }],
         };
-        api.save_resources(mock_user.id, &tracker_one, resources_two.clone())
+        let diff = api
+            .save_resources(mock_user.id, &tracker_one, resources_two.clone())
             .await?;
+        assert_eq!(
+            diff,
+            Some(WebPageResourcesRevision {
+                timestamp: OffsetDateTime::from_unix_timestamp(946720900)?,
+                scripts: vec![WebPageResource {
+                    url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
+                    content: None,
+                    diff_status: Some(WebPageResourceDiffStatus::Removed),
+                }],
+                styles: vec![WebPageResource {
+                    url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
+                    content: None,
+                    diff_status: Some(WebPageResourceDiffStatus::Added),
+                }],
+            })
+        );
 
         let tracker_one_resources = api.get_resources(mock_user.id, &tracker_one).await?;
         let tracker_two_resources = api.get_resources(mock_user.id, &tracker_two).await?;
@@ -729,8 +755,10 @@ mod tests {
                 diff_status: None,
             }],
         };
-        api.save_resources(mock_user.id, &tracker_two, resources_three.clone())
+        let diff = api
+            .save_resources(mock_user.id, &tracker_two, resources_three.clone())
             .await?;
+        assert!(diff.is_none());
 
         let tracker_one_resources = api.get_resources(mock_user.id, &tracker_one).await?;
         let tracker_two_resources = api.get_resources(mock_user.id, &tracker_two).await?;

@@ -73,10 +73,16 @@ impl NotificationsSendJob {
             .send_pending_notifications(MAX_NOTIFICATIONS_TO_SEND)
             .await
         {
-            Ok(sent_notification_count) => {
+            Ok(sent_notification_count) if sent_notification_count > 0 => {
                 log::info!(
                     "Sent {} notifications ({} elapsed).",
                     sent_notification_count,
+                    humantime::format_duration(execute_start.elapsed())
+                );
+            }
+            Ok(_) => {
+                log::trace!(
+                    "No pending notifications to send ({} elapsed).",
                     humantime::format_duration(execute_start.elapsed())
                 );
             }

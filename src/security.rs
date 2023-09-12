@@ -14,7 +14,7 @@ pub use self::{
 use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport, EmailTransportError},
-    notifications::{NotificationContent, NotificationDestination, NotificationEmailContent},
+    notifications::{EmailNotificationContent, NotificationContent, NotificationDestination},
     users::{InternalUserDataNamespace, User, UserData, UserId, UserSignupError},
 };
 use anyhow::{anyhow, bail, Context};
@@ -454,7 +454,7 @@ where
             urlencoding::encode(&user.email)
         );
 
-        let notification_content = NotificationContent::Email(NotificationEmailContent::html(
+        let notification_content = NotificationContent::Email(EmailNotificationContent::html(
             "Activate you Secutils.dev account",
             format!("To activate your Secutils.dev account, please click the following link: {encoded_activation_link}"),
             format!(r#"
@@ -559,7 +559,7 @@ where
             urlencoding::encode(&user.email)
         );
 
-        let notification_content = NotificationContent::Email(NotificationEmailContent::html(
+        let notification_content = NotificationContent::Email(EmailNotificationContent::html(
             "Reset password for your Secutils.dev account",
             format!("To reset your Secutils.dev password, please click the following link: {encoded_reset_link}"),
             format!(r#"

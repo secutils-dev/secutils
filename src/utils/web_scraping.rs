@@ -6,10 +6,10 @@ mod utils_web_scraping_action_result;
 pub use self::{
     api_ext::WebScrapingApi,
     resources::{
-        web_page_resources_revisions_diff, WebPageResource, WebPageResourceContent,
-        WebPageResourceContentData, WebPageResourceDiffStatus, WebPageResourcesRevision,
-        WebPageResourcesTracker, WebPageResourcesTrackerScripts, WebScraperResource,
-        WebScraperResourcesRequest, WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
+        WebPageResource, WebPageResourceContent, WebPageResourceContentData,
+        WebPageResourceDiffStatus, WebPageResourcesRevision, WebPageResourcesTracker,
+        WebPageResourcesTrackerScripts, WebScraperResource, WebScraperResourcesRequest,
+        WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
         MAX_WEB_PAGE_RESOURCES_TRACKER_DELAY, MAX_WEB_PAGE_RESOURCES_TRACKER_REVISIONS,
     },
     utils_web_scraping_action::UtilsWebScrapingAction,
@@ -42,6 +42,7 @@ pub mod tests {
                     delay: Duration::from_millis(2000),
                     schedule: None,
                     scripts: Default::default(),
+                    disable_change_notifications: Default::default(),
                 },
             })
         }
@@ -58,6 +59,11 @@ pub mod tests {
 
         pub fn with_scripts(mut self, scripts: WebPageResourcesTrackerScripts) -> Self {
             self.tracker.scripts = scripts;
+            self
+        }
+
+        pub fn with_disabled_notifications(mut self) -> Self {
+            self.tracker.disable_change_notifications = true;
             self
         }
 
