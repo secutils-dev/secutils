@@ -14,6 +14,7 @@ use crate::{
     search::{populate_search_index, SearchIndex},
     security::{create_webauthn, Security},
     server::app_state::AppState,
+    templates::create_templates,
     users::builtin_users_initializer,
 };
 use actix_identity::IdentityMiddleware;
@@ -54,6 +55,7 @@ pub async fn run(
         database,
         search_index,
         Network::new(TokioDnsResolver::create(), email_transport),
+        create_templates()?,
     ));
     let security = Security::new(api.clone(), create_webauthn(&config)?);
 

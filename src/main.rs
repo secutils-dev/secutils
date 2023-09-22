@@ -11,6 +11,7 @@ mod scheduler;
 mod search;
 mod security;
 mod server;
+mod templates;
 mod users;
 mod utils;
 
@@ -251,8 +252,8 @@ mod tests {
     use trust_dns_resolver::proto::rr::Record;
     use url::Url;
 
-    use crate::search::SearchIndex;
     pub use crate::{network::tests::*, utils::tests::*};
+    use crate::{search::SearchIndex, templates::create_templates};
 
     pub struct MockUserBuilder {
         user: User,
@@ -447,6 +448,7 @@ mod tests {
             mock_db().await?,
             SearchIndex::open(|schema| Ok(Index::create_in_ram(schema)))?,
             mock_network(),
+            create_templates()?,
         ))
     }
 
@@ -458,6 +460,7 @@ mod tests {
             mock_db().await?,
             SearchIndex::open(|schema| Ok(Index::create_in_ram(schema)))?,
             network,
+            create_templates()?,
         ))
     }
 
