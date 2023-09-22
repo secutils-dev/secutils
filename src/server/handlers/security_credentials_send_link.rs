@@ -34,16 +34,13 @@ pub async fn security_credentials_send_link(
 
     match state.security.send_credentials_reset_link(&user).await {
         Ok(_) => {
-            log::info!(
-                "Successfully sent password reset link (user ID: {:?}).",
-                user.id
-            );
+            log::info!("Successfully sent user ({}) password reset link.", *user.id);
             HttpResponse::NoContent().finish()
         }
         Err(err) => {
             log::error!(
-                "Failed to send password reset link (user ID: {:?}): {:?}",
-                user.id,
+                "Failed to send user ({}) password reset link: {:?}",
+                *user.id,
                 err
             );
             generic_internal_server_error()

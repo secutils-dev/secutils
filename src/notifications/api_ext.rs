@@ -86,10 +86,10 @@ where
                     .users()
                     .get(user_id)
                     .await?
-                    .ok_or_else(|| anyhow!("User with ID `{}` is not found.", *user_id))?;
+                    .ok_or_else(|| anyhow!("User ({}) is not found.", *user_id))?;
                 self.send_email_notification(
                     user.email,
-                    notification.content.into(),
+                    notification.content.into_email(self.api).await?,
                     notification.scheduled_at,
                 )
                 .await?;
@@ -97,7 +97,7 @@ where
             NotificationDestination::Email(email_address) => {
                 self.send_email_notification(
                     email_address,
-                    notification.content.into(),
+                    notification.content.into_email(self.api).await?,
                     notification.scheduled_at,
                 )
                 .await?;

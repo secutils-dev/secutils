@@ -26,7 +26,7 @@ pub async fn security_activation_complete(
         .await
     {
         Ok(user) => {
-            log::info!("Successfully activated user (user ID: {:?}).", user.id);
+            log::info!("Successfully activated user ({}).", *user.id);
             HttpResponse::Ok().finish()
         }
         Err(err) => {

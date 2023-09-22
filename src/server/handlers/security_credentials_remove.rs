@@ -27,8 +27,8 @@ pub async fn security_credentials_remove(
     match path_params.credentials {
         PathCredentialsType::Password if user.credentials.passkey.is_none() => {
             log::error!(
-                "Cannot remove password credentials when passkey is not set (user ID: {:?}).",
-                user.id
+                "Cannot remove user ({}) password credentials when passkey is not set.",
+                *user.id
             );
             return HttpResponse::BadRequest().json(json!({
                 "message": "Cannot remove password credentials when passkey is not set."
@@ -36,8 +36,8 @@ pub async fn security_credentials_remove(
         }
         PathCredentialsType::Passkey if user.credentials.password_hash.is_none() => {
             log::error!(
-                "Cannot remove passkey credentials when password is not set (user ID: {:?}).",
-                user.id
+                "Cannot remove passkey user ({}) credentials when password is not set.",
+                *user.id
             );
             return HttpResponse::BadRequest().json(json!({
                 "message": "Cannot remove passkey credentials when password is not set."
@@ -55,17 +55,17 @@ pub async fn security_credentials_remove(
     match users_api.upsert(&user).await {
         Ok(_) => {
             log::info!(
-                "Successfully removed {:?} credentials (user ID: {:?}).",
+                "Successfully removed {:?} user ({}) credentials.",
                 path_params.credentials,
-                user.id
+                *user.id
             );
             HttpResponse::NoContent().finish()
         }
         Err(err) => {
             log::error!(
-                "Failed to remove {:?} credentials (user ID: {:?}): {:?}",
+                "Failed to remove {:?} user ({}) credentials: {:?}",
                 path_params.credentials,
-                user.id,
+                *user.id,
                 err
             );
             generic_internal_server_error()

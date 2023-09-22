@@ -28,7 +28,7 @@ pub async fn security_users_remove(
     let users_api = state.api.users();
     match users_api.remove_by_email(&body_params.email).await {
         Ok(Some(user)) => {
-            log::info!("Successfully removed user (user ID: {:?}).", user.id);
+            log::info!("Successfully removed user ({}).", *user.id);
         }
         Ok(None) => {
             log::warn!("Cannot remove non-existent user.");

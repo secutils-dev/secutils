@@ -29,9 +29,9 @@ pub async fn user_data_get(
         ),
         Err(err) => {
             log::error!(
-                "Failed to retrieve data ({:?}) for user (user ID: {:?}): {:?}.",
+                "Failed to retrieve data ({:?}) for user ({}): {:?}.",
                 query_params.namespace,
-                user.id,
+                *user.id,
                 err
             );
             generic_internal_server_error()

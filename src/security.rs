@@ -14,7 +14,10 @@ pub use self::{
 use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport, EmailTransportError},
-    notifications::{EmailNotificationContent, NotificationContent, NotificationDestination},
+    notifications::{
+        AccountActivationTemplate, EmailNotificationContent, NotificationContent,
+        NotificationContentTemplate, NotificationDestination,
+    },
     users::{InternalUserDataNamespace, User, UserData, UserId, UserSignupError},
 };
 use anyhow::{anyhow, bail, Context};
@@ -80,7 +83,7 @@ where
             .await
             .with_context(|| "Failed to check if user already exists.")?
         {
-            log::error!("User is already registered (user ID: {:?}).", user.id);
+            log::error!("User ({}) is already registered.", *user.id);
             return Err(UserSignupError::EmailAlreadyRegistered.into());
         }
 
@@ -303,7 +306,7 @@ where
             .users()
             .upsert(&existing_user)
             .await
-            .with_context(|| format!("Cannot update user (user ID: {:?})", existing_user.id))?;
+            .with_context(|| format!("Cannot update user ({})", *existing_user.id))?;
 
         Ok(existing_user)
     }
@@ -441,80 +444,17 @@ where
             )
             .await
             .with_context(|| {
-                format!(
-                    "Cannot store activation code for the user (user ID: {:?})",
-                    user.id
-                )
+                format!("Cannot store activation code for the user ({}).", *user.id)
             })?;
 
-        let encoded_activation_link = format!(
-            "{}activate?code={}&email={}",
-            self.api.config.public_url.as_str(),
-            urlencoding::encode(&activation_code),
-            urlencoding::encode(&user.email)
-        );
-
-        let notification_content = NotificationContent::Email(EmailNotificationContent::html(
-            "Activate you Secutils.dev account",
-            format!("To activate your Secutils.dev account, please click the following link: {encoded_activation_link}"),
-            format!(r#"
-<!DOCTYPE html>
-<html>
-  <head>
-    <title>Activate your Secutils.dev account</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-      body {{
-        font-family: Arial, sans-serif;
-        background-color: #f1f1f1;
-        margin: 0;
-        padding: 0;
-      }}
-      .container {{
-        max-width: 600px;
-        margin: 0 auto;
-        background-color: #fff;
-        padding: 20px;
-        border-radius: 5px;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-      }}
-      h1 {{
-        font-size: 24px;
-        margin-top: 0;
-      }}
-      p {{
-        font-size: 16px;
-        line-height: 1.5;
-        margin-bottom: 20px;
-      }}
-      .activate-link {{
-        color: #fff;
-        background-color: #2196F3;
-        padding: 10px 20px;
-        text-decoration: none;
-        border-radius: 5px;
-      }}
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h1>Activate your Secutils.dev account</h1>
-      <p>Thanks for signing up! To activate your account, please click the link below:</p>
-      <a class="activate-link" href="{encoded_activation_link}">Activate my account</a>
-      <p>If the button above doesn't work, you can also copy and paste the following URL into your browser:</p>
-      <p>{encoded_activation_link}</p>
-      <p>If you have any trouble activating your account, please contact us at <a href = "mailto: contact@secutils.dev">contact@secutils.dev</a>.</p>
-    </div>
-  </body>
-</html>"#)
-        ));
-
+        // Schedule a email notification that will include activation link.
         self.api
             .notifications()
             .schedule_notification(
                 NotificationDestination::User(user.id),
-                notification_content,
+                NotificationContent::Template(NotificationContentTemplate::AccountActivation(
+                    AccountActivationTemplate { user_id: user.id },
+                )),
                 OffsetDateTime::now_utc(),
             )
             .await?;
@@ -545,8 +485,8 @@ where
             .await
             .with_context(|| {
                 format!(
-                    "Cannot store credentials reset code for the user (user ID: {:?})",
-                    user.id
+                    "Cannot store credentials reset code for the user ({}).",
+                    *user.id
                 )
             })?;
 

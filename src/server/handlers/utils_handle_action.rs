@@ -17,7 +17,11 @@ pub async fn utils_handle_action(
 
     let action = body_params.into_inner().action;
     if let Err(err) = action.validate(&state.api).await {
-        log::error!("Invalid utility action (user ID: {:?}): {}", user_id, err);
+        log::error!(
+            "User ({}) tried to perform invalid utility action: {}",
+            *user_id,
+            err
+        );
         return Ok(HttpResponse::BadRequest().json(json!({ "message": err.to_string() })));
     }
 
@@ -26,7 +30,11 @@ pub async fn utils_handle_action(
         .await
         .map(|response| HttpResponse::Ok().json(response))
         .or_else(|err| {
-            log::error!("Failed to execute action (user ID: {:?}): {}", user_id, err);
+            log::error!(
+                "User ({}) failed to perform utility action: {}",
+                *user_id,
+                err
+            );
             Ok(HttpResponse::InternalServerError().json(json!({ "message": err.to_string() })))
         })
 }

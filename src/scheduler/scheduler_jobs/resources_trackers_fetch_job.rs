@@ -114,8 +114,8 @@ impl ResourcesTrackersFetchJob {
                 tracker
             } else {
                 log::warn!(
-                    "Found an pending tracker job for a tracker that doesn't support tracking, removing: {:?} (User ID: {:?})",
-                    tracker_name, user_id
+                    "Found an pending tracker job for a user ({}) tracker ({}) that doesn't support tracking, removing...",
+                    *user_id, tracker_name
                 );
                 scheduler.remove(&tracker_job_id).await?;
                 web_scraping

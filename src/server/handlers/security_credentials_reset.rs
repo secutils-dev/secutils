@@ -41,7 +41,7 @@ pub async fn security_credentials_reset_password(
         .await
     {
         Ok(user) => {
-            log::info!("Successfully reset user password (user ID: {:?}).", user.id);
+            log::info!("Successfully reset user ({}) password.", *user.id);
             HttpResponse::NoContent().finish()
         }
         Err(err) => {

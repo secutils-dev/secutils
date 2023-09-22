@@ -33,16 +33,13 @@ pub async fn security_credentials_update_password(
         .await
     {
         Ok(user) => {
-            log::info!(
-                "Successfully updated user credentials (user ID: {:?}).",
-                user.id
-            );
+            log::info!("Successfully updated user ({}) credentials.", *user.id);
             HttpResponse::NoContent().finish()
         }
         Err(err) => {
             log::error!(
-                "Failed to update user credentials (user ID: {:?}): {:?}",
-                user.id,
+                "Failed to update user ({}) credentials: {:?}",
+                *user.id,
                 err
             );
             generic_internal_server_error()
@@ -84,16 +81,13 @@ pub async fn security_credentials_update_passkey_finish(
         .await
     {
         Ok(user) => {
-            log::info!(
-                "Successfully updated user credentials (user ID: {:?}).",
-                user.id
-            );
+            log::info!("Successfully updated user ({}) credentials.", *user.id);
             HttpResponse::NoContent().finish()
         }
         Err(err) => {
             log::error!(
-                "Failed to update user credentials (user ID: {:?}): {:?}",
-                user.id,
+                "Failed to update user ({}) credentials: {:?}",
+                *user.id,
                 err
             );
             generic_internal_server_error()

@@ -64,9 +64,9 @@ impl<'a, C: AsRef<Config>, DR: DnsResolver, ET: EmailTransport> WebScrapingApi<'
 
         if changed_url {
             log::debug!(
-                "Web resources tracker \"{}\" (user ID: {:?}) changed URL, clearing web resources history.",
-                tracker.name,
-                user_id
+                "User's ({}) web resources tracker \"{}\" changed URL, clearing web resources history.",
+                *user_id,
+                tracker.name
             );
             let user_data_key = (
                 PublicUserDataNamespace::WebPageResourcesTrackers,

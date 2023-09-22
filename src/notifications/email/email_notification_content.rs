@@ -1,4 +1,4 @@
-use crate::notifications::{EmailNotificationAttachment, NotificationContent};
+use crate::notifications::EmailNotificationAttachment;
 use serde::{Deserialize, Serialize};
 
 /// Describes the content of the email notification.
@@ -55,20 +55,10 @@ impl EmailNotificationContent {
     }
 }
 
-/// Defines how any `NotificationContent` can be converted to `EmailNotificationContent`.
-impl From<NotificationContent> for EmailNotificationContent {
-    fn from(content: NotificationContent) -> Self {
-        match content {
-            NotificationContent::Text(text) => Self::text("[NO SUBJECT]", text),
-            NotificationContent::Email(email) => email,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::EmailNotificationContent;
-    use crate::notifications::{EmailNotificationAttachment, NotificationContent};
+    use crate::notifications::EmailNotificationAttachment;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
@@ -183,68 +173,6 @@ mod tests {
                     vec![1, 2, 3]
                 )]
             ),
-            EmailNotificationContent {
-                subject: "subject".to_string(),
-                text: "text".to_string(),
-                html: Some("html".to_string()),
-                attachments: Some(vec![EmailNotificationAttachment::inline(
-                    "cid",
-                    "text/plain",
-                    vec![1, 2, 3]
-                )]),
-            }
-        );
-    }
-
-    #[test]
-    fn convert_to_email_content() {
-        assert_eq!(
-            EmailNotificationContent::from(NotificationContent::Text("text".to_string())),
-            EmailNotificationContent {
-                subject: "[NO SUBJECT]".to_string(),
-                text: "text".to_string(),
-                html: None,
-                attachments: None,
-            }
-        );
-
-        assert_eq!(
-            EmailNotificationContent::from(NotificationContent::Email(
-                EmailNotificationContent::text("subject", "text")
-            )),
-            EmailNotificationContent {
-                subject: "subject".to_string(),
-                text: "text".to_string(),
-                html: None,
-                attachments: None,
-            }
-        );
-
-        assert_eq!(
-            EmailNotificationContent::from(NotificationContent::Email(
-                EmailNotificationContent::html("subject", "text", "html")
-            )),
-            EmailNotificationContent {
-                subject: "subject".to_string(),
-                text: "text".to_string(),
-                html: Some("html".to_string()),
-                attachments: None,
-            }
-        );
-
-        assert_eq!(
-            EmailNotificationContent::from(NotificationContent::Email(
-                EmailNotificationContent::html_with_attachments(
-                    "subject",
-                    "text",
-                    "html",
-                    vec![EmailNotificationAttachment::inline(
-                        "cid",
-                        "text/plain",
-                        vec![1, 2, 3]
-                    )]
-                )
-            )),
             EmailNotificationContent {
                 subject: "subject".to_string(),
                 text: "text".to_string(),
