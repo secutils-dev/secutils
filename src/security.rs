@@ -15,8 +15,8 @@ use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport, EmailTransportError},
     notifications::{
-        AccountActivationTemplate, EmailNotificationContent, NotificationContent,
-        NotificationContentTemplate, NotificationDestination,
+        AccountActivationTemplate, NotificationContent, NotificationContentTemplate,
+        NotificationDestination, PasswordResetTemplate,
     },
     users::{InternalUserDataNamespace, User, UserData, UserId, UserSignupError},
 };
@@ -490,77 +490,14 @@ where
                 )
             })?;
 
-        // For now we send email tailored for the password reset, but eventually we can allow user
-        // to reset passkey as well.
-        let encoded_reset_link = format!(
-            "{}reset_credentials?code={}&email={}",
-            self.api.config.public_url.as_str(),
-            urlencoding::encode(&reset_code),
-            urlencoding::encode(&user.email)
-        );
-
-        let notification_content = NotificationContent::Email(EmailNotificationContent::html(
-            "Reset password for your Secutils.dev account",
-            format!("To reset your Secutils.dev password, please click the following link: {encoded_reset_link}"),
-            format!(r#"
-<!DOCTYPE html>
-<html>
-  <head>
-    <title>Reset password for your Secutils.dev account</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-      body {{
-        font-family: Arial, sans-serif;
-        background-color: #f1f1f1;
-        margin: 0;
-        padding: 0;
-      }}
-      .container {{
-        max-width: 600px;
-        margin: 0 auto;
-        background-color: #fff;
-        padding: 20px;
-        border-radius: 5px;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-      }}
-      h1 {{
-        font-size: 24px;
-        margin-top: 0;
-      }}
-      p {{
-        font-size: 16px;
-        line-height: 1.5;
-        margin-bottom: 20px;
-      }}
-      .reset-password-link {{
-        color: #fff;
-        background-color: #2196F3;
-        padding: 10px 20px;
-        text-decoration: none;
-        border-radius: 5px;
-      }}
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h1>Reset password for your Secutils.dev account</h1>
-      <p>You recently requested to reset your password. To reset your password, please click the link below:</p>
-      <a class="reset-password-link" href="{encoded_reset_link}">Reset your password</a>
-      <p>If the button above doesn't work, you can also copy and paste the following URL into your browser:</p>
-      <p>{encoded_reset_link}</p>
-      <p>If you did not request to reset your password, please ignore this email and your password will not be changed.</p>
-      <p>If you have any trouble resetting your password, please contact us at <a href = "mailto: contact@secutils.dev">contact@secutils.dev</a>.</p>
-    </div>
-  </body>
-</html>"#),
-        ));
-
+        // Schedule a email notification that will include password reset link.
         self.api
             .notifications()
             .schedule_notification(
                 NotificationDestination::User(user.id),
-                notification_content,
+                NotificationContent::Template(NotificationContentTemplate::PasswordReset(
+                    PasswordResetTemplate { user_id: user.id },
+                )),
                 OffsetDateTime::now_utc(),
             )
             .await?;
