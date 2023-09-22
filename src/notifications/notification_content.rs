@@ -34,9 +34,7 @@ impl NotificationContent {
 mod tests {
     use super::{EmailNotificationContent, NotificationContent};
     use crate::{
-        notifications::{
-            AccountActivationTemplate, EmailNotificationAttachment, NotificationContentTemplate,
-        },
+        notifications::{EmailNotificationAttachment, NotificationContentTemplate},
         tests::{mock_api, mock_user},
         users::{InternalUserDataNamespace, UserData},
     };
@@ -169,9 +167,7 @@ mod tests {
             .await?;
 
         assert_debug_snapshot!(
-             NotificationContent::Template(NotificationContentTemplate::AccountActivation(
-                AccountActivationTemplate { user_id: user.id }
-            ))
+             NotificationContent::Template(NotificationContentTemplate::AccountActivation { user_id: user.id })
             .into_email(&api)
             .await?, @r###"
         EmailNotificationContent {

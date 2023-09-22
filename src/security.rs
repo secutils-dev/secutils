@@ -14,10 +14,7 @@ pub use self::{
 use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport, EmailTransportError},
-    notifications::{
-        AccountActivationTemplate, NotificationContent, NotificationContentTemplate,
-        NotificationDestination, PasswordResetTemplate,
-    },
+    notifications::{NotificationContent, NotificationContentTemplate, NotificationDestination},
     users::{InternalUserDataNamespace, User, UserData, UserId, UserSignupError},
 };
 use anyhow::{anyhow, bail, Context};
@@ -452,9 +449,9 @@ where
             .notifications()
             .schedule_notification(
                 NotificationDestination::User(user.id),
-                NotificationContent::Template(NotificationContentTemplate::AccountActivation(
-                    AccountActivationTemplate { user_id: user.id },
-                )),
+                NotificationContent::Template(NotificationContentTemplate::AccountActivation {
+                    user_id: user.id,
+                }),
                 OffsetDateTime::now_utc(),
             )
             .await?;
@@ -495,9 +492,9 @@ where
             .notifications()
             .schedule_notification(
                 NotificationDestination::User(user.id),
-                NotificationContent::Template(NotificationContentTemplate::PasswordReset(
-                    PasswordResetTemplate { user_id: user.id },
-                )),
+                NotificationContent::Template(NotificationContentTemplate::PasswordReset {
+                    user_id: user.id,
+                }),
                 OffsetDateTime::now_utc(),
             )
             .await?;

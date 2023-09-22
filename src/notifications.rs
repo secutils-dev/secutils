@@ -14,9 +14,7 @@ pub use self::{
     },
     notification::Notification,
     notification_content::NotificationContent,
-    notification_content_template::{
-        AccountActivationTemplate, NotificationContentTemplate, PasswordResetTemplate,
-    },
+    notification_content_template::NotificationContentTemplate,
     notification_destination::NotificationDestination,
     notification_id::NotificationId,
 };
