@@ -103,6 +103,8 @@ default = [
 
 [profile.release]
 strip = true
+lto = true
+panic = "abort"
 
 [profile.dev.package.sqlx-macros]
 opt-level = 3
