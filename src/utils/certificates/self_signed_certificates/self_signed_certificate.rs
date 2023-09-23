@@ -44,7 +44,7 @@ pub struct SelfSignedCertificate {
 #[cfg(test)]
 mod tests {
     use crate::utils::{
-        tests::MockSelfSignedCertificate, ExtendedKeyUsage, KeyAlgorithm, KeyUsage,
+        tests::MockSelfSignedCertificate, ExtendedKeyUsage, KeyAlgorithm, KeySize, KeyUsage,
         SelfSignedCertificate, SignatureAlgorithm, Version,
     };
     use insta::assert_json_snapshot;
@@ -85,7 +85,9 @@ mod tests {
           "l": "San Francisco",
           "o": "CA Issuer, Inc",
           "ou": "CA Org Unit",
-          "ka": "ed25519",
+          "ka": {
+            "alg": "ed25519"
+          },
           "sa": "ed25519",
           "nb": 946720800,
           "na": 1262340000,
@@ -103,7 +105,7 @@ mod tests {
         assert_json_snapshot!(
             MockSelfSignedCertificate::new(
                 "name",
-                KeyAlgorithm::Rsa,
+                KeyAlgorithm::Rsa { key_size: KeySize::Size1024 },
                 SignatureAlgorithm::Sha256,
                 not_valid_before,
                 not_valid_after,
@@ -112,7 +114,10 @@ mod tests {
             @r###"
         {
           "n": "name",
-          "ka": "rsa",
+          "ka": {
+            "alg": "rsa",
+            "keySize": "1024"
+          },
           "sa": "sha256",
           "nb": 946720800,
           "na": 1262340000,
@@ -137,7 +142,7 @@ mod tests {
                 r#"
         {
           "n": "name",
-          "ka": "rsa",
+          "ka": { "alg": "rsa", "keySize": "1024" },
           "sa": "sha256",
           "nb": 946720800,
           "na": 1262340000,
@@ -148,7 +153,9 @@ mod tests {
             )?,
             MockSelfSignedCertificate::new(
                 "name",
-                KeyAlgorithm::Rsa,
+                KeyAlgorithm::Rsa {
+                    key_size: KeySize::Size1024
+                },
                 SignatureAlgorithm::Sha256,
                 not_valid_before,
                 not_valid_after,
@@ -167,7 +174,7 @@ mod tests {
           "l": "San Francisco",
           "o": "CA Issuer, Inc",
           "ou": "CA Org Unit",
-          "ka": "ed25519",
+          "ka": { "alg": "ed25519" },
           "sa": "ed25519",
           "nb": 946720800,
           "na": 1262340000,

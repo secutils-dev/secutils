@@ -11,8 +11,9 @@ mod webhooks;
 
 pub use self::{
     certificates::{
-        CertificateFormat, ExtendedKeyUsage, KeyAlgorithm, KeyUsage, SelfSignedCertificate,
-        SignatureAlgorithm, UtilsCertificatesAction, UtilsCertificatesActionResult, Version,
+        CertificateFormat, EllipticCurve, ExtendedKeyUsage, KeyAlgorithm, KeySize, KeyUsage,
+        SelfSignedCertificate, SignatureAlgorithm, UtilsCertificatesAction,
+        UtilsCertificatesActionResult, Version,
     },
     util::Util,
     utils_action::UtilsAction,

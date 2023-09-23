@@ -9,5 +9,8 @@ pub use self::{
     self_signed_certificates::SelfSignedCertificate,
     utils_certificates_action::UtilsCertificatesAction,
     utils_certificates_action_result::UtilsCertificatesActionResult,
-    x509::{ExtendedKeyUsage, KeyAlgorithm, KeyUsage, SignatureAlgorithm, Version},
+    x509::{
+        EllipticCurve, ExtendedKeyUsage, KeyAlgorithm, KeySize, KeyUsage, SignatureAlgorithm,
+        Version,
+    },
 };

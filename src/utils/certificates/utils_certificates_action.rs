@@ -145,18 +145,19 @@ fn message_digest(
     sig_alg: SignatureAlgorithm,
 ) -> anyhow::Result<MessageDigest> {
     match (pk_alg, sig_alg) {
-        (KeyAlgorithm::Rsa, SignatureAlgorithm::Md5) => Ok(MessageDigest::md5()),
-        (KeyAlgorithm::Rsa | KeyAlgorithm::Dsa | KeyAlgorithm::Ecdsa, SignatureAlgorithm::Sha1) => {
-            Ok(MessageDigest::sha1())
-        }
+        (KeyAlgorithm::Rsa { .. }, SignatureAlgorithm::Md5) => Ok(MessageDigest::md5()),
         (
-            KeyAlgorithm::Rsa | KeyAlgorithm::Dsa | KeyAlgorithm::Ecdsa,
+            KeyAlgorithm::Rsa { .. } | KeyAlgorithm::Dsa { .. } | KeyAlgorithm::Ecdsa { .. },
+            SignatureAlgorithm::Sha1,
+        ) => Ok(MessageDigest::sha1()),
+        (
+            KeyAlgorithm::Rsa { .. } | KeyAlgorithm::Dsa { .. } | KeyAlgorithm::Ecdsa { .. },
             SignatureAlgorithm::Sha256,
         ) => Ok(MessageDigest::sha256()),
-        (KeyAlgorithm::Rsa | KeyAlgorithm::Ecdsa, SignatureAlgorithm::Sha384) => {
+        (KeyAlgorithm::Rsa { .. } | KeyAlgorithm::Ecdsa { .. }, SignatureAlgorithm::Sha384) => {
             Ok(MessageDigest::sha384())
         }
-        (KeyAlgorithm::Rsa | KeyAlgorithm::Ecdsa, SignatureAlgorithm::Sha512) => {
+        (KeyAlgorithm::Rsa { .. } | KeyAlgorithm::Ecdsa { .. }, SignatureAlgorithm::Sha512) => {
             Ok(MessageDigest::sha512())
         }
         (KeyAlgorithm::Ed25519, SignatureAlgorithm::Ed25519) => Ok(MessageDigest::null()),
@@ -235,16 +236,16 @@ fn convert_to_pkcs12(
 
 fn generate_key(public_key_algorithm: KeyAlgorithm) -> anyhow::Result<PKey<Private>> {
     let private_key = match public_key_algorithm {
-        KeyAlgorithm::Rsa => {
-            let rsa = Rsa::generate(2048)?;
+        KeyAlgorithm::Rsa { key_size } => {
+            let rsa = Rsa::generate(key_size as u32)?;
             PKey::from_rsa(rsa)?
         }
-        KeyAlgorithm::Dsa => {
-            let dsa = Dsa::generate(2048)?;
+        KeyAlgorithm::Dsa { key_size } => {
+            let dsa = Dsa::generate(key_size as u32)?;
             PKey::from_dsa(dsa)?
         }
-        KeyAlgorithm::Ecdsa => {
-            let ec_group = EcGroup::from_curve_name(Nid::SECP384R1)?;
+        KeyAlgorithm::Ecdsa { curve } => {
+            let ec_group = EcGroup::from_curve_name(Nid::from_raw(curve as i32))?;
             PKey::from_ec_key(EcKey::generate(&ec_group)?)?
         }
         KeyAlgorithm::Ed25519 => PKey::generate_ed25519()?,
@@ -356,7 +357,8 @@ mod tests {
             generate_key, generate_x509_certificate, message_digest,
         },
         tests::MockSelfSignedCertificate,
-        CertificateFormat, KeyAlgorithm, SignatureAlgorithm, UtilsCertificatesAction, Version,
+        CertificateFormat, EllipticCurve, KeyAlgorithm, KeySize, SignatureAlgorithm,
+        UtilsCertificatesAction, Version,
     };
     use insta::assert_debug_snapshot;
     use openssl::hash::MessageDigest;
@@ -447,18 +449,24 @@ mod tests {
 
     #[test]
     fn correctly_generate_keys() -> anyhow::Result<()> {
-        let rsa_key = generate_key(KeyAlgorithm::Rsa)?;
+        let rsa_key = generate_key(KeyAlgorithm::Rsa {
+            key_size: KeySize::Size1024,
+        })?;
         let rsa_key = rsa_key.rsa()?;
 
         assert!(rsa_key.check_key()?);
-        assert_eq!(rsa_key.size(), 256);
+        assert_eq!(rsa_key.size(), 128);
 
-        let dsa_key = generate_key(KeyAlgorithm::Dsa)?;
+        let dsa_key = generate_key(KeyAlgorithm::Dsa {
+            key_size: KeySize::Size2048,
+        })?;
         let dsa_key = dsa_key.dsa()?;
 
         assert_eq!(dsa_key.size(), 72);
 
-        let ecdsa_key = generate_key(KeyAlgorithm::Ecdsa)?;
+        let ecdsa_key = generate_key(KeyAlgorithm::Ecdsa {
+            curve: EllipticCurve::SECP256R1,
+        })?;
         let ecdsa_key = ecdsa_key.ec_key()?;
 
         ecdsa_key.check_key()?;
@@ -472,10 +480,25 @@ mod tests {
     #[test]
     fn picks_correct_message_digest() -> anyhow::Result<()> {
         assert!(
-            message_digest(KeyAlgorithm::Rsa, SignatureAlgorithm::Md5)? == MessageDigest::md5()
+            message_digest(
+                KeyAlgorithm::Rsa {
+                    key_size: KeySize::Size1024,
+                },
+                SignatureAlgorithm::Md5
+            )? == MessageDigest::md5()
         );
 
-        for pk_algorithm in [KeyAlgorithm::Rsa, KeyAlgorithm::Dsa, KeyAlgorithm::Ecdsa] {
+        for pk_algorithm in [
+            KeyAlgorithm::Rsa {
+                key_size: KeySize::Size1024,
+            },
+            KeyAlgorithm::Dsa {
+                key_size: KeySize::Size2048,
+            },
+            KeyAlgorithm::Ecdsa {
+                curve: EllipticCurve::SECP256R1,
+            },
+        ] {
             assert!(
                 message_digest(pk_algorithm, SignatureAlgorithm::Sha1)? == MessageDigest::sha1()
             );
@@ -485,7 +508,14 @@ mod tests {
             );
         }
 
-        for pk_algorithm in [KeyAlgorithm::Rsa, KeyAlgorithm::Ecdsa] {
+        for pk_algorithm in [
+            KeyAlgorithm::Rsa {
+                key_size: KeySize::Size1024,
+            },
+            KeyAlgorithm::Ecdsa {
+                curve: EllipticCurve::SECP256R1,
+            },
+        ] {
             assert!(
                 message_digest(pk_algorithm, SignatureAlgorithm::Sha384)?
                     == MessageDigest::sha384()
@@ -513,14 +543,18 @@ mod tests {
 
         let certificate_template = MockSelfSignedCertificate::new(
             "test-1-name",
-            KeyAlgorithm::Rsa,
+            KeyAlgorithm::Rsa {
+                key_size: KeySize::Size1024,
+            },
             SignatureAlgorithm::Sha256,
             not_valid_before,
             not_valid_after,
             Version::One,
         )
         .build();
-        let key = generate_key(KeyAlgorithm::Rsa)?;
+        let key = generate_key(KeyAlgorithm::Rsa {
+            key_size: KeySize::Size1024,
+        })?;
 
         let x509_certificate = generate_x509_certificate(&certificate_template, &key)?;
 
