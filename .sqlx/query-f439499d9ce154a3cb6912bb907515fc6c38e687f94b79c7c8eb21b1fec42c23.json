@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\nINSERT INTO user_shares (id, user_id, resource, created_at)\nVALUES (?1, ?2, ?3, ?4)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "f439499d9ce154a3cb6912bb907515fc6c38e687f94b79c7c8eb21b1fec42c23"
+}

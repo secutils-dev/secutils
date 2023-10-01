@@ -43,3 +43,38 @@ impl<DR: DnsResolver, ET: EmailTransport> AppState<DR, ET> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+pub mod tests {
+    use crate::{
+        api::Api,
+        network::{Network, TokioDnsResolver},
+        security::{create_webauthn, Security},
+        server::AppState,
+        templates::create_templates,
+        tests::{mock_config, mock_db, mock_search_index},
+    };
+    use lettre::{AsyncSmtpTransport, Tokio1Executor};
+    use std::sync::Arc;
+
+    pub async fn mock_app_state() -> anyhow::Result<AppState> {
+        let api = Arc::new(Api::new(
+            mock_config()?,
+            mock_db().await?,
+            mock_search_index()?,
+            // We should use a real network implementation in tests that rely on `AppState` being
+            // extracted from `HttpRequest`, as types should match for the extraction to work.
+            Network::new(
+                TokioDnsResolver::create(),
+                AsyncSmtpTransport::<Tokio1Executor>::unencrypted_localhost(),
+            ),
+            create_templates()?,
+        ));
+
+        Ok(AppState::new(
+            api.config.clone(),
+            Security::new(api.clone(), create_webauthn(&api.config)?),
+            api,
+        ))
+    }
+}

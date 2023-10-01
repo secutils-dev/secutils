@@ -11,6 +11,7 @@ mod user_data_namespace;
 mod user_id;
 mod user_role;
 mod user_settings;
+mod user_share;
 
 pub use self::{
     api_ext::errors::UserSignupError,
@@ -25,6 +26,7 @@ pub use self::{
     user_id::UserId,
     user_role::UserRole,
     user_settings::{UserSettings, UserSettingsSetter},
+    user_share::{ClientSharedResource, ClientUserShare, SharedResource, UserShare, UserShareId},
 };
 
 pub(crate) use self::api_ext::user_data_setters::DictionaryDataUserDataSetter;

@@ -1,0 +1,53 @@
+### Get content security policy
+POST {{host}}/api/utils/action
+Authorization: {{api-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "action": {
+    "type": "webSecurity",
+    "value": {
+      "type": "getContentSecurityPolicy",
+      "value": {
+        "policyName": "test"
+      }
+    }
+  }
+}
+
+### Share content security policy
+POST {{host}}/api/utils/action
+Authorization: {{api-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "action": {
+    "type": "webSecurity",
+    "value": {
+      "type": "shareContentSecurityPolicy",
+      "value": {
+        "policyName": "test"
+      }
+    }
+  }
+}
+
+### Unshare content security policy
+POST {{host}}/api/utils/action
+Authorization: {{api-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "action": {
+    "type": "webSecurity",
+    "value": {
+      "type": "unshareContentSecurityPolicy",
+      "value": {
+        "policyName": "test"
+      }
+    }
+  }
+}

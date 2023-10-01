@@ -1,11 +1,18 @@
 mod raw_user;
 mod raw_user_data;
+mod raw_user_share;
 mod raw_user_to_upsert;
 
-use self::{raw_user::RawUser, raw_user_data::RawUserData, raw_user_to_upsert::RawUserToUpsert};
+use self::{
+    raw_user::RawUser, raw_user_data::RawUserData, raw_user_share::RawUserShare,
+    raw_user_to_upsert::RawUserToUpsert,
+};
 use crate::{
     database::Database,
-    users::{User, UserData, UserDataKey, UserDataNamespace, UserId},
+    users::{
+        SharedResource, User, UserData, UserDataKey, UserDataNamespace, UserId, UserShare,
+        UserShareId,
+    },
 };
 use anyhow::{bail, Context};
 use serde::{de::DeserializeOwned, Serialize};
@@ -278,16 +285,96 @@ WHERE value = ?1 AND namespace = ?2
         .map(UserData::try_from)
         .collect()
     }
+
+    /// Retrieves user share from `user_shares` table using user share ID.
+    pub async fn get_user_share(&self, id: UserShareId) -> anyhow::Result<Option<UserShare>> {
+        let id = id.hyphenated();
+        query_as!(
+            RawUserShare,
+            r#"
+SELECT id as "id: uuid::fmt::Hyphenated", user_id, resource, created_at
+FROM user_shares
+WHERE id = ?1
+                "#,
+            id
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .map(UserShare::try_from)
+        .transpose()
+    }
+
+    /// Retrieves user share from `user_shares` table using user ID and resource.
+    pub async fn get_user_share_by_resource(
+        &self,
+        user_id: UserId,
+        resource: &SharedResource,
+    ) -> anyhow::Result<Option<UserShare>> {
+        let resource = postcard::to_stdvec(resource)?;
+        query_as!(
+            RawUserShare,
+            r#"
+SELECT id as "id: uuid::fmt::Hyphenated", user_id, resource, created_at
+FROM user_shares
+WHERE user_id = ?1 AND resource = ?2
+                "#,
+            *user_id,
+            resource
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .map(UserShare::try_from)
+        .transpose()
+    }
+
+    /// Inserts user share to the `user_shares` table.
+    pub async fn insert_user_share(&self, user_share: &UserShare) -> anyhow::Result<()> {
+        let raw_user_share = RawUserShare::try_from(user_share)?;
+
+        query!(
+            r#"
+INSERT INTO user_shares (id, user_id, resource, created_at)
+VALUES (?1, ?2, ?3, ?4)
+        "#,
+            raw_user_share.id,
+            raw_user_share.user_id,
+            raw_user_share.resource,
+            raw_user_share.created_at
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Removes user share from the `user_shares` table using user share ID and returns removed
+    /// user share object if it was found.
+    pub async fn remove_user_share(&self, id: UserShareId) -> anyhow::Result<Option<UserShare>> {
+        let id = id.hyphenated();
+        query_as!(
+            RawUserShare,
+            r#"
+DELETE FROM user_shares
+WHERE id = ?1
+RETURNING id as "id: uuid::fmt::Hyphenated", user_id as "user_id!", resource as "resource!", created_at as "created_at!"
+            "#,
+            id
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .map(UserShare::try_from)
+        .transpose()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
         security::StoredCredentials,
-        tests::{mock_db, mock_user, MockUserBuilder},
+        tests::{mock_db, mock_user, mock_user_with_id, MockUserBuilder},
         users::{
-            InternalUserDataNamespace, PublicUserDataNamespace, User, UserData, UserDataNamespace,
-            UserId,
+            InternalUserDataNamespace, PublicUserDataNamespace, SharedResource, User, UserData,
+            UserDataNamespace, UserId, UserShare, UserShareId,
         },
     };
     use insta::assert_debug_snapshot;
@@ -296,6 +383,7 @@ mod tests {
         time::Duration,
     };
     use time::OffsetDateTime;
+    use uuid::uuid;
 
     #[actix_rt::test]
     async fn can_add_and_retrieve_users() -> anyhow::Result<()> {
@@ -1086,6 +1174,160 @@ mod tests {
             },
         ]
         "###);
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_add_and_retrieve_user_shares() -> anyhow::Result<()> {
+        let user_shares = vec![
+            UserShare {
+                id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
+                user_id: 1.try_into()?,
+                resource: SharedResource::content_security_policy("my-policy"),
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            },
+            UserShare {
+                id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000002")),
+                user_id: 2.try_into()?,
+                resource: SharedResource::content_security_policy("my-policy"),
+                created_at: OffsetDateTime::from_unix_timestamp(946720801)?,
+            },
+        ];
+
+        let db = mock_db().await?;
+        db.insert_user(mock_user_with_id(1)?).await?;
+        db.insert_user(mock_user_with_id(2)?).await?;
+
+        for user_share in user_shares.iter() {
+            assert!(db.get_user_share(user_share.id).await?.is_none());
+        }
+
+        // 1. Insert new user shares.
+        for user_share in user_shares.iter() {
+            db.insert_user_share(user_share).await?;
+        }
+
+        // 2. Make sure they were inserted correctly.
+        for user_share in user_shares {
+            assert_eq!(
+                db.get_user_share(user_share.id).await?,
+                Some(user_share.clone())
+            );
+        }
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_retrieve_user_shares_by_resource() -> anyhow::Result<()> {
+        let user_shares = vec![
+            UserShare {
+                id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
+                user_id: 1.try_into()?,
+                resource: SharedResource::content_security_policy("my-policy"),
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            },
+            UserShare {
+                id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000002")),
+                user_id: 2.try_into()?,
+                resource: SharedResource::content_security_policy("my-policy"),
+                created_at: OffsetDateTime::from_unix_timestamp(946720801)?,
+            },
+        ];
+
+        let db = mock_db().await?;
+        db.insert_user(mock_user_with_id(1)?).await?;
+        db.insert_user(mock_user_with_id(2)?).await?;
+
+        // 1. Insert new user shares.
+        for user_share in user_shares.iter() {
+            db.insert_user_share(user_share).await?;
+        }
+
+        assert_eq!(
+            db.get_user_share_by_resource(user_shares[0].user_id, &user_shares[0].resource)
+                .await?,
+            Some(user_shares[0].clone())
+        );
+        assert_eq!(
+            db.get_user_share_by_resource(user_shares[1].user_id, &user_shares[1].resource)
+                .await?,
+            Some(user_shares[1].clone())
+        );
+
+        assert!(db
+            .get_user_share_by_resource(3.try_into()?, &user_shares[0].resource)
+            .await?
+            .is_none());
+        assert!(db
+            .get_user_share_by_resource(
+                user_shares[0].user_id,
+                &SharedResource::content_security_policy("not-my-policy")
+            )
+            .await?
+            .is_none());
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_remove_user_shares() -> anyhow::Result<()> {
+        let user_shares = vec![
+            UserShare {
+                id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
+                user_id: 1.try_into()?,
+                resource: SharedResource::content_security_policy("my-policy"),
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            },
+            UserShare {
+                id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000002")),
+                user_id: 2.try_into()?,
+                resource: SharedResource::content_security_policy("my-policy"),
+                created_at: OffsetDateTime::from_unix_timestamp(946720801)?,
+            },
+        ];
+
+        let db = mock_db().await?;
+        db.insert_user(mock_user_with_id(1)?).await?;
+        db.insert_user(mock_user_with_id(2)?).await?;
+
+        for user_share in user_shares.iter() {
+            assert!(db.get_user_share(user_share.id).await?.is_none());
+        }
+
+        // 1. Insert new user shares.
+        for user_share in user_shares.iter() {
+            db.insert_user_share(user_share).await?;
+        }
+
+        // 2. Make sure they were inserted correctly.
+        for user_share in user_shares.iter() {
+            assert_eq!(
+                db.get_user_share(user_share.id).await?,
+                Some(user_share.clone())
+            );
+        }
+
+        // 3. Remove the first user share.
+        assert_eq!(
+            db.remove_user_share(user_shares[0].id).await?,
+            Some(user_shares[0].clone())
+        );
+        assert!(db.get_user_share(user_shares[0].id).await?.is_none());
+        assert_eq!(
+            db.get_user_share(user_shares[1].id).await?,
+            Some(user_shares[1].clone())
+        );
+
+        // 3. Remove the last user share.
+        assert_eq!(
+            db.remove_user_share(user_shares[1].id).await?,
+            Some(user_shares[1].clone())
+        );
+        for user_share in user_shares {
+            assert!(db.get_user_share(user_share.id).await?.is_none());
+        }
 
         Ok(())
     }

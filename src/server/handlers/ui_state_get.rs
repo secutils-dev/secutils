@@ -1,7 +1,7 @@
 use crate::{
     error::SecutilsError,
-    server::{app_state::AppState, status::Status},
-    users::{PublicUserDataNamespace, User, UserSettings},
+    server::{status::Status, AppState},
+    users::{ClientUserShare, PublicUserDataNamespace, User, UserSettings, UserShare},
     utils::Util,
 };
 use actix_web::{web, HttpResponse};
@@ -21,6 +21,8 @@ struct UiState<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     user: Option<User>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    user_share: Option<ClientUserShare>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     settings: Option<UserSettings>,
     utils: Vec<Util>,
 }
@@ -28,20 +30,27 @@ struct UiState<'a> {
 pub async fn ui_state_get(
     state: web::Data<AppState>,
     user: Option<User>,
+    user_share: Option<UserShare>,
 ) -> Result<HttpResponse, SecutilsError> {
-    let (settings, utils) = if let Some(ref user) = user {
-        (
-            state
-                .api
-                .users()
-                .get_data(user.id, PublicUserDataNamespace::UserSettings)
-                .await?
-                .map(|user_data| user_data.value),
-            state.api.utils().get_all().await?,
-        )
+    // Settings only available for authenticated users.
+    let settings = if let Some(ref user) = user {
+        state
+            .api
+            .users()
+            .get_data(user.id, PublicUserDataNamespace::UserSettings)
+            .await?
+            .map(|user_data| user_data.value)
     } else {
-        (None, vec![])
+        None
     };
+
+    // Utils are only available for authenticated users or when accessing shared resources.
+    let utils = if user.is_some() || user_share.is_some() {
+        state.api.utils().get_all().await?
+    } else {
+        vec![]
+    };
+
     Ok(HttpResponse::Ok().json(UiState {
         status: state
             .status
@@ -50,6 +59,7 @@ pub async fn ui_state_get(
             .deref(),
         license: License,
         user,
+        user_share: user_share.map(ClientUserShare::from),
         settings,
         utils,
     }))

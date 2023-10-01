@@ -341,8 +341,8 @@ mod tests {
                 Envelope {
                     forward_path: [
                         Address {
-                            serialized: "dev@secutils.dev",
-                            at_start: 3,
+                            serialized: "dev-1@secutils.dev",
+                            at_start: 5,
                         },
                     ],
                     reverse_path: Some(
@@ -352,7 +352,7 @@ mod tests {
                         },
                     ),
                 },
-                "From: dev@secutils.dev\r\nReply-To: dev@secutils.dev\r\nTo: dev@secutils.dev\r\nSubject: [NO SUBJECT]\r\nDate: Sat, 01 Jan 2000 09:58:20 +0000\r\nContent-Transfer-Encoding: 7bit\r\n\r\nabc",
+                "From: dev@secutils.dev\r\nReply-To: dev@secutils.dev\r\nTo: dev-1@secutils.dev\r\nSubject: [NO SUBJECT]\r\nDate: Sat, 01 Jan 2000 09:58:20 +0000\r\nContent-Transfer-Encoding: 7bit\r\n\r\nabc",
             ),
             (
                 Envelope {

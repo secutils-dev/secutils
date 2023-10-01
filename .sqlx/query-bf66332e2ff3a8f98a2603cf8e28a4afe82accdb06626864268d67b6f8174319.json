@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\nSELECT id as \"id: uuid::fmt::Hyphenated\", user_id, resource, created_at\nFROM user_shares\nWHERE id = ?1\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: uuid::fmt::Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "user_id",
+        "ordinal": 1,
+        "type_info": "Int64"
+      },
+      {
+        "name": "resource",
+        "ordinal": 2,
+        "type_info": "Blob"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 3,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "bf66332e2ff3a8f98a2603cf8e28a4afe82accdb06626864268d67b6f8174319"
+}

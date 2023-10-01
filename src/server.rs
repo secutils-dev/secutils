@@ -13,7 +13,6 @@ use crate::{
     scheduler::Scheduler,
     search::{populate_search_index, SearchIndex},
     security::{create_webauthn, Security},
-    server::app_state::AppState,
     templates::create_templates,
     users::builtin_users_initializer,
 };
@@ -23,6 +22,11 @@ use actix_web::{cookie::Key, middleware, web, App, HttpServer, Result};
 use anyhow::Context;
 use lettre::{transport::smtp::authentication::Credentials, AsyncSmtpTransport, Tokio1Executor};
 use std::sync::Arc;
+
+#[cfg(test)]
+pub use self::app_state::tests;
+
+pub use app_state::AppState;
 
 #[actix_rt::main]
 pub async fn run(

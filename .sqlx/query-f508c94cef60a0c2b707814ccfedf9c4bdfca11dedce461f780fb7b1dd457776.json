@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\nDELETE FROM user_shares\nWHERE id = ?1\nRETURNING id as \"id: uuid::fmt::Hyphenated\", user_id as \"user_id!\", resource as \"resource!\", created_at as \"created_at!\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id: uuid::fmt::Hyphenated",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "user_id!",
+        "ordinal": 1,
+        "type_info": "Int64"
+      },
+      {
+        "name": "resource!",
+        "ordinal": 2,
+        "type_info": "Blob"
+      },
+      {
+        "name": "created_at!",
+        "ordinal": 3,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "f508c94cef60a0c2b707814ccfedf9c4bdfca11dedce461f780fb7b1dd457776"
+}

@@ -2,10 +2,11 @@ use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
     users::{
-        BuiltinUser, DictionaryDataUserDataSetter, PublicUserDataNamespace, User, UserData,
-        UserDataKey, UserDataNamespace, UserId, UserSettingsSetter,
+        BuiltinUser, DictionaryDataUserDataSetter, PublicUserDataNamespace, SharedResource, User,
+        UserData, UserDataKey, UserDataNamespace, UserId, UserSettingsSetter, UserShare,
+        UserShareId,
     },
-    utils::{AutoResponder, ContentSecurityPolicy, SelfSignedCertificate},
+    utils::{AutoResponder, SelfSignedCertificate},
 };
 use anyhow::{bail, Context};
 use serde::de::DeserializeOwned;
@@ -103,9 +104,6 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
                 PublicUserDataNamespace::AutoResponders => {
                     self.set_auto_responders_data(user_data).await
                 }
-                PublicUserDataNamespace::ContentSecurityPolicies => {
-                    self.set_content_security_policies_data(user_data).await
-                }
                 PublicUserDataNamespace::SelfSignedCertificates => {
                     self.set_self_signed_certificates_data(user_data).await
                 }
@@ -129,6 +127,33 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
         user_data_key: impl Into<UserDataKey<'_>>,
     ) -> anyhow::Result<()> {
         self.api.db.remove_user_data(user_id, user_data_key).await
+    }
+
+    /// Retrieves the user share by the specified ID.
+    pub async fn get_user_share(&self, id: UserShareId) -> anyhow::Result<Option<UserShare>> {
+        self.api.db.get_user_share(id).await
+    }
+
+    /// Retrieves the user share by the specified user ID and resource.
+    pub async fn get_user_share_by_resource(
+        &self,
+        user_id: UserId,
+        resource: &SharedResource,
+    ) -> anyhow::Result<Option<UserShare>> {
+        self.api
+            .db
+            .get_user_share_by_resource(user_id, resource)
+            .await
+    }
+
+    /// Inserts user share into the database.
+    pub async fn insert_user_share(&self, user_share: &UserShare) -> anyhow::Result<()> {
+        self.api.db.insert_user_share(user_share).await
+    }
+
+    /// Removes user share with the specified ID from the database.
+    pub async fn remove_user_share(&self, id: UserShareId) -> anyhow::Result<Option<UserShare>> {
+        self.api.db.remove_user_share(id).await
     }
 
     async fn set_auto_responders_data(
@@ -192,27 +217,6 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
             UserData::new(
                 serialized_user_data.user_id,
                 user_settings.into_inner(),
-                serialized_user_data.timestamp,
-            ),
-        )
-        .await
-    }
-
-    async fn set_content_security_policies_data(
-        &self,
-        serialized_user_data: UserData<Vec<u8>>,
-    ) -> anyhow::Result<()> {
-        DictionaryDataUserDataSetter::upsert(
-            &self.api.db,
-            PublicUserDataNamespace::ContentSecurityPolicies,
-            UserData::new(
-                serialized_user_data.user_id,
-                serde_json::from_slice::<BTreeMap<String, Option<ContentSecurityPolicy>>>(
-                    &serialized_user_data.value,
-                )
-                .with_context(|| {
-                    "Cannot deserialize new content security policies data".to_string()
-                })?,
                 serialized_user_data.timestamp,
             ),
         )

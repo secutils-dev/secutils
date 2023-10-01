@@ -240,6 +240,7 @@ mod tests {
         users::{User, UserId},
         utils::{WebPageResource, WebPageResourceContent, WebPageResourceContentData},
     };
+    use anyhow::anyhow;
     use cron::Schedule;
     use lettre::transport::stub::AsyncStubTransport;
     use std::{
@@ -252,7 +253,7 @@ mod tests {
     use trust_dns_resolver::proto::rr::Record;
     use url::Url;
 
-    pub use crate::{network::tests::*, utils::tests::*};
+    pub use crate::{network::tests::*, server::tests::*, utils::tests::*};
     use crate::{search::SearchIndex, templates::create_templates};
 
     pub struct MockUserBuilder {
@@ -386,11 +387,20 @@ mod tests {
         Database::open(|| Ok("sqlite::memory:".to_string())).await
     }
 
+    pub fn mock_search_index() -> anyhow::Result<SearchIndex> {
+        SearchIndex::open(|schema| Ok(Index::create_in_ram(schema)))
+    }
+
     pub fn mock_user() -> anyhow::Result<User> {
+        mock_user_with_id(1)
+    }
+
+    pub fn mock_user_with_id<I: TryInto<UserId>>(id: I) -> anyhow::Result<User> {
+        let id = id.try_into().map_err(|_| anyhow!("err"))?;
         Ok(MockUserBuilder::new(
-            1.try_into()?,
-            "dev@secutils.dev",
-            "dev-handle",
+            id,
+            &format!("dev-{}@secutils.dev", *id),
+            &format!("dev-handle-{}", *id),
             StoredCredentials {
                 password_hash: Some("hash".to_string()),
                 ..Default::default()
@@ -446,7 +456,7 @@ mod tests {
         Ok(Api::new(
             config,
             mock_db().await?,
-            SearchIndex::open(|schema| Ok(Index::create_in_ram(schema)))?,
+            mock_search_index()?,
             mock_network(),
             create_templates()?,
         ))
@@ -458,7 +468,7 @@ mod tests {
         Ok(Api::new(
             mock_config()?,
             mock_db().await?,
-            SearchIndex::open(|schema| Ok(Index::create_in_ram(schema)))?,
+            mock_search_index()?,
             network,
             create_templates()?,
         ))

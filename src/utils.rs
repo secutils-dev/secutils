@@ -1,6 +1,7 @@
 pub mod api_ext;
 mod certificates;
 mod database_ext;
+mod user_share_ext;
 mod util;
 mod utils_action;
 mod utils_action_result;

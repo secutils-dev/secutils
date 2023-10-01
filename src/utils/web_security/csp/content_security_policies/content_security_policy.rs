@@ -1,12 +1,24 @@
-use crate::utils::ContentSecurityPolicyDirective;
+use crate::utils::{
+    utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH, ContentSecurityPolicyDirective,
+};
 use serde::{Deserialize, Serialize};
 
+/// Represents content security policy (CSP) with the arbitrary name.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ContentSecurityPolicy {
     #[serde(rename = "n")]
     pub name: String,
     #[serde(rename = "d")]
     pub directives: Vec<ContentSecurityPolicyDirective>,
+}
+
+impl ContentSecurityPolicy {
+    /// Performs basic content security policy validation.
+    pub fn is_valid(&self) -> bool {
+        !self.name.is_empty()
+            && self.name.len() <= MAX_UTILS_ENTITY_NAME_LENGTH
+            && !self.directives.is_empty()
+    }
 }
 
 #[cfg(test)]
@@ -68,5 +80,28 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn is_valid() {
+        assert!(!ContentSecurityPolicy {
+            name: "".to_string(),
+            directives: vec![ContentSecurityPolicyDirective::ChildSrc(
+                ["'self'".to_string()].into_iter().collect()
+            )]
+        }
+        .is_valid());
+        assert!(!ContentSecurityPolicy {
+            name: "some-name".to_string(),
+            directives: vec![]
+        }
+        .is_valid());
+        assert!(ContentSecurityPolicy {
+            name: "some-name".to_string(),
+            directives: vec![ContentSecurityPolicyDirective::ChildSrc(
+                ["'self'".to_string()].into_iter().collect()
+            )]
+        }
+        .is_valid());
     }
 }
