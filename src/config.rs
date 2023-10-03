@@ -1,12 +1,13 @@
 mod components_config;
 mod scheduler_jobs_config;
+mod smtp_catch_all_config;
 mod smtp_config;
 
 use url::Url;
 
 pub use self::{
     components_config::ComponentsConfig, scheduler_jobs_config::SchedulerJobsConfig,
-    smtp_config::SmtpConfig,
+    smtp_catch_all_config::SmtpCatchAllConfig, smtp_config::SmtpConfig,
 };
 
 /// Main server config.

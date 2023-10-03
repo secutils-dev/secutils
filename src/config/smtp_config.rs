@@ -1,3 +1,5 @@
+use crate::config::SmtpCatchAllConfig;
+
 /// Configuration for the SMTP functionality.
 #[derive(Clone, Debug)]
 pub struct SmtpConfig {
@@ -7,6 +9,6 @@ pub struct SmtpConfig {
     pub password: String,
     /// Address of the SMTP server.
     pub address: String,
-    /// Address of the email recipient (used for debug only).
-    pub catch_all_recipient: Option<String>,
+    /// Optional configuration for catch-all email recipient (used for troubleshooting only).
+    pub catch_all: Option<SmtpCatchAllConfig>,
 }
