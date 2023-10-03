@@ -15,27 +15,54 @@ mod templates;
 mod users;
 mod utils;
 
-use crate::config::{ComponentsConfig, Config, SchedulerJobsConfig, SmtpConfig};
+use crate::config::{
+    ComponentsConfig, Config, SchedulerJobsConfig, SmtpCatchAllConfig, SmtpConfig,
+};
 use anyhow::{anyhow, Context};
 use bytes::Buf;
 use clap::{value_parser, Arg, ArgMatches, Command};
 use cron::Schedule;
+use lettre::message::Mailbox;
+use std::str::FromStr;
 use url::Url;
 
 fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Error> {
+    let smtp_catch_all_config = match (
+        matches.get_one::<String>("SMTP_CATCH_ALL_RECIPIENT"),
+        matches.get_one::<String>("SMTP_CATCH_ALL_TEXT_MATCHER"),
+    ) {
+        (Some(recipient), Some(text_matcher)) => {
+            let text_matcher = regex::Regex::new(text_matcher.as_str())
+                .with_context(|| "Cannot parse SMTP catch-all text matcher.")?;
+            Mailbox::from_str(recipient.as_str())
+                .with_context(|| "Cannot parse SMTP catch-all recipient.")?;
+            Some(SmtpCatchAllConfig {
+                recipient: recipient.to_string(),
+                text_matcher,
+            })
+        }
+        (None, None) => None,
+        (recipient, text_matcher) => {
+            log::warn!(
+                "SMTP catch-all config is not invalid: recipient ({:?}) and text_matcher ({:?}).",
+                recipient,
+                text_matcher
+            );
+            None
+        }
+    };
     let smtp_config = match (
         matches.get_one::<String>("SMTP_USERNAME"),
         matches.get_one::<String>("SMTP_PASSWORD"),
         matches.get_one::<String>("SMTP_ADDRESS"),
-        matches.get_one::<String>("SMTP_CATCH_ALL_RECIPIENT"),
     ) {
-        (Some(username), Some(password), Some(address), recipient) => Some(SmtpConfig {
+        (Some(username), Some(password), Some(address)) => Some(SmtpConfig {
             username: username.to_string(),
             password: password.to_string(),
             address: address.to_string(),
-            catch_all_recipient: recipient.map(|value| value.to_string()),
+            catch_all: smtp_catch_all_config,
         }),
-        (username, password, address, _) => {
+        (username, password, address) => {
             log::warn!("SMTP config is not provided or invalid: username ({:?}), password ({:?}), address ({:?}).", username, password, address);
             None
         }
@@ -167,7 +194,16 @@ fn main() -> Result<(), anyhow::Error> {
                 .long("smtp-catch-all-recipient")
                 .global(true)
                 .env("SECUTILS_SMTP_CATCH_ALL_RECIPIENT")
-                .help("Address of the email recipient (used for debug only)."),
+                .requires("SMTP_CATCH_ALL_TEXT_MATCHER")
+                .help("Address of the catch-all email recipient (used for troubleshooting only)."),
+        )
+        .arg(
+            Arg::new("SMTP_CATCH_ALL_TEXT_MATCHER")
+                .long("smtp-catch-all-text-matcher")
+                .global(true)
+                .env("SECUTILS_SMTP_CATCH_ALL_TEXT_MATCHER")
+                .requires("SMTP_CATCH_ALL_RECIPIENT")
+                .help("Email text should match specified regular expression to be sent to catch-all recipient (used for troubleshooting only)."),
         )
         .arg(
             Arg::new("BUILTIN_USERS")
@@ -419,7 +455,7 @@ mod tests {
                 username: "dev@secutils.dev".to_string(),
                 password: "password".to_string(),
                 address: "localhost".to_string(),
-                catch_all_recipient: None,
+                catch_all: None,
             }),
             components: ComponentsConfig {
                 web_scraper_url: Url::parse("http://localhost:7272")?,

@@ -123,8 +123,19 @@ where
             bail!("SMTP is not configured.");
         };
 
-        let recipient = if let Some(ref catch_all) = smtp_config.catch_all_recipient {
-            catch_all.parse()?
+        let catch_all_recipient = smtp_config.catch_all.as_ref().and_then(|catch_all| {
+            // Checks if the email text matches the regular expression specified in `text_matcher`.
+            if catch_all.text_matcher.is_match(&email.text) {
+                Some(catch_all.recipient.as_str())
+            } else {
+                None
+            }
+        });
+
+        let recipient = if let Some(catch_all_recipient) = catch_all_recipient {
+            catch_all_recipient.parse().with_context(|| {
+                format!("Cannot parse catch-all TO address: {}", catch_all_recipient)
+            })?
         } else {
             recipient
                 .parse()
@@ -192,11 +203,12 @@ where
 #[cfg(test)]
 mod tests {
     use crate::{
+        config::{SmtpCatchAllConfig, SmtpConfig},
         notifications::{
             EmailNotificationAttachment, EmailNotificationContent, Notification,
             NotificationContent, NotificationDestination,
         },
-        tests::{mock_api, mock_user},
+        tests::{mock_api, mock_api_with_config, mock_config, mock_user},
     };
     use insta::assert_debug_snapshot;
     use time::OffsetDateTime;
@@ -515,6 +527,285 @@ mod tests {
                 .await?
                 .is_none());
         }
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn sends_email_notifications_respecting_catch_all_filter() -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+        let mut config = mock_config()?;
+        let text_matcher = regex::Regex::new("(one text)|(two text)")?;
+        config.smtp = config.smtp.map(|smtp| SmtpConfig {
+            catch_all: Some(SmtpCatchAllConfig {
+                recipient: "catch-all@secutils.dev".to_string(),
+                text_matcher,
+            }),
+            ..smtp
+        });
+        let api = mock_api_with_config(config).await?;
+        api.db.upsert_user(&mock_user).await?;
+
+        let notifications = vec![
+            Notification::new(
+                NotificationDestination::Email("one@secutils.dev".to_string()),
+                NotificationContent::Email(EmailNotificationContent::html(
+                    "subject",
+                    "some one text message",
+                    "html",
+                )),
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            ),
+            Notification::new(
+                NotificationDestination::Email("two@secutils.dev".to_string()),
+                NotificationContent::Email(EmailNotificationContent::html(
+                    "subject",
+                    "some two text message",
+                    "html",
+                )),
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            ),
+            Notification::new(
+                NotificationDestination::Email("three@secutils.dev".to_string()),
+                NotificationContent::Email(EmailNotificationContent::html(
+                    "subject",
+                    "some three text message",
+                    "html",
+                )),
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            ),
+        ];
+
+        for notification in notifications.into_iter() {
+            api.notifications()
+                .schedule_notification(
+                    notification.destination,
+                    notification.content,
+                    notification.scheduled_at,
+                )
+                .await?;
+        }
+
+        assert_eq!(api.notifications().send_pending_notifications(4).await?, 3);
+
+        let messages = api.network.email_transport.messages().await;
+        assert_eq!(messages.len(), 3);
+
+        let boundary_regex = regex::Regex::new(r#"boundary=\"(.+)\""#)?;
+        let messages = messages
+            .into_iter()
+            .map(|(envelope, content)| {
+                let boundary = boundary_regex
+                    .captures(&content)
+                    .and_then(|captures| captures.get(1))
+                    .map(|capture| capture.as_str());
+
+                (
+                    envelope,
+                    if let Some(boundary) = boundary {
+                        content.replace(boundary, "BOUNDARY")
+                    } else {
+                        content
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_debug_snapshot!(messages, @r###"
+        [
+            (
+                Envelope {
+                    forward_path: [
+                        Address {
+                            serialized: "catch-all@secutils.dev",
+                            at_start: 9,
+                        },
+                    ],
+                    reverse_path: Some(
+                        Address {
+                            serialized: "dev@secutils.dev",
+                            at_start: 3,
+                        },
+                    ),
+                },
+                "From: dev@secutils.dev\r\nReply-To: dev@secutils.dev\r\nTo: catch-all@secutils.dev\r\nSubject: subject\r\nDate: Sat, 01 Jan 2000 10:00:00 +0000\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative;\r\n boundary=\"BOUNDARY\"\r\n\r\n--BOUNDARY\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\nsome one text message\r\n--BOUNDARY\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\nhtml\r\n--BOUNDARY--\r\n",
+            ),
+            (
+                Envelope {
+                    forward_path: [
+                        Address {
+                            serialized: "catch-all@secutils.dev",
+                            at_start: 9,
+                        },
+                    ],
+                    reverse_path: Some(
+                        Address {
+                            serialized: "dev@secutils.dev",
+                            at_start: 3,
+                        },
+                    ),
+                },
+                "From: dev@secutils.dev\r\nReply-To: dev@secutils.dev\r\nTo: catch-all@secutils.dev\r\nSubject: subject\r\nDate: Sat, 01 Jan 2000 10:00:00 +0000\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative;\r\n boundary=\"BOUNDARY\"\r\n\r\n--BOUNDARY\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\nsome two text message\r\n--BOUNDARY\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\nhtml\r\n--BOUNDARY--\r\n",
+            ),
+            (
+                Envelope {
+                    forward_path: [
+                        Address {
+                            serialized: "three@secutils.dev",
+                            at_start: 5,
+                        },
+                    ],
+                    reverse_path: Some(
+                        Address {
+                            serialized: "dev@secutils.dev",
+                            at_start: 3,
+                        },
+                    ),
+                },
+                "From: dev@secutils.dev\r\nReply-To: dev@secutils.dev\r\nTo: three@secutils.dev\r\nSubject: subject\r\nDate: Sat, 01 Jan 2000 10:00:00 +0000\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative;\r\n boundary=\"BOUNDARY\"\r\n\r\n--BOUNDARY\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\nsome three text message\r\n--BOUNDARY\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\nhtml\r\n--BOUNDARY--\r\n",
+            ),
+        ]
+        "###);
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn sends_email_notifications_respecting_wide_open_catch_all_filter() -> anyhow::Result<()>
+    {
+        let mock_user = mock_user()?;
+        let mut config = mock_config()?;
+        let text_matcher = regex::Regex::new(".*")?;
+        config.smtp = config.smtp.map(|smtp| SmtpConfig {
+            catch_all: Some(SmtpCatchAllConfig {
+                recipient: "catch-all@secutils.dev".to_string(),
+                text_matcher,
+            }),
+            ..smtp
+        });
+        let api = mock_api_with_config(config).await?;
+        api.db.upsert_user(&mock_user).await?;
+
+        let notifications = vec![
+            Notification::new(
+                NotificationDestination::Email("one@secutils.dev".to_string()),
+                NotificationContent::Email(EmailNotificationContent::html(
+                    "subject",
+                    "some one text message",
+                    "html",
+                )),
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            ),
+            Notification::new(
+                NotificationDestination::Email("two@secutils.dev".to_string()),
+                NotificationContent::Email(EmailNotificationContent::html(
+                    "subject",
+                    "some two text message",
+                    "html",
+                )),
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            ),
+            Notification::new(
+                NotificationDestination::Email("three@secutils.dev".to_string()),
+                NotificationContent::Email(EmailNotificationContent::html(
+                    "subject",
+                    "some three text message",
+                    "html",
+                )),
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            ),
+        ];
+
+        for notification in notifications.into_iter() {
+            api.notifications()
+                .schedule_notification(
+                    notification.destination,
+                    notification.content,
+                    notification.scheduled_at,
+                )
+                .await?;
+        }
+
+        assert_eq!(api.notifications().send_pending_notifications(4).await?, 3);
+
+        let messages = api.network.email_transport.messages().await;
+        assert_eq!(messages.len(), 3);
+
+        let boundary_regex = regex::Regex::new(r#"boundary=\"(.+)\""#)?;
+        let messages = messages
+            .into_iter()
+            .map(|(envelope, content)| {
+                let boundary = boundary_regex
+                    .captures(&content)
+                    .and_then(|captures| captures.get(1))
+                    .map(|capture| capture.as_str());
+
+                (
+                    envelope,
+                    if let Some(boundary) = boundary {
+                        content.replace(boundary, "BOUNDARY")
+                    } else {
+                        content
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_debug_snapshot!(messages, @r###"
+        [
+            (
+                Envelope {
+                    forward_path: [
+                        Address {
+                            serialized: "catch-all@secutils.dev",
+                            at_start: 9,
+                        },
+                    ],
+                    reverse_path: Some(
+                        Address {
+                            serialized: "dev@secutils.dev",
+                            at_start: 3,
+                        },
+                    ),
+                },
+                "From: dev@secutils.dev\r\nReply-To: dev@secutils.dev\r\nTo: catch-all@secutils.dev\r\nSubject: subject\r\nDate: Sat, 01 Jan 2000 10:00:00 +0000\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative;\r\n boundary=\"BOUNDARY\"\r\n\r\n--BOUNDARY\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\nsome one text message\r\n--BOUNDARY\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\nhtml\r\n--BOUNDARY--\r\n",
+            ),
+            (
+                Envelope {
+                    forward_path: [
+                        Address {
+                            serialized: "catch-all@secutils.dev",
+                            at_start: 9,
+                        },
+                    ],
+                    reverse_path: Some(
+                        Address {
+                            serialized: "dev@secutils.dev",
+                            at_start: 3,
+                        },
+                    ),
+                },
+                "From: dev@secutils.dev\r\nReply-To: dev@secutils.dev\r\nTo: catch-all@secutils.dev\r\nSubject: subject\r\nDate: Sat, 01 Jan 2000 10:00:00 +0000\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative;\r\n boundary=\"BOUNDARY\"\r\n\r\n--BOUNDARY\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\nsome two text message\r\n--BOUNDARY\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\nhtml\r\n--BOUNDARY--\r\n",
+            ),
+            (
+                Envelope {
+                    forward_path: [
+                        Address {
+                            serialized: "catch-all@secutils.dev",
+                            at_start: 9,
+                        },
+                    ],
+                    reverse_path: Some(
+                        Address {
+                            serialized: "dev@secutils.dev",
+                            at_start: 3,
+                        },
+                    ),
+                },
+                "From: dev@secutils.dev\r\nReply-To: dev@secutils.dev\r\nTo: catch-all@secutils.dev\r\nSubject: subject\r\nDate: Sat, 01 Jan 2000 10:00:00 +0000\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative;\r\n boundary=\"BOUNDARY\"\r\n\r\n--BOUNDARY\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\nsome three text message\r\n--BOUNDARY\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\nhtml\r\n--BOUNDARY--\r\n",
+            ),
+        ]
+        "###);
 
         Ok(())
     }

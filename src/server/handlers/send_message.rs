@@ -28,9 +28,9 @@ pub async fn send_message(
         .config
         .smtp
         .as_ref()
-        .and_then(|smtp| smtp.catch_all_recipient.as_ref())
+        .and_then(|smtp| Some(smtp.catch_all.as_ref()?.recipient.clone()))
     {
-        Some(recipient) => recipient.clone(),
+        Some(recipient) => recipient,
         None => {
             log::error!("SMTP isn't configured.");
             return Ok(HttpResponse::InternalServerError().json(json!({ "status": "failed" })));
