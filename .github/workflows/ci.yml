@@ -8,6 +8,7 @@ on:
       - 'Dockerfile'
       - 'LICENSE'
       - '*.md'
+      - '.husky/**'
 
 env:
   CARGO_TERM_COLOR: always
