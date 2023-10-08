@@ -1,10 +1,10 @@
-use crate::utils::AutoResponderMethod;
+use crate::utils::{utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH, AutoResponderMethod};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AutoResponder {
-    #[serde(rename = "n")]
-    pub name: String,
+    #[serde(rename = "p")]
+    pub path: String,
     #[serde(rename = "m")]
     pub method: AutoResponderMethod,
     #[serde(rename = "t")]
@@ -22,22 +22,31 @@ pub struct AutoResponder {
 impl AutoResponder {
     /// Checks whether responder is semantically valid.
     pub fn is_valid(&self) -> bool {
-        !self.name.is_empty()
+        Self::is_path_valid(&self.path)
             && (100..=999).contains(&self.status_code)
             && (0..=100).contains(&self.requests_to_track)
+    }
+
+    /// Checks whether responder path is valid.
+    pub fn is_path_valid(path: &str) -> bool {
+        path.starts_with('/')
+            && (path.len() == 1 || !path.ends_with('/'))
+            && path.len() <= MAX_UTILS_ENTITY_NAME_LENGTH
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{AutoResponder, AutoResponderMethod};
+    use crate::utils::{
+        utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH, AutoResponder, AutoResponderMethod,
+    };
     use insta::assert_json_snapshot;
     use serde_json::json;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
         assert_json_snapshot!(AutoResponder {
-            name: "some-name".to_string(),
+            path: "/some-name".to_string(),
             method: AutoResponderMethod::Post,
             requests_to_track: 10,
             status_code: 123,
@@ -46,7 +55,7 @@ mod tests {
             delay: None
         }, @r###"
         {
-          "n": "some-name",
+          "p": "/some-name",
           "m": "p",
           "t": 10,
           "s": 123
@@ -54,7 +63,7 @@ mod tests {
         "###);
 
         assert_json_snapshot!(AutoResponder {
-            name: "some-name".to_string(),
+            path: "/some-name".to_string(),
             method: AutoResponderMethod::Post,
             requests_to_track: 10,
             status_code: 123,
@@ -63,7 +72,7 @@ mod tests {
             delay: Some(1000)
         }, @r###"
         {
-          "n": "some-name",
+          "p": "/some-name",
           "m": "p",
           "t": 10,
           "s": 123,
@@ -85,10 +94,10 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<AutoResponder>(
-                &json!({ "n": "some-name", "m": "p", "t": 10, "s": 123 }).to_string()
+                &json!({ "p": "/some-name", "m": "p", "t": 10, "s": 123 }).to_string()
             )?,
             AutoResponder {
-                name: "some-name".to_string(),
+                path: "/some-name".to_string(),
                 method: AutoResponderMethod::Post,
                 requests_to_track: 10,
                 status_code: 123,
@@ -100,10 +109,10 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<AutoResponder>(
-                &json!({ "n": "some-name", "m": "p", "t": 10, "s": 123, "b": "body", "h": [["key", "value"]], "d": 1000 }).to_string()
+                &json!({ "p": "/some-name", "m": "p", "t": 10, "s": 123, "b": "body", "h": [["key", "value"]], "d": 1000 }).to_string()
             )?,
             AutoResponder {
-                name: "some-name".to_string(),
+                path: "/some-name".to_string(),
                 method: AutoResponderMethod::Post,
                 requests_to_track: 10,
                 status_code: 123,
@@ -118,10 +127,18 @@ mod tests {
 
     #[test]
     fn properly_check_if_valid() -> anyhow::Result<()> {
-        for (name, is_valid) in [("some-name", true), ("n", true), ("", false)] {
+        for (path, is_valid) in [
+            ("/some-name", true),
+            ("/n", true),
+            ("/", true),
+            ("", false),
+            ("/n/", false),
+            (&"/n".repeat(MAX_UTILS_ENTITY_NAME_LENGTH / 2), true),
+            (&"/n".repeat(MAX_UTILS_ENTITY_NAME_LENGTH / 2 + 1), false),
+        ] {
             assert_eq!(
                 AutoResponder {
-                    name: name.to_string(),
+                    path: path.to_string(),
                     method: AutoResponderMethod::Post,
                     requests_to_track: 10,
                     status_code: 123,
@@ -141,7 +158,7 @@ mod tests {
         ] {
             assert_eq!(
                 AutoResponder {
-                    name: "some-name".to_string(),
+                    path: "/some-name".to_string(),
                     method,
                     requests_to_track: 10,
                     status_code: 123,
@@ -159,7 +176,7 @@ mod tests {
         {
             assert_eq!(
                 AutoResponder {
-                    name: "some-name".to_string(),
+                    path: "/some-name".to_string(),
                     method: AutoResponderMethod::Post,
                     requests_to_track,
                     status_code: 123,
@@ -185,7 +202,7 @@ mod tests {
         ] {
             assert_eq!(
                 AutoResponder {
-                    name: "some-name".to_string(),
+                    path: "/some-name".to_string(),
                     method: AutoResponderMethod::Post,
                     requests_to_track: 10,
                     status_code,
@@ -199,7 +216,7 @@ mod tests {
         }
 
         assert!(AutoResponder {
-            name: "some-name".to_string(),
+            path: "/some-name".to_string(),
             method: AutoResponderMethod::Any,
             requests_to_track: 10,
             status_code: 123,
@@ -208,6 +225,23 @@ mod tests {
             delay: Some(1000)
         }
         .is_valid());
+
+        Ok(())
+    }
+
+    #[test]
+    fn properly_check_if_path_valid() -> anyhow::Result<()> {
+        for (path, is_valid) in [
+            ("/some-name", true),
+            ("/n", true),
+            ("/", true),
+            ("", false),
+            ("/n/", false),
+            (&"/n".repeat(MAX_UTILS_ENTITY_NAME_LENGTH / 2), true),
+            (&"/n".repeat(MAX_UTILS_ENTITY_NAME_LENGTH / 2 + 1), false),
+        ] {
+            assert_eq!(AutoResponder::is_path_valid(path), is_valid);
+        }
 
         Ok(())
     }

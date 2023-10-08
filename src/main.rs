@@ -15,8 +15,9 @@ mod templates;
 mod users;
 mod utils;
 
-use crate::config::{
-    ComponentsConfig, Config, SchedulerJobsConfig, SmtpCatchAllConfig, SmtpConfig,
+use crate::{
+    config::{ComponentsConfig, Config, SchedulerJobsConfig, SmtpCatchAllConfig, SmtpConfig},
+    server::WebhookUrlType,
 };
 use anyhow::{anyhow, Context};
 use bytes::Buf;
@@ -80,6 +81,13 @@ fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Err
             .and_then(|public_url| {
                 Url::parse(public_url)
                     .with_context(|| "Cannot parse public URL parameter.".to_string())
+            })?,
+        webhook_url_type: matches
+            .get_one::<String>("WEBHOOK_URL_TYPE")
+            .ok_or_else(|| anyhow!("<WEBHOOK_URL_TYPE> argument is not provided."))
+            .and_then(|webhook_url_type| {
+                WebhookUrlType::from_str(webhook_url_type)
+                    .with_context(|| "Cannot parse webhook URL type parameter.".to_string())
             })?,
         components: ComponentsConfig {
             web_scraper_url: matches
@@ -229,6 +237,15 @@ fn main() -> Result<(), anyhow::Error> {
                 .help("External/public URL through which service is being accessed."),
         )
         .arg(
+            Arg::new("WEBHOOK_URL_TYPE")
+                .long("webhook-url-type")
+                .global(true)
+                .env("SECUTILS_WEBHOOK_URL_TYPE")
+                .default_value("path")
+                .value_names(["path", "subdomain"])
+                .help("Describes how Secutils.dev WebUI should construct webhook URLs. The server supports all types of URL simultaneously."),
+        )
+        .arg(
             Arg::new("COMPONENT_WEB_SCRAPER_URL")
                 .long("component-web-scraper-url")
                 .global(true)
@@ -290,7 +307,7 @@ mod tests {
     use url::Url;
 
     pub use crate::{network::tests::*, server::tests::*, utils::tests::*};
-    use crate::{search::SearchIndex, templates::create_templates};
+    use crate::{search::SearchIndex, server::WebhookUrlType, templates::create_templates};
 
     pub struct MockUserBuilder {
         user: User,
@@ -451,6 +468,7 @@ mod tests {
             version: "1.0.0".to_string(),
             http_port: 1234,
             public_url: Url::parse("http://localhost:1234")?,
+            webhook_url_type: WebhookUrlType::Subdomain,
             smtp: Some(SmtpConfig {
                 username: "dev@secutils.dev".to_string(),
                 password: "password".to_string(),

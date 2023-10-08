@@ -1,31 +1,11 @@
 use crate::{
     error::SecutilsError,
-    server::{status::Status, AppState},
-    users::{ClientUserShare, PublicUserDataNamespace, User, UserSettings, UserShare},
-    utils::Util,
+    server::{AppState, License, UiState},
+    users::{ClientUserShare, PublicUserDataNamespace, User, UserShare},
 };
 use actix_web::{web, HttpResponse};
 use anyhow::anyhow;
-use serde::Serialize;
 use std::ops::Deref;
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct License;
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct UiState<'a> {
-    status: &'a Status,
-    license: License,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    user: Option<User>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    user_share: Option<ClientUserShare>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    settings: Option<UserSettings>,
-    utils: Vec<Util>,
-}
 
 pub async fn ui_state_get(
     state: web::Data<AppState>,
@@ -62,5 +42,6 @@ pub async fn ui_state_get(
         user_share: user_share.map(ClientUserShare::from),
         settings,
         utils,
+        webhook_url_type: state.config.webhook_url_type,
     }))
 }

@@ -3,7 +3,7 @@ use crate::{
     config::Config,
     network::{DnsResolver, EmailTransport, TokioDnsResolver},
     security::Security,
-    server::status::{Status, StatusLevel},
+    server::{Status, StatusLevel},
     users::{User, UserRole},
 };
 use actix_web::{error::ErrorForbidden, Error};

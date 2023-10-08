@@ -1,11 +1,11 @@
-### Test webhook.
-GET {{host}}/api/webhooks/ar/323c9f98b2e86fd9/redirect
+### Test webhook (path).
+GET {{host}}/api/webhooks/su/a
 Accept: application/json
 Content-Type: application/json
 
-{
-  "action": {
-    "type":  "certificates",
-    "value": { "type": "generateRsaKeyPair" }
-  }
-}
+### Test webhook (subdomain).
+GET {{host}}/api/webhooks
+Accept: application/json
+Content-Type: application/json
+X-Forwarded-Host: su.{{host}}
+X-Replaced-Path: /a

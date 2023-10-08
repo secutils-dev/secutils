@@ -68,8 +68,9 @@ mod tests {
             mock_api, mock_api_with_network, MockResolver, MockWebPageResourcesTrackerBuilder,
         },
         utils::{
-            CertificateFormat, ContentSecurityPolicySource, UtilsAction, UtilsCertificatesAction,
-            UtilsWebScrapingAction, UtilsWebSecurityAction, UtilsWebhooksAction,
+            AutoResponder, AutoResponderMethod, CertificateFormat, ContentSecurityPolicySource,
+            UtilsAction, UtilsCertificatesAction, UtilsWebScrapingAction, UtilsWebSecurityAction,
+            UtilsWebhooksAction,
         },
     };
     use insta::assert_debug_snapshot;
@@ -118,8 +119,60 @@ mod tests {
     #[actix_rt::test]
     async fn validation_webhooks() -> anyhow::Result<()> {
         assert!(
+            UtilsAction::Webhooks(UtilsWebhooksAction::SaveAutoResponder {
+                responder: AutoResponder {
+                    path: "/name".to_string(),
+                    method: AutoResponderMethod::Post,
+                    requests_to_track: 3,
+                    status_code: 200,
+                    body: None,
+                    headers: Some(vec![("key".to_string(), "value".to_string())]),
+                    delay: None,
+                }
+            })
+            .validate(&mock_api().await?)
+            .await
+            .is_ok()
+        );
+
+        assert_debug_snapshot!(UtilsAction::Webhooks(UtilsWebhooksAction::SaveAutoResponder {
+            responder: AutoResponder {
+                path: "/name".to_string(),
+                method: AutoResponderMethod::Post,
+                requests_to_track: 3,
+                status_code: 2000,
+                body: None,
+                headers: Some(vec![("key".to_string(), "value".to_string())]),
+                delay: None,
+            }
+        })
+        .validate(&mock_api().await?).await, @r###"
+        Err(
+            "Auto responder is not valid",
+        )
+        "###);
+
+        assert!(
+            UtilsAction::Webhooks(UtilsWebhooksAction::RemoveAutoResponder {
+                responder_path: "/a".repeat(50),
+            })
+            .validate(&mock_api().await?)
+            .await
+            .is_ok()
+        );
+
+        assert_debug_snapshot!(UtilsAction::Webhooks(UtilsWebhooksAction::RemoveAutoResponder {
+            responder_path: "a".to_string(),
+        })
+        .validate(&mock_api().await?).await, @r###"
+        Err(
+            "Auto responder path is not valid",
+        )
+        "###);
+
+        assert!(
             UtilsAction::Webhooks(UtilsWebhooksAction::GetAutoRespondersRequests {
-                auto_responder_name: "a".repeat(100),
+                responder_path: "/a".repeat(50),
             })
             .validate(&mock_api().await?)
             .await
@@ -127,11 +180,11 @@ mod tests {
         );
 
         assert_debug_snapshot!(UtilsAction::Webhooks(UtilsWebhooksAction::GetAutoRespondersRequests {
-            auto_responder_name: "".to_string(),
+            responder_path: "a".to_string(),
         })
         .validate(&mock_api().await?).await, @r###"
         Err(
-            "Auto responder name cannot be empty",
+            "Auto responder path is not valid",
         )
         "###);
 

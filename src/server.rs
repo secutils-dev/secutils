@@ -2,7 +2,7 @@ mod app_state;
 mod extractors;
 mod handlers;
 mod http_errors;
-mod status;
+mod ui_state;
 
 use crate::{
     api::Api,
@@ -27,6 +27,7 @@ use std::sync::Arc;
 pub use self::app_state::tests;
 
 pub use app_state::AppState;
+pub use ui_state::{License, Status, StatusLevel, UiState, WebhookUrlType};
 
 #[actix_rt::main]
 pub async fn run(
@@ -160,9 +161,10 @@ pub async fn run(
                     .route("/user/data", web::post().to(handlers::user_data_set))
                     .route("/user/data", web::get().to(handlers::user_data_get))
                     .route(
-                        "/webhooks/ar/{user_handle}/{name}",
-                        web::route().to(handlers::webhooks_auto_responders),
+                        "/webhooks/{user_handle}/{responder_path:.*}",
+                        web::route().to(handlers::webhooks_responders),
                     )
+                    .route("/webhooks", web::route().to(handlers::webhooks_responders))
                     .service(
                         web::scope("/users")
                             .route("/remove", web::post().to(handlers::security_users_remove)),

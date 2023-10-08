@@ -3,6 +3,7 @@ mod scheduler_jobs_config;
 mod smtp_catch_all_config;
 mod smtp_config;
 
+use crate::server::WebhookUrlType;
 use url::Url;
 
 pub use self::{
@@ -19,6 +20,8 @@ pub struct Config {
     pub http_port: u16,
     /// External/public URL through which service is being accessed.
     pub public_url: Url,
+    /// Describes the preferred way to construct webhook URLs.
+    pub webhook_url_type: WebhookUrlType,
     /// Configuration for the SMTP functionality.
     pub smtp: Option<SmtpConfig>,
     /// Configuration for the components that are deployed separately.

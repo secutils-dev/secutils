@@ -1,5 +1,5 @@
 use crate::{
-    server::{app_state::AppState, status::StatusLevel},
+    server::{app_state::AppState, StatusLevel},
     users::User,
 };
 use actix_web::{error::ErrorInternalServerError, web, HttpResponse, Responder};

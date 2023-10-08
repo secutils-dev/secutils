@@ -6,9 +6,25 @@ use serde::Serialize;
 #[serde(tag = "type", content = "value")]
 pub enum UtilsWebhooksActionResult {
     #[serde(rename_all = "camelCase")]
+    SaveAutoResponder,
+    #[serde(rename_all = "camelCase")]
+    RemoveAutoResponder,
+    #[serde(rename_all = "camelCase")]
     GetAutoRespondersRequests {
         requests: Vec<AutoResponderRequest<'static>>,
     },
+}
+
+impl UtilsWebhooksActionResult {
+    pub fn save() -> Self {
+        Self::SaveAutoResponder
+    }
+    pub fn remove() -> Self {
+        Self::RemoveAutoResponder
+    }
+    pub fn get_requests(requests: Vec<AutoResponderRequest<'static>>) -> Self {
+        Self::GetAutoRespondersRequests { requests }
+    }
 }
 
 #[cfg(test)]
@@ -20,16 +36,15 @@ mod tests {
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
-        assert_json_snapshot!(UtilsWebhooksActionResult::GetAutoRespondersRequests {
-            requests: vec![AutoResponderRequest {
+        assert_json_snapshot!(UtilsWebhooksActionResult::get_requests(vec![
+            AutoResponderRequest {
             // January 1, 2000 11:00:00
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             client_address: Some("127.0.0.1".parse()?),
             method: Cow::Borrowed("GET"),
             headers: Some(vec![(Cow::Borrowed("Content-Type"), Cow::Borrowed(&[1, 2, 3]))]),
             body: Some(Cow::Borrowed(&[4, 5, 6])),
-        }]
-        }, @r###"
+        }]), @r###"
         {
           "type": "getAutoRespondersRequests",
           "value": {
@@ -56,6 +71,17 @@ mod tests {
               }
             ]
           }
+        }
+        "###);
+
+        assert_json_snapshot!(UtilsWebhooksActionResult::remove(), @r###"
+        {
+          "type": "removeAutoResponder"
+        }
+        "###);
+        assert_json_snapshot!(UtilsWebhooksActionResult::save(), @r###"
+        {
+          "type": "saveAutoResponder"
         }
         "###);
 
