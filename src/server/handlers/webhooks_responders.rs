@@ -85,7 +85,7 @@ pub async fn webhooks_responders(
     };
 
     // Make sure path doesn't end with trailing slash as it's not allowed.
-    if responder_path.ends_with('/') {
+    if responder_path.len() > 1 && responder_path.ends_with('/') {
         responder_path.pop();
     }
 
@@ -311,6 +311,59 @@ mod tests {
 
         let request = TestRequest::with_uri("https://dev-handle-1.webhooks.secutils.dev/one/two")
             .insert_header(("x-replaced-path", "/one/two"))
+            .insert_header(("x-forwarded-host", "dev-handle-1.webhooks.secutils.dev"))
+            .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_debug_snapshot!(response, @r###"
+        HttpResponse {
+            error: None,
+            res: 
+            Response HTTP/1.1 200 OK
+              headers:
+                "key": "value"
+              body: Sized(4)
+            ,
+        }
+        "###);
+
+        let body = response.into_body().try_into_bytes().unwrap();
+        assert_eq!(body, Bytes::from_static(b"body"));
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_handle_request_with_subdomain_url_type_for_root_path() -> anyhow::Result<()> {
+        let app_state = mock_app_state().await?;
+
+        // Insert user into the database.
+        let user = mock_user()?;
+        let users = app_state.api.users();
+        users.upsert(&user).await?;
+
+        // Insert auto responders data.
+        let responder = AutoResponder {
+            path: "/".to_string(),
+            method: AutoResponderMethod::Any,
+            requests_to_track: 3,
+            status_code: 200,
+            body: Some("body".to_string()),
+            headers: Some(vec![("key".to_string(), "value".to_string())]),
+            delay: None,
+        };
+        app_state
+            .api
+            .auto_responders()
+            .upsert_auto_responder(user.id, responder)
+            .await?;
+
+        let request = TestRequest::with_uri("https://dev-handle-1.webhooks.secutils.dev")
+            .insert_header(("x-replaced-path", "/"))
             .insert_header(("x-forwarded-host", "dev-handle-1.webhooks.secutils.dev"))
             .to_http_request();
         let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
