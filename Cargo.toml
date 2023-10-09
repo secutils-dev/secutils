@@ -38,8 +38,8 @@ mailchecker = "5.0.9"
 openssl = "0.10.57"
 postcard = { version = "1.0.8", default-features = false  }
 rand_core = "0.6.4"
-regex = "1.9.6"
-reqwest = "0.11.20"
+regex = "1.10.0"
+reqwest = "0.11.22"
 rust-embed = "8.0.0"
 serde = "1.0.188"
 serde_bytes = "0.11.12"
@@ -61,7 +61,7 @@ zip = "0.6.6"
 [dev-dependencies]
 httpmock = "0.6.8"
 insta = "1.33.0"
-tokio = "1.32.0"
+tokio = "1.33.0"
 
 [patch.crates-io]
 tokio-cron-scheduler = { path = "./vendor/tokio-cron-scheduler" }
