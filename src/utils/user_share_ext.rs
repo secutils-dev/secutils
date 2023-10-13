@@ -72,7 +72,11 @@ mod tests {
             }),
             UtilsAction::WebSecurity(UtilsWebSecurityAction::SerializeContentSecurityPolicy {
                 policy_name: "not-my-policy".to_string(),
-                source: ContentSecurityPolicySource::Header,
+                source: ContentSecurityPolicySource::EnforcingHeader,
+            }),
+            UtilsAction::WebSecurity(UtilsWebSecurityAction::SerializeContentSecurityPolicy {
+                policy_name: "not-my-policy".to_string(),
+                source: ContentSecurityPolicySource::ReportOnlyHeader,
             }),
         ];
         for action in unauthorized_actions {
@@ -89,7 +93,11 @@ mod tests {
             }),
             UtilsAction::WebSecurity(UtilsWebSecurityAction::SerializeContentSecurityPolicy {
                 policy_name: "my-policy".to_string(),
-                source: ContentSecurityPolicySource::Header,
+                source: ContentSecurityPolicySource::EnforcingHeader,
+            }),
+            UtilsAction::WebSecurity(UtilsWebSecurityAction::SerializeContentSecurityPolicy {
+                policy_name: "my-policy".to_string(),
+                source: ContentSecurityPolicySource::ReportOnlyHeader,
             }),
         ];
         for action in authorized_actions {

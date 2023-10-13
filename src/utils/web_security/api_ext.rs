@@ -1,3 +1,5 @@
+mod csp_meta_parser;
+
 use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
@@ -5,8 +7,15 @@ use crate::{
         DictionaryDataUserDataSetter, PublicUserDataNamespace, SharedResource, UserData, UserId,
         UserShare,
     },
-    utils::ContentSecurityPolicy,
+    utils::{
+        web_security::api_ext::csp_meta_parser::CspMetaParser, ContentSecurityPolicy,
+        ContentSecurityPolicyDirective, ContentSecurityPolicyImportType,
+        ContentSecurityPolicySource,
+    },
 };
+use anyhow::{anyhow, bail};
+use content_security_policy::{Policy, PolicyDisposition, PolicySource};
+use reqwest::redirect::Policy as RedirectPolicy;
 use std::collections::BTreeMap;
 use time::OffsetDateTime;
 
@@ -56,6 +65,144 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApi<'a, DR, ET> {
         .await?;
 
         Ok(())
+    }
+
+    /// Imports content security policy and saves with the specified name.
+    pub async fn import_content_security_policy(
+        &self,
+        user_id: UserId,
+        policy_name: String,
+        import_type: ContentSecurityPolicyImportType,
+    ) -> anyhow::Result<()> {
+        // First, fetch policy text if needed.
+        let policy_text = match import_type {
+            ContentSecurityPolicyImportType::Text { text } => text,
+            ContentSecurityPolicyImportType::Url {
+                url,
+                follow_redirects,
+                source,
+            } => {
+                let client = reqwest::ClientBuilder::new()
+                    .redirect(if follow_redirects {
+                        RedirectPolicy::default()
+                    } else {
+                        RedirectPolicy::none()
+                    })
+                    .build()?;
+                match source {
+                    ContentSecurityPolicySource::EnforcingHeader
+                    | ContentSecurityPolicySource::ReportOnlyHeader => {
+                        let response = client.head(url.as_str()).send().await.map_err(|err| {
+                            log::error!("Cannot fetch web page headers ({}): {:?}", url, err);
+                            anyhow!("Cannot fetch web page ({url}) due to unexpected error.")
+                        })?;
+
+                        let status = response.status();
+                        if status.is_client_error() || status.is_server_error() {
+                            log::error!(
+                                "Cannot fetch web page headers ({url}), request failed with HTTP status: {status}."
+                            );
+                            bail!("Cannot fetch web page headers ({url}), request failed with HTTP status: {status}.");
+                        }
+
+                        // Extract all values for the specified header, multiple values are allowed,
+                        // but Secutils.dev will only import the latest.
+                        let header_name = source.header_name();
+                        let mut header_values = vec![];
+                        for header in response.headers().get_all(header_name) {
+                            header_values.push(
+                                header
+                                    .to_str()
+                                    .map_err(|_| {
+                                        log::error!("Invalid {header_name} header: {header:?}");
+                                        anyhow!("Invalid {header_name} header.")
+                                    })?
+                                    .to_string(),
+                            );
+                        }
+
+                        if header_values.is_empty() {
+                            log::warn!("{header_name} header is missing for URL ({url}).");
+                            bail!("{header_name} header is missing.")
+                        } else if header_values.len() > 1 {
+                            log::warn!(
+                                "{header_name} header has {} values for URL ({url}), only the last will be imported: {header_values:?}",
+                                header_values.len()
+                            );
+                        }
+
+                        header_values.remove(header_values.len() - 1)
+                    }
+                    ContentSecurityPolicySource::Meta => {
+                        let response = client.get(url.as_str()).send().await.map_err(|err| {
+                            log::error!("Cannot fetch web page ({url}): {err}");
+                            anyhow!("Cannot fetch web page ({url}) due to unexpected error.")
+                        })?;
+
+                        let status = response.status();
+                        if status.is_client_error() || status.is_server_error() {
+                            log::error!(
+                                "Cannot fetch web page headers ({url}), request failed with HTTP status: {status}."
+                            );
+                            bail!("Cannot fetch web page headers ({url}), request failed with HTTP status: {status}.");
+                        }
+
+                        let mut header_values = CspMetaParser::parse(&response.bytes().await?)?;
+                        if header_values.is_empty() {
+                            log::warn!("CSP `<meta>` tag is missing for URL ({url}).");
+                            bail!("CSP `<meta>` tag is missing.")
+                        } else if header_values.len() > 1 {
+                            log::warn!(
+                                "CSP `<meta>` tag has {} values for URL ({url}), only the last will be imported: {header_values:?}",
+                                header_values.len()
+                            );
+                        }
+
+                        header_values.remove(header_values.len() - 1)
+                    }
+                }
+            }
+        };
+
+        // Then, parse the policy.
+        let parsed_policy = Policy::parse(
+            &policy_text,
+            PolicySource::Header,
+            PolicyDisposition::Enforce,
+        );
+        if parsed_policy.directive_set.is_empty() {
+            log::error!("Failed to parse content security policy (`{policy_text}).");
+            bail!("Failed to parse content security policy.");
+        }
+
+        log::debug!(
+            "Successfully parsed content security policy ({policy_text}) with the following directives: {:?}",
+            parsed_policy.directive_set
+        );
+
+        // Once policy is parsed, convert it to the internal representation.
+        let directives = parsed_policy.directive_set.into_iter().filter_map(|directive| match ContentSecurityPolicyDirective::try_from(&directive) {
+            Ok(directive) => Some(directive),
+            Err(err) => {
+                log::error!("Failed to process parsed content security policy directive ({directive}) due to an error, skipping…: {err}");
+                None
+            }
+        }).collect::<Vec<_>>();
+        if directives.is_empty() {
+            log::error!(
+                "Processed content security policy ({policy_text}) doesn't have any directives."
+            );
+            bail!("Failed to process content security policy.");
+        }
+
+        self.upsert_content_security_policy(
+            user_id,
+            ContentSecurityPolicy {
+                name: policy_name,
+                directives,
+            },
+        )
+        .await
     }
 
     /// Removes content security policy by its name and returns it.
@@ -172,10 +319,14 @@ mod tests {
         users::PublicUserDataNamespace,
         utils::{
             web_security::api_ext::WebSecurityApi, ContentSecurityPolicy,
-            ContentSecurityPolicyDirective,
+            ContentSecurityPolicyDirective, ContentSecurityPolicyImportType,
+            ContentSecurityPolicySource,
         },
     };
+    use httpmock::MockServer;
+    use insta::assert_debug_snapshot;
     use std::collections::HashMap;
+    use url::Url;
 
     #[actix_rt::test]
     async fn properly_saves_new_policies() -> anyhow::Result<()> {
@@ -304,6 +455,654 @@ mod tests {
                 .into_iter()
                 .collect::<HashMap<_, _>>()
         );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn properly_imports_new_policy_via_text() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let web_security = WebSecurityApi::new(&api);
+        web_security
+            .import_content_security_policy(
+                mock_user.id,
+                "policy-one".to_string(),
+                ContentSecurityPolicyImportType::Text {
+                    text: "child-src 'self'".to_string(),
+                },
+            )
+            .await?;
+
+        assert_eq!(
+            web_security
+                .get_content_security_policy(mock_user.id, "policy-one")
+                .await?,
+            Some(ContentSecurityPolicy {
+                name: "policy-one".to_string(),
+                directives: vec![ContentSecurityPolicyDirective::ChildSrc(
+                    ["'self'".to_string()].into_iter().collect(),
+                )],
+            })
+        );
+
+        web_security
+            .import_content_security_policy(
+                mock_user.id,
+                "policy-one".to_string(),
+                ContentSecurityPolicyImportType::Text {
+                    text: "script-src 'none'".to_string(),
+                },
+            )
+            .await?;
+
+        assert_eq!(
+            web_security
+                .get_content_security_policy(mock_user.id, "policy-one")
+                .await?,
+            Some(ContentSecurityPolicy {
+                name: "policy-one".to_string(),
+                directives: vec![ContentSecurityPolicyDirective::ScriptSrc(
+                    ["'none'".to_string()].into_iter().collect()
+                )],
+            })
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn properly_imports_new_policy_from_enforcing_header_via_url() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let server = MockServer::start();
+        let web_page_mock = server.mock(|when, then| {
+            when.method(httpmock::Method::HEAD).path("/some-path");
+            then.status(200)
+                .header("Content-Security-Policy", "child-src 'self'");
+        });
+
+        let web_security = WebSecurityApi::new(&api);
+        web_security
+            .import_content_security_policy(
+                mock_user.id,
+                "policy-one".to_string(),
+                ContentSecurityPolicyImportType::Url {
+                    url: Url::parse(&format!("{}/some-path", server.base_url()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::EnforcingHeader,
+                },
+            )
+            .await?;
+
+        web_page_mock.assert();
+
+        assert_eq!(
+            web_security
+                .get_content_security_policy(mock_user.id, "policy-one")
+                .await?,
+            Some(ContentSecurityPolicy {
+                name: "policy-one".to_string(),
+                directives: vec![ContentSecurityPolicyDirective::ChildSrc(
+                    ["'self'".to_string()].into_iter().collect(),
+                )],
+            })
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn properly_imports_new_policy_from_report_only_header_via_url() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let server = MockServer::start();
+        let web_page_mock = server.mock(|when, then| {
+            when.method(httpmock::Method::HEAD).path("/some-path");
+            then.status(200)
+                .header("Content-Security-Policy-Report-Only", "child-src 'self'");
+        });
+
+        let web_security = WebSecurityApi::new(&api);
+        web_security
+            .import_content_security_policy(
+                mock_user.id,
+                "policy-one".to_string(),
+                ContentSecurityPolicyImportType::Url {
+                    url: Url::parse(&format!("{}/some-path", server.base_url()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::ReportOnlyHeader,
+                },
+            )
+            .await?;
+
+        web_page_mock.assert();
+
+        assert_eq!(
+            web_security
+                .get_content_security_policy(mock_user.id, "policy-one")
+                .await?,
+            Some(ContentSecurityPolicy {
+                name: "policy-one".to_string(),
+                directives: vec![ContentSecurityPolicyDirective::ChildSrc(
+                    ["'self'".to_string()].into_iter().collect(),
+                )],
+            })
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn properly_imports_new_policy_from_html_meta_via_url() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let server = MockServer::start();
+        let web_page_mock = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/some-path");
+            then.status(200)
+                .header("Content-Security-Policy", "script-src 'none'")
+                .header("Content-Type", "text/html")
+                .body(
+                    r#"
+                    <!DOCTYPE html>
+                    <html>
+                        <head><meta http-equiv="Content-Security-Policy" content="child-src 'self'"></head>
+                        <body>Hello World!</body>
+                    </html>
+                    "#,
+                );
+        });
+
+        let web_security = WebSecurityApi::new(&api);
+        web_security
+            .import_content_security_policy(
+                mock_user.id,
+                "policy-one".to_string(),
+                ContentSecurityPolicyImportType::Url {
+                    url: Url::parse(&format!("{}/some-path", server.base_url()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::Meta,
+                },
+            )
+            .await?;
+
+        web_page_mock.assert();
+
+        assert_eq!(
+            web_security
+                .get_content_security_policy(mock_user.id, "policy-one")
+                .await?,
+            Some(ContentSecurityPolicy {
+                name: "policy-one".to_string(),
+                directives: vec![ContentSecurityPolicyDirective::ChildSrc(
+                    ["'self'".to_string()].into_iter().collect(),
+                )],
+            })
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn properly_imports_new_policy_following_redirect_via_url() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let server = MockServer::start();
+        let redirect_mock = server.mock(|when, then| {
+            when.method(httpmock::Method::HEAD).path("/some-path");
+            then.status(301).header(
+                "Location",
+                format!("{}/some-redirected-path", server.base_url()),
+            );
+        });
+        let web_page_mock = server.mock(|when, then| {
+            when.method(httpmock::Method::HEAD)
+                .path("/some-redirected-path");
+            then.status(200)
+                .header("Content-Security-Policy", "child-src 'self'");
+        });
+
+        let web_security = WebSecurityApi::new(&api);
+        web_security
+            .import_content_security_policy(
+                mock_user.id,
+                "policy-one".to_string(),
+                ContentSecurityPolicyImportType::Url {
+                    url: Url::parse(&format!("{}/some-path", server.base_url()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::EnforcingHeader,
+                },
+            )
+            .await?;
+
+        redirect_mock.assert();
+        web_page_mock.assert();
+
+        assert_eq!(
+            web_security
+                .get_content_security_policy(mock_user.id, "policy-one")
+                .await?,
+            Some(ContentSecurityPolicy {
+                name: "policy-one".to_string(),
+                directives: vec![ContentSecurityPolicyDirective::ChildSrc(
+                    ["'self'".to_string()].into_iter().collect(),
+                )],
+            })
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn properly_imports_last_policy_if_multiple_found() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let server = MockServer::start();
+        let web_page_mock_head = server.mock(|when, then| {
+            when.method(httpmock::Method::HEAD).path("/some-path");
+            then.status(200)
+                .header("Content-Security-Policy", "script-src 'none'")
+                .header("Content-Security-Policy", "child-src 'self'");
+        });
+        let web_page_mock_get = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/some-path");
+            then.status(200)
+                .header("Content-Security-Policy", "script-src 'none'")
+                .header("Content-Type", "text/html")
+                .body(
+                    r#"
+                    <!DOCTYPE html>
+                    <html>
+                        <head>
+                            <meta http-equiv="Content-Security-Policy" content="child-src 'self'">
+                            <meta http-equiv="Content-Security-Policy" content="script-src 'none'">
+                        </head>
+                        <body>Hello World!</body>
+                    </html>
+                    "#,
+                );
+        });
+
+        let web_security = WebSecurityApi::new(&api);
+        web_security
+            .import_content_security_policy(
+                mock_user.id,
+                "policy-one".to_string(),
+                ContentSecurityPolicyImportType::Url {
+                    url: Url::parse(&format!("{}/some-path", server.base_url()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::EnforcingHeader,
+                },
+            )
+            .await?;
+
+        web_page_mock_head.assert();
+
+        assert_eq!(
+            web_security
+                .get_content_security_policy(mock_user.id, "policy-one")
+                .await?,
+            Some(ContentSecurityPolicy {
+                name: "policy-one".to_string(),
+                directives: vec![ContentSecurityPolicyDirective::ChildSrc(
+                    ["'self'".to_string()].into_iter().collect(),
+                )],
+            })
+        );
+
+        web_security
+            .import_content_security_policy(
+                mock_user.id,
+                "policy-one".to_string(),
+                ContentSecurityPolicyImportType::Url {
+                    url: Url::parse(&format!("{}/some-path", server.base_url()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::Meta,
+                },
+            )
+            .await?;
+
+        web_page_mock_get.assert();
+
+        assert_eq!(
+            web_security
+                .get_content_security_policy(mock_user.id, "policy-one")
+                .await?,
+            Some(ContentSecurityPolicy {
+                name: "policy-one".to_string(),
+                directives: vec![ContentSecurityPolicyDirective::ScriptSrc(
+                    ["'none'".to_string()].into_iter().collect(),
+                )],
+            })
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn properly_imports_ignoring_unknown_directives() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let server = MockServer::start();
+        let web_page_mock_head = server.mock(|when, then| {
+            when.method(httpmock::Method::HEAD).path("/some-path");
+            then.status(200).header(
+                "Content-Security-Policy",
+                "child-src 'self'; unknown 'unknown; script-src 'none'",
+            );
+        });
+        let web_page_mock_get = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/some-path");
+            then.status(200)
+                .header("Content-Type", "text/html")
+                .body(
+                    r#"
+                    <!DOCTYPE html>
+                    <html>
+                        <head>
+                            <meta http-equiv="Content-Security-Policy" content="child-src 'self'; unknown 'unknown; script-src 'unsafe-inline'">
+                        </head>
+                        <body>Hello World!</body>
+                    </html>
+                    "#,
+                );
+        });
+
+        let web_security = WebSecurityApi::new(&api);
+        web_security
+            .import_content_security_policy(
+                mock_user.id,
+                "policy-one".to_string(),
+                ContentSecurityPolicyImportType::Url {
+                    url: Url::parse(&format!("{}/some-path", server.base_url()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::EnforcingHeader,
+                },
+            )
+            .await?;
+
+        web_page_mock_head.assert();
+
+        assert_eq!(
+            web_security
+                .get_content_security_policy(mock_user.id, "policy-one")
+                .await?,
+            Some(ContentSecurityPolicy {
+                name: "policy-one".to_string(),
+                directives: vec![
+                    ContentSecurityPolicyDirective::ChildSrc(
+                        ["'self'".to_string()].into_iter().collect(),
+                    ),
+                    ContentSecurityPolicyDirective::ScriptSrc(
+                        ["'none'".to_string()].into_iter().collect(),
+                    )
+                ],
+            })
+        );
+
+        web_security
+            .import_content_security_policy(
+                mock_user.id,
+                "policy-one".to_string(),
+                ContentSecurityPolicyImportType::Url {
+                    url: Url::parse(&format!("{}/some-path", server.base_url()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::Meta,
+                },
+            )
+            .await?;
+
+        web_page_mock_get.assert();
+
+        assert_eq!(
+            web_security
+                .get_content_security_policy(mock_user.id, "policy-one")
+                .await?,
+            Some(ContentSecurityPolicy {
+                name: "policy-one".to_string(),
+                directives: vec![
+                    ContentSecurityPolicyDirective::ChildSrc(
+                        ["'self'".to_string()].into_iter().collect(),
+                    ),
+                    ContentSecurityPolicyDirective::ScriptSrc(
+                        ["'unsafe-inline'".to_string()].into_iter().collect(),
+                    )
+                ],
+            })
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn fails_import_if_redirect_required_but_not_permitted() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let server = MockServer::start();
+        let redirect_mock = server.mock(|when, then| {
+            when.method(httpmock::Method::HEAD).path("/some-path");
+            then.status(301).header(
+                "Location",
+                format!("{}/some-redirected-path", server.base_url()),
+            );
+        });
+        let web_page_mock = server.mock(|when, then| {
+            when.method(httpmock::Method::HEAD)
+                .path("/some-redirected-path");
+            then.status(200)
+                .header("Content-Security-Policy", "child-src 'self'");
+        });
+
+        let web_security = WebSecurityApi::new(&api);
+        let import_result = web_security
+            .import_content_security_policy(
+                mock_user.id,
+                "policy-one".to_string(),
+                ContentSecurityPolicyImportType::Url {
+                    url: Url::parse(&format!("{}/some-path", server.base_url()))?,
+                    follow_redirects: false,
+                    source: ContentSecurityPolicySource::EnforcingHeader,
+                },
+            )
+            .await;
+        assert_debug_snapshot!(import_result, @r###"
+        Err(
+            "content-security-policy header is missing.",
+        )
+        "###);
+
+        redirect_mock.assert();
+        assert_eq!(web_page_mock.hits(), 0);
+
+        assert!(web_security
+            .get_content_security_policy(mock_user.id, "policy-one")
+            .await?
+            .is_none());
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn fails_import_if_header_or_html_meta_tag_is_not_found() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let server = MockServer::start();
+        let web_page_mock_head = server.mock(|when, then| {
+            when.method(httpmock::Method::HEAD).path("/some-path");
+            then.status(200);
+        });
+        let web_page_mock_get = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/some-path");
+            then.status(200)
+                .header("Content-Security-Policy", "script-src 'none'")
+                .header("Content-Type", "text/html")
+                .body(
+                    r###"
+                    <!DOCTYPE html>
+                    <html>
+                        <head>/head>
+                        <body>Hello World!</body>
+                    </html>
+                    "###,
+                );
+        });
+
+        let web_security = WebSecurityApi::new(&api);
+        let import_result = web_security
+            .import_content_security_policy(
+                mock_user.id,
+                "policy-one".to_string(),
+                ContentSecurityPolicyImportType::Url {
+                    url: Url::parse(&format!("{}/some-path", server.base_url()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::EnforcingHeader,
+                },
+            )
+            .await;
+        assert_debug_snapshot!(import_result, @r###"
+        Err(
+            "content-security-policy header is missing.",
+        )
+        "###);
+
+        let import_result = web_security
+            .import_content_security_policy(
+                mock_user.id,
+                "policy-one".to_string(),
+                ContentSecurityPolicyImportType::Url {
+                    url: Url::parse(&format!("{}/some-path", server.base_url()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::ReportOnlyHeader,
+                },
+            )
+            .await;
+        assert_debug_snapshot!(import_result, @r###"
+        Err(
+            "content-security-policy-report-only header is missing.",
+        )
+        "###);
+
+        web_page_mock_head.assert_hits(2);
+
+        let import_result = web_security
+            .import_content_security_policy(
+                mock_user.id,
+                "policy-one".to_string(),
+                ContentSecurityPolicyImportType::Url {
+                    url: Url::parse(&format!("{}/some-path", server.base_url()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::Meta,
+                },
+            )
+            .await;
+        assert_debug_snapshot!(import_result, @r###"
+        Err(
+            "CSP `<meta>` tag is missing.",
+        )
+        "###);
+
+        web_page_mock_get.assert();
+
+        assert!(web_security
+            .get_content_security_policy(mock_user.id, "policy-one")
+            .await?
+            .is_none());
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn fails_import_if_request_fails() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let server = MockServer::start();
+        let web_page_mock_head = server.mock(|when, then| {
+            when.method(httpmock::Method::HEAD).path("/some-path");
+            then.header("Content-Security-Policy", "script-src 'none'")
+                .status(404);
+        });
+        let web_page_mock_get = server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/some-path");
+            then.status(404)
+                .header("Content-Security-Policy", "script-src 'none'")
+                .header("Content-Type", "text/html")
+                .body(
+                    r#"
+                    <!DOCTYPE html>
+                    <html>
+                        <head><meta http-equiv="Content-Security-Policy" content="child-src 'self'"></head>
+                        <body>Hello World!</body>
+                    </html>
+                    "#,
+                );
+        });
+
+        let web_security = WebSecurityApi::new(&api);
+        assert!(web_security
+            .import_content_security_policy(
+                mock_user.id,
+                "policy-one".to_string(),
+                ContentSecurityPolicyImportType::Url {
+                    url: Url::parse(&format!("{}/some-path", server.base_url()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::EnforcingHeader,
+                },
+            )
+            .await
+            .is_err());
+
+        web_page_mock_head.assert();
+
+        assert!(web_security
+            .import_content_security_policy(
+                mock_user.id,
+                "policy-one".to_string(),
+                ContentSecurityPolicyImportType::Url {
+                    url: Url::parse(&format!("{}/some-path", server.base_url()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::Meta,
+                },
+            )
+            .await
+            .is_err());
+
+        web_page_mock_get.assert();
+
+        assert!(web_security
+            .get_content_security_policy(mock_user.id, "policy-one")
+            .await?
+            .is_none());
 
         Ok(())
     }

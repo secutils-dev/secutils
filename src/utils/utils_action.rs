@@ -29,7 +29,7 @@ impl UtilsAction {
             UtilsAction::Certificates(action) => action.validate(),
             UtilsAction::Webhooks(action) => action.validate(),
             UtilsAction::WebScraping(action) => action.validate(api).await,
-            UtilsAction::WebSecurity(action) => action.validate(),
+            UtilsAction::WebSecurity(action) => action.validate(api).await,
         }
     }
 

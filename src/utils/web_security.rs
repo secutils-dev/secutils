@@ -5,9 +5,10 @@ mod utils_web_security_action_result;
 
 pub use self::{
     csp::{
-        ContentSecurityPolicy, ContentSecurityPolicyDirective,
+        ContentSecurityPolicy, ContentSecurityPolicyDirective, ContentSecurityPolicyImportType,
+        ContentSecurityPolicyRequireTrustedTypesForDirectiveValue,
         ContentSecurityPolicySandboxDirectiveValue, ContentSecurityPolicySource,
-        ContentSecurityPolicyWebrtcDirectiveValue,
+        ContentSecurityPolicyTrustedTypesDirectiveValue, ContentSecurityPolicyWebrtcDirectiveValue,
     },
     utils_web_security_action::UtilsWebSecurityAction,
     utils_web_security_action_result::UtilsWebSecurityActionResult,

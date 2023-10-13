@@ -50,22 +50,28 @@ pub mod tests {
     #[derive(Clone)]
     pub struct MockResolver<const N: usize = 0> {
         records: [Record; N],
+        error: Option<ResolveError>,
     }
 
     impl<const N: usize> DnsResolver for MockResolver<N> {
         fn lookup_ip<'a>(&'a self, _: &'a str) -> BoxFuture<'a, Result<LookupIp, ResolveError>> {
-            Box::pin(futures::future::ready(Ok(LookupIp::from(
-                Lookup::new_with_max_ttl(
+            Box::pin(futures::future::ready(if let Some(err) = &self.error {
+                Err(err.clone())
+            } else {
+                Ok(LookupIp::from(Lookup::new_with_max_ttl(
                     Query::query(Name::new(), RecordType::A),
                     Arc::new(self.records.clone()),
-                ),
-            ))))
+                )))
+            }))
         }
     }
 
     impl MockResolver {
         pub fn new() -> Self {
-            MockResolver { records: [] }
+            MockResolver {
+                records: [],
+                error: None,
+            }
         }
     }
 
@@ -73,6 +79,14 @@ pub mod tests {
         pub fn new_with_records<const N: usize>(records: Vec<Record>) -> MockResolver<N> {
             MockResolver {
                 records: records.try_into().unwrap(),
+                error: None,
+            }
+        }
+
+        pub fn new_with_error(err: ResolveError) -> MockResolver<0> {
+            MockResolver {
+                records: [],
+                error: Some(err),
             }
         }
     }

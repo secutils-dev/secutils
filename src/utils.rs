@@ -27,10 +27,11 @@ pub use self::{
         WebScraperResourcesResponse,
     },
     web_security::{
-        ContentSecurityPolicy, ContentSecurityPolicyDirective,
+        ContentSecurityPolicy, ContentSecurityPolicyDirective, ContentSecurityPolicyImportType,
+        ContentSecurityPolicyRequireTrustedTypesForDirectiveValue,
         ContentSecurityPolicySandboxDirectiveValue, ContentSecurityPolicySource,
-        ContentSecurityPolicyWebrtcDirectiveValue, UtilsWebSecurityAction,
-        UtilsWebSecurityActionResult,
+        ContentSecurityPolicyTrustedTypesDirectiveValue, ContentSecurityPolicyWebrtcDirectiveValue,
+        UtilsWebSecurityAction, UtilsWebSecurityActionResult,
     },
     webhooks::{
         AutoResponder, AutoResponderMethod, AutoResponderRequest, UtilsWebhooksAction,

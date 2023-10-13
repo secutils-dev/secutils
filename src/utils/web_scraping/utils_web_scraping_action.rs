@@ -1,6 +1,6 @@
 use crate::{
     api::Api,
-    network::{DnsResolver, EmailTransport, IpAddrExt},
+    network::{DnsResolver, EmailTransport},
     users::User,
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
@@ -90,24 +90,14 @@ impl UtilsWebScrapingAction {
                     }
                 }
 
-                if tracker.url.scheme() != "http" && tracker.url.scheme() != "https" {
-                    anyhow::bail!("Tracker URL scheme must be either http or https");
-                }
-
-                // Checks if the specific hostname is a domain and public (not pointing to the local network).
-                let is_public_host_name = if let Some(domain) = tracker.url.domain() {
-                    match api.network.resolver.lookup_ip(domain).await {
-                        Ok(lookup) => lookup.iter().all(|ip| IpAddrExt::is_global(&ip)),
-                        Err(err) => {
-                            log::error!("Cannot resolve `{}` domain to IP: {:?}", domain, err);
-                            false
-                        }
-                    }
-                } else {
-                    false
-                };
-                if !is_public_host_name {
-                    anyhow::bail!("Tracker URL must have a valid public reachable domain name");
+                if !api.network.is_public_web_url(&tracker.url).await {
+                    log::error!(
+                        "Tracker URL must be either `http` or `https` and have a valid public reachable domain name: {}",
+                        tracker.url
+                    );
+                    anyhow::bail!(
+                        "Tracker URL must be either `http` or `https` and have a valid public reachable domain name"
+                    );
                 }
 
                 if let Some(schedule) = &tracker.schedule {
@@ -437,7 +427,7 @@ mod tests {
             .validate(&api)
             .await, @r###"
         Err(
-            "Tracker URL scheme must be either http or https",
+            "Tracker URL must be either `http` or `https` and have a valid public reachable domain name",
         )
         "###);
 
@@ -462,7 +452,7 @@ mod tests {
             .validate(&api_with_local_network)
             .await, @r###"
         Err(
-            "Tracker URL must have a valid public reachable domain name",
+            "Tracker URL must be either `http` or `https` and have a valid public reachable domain name",
         )
         "###);
 

@@ -1,9 +1,15 @@
 use crate::utils::{
+    web_security::{
+        ContentSecurityPolicyRequireTrustedTypesForDirectiveValue,
+        ContentSecurityPolicyTrustedTypesDirectiveValue,
+    },
     ContentSecurityPolicySandboxDirectiveValue, ContentSecurityPolicySource,
     ContentSecurityPolicyWebrtcDirectiveValue,
 };
 use anyhow::anyhow;
-use serde::{Deserialize, Serialize};
+use content_security_policy::Directive;
+use serde::{de, Deserialize, Deserializer, Serialize};
+use serde_json::Value as JSONValue;
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -34,6 +40,12 @@ pub enum ContentSecurityPolicyDirective {
     // 2 navigation directives
     FormAction(HashSet<String>),
     FrameAncestors(HashSet<String>),
+    // 1 extension directive
+    #[serde(deserialize_with = "deserialize_directive_without_value")]
+    UpgradeInsecureRequests,
+    // 2 experimental directives
+    RequireTrustedTypesFor([ContentSecurityPolicyRequireTrustedTypesForDirectiveValue; 1]),
+    TrustedTypes(HashSet<ContentSecurityPolicyTrustedTypesDirectiveValue>),
     // 2 reporting directives
     ReportUri(HashSet<String>),
     ReportTo([String; 1]),
@@ -50,8 +62,50 @@ impl ContentSecurityPolicyDirective {
                 | ContentSecurityPolicyDirective::ReportTo(_),
                 ContentSecurityPolicySource::Meta,
             ) => false,
+            // See https://w3c.github.io/webappsec-csp/#directive-sandbox
+            (
+                ContentSecurityPolicyDirective::Sandbox(_),
+                ContentSecurityPolicySource::ReportOnlyHeader,
+            ) => false,
             _ => true,
         }
+    }
+}
+
+impl TryFrom<&Directive> for ContentSecurityPolicyDirective {
+    type Error = anyhow::Error;
+
+    fn try_from(directive: &Directive) -> Result<Self, Self::Error> {
+        // [HACK]: Since `Directive` from the `content_security_policy` crate doesn't expose
+        // directive name and values publicly, we need to serialize it to JSON and then deserialize
+        // it back to the required enum. Before deserializing we should patch property names as
+        // serialization formats aren't compatible (`name` -> `n` and `value` -> `v`). We rely on
+        // this expensive hack to have only one place that's aware of the CSP format. Eventually,
+        // we should update the `content_security_policy` crate and get rid of this workaround.
+        let mut serialized_directive = serde_json::to_value(directive)?;
+        if let JSONValue::Object(object) = &mut serialized_directive {
+            for (source_key, target_key) in [("name", "n"), ("value", "v")] {
+                if let Some(value) = object.remove(source_key) {
+                    object.insert(target_key.to_string(), value);
+                }
+            }
+        }
+
+        Ok(serde_json::from_value(serialized_directive)?)
+    }
+}
+
+/// A custom deserialization function for directive types without values. It's required because
+/// `content_security_policy` crate parses such directive with empty values array causing
+/// deserialization failure.
+fn deserialize_directive_without_value<'de, D>(deserializer: D) -> Result<(), D::Error>
+where
+    D: Deserializer<'de>,
+{
+    if Vec::<String>::deserialize(deserializer)?.is_empty() {
+        Ok(())
+    } else {
+        Err(de::Error::invalid_value(de::Unexpected::UnitVariant, &"0"))
     }
 }
 
@@ -62,18 +116,27 @@ impl TryFrom<ContentSecurityPolicyDirective> for String {
         serde_json::to_value(value)?
             .as_object()
             .and_then(|directive| {
-                let directive_name = directive.get("n")?.as_str()?;
-                let mut directive_values = directive
-                    .get("v")?
-                    .as_array()?
-                    .iter()
-                    .map(|value| value.as_str())
-                    .collect::<Option<Vec<_>>>()?;
-                directive_values.sort();
-                Some(if directive_values.is_empty() {
-                    directive_name.to_string()
+                let directive_value = if let Some(value_items) = directive.get("v") {
+                    let mut value_items = value_items
+                        .as_array()?
+                        .iter()
+                        .map(|value| value.as_str())
+                        .collect::<Option<Vec<_>>>()?;
+                    if !value_items.is_empty() {
+                        value_items.sort();
+                        Some(value_items.join(" "))
+                    } else {
+                        None
+                    }
                 } else {
-                    format!("{} {}", directive_name, directive_values.join(" "))
+                    None
+                };
+
+                let directive_name = directive.get("n")?.as_str()?;
+                Some(if let Some(directive_value) = directive_value {
+                    format!("{} {}", directive_name, directive_value)
+                } else {
+                    directive_name.to_string()
                 })
             })
             .ok_or_else(|| anyhow!("Cannot serialize directive."))
@@ -83,10 +146,13 @@ impl TryFrom<ContentSecurityPolicyDirective> for String {
 #[cfg(test)]
 mod tests {
     use crate::utils::{
-        ContentSecurityPolicyDirective, ContentSecurityPolicySandboxDirectiveValue,
-        ContentSecurityPolicySource, ContentSecurityPolicyWebrtcDirectiveValue,
+        ContentSecurityPolicyDirective, ContentSecurityPolicyRequireTrustedTypesForDirectiveValue,
+        ContentSecurityPolicySandboxDirectiveValue, ContentSecurityPolicySource,
+        ContentSecurityPolicyTrustedTypesDirectiveValue, ContentSecurityPolicyWebrtcDirectiveValue,
     };
+    use content_security_policy::Directive;
     use insta::{assert_debug_snapshot, assert_json_snapshot};
+    use serde_json::json;
     use std::collections::HashSet;
 
     #[test]
@@ -285,6 +351,37 @@ mod tests {
         }
         "###);
 
+        assert_json_snapshot!(ContentSecurityPolicyDirective::UpgradeInsecureRequests, @r###"
+        {
+          "n": "upgrade-insecure-requests"
+        }
+        "###);
+
+        assert_json_snapshot!(
+            ContentSecurityPolicyDirective::RequireTrustedTypesFor([ContentSecurityPolicyRequireTrustedTypesForDirectiveValue::Script]),
+            @r###"
+        {
+          "n": "require-trusted-types-for",
+          "v": [
+            "'script'"
+          ]
+        }
+        "###
+        );
+
+        assert_json_snapshot!(ContentSecurityPolicyDirective::TrustedTypes([
+            ContentSecurityPolicyTrustedTypesDirectiveValue::AllowDuplicates
+        ]
+        .into_iter()
+        .collect()), @r###"
+        {
+          "n": "trusted-types",
+          "v": [
+            "'allow-duplicates'"
+          ]
+        }
+        "###);
+
         assert_json_snapshot!(ContentSecurityPolicyDirective::ReportTo(["https://google.com".to_string()]), @r###"
         {
           "n": "report-to",
@@ -312,6 +409,31 @@ mod tests {
             String::try_from(ContentSecurityPolicyDirective::DefaultSrc(["'self'".to_string(), "https:".to_string()]
             .into_iter()
             .collect::<HashSet<_>>()))?, @r###""default-src 'self' https:""###);
+
+        assert_debug_snapshot!(
+            String::try_from(ContentSecurityPolicyDirective::UpgradeInsecureRequests)?,
+            @r###""upgrade-insecure-requests""###
+        );
+
+        assert_debug_snapshot!(
+            String::try_from(ContentSecurityPolicyDirective::RequireTrustedTypesFor(
+                [ContentSecurityPolicyRequireTrustedTypesForDirectiveValue::Script]
+            ))?,
+            @r###""require-trusted-types-for 'script'""###
+        );
+
+        assert_debug_snapshot!(
+            String::try_from(
+                ContentSecurityPolicyDirective::TrustedTypes([
+                    ContentSecurityPolicyTrustedTypesDirectiveValue::AllowDuplicates,
+                    ContentSecurityPolicyTrustedTypesDirectiveValue::PolicyName("my-policy".to_string()),
+                    ContentSecurityPolicyTrustedTypesDirectiveValue::PolicyName("my-another-policy".to_string())
+                ]
+                .into_iter()
+                .collect())
+            )?,
+            @r###""trusted-types 'allow-duplicates' my-another-policy my-policy""###
+        );
 
         Ok(())
     }
@@ -477,6 +599,41 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
+                r#"{ "n": "upgrade-insecure-requests" }"#
+            )?,
+            ContentSecurityPolicyDirective::UpgradeInsecureRequests
+        );
+
+        assert_eq!(
+            serde_json::from_str::<ContentSecurityPolicyDirective>(
+                r#"{ "n": "require-trusted-types-for", "v": ["'script'"] }"#
+            )?,
+            ContentSecurityPolicyDirective::RequireTrustedTypesFor([
+                ContentSecurityPolicyRequireTrustedTypesForDirectiveValue::Script
+            ])
+        );
+
+        assert_eq!(
+            serde_json::from_str::<ContentSecurityPolicyDirective>(
+                r#"{ "n": "trusted-types", "v": ["'allow-duplicates'", "my-another-policy", "my-policy"] }"#
+            )?,
+            ContentSecurityPolicyDirective::TrustedTypes(
+                [
+                    ContentSecurityPolicyTrustedTypesDirectiveValue::AllowDuplicates,
+                    ContentSecurityPolicyTrustedTypesDirectiveValue::PolicyName(
+                        "my-policy".to_string()
+                    ),
+                    ContentSecurityPolicyTrustedTypesDirectiveValue::PolicyName(
+                        "my-another-policy".to_string()
+                    )
+                ]
+                .into_iter()
+                .collect()
+            )
+        );
+
+        assert_eq!(
+            serde_json::from_str::<ContentSecurityPolicyDirective>(
                 r#"{ "n": "report-to", "v": ["https://google.com"] }"#
             )?,
             ContentSecurityPolicyDirective::ReportTo(["https://google.com".to_string()])
@@ -487,6 +644,35 @@ mod tests {
                 r#"{ "n": "report-uri", "v": ["'self'"] }"#
             )?,
             ContentSecurityPolicyDirective::ReportUri(sources)
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn conversion_from_directive() -> anyhow::Result<()> {
+        let directive = serde_json::from_value::<Directive>(json!({
+            "name": "child-src",
+            "value": ["'self'", "https://secutils.dev"]
+        }))?;
+
+        assert_eq!(
+            ContentSecurityPolicyDirective::try_from(&directive)?,
+            ContentSecurityPolicyDirective::ChildSrc(
+                ["'self'".to_string(), "https://secutils.dev".to_string()]
+                    .into_iter()
+                    .collect()
+            )
+        );
+
+        let directive = serde_json::from_value::<Directive>(json!({
+            "name": "upgrade-insecure-requests",
+            "value": []
+        }))?;
+
+        assert_eq!(
+            ContentSecurityPolicyDirective::try_from(&directive)?,
+            ContentSecurityPolicyDirective::UpgradeInsecureRequests
         );
 
         Ok(())
@@ -510,11 +696,27 @@ mod tests {
         )
         "###);
 
+        assert_debug_snapshot!(serde_json::from_str::<ContentSecurityPolicyDirective>(
+            r#"{ "n": "require-trusted-types-for", "v": ["'script'", "'script'"] }"#
+        ), @r###"
+        Err(
+            Error("trailing characters", line: 1, column: 55),
+        )
+        "###);
+
+        assert_debug_snapshot!(serde_json::from_str::<ContentSecurityPolicyDirective>(
+            r#"{ "n": "require-trusted-types-for", "v": ["'none'"] }"#
+        ), @r###"
+        Err(
+            Error("unknown variant `'none'`, expected `'script'`", line: 1, column: 50),
+        )
+        "###);
+
         Ok(())
     }
 
     #[test]
-    fn should_correct_determine_if_supported_for_source() -> anyhow::Result<()> {
+    fn should_correctly_determine_if_supported_for_source() -> anyhow::Result<()> {
         let sources = ["'self'".to_string()]
             .into_iter()
             .collect::<HashSet<String>>();
@@ -534,6 +736,7 @@ mod tests {
             ContentSecurityPolicyDirective::StyleSrc(sources.clone()),
             ContentSecurityPolicyDirective::StyleSrcElem(sources.clone()),
             ContentSecurityPolicyDirective::StyleSrcAttr(sources.clone()),
+            ContentSecurityPolicyDirective::UpgradeInsecureRequests,
             ContentSecurityPolicyDirective::Webrtc([
                 ContentSecurityPolicyWebrtcDirectiveValue::Allow,
             ]),
@@ -546,12 +749,43 @@ mod tests {
             ),
             ContentSecurityPolicyDirective::FormAction(sources.clone()),
             ContentSecurityPolicyDirective::FrameAncestors(sources.clone()),
+            ContentSecurityPolicyDirective::UpgradeInsecureRequests,
+            ContentSecurityPolicyDirective::RequireTrustedTypesFor([
+                ContentSecurityPolicyRequireTrustedTypesForDirectiveValue::Script,
+            ]),
+            ContentSecurityPolicyDirective::TrustedTypes(
+                [ContentSecurityPolicyTrustedTypesDirectiveValue::AllowDuplicates]
+                    .into_iter()
+                    .collect(),
+            ),
             ContentSecurityPolicyDirective::ReportUri(sources),
             ContentSecurityPolicyDirective::ReportTo(["endpoint".to_string()]),
         ];
 
-        let (header_only_directives, universal_directives): (Vec<_>, Vec<_>) =
-            all_directives.into_iter().partition(|directive| {
+        // Enforcing header supports all directives.
+        for directive in all_directives.iter() {
+            assert!(directive.is_supported_for_source(ContentSecurityPolicySource::EnforcingHeader));
+        }
+
+        // Report-only header supports all directives except for `sandbox`.
+        let (unsupported_directives, report_only_directives): (Vec<_>, Vec<_>) = all_directives
+            .iter()
+            .partition(|directive| matches!(directive, ContentSecurityPolicyDirective::Sandbox(_)));
+        assert_eq!(unsupported_directives.len(), 1);
+        for directive in report_only_directives {
+            assert!(
+                directive.is_supported_for_source(ContentSecurityPolicySource::ReportOnlyHeader)
+            );
+        }
+        for directive in unsupported_directives {
+            assert!(
+                !directive.is_supported_for_source(ContentSecurityPolicySource::ReportOnlyHeader)
+            );
+        }
+
+        // Meta tag supports all directives except for `sandbox`, `frame-ancestors`, `report-uri` and `report-to`.
+        let (unsupported_directives, meta_tag_directives): (Vec<_>, Vec<_>) =
+            all_directives.iter().partition(|directive| {
                 matches!(
                     directive,
                     ContentSecurityPolicyDirective::Sandbox(_)
@@ -560,17 +794,12 @@ mod tests {
                         | ContentSecurityPolicyDirective::ReportTo(_)
                 )
             });
-
-        assert_eq!(header_only_directives.len(), 4);
-        for directive in header_only_directives {
-            assert!(directive.is_supported_for_source(ContentSecurityPolicySource::Header));
-            assert!(!directive.is_supported_for_source(ContentSecurityPolicySource::Meta));
-        }
-
-        assert_eq!(universal_directives.len(), 19);
-        for directive in universal_directives {
-            assert!(directive.is_supported_for_source(ContentSecurityPolicySource::Header));
+        assert_eq!(unsupported_directives.len(), 4);
+        for directive in meta_tag_directives {
             assert!(directive.is_supported_for_source(ContentSecurityPolicySource::Meta));
+        }
+        for directive in unsupported_directives {
+            assert!(!directive.is_supported_for_source(ContentSecurityPolicySource::Meta));
         }
 
         Ok(())

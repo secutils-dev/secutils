@@ -19,6 +19,8 @@ pub enum UtilsWebSecurityActionResult {
     #[serde(rename_all = "camelCase")]
     SaveContentSecurityPolicy,
     #[serde(rename_all = "camelCase")]
+    ImportContentSecurityPolicy,
+    #[serde(rename_all = "camelCase")]
     RemoveContentSecurityPolicy,
     #[serde(rename_all = "camelCase")]
     SerializeContentSecurityPolicy {
@@ -40,6 +42,9 @@ impl UtilsWebSecurityActionResult {
     }
     pub fn save() -> Self {
         Self::SaveContentSecurityPolicy
+    }
+    pub fn import() -> Self {
+        Self::ImportContentSecurityPolicy
     }
     pub fn remove() -> Self {
         Self::RemoveContentSecurityPolicy
@@ -119,6 +124,12 @@ mod tests {
         }
         "###);
 
+        assert_json_snapshot!(UtilsWebSecurityActionResult::import(), @r###"
+        {
+          "type": "importContentSecurityPolicy"
+        }
+        "###);
+
         assert_json_snapshot!(UtilsWebSecurityActionResult::remove(), @r###"
         {
           "type": "removeContentSecurityPolicy"
@@ -182,13 +193,13 @@ mod tests {
 
         assert_json_snapshot!(UtilsWebSecurityActionResult::SerializeContentSecurityPolicy {
             policy: r###"default-src: 'self'; script-src: https:; report-to csp-prod-group"###.to_string(),
-            source: ContentSecurityPolicySource::Header
+            source: ContentSecurityPolicySource::EnforcingHeader
         }, @r###"
         {
           "type": "serializeContentSecurityPolicy",
           "value": {
             "policy": "default-src: 'self'; script-src: https:; report-to csp-prod-group",
-            "source": "header"
+            "source": "enforcingHeader"
           }
         }
         "###);

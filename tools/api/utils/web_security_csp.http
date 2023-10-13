@@ -51,3 +51,97 @@ Content-Type: application/json
     }
   }
 }
+
+### Import content security policy (text)
+POST {{host}}/api/utils/action
+Authorization: {{api-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "action": {
+    "type": "webSecurity",
+    "value": {
+      "type": "importContentSecurityPolicy",
+      "value": {
+        "policyName": "csp-import-text",
+        "importType": {
+          "type": "text",
+          "text": "default-src 'wasm-unsafe-eval' 'unsafe-inline' 'strict-dynamic'; script-src 'unsafe-hashes'; style-src 'strict-dynamic'; img-src 'strict-dynamic'; font-src 'unsafe-hashes'; child-src 'unsafe-inline'; connect-src 'none'; frame-src 'self'; manifest-src 'self'; media-src 'report-sample'; object-src 'unsafe-inline'; script-src-elem 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-hashes' 'unsafe-inline'; script-src-attr 'wasm-unsafe-eval' 'unsafe-inline'; style-src-elem 'unsafe-hashes' 'unsafe-allow-redirects' 'wasm-unsafe-eval'; style-src-attr 'unsafe-hashes'; worker-src 'report-sample'; base-uri 'report-sample'; sandbox allow-pointer-lock allow-presentation allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-orientation-lock; form-action 'unsafe-allow-redirects' 'unsafe-inline' 'wasm-unsafe-eval'; frame-ancestors 'none'; report-uri https://secutils.dev/report"
+        }
+      }
+    }
+  }
+}
+
+### Import content security policy (url, enforcing header)
+POST {{host}}/api/utils/action
+Authorization: {{api-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "action": {
+    "type": "webSecurity",
+    "value": {
+      "type": "importContentSecurityPolicy",
+      "value": {
+        "policyName": "csp-import-url-enforcing-header",
+        "importType": {
+          "type": "url",
+          "url": "https://github.com",
+          "followRedirects": true,
+          "source": "enforcingHeader"
+        }
+      }
+    }
+  }
+}
+
+### Import content security policy (url, multpiple enforcing headers)
+POST {{host}}/api/utils/action
+Authorization: {{api-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "action": {
+    "type": "webSecurity",
+    "value": {
+      "type": "importContentSecurityPolicy",
+      "value": {
+        "policyName": "csp-import-url-n-enforcing-headers",
+        "importType": {
+          "type": "url",
+          "url": "https://accounts.google.com/ServiceLogin",
+          "followRedirects": true,
+          "source": "enforcingHeader"
+        }
+      }
+    }
+  }
+}
+
+### Import content security policy (url, reporting-only header)
+POST {{host}}/api/utils/action
+Authorization: {{api-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "action": {
+    "type": "webSecurity",
+    "value": {
+      "type": "importContentSecurityPolicy",
+      "value": {
+        "policyName": "csp-import-url-report-only-header",
+        "importType": {
+          "type": "url",
+          "url": "https://youtube.com",
+          "followRedirects": true,
+          "source": "reportOnlyHeader"
+        }
+      }
+    }
+  }
+}

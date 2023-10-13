@@ -23,6 +23,7 @@ async-stream = "0.3.5"
 bytes = "1.5.0"
 chrono = { version = "0.4.31", default-features = false }
 clap = "4.4.6"
+content-security-policy = "0.5.1"
 cron = "0.12.0"
 directories = "5.0.1"
 dotenvy = "0.15.7"
@@ -30,6 +31,7 @@ env_logger = "0.10.0"
 futures = "0.3.28"
 handlebars = "5.0.0-beta.5"
 hex = "0.4.3"
+html5ever = "0.26.0"
 humantime = "2.1.0"
 itertools = "0.11.0"
 lettre = { version = "0.10.4", default-features = false  }
@@ -74,6 +76,7 @@ default = [
     "actix-web/secure-cookies",
     "bytes/serde",
     "clap/env",
+    "content-security-policy/serde",
     "handlebars/rust-embed",
     "insta/filters",
     "insta/json",

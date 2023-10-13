@@ -4,7 +4,8 @@ use crate::{
     users::{ClientUserShare, SharedResource, User},
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH, ContentSecurityPolicy,
-        ContentSecurityPolicyDirective, ContentSecurityPolicySource, UtilsWebSecurityActionResult,
+        ContentSecurityPolicyDirective, ContentSecurityPolicyImportType,
+        ContentSecurityPolicySource, UtilsWebSecurityActionResult,
     },
 };
 use anyhow::anyhow;
@@ -20,6 +21,11 @@ pub enum UtilsWebSecurityAction {
     #[serde(rename_all = "camelCase")]
     SaveContentSecurityPolicy { policy: ContentSecurityPolicy },
     #[serde(rename_all = "camelCase")]
+    ImportContentSecurityPolicy {
+        policy_name: String,
+        import_type: ContentSecurityPolicyImportType,
+    },
+    #[serde(rename_all = "camelCase")]
     RemoveContentSecurityPolicy { policy_name: String },
     #[serde(rename_all = "camelCase")]
     ShareContentSecurityPolicy { policy_name: String },
@@ -34,7 +40,10 @@ pub enum UtilsWebSecurityAction {
 
 impl UtilsWebSecurityAction {
     /// Validates action parameters and throws if action parameters aren't valid.
-    pub fn validate(&self) -> anyhow::Result<()> {
+    pub async fn validate<DR: DnsResolver, ET: EmailTransport>(
+        &self,
+        api: &Api<DR, ET>,
+    ) -> anyhow::Result<()> {
         match self {
             UtilsWebSecurityAction::SerializeContentSecurityPolicy { policy_name, .. }
             | UtilsWebSecurityAction::GetContentSecurityPolicy { policy_name }
@@ -55,6 +64,37 @@ impl UtilsWebSecurityAction {
             UtilsWebSecurityAction::SaveContentSecurityPolicy { policy } => {
                 if !policy.is_valid() {
                     anyhow::bail!("Policy is not valid");
+                }
+            }
+            UtilsWebSecurityAction::ImportContentSecurityPolicy {
+                policy_name,
+                import_type: source,
+            } => {
+                if policy_name.is_empty() {
+                    anyhow::bail!("Policy name cannot be empty");
+                }
+
+                if policy_name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
+                    anyhow::bail!(
+                        "Policy name cannot be longer than {} characters",
+                        MAX_UTILS_ENTITY_NAME_LENGTH
+                    );
+                }
+
+                match source {
+                    ContentSecurityPolicyImportType::Text { text } => {
+                        if text.is_empty() {
+                            anyhow::bail!("Content security policy text to import source text cannot be empty");
+                        }
+                    }
+                    ContentSecurityPolicyImportType::Url { url, .. } => {
+                        if !api.network.is_public_web_url(url).await {
+                            log::error!("URL must be either `http` or `https` and have a valid public reachable domain name: {url}");
+                            anyhow::bail!(
+                                "URL must be either `http` or `https` and have a valid public reachable domain name"
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -88,6 +128,13 @@ impl UtilsWebSecurityAction {
                 .upsert_content_security_policy(user.id, policy)
                 .await
                 .map(|_| UtilsWebSecurityActionResult::save()),
+            UtilsWebSecurityAction::ImportContentSecurityPolicy {
+                policy_name,
+                import_type,
+            } => web_security
+                .import_content_security_policy(user.id, policy_name, import_type)
+                .await
+                .map(|_| UtilsWebSecurityActionResult::import()),
             UtilsWebSecurityAction::RemoveContentSecurityPolicy { policy_name } => web_security
                 .remove_content_security_policy(user.id, &policy_name)
                 .await
@@ -119,17 +166,12 @@ impl UtilsWebSecurityAction {
                     })?;
 
                 Ok(UtilsWebSecurityActionResult::serialize(
-                    match source {
-                        ContentSecurityPolicySource::Meta => serialize_directives(
-                            policy
-                                .directives
-                                .into_iter()
-                                .filter(|directive| directive.is_supported_for_source(source)),
-                        )?,
-                        ContentSecurityPolicySource::Header => {
-                            serialize_directives(policy.directives.into_iter())?
-                        }
-                    },
+                    serialize_directives(
+                        policy
+                            .directives
+                            .into_iter()
+                            .filter(|directive| directive.is_supported_for_source(source)),
+                    )?,
                     source,
                 ))
             }
@@ -151,13 +193,18 @@ fn serialize_directives(
 #[cfg(test)]
 mod tests {
     use crate::{
-        tests::{mock_api, mock_user},
+        tests::{mock_api, mock_api_with_network, mock_network_with_records, mock_user},
         utils::{
-            ContentSecurityPolicy, ContentSecurityPolicyDirective, ContentSecurityPolicySource,
-            UtilsWebSecurityAction, UtilsWebSecurityActionResult,
+            ContentSecurityPolicy, ContentSecurityPolicyDirective, ContentSecurityPolicyImportType,
+            ContentSecurityPolicySource, UtilsWebSecurityAction, UtilsWebSecurityActionResult,
         },
     };
-    use std::collections::HashSet;
+    use std::{collections::HashSet, net::Ipv4Addr};
+    use trust_dns_resolver::{
+        proto::rr::{rdata::A, RData, Record},
+        Name,
+    };
+    use url::Url;
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
@@ -192,6 +239,23 @@ mod tests {
                             .into_iter()
                             .collect()
                     )]
+                }
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<UtilsWebSecurityAction>(
+                r#"
+        {
+            "type": "importContentSecurityPolicy",
+            "value": { "policyName": "policy", "importType": { "type": "text", "text": "default-src 'self' https:" } }
+        }
+                  "#
+            )?,
+            UtilsWebSecurityAction::ImportContentSecurityPolicy {
+                policy_name: "policy".to_string(),
+                import_type: ContentSecurityPolicyImportType::Text {
+                    text: "default-src 'self' https:".to_string()
                 }
             }
         );
@@ -256,8 +320,8 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn validation() -> anyhow::Result<()> {
+    #[actix_rt::test]
+    async fn validation() -> anyhow::Result<()> {
         let get_actions = |policy_name: String| {
             vec![
                 UtilsWebSecurityAction::GetContentSecurityPolicy {
@@ -279,20 +343,21 @@ mod tests {
             ]
         };
 
+        let api = mock_api().await?;
         for action in get_actions("a".repeat(100)) {
-            assert!(action.validate().is_ok());
+            assert!(action.validate(&api).await.is_ok());
         }
 
         for action in get_actions("".to_string()) {
             assert_eq!(
-                action.validate().map_err(|err| err.to_string()),
+                action.validate(&api).await.map_err(|err| err.to_string()),
                 Err("Policy name cannot be empty".to_string())
             );
         }
 
         for action in get_actions("a".repeat(101)) {
             assert_eq!(
-                action.validate().map_err(|err| err.to_string()),
+                action.validate(&api).await.map_err(|err| err.to_string()),
                 Err("Policy name cannot be longer than 100 characters".to_string())
             );
         }
@@ -305,7 +370,8 @@ mod tests {
                 )]
             }
         }
-        .validate()
+        .validate(&api)
+        .await
         .is_ok());
 
         assert_eq!(
@@ -317,10 +383,81 @@ mod tests {
                     )]
                 }
             }
-            .validate()
+            .validate(&api)
+            .await
             .map_err(|err| err.to_string()),
             Err("Policy is not valid".to_string())
         );
+
+        assert_eq!(
+            UtilsWebSecurityAction::ImportContentSecurityPolicy {
+                policy_name: "".to_string(),
+                import_type: ContentSecurityPolicyImportType::Text {
+                    text: "default-src 'self' https:".to_string()
+                }
+            }
+            .validate(&api)
+            .await
+            .map_err(|err| err.to_string()),
+            Err("Policy name cannot be empty".to_string())
+        );
+
+        assert_eq!(
+            UtilsWebSecurityAction::ImportContentSecurityPolicy {
+                policy_name: "a".repeat(101),
+                import_type: ContentSecurityPolicyImportType::Text {
+                    text: "default-src 'self' https:".to_string()
+                }
+            }
+            .validate(&api)
+            .await
+            .map_err(|err| err.to_string()),
+            Err("Policy name cannot be longer than 100 characters".to_string())
+        );
+
+        assert_eq!(
+            UtilsWebSecurityAction::ImportContentSecurityPolicy {
+                policy_name: "policy".to_string(),
+                import_type: ContentSecurityPolicyImportType::Text {
+                    text: "".to_string()
+                }
+            }
+            .validate(&api)
+            .await
+            .map_err(|err| err.to_string()),
+            Err("Content security policy text to import source text cannot be empty".to_string())
+        );
+
+        let api_with_local_network =
+            mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
+                Name::new(),
+                300,
+                RData::A(A(Ipv4Addr::new(127, 0, 0, 1))),
+            )]))
+            .await?;
+        let valid_import_type = ContentSecurityPolicyImportType::Url {
+            url: Url::parse("https://secutils.dev/my-page")?,
+            source: ContentSecurityPolicySource::Meta,
+            follow_redirects: true,
+        };
+        assert_eq!(
+            UtilsWebSecurityAction::ImportContentSecurityPolicy {
+                policy_name: "policy".to_string(),
+                import_type: valid_import_type.clone()
+            }
+            .validate(&api_with_local_network)
+            .await
+            .map_err(|err| err.to_string()),
+            Err("URL must be either `http` or `https` and have a valid public reachable domain name".to_string())
+        );
+
+        assert!(UtilsWebSecurityAction::ImportContentSecurityPolicy {
+            policy_name: "policy".to_string(),
+            import_type: valid_import_type
+        }
+        .validate(&api)
+        .await
+        .is_ok());
 
         Ok(())
     }
@@ -533,13 +670,13 @@ mod tests {
 
         let action = UtilsWebSecurityAction::SerializeContentSecurityPolicy {
             policy_name: policy.name.clone(),
-            source: ContentSecurityPolicySource::Header,
+            source: ContentSecurityPolicySource::EnforcingHeader,
         };
         assert_eq!(
             action.handle(mock_user.clone(), &api).await?,
             UtilsWebSecurityActionResult::serialize(
                 "default-src 'self' https:; sandbox; report-to prod-csp".to_string(),
-                ContentSecurityPolicySource::Header
+                ContentSecurityPolicySource::EnforcingHeader
             )
         );
 
@@ -553,6 +690,44 @@ mod tests {
                 "default-src 'self' https:".to_string(),
                 ContentSecurityPolicySource::Meta
             )
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_import_policy() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        assert!(api
+            .web_security()
+            .get_content_security_policy(mock_user.id, "policy-one")
+            .await?
+            .is_none());
+
+        let action = UtilsWebSecurityAction::ImportContentSecurityPolicy {
+            policy_name: "policy-one".to_string(),
+            import_type: ContentSecurityPolicyImportType::Text {
+                text: "default-src https:".to_string(),
+            },
+        };
+        assert_eq!(
+            action.handle(mock_user.clone(), &api).await?,
+            UtilsWebSecurityActionResult::import()
+        );
+        assert_eq!(
+            api.web_security()
+                .get_content_security_policy(mock_user.id, "policy-one")
+                .await?,
+            Some(ContentSecurityPolicy {
+                name: "policy-one".to_string(),
+                directives: vec![ContentSecurityPolicyDirective::DefaultSrc(
+                    ["https:".to_string()].into_iter().collect(),
+                )],
+            })
         );
 
         Ok(())

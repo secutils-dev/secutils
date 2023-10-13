@@ -1,11 +1,15 @@
 mod content_security_policy;
 mod content_security_policy_directive;
+mod content_security_policy_require_trusted_types_for_directive_value;
 mod content_security_policy_sandbox_directive_value;
+mod content_security_policy_trusted_types_directive_value;
 mod content_security_policy_webrtc_directive_value;
 
 pub use self::{
     content_security_policy::ContentSecurityPolicy,
     content_security_policy_directive::ContentSecurityPolicyDirective,
+    content_security_policy_require_trusted_types_for_directive_value::ContentSecurityPolicyRequireTrustedTypesForDirectiveValue,
     content_security_policy_sandbox_directive_value::ContentSecurityPolicySandboxDirectiveValue,
+    content_security_policy_trusted_types_directive_value::ContentSecurityPolicyTrustedTypesDirectiveValue,
     content_security_policy_webrtc_directive_value::ContentSecurityPolicyWebrtcDirectiveValue,
 };
