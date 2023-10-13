@@ -43,7 +43,7 @@ pub enum ContentSecurityPolicyDirective {
     // 1 extension directive
     #[serde(deserialize_with = "deserialize_directive_without_value")]
     UpgradeInsecureRequests,
-    // 2 experimental directives
+    // 2 trusted types directives
     RequireTrustedTypesFor([ContentSecurityPolicyRequireTrustedTypesForDirectiveValue; 1]),
     TrustedTypes(HashSet<ContentSecurityPolicyTrustedTypesDirectiveValue>),
     // 2 reporting directives
@@ -382,6 +382,13 @@ mod tests {
         }
         "###);
 
+        assert_json_snapshot!(ContentSecurityPolicyDirective::TrustedTypes(HashSet::new()), @r###"
+        {
+          "n": "trusted-types",
+          "v": []
+        }
+        "###);
+
         assert_json_snapshot!(ContentSecurityPolicyDirective::ReportTo(["https://google.com".to_string()]), @r###"
         {
           "n": "report-to",
@@ -433,6 +440,13 @@ mod tests {
                 .collect())
             )?,
             @r###""trusted-types 'allow-duplicates' my-another-policy my-policy""###
+        );
+
+        assert_debug_snapshot!(
+            String::try_from(
+                ContentSecurityPolicyDirective::TrustedTypes(HashSet::new())
+            )?,
+            @r###""trusted-types""###
         );
 
         Ok(())
@@ -673,6 +687,16 @@ mod tests {
         assert_eq!(
             ContentSecurityPolicyDirective::try_from(&directive)?,
             ContentSecurityPolicyDirective::UpgradeInsecureRequests
+        );
+
+        let directive = serde_json::from_value::<Directive>(json!({
+            "name": "trusted-types",
+            "value": []
+        }))?;
+
+        assert_eq!(
+            ContentSecurityPolicyDirective::try_from(&directive)?,
+            ContentSecurityPolicyDirective::TrustedTypes(HashSet::new())
         );
 
         Ok(())
