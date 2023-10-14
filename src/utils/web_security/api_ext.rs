@@ -2,6 +2,7 @@ mod csp_meta_parser;
 
 use crate::{
     api::Api,
+    config::SECUTILS_USER_AGENT,
     network::{DnsResolver, EmailTransport},
     users::{
         DictionaryDataUserDataSetter, PublicUserDataNamespace, SharedResource, UserData, UserId,
@@ -88,6 +89,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApi<'a, DR, ET> {
                     } else {
                         RedirectPolicy::none()
                     })
+                    .user_agent(SECUTILS_USER_AGENT)
                     .build()?;
                 match source {
                     ContentSecurityPolicySource::EnforcingHeader
