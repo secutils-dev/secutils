@@ -5,3 +5,4 @@ LICENSE
 *.md
 .env
 .gitignore
+*.json

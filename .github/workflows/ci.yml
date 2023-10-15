@@ -9,6 +9,7 @@ on:
       - 'LICENSE'
       - '*.md'
       - '.husky/**'
+      - '*.json'
 
 env:
   CARGO_TERM_COLOR: always
