@@ -1,4 +1,6 @@
-use crate::{error::SecutilsError, server::app_state::AppState, utils::AutoResponderRequest};
+use crate::{
+    error::Error as SecutilsError, server::app_state::AppState, utils::AutoResponderRequest,
+};
 use actix_http::{body::MessageBody, StatusCode};
 use actix_web::{
     http::header::{HeaderName, HeaderValue},

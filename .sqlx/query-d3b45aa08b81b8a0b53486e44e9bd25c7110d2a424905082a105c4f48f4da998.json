@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\nUPDATE user_data_certificates_private_keys\nSET pkcs8 = ?3\nWHERE user_id = ?1 AND name = ?2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "d3b45aa08b81b8a0b53486e44e9bd25c7110d2a424905082a105c4f48f4da998"
+}

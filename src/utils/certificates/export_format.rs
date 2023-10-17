@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 /// Defines a format to use for the generated certificate(s) and keys.
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum CertificateFormat {
+pub enum ExportFormat {
     /// The PEM format is the most common format that Certificate Authorities issue certificates in.
     /// PEM certificates usually have extensions such as ".pem", ".crt", ".cer", and ".key". They
     /// are Base64 encoded ASCII files and contain "-----BEGIN CERTIFICATE-----" and
@@ -28,14 +28,14 @@ pub enum CertificateFormat {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::CertificateFormat;
+    use crate::utils::ExportFormat;
     use insta::assert_json_snapshot;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
-        assert_json_snapshot!(CertificateFormat::Pem, @r###""pem""###);
-        assert_json_snapshot!(CertificateFormat::Pkcs8, @r###""pkcs8""###);
-        assert_json_snapshot!(CertificateFormat::Pkcs12, @r###""pkcs12""###);
+        assert_json_snapshot!(ExportFormat::Pem, @r###""pem""###);
+        assert_json_snapshot!(ExportFormat::Pkcs8, @r###""pkcs8""###);
+        assert_json_snapshot!(ExportFormat::Pkcs12, @r###""pkcs12""###);
 
         Ok(())
     }
@@ -43,16 +43,16 @@ mod tests {
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<CertificateFormat>(r#""pem""#)?,
-            CertificateFormat::Pem
+            serde_json::from_str::<ExportFormat>(r#""pem""#)?,
+            ExportFormat::Pem
         );
         assert_eq!(
-            serde_json::from_str::<CertificateFormat>(r#""pkcs8""#)?,
-            CertificateFormat::Pkcs8
+            serde_json::from_str::<ExportFormat>(r#""pkcs8""#)?,
+            ExportFormat::Pkcs8
         );
         assert_eq!(
-            serde_json::from_str::<CertificateFormat>(r#""pkcs12""#)?,
-            CertificateFormat::Pkcs12
+            serde_json::from_str::<ExportFormat>(r#""pkcs12""#)?,
+            ExportFormat::Pkcs12
         );
 
         Ok(())

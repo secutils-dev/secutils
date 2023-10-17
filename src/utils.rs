@@ -12,9 +12,9 @@ mod webhooks;
 
 pub use self::{
     certificates::{
-        CertificateFormat, EllipticCurve, ExtendedKeyUsage, KeyAlgorithm, KeySize, KeyUsage,
-        SelfSignedCertificate, SignatureAlgorithm, UtilsCertificatesAction,
-        UtilsCertificatesActionResult, Version,
+        CertificatesApi, ExportFormat, ExtendedKeyUsage, KeyUsage, PrivateKey, PrivateKeyAlgorithm,
+        PrivateKeyEllipticCurve, PrivateKeySize, SelfSignedCertificate, SignatureAlgorithm,
+        UtilsCertificatesAction, UtilsCertificatesActionResult, Version,
     },
     util::Util,
     utils_action::UtilsAction,
@@ -42,7 +42,7 @@ pub use self::{
 #[cfg(test)]
 pub mod tests {
     use crate::utils::{
-        ExtendedKeyUsage, KeyAlgorithm, KeyUsage, SelfSignedCertificate, SignatureAlgorithm,
+        ExtendedKeyUsage, KeyUsage, PrivateKeyAlgorithm, SelfSignedCertificate, SignatureAlgorithm,
         Version,
     };
     use time::OffsetDateTime;
@@ -53,7 +53,7 @@ pub mod tests {
     impl MockSelfSignedCertificate {
         pub fn new<N: Into<String>>(
             name: N,
-            public_key_algorithm: KeyAlgorithm,
+            public_key_algorithm: PrivateKeyAlgorithm,
             signature_algorithm: SignatureAlgorithm,
             not_valid_before: OffsetDateTime,
             not_valid_after: OffsetDateTime,

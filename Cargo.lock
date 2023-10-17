@@ -3770,6 +3770,7 @@ dependencies = [
  "serde_with",
  "sqlx",
  "tantivy",
+ "thiserror",
  "time",
  "tlsh2",
  "tokio",

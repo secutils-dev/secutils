@@ -1,6 +1,6 @@
 use crate::utils::{
     certificates::{ExtendedKeyUsage, KeyUsage, Version},
-    KeyAlgorithm, SignatureAlgorithm,
+    PrivateKeyAlgorithm, SignatureAlgorithm,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -24,7 +24,7 @@ pub struct SelfSignedCertificate {
     #[serde(rename = "ou", skip_serializing_if = "Option::is_none")]
     pub organizational_unit: Option<String>,
     #[serde(rename = "ka")]
-    pub key_algorithm: KeyAlgorithm,
+    pub key_algorithm: PrivateKeyAlgorithm,
     #[serde(rename = "sa")]
     pub signature_algorithm: SignatureAlgorithm,
     #[serde(rename = "nb", with = "time::serde::timestamp")]
@@ -44,8 +44,8 @@ pub struct SelfSignedCertificate {
 #[cfg(test)]
 mod tests {
     use crate::utils::{
-        tests::MockSelfSignedCertificate, ExtendedKeyUsage, KeyAlgorithm, KeySize, KeyUsage,
-        SelfSignedCertificate, SignatureAlgorithm, Version,
+        tests::MockSelfSignedCertificate, ExtendedKeyUsage, KeyUsage, PrivateKeyAlgorithm,
+        PrivateKeySize, SelfSignedCertificate, SignatureAlgorithm, Version,
     };
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
@@ -60,7 +60,7 @@ mod tests {
         assert_json_snapshot!(
             MockSelfSignedCertificate::new(
                 "test-2-name",
-                KeyAlgorithm::Ed25519,
+                PrivateKeyAlgorithm::Ed25519,
                 SignatureAlgorithm::Ed25519,
                 not_valid_before,
                 not_valid_after,
@@ -86,7 +86,7 @@ mod tests {
           "o": "CA Issuer, Inc",
           "ou": "CA Org Unit",
           "ka": {
-            "alg": "ed25519"
+            "keyType": "ed25519"
           },
           "sa": "ed25519",
           "nb": 946720800,
@@ -105,7 +105,7 @@ mod tests {
         assert_json_snapshot!(
             MockSelfSignedCertificate::new(
                 "name",
-                KeyAlgorithm::Rsa { key_size: KeySize::Size1024 },
+                PrivateKeyAlgorithm::Rsa { key_size: PrivateKeySize::Size1024 },
                 SignatureAlgorithm::Sha256,
                 not_valid_before,
                 not_valid_after,
@@ -115,7 +115,7 @@ mod tests {
         {
           "n": "name",
           "ka": {
-            "alg": "rsa",
+            "keyType": "rsa",
             "keySize": "1024"
           },
           "sa": "sha256",
@@ -142,7 +142,7 @@ mod tests {
                 r#"
         {
           "n": "name",
-          "ka": { "alg": "rsa", "keySize": "1024" },
+          "ka": { "keyType": "rsa", "keySize": "1024" },
           "sa": "sha256",
           "nb": 946720800,
           "na": 1262340000,
@@ -153,8 +153,8 @@ mod tests {
             )?,
             MockSelfSignedCertificate::new(
                 "name",
-                KeyAlgorithm::Rsa {
-                    key_size: KeySize::Size1024
+                PrivateKeyAlgorithm::Rsa {
+                    key_size: PrivateKeySize::Size1024
                 },
                 SignatureAlgorithm::Sha256,
                 not_valid_before,
@@ -174,7 +174,7 @@ mod tests {
           "l": "San Francisco",
           "o": "CA Issuer, Inc",
           "ou": "CA Org Unit",
-          "ka": { "alg": "ed25519" },
+          "ka": { "keyType": "ed25519" },
           "sa": "ed25519",
           "nb": 946720800,
           "na": 1262340000,
@@ -187,7 +187,7 @@ mod tests {
             )?,
             MockSelfSignedCertificate::new(
                 "test-2-name",
-                KeyAlgorithm::Ed25519,
+                PrivateKeyAlgorithm::Ed25519,
                 SignatureAlgorithm::Ed25519,
                 not_valid_before,
                 not_valid_after,

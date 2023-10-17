@@ -1,5 +1,6 @@
 use crate::{
     api::Api,
+    error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
     users::User,
     utils::{
@@ -11,7 +12,7 @@ use crate::{
         UtilsWebScrapingActionResult, WebPageResourcesTracker,
     },
 };
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use cron::Schedule;
 use humantime::format_duration;
 use serde::Deserialize;
@@ -43,61 +44,56 @@ impl UtilsWebScrapingAction {
         &self,
         api: &Api<DR, ET>,
     ) -> anyhow::Result<()> {
+        let assert_tracker_name = |name: &str| -> Result<(), SecutilsError> {
+            if name.is_empty() {
+                return Err(SecutilsError::client("Tracker name cannot be empty."));
+            }
+
+            if name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
+                return Err(SecutilsError::client(format!(
+                    "Tracker name cannot be longer than {} characters.",
+                    MAX_UTILS_ENTITY_NAME_LENGTH
+                )));
+            }
+
+            Ok(())
+        };
+
         match self {
             UtilsWebScrapingAction::FetchWebPageResources { tracker_name, .. }
             | UtilsWebScrapingAction::RemoveWebPageResources { tracker_name, .. }
             | UtilsWebScrapingAction::RemoveWebPageResourcesTracker { tracker_name } => {
-                if tracker_name.is_empty() {
-                    anyhow::bail!("Tracker name cannot be empty");
-                }
-
-                if tracker_name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
-                    anyhow::bail!(
-                        "Tracker name cannot be longer than {} characters",
-                        MAX_UTILS_ENTITY_NAME_LENGTH
-                    );
-                }
+                assert_tracker_name(tracker_name)?;
             }
             UtilsWebScrapingAction::SaveWebPageResourcesTracker { tracker } => {
-                if tracker.name.is_empty() {
-                    anyhow::bail!("Tracker name cannot be empty");
-                }
-
-                if tracker.name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
-                    anyhow::bail!(
-                        "Tracker name cannot be longer than {} characters",
-                        MAX_UTILS_ENTITY_NAME_LENGTH
-                    );
-                }
+                assert_tracker_name(&tracker.name)?;
 
                 if tracker.revisions > MAX_WEB_PAGE_RESOURCES_TRACKER_REVISIONS {
-                    anyhow::bail!(
-                        "Tracker revisions count cannot be greater than {}",
+                    bail!(SecutilsError::client(format!(
+                        "Tracker revisions count cannot be greater than {}.",
                         MAX_WEB_PAGE_RESOURCES_TRACKER_REVISIONS
-                    );
+                    )));
                 }
 
                 if tracker.delay > MAX_WEB_PAGE_RESOURCES_TRACKER_DELAY {
-                    anyhow::bail!(
-                        "Tracker delay cannot be greater than {}ms",
+                    bail!(SecutilsError::client(format!(
+                        "Tracker delay cannot be greater than {}ms.",
                         MAX_WEB_PAGE_RESOURCES_TRACKER_DELAY.as_millis()
-                    );
+                    )));
                 }
 
                 if let Some(ref resource_filter) = tracker.scripts.resource_filter_map {
                     if resource_filter.is_empty() {
-                        anyhow::bail!("Tracker resource filter script cannot be empty");
+                        bail!(SecutilsError::client(
+                            "Tracker resource filter script cannot be empty."
+                        ));
                     }
                 }
 
                 if !api.network.is_public_web_url(&tracker.url).await {
-                    log::error!(
-                        "Tracker URL must be either `http` or `https` and have a valid public reachable domain name: {}",
-                        tracker.url
-                    );
-                    anyhow::bail!(
-                        "Tracker URL must be either `http` or `https` and have a valid public reachable domain name"
-                    );
+                    bail!(SecutilsError::client(
+                        "Tracker URL must be either `http` or `https` and have a valid public reachable domain name."
+                    ));
                 }
 
                 if let Some(schedule) = &tracker.schedule {
@@ -105,8 +101,10 @@ impl UtilsWebScrapingAction {
                     let schedule = match Schedule::try_from(schedule.as_str()) {
                         Ok(schedule) => schedule,
                         Err(err) => {
-                            log::error!("Failed to parse schedule `{}`: {:?}", schedule, err);
-                            anyhow::bail!("Tracker schedule must be a valid cron expression");
+                            bail!(SecutilsError::client_with_root_cause(
+                                anyhow!("Failed to parse schedule `{schedule}`: {err:?}")
+                                    .context("Tracker schedule must be a valid cron expression.")
+                            ));
                         }
                     };
 
@@ -117,11 +115,11 @@ impl UtilsWebScrapingAction {
                     for (index, occurrence) in next_occurrences.iter().enumerate().skip(1) {
                         let interval = (*occurrence - next_occurrences[index - 1]).to_std()?;
                         if interval < minimum_interval {
-                            anyhow::bail!(
-                                "Tracker schedule must have at least {} between occurrences, detected {}", 
+                            bail!(SecutilsError::client(format!(
+                                "Tracker schedule must have at least {} between occurrences, detected {}.",
                                 format_duration(minimum_interval),
                                 format_duration(interval)
-                            );
+                            )));
                         }
                     }
                 }
@@ -427,7 +425,7 @@ mod tests {
             .validate(&api)
             .await, @r###"
         Err(
-            "Tracker URL must be either `http` or `https` and have a valid public reachable domain name",
+            "Tracker URL must be either `http` or `https` and have a valid public reachable domain name.",
         )
         "###);
 
@@ -452,7 +450,7 @@ mod tests {
             .validate(&api_with_local_network)
             .await, @r###"
         Err(
-            "Tracker URL must be either `http` or `https` and have a valid public reachable domain name",
+            "Tracker URL must be either `http` or `https` and have a valid public reachable domain name.",
         )
         "###);
 
@@ -470,7 +468,7 @@ mod tests {
         .validate(&api)
         .await, @r###"
         Err(
-            "Tracker schedule must have at least 1h between occurrences, detected 1m",
+            "Tracker schedule must have at least 1h between occurrences, detected 1m.",
         )
         "###);
 
@@ -481,7 +479,7 @@ mod tests {
         }
         .validate(&api).await, @r###"
         Err(
-            "Tracker name cannot be empty",
+            "Tracker name cannot be empty.",
         )
         "###);
 
@@ -492,7 +490,7 @@ mod tests {
         }
         .validate(&api).await, @r###"
         Err(
-            "Tracker name cannot be longer than 100 characters",
+            "Tracker name cannot be longer than 100 characters.",
         )
         "###);
 
@@ -501,7 +499,7 @@ mod tests {
         }
         .validate(&api).await, @r###"
         Err(
-            "Tracker name cannot be empty",
+            "Tracker name cannot be empty.",
         )
         "###);
 
@@ -510,7 +508,7 @@ mod tests {
         }
         .validate(&api).await, @r###"
         Err(
-            "Tracker name cannot be longer than 100 characters",
+            "Tracker name cannot be longer than 100 characters.",
         )
         "###);
 
@@ -519,7 +517,7 @@ mod tests {
         }
         .validate(&api).await, @r###"
         Err(
-            "Tracker name cannot be empty",
+            "Tracker name cannot be empty.",
         )
         "###);
 
@@ -528,7 +526,7 @@ mod tests {
         }
         .validate(&api).await, @r###"
         Err(
-            "Tracker name cannot be longer than 100 characters",
+            "Tracker name cannot be longer than 100 characters.",
         )
         "###);
 
@@ -540,7 +538,7 @@ mod tests {
         }
         .validate(&api).await, @r###"
         Err(
-            "Tracker name cannot be empty",
+            "Tracker name cannot be empty.",
         )
         "###);
 
@@ -555,7 +553,7 @@ mod tests {
         }
         .validate(&api).await, @r###"
         Err(
-            "Tracker name cannot be longer than 100 characters",
+            "Tracker name cannot be longer than 100 characters.",
         )
         "###);
 
@@ -570,7 +568,7 @@ mod tests {
         }
         .validate(&api).await, @r###"
         Err(
-            "Tracker revisions count cannot be greater than 10",
+            "Tracker revisions count cannot be greater than 10.",
         )
         "###);
 
@@ -586,7 +584,7 @@ mod tests {
         }
         .validate(&api).await, @r###"
         Err(
-            "Tracker delay cannot be greater than 60000ms",
+            "Tracker delay cannot be greater than 60000ms.",
         )
         "###);
 
@@ -604,7 +602,7 @@ mod tests {
         }
         .validate(&api).await, @r###"
         Err(
-            "Tracker resource filter script cannot be empty",
+            "Tracker resource filter script cannot be empty.",
         )
         "###);
 

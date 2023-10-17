@@ -1,5 +1,5 @@
 use crate::{
-    error::SecutilsError,
+    error::Error as SecutilsError,
     server::{AppState, License, UiState},
     users::{ClientUserShare, PublicUserDataNamespace, User, UserShare},
 };
@@ -31,12 +31,13 @@ pub async fn ui_state_get(
         vec![]
     };
 
+    let status = state.status.read().map_err(|err| {
+        log::error!("Failed to read status: {err}");
+        SecutilsError::from(anyhow!("Status is not available."))
+    })?;
+
     Ok(HttpResponse::Ok().json(UiState {
-        status: state
-            .status
-            .read()
-            .map_err(|err| anyhow!("Failed to retrieve server status: {:?}.", err))?
-            .deref(),
+        status: status.deref(),
         license: License,
         user,
         user_share: user_share.map(ClientUserShare::from),

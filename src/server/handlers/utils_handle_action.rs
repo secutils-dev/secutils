@@ -1,22 +1,15 @@
 use crate::{
-    error::SecutilsError,
+    error::Error as SecutilsError,
     server::AppState,
     users::{User, UserShare},
     utils::UtilsAction,
 };
 use actix_web::{web, HttpResponse};
 use serde::Deserialize;
-use serde_json::json;
 
 #[derive(Deserialize)]
 pub struct BodyParams {
     action: UtilsAction,
-}
-
-fn unauthorized_response() -> HttpResponse {
-    HttpResponse::Unauthorized().json(json!({
-        "message": "User is not authorized to perform this action"
-    }))
 }
 
 pub async fn utils_handle_action(
@@ -45,35 +38,32 @@ pub async fn utils_handle_action(
             if let Some(user) = state.api.users().get(user_share.user_id).await? {
                 user
             } else {
-                return Ok(unauthorized_response());
+                return Err(SecutilsError::access_forbidden());
             }
         }
 
-        // Otherwise return "Unauthorized" error.
-        _ => return Ok(unauthorized_response()),
+        // Otherwise return "Access forbidden" error.
+        _ => return Err(SecutilsError::access_forbidden()),
     };
 
     // Validate action parameters.
     if let Err(err) = action.validate(&state.api).await {
         log::error!(
-            "User ({}) tried to perform invalid utility action: {}",
-            *user.id,
-            err
+            "User ({}) tried to perform invalid utility action: {err:?}",
+            *user.id
         );
-        return Ok(HttpResponse::BadRequest().json(json!({ "message": err.to_string() })));
+        return Err(err.into());
     }
 
     let user_id = user.id;
-    action
-        .handle(user, &state.api)
-        .await
-        .map(|response| HttpResponse::Ok().json(response))
-        .or_else(|err| {
+    match action.handle(user, &state.api).await {
+        Ok(result) => Ok(HttpResponse::Ok().json(result)),
+        Err(err) => {
             log::error!(
-                "User ({}) failed to perform utility action: {}",
-                *user_id,
-                err
+                "User ({}) failed to perform utility action: {err:?}",
+                *user_id
             );
-            Ok(HttpResponse::InternalServerError().json(json!({ "message": err.to_string() })))
-        })
+            Err(err.into())
+        }
+    }
 }

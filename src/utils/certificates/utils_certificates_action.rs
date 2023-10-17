@@ -1,33 +1,15 @@
 use crate::{
     api::Api,
+    error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
-    users::{PublicUserDataNamespace, User},
+    users::User,
     utils::{
-        utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH, CertificateFormat, ExtendedKeyUsage,
-        KeyAlgorithm, KeyUsage, SelfSignedCertificate, SignatureAlgorithm,
+        utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH, ExportFormat, PrivateKeyAlgorithm,
         UtilsCertificatesActionResult,
     },
 };
-use anyhow::{anyhow, Context};
-use openssl::{
-    asn1::Asn1Time,
-    bn::{BigNum, MsbOption},
-    dsa::Dsa,
-    ec::{EcGroup, EcKey},
-    hash::MessageDigest,
-    nid::Nid,
-    pkcs12::Pkcs12,
-    pkey::{PKey, Private},
-    rsa::Rsa,
-    symm::Cipher,
-    x509::{extension, X509NameBuilder, X509},
-};
+use anyhow::bail;
 use serde::Deserialize;
-use std::{
-    collections::BTreeMap,
-    io::{Cursor, Write},
-};
-use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -36,29 +18,91 @@ pub enum UtilsCertificatesAction {
     #[serde(rename_all = "camelCase")]
     GenerateSelfSignedCertificate {
         template_name: String,
-        format: CertificateFormat,
+        format: ExportFormat,
         passphrase: Option<String>,
     },
-    GenerateRsaKeyPair,
+    GetPrivateKeys,
+    #[serde(rename_all = "camelCase")]
+    CreatePrivateKey {
+        key_name: String,
+        alg: PrivateKeyAlgorithm,
+        passphrase: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    ChangePrivateKeyPassphrase {
+        key_name: String,
+        passphrase: Option<String>,
+        new_passphrase: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    RemovePrivateKey {
+        key_name: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    ExportPrivateKey {
+        key_name: String,
+        format: ExportFormat,
+        passphrase: Option<String>,
+        export_passphrase: Option<String>,
+    },
 }
 
 impl UtilsCertificatesAction {
     /// Validates action parameters and throws if action parameters aren't valid.
     pub fn validate(&self) -> anyhow::Result<()> {
+        let assert_private_key_name = |name: &str| -> Result<(), SecutilsError> {
+            if name.is_empty() {
+                return Err(SecutilsError::client("Private key name cannot be empty."));
+            }
+
+            if name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
+                return Err(SecutilsError::client(format!(
+                    "Private key name cannot be longer than {} characters.",
+                    MAX_UTILS_ENTITY_NAME_LENGTH
+                )));
+            }
+
+            Ok(())
+        };
+
         match self {
             UtilsCertificatesAction::GenerateSelfSignedCertificate { template_name, .. } => {
                 if template_name.is_empty() {
-                    anyhow::bail!("Template name cannot be empty");
+                    bail!(SecutilsError::client(
+                        "Certificate template name cannot be empty."
+                    ));
                 }
 
                 if template_name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
-                    anyhow::bail!(
-                        "Template name cannot be longer than {} characters",
+                    bail!(SecutilsError::client(format!(
+                        "Certificate template name cannot be longer than {} characters.",
                         MAX_UTILS_ENTITY_NAME_LENGTH
-                    );
+                    )));
                 }
             }
-            UtilsCertificatesAction::GenerateRsaKeyPair => {}
+            UtilsCertificatesAction::CreatePrivateKey { key_name: name, .. } => {
+                assert_private_key_name(name)?;
+            }
+            UtilsCertificatesAction::ChangePrivateKeyPassphrase {
+                key_name,
+                passphrase,
+                new_passphrase,
+            } => {
+                assert_private_key_name(key_name)?;
+
+                if passphrase == new_passphrase {
+                    bail!(SecutilsError::client(format!(
+                        "New private key passphrase should be different from the current passphrase ({key_name})."
+                    )));
+                }
+            }
+            UtilsCertificatesAction::RemovePrivateKey { key_name } => {
+                assert_private_key_name(key_name)?;
+            }
+            UtilsCertificatesAction::ExportPrivateKey { key_name, .. } => {
+                assert_private_key_name(key_name)?;
+            }
+            UtilsCertificatesAction::GetPrivateKeys => {}
         }
 
         Ok(())
@@ -69,300 +113,83 @@ impl UtilsCertificatesAction {
         user: User,
         api: &Api<DR, ET>,
     ) -> anyhow::Result<UtilsCertificatesActionResult> {
+        let certificates = api.certificates();
         match self {
             UtilsCertificatesAction::GenerateSelfSignedCertificate {
                 template_name,
                 format,
                 passphrase,
-            } => {
-                let certificate_template = api
-                    .users()
-                    .get_data::<BTreeMap<String, SelfSignedCertificate>>(
-                        user.id,
-                        PublicUserDataNamespace::SelfSignedCertificates,
-                    )
-                    .await?
-                    .and_then(|mut map| map.value.remove(&template_name))
-                    .ok_or_else(|| {
-                        anyhow!(
-                            "Cannot find self-signed certificate with name: {}",
-                            template_name
+            } => Ok(
+                UtilsCertificatesActionResult::GenerateSelfSignedCertificate(
+                    certificates
+                        .generate_self_signed_certificate(
+                            user.id,
+                            &template_name,
+                            format,
+                            passphrase.as_deref(),
                         )
-                    })?;
-
-                let key = generate_key(certificate_template.key_algorithm)?;
-                let certificate = match format {
-                    CertificateFormat::Pem => {
-                        convert_to_pem_archive(certificate_template, key, passphrase)?
-                    }
-                    CertificateFormat::Pkcs8 => convert_to_pkcs8(key, passphrase)?,
-                    CertificateFormat::Pkcs12 => {
-                        convert_to_pkcs12(certificate_template, key, passphrase)?
-                    }
-                };
-
-                log::info!("Serialized certificate ({} bytes).", certificate.len());
-
-                Ok(
-                    UtilsCertificatesActionResult::GenerateSelfSignedCertificate {
-                        format,
-                        certificate,
-                    },
-                )
-            }
-            UtilsCertificatesAction::GenerateRsaKeyPair => {
-                let rsa = Rsa::generate(2048)?;
-                let public_pem = rsa.public_key_to_pem()?;
-
-                Ok(UtilsCertificatesActionResult::GenerateRsaKeyPair(
-                    public_pem,
+                        .await?,
+                ),
+            ),
+            UtilsCertificatesAction::GetPrivateKeys => {
+                Ok(UtilsCertificatesActionResult::GetPrivateKeys(
+                    certificates.get_private_keys(user.id).await?,
                 ))
             }
+            UtilsCertificatesAction::CreatePrivateKey {
+                key_name,
+                alg,
+                passphrase,
+            } => Ok(UtilsCertificatesActionResult::CreatePrivateKey(
+                certificates
+                    .create_private_key(user.id, &key_name, alg, passphrase.as_deref())
+                    .await?,
+            )),
+            UtilsCertificatesAction::ChangePrivateKeyPassphrase {
+                key_name,
+                passphrase,
+                new_passphrase,
+            } => {
+                certificates
+                    .change_private_key_passphrase(
+                        user.id,
+                        &key_name,
+                        passphrase.as_deref(),
+                        new_passphrase.as_deref(),
+                    )
+                    .await?;
+                Ok(UtilsCertificatesActionResult::ChangePrivateKeyPassphrase)
+            }
+            UtilsCertificatesAction::ExportPrivateKey {
+                key_name,
+                passphrase,
+                export_passphrase,
+                format,
+            } => Ok(UtilsCertificatesActionResult::ExportPrivateKey(
+                certificates
+                    .export_private_key(
+                        user.id,
+                        &key_name,
+                        format,
+                        passphrase.as_deref(),
+                        export_passphrase.as_deref(),
+                    )
+                    .await?,
+            )),
+            UtilsCertificatesAction::RemovePrivateKey { key_name } => {
+                certificates.remove_private_key(user.id, &key_name).await?;
+                Ok(UtilsCertificatesActionResult::RemovePrivateKey)
+            }
         }
     }
-}
-
-fn set_name_attribute(
-    x509_name: &mut X509NameBuilder,
-    attribute_key: &str,
-    attribute_value: &Option<String>,
-) -> anyhow::Result<()> {
-    if attribute_key.is_empty() {
-        return Ok(());
-    }
-
-    if let Some(attribute_value) = attribute_value {
-        if !attribute_value.is_empty() {
-            x509_name.append_entry_by_text(attribute_key, attribute_value)?;
-        }
-    }
-
-    Ok(())
-}
-
-fn message_digest(
-    pk_alg: KeyAlgorithm,
-    sig_alg: SignatureAlgorithm,
-) -> anyhow::Result<MessageDigest> {
-    match (pk_alg, sig_alg) {
-        (KeyAlgorithm::Rsa { .. }, SignatureAlgorithm::Md5) => Ok(MessageDigest::md5()),
-        (
-            KeyAlgorithm::Rsa { .. } | KeyAlgorithm::Dsa { .. } | KeyAlgorithm::Ecdsa { .. },
-            SignatureAlgorithm::Sha1,
-        ) => Ok(MessageDigest::sha1()),
-        (
-            KeyAlgorithm::Rsa { .. } | KeyAlgorithm::Dsa { .. } | KeyAlgorithm::Ecdsa { .. },
-            SignatureAlgorithm::Sha256,
-        ) => Ok(MessageDigest::sha256()),
-        (KeyAlgorithm::Rsa { .. } | KeyAlgorithm::Ecdsa { .. }, SignatureAlgorithm::Sha384) => {
-            Ok(MessageDigest::sha384())
-        }
-        (KeyAlgorithm::Rsa { .. } | KeyAlgorithm::Ecdsa { .. }, SignatureAlgorithm::Sha512) => {
-            Ok(MessageDigest::sha512())
-        }
-        (KeyAlgorithm::Ed25519, SignatureAlgorithm::Ed25519) => Ok(MessageDigest::null()),
-        _ => Err(anyhow!(
-            "Public key ({:?}) and signature ({:?}) algorithms are not compatible",
-            pk_alg,
-            sig_alg
-        )),
-    }
-}
-
-fn convert_to_pem_archive(
-    certificate_template: SelfSignedCertificate,
-    key_pair: PKey<Private>,
-    passphrase: Option<String>,
-) -> anyhow::Result<Vec<u8>> {
-    let certificate = generate_x509_certificate(&certificate_template, &key_pair)?;
-
-    // 64kb should be more than enough for the certificate + private key.
-    let mut zip_buffer = [0; 65536];
-    let size = {
-        let mut zip = ZipWriter::new(Cursor::new(&mut zip_buffer[..]));
-
-        let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
-        zip.start_file("certificate.crt", options)?;
-        zip.write_all(&certificate.to_pem()?)?;
-
-        zip.start_file("private_key.key", options)?;
-        zip.write_all(&match passphrase {
-            None => key_pair.private_key_to_pem_pkcs8()?,
-            Some(passphrase) => key_pair.private_key_to_pem_pkcs8_passphrase(
-                Cipher::aes_128_cbc(),
-                passphrase.as_bytes(),
-            )?,
-        })?;
-
-        zip.finish()?.position() as usize
-    };
-
-    Ok(zip_buffer[..size].to_vec())
-}
-
-fn convert_to_pkcs8(
-    key_pair: PKey<Private>,
-    passphrase: Option<String>,
-) -> anyhow::Result<Vec<u8>> {
-    let pkcs8 = if let Some(passphrase) = passphrase {
-        // AEAD ciphers not supported in this command.
-        key_pair.private_key_to_pkcs8_passphrase(Cipher::aes_128_cbc(), passphrase.as_bytes())
-    } else {
-        key_pair.private_key_to_pkcs8()
-    };
-
-    pkcs8.with_context(|| "Cannot convert private key to PKCS8.")
-}
-
-fn convert_to_pkcs12(
-    certificate_template: SelfSignedCertificate,
-    key_pair: PKey<Private>,
-    passphrase: Option<String>,
-) -> anyhow::Result<Vec<u8>> {
-    let certificate = generate_x509_certificate(&certificate_template, &key_pair)?;
-
-    let mut pkcs12_builder = Pkcs12::builder();
-    let pkcs12 = pkcs12_builder
-        .name(&certificate_template.name)
-        .pkey(&key_pair)
-        .cert(&certificate)
-        .build2(&passphrase.unwrap_or_default())
-        .with_context(|| "Cannot build PKCS12 certificate bundle.")?;
-
-    pkcs12
-        .to_der()
-        .with_context(|| "Cannot convert PKCS12 certificate bundle to DER.")
-}
-
-fn generate_key(public_key_algorithm: KeyAlgorithm) -> anyhow::Result<PKey<Private>> {
-    let private_key = match public_key_algorithm {
-        KeyAlgorithm::Rsa { key_size } => {
-            let rsa = Rsa::generate(key_size as u32)?;
-            PKey::from_rsa(rsa)?
-        }
-        KeyAlgorithm::Dsa { key_size } => {
-            let dsa = Dsa::generate(key_size as u32)?;
-            PKey::from_dsa(dsa)?
-        }
-        KeyAlgorithm::Ecdsa { curve } => {
-            let ec_group = EcGroup::from_curve_name(Nid::from_raw(curve as i32))?;
-            PKey::from_ec_key(EcKey::generate(&ec_group)?)?
-        }
-        KeyAlgorithm::Ed25519 => PKey::generate_ed25519()?,
-    };
-
-    Ok(private_key)
-}
-
-fn generate_x509_certificate(
-    certificate_template: &SelfSignedCertificate,
-    key: &PKey<Private>,
-) -> anyhow::Result<X509> {
-    let mut x509_name = X509NameBuilder::new()?;
-    set_name_attribute(&mut x509_name, "CN", &certificate_template.common_name)?;
-    set_name_attribute(&mut x509_name, "C", &certificate_template.country)?;
-    set_name_attribute(
-        &mut x509_name,
-        "ST",
-        &certificate_template.state_or_province,
-    )?;
-    set_name_attribute(&mut x509_name, "L", &certificate_template.locality)?;
-    set_name_attribute(&mut x509_name, "O", &certificate_template.organization)?;
-    set_name_attribute(
-        &mut x509_name,
-        "OU",
-        &certificate_template.organizational_unit,
-    )?;
-    let x509_name = x509_name.build();
-
-    let mut x509 = X509::builder()?;
-    x509.set_subject_name(&x509_name)?;
-    x509.set_issuer_name(&x509_name)?;
-    x509.set_version(certificate_template.version.value())?;
-
-    let mut basic_constraint = extension::BasicConstraints::new();
-    if certificate_template.is_ca {
-        basic_constraint.ca();
-    }
-    x509.append_extension(basic_constraint.critical().build()?)?;
-
-    let serial_number = {
-        let mut serial = BigNum::new()?;
-        serial.rand(159, MsbOption::MAYBE_ZERO, false)?;
-        serial.to_asn1_integer()?
-    };
-    x509.set_serial_number(&serial_number)?;
-
-    x509.set_pubkey(key)?;
-    let not_before = Asn1Time::from_unix(certificate_template.not_valid_before.unix_timestamp())?;
-    x509.set_not_before(&not_before)?;
-    let not_after = Asn1Time::from_unix(certificate_template.not_valid_after.unix_timestamp())?;
-    x509.set_not_after(&not_after)?;
-
-    if let Some(ref key_usage) = certificate_template.key_usage {
-        let mut key_usage_ext = extension::KeyUsage::new();
-
-        for key_usage in key_usage {
-            match key_usage {
-                KeyUsage::DigitalSignature => key_usage_ext.digital_signature(),
-                KeyUsage::NonRepudiation => key_usage_ext.non_repudiation(),
-                KeyUsage::KeyEncipherment => key_usage_ext.key_encipherment(),
-                KeyUsage::DataEncipherment => key_usage_ext.data_encipherment(),
-                KeyUsage::KeyAgreement => key_usage_ext.key_agreement(),
-                KeyUsage::KeyCertificateSigning => key_usage_ext.key_cert_sign(),
-                KeyUsage::CrlSigning => key_usage_ext.crl_sign(),
-                KeyUsage::EncipherOnly => key_usage_ext.encipher_only(),
-                KeyUsage::DecipherOnly => key_usage_ext.decipher_only(),
-            };
-        }
-
-        x509.append_extension(key_usage_ext.critical().build()?)?;
-    }
-
-    if let Some(ref key_usage) = certificate_template.extended_key_usage {
-        let mut key_usage_ext = extension::ExtendedKeyUsage::new();
-
-        for key_usage in key_usage {
-            match key_usage {
-                ExtendedKeyUsage::TlsWebServerAuthentication => key_usage_ext.server_auth(),
-                ExtendedKeyUsage::TlsWebClientAuthentication => key_usage_ext.client_auth(),
-                ExtendedKeyUsage::CodeSigning => key_usage_ext.code_signing(),
-                ExtendedKeyUsage::EmailProtection => key_usage_ext.email_protection(),
-                ExtendedKeyUsage::TimeStamping => key_usage_ext.time_stamping(),
-            };
-        }
-
-        x509.append_extension(key_usage_ext.critical().build()?)?;
-    }
-
-    let subject_key_identifier =
-        extension::SubjectKeyIdentifier::new().build(&x509.x509v3_context(None, None))?;
-    x509.append_extension(subject_key_identifier)?;
-
-    x509.sign(
-        key,
-        message_digest(
-            certificate_template.key_algorithm,
-            certificate_template.signature_algorithm,
-        )?,
-    )?;
-
-    Ok(x509.build())
 }
 
 #[cfg(test)]
 mod tests {
     use crate::utils::{
-        certificates::utils_certificates_action::{
-            generate_key, generate_x509_certificate, message_digest,
-        },
-        tests::MockSelfSignedCertificate,
-        CertificateFormat, EllipticCurve, KeyAlgorithm, KeySize, SignatureAlgorithm,
-        UtilsCertificatesAction, Version,
+        ExportFormat, PrivateKeyAlgorithm, PrivateKeySize, UtilsCertificatesAction,
     };
     use insta::assert_debug_snapshot;
-    use openssl::hash::MessageDigest;
-    use time::OffsetDateTime;
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
@@ -377,7 +204,7 @@ mod tests {
             )?,
             UtilsCertificatesAction::GenerateSelfSignedCertificate {
                 template_name: "template".to_string(),
-                format: CertificateFormat::Pem,
+                format: ExportFormat::Pem,
                 passphrase: None,
             }
         );
@@ -392,19 +219,136 @@ mod tests {
             )?,
             UtilsCertificatesAction::GenerateSelfSignedCertificate {
                 template_name: "template".to_string(),
-                format: CertificateFormat::Pkcs12,
+                format: ExportFormat::Pkcs12,
                 passphrase: Some("phrase".to_string()),
             }
         );
+
         assert_eq!(
             serde_json::from_str::<UtilsCertificatesAction>(
                 r#"
 {
-    "type": "generateRsaKeyPair"
+    "type": "getPrivateKeys"
 }
           "#
             )?,
-            UtilsCertificatesAction::GenerateRsaKeyPair
+            UtilsCertificatesAction::GetPrivateKeys
+        );
+
+        assert_eq!(
+            serde_json::from_str::<UtilsCertificatesAction>(
+                r#"
+{
+    "type": "createPrivateKey",
+    "value": { "keyName": "pk", "alg": {"keyType": "rsa", "keySize": "1024"}, "passphrase": "phrase" }
+}
+          "#
+            )?,
+            UtilsCertificatesAction::CreatePrivateKey {
+                key_name: "pk".to_string(),
+                alg: PrivateKeyAlgorithm::Rsa {
+                    key_size: PrivateKeySize::Size1024
+                },
+                passphrase: Some("phrase".to_string()),
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<UtilsCertificatesAction>(
+                r#"
+{
+    "type": "createPrivateKey",
+    "value": { "keyName": "pk", "alg": {"keyType": "rsa", "keySize": "1024"} }
+}
+          "#
+            )?,
+            UtilsCertificatesAction::CreatePrivateKey {
+                key_name: "pk".to_string(),
+                alg: PrivateKeyAlgorithm::Rsa {
+                    key_size: PrivateKeySize::Size1024
+                },
+                passphrase: None,
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<UtilsCertificatesAction>(
+                r#"
+{
+    "type": "changePrivateKeyPassphrase",
+    "value": { "keyName": "pk", "passphrase": "phrase", "newPassphrase": "phrase_new" }
+}
+          "#
+            )?,
+            UtilsCertificatesAction::ChangePrivateKeyPassphrase {
+                key_name: "pk".to_string(),
+                passphrase: Some("phrase".to_string()),
+                new_passphrase: Some("phrase_new".to_string()),
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<UtilsCertificatesAction>(
+                r#"
+{
+    "type": "changePrivateKeyPassphrase",
+    "value": { "keyName": "pk" }
+}
+          "#
+            )?,
+            UtilsCertificatesAction::ChangePrivateKeyPassphrase {
+                key_name: "pk".to_string(),
+                passphrase: None,
+                new_passphrase: None,
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<UtilsCertificatesAction>(
+                r#"
+{
+    "type": "removePrivateKey",
+    "value": { "keyName": "pk" }
+}
+          "#
+            )?,
+            UtilsCertificatesAction::RemovePrivateKey {
+                key_name: "pk".to_string(),
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<UtilsCertificatesAction>(
+                r#"
+{
+    "type": "exportPrivateKey",
+    "value": { "keyName": "pk", "format": "pem", "passphrase": "phrase", "exportPassphrase": "phrase_new" }
+}
+          "#
+            )?,
+            UtilsCertificatesAction::ExportPrivateKey {
+                key_name: "pk".to_string(),
+                format: ExportFormat::Pem,
+                passphrase: Some("phrase".to_string()),
+                export_passphrase: Some("phrase_new".to_string()),
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<UtilsCertificatesAction>(
+                r#"
+{
+    "type": "exportPrivateKey",
+    "value": { "keyName": "pk", "format": "pem" }
+}
+          "#
+            )?,
+            UtilsCertificatesAction::ExportPrivateKey {
+                key_name: "pk".to_string(),
+                format: ExportFormat::Pem,
+                passphrase: None,
+                export_passphrase: None,
+            }
         );
 
         Ok(())
@@ -412,13 +356,9 @@ mod tests {
 
     #[test]
     fn validation() -> anyhow::Result<()> {
-        assert!(UtilsCertificatesAction::GenerateRsaKeyPair
-            .validate()
-            .is_ok());
-
         assert!(UtilsCertificatesAction::GenerateSelfSignedCertificate {
             template_name: "a".repeat(100),
-            format: CertificateFormat::Pem,
+            format: ExportFormat::Pem,
             passphrase: None,
         }
         .validate()
@@ -426,144 +366,95 @@ mod tests {
 
         assert_debug_snapshot!(UtilsCertificatesAction::GenerateSelfSignedCertificate {
             template_name: "".to_string(),
-            format: CertificateFormat::Pem,
+            format: ExportFormat::Pem,
             passphrase: None,
         }.validate(), @r###"
         Err(
-            "Template name cannot be empty",
+            "Certificate template name cannot be empty.",
         )
         "###);
 
         assert_debug_snapshot!(UtilsCertificatesAction::GenerateSelfSignedCertificate {
             template_name: "a".repeat(101),
-            format: CertificateFormat::Pem,
+            format: ExportFormat::Pem,
             passphrase: None,
         }.validate(), @r###"
         Err(
-            "Template name cannot be longer than 100 characters",
+            "Certificate template name cannot be longer than 100 characters.",
         )
         "###);
 
-        Ok(())
-    }
-
-    #[test]
-    fn correctly_generate_keys() -> anyhow::Result<()> {
-        let rsa_key = generate_key(KeyAlgorithm::Rsa {
-            key_size: KeySize::Size1024,
-        })?;
-        let rsa_key = rsa_key.rsa()?;
-
-        assert!(rsa_key.check_key()?);
-        assert_eq!(rsa_key.size(), 128);
-
-        let dsa_key = generate_key(KeyAlgorithm::Dsa {
-            key_size: KeySize::Size2048,
-        })?;
-        let dsa_key = dsa_key.dsa()?;
-
-        assert_eq!(dsa_key.size(), 72);
-
-        let ecdsa_key = generate_key(KeyAlgorithm::Ecdsa {
-            curve: EllipticCurve::SECP256R1,
-        })?;
-        let ecdsa_key = ecdsa_key.ec_key()?;
-
-        ecdsa_key.check_key()?;
-
-        let ed25519_key = generate_key(KeyAlgorithm::Ed25519)?;
-        assert_eq!(ed25519_key.bits(), 256);
-
-        Ok(())
-    }
-
-    #[test]
-    fn picks_correct_message_digest() -> anyhow::Result<()> {
-        assert!(
-            message_digest(
-                KeyAlgorithm::Rsa {
-                    key_size: KeySize::Size1024,
+        let get_actions_with_name = |key_name: String| {
+            vec![
+                UtilsCertificatesAction::CreatePrivateKey {
+                    key_name: key_name.clone(),
+                    alg: PrivateKeyAlgorithm::Rsa {
+                        key_size: PrivateKeySize::Size1024,
+                    },
+                    passphrase: Some("phrase".to_string()),
                 },
-                SignatureAlgorithm::Md5
-            )? == MessageDigest::md5()
-        );
+                UtilsCertificatesAction::ChangePrivateKeyPassphrase {
+                    key_name: key_name.clone(),
+                    passphrase: Some("pass".to_string()),
+                    new_passphrase: Some("pass_new".to_string()),
+                },
+                UtilsCertificatesAction::ExportPrivateKey {
+                    key_name: key_name.clone(),
+                    format: ExportFormat::Pem,
+                    passphrase: None,
+                    export_passphrase: None,
+                },
+                UtilsCertificatesAction::RemovePrivateKey {
+                    key_name: key_name.clone(),
+                },
+            ]
+        };
 
-        for pk_algorithm in [
-            KeyAlgorithm::Rsa {
-                key_size: KeySize::Size1024,
-            },
-            KeyAlgorithm::Dsa {
-                key_size: KeySize::Size2048,
-            },
-            KeyAlgorithm::Ecdsa {
-                curve: EllipticCurve::SECP256R1,
-            },
-        ] {
-            assert!(
-                message_digest(pk_algorithm, SignatureAlgorithm::Sha1)? == MessageDigest::sha1()
-            );
-            assert!(
-                message_digest(pk_algorithm, SignatureAlgorithm::Sha256)?
-                    == MessageDigest::sha256()
+        for action in get_actions_with_name("a".repeat(100)) {
+            assert!(action.validate().is_ok());
+        }
+
+        for action in get_actions_with_name("".to_string()) {
+            assert_eq!(
+                action.validate().map_err(|err| err.to_string()),
+                Err("Private key name cannot be empty.".to_string())
             );
         }
 
-        for pk_algorithm in [
-            KeyAlgorithm::Rsa {
-                key_size: KeySize::Size1024,
-            },
-            KeyAlgorithm::Ecdsa {
-                curve: EllipticCurve::SECP256R1,
-            },
-        ] {
-            assert!(
-                message_digest(pk_algorithm, SignatureAlgorithm::Sha384)?
-                    == MessageDigest::sha384()
-            );
-            assert!(
-                message_digest(pk_algorithm, SignatureAlgorithm::Sha512)?
-                    == MessageDigest::sha512()
+        for action in get_actions_with_name("a".repeat(101)) {
+            assert_eq!(
+                action.validate().map_err(|err| err.to_string()),
+                Err("Private key name cannot be longer than 100 characters.".to_string())
             );
         }
 
-        assert!(
-            message_digest(KeyAlgorithm::Ed25519, SignatureAlgorithm::Ed25519)?
-                == MessageDigest::null()
-        );
+        for (passphrase, new_passphrase) in [
+            (None, None),
+            (Some("pass".to_string()), Some("pass".to_string())),
+        ] {
+            let change_password_action = UtilsCertificatesAction::ChangePrivateKeyPassphrase {
+                key_name: "pk".to_string(),
+                passphrase,
+                new_passphrase,
+            };
+            assert_eq!(
+                change_password_action.validate().map_err(|err| err.to_string()),
+                Err("New private key passphrase should be different from the current passphrase (pk).".to_string())
+            );
+        }
 
-        Ok(())
-    }
-
-    #[test]
-    fn correctly_generates_x509_certificate() -> anyhow::Result<()> {
-        // January 1, 2000 11:00:00
-        let not_valid_before = OffsetDateTime::from_unix_timestamp(946720800)?;
-        // January 1, 2010 11:00:00
-        let not_valid_after = OffsetDateTime::from_unix_timestamp(1262340000)?;
-
-        let certificate_template = MockSelfSignedCertificate::new(
-            "test-1-name",
-            KeyAlgorithm::Rsa {
-                key_size: KeySize::Size1024,
-            },
-            SignatureAlgorithm::Sha256,
-            not_valid_before,
-            not_valid_after,
-            Version::One,
-        )
-        .build();
-        let key = generate_key(KeyAlgorithm::Rsa {
-            key_size: KeySize::Size1024,
-        })?;
-
-        let x509_certificate = generate_x509_certificate(&certificate_template, &key)?;
-
-        assert_debug_snapshot!(x509_certificate.not_before(), @"Jan  1 10:00:00 2000 GMT");
-        assert_debug_snapshot!(x509_certificate.not_after(), @"Jan  1 10:00:00 2010 GMT");
-        assert_eq!(
-            x509_certificate.public_key()?.public_key_to_der()?,
-            key.public_key_to_der()?
-        );
+        for (passphrase, new_passphrase) in [
+            (None, Some("pass".to_string())),
+            (Some("pass".to_string()), Some("pass_new".to_string())),
+            (Some("pass".to_string()), None),
+        ] {
+            let change_password_action = UtilsCertificatesAction::ChangePrivateKeyPassphrase {
+                key_name: "pk".to_string(),
+                passphrase,
+                new_passphrase,
+            };
+            assert!(change_password_action.validate().is_ok());
+        }
 
         Ok(())
     }

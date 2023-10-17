@@ -20,6 +20,7 @@ use reqwest::redirect::Policy as RedirectPolicy;
 use std::collections::BTreeMap;
 use time::OffsetDateTime;
 
+/// API extension to work with web security utilities.
 pub struct WebSecurityApi<'a, DR: DnsResolver, ET: EmailTransport> {
     api: &'a Api<DR, ET>,
 }

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\nINSERT INTO user_data_certificates_private_keys (user_id, name, alg, pkcs8, created_at)\nVALUES ( ?1, ?2, ?3, ?4, ?5 )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "0f7aac057d1a6ea625a3a4b2618b6435c7928c64795f824f0e09372fd1dcf656"
+}

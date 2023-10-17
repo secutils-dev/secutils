@@ -1,5 +1,6 @@
 use crate::{
     api::Api,
+    error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
     users::{ClientUserShare, SharedResource, User},
     utils::{
@@ -8,7 +9,7 @@ use crate::{
         ContentSecurityPolicySource, UtilsWebSecurityActionResult,
     },
 };
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use serde::Deserialize;
 
 #[allow(clippy::enum_variant_names)]
@@ -44,54 +45,52 @@ impl UtilsWebSecurityAction {
         &self,
         api: &Api<DR, ET>,
     ) -> anyhow::Result<()> {
+        let assert_policy_name = |name: &str| -> Result<(), SecutilsError> {
+            if name.is_empty() {
+                return Err(SecutilsError::client("Policy name cannot be empty."));
+            }
+
+            if name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
+                return Err(SecutilsError::client(format!(
+                    "Policy name cannot be longer than {} characters.",
+                    MAX_UTILS_ENTITY_NAME_LENGTH
+                )));
+            }
+
+            Ok(())
+        };
+
         match self {
             UtilsWebSecurityAction::SerializeContentSecurityPolicy { policy_name, .. }
             | UtilsWebSecurityAction::GetContentSecurityPolicy { policy_name }
             | UtilsWebSecurityAction::RemoveContentSecurityPolicy { policy_name }
             | UtilsWebSecurityAction::ShareContentSecurityPolicy { policy_name }
             | UtilsWebSecurityAction::UnshareContentSecurityPolicy { policy_name } => {
-                if policy_name.is_empty() {
-                    anyhow::bail!("Policy name cannot be empty");
-                }
-
-                if policy_name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
-                    anyhow::bail!(
-                        "Policy name cannot be longer than {} characters",
-                        MAX_UTILS_ENTITY_NAME_LENGTH
-                    );
-                }
+                assert_policy_name(policy_name)?;
             }
             UtilsWebSecurityAction::SaveContentSecurityPolicy { policy } => {
                 if !policy.is_valid() {
-                    anyhow::bail!("Policy is not valid");
+                    bail!(SecutilsError::client("Policy is not valid."));
                 }
             }
             UtilsWebSecurityAction::ImportContentSecurityPolicy {
                 policy_name,
                 import_type: source,
             } => {
-                if policy_name.is_empty() {
-                    anyhow::bail!("Policy name cannot be empty");
-                }
-
-                if policy_name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
-                    anyhow::bail!(
-                        "Policy name cannot be longer than {} characters",
-                        MAX_UTILS_ENTITY_NAME_LENGTH
-                    );
-                }
+                assert_policy_name(policy_name)?;
 
                 match source {
                     ContentSecurityPolicyImportType::Text { text } => {
                         if text.is_empty() {
-                            anyhow::bail!("Content security policy text to import source text cannot be empty");
+                            bail!(SecutilsError::client(
+                                "Content security policy text to import source text cannot be empty."
+                            ));
                         }
                     }
                     ContentSecurityPolicyImportType::Url { url, .. } => {
                         if !api.network.is_public_web_url(url).await {
-                            log::error!("URL must be either `http` or `https` and have a valid public reachable domain name: {url}");
-                            anyhow::bail!(
-                                "URL must be either `http` or `https` and have a valid public reachable domain name"
+                            bail!(
+                                SecutilsError::client(format!("URL must be either `http` or `https` and have a valid public reachable domain name: {url}."))
                             );
                         }
                     }
@@ -351,14 +350,14 @@ mod tests {
         for action in get_actions("".to_string()) {
             assert_eq!(
                 action.validate(&api).await.map_err(|err| err.to_string()),
-                Err("Policy name cannot be empty".to_string())
+                Err("Policy name cannot be empty.".to_string())
             );
         }
 
         for action in get_actions("a".repeat(101)) {
             assert_eq!(
                 action.validate(&api).await.map_err(|err| err.to_string()),
-                Err("Policy name cannot be longer than 100 characters".to_string())
+                Err("Policy name cannot be longer than 100 characters.".to_string())
             );
         }
 
@@ -386,7 +385,7 @@ mod tests {
             .validate(&api)
             .await
             .map_err(|err| err.to_string()),
-            Err("Policy is not valid".to_string())
+            Err("Policy is not valid.".to_string())
         );
 
         assert_eq!(
@@ -399,7 +398,7 @@ mod tests {
             .validate(&api)
             .await
             .map_err(|err| err.to_string()),
-            Err("Policy name cannot be empty".to_string())
+            Err("Policy name cannot be empty.".to_string())
         );
 
         assert_eq!(
@@ -412,7 +411,7 @@ mod tests {
             .validate(&api)
             .await
             .map_err(|err| err.to_string()),
-            Err("Policy name cannot be longer than 100 characters".to_string())
+            Err("Policy name cannot be longer than 100 characters.".to_string())
         );
 
         assert_eq!(
@@ -425,7 +424,7 @@ mod tests {
             .validate(&api)
             .await
             .map_err(|err| err.to_string()),
-            Err("Content security policy text to import source text cannot be empty".to_string())
+            Err("Content security policy text to import source text cannot be empty.".to_string())
         );
 
         let api_with_local_network =
@@ -448,7 +447,7 @@ mod tests {
             .validate(&api_with_local_network)
             .await
             .map_err(|err| err.to_string()),
-            Err("URL must be either `http` or `https` and have a valid public reachable domain name".to_string())
+            Err("URL must be either `http` or `https` and have a valid public reachable domain name: https://secutils.dev/my-page.".to_string())
         );
 
         assert!(UtilsWebSecurityAction::ImportContentSecurityPolicy {

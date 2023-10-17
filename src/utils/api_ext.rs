@@ -81,6 +81,15 @@ mod tests {
                     [
                         Util {
                             id: 5,
+                            handle: "certificates__private_keys",
+                            name: "Private keys",
+                            keywords: Some(
+                                "private keys openssl encryption pki rsa dsa ec ecdsa curve ed25519 pkcs8 pkcs12 pem",
+                            ),
+                            utils: None,
+                        },
+                        Util {
+                            id: 11,
                             handle: "certificates__self_signed_certificates",
                             name: "Self-signed certificates",
                             keywords: Some(

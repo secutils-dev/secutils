@@ -1,0 +1,62 @@
+### Create private key (RSA, without passphrase).
+POST {{host}}/api/utils/action
+Authorization: {{api-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "action": {
+    "type": "certificates",
+    "value": {
+      "type": "createPrivateKey",
+      "value": { "name": "pk", "alg": { "keyType": "rsa", "keySize": "1024" } }
+    }
+  }
+}
+
+### Create private key (ed25519, with passphrase).
+POST {{host}}/api/utils/action
+Authorization: {{api-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "action": {
+    "type": "certificates",
+    "value": {
+      "type": "createPrivateKey",
+      "value": { "name": "pk-ed25519", "alg": { "keyType": "ed25519" }, "passphrase": "123456" }
+    }
+  }
+}
+
+###
+
+### Export private key.
+POST {{host}}/api/utils/action
+Authorization: {{api-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "action": {
+    "type": "certificates",
+    "value": {
+      "type": "exportPrivateKey",
+      "value": { "keyName": "pk", "format": "pem" }
+    }
+  }
+}
+
+### Get private keys.
+POST {{host}}/api/utils/action
+Authorization: {{api-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "action": {
+    "type": "certificates",
+    "value": { "type": "getPrivateKeys" }
+  }
+}

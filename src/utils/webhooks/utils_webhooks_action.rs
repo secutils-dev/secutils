@@ -1,9 +1,11 @@
 use crate::{
     api::Api,
+    error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
     users::User,
     utils::{AutoResponder, UtilsWebhooksActionResult},
 };
+use anyhow::bail;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -25,12 +27,12 @@ impl UtilsWebhooksAction {
             UtilsWebhooksAction::GetAutoRespondersRequests { responder_path }
             | UtilsWebhooksAction::RemoveAutoResponder { responder_path } => {
                 if !AutoResponder::is_path_valid(responder_path) {
-                    anyhow::bail!("Auto responder path is not valid");
+                    bail!(SecutilsError::client("Auto responder path is not valid."));
                 }
             }
             UtilsWebhooksAction::SaveAutoResponder { responder } => {
                 if !responder.is_valid() {
-                    anyhow::bail!("Auto responder is not valid");
+                    bail!(SecutilsError::client("Auto responder is not valid."));
                 }
             }
         }
@@ -150,7 +152,7 @@ mod tests {
         }
         .validate(), @r###"
         Err(
-            "Auto responder path is not valid",
+            "Auto responder path is not valid.",
         )
         "###);
 
@@ -159,7 +161,7 @@ mod tests {
         }
         .validate(), @r###"
         Err(
-            "Auto responder path is not valid",
+            "Auto responder path is not valid.",
         )
         "###);
 
@@ -174,7 +176,7 @@ mod tests {
         }
         .validate(), @r###"
         Err(
-            "Auto responder path is not valid",
+            "Auto responder path is not valid.",
         )
         "###);
 
@@ -183,7 +185,7 @@ mod tests {
         }
         .validate(), @r###"
         Err(
-            "Auto responder path is not valid",
+            "Auto responder path is not valid.",
         )
         "###);
 
@@ -214,7 +216,7 @@ mod tests {
         }
         .validate(), @r###"
         Err(
-            "Auto responder is not valid",
+            "Auto responder is not valid.",
         )
         "###);
 
@@ -231,7 +233,7 @@ mod tests {
         }
         .validate(), @r###"
         Err(
-            "Auto responder is not valid",
+            "Auto responder is not valid.",
         )
         "###);
 

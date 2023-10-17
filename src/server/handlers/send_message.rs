@@ -1,11 +1,10 @@
 use crate::{
-    error::SecutilsError,
+    error::Error as SecutilsError,
     notifications::{EmailNotificationContent, NotificationContent, NotificationDestination},
     server::app_state::AppState,
 };
 use actix_web::{web, HttpResponse};
 use serde::Deserialize;
-use serde_json::json;
 use time::OffsetDateTime;
 
 #[derive(Deserialize)]
@@ -33,7 +32,7 @@ pub async fn send_message(
         Some(recipient) => recipient,
         None => {
             log::error!("SMTP isn't configured.");
-            return Ok(HttpResponse::InternalServerError().json(json!({ "status": "failed" })));
+            return Err(SecutilsError::access_forbidden());
         }
     };
 

@@ -68,7 +68,7 @@ mod tests {
             mock_api, mock_api_with_network, MockResolver, MockWebPageResourcesTrackerBuilder,
         },
         utils::{
-            AutoResponder, AutoResponderMethod, CertificateFormat, ContentSecurityPolicySource,
+            AutoResponder, AutoResponderMethod, ContentSecurityPolicySource, ExportFormat,
             UtilsAction, UtilsCertificatesAction, UtilsWebScrapingAction, UtilsWebSecurityAction,
             UtilsWebhooksAction,
         },
@@ -95,7 +95,7 @@ mod tests {
         assert!(UtilsAction::Certificates(
             UtilsCertificatesAction::GenerateSelfSignedCertificate {
                 template_name: "a".repeat(100),
-                format: CertificateFormat::Pem,
+                format: ExportFormat::Pem,
                 passphrase: None,
             }
         )
@@ -105,11 +105,11 @@ mod tests {
 
         assert_debug_snapshot!(UtilsAction::Certificates(UtilsCertificatesAction::GenerateSelfSignedCertificate {
             template_name: "".to_string(),
-            format: CertificateFormat::Pem,
+            format: ExportFormat::Pem,
             passphrase: None,
         }).validate(&mock_api().await?).await, @r###"
         Err(
-            "Template name cannot be empty",
+            "Certificate template name cannot be empty.",
         )
         "###);
 
@@ -148,7 +148,7 @@ mod tests {
         })
         .validate(&mock_api().await?).await, @r###"
         Err(
-            "Auto responder is not valid",
+            "Auto responder is not valid.",
         )
         "###);
 
@@ -166,7 +166,7 @@ mod tests {
         })
         .validate(&mock_api().await?).await, @r###"
         Err(
-            "Auto responder path is not valid",
+            "Auto responder path is not valid.",
         )
         "###);
 
@@ -184,7 +184,7 @@ mod tests {
         })
         .validate(&mock_api().await?).await, @r###"
         Err(
-            "Auto responder path is not valid",
+            "Auto responder path is not valid.",
         )
         "###);
 
@@ -224,7 +224,7 @@ mod tests {
         })
         .validate(&mock_api().await?).await, @r###"
         Err(
-            "Tracker name cannot be empty",
+            "Tracker name cannot be empty.",
         )
         "###);
 
@@ -249,7 +249,7 @@ mod tests {
         })
         .validate(&mock_api().await?).await, @r###"
         Err(
-            "Policy name cannot be empty",
+            "Policy name cannot be empty.",
         )
         "###);
 
