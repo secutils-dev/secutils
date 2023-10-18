@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\nSELECT name, user_id, alg, pkcs8, created_at\nFROM user_data_certificates_private_keys\nWHERE name = ?1 AND user_id = ?2\n                ",
+  "query": "\nSELECT name, alg, pkcs8, encrypted, created_at\nFROM user_data_certificates_private_keys\nWHERE name = ?1 AND user_id = ?2\n                ",
   "describe": {
     "columns": [
       {
@@ -9,19 +9,19 @@
         "type_info": "Text"
       },
       {
-        "name": "user_id",
-        "ordinal": 1,
-        "type_info": "Int64"
-      },
-      {
         "name": "alg",
-        "ordinal": 2,
+        "ordinal": 1,
         "type_info": "Blob"
       },
       {
         "name": "pkcs8",
-        "ordinal": 3,
+        "ordinal": 2,
         "type_info": "Blob"
+      },
+      {
+        "name": "encrypted",
+        "ordinal": 3,
+        "type_info": "Int64"
       },
       {
         "name": "created_at",
@@ -40,5 +40,5 @@
       false
     ]
   },
-  "hash": "009fee36733e9527f00a3bae9687ccee65cbf999161b4e1e0b1d7b9ee074d8f5"
+  "hash": "021f5bcdbb3f216981a11a6b7e871d415e5eb9e1c9ecd3c6d2e9c740c4436896"
 }

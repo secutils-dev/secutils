@@ -12,8 +12,8 @@ mod webhooks;
 
 pub use self::{
     certificates::{
-        CertificatesApi, ExportFormat, ExtendedKeyUsage, KeyUsage, PrivateKey, PrivateKeyAlgorithm,
-        PrivateKeyEllipticCurve, PrivateKeySize, SelfSignedCertificate, SignatureAlgorithm,
+        CertificateTemplate, CertificatesApi, ExportFormat, ExtendedKeyUsage, KeyUsage, PrivateKey,
+        PrivateKeyAlgorithm, PrivateKeyEllipticCurve, PrivateKeySize, SignatureAlgorithm,
         UtilsCertificatesAction, UtilsCertificatesActionResult, Version,
     },
     util::Util,
@@ -42,15 +42,15 @@ pub use self::{
 #[cfg(test)]
 pub mod tests {
     use crate::utils::{
-        ExtendedKeyUsage, KeyUsage, PrivateKeyAlgorithm, SelfSignedCertificate, SignatureAlgorithm,
+        CertificateTemplate, ExtendedKeyUsage, KeyUsage, PrivateKeyAlgorithm, SignatureAlgorithm,
         Version,
     };
     use time::OffsetDateTime;
 
     pub use super::web_scraping::tests::MockWebPageResourcesTrackerBuilder;
 
-    pub struct MockSelfSignedCertificate(SelfSignedCertificate);
-    impl MockSelfSignedCertificate {
+    pub struct MockCertificateTemplate(CertificateTemplate);
+    impl MockCertificateTemplate {
         pub fn new<N: Into<String>>(
             name: N,
             public_key_algorithm: PrivateKeyAlgorithm,
@@ -59,7 +59,7 @@ pub mod tests {
             not_valid_after: OffsetDateTime,
             version: Version,
         ) -> Self {
-            Self(SelfSignedCertificate {
+            Self(CertificateTemplate {
                 name: name.into(),
                 common_name: None,
                 country: None,
@@ -131,7 +131,7 @@ pub mod tests {
             self
         }
 
-        pub fn build(self) -> SelfSignedCertificate {
+        pub fn build(self) -> CertificateTemplate {
             self.0
         }
     }

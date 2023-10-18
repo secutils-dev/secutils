@@ -41,6 +41,7 @@ mod tests {
                 key_size: PrivateKeySize::Size2048
             },
             pkcs8: vec![],
+            encrypted: true,
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
         }]), @r###"
         {
@@ -53,6 +54,7 @@ mod tests {
                 "keySize": "2048"
               },
               "pkcs8": [],
+              "encrypted": true,
               "createdAt": 946720800
             }
           ]
@@ -65,6 +67,7 @@ mod tests {
                 key_size: PrivateKeySize::Size2048
             },
             pkcs8: vec![1, 2, 3],
+            encrypted: false,
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
         }), @r###"
         {
@@ -80,6 +83,7 @@ mod tests {
               2,
               3
             ],
+            "encrypted": false,
             "createdAt": 946720800
           }
         }

@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use time::OffsetDateTime;
 
-/// Describes stored self-signed certificate template.
+/// Describes stored certificate template.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub struct SelfSignedCertificate {
+pub struct CertificateTemplate {
     #[serde(rename = "n")]
     pub name: String,
     #[serde(rename = "cn", skip_serializing_if = "Option::is_none")]
@@ -44,8 +44,8 @@ pub struct SelfSignedCertificate {
 #[cfg(test)]
 mod tests {
     use crate::utils::{
-        tests::MockSelfSignedCertificate, ExtendedKeyUsage, KeyUsage, PrivateKeyAlgorithm,
-        PrivateKeySize, SelfSignedCertificate, SignatureAlgorithm, Version,
+        tests::MockCertificateTemplate, CertificateTemplate, ExtendedKeyUsage, KeyUsage,
+        PrivateKeyAlgorithm, PrivateKeySize, SignatureAlgorithm, Version,
     };
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
@@ -58,7 +58,7 @@ mod tests {
         let not_valid_after = OffsetDateTime::from_unix_timestamp(1262340000)?;
 
         assert_json_snapshot!(
-            MockSelfSignedCertificate::new(
+            MockCertificateTemplate::new(
                 "test-2-name",
                 PrivateKeyAlgorithm::Ed25519,
                 SignatureAlgorithm::Ed25519,
@@ -103,7 +103,7 @@ mod tests {
         "###
         );
         assert_json_snapshot!(
-            MockSelfSignedCertificate::new(
+            MockCertificateTemplate::new(
                 "name",
                 PrivateKeyAlgorithm::Rsa { key_size: PrivateKeySize::Size1024 },
                 SignatureAlgorithm::Sha256,
@@ -138,7 +138,7 @@ mod tests {
         let not_valid_after = OffsetDateTime::from_unix_timestamp(1262340000)?;
 
         assert_eq!(
-            serde_json::from_str::<SelfSignedCertificate>(
+            serde_json::from_str::<CertificateTemplate>(
                 r#"
         {
           "n": "name",
@@ -151,7 +151,7 @@ mod tests {
         }
         "#
             )?,
-            MockSelfSignedCertificate::new(
+            MockCertificateTemplate::new(
                 "name",
                 PrivateKeyAlgorithm::Rsa {
                     key_size: PrivateKeySize::Size1024
@@ -164,7 +164,7 @@ mod tests {
             .build()
         );
         assert_eq!(
-            serde_json::from_str::<SelfSignedCertificate>(
+            serde_json::from_str::<CertificateTemplate>(
                 r#"
         {
           "n": "test-2-name",
@@ -185,7 +185,7 @@ mod tests {
         }
         "#
             )?,
-            MockSelfSignedCertificate::new(
+            MockCertificateTemplate::new(
                 "test-2-name",
                 PrivateKeyAlgorithm::Ed25519,
                 SignatureAlgorithm::Ed25519,

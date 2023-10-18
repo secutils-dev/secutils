@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 pub enum PublicUserDataNamespace {
     AutoResponders,
     ContentSecurityPolicies,
-    SelfSignedCertificates,
+    #[serde(rename = "selfSignedCertificates")]
+    CertificateTemplates,
     UserSettings,
     WebPageResourcesTrackers,
 }
@@ -16,7 +17,7 @@ impl AsRef<str> for PublicUserDataNamespace {
         match self {
             PublicUserDataNamespace::AutoResponders => "autoResponders",
             PublicUserDataNamespace::ContentSecurityPolicies => "contentSecurityPolicies",
-            PublicUserDataNamespace::SelfSignedCertificates => "selfSignedCertificates",
+            PublicUserDataNamespace::CertificateTemplates => "selfSignedCertificates",
             PublicUserDataNamespace::UserSettings => "userSettings",
             PublicUserDataNamespace::WebPageResourcesTrackers => "webPageResourcesTrackers",
         }
@@ -47,7 +48,7 @@ mod tests {
         );
 
         assert_eq!(
-            PublicUserDataNamespace::SelfSignedCertificates.as_ref(),
+            PublicUserDataNamespace::CertificateTemplates.as_ref(),
             "selfSignedCertificates"
         );
 
@@ -69,7 +70,7 @@ mod tests {
         insta::with_settings!({ sort_maps => true }, {
             assert_json_snapshot!(PublicUserDataNamespace::AutoResponders, @r###""autoResponders""###);
             assert_json_snapshot!(PublicUserDataNamespace::ContentSecurityPolicies, @r###""contentSecurityPolicies""###);
-            assert_json_snapshot!(PublicUserDataNamespace::SelfSignedCertificates, @r###""selfSignedCertificates""###);
+            assert_json_snapshot!(PublicUserDataNamespace::CertificateTemplates, @r###""selfSignedCertificates""###);
             assert_json_snapshot!(PublicUserDataNamespace::UserSettings, @r###""userSettings""###);
             assert_json_snapshot!(PublicUserDataNamespace::WebPageResourcesTrackers, @r###""webPageResourcesTrackers""###);
         });
@@ -91,7 +92,7 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<PublicUserDataNamespace>(r#""selfSignedCertificates""#)?,
-            PublicUserDataNamespace::SelfSignedCertificates
+            PublicUserDataNamespace::CertificateTemplates
         );
 
         assert_eq!(

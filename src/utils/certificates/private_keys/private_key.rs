@@ -12,6 +12,8 @@ pub struct PrivateKey {
     pub alg: PrivateKeyAlgorithm,
     /// Private key serialized to PKCS#8 format (with or without encryption).
     pub pkcs8: Vec<u8>,
+    /// Indicates whether the private key is encrypted.
+    pub encrypted: bool,
     /// Date and time when the private key was created.
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
@@ -30,6 +32,7 @@ mod tests {
                 name: "pk-name".to_string(),
                 alg: PrivateKeyAlgorithm::Rsa { key_size: PrivateKeySize::Size2048 },
                 pkcs8: vec![1, 2, 3],
+                encrypted: true,
                  // January 1, 2000 11:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?
             },
@@ -45,6 +48,7 @@ mod tests {
             2,
             3
           ],
+          "encrypted": true,
           "createdAt": 946720800
         }
         "###
@@ -69,6 +73,7 @@ mod tests {
             2,
             3
           ],
+          "encrypted": true,
           "createdAt": 946720800
         }
         "#
@@ -79,6 +84,7 @@ mod tests {
                     key_size: PrivateKeySize::Size2048
                 },
                 pkcs8: vec![1, 2, 3],
+                encrypted: true,
                 // January 1, 2000 11:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?
             },

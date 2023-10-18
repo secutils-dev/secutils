@@ -6,7 +6,7 @@ use crate::{
         UserData, UserDataKey, UserDataNamespace, UserId, UserSettingsSetter, UserShare,
         UserShareId,
     },
-    utils::SelfSignedCertificate,
+    utils::CertificateTemplate,
 };
 use anyhow::{bail, Context};
 use serde::de::DeserializeOwned;
@@ -101,8 +101,8 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
         let user_data_key = user_data_key.into();
         match user_data_key.namespace {
             UserDataNamespace::Public(namespace) => match namespace {
-                PublicUserDataNamespace::SelfSignedCertificates => {
-                    self.set_self_signed_certificates_data(user_data).await
+                PublicUserDataNamespace::CertificateTemplates => {
+                    self.set_certificate_templates_data(user_data).await
                 }
                 PublicUserDataNamespace::UserSettings => {
                     self.set_user_settings_data(user_data).await
@@ -175,16 +175,16 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
         .await
     }
 
-    async fn set_self_signed_certificates_data(
+    async fn set_certificate_templates_data(
         &self,
         serialized_user_data: UserData<Vec<u8>>,
     ) -> anyhow::Result<()> {
         DictionaryDataUserDataSetter::upsert(
             &self.api.db,
-            PublicUserDataNamespace::SelfSignedCertificates,
+            PublicUserDataNamespace::CertificateTemplates,
             UserData::new(
                 serialized_user_data.user_id,
-                serde_json::from_slice::<BTreeMap<String, Option<SelfSignedCertificate>>>(
+                serde_json::from_slice::<BTreeMap<String, Option<CertificateTemplate>>>(
                     &serialized_user_data.value,
                 )
                 .with_context(|| {

@@ -24,7 +24,7 @@ impl<'pool> CertificatesDatabaseExt<'pool> {
         query_as!(
             RawPrivateKey,
             r#"
-SELECT name, user_id, alg, pkcs8, created_at
+SELECT name, alg, pkcs8, encrypted, created_at
 FROM user_data_certificates_private_keys
 WHERE name = ?1 AND user_id = ?2
                 "#,
@@ -43,16 +43,17 @@ WHERE name = ?1 AND user_id = ?2
         user_id: UserId,
         private_key: &PrivateKey,
     ) -> anyhow::Result<()> {
-        let raw_private_key = RawPrivateKey::try_from((user_id, private_key))?;
+        let raw_private_key = RawPrivateKey::try_from(private_key)?;
         let result = query!(
             r#"
-INSERT INTO user_data_certificates_private_keys (user_id, name, alg, pkcs8, created_at)
-VALUES ( ?1, ?2, ?3, ?4, ?5 )
+INSERT INTO user_data_certificates_private_keys (user_id, name, alg, pkcs8, encrypted, created_at)
+VALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )
         "#,
-            raw_private_key.user_id,
+            *user_id,
             raw_private_key.name,
             raw_private_key.alg,
             raw_private_key.pkcs8,
+            raw_private_key.encrypted,
             raw_private_key.created_at
         )
         .execute(self.pool)
@@ -85,16 +86,17 @@ VALUES ( ?1, ?2, ?3, ?4, ?5 )
         user_id: UserId,
         private_key: &PrivateKey,
     ) -> anyhow::Result<()> {
-        let raw_private_key = RawPrivateKey::try_from((user_id, private_key))?;
+        let raw_private_key = RawPrivateKey::try_from(private_key)?;
         let result = query!(
             r#"
 UPDATE user_data_certificates_private_keys
-SET pkcs8 = ?3
+SET pkcs8 = ?3, encrypted = ?4
 WHERE user_id = ?1 AND name = ?2
         "#,
-            raw_private_key.user_id,
+            *user_id,
             raw_private_key.name,
-            raw_private_key.pkcs8
+            raw_private_key.pkcs8,
+            raw_private_key.encrypted
         )
         .execute(self.pool)
         .await?;
@@ -132,7 +134,7 @@ WHERE name = ?1 AND user_id = ?2
         let raw_private_keys = query_as!(
             RawPrivateKey,
             r#"
-SELECT name, user_id, alg, x'' as "pkcs8!", created_at
+SELECT name, alg, x'' as "pkcs8!", encrypted, created_at
 FROM user_data_certificates_private_keys
 WHERE user_id = ?1
 ORDER BY created_at
@@ -182,6 +184,7 @@ mod tests {
                     key_size: PrivateKeySize::Size2048,
                 },
                 pkcs8: vec![1, 2, 3],
+                encrypted: true,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             },
             PrivateKey {
@@ -190,6 +193,7 @@ mod tests {
                     key_size: PrivateKeySize::Size2048,
                 },
                 pkcs8: vec![4, 5, 6],
+                encrypted: false,
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
             },
         ];
@@ -235,6 +239,7 @@ mod tests {
                 key_size: PrivateKeySize::Size2048,
             },
             pkcs8: vec![1, 2, 3],
+            encrypted: true,
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
         };
 
@@ -283,6 +288,7 @@ mod tests {
                         key_size: PrivateKeySize::Size2048,
                     },
                     pkcs8: vec![1, 2, 3],
+                    encrypted: true,
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 },
             )
@@ -297,6 +303,7 @@ mod tests {
                         key_size: PrivateKeySize::Size1024,
                     },
                     pkcs8: vec![4, 5, 6],
+                    encrypted: false,
                     created_at: OffsetDateTime::from_unix_timestamp(956720800)?,
                 },
             )
@@ -315,6 +322,7 @@ mod tests {
                     key_size: PrivateKeySize::Size2048,
                 },
                 pkcs8: vec![4, 5, 6],
+                encrypted: false,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             }
         );
@@ -335,6 +343,7 @@ mod tests {
                     key_size: PrivateKeySize::Size2048,
                 },
                 pkcs8: vec![1, 2, 3],
+                encrypted: true,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             },
             PrivateKey {
@@ -343,6 +352,7 @@ mod tests {
                     key_size: PrivateKeySize::Size2048,
                 },
                 pkcs8: vec![4, 5, 6],
+                encrypted: false,
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
             },
         ];
@@ -416,6 +426,7 @@ mod tests {
                     key_size: PrivateKeySize::Size2048,
                 },
                 pkcs8: vec![1, 2, 3],
+                encrypted: true,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             },
             PrivateKey {
@@ -424,6 +435,7 @@ mod tests {
                     key_size: PrivateKeySize::Size2048,
                 },
                 pkcs8: vec![4, 5, 6],
+                encrypted: false,
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
             },
         ];

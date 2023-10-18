@@ -90,10 +90,10 @@ mod tests {
                         },
                         Util {
                             id: 11,
-                            handle: "certificates__self_signed_certificates",
-                            name: "Self-signed certificates",
+                            handle: "certificates__templates",
+                            name: "Templates",
                             keywords: Some(
-                                "digital certificates x509 X.509 ssl tls openssl public private key encryption self-signed pki",
+                                "digital certificates x509 X.509 ssl tls openssl public private key encryption self-signed pki templates",
                             ),
                             utils: None,
                         },

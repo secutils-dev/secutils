@@ -4,8 +4,8 @@ use crate::{
     network::{DnsResolver, EmailTransport},
     users::{PublicUserDataNamespace, UserId},
     utils::{
-        ExportFormat, ExtendedKeyUsage, KeyUsage, PrivateKey, PrivateKeyAlgorithm,
-        SelfSignedCertificate, SignatureAlgorithm,
+        CertificateTemplate, ExportFormat, ExtendedKeyUsage, KeyUsage, PrivateKey,
+        PrivateKeyAlgorithm, SignatureAlgorithm,
     },
 };
 use anyhow::{anyhow, bail};
@@ -26,6 +26,7 @@ use openssl::{
 use std::{
     collections::BTreeMap,
     io::{Cursor, Write},
+    time::Instant,
 };
 use time::OffsetDateTime;
 use zip::{write::FileOptions, CompressionMethod, ZipWriter};
@@ -66,6 +67,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
             name: name.into(),
             alg,
             pkcs8: Self::export_private_key_to_pkcs8(Self::generate_private_key(alg)?, passphrase)?,
+            encrypted: passphrase.is_some(),
             // Preserve timestamp only up to seconds.
             created_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
@@ -111,6 +113,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
                 user_id,
                 &PrivateKey {
                     pkcs8: Self::export_private_key_to_pkcs8(pkcs8_private_key, new_passphrase)?,
+                    encrypted: new_passphrase.is_some(),
                     ..private_key
                 },
             )
@@ -188,9 +191,9 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
         let certificate_template = self
             .api
             .users()
-            .get_data::<BTreeMap<String, SelfSignedCertificate>>(
+            .get_data::<BTreeMap<String, CertificateTemplate>>(
                 user_id,
-                PublicUserDataNamespace::SelfSignedCertificates,
+                PublicUserDataNamespace::CertificateTemplates,
             )
             .await?
             .and_then(|mut map| map.value.remove(template_name))
@@ -231,6 +234,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
 
     /// Generates private key with the specified parameters.
     fn generate_private_key(alg: PrivateKeyAlgorithm) -> anyhow::Result<PKey<Private>> {
+        let execute_start = Instant::now();
         let private_key = match alg {
             PrivateKeyAlgorithm::Rsa { key_size } => {
                 PKey::from_rsa(Rsa::generate(key_size as u32)?)?
@@ -244,6 +248,11 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
             }
             PrivateKeyAlgorithm::Ed25519 => PKey::generate_ed25519()?,
         };
+
+        log::debug!(
+            "Generated a private key with {alg:?} parameters ({} elapsed).",
+            humantime::format_duration(execute_start.elapsed())
+        );
 
         Ok(private_key)
     }
@@ -370,7 +379,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
     }
 
     fn create_x509_certificate_builder(
-        certificate_template: &SelfSignedCertificate,
+        certificate_template: &CertificateTemplate,
     ) -> anyhow::Result<X509Builder> {
         let mut x509_name = X509NameBuilder::new()?;
         Self::set_x509_name_attribute(&mut x509_name, "CN", &certificate_template.common_name)?;
@@ -485,7 +494,7 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        tests::{mock_api, mock_user, MockResolver, MockSelfSignedCertificate},
+        tests::{mock_api, mock_user, MockCertificateTemplate, MockResolver},
         users::{DictionaryDataUserDataSetter, PublicUserDataNamespace, UserData},
         utils::{
             CertificatesApi, ExportFormat, PrivateKeyAlgorithm, PrivateKeyEllipticCurve,
@@ -904,7 +913,7 @@ mod tests {
         let not_valid_after = OffsetDateTime::from_unix_timestamp(1262340000)?;
 
         // Store certificate.
-        let certificate_template = MockSelfSignedCertificate::new(
+        let certificate_template = MockCertificateTemplate::new(
             "test-1-name",
             PrivateKeyAlgorithm::Rsa {
                 key_size: PrivateKeySize::Size1024,
@@ -917,7 +926,7 @@ mod tests {
         .build();
         DictionaryDataUserDataSetter::upsert(
             &api.db,
-            PublicUserDataNamespace::SelfSignedCertificates,
+            PublicUserDataNamespace::CertificateTemplates,
             UserData::new(
                 mock_user.id,
                 [(
