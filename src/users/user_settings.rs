@@ -6,7 +6,7 @@ struct KnownUserSettingDescriptor {
     setting_value_validator: fn(&serde_json::Value) -> bool,
 }
 
-const KNOWN_USER_SETTINGS: [KnownUserSettingDescriptor; 4] = [
+const KNOWN_USER_SETTINGS: [KnownUserSettingDescriptor; 5] = [
     KnownUserSettingDescriptor {
         setting_key: "common.showOnlyFavorites",
         setting_value_validator: |value| value.is_boolean(),
@@ -38,6 +38,10 @@ const KNOWN_USER_SETTINGS: [KnownUserSettingDescriptor; 4] = [
     },
     KnownUserSettingDescriptor {
         setting_key: "certificates.doNotShowSelfSignedWarning",
+        setting_value_validator: |value| value.is_boolean(),
+    },
+    KnownUserSettingDescriptor {
+        setting_key: "certificates.doNotShowPrivateKeysWarning",
         setting_value_validator: |value| value.is_boolean(),
     },
 ];
@@ -174,50 +178,46 @@ mod tests {
     }
 
     #[test]
-    fn should_properly_validate_certificates_warning() {
-        let user_settings = UserSettingsSetter(
-            [("certificates.doNotShowSelfSignedWarning".to_string(), None)]
+    fn should_properly_validate_certificates_warnings() {
+        for setting_name in ["doNotShowSelfSignedWarning", "doNotShowPrivateKeysWarning"] {
+            let user_settings = UserSettingsSetter(
+                [(format!("certificates.{setting_name}"), None)]
+                    .into_iter()
+                    .collect(),
+            );
+            assert!(user_settings.is_valid());
+
+            let user_settings = UserSettingsSetter(
+                [
+                    (format!("certificates.{setting_name}"), Some(json!(true))),
+                    ("common.showOnlyFavorites".to_string(), Some(json!(false))),
+                ]
                 .into_iter()
                 .collect(),
-        );
-        assert!(user_settings.is_valid());
+            );
+            assert!(user_settings.is_valid());
 
-        let user_settings = UserSettingsSetter(
-            [
-                (
-                    "certificates.doNotShowSelfSignedWarning".to_string(),
-                    Some(json!(true)),
-                ),
-                ("common.showOnlyFavorites".to_string(), Some(json!(false))),
-            ]
-            .into_iter()
-            .collect(),
-        );
-        assert!(user_settings.is_valid());
-
-        let user_settings = UserSettingsSetter(
-            [
-                (
-                    "certificates.doNotShowSelfSignedWarning".to_string(),
-                    Some(json!(true)),
-                ),
-                ("unknownSetting".to_string(), None),
-            ]
-            .into_iter()
-            .collect(),
-        );
-        assert!(!user_settings.is_valid());
-
-        let user_settings =
-            UserSettingsSetter([("unknownSetting".to_string(), None)].into_iter().collect());
-        assert!(!user_settings.is_valid());
-
-        let user_settings = UserSettingsSetter(
-            [("unknownSetting".to_string(), Some(json!(true)))]
+            let user_settings = UserSettingsSetter(
+                [
+                    (format!("certificates.{setting_name}"), Some(json!(true))),
+                    ("unknownSetting".to_string(), None),
+                ]
                 .into_iter()
                 .collect(),
-        );
-        assert!(!user_settings.is_valid());
+            );
+            assert!(!user_settings.is_valid());
+
+            let user_settings =
+                UserSettingsSetter([("unknownSetting".to_string(), None)].into_iter().collect());
+            assert!(!user_settings.is_valid());
+
+            let user_settings = UserSettingsSetter(
+                [("unknownSetting".to_string(), Some(json!(true)))]
+                    .into_iter()
+                    .collect(),
+            );
+            assert!(!user_settings.is_valid());
+        }
     }
 
     #[test]
