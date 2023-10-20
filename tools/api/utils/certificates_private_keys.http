@@ -9,7 +9,7 @@ Content-Type: application/json
     "type": "certificates",
     "value": {
       "type": "createPrivateKey",
-      "value": { "name": "pk", "alg": { "keyType": "rsa", "keySize": "1024" } }
+      "value": { "keyName": "pk", "alg": { "keyType": "rsa", "keySize": "1024" } }
     }
   }
 }
@@ -25,7 +25,7 @@ Content-Type: application/json
     "type": "certificates",
     "value": {
       "type": "createPrivateKey",
-      "value": { "name": "pk-ed25519", "alg": { "keyType": "ed25519" }, "passphrase": "123456" }
+      "value": { "keyName": "pk-ed25519", "alg": { "keyType": "ed25519" }, "passphrase": "123456" }
     }
   }
 }
@@ -43,7 +43,7 @@ Content-Type: application/json
     "type": "certificates",
     "value": {
       "type": "exportPrivateKey",
-      "value": { "keyName": "pk", "format": "pem" }
+      "value": { "keyId": "018b4a1b-92d3-739d-a4dd-683d9eb47ce9", "format": "pem", "passphrase": "123456" }
     }
   }
 }

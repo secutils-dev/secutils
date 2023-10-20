@@ -9,7 +9,7 @@ pub enum UtilsCertificatesActionResult {
     GenerateSelfSignedCertificate(Vec<u8>),
     GetPrivateKeys(Vec<PrivateKey>),
     CreatePrivateKey(PrivateKey),
-    ChangePrivateKeyPassphrase,
+    UpdatePrivateKey,
     RemovePrivateKey,
     ExportPrivateKey(Vec<u8>),
 }
@@ -21,7 +21,7 @@ mod tests {
     };
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
-
+    use uuid::uuid;
     #[test]
     fn serialization() -> anyhow::Result<()> {
         assert_json_snapshot!(UtilsCertificatesActionResult::GenerateSelfSignedCertificate (vec![1,2,3]), @r###"
@@ -36,6 +36,7 @@ mod tests {
         "###);
 
         assert_json_snapshot!(UtilsCertificatesActionResult::GetPrivateKeys(vec![PrivateKey {
+            id: uuid!("00000000-0000-0000-0000-000000000001"),
             name: "pk-name".to_string(),
             alg: PrivateKeyAlgorithm::Rsa {
                 key_size: PrivateKeySize::Size2048
@@ -48,6 +49,7 @@ mod tests {
           "type": "getPrivateKeys",
           "value": [
             {
+              "id": "00000000-0000-0000-0000-000000000001",
               "name": "pk-name",
               "alg": {
                 "keyType": "rsa",
@@ -62,6 +64,7 @@ mod tests {
         "###);
 
         assert_json_snapshot!(UtilsCertificatesActionResult::CreatePrivateKey(PrivateKey {
+            id: uuid!("00000000-0000-0000-0000-000000000001"),
             name: "pk-name".to_string(),
             alg: PrivateKeyAlgorithm::Rsa {
                 key_size: PrivateKeySize::Size2048
@@ -73,6 +76,7 @@ mod tests {
         {
           "type": "createPrivateKey",
           "value": {
+            "id": "00000000-0000-0000-0000-000000000001",
             "name": "pk-name",
             "alg": {
               "keyType": "rsa",
@@ -89,9 +93,9 @@ mod tests {
         }
         "###);
 
-        assert_json_snapshot!(UtilsCertificatesActionResult::ChangePrivateKeyPassphrase, @r###"
+        assert_json_snapshot!(UtilsCertificatesActionResult::UpdatePrivateKey, @r###"
         {
-          "type": "changePrivateKeyPassphrase"
+          "type": "updatePrivateKey"
         }
         "###);
 

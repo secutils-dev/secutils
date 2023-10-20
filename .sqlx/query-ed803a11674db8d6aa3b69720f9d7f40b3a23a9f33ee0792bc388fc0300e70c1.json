@@ -1,38 +1,44 @@
 {
   "db_name": "SQLite",
-  "query": "\nSELECT name, alg, pkcs8, encrypted, created_at\nFROM user_data_certificates_private_keys\nWHERE name = ?1 AND user_id = ?2\n                ",
+  "query": "\nSELECT id, name, alg, x'' as \"pkcs8!\", encrypted, created_at\nFROM user_data_certificates_private_keys\nWHERE user_id = ?1\nORDER BY created_at\n                ",
   "describe": {
     "columns": [
       {
-        "name": "name",
+        "name": "id",
         "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
         "type_info": "Text"
       },
       {
         "name": "alg",
-        "ordinal": 1,
-        "type_info": "Blob"
-      },
-      {
-        "name": "pkcs8",
         "ordinal": 2,
         "type_info": "Blob"
       },
       {
-        "name": "encrypted",
+        "name": "pkcs8!",
         "ordinal": 3,
+        "type_info": "Blob"
+      },
+      {
+        "name": "encrypted",
+        "ordinal": 4,
         "type_info": "Int64"
       },
       {
         "name": "created_at",
-        "ordinal": 4,
+        "ordinal": 5,
         "type_info": "Int64"
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
+      false,
       false,
       false,
       false,
@@ -40,5 +46,5 @@
       false
     ]
   },
-  "hash": "021f5bcdbb3f216981a11a6b7e871d415e5eb9e1c9ecd3c6d2e9c740c4436896"
+  "hash": "ed803a11674db8d6aa3b69720f9d7f40b3a23a9f33ee0792bc388fc0300e70c1"
 }

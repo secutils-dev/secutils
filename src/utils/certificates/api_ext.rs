@@ -29,6 +29,7 @@ use std::{
     time::Instant,
 };
 use time::OffsetDateTime;
+use uuid::Uuid;
 use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
 /// API extension to work with certificates utilities.
@@ -42,16 +43,16 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
         Self { api }
     }
 
-    /// Retrieves the private key with the specified name.
+    /// Retrieves the private key with the specified ID.
     pub async fn get_private_key(
         &self,
         user_id: UserId,
-        name: &str,
+        id: Uuid,
     ) -> anyhow::Result<Option<PrivateKey>> {
         self.api
             .db
             .certificates()
-            .get_private_key(user_id, name)
+            .get_private_key(user_id, id)
             .await
     }
 
@@ -64,6 +65,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
         passphrase: Option<&str>,
     ) -> anyhow::Result<PrivateKey> {
         let private_key = PrivateKey {
+            id: Uuid::now_v7(),
             name: name.into(),
             alg,
             pkcs8: Self::export_private_key_to_pkcs8(Self::generate_private_key(alg)?, passphrase)?,
@@ -83,37 +85,55 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
         Ok(private_key)
     }
 
-    /// Updates private key passphrase.
-    pub async fn change_private_key_passphrase(
+    /// Updates private key (only name and passphrases are updatable).
+    pub async fn update_private_key(
         &self,
         user_id: UserId,
-        name: &str,
+        id: Uuid,
+        name: Option<&str>,
         passphrase: Option<&str>,
         new_passphrase: Option<&str>,
     ) -> anyhow::Result<()> {
-        let Some(private_key) = self.get_private_key(user_id, name).await? else {
+        let Some(private_key) = self.get_private_key(user_id, id).await? else {
             bail!(SecutilsError::client(format!(
-                "Private key ('{name}') is not found."
+                "Private key ('{id}') is not found."
             )));
         };
 
-        // Try to decrypt private key using the provided passphrase.
-        let pkcs8_private_key = Self::import_private_key_from_pkcs8(&private_key.pkcs8, passphrase)
-            .map_err(|err| {
-                SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
-                    "Unable to decrypt private key ('{name}') with the provided passphrase."
-                )))
-            })?;
+        // If name update is needed, extract it from parameters.
+        let name = if let Some(name) = name {
+            name.to_string()
+        } else {
+            private_key.name
+        };
 
-        // Convert private key to PKCS8 using the new passphrase, and update it in the database.
+        // If passphrase update is needed, try to decrypt private key using the provided passphrase.
+        let (pkcs8, encrypted) = if passphrase != new_passphrase {
+            let pkcs8_private_key =
+                Self::import_private_key_from_pkcs8(&private_key.pkcs8, passphrase).map_err(
+                    |err| {
+                        SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
+                            "Unable to decrypt private key ('{id}') with the provided passphrase."
+                        )))
+                    },
+                )?;
+            (
+                Self::export_private_key_to_pkcs8(pkcs8_private_key, new_passphrase)?,
+                new_passphrase.is_some(),
+            )
+        } else {
+            (private_key.pkcs8, private_key.encrypted)
+        };
+
         self.api
             .db
             .certificates()
             .update_private_key(
                 user_id,
                 &PrivateKey {
-                    pkcs8: Self::export_private_key_to_pkcs8(pkcs8_private_key, new_passphrase)?,
-                    encrypted: new_passphrase.is_some(),
+                    name,
+                    pkcs8,
+                    encrypted,
                     ..private_key
                 },
             )
@@ -121,11 +141,11 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
     }
 
     /// Removes private key with the specified name.
-    pub async fn remove_private_key(&self, user_id: UserId, name: &str) -> anyhow::Result<()> {
+    pub async fn remove_private_key(&self, user_id: UserId, id: Uuid) -> anyhow::Result<()> {
         self.api
             .db
             .certificates()
-            .remove_private_key(user_id, name)
+            .remove_private_key(user_id, id)
             .await
     }
 
@@ -133,14 +153,14 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
     pub async fn export_private_key(
         &self,
         user_id: UserId,
-        name: &str,
+        id: Uuid,
         format: ExportFormat,
         passphrase: Option<&str>,
         export_passphrase: Option<&str>,
     ) -> anyhow::Result<Vec<u8>> {
-        let Some(private_key) = self.get_private_key(user_id, name).await? else {
+        let Some(private_key) = self.get_private_key(user_id, id).await? else {
             bail!(SecutilsError::client(format!(
-                "Private key ('{name}') is not found."
+                "Private key ('{id}') is not found."
             )));
         };
 
@@ -148,7 +168,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
         let pkcs8_private_key = Self::import_private_key_from_pkcs8(&private_key.pkcs8, passphrase)
             .map_err(|err| {
                 SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
-                    "Unable to decrypt private key ('{name}') with the provided passphrase."
+                    "Unable to decrypt private key ('{id}') with the provided passphrase."
                 )))
             })?;
 
@@ -168,7 +188,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
 
         export_result.map_err(|err| {
             SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
-                "Unable to export private key ('{name}') to the specified format ('{format:?}')."
+                "Unable to export private key ('{id}') to the specified format ('{format:?}')."
             )))
             .into()
         })
@@ -577,12 +597,12 @@ mod tests {
 
         // Set passphrase.
         certificates
-            .change_private_key_passphrase(mock_user.id, "pk", None, Some("pass"))
+            .update_private_key(mock_user.id, private_key.id, None, None, Some("pass"))
             .await?;
 
         // Decrypting without passphrase should fail.
         let private_key = certificates
-            .get_private_key(mock_user.id, "pk")
+            .get_private_key(mock_user.id, private_key.id)
             .await?
             .unwrap();
         assert!(
@@ -603,12 +623,18 @@ mod tests {
 
         // Change passphrase.
         certificates
-            .change_private_key_passphrase(mock_user.id, "pk", Some("pass"), Some("pass-1"))
+            .update_private_key(
+                mock_user.id,
+                private_key.id,
+                None,
+                Some("pass"),
+                Some("pass-1"),
+            )
             .await?;
 
         // Decrypting without passphrase should fail.
         let private_key = certificates
-            .get_private_key(mock_user.id, "pk")
+            .get_private_key(mock_user.id, private_key.id)
             .await?
             .unwrap();
         assert!(
@@ -621,7 +647,7 @@ mod tests {
 
         // Decrypting with old passphrase should fail.
         let private_key = certificates
-            .get_private_key(mock_user.id, "pk")
+            .get_private_key(mock_user.id, private_key.id)
             .await?
             .unwrap();
         assert!(
@@ -642,12 +668,12 @@ mod tests {
 
         // Remove passphrase.
         certificates
-            .change_private_key_passphrase(mock_user.id, "pk", Some("pass-1"), None)
+            .update_private_key(mock_user.id, private_key.id, None, Some("pass-1"), None)
             .await?;
 
         // Decrypting without passphrase should succeed.
         let private_key = certificates
-            .get_private_key(mock_user.id, "pk")
+            .get_private_key(mock_user.id, private_key.id)
             .await?
             .unwrap();
         assert!(
@@ -660,7 +686,7 @@ mod tests {
 
         // Decrypting with old passphrase should fail.
         let private_key = certificates
-            .get_private_key(mock_user.id, "pk")
+            .get_private_key(mock_user.id, private_key.id)
             .await?
             .unwrap();
         assert!(
@@ -683,6 +709,107 @@ mod tests {
     }
 
     #[actix_rt::test]
+    async fn can_change_private_key_name() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let certificates = CertificatesApi::new(&api);
+        let private_key = certificates
+            .create_private_key(
+                mock_user.id,
+                "pk",
+                PrivateKeyAlgorithm::Ed25519,
+                Some("pass"),
+            )
+            .await?;
+
+        // Update name.
+        certificates
+            .update_private_key(mock_user.id, private_key.id, Some("pk-new"), None, None)
+            .await?;
+
+        // Name should change, and pkcs8 shouldn't change.
+        let updated_private_key = certificates
+            .get_private_key(mock_user.id, private_key.id)
+            .await?
+            .unwrap();
+        assert_eq!(updated_private_key.name, "pk-new");
+        assert_eq!(private_key.pkcs8, updated_private_key.pkcs8);
+        assert_eq!(private_key.encrypted, updated_private_key.encrypted);
+
+        // Decrypting with the old passphrase should succeed.
+        assert!(
+            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+                &private_key.pkcs8,
+                Some("pass"),
+            )
+            .is_ok()
+        );
+
+        // Change both name and passphrase.
+        certificates
+            .update_private_key(
+                mock_user.id,
+                private_key.id,
+                Some("pk-new-new"),
+                Some("pass"),
+                Some("pass-1"),
+            )
+            .await?;
+
+        // Name should change and decrypting with old passphrase should fail.
+        let updated_private_key = certificates
+            .get_private_key(mock_user.id, private_key.id)
+            .await?
+            .unwrap();
+        assert_eq!(updated_private_key.name, "pk-new-new");
+        assert!(
+            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+                &updated_private_key.pkcs8,
+                Some("pass"),
+            )
+            .is_err()
+        );
+        // Decrypting with new passphrase should succeed.
+        assert!(
+            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+                &updated_private_key.pkcs8,
+                Some("pass-1"),
+            )
+            .is_ok()
+        );
+
+        // Remove passphrase and return old name back.
+        certificates
+            .update_private_key(
+                mock_user.id,
+                private_key.id,
+                Some("pk"),
+                Some("pass-1"),
+                None,
+            )
+            .await?;
+
+        // Name should change and decrypting without passphrase should succeed.
+        let updated_private_key = certificates
+            .get_private_key(mock_user.id, private_key.id)
+            .await?
+            .unwrap();
+        assert_eq!(updated_private_key.name, "pk");
+        assert!(
+            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+                &updated_private_key.pkcs8,
+                None,
+            )
+            .is_ok()
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
     async fn can_export_private_key() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -691,40 +818,19 @@ mod tests {
 
         // Create private key without passphrase.
         let certificates = CertificatesApi::new(&api);
-        certificates
+        let private_key = certificates
             .create_private_key(mock_user.id, "pk", PrivateKeyAlgorithm::Ed25519, None)
             .await?;
 
         // Export private key without passphrase and make sure it can be without passphrase.
         let pkcs8 = certificates
-            .export_private_key(mock_user.id, "pk", ExportFormat::Pkcs8, None, None)
-            .await?;
-        assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
-                &pkcs8, None,
+            .export_private_key(
+                mock_user.id,
+                private_key.id,
+                ExportFormat::Pkcs8,
+                None,
+                None,
             )
-            .is_ok()
-        );
-        // Export private key with passphrase and make sure it can be imported with passphrase.
-        let pkcs8 = certificates
-            .export_private_key(mock_user.id, "pk", ExportFormat::Pkcs8, None, Some("pass"))
-            .await?;
-        assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
-                &pkcs8,
-                Some("pass"),
-            )
-            .is_ok()
-        );
-
-        // Set passphrase and repeat.
-        certificates
-            .change_private_key_passphrase(mock_user.id, "pk", None, Some("pass"))
-            .await?;
-
-        // Export private key without passphrase and make sure it can be without passphrase.
-        let pkcs8 = certificates
-            .export_private_key(mock_user.id, "pk", ExportFormat::Pkcs8, Some("pass"), None)
             .await?;
         assert!(
             CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
@@ -736,7 +842,46 @@ mod tests {
         let pkcs8 = certificates
             .export_private_key(
                 mock_user.id,
-                "pk",
+                private_key.id,
+                ExportFormat::Pkcs8,
+                None,
+                Some("pass"),
+            )
+            .await?;
+        assert!(
+            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+                &pkcs8,
+                Some("pass"),
+            )
+            .is_ok()
+        );
+
+        // Set passphrase and repeat.
+        certificates
+            .update_private_key(mock_user.id, private_key.id, None, None, Some("pass"))
+            .await?;
+
+        // Export private key without passphrase and make sure it can be without passphrase.
+        let pkcs8 = certificates
+            .export_private_key(
+                mock_user.id,
+                private_key.id,
+                ExportFormat::Pkcs8,
+                Some("pass"),
+                None,
+            )
+            .await?;
+        assert!(
+            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+                &pkcs8, None,
+            )
+            .is_ok()
+        );
+        // Export private key with passphrase and make sure it can be imported with passphrase.
+        let pkcs8 = certificates
+            .export_private_key(
+                mock_user.id,
+                private_key.id,
                 ExportFormat::Pkcs8,
                 Some("pass"),
                 Some("pass"),
@@ -767,15 +912,17 @@ mod tests {
         assert_eq!(
             private_key,
             certificates
-                .get_private_key(mock_user.id, "pk")
+                .get_private_key(mock_user.id, private_key.id)
                 .await?
                 .unwrap()
         );
 
-        certificates.remove_private_key(mock_user.id, "pk").await?;
+        certificates
+            .remove_private_key(mock_user.id, private_key.id)
+            .await?;
 
         assert!(certificates
-            .get_private_key(mock_user.id, "pk")
+            .get_private_key(mock_user.id, private_key.id)
             .await?
             .is_none());
 
@@ -816,12 +963,14 @@ mod tests {
             })?;
         assert_eq!(
             certificates.get_private_keys(mock_user.id).await?,
-            vec![private_key_one, private_key_two]
+            vec![private_key_one.clone(), private_key_two.clone()]
         );
 
-        certificates.remove_private_key(mock_user.id, "pk").await?;
         certificates
-            .remove_private_key(mock_user.id, "pk-2")
+            .remove_private_key(mock_user.id, private_key_one.id)
+            .await?;
+        certificates
+            .remove_private_key(mock_user.id, private_key_two.id)
             .await?;
 
         assert!(certificates

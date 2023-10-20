@@ -10,6 +10,7 @@ use crate::{
 };
 use anyhow::bail;
 use serde::Deserialize;
+use uuid::Uuid;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -29,18 +30,19 @@ pub enum UtilsCertificatesAction {
         passphrase: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
-    ChangePrivateKeyPassphrase {
-        key_name: String,
+    UpdatePrivateKey {
+        key_id: Uuid,
+        name: Option<String>,
         passphrase: Option<String>,
         new_passphrase: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
     RemovePrivateKey {
-        key_name: String,
+        key_id: Uuid,
     },
     #[serde(rename_all = "camelCase")]
     ExportPrivateKey {
-        key_name: String,
+        key_id: Uuid,
         format: ExportFormat,
         passphrase: Option<String>,
         export_passphrase: Option<String>,
@@ -83,26 +85,30 @@ impl UtilsCertificatesAction {
             UtilsCertificatesAction::CreatePrivateKey { key_name: name, .. } => {
                 assert_private_key_name(name)?;
             }
-            UtilsCertificatesAction::ChangePrivateKeyPassphrase {
-                key_name,
+            UtilsCertificatesAction::UpdatePrivateKey {
+                name,
                 passphrase,
                 new_passphrase,
+                key_id,
             } => {
-                assert_private_key_name(key_name)?;
-
-                if passphrase == new_passphrase {
+                let includes_new_passphrase = passphrase.is_some() || new_passphrase.is_some();
+                if let Some(name) = name {
+                    assert_private_key_name(name)?;
+                } else if !includes_new_passphrase {
                     bail!(SecutilsError::client(format!(
-                        "New private key passphrase should be different from the current passphrase ({key_name})."
+                        "Either new name or passphrase should be provided ({key_id})."
+                    )));
+                }
+
+                if includes_new_passphrase && passphrase == new_passphrase {
+                    bail!(SecutilsError::client(format!(
+                        "New private key passphrase should be different from the current passphrase ({key_id})."
                     )));
                 }
             }
-            UtilsCertificatesAction::RemovePrivateKey { key_name } => {
-                assert_private_key_name(key_name)?;
-            }
-            UtilsCertificatesAction::ExportPrivateKey { key_name, .. } => {
-                assert_private_key_name(key_name)?;
-            }
-            UtilsCertificatesAction::GetPrivateKeys => {}
+            UtilsCertificatesAction::GetPrivateKeys
+            | UtilsCertificatesAction::RemovePrivateKey { .. }
+            | UtilsCertificatesAction::ExportPrivateKey { .. } => {}
         }
 
         Ok(())
@@ -145,23 +151,25 @@ impl UtilsCertificatesAction {
                     .create_private_key(user.id, &key_name, alg, passphrase.as_deref())
                     .await?,
             )),
-            UtilsCertificatesAction::ChangePrivateKeyPassphrase {
-                key_name,
+            UtilsCertificatesAction::UpdatePrivateKey {
+                key_id,
+                name,
                 passphrase,
                 new_passphrase,
             } => {
                 certificates
-                    .change_private_key_passphrase(
+                    .update_private_key(
                         user.id,
-                        &key_name,
+                        key_id,
+                        name.as_deref(),
                         passphrase.as_deref(),
                         new_passphrase.as_deref(),
                     )
                     .await?;
-                Ok(UtilsCertificatesActionResult::ChangePrivateKeyPassphrase)
+                Ok(UtilsCertificatesActionResult::UpdatePrivateKey)
             }
             UtilsCertificatesAction::ExportPrivateKey {
-                key_name,
+                key_id,
                 passphrase,
                 export_passphrase,
                 format,
@@ -169,15 +177,15 @@ impl UtilsCertificatesAction {
                 certificates
                     .export_private_key(
                         user.id,
-                        &key_name,
+                        key_id,
                         format,
                         passphrase.as_deref(),
                         export_passphrase.as_deref(),
                     )
                     .await?,
             )),
-            UtilsCertificatesAction::RemovePrivateKey { key_name } => {
-                certificates.remove_private_key(user.id, &key_name).await?;
+            UtilsCertificatesAction::RemovePrivateKey { key_id } => {
+                certificates.remove_private_key(user.id, key_id).await?;
                 Ok(UtilsCertificatesActionResult::RemovePrivateKey)
             }
         }
@@ -190,6 +198,7 @@ mod tests {
         ExportFormat, PrivateKeyAlgorithm, PrivateKeySize, UtilsCertificatesAction,
     };
     use insta::assert_debug_snapshot;
+    use uuid::uuid;
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
@@ -275,13 +284,14 @@ mod tests {
             serde_json::from_str::<UtilsCertificatesAction>(
                 r#"
 {
-    "type": "changePrivateKeyPassphrase",
-    "value": { "keyName": "pk", "passphrase": "phrase", "newPassphrase": "phrase_new" }
+    "type": "updatePrivateKey",
+    "value": { "keyId": "00000000-0000-0000-0000-000000000001", "passphrase": "phrase", "newPassphrase": "phrase_new" }
 }
           "#
             )?,
-            UtilsCertificatesAction::ChangePrivateKeyPassphrase {
-                key_name: "pk".to_string(),
+            UtilsCertificatesAction::UpdatePrivateKey {
+                key_id: uuid!("00000000-0000-0000-0000-000000000001"),
+                name: None,
                 passphrase: Some("phrase".to_string()),
                 new_passphrase: Some("phrase_new".to_string()),
             }
@@ -291,13 +301,48 @@ mod tests {
             serde_json::from_str::<UtilsCertificatesAction>(
                 r#"
 {
-    "type": "changePrivateKeyPassphrase",
-    "value": { "keyName": "pk" }
+    "type": "updatePrivateKey",
+    "value": { "keyId": "00000000-0000-0000-0000-000000000001", "name": "pk", "passphrase": "phrase", "newPassphrase": "phrase_new" }
 }
           "#
             )?,
-            UtilsCertificatesAction::ChangePrivateKeyPassphrase {
-                key_name: "pk".to_string(),
+            UtilsCertificatesAction::UpdatePrivateKey {
+                key_id: uuid!("00000000-0000-0000-0000-000000000001"),
+                name: Some("pk".to_string()),
+                passphrase: Some("phrase".to_string()),
+                new_passphrase: Some("phrase_new".to_string()),
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<UtilsCertificatesAction>(
+                r#"
+{
+    "type": "updatePrivateKey",
+    "value": { "keyId": "00000000-0000-0000-0000-000000000001", "name": "pk" }
+}
+          "#
+            )?,
+            UtilsCertificatesAction::UpdatePrivateKey {
+                key_id: uuid!("00000000-0000-0000-0000-000000000001"),
+                name: Some("pk".to_string()),
+                passphrase: None,
+                new_passphrase: None,
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<UtilsCertificatesAction>(
+                r#"
+{
+    "type": "updatePrivateKey",
+    "value": { "keyId": "00000000-0000-0000-0000-000000000001" }
+}
+          "#
+            )?,
+            UtilsCertificatesAction::UpdatePrivateKey {
+                key_id: uuid!("00000000-0000-0000-0000-000000000001"),
+                name: None,
                 passphrase: None,
                 new_passphrase: None,
             }
@@ -308,12 +353,12 @@ mod tests {
                 r#"
 {
     "type": "removePrivateKey",
-    "value": { "keyName": "pk" }
+    "value": { "keyId": "00000000-0000-0000-0000-000000000001" }
 }
           "#
             )?,
             UtilsCertificatesAction::RemovePrivateKey {
-                key_name: "pk".to_string(),
+                key_id: uuid!("00000000-0000-0000-0000-000000000001")
             }
         );
 
@@ -322,12 +367,12 @@ mod tests {
                 r#"
 {
     "type": "exportPrivateKey",
-    "value": { "keyName": "pk", "format": "pem", "passphrase": "phrase", "exportPassphrase": "phrase_new" }
+    "value": { "keyId": "00000000-0000-0000-0000-000000000001", "format": "pem", "passphrase": "phrase", "exportPassphrase": "phrase_new" }
 }
           "#
             )?,
             UtilsCertificatesAction::ExportPrivateKey {
-                key_name: "pk".to_string(),
+                key_id: uuid!("00000000-0000-0000-0000-000000000001"),
                 format: ExportFormat::Pem,
                 passphrase: Some("phrase".to_string()),
                 export_passphrase: Some("phrase_new".to_string()),
@@ -339,12 +384,12 @@ mod tests {
                 r#"
 {
     "type": "exportPrivateKey",
-    "value": { "keyName": "pk", "format": "pem" }
+    "value": { "keyId": "00000000-0000-0000-0000-000000000001", "format": "pem" }
 }
           "#
             )?,
             UtilsCertificatesAction::ExportPrivateKey {
-                key_name: "pk".to_string(),
+                key_id: uuid!("00000000-0000-0000-0000-000000000001"),
                 format: ExportFormat::Pem,
                 passphrase: None,
                 export_passphrase: None,
@@ -393,19 +438,11 @@ mod tests {
                     },
                     passphrase: Some("phrase".to_string()),
                 },
-                UtilsCertificatesAction::ChangePrivateKeyPassphrase {
-                    key_name: key_name.clone(),
-                    passphrase: Some("pass".to_string()),
-                    new_passphrase: Some("pass_new".to_string()),
-                },
-                UtilsCertificatesAction::ExportPrivateKey {
-                    key_name: key_name.clone(),
-                    format: ExportFormat::Pem,
+                UtilsCertificatesAction::UpdatePrivateKey {
+                    key_id: uuid!("00000000-0000-0000-0000-000000000001"),
+                    name: Some(key_name),
                     passphrase: None,
-                    export_passphrase: None,
-                },
-                UtilsCertificatesAction::RemovePrivateKey {
-                    key_name: key_name.clone(),
+                    new_passphrase: None,
                 },
             ]
         };
@@ -428,28 +465,36 @@ mod tests {
             );
         }
 
-        for (passphrase, new_passphrase) in [
-            (None, None),
-            (Some("pass".to_string()), Some("pass".to_string())),
-        ] {
-            let change_password_action = UtilsCertificatesAction::ChangePrivateKeyPassphrase {
-                key_name: "pk".to_string(),
-                passphrase,
-                new_passphrase,
-            };
-            assert_eq!(
-                change_password_action.validate().map_err(|err| err.to_string()),
-                Err("New private key passphrase should be different from the current passphrase (pk).".to_string())
-            );
-        }
+        let change_password_action = UtilsCertificatesAction::UpdatePrivateKey {
+            key_id: uuid!("00000000-0000-0000-0000-000000000001"),
+            name: Some("pk".to_string()),
+            passphrase: Some("pass".to_string()),
+            new_passphrase: Some("pass".to_string()),
+        };
+        assert_eq!(
+            change_password_action.validate().map_err(|err| err.to_string()),
+            Err("New private key passphrase should be different from the current passphrase (00000000-0000-0000-0000-000000000001).".to_string())
+        );
+
+        let change_password_action = UtilsCertificatesAction::UpdatePrivateKey {
+            key_id: uuid!("00000000-0000-0000-0000-000000000001"),
+            name: None,
+            passphrase: None,
+            new_passphrase: None,
+        };
+        assert_eq!(
+            change_password_action.validate().map_err(|err| err.to_string()),
+            Err("Either new name or passphrase should be provided (00000000-0000-0000-0000-000000000001).".to_string())
+        );
 
         for (passphrase, new_passphrase) in [
             (None, Some("pass".to_string())),
             (Some("pass".to_string()), Some("pass_new".to_string())),
             (Some("pass".to_string()), None),
         ] {
-            let change_password_action = UtilsCertificatesAction::ChangePrivateKeyPassphrase {
-                key_name: "pk".to_string(),
+            let change_password_action = UtilsCertificatesAction::UpdatePrivateKey {
+                key_id: uuid!("00000000-0000-0000-0000-000000000001"),
+                name: None,
                 passphrase,
                 new_passphrase,
             };

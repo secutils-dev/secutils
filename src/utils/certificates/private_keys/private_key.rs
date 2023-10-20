@@ -1,11 +1,14 @@
 use crate::utils::PrivateKeyAlgorithm;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use uuid::Uuid;
 
 /// Describes stored private key.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PrivateKey {
+    /// Unique private key id (UUIDv7).
+    pub id: Uuid,
     /// Arbitrary name of the private key.
     pub name: String,
     /// Algorithm of the private key (RSA, DSA, etc.).
@@ -24,11 +27,13 @@ mod tests {
     use crate::utils::{PrivateKey, PrivateKeyAlgorithm, PrivateKeySize};
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
+    use uuid::uuid;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
         assert_json_snapshot!(
             PrivateKey {
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "pk-name".to_string(),
                 alg: PrivateKeyAlgorithm::Rsa { key_size: PrivateKeySize::Size2048 },
                 pkcs8: vec![1, 2, 3],
@@ -38,6 +43,7 @@ mod tests {
             },
             @r###"
         {
+          "id": "00000000-0000-0000-0000-000000000001",
           "name": "pk-name",
           "alg": {
             "keyType": "rsa",
@@ -63,6 +69,7 @@ mod tests {
             serde_json::from_str::<PrivateKey>(
                 r#"
         {
+          "id": "00000000-0000-0000-0000-000000000001",
           "name": "pk-name",
           "alg": {
             "keyType": "rsa",
@@ -79,6 +86,7 @@ mod tests {
         "#
             )?,
             PrivateKey {
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "pk-name".to_string(),
                 alg: PrivateKeyAlgorithm::Rsa {
                     key_size: PrivateKeySize::Size2048

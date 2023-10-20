@@ -15,11 +15,12 @@ WHERE
 -- Create table to store private keys.
 CREATE TABLE IF NOT EXISTS user_data_certificates_private_keys
 (
+    id              BLOB PRIMARY KEY,
     name            TEXT NOT NULL COLLATE NOCASE,
     alg             BLOB NOT NULL,
     pkcs8           BLOB NOT NULL,
     encrypted       INTEGER NOT NULL,
     created_at      INTEGER NOT NULL,
     user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    PRIMARY KEY     (name, user_id)
+    UNIQUE          (name, user_id)
 ) STRICT;
