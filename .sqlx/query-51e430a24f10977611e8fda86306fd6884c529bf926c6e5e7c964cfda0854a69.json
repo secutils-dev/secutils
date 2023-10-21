@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\nUPDATE user_data_certificates_certificate_templates\nSET name = ?3, attributes = ?4\nWHERE user_id = ?1 AND id = ?2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "51e430a24f10977611e8fda86306fd6884c529bf926c6e5e7c964cfda0854a69"
+}

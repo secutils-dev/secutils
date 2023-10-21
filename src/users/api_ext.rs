@@ -6,11 +6,9 @@ use crate::{
         UserData, UserDataKey, UserDataNamespace, UserId, UserSettingsSetter, UserShare,
         UserShareId,
     },
-    utils::CertificateTemplate,
 };
 use anyhow::{bail, Context};
 use serde::de::DeserializeOwned;
-use std::collections::BTreeMap;
 use time::OffsetDateTime;
 
 pub mod errors;
@@ -101,9 +99,6 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
         let user_data_key = user_data_key.into();
         match user_data_key.namespace {
             UserDataNamespace::Public(namespace) => match namespace {
-                PublicUserDataNamespace::CertificateTemplates => {
-                    self.set_certificate_templates_data(user_data).await
-                }
                 PublicUserDataNamespace::UserSettings => {
                     self.set_user_settings_data(user_data).await
                 }
@@ -169,27 +164,6 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
             UserData::new(
                 serialized_user_data.user_id,
                 user_settings.into_inner(),
-                serialized_user_data.timestamp,
-            ),
-        )
-        .await
-    }
-
-    async fn set_certificate_templates_data(
-        &self,
-        serialized_user_data: UserData<Vec<u8>>,
-    ) -> anyhow::Result<()> {
-        DictionaryDataUserDataSetter::upsert(
-            &self.api.db,
-            PublicUserDataNamespace::CertificateTemplates,
-            UserData::new(
-                serialized_user_data.user_id,
-                serde_json::from_slice::<BTreeMap<String, Option<CertificateTemplate>>>(
-                    &serialized_user_data.value,
-                )
-                .with_context(|| {
-                    "Cannot deserialize new self-signed certificates data".to_string()
-                })?,
                 serialized_user_data.timestamp,
             ),
         )

@@ -2,10 +2,10 @@ use crate::{
     api::Api,
     error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
-    users::{PublicUserDataNamespace, UserId},
+    users::UserId,
     utils::{
-        CertificateTemplate, ExportFormat, ExtendedKeyUsage, KeyUsage, PrivateKey,
-        PrivateKeyAlgorithm, SignatureAlgorithm,
+        CertificateAttributes, CertificateTemplate, ExportFormat, ExtendedKeyUsage, KeyUsage,
+        PrivateKey, PrivateKeyAlgorithm, SignatureAlgorithm,
     },
 };
 use anyhow::{anyhow, bail};
@@ -24,7 +24,6 @@ use openssl::{
     x509::{extension, X509Builder, X509NameBuilder, X509},
 };
 use std::{
-    collections::BTreeMap,
     io::{Cursor, Write},
     time::Instant,
 };
@@ -140,7 +139,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
             .await
     }
 
-    /// Removes private key with the specified name.
+    /// Removes private key with the specified ID.
     pub async fn remove_private_key(&self, user_id: UserId, id: Uuid) -> anyhow::Result<()> {
         self.api
             .db
@@ -149,7 +148,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
             .await
     }
 
-    /// Exports private key with the specified name to the specified format and passphrase.
+    /// Exports private key with the specified ID to the specified format and passphrase.
     pub async fn export_private_key(
         &self,
         user_id: UserId,
@@ -199,41 +198,122 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
         self.api.db.certificates().get_private_keys(user_id).await
     }
 
-    /// Generates private key and certificate pair.
+    /// Retrieves the certificate template with the specified ID.
+    pub async fn get_certificate_template(
+        &self,
+        user_id: UserId,
+        id: Uuid,
+    ) -> anyhow::Result<Option<CertificateTemplate>> {
+        self.api
+            .db
+            .certificates()
+            .get_certificate_template(user_id, id)
+            .await
+    }
+
+    /// Creates certificate template with the specified parameters and stores it in the database.
+    pub async fn create_certificate_template(
+        &self,
+        user_id: UserId,
+        name: impl Into<String>,
+        attributes: CertificateAttributes,
+    ) -> anyhow::Result<CertificateTemplate> {
+        let certificate_template = CertificateTemplate {
+            id: Uuid::now_v7(),
+            name: name.into(),
+            attributes,
+            // Preserve timestamp only up to seconds.
+            created_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
+        };
+
+        self.api
+            .db
+            .certificates()
+            .insert_certificate_template(user_id, &certificate_template)
+            .await?;
+
+        Ok(certificate_template)
+    }
+
+    /// Updates certificate template.
+    pub async fn update_certificate_template(
+        &self,
+        user_id: UserId,
+        id: Uuid,
+        name: Option<String>,
+        attributes: Option<CertificateAttributes>,
+    ) -> anyhow::Result<()> {
+        let Some(certificate_template) = self.get_certificate_template(user_id, id).await? else {
+            bail!(SecutilsError::client(format!(
+                "Certificate template ('{id}') is not found."
+            )));
+        };
+
+        self.api
+            .db
+            .certificates()
+            .update_certificate_template(
+                user_id,
+                &CertificateTemplate {
+                    name: if let Some(name) = name {
+                        name
+                    } else {
+                        certificate_template.name
+                    },
+                    attributes: if let Some(attributes) = attributes {
+                        attributes
+                    } else {
+                        certificate_template.attributes
+                    },
+                    ..certificate_template
+                },
+            )
+            .await
+    }
+
+    /// Removes certificate template with the specified ID.
+    pub async fn remove_certificate_template(
+        &self,
+        user_id: UserId,
+        id: Uuid,
+    ) -> anyhow::Result<()> {
+        self.api
+            .db
+            .certificates()
+            .remove_certificate_template(user_id, id)
+            .await
+    }
+
+    /// Generates private key and certificate pair from the certificate template.
     pub async fn generate_self_signed_certificate(
         &self,
         user_id: UserId,
-        template_name: &str,
+        template_id: Uuid,
         format: ExportFormat,
         passphrase: Option<&str>,
     ) -> anyhow::Result<Vec<u8>> {
-        // Extract certificate template.
-        let certificate_template = self
-            .api
-            .users()
-            .get_data::<BTreeMap<String, CertificateTemplate>>(
-                user_id,
-                PublicUserDataNamespace::CertificateTemplates,
-            )
-            .await?
-            .and_then(|mut map| map.value.remove(template_name))
-            .ok_or_else(|| {
-                SecutilsError::client(format!(
-                    "Certificate template ('{template_name}') is not found."
-                ))
-            })?;
+        let Some(certificate_template) =
+            self.get_certificate_template(user_id, template_id).await?
+        else {
+            bail!(SecutilsError::client(format!(
+                "Certificate template ('{template_id}') is not found."
+            )));
+        };
 
         // Create X509 certificate builder pre-filled with the specified template properties.
         let mut certificate_builder = Self::create_x509_certificate_builder(&certificate_template)?;
 
         // Generate private key, set certificate public key and sign it.
-        let private_key = Self::generate_private_key(certificate_template.key_algorithm)?;
+        let private_key =
+            Self::generate_private_key(certificate_template.attributes.key_algorithm)?;
         certificate_builder.set_pubkey(&private_key)?;
         certificate_builder.sign(
             &private_key,
             Self::get_message_digest(
-                certificate_template.key_algorithm,
-                certificate_template.signature_algorithm,
+                certificate_template.attributes.key_algorithm,
+                certificate_template.attributes.signature_algorithm,
             )?,
         )?;
 
@@ -250,6 +330,18 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
                 passphrase,
             )?,
         })
+    }
+
+    /// Retrieves all certificate templates that belong to the specified user.
+    pub async fn get_certificate_templates(
+        &self,
+        user_id: UserId,
+    ) -> anyhow::Result<Vec<CertificateTemplate>> {
+        self.api
+            .db
+            .certificates()
+            .get_certificate_templates(user_id)
+            .await
     }
 
     /// Generates private key with the specified parameters.
@@ -402,29 +494,45 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
         certificate_template: &CertificateTemplate,
     ) -> anyhow::Result<X509Builder> {
         let mut x509_name = X509NameBuilder::new()?;
-        Self::set_x509_name_attribute(&mut x509_name, "CN", &certificate_template.common_name)?;
-        Self::set_x509_name_attribute(&mut x509_name, "C", &certificate_template.country)?;
+        Self::set_x509_name_attribute(
+            &mut x509_name,
+            "CN",
+            &certificate_template.attributes.common_name,
+        )?;
+        Self::set_x509_name_attribute(
+            &mut x509_name,
+            "C",
+            &certificate_template.attributes.country,
+        )?;
         Self::set_x509_name_attribute(
             &mut x509_name,
             "ST",
-            &certificate_template.state_or_province,
+            &certificate_template.attributes.state_or_province,
         )?;
-        Self::set_x509_name_attribute(&mut x509_name, "L", &certificate_template.locality)?;
-        Self::set_x509_name_attribute(&mut x509_name, "O", &certificate_template.organization)?;
+        Self::set_x509_name_attribute(
+            &mut x509_name,
+            "L",
+            &certificate_template.attributes.locality,
+        )?;
+        Self::set_x509_name_attribute(
+            &mut x509_name,
+            "O",
+            &certificate_template.attributes.organization,
+        )?;
         Self::set_x509_name_attribute(
             &mut x509_name,
             "OU",
-            &certificate_template.organizational_unit,
+            &certificate_template.attributes.organizational_unit,
         )?;
         let x509_name = x509_name.build();
 
         let mut x509 = X509::builder()?;
         x509.set_subject_name(&x509_name)?;
         x509.set_issuer_name(&x509_name)?;
-        x509.set_version(certificate_template.version.value())?;
+        x509.set_version(certificate_template.attributes.version.value())?;
 
         let mut basic_constraint = extension::BasicConstraints::new();
-        if certificate_template.is_ca {
+        if certificate_template.attributes.is_ca {
             basic_constraint.ca();
         }
         x509.append_extension(basic_constraint.critical().build()?)?;
@@ -436,13 +544,22 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
         };
         x509.set_serial_number(&serial_number)?;
 
-        let not_before =
-            Asn1Time::from_unix(certificate_template.not_valid_before.unix_timestamp())?;
+        let not_before = Asn1Time::from_unix(
+            certificate_template
+                .attributes
+                .not_valid_before
+                .unix_timestamp(),
+        )?;
         x509.set_not_before(&not_before)?;
-        let not_after = Asn1Time::from_unix(certificate_template.not_valid_after.unix_timestamp())?;
+        let not_after = Asn1Time::from_unix(
+            certificate_template
+                .attributes
+                .not_valid_after
+                .unix_timestamp(),
+        )?;
         x509.set_not_after(&not_after)?;
 
-        if let Some(ref key_usage) = certificate_template.key_usage {
+        if let Some(ref key_usage) = certificate_template.attributes.key_usage {
             let mut key_usage_ext = extension::KeyUsage::new();
 
             for key_usage in key_usage {
@@ -462,7 +579,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
             x509.append_extension(key_usage_ext.critical().build()?)?;
         }
 
-        if let Some(ref key_usage) = certificate_template.extended_key_usage {
+        if let Some(ref key_usage) = certificate_template.attributes.extended_key_usage {
             let mut key_usage_ext = extension::ExtendedKeyUsage::new();
 
             for key_usage in key_usage {
@@ -514,18 +631,38 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        tests::{mock_api, mock_user, MockCertificateTemplate, MockResolver},
-        users::{DictionaryDataUserDataSetter, PublicUserDataNamespace, UserData},
+        tests::{mock_api, mock_user, MockResolver},
         utils::{
-            CertificatesApi, ExportFormat, PrivateKeyAlgorithm, PrivateKeyEllipticCurve,
-            PrivateKeySize, SignatureAlgorithm, Version,
+            CertificateAttributes, CertificatesApi, ExportFormat, ExtendedKeyUsage, KeyUsage,
+            PrivateKeyAlgorithm, PrivateKeyEllipticCurve, PrivateKeySize, SignatureAlgorithm,
+            Version,
         },
     };
     use insta::assert_debug_snapshot;
     use lettre::transport::stub::AsyncStubTransport;
     use openssl::{hash::MessageDigest, pkcs12::Pkcs12};
-    use std::collections::BTreeMap;
     use time::OffsetDateTime;
+
+    fn get_mock_certificate_attributes() -> anyhow::Result<CertificateAttributes> {
+        Ok(CertificateAttributes {
+            common_name: Some("my-common-name".to_string()),
+            country: Some("DE".to_string()),
+            state_or_province: Some("BE".to_string()),
+            locality: None,
+            organization: None,
+            organizational_unit: None,
+            key_algorithm: PrivateKeyAlgorithm::Rsa {
+                key_size: PrivateKeySize::Size1024,
+            },
+            signature_algorithm: SignatureAlgorithm::Sha256,
+            not_valid_before: OffsetDateTime::from_unix_timestamp(946720800)?,
+            not_valid_after: OffsetDateTime::from_unix_timestamp(1262340000)?,
+            version: Version::One,
+            is_ca: true,
+            key_usage: Some([KeyUsage::KeyAgreement].into_iter().collect()),
+            extended_key_usage: Some([ExtendedKeyUsage::EmailProtection].into_iter().collect()),
+        })
+    }
 
     #[actix_rt::test]
     async fn can_create_private_key() -> anyhow::Result<()> {
@@ -981,6 +1118,260 @@ mod tests {
         Ok(())
     }
 
+    #[actix_rt::test]
+    async fn can_create_certificate_template() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let certificates = CertificatesApi::new(&api);
+        let certificate_template = certificates
+            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .await?;
+        assert_eq!(certificate_template.name, "ct");
+        assert_eq!(
+            certificate_template.attributes,
+            get_mock_certificate_attributes()?
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_change_certificate_template_attributes() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let certificates = CertificatesApi::new(&api);
+        let certificate_template = certificates
+            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .await?;
+
+        // Update attributes.
+        certificates
+            .update_certificate_template(
+                mock_user.id,
+                certificate_template.id,
+                None,
+                Some(CertificateAttributes {
+                    common_name: Some("cn-new".to_string()),
+                    country: Some("c".to_string()),
+                    state_or_province: Some("s".to_string()),
+                    locality: None,
+                    organization: None,
+                    organizational_unit: None,
+                    key_algorithm: PrivateKeyAlgorithm::Ed25519,
+                    signature_algorithm: SignatureAlgorithm::Md5,
+                    not_valid_before: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    not_valid_after: OffsetDateTime::from_unix_timestamp(1262340000)?,
+                    version: Version::One,
+                    is_ca: true,
+                    key_usage: Some([KeyUsage::KeyAgreement].into_iter().collect()),
+                    extended_key_usage: Some(
+                        [ExtendedKeyUsage::EmailProtection].into_iter().collect(),
+                    ),
+                }),
+            )
+            .await?;
+
+        // Decrypting without passphrase should fail.
+        let certificate_template = certificates
+            .get_certificate_template(mock_user.id, certificate_template.id)
+            .await?
+            .unwrap();
+        assert_eq!(certificate_template.name, "ct");
+        assert_eq!(
+            certificate_template.attributes,
+            CertificateAttributes {
+                common_name: Some("cn-new".to_string()),
+                country: Some("c".to_string()),
+                state_or_province: Some("s".to_string()),
+                locality: None,
+                organization: None,
+                organizational_unit: None,
+                key_algorithm: PrivateKeyAlgorithm::Ed25519,
+                signature_algorithm: SignatureAlgorithm::Md5,
+                not_valid_before: OffsetDateTime::from_unix_timestamp(946720800)?,
+                not_valid_after: OffsetDateTime::from_unix_timestamp(1262340000)?,
+                version: Version::One,
+                is_ca: true,
+                key_usage: Some([KeyUsage::KeyAgreement].into_iter().collect()),
+                extended_key_usage: Some([ExtendedKeyUsage::EmailProtection].into_iter().collect()),
+            }
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_change_certificate_template_name() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let certificates = CertificatesApi::new(&api);
+        let certificate_template = certificates
+            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .await?;
+
+        // Update name.
+        certificates
+            .update_certificate_template(
+                mock_user.id,
+                certificate_template.id,
+                Some("ct-new".to_string()),
+                None,
+            )
+            .await?;
+
+        // Name should change, and attributes shouldn't change.
+        let updated_certificate_template = certificates
+            .get_certificate_template(mock_user.id, certificate_template.id)
+            .await?
+            .unwrap();
+        assert_eq!(updated_certificate_template.name, "ct-new");
+        assert_eq!(
+            certificate_template.attributes,
+            get_mock_certificate_attributes()?
+        );
+
+        // Change both name and attributes.
+        certificates
+            .update_certificate_template(
+                mock_user.id,
+                certificate_template.id,
+                Some("ct-new-new".to_string()),
+                Some(CertificateAttributes {
+                    common_name: Some("cn-new".to_string()),
+                    country: Some("c".to_string()),
+                    state_or_province: Some("s".to_string()),
+                    locality: None,
+                    organization: None,
+                    organizational_unit: None,
+                    key_algorithm: PrivateKeyAlgorithm::Ed25519,
+                    signature_algorithm: SignatureAlgorithm::Md5,
+                    not_valid_before: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    not_valid_after: OffsetDateTime::from_unix_timestamp(1262340000)?,
+                    version: Version::One,
+                    is_ca: true,
+                    key_usage: Some([KeyUsage::KeyAgreement].into_iter().collect()),
+                    extended_key_usage: Some(
+                        [ExtendedKeyUsage::EmailProtection].into_iter().collect(),
+                    ),
+                }),
+            )
+            .await?;
+
+        let updated_certificate_template = certificates
+            .get_certificate_template(mock_user.id, certificate_template.id)
+            .await?
+            .unwrap();
+        assert_eq!(updated_certificate_template.name, "ct-new-new");
+        assert_eq!(
+            updated_certificate_template.attributes,
+            CertificateAttributes {
+                common_name: Some("cn-new".to_string()),
+                country: Some("c".to_string()),
+                state_or_province: Some("s".to_string()),
+                locality: None,
+                organization: None,
+                organizational_unit: None,
+                key_algorithm: PrivateKeyAlgorithm::Ed25519,
+                signature_algorithm: SignatureAlgorithm::Md5,
+                not_valid_before: OffsetDateTime::from_unix_timestamp(946720800)?,
+                not_valid_after: OffsetDateTime::from_unix_timestamp(1262340000)?,
+                version: Version::One,
+                is_ca: true,
+                key_usage: Some([KeyUsage::KeyAgreement].into_iter().collect()),
+                extended_key_usage: Some([ExtendedKeyUsage::EmailProtection].into_iter().collect(),),
+            }
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_remove_certificate_template() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let certificates = CertificatesApi::new(&api);
+        let certificate_template = certificates
+            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .await?;
+        assert_eq!(
+            certificate_template,
+            certificates
+                .get_certificate_template(mock_user.id, certificate_template.id)
+                .await?
+                .unwrap()
+        );
+
+        certificates
+            .remove_certificate_template(mock_user.id, certificate_template.id)
+            .await?;
+
+        assert!(certificates
+            .get_certificate_template(mock_user.id, certificate_template.id)
+            .await?
+            .is_none());
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_return_multiple_certificate_templates() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let certificates = CertificatesApi::new(&api);
+        assert!(certificates
+            .get_certificate_templates(mock_user.id)
+            .await?
+            .is_empty());
+
+        let certificate_template_one = certificates
+            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .await?;
+        assert_eq!(
+            certificates.get_certificate_templates(mock_user.id).await?,
+            vec![certificate_template_one.clone()]
+        );
+
+        let certificate_template_two = certificates
+            .create_certificate_template(mock_user.id, "ct-2", get_mock_certificate_attributes()?)
+            .await?;
+        assert_eq!(
+            certificates.get_certificate_templates(mock_user.id).await?,
+            vec![
+                certificate_template_one.clone(),
+                certificate_template_two.clone()
+            ]
+        );
+
+        certificates
+            .remove_certificate_template(mock_user.id, certificate_template_one.id)
+            .await?;
+        certificates
+            .remove_certificate_template(mock_user.id, certificate_template_two.id)
+            .await?;
+
+        assert!(certificates
+            .get_certificate_templates(mock_user.id)
+            .await?
+            .is_empty());
+
+        Ok(())
+    }
+
     #[test]
     fn picks_correct_message_digest() -> anyhow::Result<()> {
         assert!(
@@ -1056,44 +1447,16 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        // January 1, 2000 11:00:00
-        let not_valid_before = OffsetDateTime::from_unix_timestamp(946720800)?;
-        // January 1, 2010 11:00:00
-        let not_valid_after = OffsetDateTime::from_unix_timestamp(1262340000)?;
-
-        // Store certificate.
-        let certificate_template = MockCertificateTemplate::new(
-            "test-1-name",
-            PrivateKeyAlgorithm::Rsa {
-                key_size: PrivateKeySize::Size1024,
-            },
-            SignatureAlgorithm::Sha256,
-            not_valid_before,
-            not_valid_after,
-            Version::One,
-        )
-        .build();
-        DictionaryDataUserDataSetter::upsert(
-            &api.db,
-            PublicUserDataNamespace::CertificateTemplates,
-            UserData::new(
-                mock_user.id,
-                [(
-                    certificate_template.name.clone(),
-                    Some(certificate_template.clone()),
-                )]
-                .into_iter()
-                .collect::<BTreeMap<_, _>>(),
-                OffsetDateTime::now_utc(),
-            ),
-        )
-        .await?;
+        let certificate_template = api
+            .certificates()
+            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .await?;
 
         let exported_certificate_pair = api
             .certificates()
             .generate_self_signed_certificate(
                 mock_user.id,
-                &certificate_template.name,
+                certificate_template.id,
                 ExportFormat::Pkcs12,
                 None,
             )

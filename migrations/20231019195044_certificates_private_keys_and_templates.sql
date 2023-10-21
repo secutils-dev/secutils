@@ -24,3 +24,14 @@ CREATE TABLE IF NOT EXISTS user_data_certificates_private_keys
     user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE          (name, user_id)
 ) STRICT;
+
+-- Create table to store certificate templates.
+CREATE TABLE IF NOT EXISTS user_data_certificates_certificate_templates
+(
+    id              BLOB PRIMARY KEY,
+    name            TEXT NOT NULL COLLATE NOCASE,
+    attributes      BLOB NOT NULL,
+    created_at      INTEGER NOT NULL,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE          (name, user_id)
+) STRICT;

@@ -1,128 +1,70 @@
-use crate::utils::{
-    certificates::{ExtendedKeyUsage, KeyUsage, Version},
-    PrivateKeyAlgorithm, SignatureAlgorithm,
-};
+use crate::utils::CertificateAttributes;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use time::OffsetDateTime;
+use uuid::Uuid;
 
 /// Describes stored certificate template.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct CertificateTemplate {
-    #[serde(rename = "n")]
+    /// Unique certificate template id (UUIDv7).
+    pub id: Uuid,
+    /// Arbitrary name of the certificate template.
     pub name: String,
-    #[serde(rename = "cn", skip_serializing_if = "Option::is_none")]
-    pub common_name: Option<String>,
-    #[serde(rename = "c", skip_serializing_if = "Option::is_none")]
-    pub country: Option<String>,
-    #[serde(rename = "s", skip_serializing_if = "Option::is_none")]
-    pub state_or_province: Option<String>,
-    #[serde(rename = "l", skip_serializing_if = "Option::is_none")]
-    pub locality: Option<String>,
-    #[serde(rename = "o", skip_serializing_if = "Option::is_none")]
-    pub organization: Option<String>,
-    #[serde(rename = "ou", skip_serializing_if = "Option::is_none")]
-    pub organizational_unit: Option<String>,
-    #[serde(rename = "ka")]
-    pub key_algorithm: PrivateKeyAlgorithm,
-    #[serde(rename = "sa")]
-    pub signature_algorithm: SignatureAlgorithm,
-    #[serde(rename = "nb", with = "time::serde::timestamp")]
-    pub not_valid_before: OffsetDateTime,
-    #[serde(rename = "na", with = "time::serde::timestamp")]
-    pub not_valid_after: OffsetDateTime,
-    #[serde(rename = "v", default = "Version::latest")]
-    pub version: Version,
-    #[serde(rename = "ca")]
-    pub is_ca: bool,
-    #[serde(rename = "ku", skip_serializing_if = "Option::is_none")]
-    pub key_usage: Option<HashSet<KeyUsage>>,
-    #[serde(rename = "eku", skip_serializing_if = "Option::is_none")]
-    pub extended_key_usage: Option<HashSet<ExtendedKeyUsage>>,
+    /// Attributes of the certificate that the template defines.
+    pub attributes: CertificateAttributes,
+    /// Date and time when the private key was created.
+    #[serde(with = "time::serde::timestamp")]
+    pub created_at: OffsetDateTime,
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{
-        tests::MockCertificateTemplate, CertificateTemplate, ExtendedKeyUsage, KeyUsage,
-        PrivateKeyAlgorithm, PrivateKeySize, SignatureAlgorithm, Version,
+    use crate::{
+        tests::MockCertificateAttributes,
+        utils::{CertificateTemplate, PrivateKeyAlgorithm, SignatureAlgorithm, Version},
     };
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
+    use uuid::uuid;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
-        // January 1, 2000 11:00:00
-        let not_valid_before = OffsetDateTime::from_unix_timestamp(946720800)?;
-        // January 1, 2010 11:00:00
-        let not_valid_after = OffsetDateTime::from_unix_timestamp(1262340000)?;
-
         assert_json_snapshot!(
-            MockCertificateTemplate::new(
-                "test-2-name",
-                PrivateKeyAlgorithm::Ed25519,
-                SignatureAlgorithm::Ed25519,
-                not_valid_before,
-                not_valid_after,
-                Version::Three,
-            )
-            .set_is_ca()
-            .set_common_name("CA Issuer")
-            .set_country("US")
-            .set_state_or_province("California")
-            .set_locality("San Francisco")
-            .set_organization("CA Issuer, Inc")
-            .set_organization_unit("CA Org Unit")
-            .add_key_usage(KeyUsage::CrlSigning)
-            .add_extended_key_usage(ExtendedKeyUsage::TlsWebServerAuthentication)
-            .build(),
+            CertificateTemplate {
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
+                name: "ct-name".to_string(),
+                attributes: MockCertificateAttributes::new(
+                    PrivateKeyAlgorithm::Ed25519,
+                    SignatureAlgorithm::Ed25519,
+                    OffsetDateTime::from_unix_timestamp(946720800)?,
+                    OffsetDateTime::from_unix_timestamp(1262340000)?,
+                    Version::Three,
+                )
+                .set_is_ca()
+                .set_common_name("CA Issuer")
+                .set_country("US")
+                .build(),
+                 // January 1, 2000 11:00:00
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?
+            },
             @r###"
         {
-          "n": "test-2-name",
-          "cn": "CA Issuer",
-          "c": "US",
-          "s": "California",
-          "l": "San Francisco",
-          "o": "CA Issuer, Inc",
-          "ou": "CA Org Unit",
-          "ka": {
-            "keyType": "ed25519"
+          "id": "00000000-0000-0000-0000-000000000001",
+          "name": "ct-name",
+          "attributes": {
+            "commonName": "CA Issuer",
+            "country": "US",
+            "keyAlgorithm": {
+              "keyType": "ed25519"
+            },
+            "signatureAlgorithm": "ed25519",
+            "notValidBefore": 946720800,
+            "notValidAfter": 1262340000,
+            "version": 3,
+            "isCa": true
           },
-          "sa": "ed25519",
-          "nb": 946720800,
-          "na": 1262340000,
-          "v": 3,
-          "ca": true,
-          "ku": [
-            "crlSigning"
-          ],
-          "eku": [
-            "tlsWebServerAuthentication"
-          ]
-        }
-        "###
-        );
-        assert_json_snapshot!(
-            MockCertificateTemplate::new(
-                "name",
-                PrivateKeyAlgorithm::Rsa { key_size: PrivateKeySize::Size1024 },
-                SignatureAlgorithm::Sha256,
-                not_valid_before,
-                not_valid_after,
-                Version::One,
-            ).build(),
-            @r###"
-        {
-          "n": "name",
-          "ka": {
-            "keyType": "rsa",
-            "keySize": "1024"
-          },
-          "sa": "sha256",
-          "nb": 946720800,
-          "na": 1262340000,
-          "v": 1,
-          "ca": false
+          "createdAt": 946720800
         }
         "###
         );
@@ -132,78 +74,45 @@ mod tests {
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
-        // January 1, 2000 11:00:00
-        let not_valid_before = OffsetDateTime::from_unix_timestamp(946720800)?;
-        // January 1, 2010 11:00:00
-        let not_valid_after = OffsetDateTime::from_unix_timestamp(1262340000)?;
-
         assert_eq!(
             serde_json::from_str::<CertificateTemplate>(
                 r#"
         {
-          "n": "name",
-          "ka": { "keyType": "rsa", "keySize": "1024" },
-          "sa": "sha256",
-          "nb": 946720800,
-          "na": 1262340000,
-          "v": 1,
-          "ca": false
+          "id": "00000000-0000-0000-0000-000000000001",
+          "name": "ct-name",
+          "attributes": {
+            "commonName": "CA Issuer",
+            "country": "US",
+            "keyAlgorithm": {
+              "keyType": "ed25519"
+            },
+            "signatureAlgorithm": "ed25519",
+            "notValidBefore": 946720800,
+            "notValidAfter": 1262340000,
+            "version": 3,
+            "isCa": true
+          },
+          "createdAt": 946720800
         }
         "#
             )?,
-            MockCertificateTemplate::new(
-                "name",
-                PrivateKeyAlgorithm::Rsa {
-                    key_size: PrivateKeySize::Size1024
-                },
-                SignatureAlgorithm::Sha256,
-                not_valid_before,
-                not_valid_after,
-                Version::One,
-            )
-            .build()
-        );
-        assert_eq!(
-            serde_json::from_str::<CertificateTemplate>(
-                r#"
-        {
-          "n": "test-2-name",
-          "cn": "CA Issuer",
-          "c": "US",
-          "s": "California",
-          "l": "San Francisco",
-          "o": "CA Issuer, Inc",
-          "ou": "CA Org Unit",
-          "ka": { "keyType": "ed25519" },
-          "sa": "ed25519",
-          "nb": 946720800,
-          "na": 1262340000,
-          "v": 3,
-          "ca": true,
-          "ku": ["crlSigning", "keyCertificateSigning"],
-          "eku": ["tlsWebServerAuthentication"]
-        }
-        "#
-            )?,
-            MockCertificateTemplate::new(
-                "test-2-name",
-                PrivateKeyAlgorithm::Ed25519,
-                SignatureAlgorithm::Ed25519,
-                not_valid_before,
-                not_valid_after,
-                Version::latest(),
-            )
-            .set_is_ca()
-            .set_common_name("CA Issuer")
-            .set_country("US")
-            .set_state_or_province("California")
-            .set_locality("San Francisco")
-            .set_organization("CA Issuer, Inc")
-            .set_organization_unit("CA Org Unit")
-            .add_key_usage(KeyUsage::CrlSigning)
-            .add_key_usage(KeyUsage::KeyCertificateSigning)
-            .add_extended_key_usage(ExtendedKeyUsage::TlsWebServerAuthentication)
-            .build()
+            CertificateTemplate {
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
+                name: "ct-name".to_string(),
+                attributes: MockCertificateAttributes::new(
+                    PrivateKeyAlgorithm::Ed25519,
+                    SignatureAlgorithm::Ed25519,
+                    OffsetDateTime::from_unix_timestamp(946720800)?,
+                    OffsetDateTime::from_unix_timestamp(1262340000)?,
+                    Version::Three,
+                )
+                .set_is_ca()
+                .set_common_name("CA Issuer")
+                .set_country("US")
+                .build(),
+                // January 1, 2000 11:00:00
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?
+            },
         );
 
         Ok(())

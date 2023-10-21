@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\nDELETE FROM user_data_certificates_certificate_templates\nWHERE user_id = ?1 AND id = ?2\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "61760b539472590aa2baf55c38483943018b1cc52c0e8a44dc01ca11dbf09c5c"
+}

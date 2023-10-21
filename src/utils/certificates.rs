@@ -10,10 +10,15 @@ mod api_ext;
 
 pub use self::{
     api_ext::CertificatesApi,
-    certificate_templates::CertificateTemplate,
+    certificate_templates::{CertificateAttributes, CertificateTemplate},
     export_format::ExportFormat,
     private_keys::{PrivateKey, PrivateKeyAlgorithm, PrivateKeyEllipticCurve, PrivateKeySize},
     utils_certificates_action::UtilsCertificatesAction,
     utils_certificates_action_result::UtilsCertificatesActionResult,
     x509::{ExtendedKeyUsage, KeyUsage, SignatureAlgorithm, Version},
 };
+
+#[cfg(test)]
+pub mod tests {
+    pub use super::certificate_templates::tests::*;
+}

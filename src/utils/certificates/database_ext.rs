@@ -1,7 +1,18 @@
+mod raw_certificate_attributes;
+mod raw_certificate_template;
 mod raw_private_key;
+mod raw_private_key_algorithm;
 
 use self::raw_private_key::RawPrivateKey;
-use crate::{database::Database, error::Error as SecutilsError, users::UserId, utils::PrivateKey};
+use crate::{
+    database::Database,
+    error::Error as SecutilsError,
+    users::UserId,
+    utils::{
+        certificates::database_ext::raw_certificate_template::RawCertificateTemplate,
+        CertificateTemplate, PrivateKey,
+    },
+};
 use anyhow::{anyhow, bail};
 use sqlx::{error::ErrorKind as SqlxErrorKind, query, query_as, Pool, Sqlite};
 use uuid::Uuid;
@@ -16,7 +27,7 @@ impl<'pool> CertificatesDatabaseExt<'pool> {
         Self { pool }
     }
 
-    /// Retrieves private key for the specified user with the specified name.
+    /// Retrieves private key for the specified user with the specified ID.
     pub async fn get_private_key(
         &self,
         user_id: UserId,
@@ -136,7 +147,7 @@ WHERE user_id = ?1 AND id = ?2
         Ok(())
     }
 
-    /// Removes private key for the specified user with the specified name.
+    /// Removes private key for the specified user with the specified ID.
     pub async fn remove_private_key(&self, user_id: UserId, id: Uuid) -> anyhow::Result<()> {
         let id = id.as_ref();
         query!(
@@ -177,6 +188,170 @@ ORDER BY created_at
 
         Ok(private_keys)
     }
+
+    /// Retrieves certificate template for the specified user with the specified ID.
+    pub async fn get_certificate_template(
+        &self,
+        user_id: UserId,
+        id: Uuid,
+    ) -> anyhow::Result<Option<CertificateTemplate>> {
+        let id = id.as_ref();
+        query_as!(
+            RawCertificateTemplate,
+            r#"
+SELECT id, name, attributes, created_at
+FROM user_data_certificates_certificate_templates
+WHERE user_id = ?1 AND id = ?2
+                "#,
+            *user_id,
+            id
+        )
+        .fetch_optional(self.pool)
+        .await?
+        .map(CertificateTemplate::try_from)
+        .transpose()
+    }
+
+    /// Inserts certificate template.
+    pub async fn insert_certificate_template(
+        &self,
+        user_id: UserId,
+        certificate_template: &CertificateTemplate,
+    ) -> anyhow::Result<()> {
+        let raw_certificate_template = RawCertificateTemplate::try_from(certificate_template)?;
+        let result = query!(
+            r#"
+INSERT INTO user_data_certificates_certificate_templates (user_id, id, name, attributes, created_at)
+VALUES ( ?1, ?2, ?3, ?4, ?5 )
+        "#,
+            *user_id,
+            raw_certificate_template.id,
+            raw_certificate_template.name,
+            raw_certificate_template.attributes,
+            raw_certificate_template.created_at
+        )
+        .execute(self.pool)
+        .await;
+
+        if let Err(err) = result {
+            let is_conflict_error = err
+                .as_database_error()
+                .map(|db_error| matches!(db_error.kind(), SqlxErrorKind::UniqueViolation))
+                .unwrap_or_default();
+            bail!(if is_conflict_error {
+                SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
+                    "Certificate template ('{}') already exists.",
+                    certificate_template.name
+                )))
+            } else {
+                SecutilsError::from(anyhow!(err).context(format!(
+                    "Couldn't create certificate template ('{}') due to unknown reason.",
+                    certificate_template.name
+                )))
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Updates certificate template.
+    pub async fn update_certificate_template(
+        &self,
+        user_id: UserId,
+        certificate_template: &CertificateTemplate,
+    ) -> anyhow::Result<()> {
+        let raw_certificate_template = RawCertificateTemplate::try_from(certificate_template)?;
+        let result = query!(
+            r#"
+UPDATE user_data_certificates_certificate_templates
+SET name = ?3, attributes = ?4
+WHERE user_id = ?1 AND id = ?2
+        "#,
+            *user_id,
+            raw_certificate_template.id,
+            raw_certificate_template.name,
+            raw_certificate_template.attributes
+        )
+        .execute(self.pool)
+        .await;
+
+        match result {
+            Ok(result) => {
+                if result.rows_affected() == 0 {
+                    bail!(SecutilsError::client(format!(
+                        "A certificate template ('{}') doesn't exist.",
+                        certificate_template.name
+                    )));
+                }
+            }
+            Err(err) => {
+                let is_conflict_error = err
+                    .as_database_error()
+                    .map(|db_error| matches!(db_error.kind(), SqlxErrorKind::UniqueViolation))
+                    .unwrap_or_default();
+                bail!(if is_conflict_error {
+                    SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
+                        "Certificate template ('{}') already exists.",
+                        certificate_template.name
+                    )))
+                } else {
+                    SecutilsError::from(anyhow!(err).context(format!(
+                        "Couldn't update certificate template ('{}') due to unknown reason.",
+                        certificate_template.name
+                    )))
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Removes certificate template for the specified user with the specified ID.
+    pub async fn remove_certificate_template(
+        &self,
+        user_id: UserId,
+        id: Uuid,
+    ) -> anyhow::Result<()> {
+        let id = id.as_ref();
+        query!(
+            r#"
+DELETE FROM user_data_certificates_certificate_templates
+WHERE user_id = ?1 AND id = ?2
+                "#,
+            *user_id,
+            id
+        )
+        .execute(self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Retrieves all certificate templates for the specified user.
+    pub async fn get_certificate_templates(
+        &self,
+        user_id: UserId,
+    ) -> anyhow::Result<Vec<CertificateTemplate>> {
+        let raw_certificate_templates = query_as!(
+            RawCertificateTemplate,
+            r#"
+SELECT id, name, attributes, created_at
+FROM user_data_certificates_certificate_templates
+WHERE user_id = ?1
+ORDER BY created_at
+                "#,
+            *user_id
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        let mut certificate_templates = vec![];
+        for raw_certificate_template in raw_certificate_templates {
+            certificate_templates.push(CertificateTemplate::try_from(raw_certificate_template)?);
+        }
+
+        Ok(certificate_templates)
+    }
 }
 
 impl Database {
@@ -191,12 +366,34 @@ mod tests {
     use crate::{
         error::Error as SecutilsError,
         tests::{mock_db, mock_user},
-        utils::{PrivateKey, PrivateKeyAlgorithm, PrivateKeySize},
+        utils::{
+            CertificateAttributes, CertificateTemplate, ExtendedKeyUsage, KeyUsage, PrivateKey,
+            PrivateKeyAlgorithm, PrivateKeySize, SignatureAlgorithm, Version,
+        },
     };
     use actix_web::ResponseError;
     use insta::assert_debug_snapshot;
     use time::OffsetDateTime;
     use uuid::uuid;
+
+    fn get_mock_certificate_attributes() -> anyhow::Result<CertificateAttributes> {
+        Ok(CertificateAttributes {
+            common_name: Some("cn".to_string()),
+            country: Some("c".to_string()),
+            state_or_province: Some("s".to_string()),
+            locality: None,
+            organization: None,
+            organizational_unit: None,
+            key_algorithm: PrivateKeyAlgorithm::Ed25519,
+            signature_algorithm: SignatureAlgorithm::Md5,
+            not_valid_before: OffsetDateTime::from_unix_timestamp(946720800)?,
+            not_valid_after: OffsetDateTime::from_unix_timestamp(1262340000)?,
+            version: Version::One,
+            is_ca: true,
+            key_usage: Some([KeyUsage::KeyAgreement].into_iter().collect()),
+            extended_key_usage: Some([ExtendedKeyUsage::EmailProtection].into_iter().collect()),
+        })
+    }
 
     #[actix_rt::test]
     async fn can_add_and_retrieve_private_keys() -> anyhow::Result<()> {
@@ -598,6 +795,384 @@ mod tests {
                     private_key
                 })
                 .collect::<Vec<_>>()
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_add_and_retrieve_certificate_templates() -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = mock_db().await?;
+        db.insert_user(&user).await?;
+
+        let mut certificate_templates = vec![
+            CertificateTemplate {
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
+                name: "ct-name".to_string(),
+                attributes: get_mock_certificate_attributes()?,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            },
+            CertificateTemplate {
+                id: uuid!("00000000-0000-0000-0000-000000000002"),
+                name: "ct-name-2".to_string(),
+                attributes: get_mock_certificate_attributes()?,
+                created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
+            },
+        ];
+
+        for certificate_template in certificate_templates.iter() {
+            db.certificates()
+                .insert_certificate_template(user.id, certificate_template)
+                .await?;
+        }
+
+        let certificate_template = db
+            .certificates()
+            .get_certificate_template(user.id, certificate_templates[0].id)
+            .await?
+            .unwrap();
+        assert_eq!(certificate_template, certificate_templates.remove(0));
+
+        let certificate_template = db
+            .certificates()
+            .get_certificate_template(user.id, certificate_templates[0].id)
+            .await?
+            .unwrap();
+        assert_eq!(certificate_template, certificate_templates.remove(0));
+
+        assert!(db
+            .certificates()
+            .get_certificate_template(user.id, uuid!("00000000-0000-0000-0000-000000000003"))
+            .await?
+            .is_none());
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn correctly_handles_duplicated_certificate_templates_on_insert() -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = mock_db().await?;
+        db.insert_user(&user).await?;
+
+        let certificate_template = CertificateTemplate {
+            id: uuid!("00000000-0000-0000-0000-000000000001"),
+            name: "ct-name".to_string(),
+            attributes: get_mock_certificate_attributes()?,
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+        };
+
+        db.certificates()
+            .insert_certificate_template(user.id, &certificate_template)
+            .await?;
+
+        let insert_error = db
+            .certificates()
+            .insert_certificate_template(user.id, &certificate_template)
+            .await
+            .unwrap_err()
+            .downcast::<SecutilsError>()
+            .unwrap();
+        assert_eq!(insert_error.status_code(), 400);
+        assert_debug_snapshot!(
+            insert_error,
+            @r###"
+        Error {
+            context: "Certificate template (\'ct-name\') already exists.",
+            source: Database(
+                SqliteError {
+                    code: 2067,
+                    message: "UNIQUE constraint failed: user_data_certificates_certificate_templates.name, user_data_certificates_certificate_templates.user_id",
+                },
+            ),
+        }
+        "###
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_update_certificate_template_content() -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = mock_db().await?;
+        db.insert_user(&user).await?;
+
+        db.certificates()
+            .insert_certificate_template(
+                user.id,
+                &CertificateTemplate {
+                    id: uuid!("00000000-0000-0000-0000-000000000001"),
+                    name: "ct-name".to_string(),
+                    attributes: get_mock_certificate_attributes()?,
+                    created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                },
+            )
+            .await?;
+
+        db.certificates()
+            .update_certificate_template(
+                user.id,
+                &CertificateTemplate {
+                    id: uuid!("00000000-0000-0000-0000-000000000001"),
+                    name: "ct-name-new".to_string(),
+                    attributes: CertificateAttributes {
+                        common_name: Some("cn-new".to_string()),
+                        country: Some("c".to_string()),
+                        state_or_province: Some("s".to_string()),
+                        locality: None,
+                        organization: None,
+                        organizational_unit: None,
+                        key_algorithm: PrivateKeyAlgorithm::Ed25519,
+                        signature_algorithm: SignatureAlgorithm::Md5,
+                        not_valid_before: OffsetDateTime::from_unix_timestamp(946720800)?,
+                        not_valid_after: OffsetDateTime::from_unix_timestamp(1262340000)?,
+                        version: Version::One,
+                        is_ca: true,
+                        key_usage: Some([KeyUsage::KeyAgreement].into_iter().collect()),
+                        extended_key_usage: Some(
+                            [ExtendedKeyUsage::EmailProtection].into_iter().collect(),
+                        ),
+                    },
+                    created_at: OffsetDateTime::from_unix_timestamp(956720800)?,
+                },
+            )
+            .await?;
+
+        let certificate_template = db
+            .certificates()
+            .get_certificate_template(user.id, uuid!("00000000-0000-0000-0000-000000000001"))
+            .await?
+            .unwrap();
+        assert_eq!(
+            certificate_template,
+            CertificateTemplate {
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
+                name: "ct-name-new".to_string(),
+                attributes: CertificateAttributes {
+                    common_name: Some("cn-new".to_string()),
+                    country: Some("c".to_string()),
+                    state_or_province: Some("s".to_string()),
+                    locality: None,
+                    organization: None,
+                    organizational_unit: None,
+                    key_algorithm: PrivateKeyAlgorithm::Ed25519,
+                    signature_algorithm: SignatureAlgorithm::Md5,
+                    not_valid_before: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    not_valid_after: OffsetDateTime::from_unix_timestamp(1262340000)?,
+                    version: Version::One,
+                    is_ca: true,
+                    key_usage: Some([KeyUsage::KeyAgreement].into_iter().collect()),
+                    extended_key_usage: Some(
+                        [ExtendedKeyUsage::EmailProtection].into_iter().collect()
+                    ),
+                },
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            }
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn correctly_handles_duplicated_certificate_templates_on_update() -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = mock_db().await?;
+        db.insert_user(&user).await?;
+
+        let certificate_template_a = CertificateTemplate {
+            id: uuid!("00000000-0000-0000-0000-000000000001"),
+            name: "ct-name-a".to_string(),
+            attributes: get_mock_certificate_attributes()?,
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+        };
+        db.certificates()
+            .insert_certificate_template(user.id, &certificate_template_a)
+            .await?;
+
+        let certificate_template_b = CertificateTemplate {
+            id: uuid!("00000000-0000-0000-0000-000000000002"),
+            name: "ct-name-b".to_string(),
+            attributes: get_mock_certificate_attributes()?,
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+        };
+        db.certificates()
+            .insert_certificate_template(user.id, &certificate_template_b)
+            .await?;
+
+        let update_error = db
+            .certificates()
+            .update_certificate_template(
+                user.id,
+                &CertificateTemplate {
+                    id: uuid!("00000000-0000-0000-0000-000000000002"),
+                    name: "ct-name-a".to_string(),
+                    attributes: get_mock_certificate_attributes()?,
+                    created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                },
+            )
+            .await
+            .unwrap_err()
+            .downcast::<SecutilsError>()
+            .unwrap();
+        assert_eq!(update_error.status_code(), 400);
+        assert_debug_snapshot!(
+            update_error,
+            @r###"
+        Error {
+            context: "Certificate template (\'ct-name-a\') already exists.",
+            source: Database(
+                SqliteError {
+                    code: 2067,
+                    message: "UNIQUE constraint failed: user_data_certificates_certificate_templates.name, user_data_certificates_certificate_templates.user_id",
+                },
+            ),
+        }
+        "###
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn correctly_handles_non_existent_certificate_templates_on_update() -> anyhow::Result<()>
+    {
+        let user = mock_user()?;
+        let db = mock_db().await?;
+        db.insert_user(&user).await?;
+
+        let update_error = db
+            .certificates()
+            .update_certificate_template(
+                user.id,
+                &CertificateTemplate {
+                    id: uuid!("00000000-0000-0000-0000-000000000002"),
+                    name: "ct-name-a".to_string(),
+                    attributes: get_mock_certificate_attributes()?,
+                    created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                },
+            )
+            .await
+            .unwrap_err()
+            .downcast::<SecutilsError>()
+            .unwrap();
+        assert_eq!(update_error.status_code(), 400);
+        assert_debug_snapshot!(
+            update_error,
+            @r###""A certificate template ('ct-name-a') doesn't exist.""###
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_remove_certificate_templates() -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = mock_db().await?;
+        db.insert_user(&user).await?;
+
+        let mut certificate_templates = vec![
+            CertificateTemplate {
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
+                name: "ct-name".to_string(),
+                attributes: get_mock_certificate_attributes()?,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            },
+            CertificateTemplate {
+                id: uuid!("00000000-0000-0000-0000-000000000002"),
+                name: "ct-name-2".to_string(),
+                attributes: get_mock_certificate_attributes()?,
+                created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
+            },
+        ];
+
+        for certificate_template in certificate_templates.iter() {
+            db.certificates()
+                .insert_certificate_template(user.id, certificate_template)
+                .await?;
+        }
+
+        let certificate_template = db
+            .certificates()
+            .get_certificate_template(user.id, uuid!("00000000-0000-0000-0000-000000000001"))
+            .await?
+            .unwrap();
+        assert_eq!(certificate_template, certificate_templates.remove(0));
+
+        let certificate_template_2 = db
+            .certificates()
+            .get_certificate_template(user.id, uuid!("00000000-0000-0000-0000-000000000002"))
+            .await?
+            .unwrap();
+        assert_eq!(certificate_template_2, certificate_templates[0].clone());
+
+        db.certificates()
+            .remove_certificate_template(user.id, uuid!("00000000-0000-0000-0000-000000000001"))
+            .await?;
+
+        let certificate_template = db
+            .certificates()
+            .get_certificate_template(user.id, uuid!("00000000-0000-0000-0000-000000000001"))
+            .await?;
+        assert!(certificate_template.is_none());
+
+        let certificate_template = db
+            .certificates()
+            .get_certificate_template(user.id, uuid!("00000000-0000-0000-0000-000000000002"))
+            .await?
+            .unwrap();
+        assert_eq!(certificate_template, certificate_templates.remove(0));
+
+        db.certificates()
+            .remove_certificate_template(user.id, uuid!("00000000-0000-0000-0000-000000000002"))
+            .await?;
+
+        let certificate_template = db
+            .certificates()
+            .get_certificate_template(user.id, uuid!("00000000-0000-0000-0000-000000000001"))
+            .await?;
+        assert!(certificate_template.is_none());
+
+        let certificate_template = db
+            .certificates()
+            .get_certificate_template(user.id, uuid!("00000000-0000-0000-0000-000000000002"))
+            .await?;
+        assert!(certificate_template.is_none());
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn can_retrieve_all_certificate_templates() -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = mock_db().await?;
+        db.insert_user(&user).await?;
+
+        let certificate_templates = vec![
+            CertificateTemplate {
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
+                name: "ct-name".to_string(),
+                attributes: get_mock_certificate_attributes()?,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            },
+            CertificateTemplate {
+                id: uuid!("00000000-0000-0000-0000-000000000002"),
+                name: "ct-name-2".to_string(),
+                attributes: get_mock_certificate_attributes()?,
+                created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
+            },
+        ];
+
+        for certificate_template in certificate_templates.iter() {
+            db.certificates()
+                .insert_certificate_template(user.id, certificate_template)
+                .await?;
+        }
+
+        assert_eq!(
+            db.certificates().get_certificate_templates(user.id).await?,
+            certificate_templates
         );
 
         Ok(())

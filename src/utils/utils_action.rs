@@ -68,7 +68,7 @@ mod tests {
             mock_api, mock_api_with_network, MockResolver, MockWebPageResourcesTrackerBuilder,
         },
         utils::{
-            AutoResponder, AutoResponderMethod, ContentSecurityPolicySource, ExportFormat,
+            AutoResponder, AutoResponderMethod, ContentSecurityPolicySource, PrivateKeyAlgorithm,
             UtilsAction, UtilsCertificatesAction, UtilsWebScrapingAction, UtilsWebSecurityAction,
             UtilsWebhooksAction,
         },
@@ -92,24 +92,24 @@ mod tests {
 
     #[actix_rt::test]
     async fn validation_certificates() -> anyhow::Result<()> {
-        assert!(UtilsAction::Certificates(
-            UtilsCertificatesAction::GenerateSelfSignedCertificate {
-                template_name: "a".repeat(100),
-                format: ExportFormat::Pem,
+        assert!(
+            UtilsAction::Certificates(UtilsCertificatesAction::CreatePrivateKey {
+                key_name: "a".repeat(100),
+                alg: PrivateKeyAlgorithm::Ed25519,
                 passphrase: None,
-            }
-        )
-        .validate(&mock_api().await?)
-        .await
-        .is_ok());
+            })
+            .validate(&mock_api().await?)
+            .await
+            .is_ok()
+        );
 
-        assert_debug_snapshot!(UtilsAction::Certificates(UtilsCertificatesAction::GenerateSelfSignedCertificate {
-            template_name: "".to_string(),
-            format: ExportFormat::Pem,
+        assert_debug_snapshot!(UtilsAction::Certificates(UtilsCertificatesAction::CreatePrivateKey {
+            key_name: "".to_string(),
+            alg: PrivateKeyAlgorithm::Ed25519,
             passphrase: None,
         }).validate(&mock_api().await?).await, @r###"
         Err(
-            "Certificate template name cannot be empty.",
+            "Private key name cannot be empty.",
         )
         "###);
 
