@@ -2,7 +2,7 @@ use crate::{
     api::Api,
     error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
-    users::UserId,
+    users::{SharedResource, UserId, UserShare},
     utils::{
         CertificateAttributes, CertificateTemplate, ExportFormat, ExtendedKeyUsage, KeyUsage,
         PrivateKey, PrivateKeyAlgorithm, SignatureAlgorithm,
@@ -279,6 +279,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
         user_id: UserId,
         id: Uuid,
     ) -> anyhow::Result<()> {
+        self.unshare_certificate_template(user_id, id).await?;
         self.api
             .db
             .certificates()
@@ -342,6 +343,72 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
             .certificates()
             .get_certificate_templates(user_id)
             .await
+    }
+
+    /// Shares certificate template with the specified ID.
+    pub async fn share_certificate_template(
+        &self,
+        user_id: UserId,
+        template_id: Uuid,
+    ) -> anyhow::Result<UserShare> {
+        let users_api = self.api.users();
+        let template_resource = SharedResource::CertificateTemplate { template_id };
+
+        // Return early if policy is already shared.
+        if let Some(user_share) = users_api
+            .get_user_share_by_resource(user_id, &template_resource)
+            .await?
+        {
+            return Ok(user_share);
+        }
+
+        // Ensure that certificate template exists.
+        if self
+            .get_certificate_template(user_id, template_id)
+            .await?
+            .is_none()
+        {
+            bail!(SecutilsError::client(format!(
+                "Certificate template ('{template_id}') is not found."
+            )));
+        }
+
+        // Create new user share.
+        let user_share = UserShare {
+            id: Default::default(),
+            user_id,
+            resource: template_resource,
+            // Preserve timestamp only up to seconds.
+            created_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
+        };
+        users_api
+            .insert_user_share(&user_share)
+            .await
+            .map(|_| user_share)
+    }
+
+    /// Unshares certificate template with the specified ID.
+    pub async fn unshare_certificate_template(
+        &self,
+        user_id: UserId,
+        template_id: Uuid,
+    ) -> anyhow::Result<Option<UserShare>> {
+        let users_api = self.api.users();
+
+        // Check if template is shared.
+        let Some(user_share) = users_api
+            .get_user_share_by_resource(
+                user_id,
+                &SharedResource::CertificateTemplate { template_id },
+            )
+            .await?
+        else {
+            return Ok(None);
+        };
+
+        users_api.remove_user_share(user_share.id).await
     }
 
     /// Generates private key with the specified parameters.
@@ -1475,6 +1542,124 @@ mod tests {
             certificate.public_key()?.public_key_to_der()?,
             private_key.public_key_to_der()?
         );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn properly_shares_certificate_template() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        // Create and share policy.
+        let certificates = CertificatesApi::new(&api);
+        let certificate_template = certificates
+            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .await?;
+        let template_share_one = certificates
+            .share_certificate_template(mock_user.id, certificate_template.id)
+            .await?;
+
+        assert_eq!(
+            api.users().get_user_share(template_share_one.id).await?,
+            Some(template_share_one.clone())
+        );
+
+        // Repetitive sharing should return the same share.
+        let template_share_two = certificates
+            .share_certificate_template(mock_user.id, certificate_template.id)
+            .await?;
+
+        assert_eq!(template_share_one, template_share_two);
+        assert_eq!(
+            api.users().get_user_share(template_share_one.id).await?,
+            Some(template_share_one.clone())
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn properly_unshares_certificate_template() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let certificates = CertificatesApi::new(&api);
+        let certificate_template = certificates
+            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .await?;
+        let template_share_one = certificates
+            .share_certificate_template(mock_user.id, certificate_template.id)
+            .await?;
+        assert_eq!(
+            certificates
+                .unshare_certificate_template(mock_user.id, certificate_template.id)
+                .await?,
+            Some(template_share_one.clone())
+        );
+
+        assert!(api
+            .users()
+            .get_user_share(template_share_one.id)
+            .await?
+            .is_none());
+
+        // Sharing again should return different share.
+        let template_share_two = certificates
+            .share_certificate_template(mock_user.id, certificate_template.id)
+            .await?;
+        assert_ne!(template_share_one.id, template_share_two.id);
+
+        assert_eq!(
+            certificates
+                .unshare_certificate_template(mock_user.id, certificate_template.id)
+                .await?,
+            Some(template_share_two.clone())
+        );
+
+        assert!(api
+            .users()
+            .get_user_share(template_share_two.id)
+            .await?
+            .is_none());
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn properly_unshares_certificate_template_when_it_is_removed() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        // Create and share template.
+        let certificates = CertificatesApi::new(&api);
+        let certificate_template = certificates
+            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .await?;
+        let template_share = certificates
+            .share_certificate_template(mock_user.id, certificate_template.id)
+            .await?;
+
+        assert_eq!(
+            api.users().get_user_share(template_share.id).await?,
+            Some(template_share.clone())
+        );
+
+        certificates
+            .remove_certificate_template(mock_user.id, certificate_template.id)
+            .await?;
+
+        assert!(api
+            .users()
+            .get_user_share(template_share.id)
+            .await?
+            .is_none());
 
         Ok(())
     }

@@ -1,6 +1,6 @@
 use crate::{
     users::{SharedResource, UserShare},
-    utils::{UtilsAction, UtilsWebSecurityAction},
+    utils::{UtilsAction, UtilsCertificatesAction, UtilsWebSecurityAction},
 };
 
 impl UserShare {
@@ -20,6 +20,19 @@ impl UserShare {
                     ..
                 }),
             ) if resource_policy_name == policy_name => true,
+            // Any user can access certificate template and generate certificate/key pair.
+            (
+                SharedResource::CertificateTemplate {
+                    template_id: resource_template_id,
+                },
+                UtilsAction::Certificates(UtilsCertificatesAction::GetCertificateTemplate {
+                    template_id,
+                })
+                | UtilsAction::Certificates(UtilsCertificatesAction::GenerateSelfSignedCertificate {
+                    template_id,
+                    ..
+                }),
+            ) if resource_template_id == template_id => true,
             _ => false,
         }
     }
@@ -28,13 +41,16 @@ impl UserShare {
 #[cfg(test)]
 mod tests {
     use crate::{
+        tests::MockCertificateAttributes,
         users::{SharedResource, UserId, UserShare},
         utils::{
             ContentSecurityPolicy, ContentSecurityPolicyDirective, ContentSecurityPolicySource,
-            UtilsAction, UtilsWebSecurityAction,
+            ExportFormat, PrivateKeyAlgorithm, PrivateKeySize, SignatureAlgorithm, UtilsAction,
+            UtilsCertificatesAction, UtilsWebSecurityAction, Version,
         },
     };
     use time::OffsetDateTime;
+    use uuid::uuid;
 
     #[test]
     fn properly_checks_action_authorization_for_shared_csp() {
@@ -103,5 +119,67 @@ mod tests {
         for action in authorized_actions {
             assert!(user_share.is_action_authorized(&action));
         }
+    }
+
+    #[test]
+    fn properly_checks_action_authorization_for_shared_certificate_template() -> anyhow::Result<()>
+    {
+        let template_id = uuid!("00000000-0000-0000-0000-000000000001");
+        let user_share = UserShare {
+            id: Default::default(),
+            user_id: UserId::empty(),
+            resource: SharedResource::certificate_template(template_id),
+            created_at: OffsetDateTime::now_utc(),
+        };
+
+        let unauthorized_actions = vec![
+            UtilsAction::Certificates(UtilsCertificatesAction::GetCertificateTemplates),
+            UtilsAction::Certificates(UtilsCertificatesAction::CreateCertificateTemplate {
+                template_name: "a".to_string(),
+                attributes: MockCertificateAttributes::new(
+                    PrivateKeyAlgorithm::Rsa {
+                        key_size: PrivateKeySize::Size1024,
+                    },
+                    SignatureAlgorithm::Sha256,
+                    OffsetDateTime::from_unix_timestamp(946720800)?,
+                    OffsetDateTime::from_unix_timestamp(946720800)?,
+                    Version::One,
+                )
+                .build(),
+            }),
+            UtilsAction::Certificates(UtilsCertificatesAction::UpdateCertificateTemplate {
+                template_id,
+                template_name: None,
+                attributes: None,
+            }),
+            UtilsAction::Certificates(UtilsCertificatesAction::RemoveCertificateTemplate {
+                template_id,
+            }),
+            UtilsAction::Certificates(UtilsCertificatesAction::ShareCertificateTemplate {
+                template_id,
+            }),
+            UtilsAction::Certificates(UtilsCertificatesAction::UnshareCertificateTemplate {
+                template_id,
+            }),
+        ];
+        for action in unauthorized_actions {
+            assert!(!user_share.is_action_authorized(&action));
+        }
+
+        let authorized_actions = vec![
+            UtilsAction::Certificates(UtilsCertificatesAction::GetCertificateTemplate {
+                template_id,
+            }),
+            UtilsAction::Certificates(UtilsCertificatesAction::GenerateSelfSignedCertificate {
+                template_id,
+                format: ExportFormat::Pem,
+                passphrase: None,
+            }),
+        ];
+        for action in authorized_actions {
+            assert!(user_share.is_action_authorized(&action));
+        }
+
+        Ok(())
     }
 }

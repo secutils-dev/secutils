@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// Describes a resource that can be shared with other users.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum SharedResource {
     ContentSecurityPolicy { policy_name: String },
+    CertificateTemplate { template_id: Uuid },
 }
 
 impl SharedResource {
@@ -12,6 +14,11 @@ impl SharedResource {
         SharedResource::ContentSecurityPolicy {
             policy_name: policy_name.into(),
         }
+    }
+
+    /// Creates a new shared resource referencing a user certificate template.
+    pub fn certificate_template(template_id: Uuid) -> SharedResource {
+        SharedResource::CertificateTemplate { template_id }
     }
 }
 
@@ -23,6 +30,8 @@ impl SharedResource {
 pub enum ClientSharedResource {
     #[serde(rename_all = "camelCase")]
     ContentSecurityPolicy { policy_name: String },
+    #[serde(rename_all = "camelCase")]
+    CertificateTemplate { template_id: Uuid },
 }
 
 impl From<SharedResource> for ClientSharedResource {
@@ -31,6 +40,9 @@ impl From<SharedResource> for ClientSharedResource {
             SharedResource::ContentSecurityPolicy { policy_name } => {
                 Self::ContentSecurityPolicy { policy_name }
             }
+            SharedResource::CertificateTemplate { template_id } => {
+                Self::CertificateTemplate { template_id }
+            }
         }
     }
 }
@@ -38,6 +50,7 @@ impl From<SharedResource> for ClientSharedResource {
 #[cfg(test)]
 mod tests {
     use super::{ClientSharedResource, SharedResource};
+    use uuid::uuid;
 
     #[test]
     fn can_create_csp_shared_resource() {
@@ -45,6 +58,13 @@ mod tests {
             SharedResource::content_security_policy("my-policy"),
             SharedResource::ContentSecurityPolicy {
                 policy_name: "my-policy".to_string()
+            }
+        );
+
+        assert_eq!(
+            SharedResource::certificate_template(uuid!("00000000-0000-0000-0000-000000000001")),
+            SharedResource::CertificateTemplate {
+                template_id: uuid!("00000000-0000-0000-0000-000000000001")
             }
         );
     }
@@ -55,6 +75,15 @@ mod tests {
             ClientSharedResource::from(SharedResource::content_security_policy("my-policy")),
             ClientSharedResource::ContentSecurityPolicy {
                 policy_name: "my-policy".to_string()
+            }
+        );
+
+        assert_eq!(
+            ClientSharedResource::from(SharedResource::certificate_template(uuid!(
+                "00000000-0000-0000-0000-000000000001"
+            ))),
+            ClientSharedResource::CertificateTemplate {
+                template_id: uuid!("00000000-0000-0000-0000-000000000001")
             }
         );
     }

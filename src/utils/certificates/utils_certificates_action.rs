@@ -2,7 +2,7 @@ use crate::{
     api::Api,
     error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
-    users::User,
+    users::{ClientUserShare, SharedResource, User},
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH, CertificateAttributes, ExportFormat,
         PrivateKeyAlgorithm, UtilsCertificatesActionResult,
@@ -41,6 +41,10 @@ pub enum UtilsCertificatesAction {
         passphrase: Option<String>,
         export_passphrase: Option<String>,
     },
+    #[serde(rename_all = "camelCase")]
+    GetCertificateTemplate {
+        template_id: Uuid,
+    },
     GetCertificateTemplates,
     #[serde(rename_all = "camelCase")]
     CreateCertificateTemplate {
@@ -62,6 +66,14 @@ pub enum UtilsCertificatesAction {
         template_id: Uuid,
         format: ExportFormat,
         passphrase: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    ShareCertificateTemplate {
+        template_id: Uuid,
+    },
+    #[serde(rename_all = "camelCase")]
+    UnshareCertificateTemplate {
+        template_id: Uuid,
     },
 }
 
@@ -144,9 +156,12 @@ impl UtilsCertificatesAction {
             UtilsCertificatesAction::GetPrivateKeys
             | UtilsCertificatesAction::RemovePrivateKey { .. }
             | UtilsCertificatesAction::ExportPrivateKey { .. }
+            | UtilsCertificatesAction::GetCertificateTemplate { .. }
             | UtilsCertificatesAction::GetCertificateTemplates
             | UtilsCertificatesAction::RemoveCertificateTemplate { .. }
-            | UtilsCertificatesAction::GenerateSelfSignedCertificate { .. } => {}
+            | UtilsCertificatesAction::GenerateSelfSignedCertificate { .. }
+            | UtilsCertificatesAction::ShareCertificateTemplate { .. }
+            | UtilsCertificatesAction::UnshareCertificateTemplate { .. } => {}
         }
 
         Ok(())
@@ -215,6 +230,21 @@ impl UtilsCertificatesAction {
                     certificates.get_certificate_templates(user.id).await?,
                 ))
             }
+            UtilsCertificatesAction::GetCertificateTemplate { template_id } => {
+                let users = api.users();
+                Ok(UtilsCertificatesActionResult::GetCertificateTemplate {
+                    template: certificates
+                        .get_certificate_template(user.id, template_id)
+                        .await?,
+                    user_share: users
+                        .get_user_share_by_resource(
+                            user.id,
+                            &SharedResource::certificate_template(template_id),
+                        )
+                        .await?
+                        .map(ClientUserShare::from),
+                })
+            }
             UtilsCertificatesAction::CreateCertificateTemplate {
                 template_name,
                 attributes,
@@ -255,6 +285,21 @@ impl UtilsCertificatesAction {
                         .await?,
                 ),
             ),
+            UtilsCertificatesAction::ShareCertificateTemplate { template_id } => certificates
+                .share_certificate_template(user.id, template_id)
+                .await
+                .map(|user_share| {
+                    UtilsCertificatesActionResult::ShareCertificateTemplate(ClientUserShare::from(
+                        user_share,
+                    ))
+                }),
+            UtilsCertificatesAction::UnshareCertificateTemplate { template_id } => certificates
+                .unshare_certificate_template(user.id, template_id)
+                .await
+                .map(|user_share| user_share.map(ClientUserShare::from))
+                .map(|user_share| {
+                    UtilsCertificatesActionResult::UnshareCertificateTemplate(user_share)
+                }),
         }
     }
 }
@@ -656,6 +701,48 @@ mod tests {
                 template_id: uuid!("00000000-0000-0000-0000-000000000001"),
                 format: ExportFormat::Pkcs12,
                 passphrase: Some("phrase".to_string()),
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<UtilsCertificatesAction>(
+                r#"
+        {
+            "type": "getCertificateTemplate",
+            "value": { "templateId": "00000000-0000-0000-0000-000000000001" }
+        }
+                  "#
+            )?,
+            UtilsCertificatesAction::GetCertificateTemplate {
+                template_id: uuid!("00000000-0000-0000-0000-000000000001")
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<UtilsCertificatesAction>(
+                r#"
+        {
+            "type": "shareCertificateTemplate",
+            "value": { "templateId": "00000000-0000-0000-0000-000000000001" }
+        }
+                  "#
+            )?,
+            UtilsCertificatesAction::ShareCertificateTemplate {
+                template_id: uuid!("00000000-0000-0000-0000-000000000001")
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<UtilsCertificatesAction>(
+                r#"
+        {
+            "type": "unshareCertificateTemplate",
+            "value": { "templateId": "00000000-0000-0000-0000-000000000001" }
+        }
+                  "#
+            )?,
+            UtilsCertificatesAction::UnshareCertificateTemplate {
+                template_id: uuid!("00000000-0000-0000-0000-000000000001")
             }
         );
 
