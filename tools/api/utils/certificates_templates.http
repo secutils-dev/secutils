@@ -1,0 +1,61 @@
+### List templates.
+GET {{host}}/api/utils/certificates/templates
+Authorization: {{api-credentials}}
+Accept: application/json
+
+### Get template by ID
+GET {{host}}/api/utils/certificates/templates/018b77c7-f3b6-75f0-b5e8-47d0c73772bb
+Authorization: {{api-credentials}}
+Accept: application/json
+
+### Create template
+POST {{host}}/api/utils/certificates/templates
+Authorization: {{api-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "templateName": "ct",
+  "attributes": {
+    "commonName": "CA Issuer",
+    "keyAlgorithm": { "keyType": "ed25519" },
+    "signatureAlgorithm": "ed25519",
+    "notValidBefore": 1698521570,
+    "notValidAfter":1730147570,
+    "isCa":false
+  }
+}
+
+### Update template
+PUT {{host}}/api/utils/certificates/templates/018b77c7-f3b6-75f0-b5e8-47d0c73772bb
+Authorization: {{api-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "templateName": "ct-new-name"
+}
+
+### Delete template.
+DELETE {{host}}/api/utils/certificates/templates/018b593c-62db-70cd-83c6-598a54067ec2
+Authorization: {{api-credentials}}
+
+### Generate certificate and private key pair.
+POST {{host}}/api/utils/certificates/templates/018b593c-62db-70cd-83c6-598a54067ec2/generate
+Authorization: {{api-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "format": "pem"
+}
+
+### Share template
+POST {{host}}/api/utils/certificates/templates/018b77c7-f3b6-75f0-b5e8-47d0c73772bb/share
+Authorization: {{api-credentials}}
+Accept: application/json
+
+### Unshare template
+POST {{host}}/api/utils/certificates/templates/018b77c7-f3b6-75f0-b5e8-47d0c73772bb/unshare
+Authorization: {{api-credentials}}
+Accept: application/json

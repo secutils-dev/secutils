@@ -1,62 +1,46 @@
+### List private keys.
+GET {{host}}/api/utils/certificates/private_keys
+Authorization: {{api-credentials}}
+Accept: application/json
+
+### Get private key by ID
+GET {{host}}/api/utils/certificates/private_keys/018b7720-7d12-7cd1-9fde-81a4b109199f
+Authorization: {{api-credentials}}
+Accept: application/json
+
 ### Create private key (RSA, without passphrase).
-POST {{host}}/api/utils/action
+POST {{host}}/api/utils/certificates/private_keys
 Authorization: {{api-credentials}}
 Accept: application/json
 Content-Type: application/json
 
 {
-  "action": {
-    "type": "certificates",
-    "value": {
-      "type": "createPrivateKey",
-      "value": { "keyName": "pk", "alg": { "keyType": "rsa", "keySize": "1024" } }
-    }
-  }
+  "keyName": "pk",
+  "alg": { "keyType": "rsa", "keySize": "1024" }
 }
 
-### Create private key (ed25519, with passphrase).
-POST {{host}}/api/utils/action
+### Update private key.
+PUT {{host}}/api/utils/certificates/private_keys/018b77c3-a901-7272-a5d3-41ca17d163c9
 Authorization: {{api-credentials}}
 Accept: application/json
 Content-Type: application/json
 
 {
-  "action": {
-    "type": "certificates",
-    "value": {
-      "type": "createPrivateKey",
-      "value": { "keyName": "pk-ed25519", "alg": { "keyType": "ed25519" }, "passphrase": "123456" }
-    }
-  }
+  "keyName": "pk-new-name",
+  "newPassphrase": "123"
 }
 
-###
+### Delete private key.
+DELETE {{host}}/api/utils/certificates/private_keys/018b7720-7d12-7cd1-9fde-81a4b109199f
+Authorization: {{api-credentials}}
 
 ### Export private key.
-POST {{host}}/api/utils/action
+POST {{host}}/api/utils/certificates/private_keys/018b77c3-a901-7272-a5d3-41ca17d163c9/export
 Authorization: {{api-credentials}}
 Accept: application/json
 Content-Type: application/json
 
 {
-  "action": {
-    "type": "certificates",
-    "value": {
-      "type": "exportPrivateKey",
-      "value": { "keyId": "018b4a1b-92d3-739d-a4dd-683d9eb47ce9", "format": "pem", "passphrase": "123456" }
-    }
-  }
-}
-
-### Get private keys.
-POST {{host}}/api/utils/action
-Authorization: {{api-credentials}}
-Accept: application/json
-Content-Type: application/json
-
-{
-  "action": {
-    "type": "certificates",
-    "value": { "type": "getPrivateKeys" }
-  }
+  "format": "pem",
+  "passphrase": "123"
 }

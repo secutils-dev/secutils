@@ -1,11 +1,26 @@
+mod private_keys_create_params;
+mod private_keys_export_params;
+mod private_keys_update_params;
+mod templates_create_params;
+mod templates_generate_params;
+mod templates_update_params;
+
+pub use self::{
+    private_keys_create_params::PrivateKeysCreateParams,
+    private_keys_export_params::PrivateKeysExportParams,
+    private_keys_update_params::PrivateKeysUpdateParams,
+    templates_create_params::TemplatesCreateParams,
+    templates_generate_params::TemplatesGenerateParams,
+    templates_update_params::TemplatesUpdateParams,
+};
 use crate::{
     api::Api,
     error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
     users::{SharedResource, UserId, UserShare},
     utils::{
-        CertificateAttributes, CertificateTemplate, ExportFormat, ExtendedKeyUsage, KeyUsage,
-        PrivateKey, PrivateKeyAlgorithm, SignatureAlgorithm,
+        utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH, CertificateTemplate, ExportFormat,
+        ExtendedKeyUsage, KeyUsage, PrivateKey, PrivateKeyAlgorithm, SignatureAlgorithm,
     },
 };
 use anyhow::{anyhow, bail};
@@ -59,16 +74,19 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
     pub async fn create_private_key(
         &self,
         user_id: UserId,
-        name: impl Into<String>,
-        alg: PrivateKeyAlgorithm,
-        passphrase: Option<&str>,
+        params: PrivateKeysCreateParams,
     ) -> anyhow::Result<PrivateKey> {
+        Self::assert_private_key_name(&params.key_name)?;
+
         let private_key = PrivateKey {
             id: Uuid::now_v7(),
-            name: name.into(),
-            alg,
-            pkcs8: Self::export_private_key_to_pkcs8(Self::generate_private_key(alg)?, passphrase)?,
-            encrypted: passphrase.is_some(),
+            name: params.key_name,
+            alg: params.alg,
+            pkcs8: Self::export_private_key_to_pkcs8(
+                Self::generate_private_key(params.alg)?,
+                params.passphrase.as_deref(),
+            )?,
+            encrypted: params.passphrase.is_some(),
             // Preserve timestamp only up to seconds.
             created_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
@@ -89,10 +107,22 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
         &self,
         user_id: UserId,
         id: Uuid,
-        name: Option<&str>,
-        passphrase: Option<&str>,
-        new_passphrase: Option<&str>,
+        params: PrivateKeysUpdateParams,
     ) -> anyhow::Result<()> {
+        let includes_new_passphrase =
+            params.passphrase.is_some() || params.new_passphrase.is_some();
+        if params.key_name.is_none() && !includes_new_passphrase {
+            bail!(SecutilsError::client(format!(
+                "Either new name or passphrase should be provided ({id})."
+            )));
+        }
+
+        if includes_new_passphrase && params.passphrase == params.new_passphrase {
+            bail!(SecutilsError::client(format!(
+                "New private key passphrase should be different from the current passphrase ({id})."
+            )));
+        }
+
         let Some(private_key) = self.get_private_key(user_id, id).await? else {
             bail!(SecutilsError::client(format!(
                 "Private key ('{id}') is not found."
@@ -100,25 +130,30 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
         };
 
         // If name update is needed, extract it from parameters.
-        let name = if let Some(name) = name {
+        let name = if let Some(name) = params.key_name {
+            Self::assert_private_key_name(&name)?;
             name.to_string()
         } else {
             private_key.name
         };
 
         // If passphrase update is needed, try to decrypt private key using the provided passphrase.
-        let (pkcs8, encrypted) = if passphrase != new_passphrase {
-            let pkcs8_private_key =
-                Self::import_private_key_from_pkcs8(&private_key.pkcs8, passphrase).map_err(
-                    |err| {
-                        SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
-                            "Unable to decrypt private key ('{id}') with the provided passphrase."
-                        )))
-                    },
-                )?;
+        let (pkcs8, encrypted) = if params.passphrase != params.new_passphrase {
+            let pkcs8_private_key = Self::import_private_key_from_pkcs8(
+                &private_key.pkcs8,
+                params.passphrase.as_deref(),
+            )
+            .map_err(|err| {
+                SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
+                    "Unable to decrypt private key ('{id}') with the provided passphrase."
+                )))
+            })?;
             (
-                Self::export_private_key_to_pkcs8(pkcs8_private_key, new_passphrase)?,
-                new_passphrase.is_some(),
+                Self::export_private_key_to_pkcs8(
+                    pkcs8_private_key,
+                    params.new_passphrase.as_deref(),
+                )?,
+                params.new_passphrase.is_some(),
             )
         } else {
             (private_key.pkcs8, private_key.encrypted)
@@ -153,9 +188,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
         &self,
         user_id: UserId,
         id: Uuid,
-        format: ExportFormat,
-        passphrase: Option<&str>,
-        export_passphrase: Option<&str>,
+        params: PrivateKeysExportParams,
     ) -> anyhow::Result<Vec<u8>> {
         let Some(private_key) = self.get_private_key(user_id, id).await? else {
             bail!(SecutilsError::client(format!(
@@ -164,30 +197,34 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
         };
 
         // Try to decrypt private key using the provided passphrase.
-        let pkcs8_private_key = Self::import_private_key_from_pkcs8(&private_key.pkcs8, passphrase)
-            .map_err(|err| {
+        let pkcs8_private_key =
+            Self::import_private_key_from_pkcs8(&private_key.pkcs8, params.passphrase.as_deref())
+                .map_err(|err| {
                 SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
                     "Unable to decrypt private key ('{id}') with the provided passphrase."
                 )))
             })?;
 
-        let export_result = match format {
-            ExportFormat::Pem => {
-                Self::export_private_key_to_pem(pkcs8_private_key, export_passphrase)
-            }
-            ExportFormat::Pkcs8 => {
-                Self::export_private_key_to_pkcs8(pkcs8_private_key, export_passphrase)
-            }
+        let export_result = match params.format {
+            ExportFormat::Pem => Self::export_private_key_to_pem(
+                pkcs8_private_key,
+                params.export_passphrase.as_deref(),
+            ),
+            ExportFormat::Pkcs8 => Self::export_private_key_to_pkcs8(
+                pkcs8_private_key,
+                params.export_passphrase.as_deref(),
+            ),
             ExportFormat::Pkcs12 => Self::export_private_key_to_pkcs12(
                 &private_key.name,
                 &pkcs8_private_key,
-                export_passphrase,
+                params.export_passphrase.as_deref(),
             ),
         };
 
         export_result.map_err(|err| {
             SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
-                "Unable to export private key ('{id}') to the specified format ('{format:?}')."
+                "Unable to export private key ('{id}') to the specified format ('{:?}').",
+                params.format
             )))
             .into()
         })
@@ -215,13 +252,14 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
     pub async fn create_certificate_template(
         &self,
         user_id: UserId,
-        name: impl Into<String>,
-        attributes: CertificateAttributes,
+        params: TemplatesCreateParams,
     ) -> anyhow::Result<CertificateTemplate> {
+        Self::assert_certificate_template_name(&params.template_name)?;
+
         let certificate_template = CertificateTemplate {
             id: Uuid::now_v7(),
-            name: name.into(),
-            attributes,
+            name: params.template_name,
+            attributes: params.attributes,
             // Preserve timestamp only up to seconds.
             created_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
@@ -242,9 +280,16 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
         &self,
         user_id: UserId,
         id: Uuid,
-        name: Option<String>,
-        attributes: Option<CertificateAttributes>,
+        params: TemplatesUpdateParams,
     ) -> anyhow::Result<()> {
+        if let Some(name) = &params.template_name {
+            Self::assert_certificate_template_name(name)?;
+        } else if params.attributes.is_none() {
+            bail!(SecutilsError::client(format!(
+                "Either new name or attributes should be provided ({id})."
+            )));
+        }
+
         let Some(certificate_template) = self.get_certificate_template(user_id, id).await? else {
             bail!(SecutilsError::client(format!(
                 "Certificate template ('{id}') is not found."
@@ -257,12 +302,12 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
             .update_certificate_template(
                 user_id,
                 &CertificateTemplate {
-                    name: if let Some(name) = name {
+                    name: if let Some(name) = params.template_name {
                         name
                     } else {
                         certificate_template.name
                     },
-                    attributes: if let Some(attributes) = attributes {
+                    attributes: if let Some(attributes) = params.attributes {
                         attributes
                     } else {
                         certificate_template.attributes
@@ -292,8 +337,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
         &self,
         user_id: UserId,
         template_id: Uuid,
-        format: ExportFormat,
-        passphrase: Option<&str>,
+        params: TemplatesGenerateParams,
     ) -> anyhow::Result<Vec<u8>> {
         let Some(certificate_template) =
             self.get_certificate_template(user_id, template_id).await?
@@ -319,16 +363,20 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
         )?;
 
         let certificate = certificate_builder.build();
-        Ok(match format {
-            ExportFormat::Pem => {
-                Self::export_key_pair_to_pem_archive(certificate, private_key, passphrase)?
+        Ok(match params.format {
+            ExportFormat::Pem => Self::export_key_pair_to_pem_archive(
+                certificate,
+                private_key,
+                params.passphrase.as_deref(),
+            )?,
+            ExportFormat::Pkcs8 => {
+                Self::export_private_key_to_pkcs8(private_key, params.passphrase.as_deref())?
             }
-            ExportFormat::Pkcs8 => Self::export_private_key_to_pkcs8(private_key, passphrase)?,
             ExportFormat::Pkcs12 => Self::export_key_pair_to_pkcs12(
                 &certificate_template.name,
                 &private_key,
                 &certificate,
-                passphrase,
+                params.passphrase.as_deref(),
             )?,
         })
     }
@@ -686,6 +734,38 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
 
         Ok(())
     }
+
+    fn assert_private_key_name(name: &str) -> Result<(), SecutilsError> {
+        if name.is_empty() {
+            return Err(SecutilsError::client("Private key name cannot be empty."));
+        }
+
+        if name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
+            return Err(SecutilsError::client(format!(
+                "Private key name cannot be longer than {} characters.",
+                MAX_UTILS_ENTITY_NAME_LENGTH
+            )));
+        }
+
+        Ok(())
+    }
+
+    fn assert_certificate_template_name(name: &str) -> Result<(), SecutilsError> {
+        if name.is_empty() {
+            return Err(SecutilsError::client(
+                "Certificate template name cannot be empty.",
+            ));
+        }
+
+        if name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
+            return Err(SecutilsError::client(format!(
+                "Certificate template name cannot be longer than {} characters.",
+                MAX_UTILS_ENTITY_NAME_LENGTH
+            )));
+        }
+
+        Ok(())
+    }
 }
 
 impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
@@ -701,8 +781,9 @@ mod tests {
         tests::{mock_api, mock_user, MockResolver},
         utils::{
             CertificateAttributes, CertificatesApi, ExportFormat, ExtendedKeyUsage, KeyUsage,
-            PrivateKeyAlgorithm, PrivateKeyEllipticCurve, PrivateKeySize, SignatureAlgorithm,
-            Version,
+            PrivateKeyAlgorithm, PrivateKeyEllipticCurve, PrivateKeySize, PrivateKeysCreateParams,
+            PrivateKeysExportParams, PrivateKeysUpdateParams, SignatureAlgorithm,
+            TemplatesCreateParams, TemplatesGenerateParams, TemplatesUpdateParams, Version,
         },
     };
     use insta::assert_debug_snapshot;
@@ -762,7 +843,14 @@ mod tests {
                 (PrivateKeyAlgorithm::Ed25519, 256),
             ] {
                 let private_key = certificates
-                    .create_private_key(mock_user.id, format!("pk-{:?}-{:?}", alg, pass), alg, pass)
+                    .create_private_key(
+                        mock_user.id,
+                        PrivateKeysCreateParams {
+                            key_name: format!("pk-{:?}-{:?}", alg, pass),
+                            alg,
+                            passphrase: pass.map(|p| p.to_string()),
+                        },
+                    )
                     .await?;
                 assert_eq!(private_key.alg, alg);
 
@@ -779,6 +867,53 @@ mod tests {
     }
 
     #[actix_rt::test]
+    async fn fails_to_create_private_key_if_name_is_invalid() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let certificates = CertificatesApi::new(&api);
+        assert_debug_snapshot!(
+            certificates
+                .create_private_key(
+                    mock_user.id,
+                    PrivateKeysCreateParams {
+                        key_name: "".to_string(),
+                        alg: PrivateKeyAlgorithm::Ed25519,
+                        passphrase: None,
+                    },
+                )
+                .await,
+            @r###"
+        Err(
+            "Private key name cannot be empty.",
+        )
+        "###
+        );
+
+        assert_debug_snapshot!(
+            certificates
+                .create_private_key(
+                    mock_user.id,
+                    PrivateKeysCreateParams {
+                        key_name: "a".repeat(101),
+                        alg: PrivateKeyAlgorithm::Ed25519,
+                        passphrase: None,
+                    },
+                )
+                .await,
+            @r###"
+        Err(
+            "Private key name cannot be longer than 100 characters.",
+        )
+        "###
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
     async fn can_change_private_key_passphrase() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -787,7 +922,14 @@ mod tests {
 
         let certificates = CertificatesApi::new(&api);
         let private_key = certificates
-            .create_private_key(mock_user.id, "pk", PrivateKeyAlgorithm::Ed25519, None)
+            .create_private_key(
+                mock_user.id,
+                PrivateKeysCreateParams {
+                    key_name: "pk".to_string(),
+                    alg: PrivateKeyAlgorithm::Ed25519,
+                    passphrase: None,
+                },
+            )
             .await?;
 
         // Decrypting without password should succeed.
@@ -801,7 +943,15 @@ mod tests {
 
         // Set passphrase.
         certificates
-            .update_private_key(mock_user.id, private_key.id, None, None, Some("pass"))
+            .update_private_key(
+                mock_user.id,
+                private_key.id,
+                PrivateKeysUpdateParams {
+                    key_name: None,
+                    passphrase: None,
+                    new_passphrase: Some("pass".to_string()),
+                },
+            )
             .await?;
 
         // Decrypting without passphrase should fail.
@@ -830,9 +980,11 @@ mod tests {
             .update_private_key(
                 mock_user.id,
                 private_key.id,
-                None,
-                Some("pass"),
-                Some("pass-1"),
+                PrivateKeysUpdateParams {
+                    key_name: None,
+                    passphrase: Some("pass".to_string()),
+                    new_passphrase: Some("pass-1".to_string()),
+                },
             )
             .await?;
 
@@ -872,7 +1024,15 @@ mod tests {
 
         // Remove passphrase.
         certificates
-            .update_private_key(mock_user.id, private_key.id, None, Some("pass-1"), None)
+            .update_private_key(
+                mock_user.id,
+                private_key.id,
+                PrivateKeysUpdateParams {
+                    key_name: None,
+                    passphrase: Some("pass-1".to_string()),
+                    new_passphrase: None,
+                },
+            )
             .await?;
 
         // Decrypting without passphrase should succeed.
@@ -923,15 +1083,25 @@ mod tests {
         let private_key = certificates
             .create_private_key(
                 mock_user.id,
-                "pk",
-                PrivateKeyAlgorithm::Ed25519,
-                Some("pass"),
+                PrivateKeysCreateParams {
+                    key_name: "pk".to_string(),
+                    alg: PrivateKeyAlgorithm::Ed25519,
+                    passphrase: Some("pass".to_string()),
+                },
             )
             .await?;
 
         // Update name.
         certificates
-            .update_private_key(mock_user.id, private_key.id, Some("pk-new"), None, None)
+            .update_private_key(
+                mock_user.id,
+                private_key.id,
+                PrivateKeysUpdateParams {
+                    key_name: Some("pk-new".to_string()),
+                    passphrase: None,
+                    new_passphrase: None,
+                },
+            )
             .await?;
 
         // Name should change, and pkcs8 shouldn't change.
@@ -957,9 +1127,11 @@ mod tests {
             .update_private_key(
                 mock_user.id,
                 private_key.id,
-                Some("pk-new-new"),
-                Some("pass"),
-                Some("pass-1"),
+                PrivateKeysUpdateParams {
+                    key_name: Some("pk-new-new".to_string()),
+                    passphrase: Some("pass".to_string()),
+                    new_passphrase: Some("pass-1".to_string()),
+                },
             )
             .await?;
 
@@ -990,9 +1162,11 @@ mod tests {
             .update_private_key(
                 mock_user.id,
                 private_key.id,
-                Some("pk"),
-                Some("pass-1"),
-                None,
+                PrivateKeysUpdateParams {
+                    key_name: Some("pk".to_string()),
+                    passphrase: Some("pass-1".to_string()),
+                    new_passphrase: None,
+                },
             )
             .await?;
 
@@ -1014,6 +1188,107 @@ mod tests {
     }
 
     #[actix_rt::test]
+    async fn fails_to_update_private_key_if_params_are_invalid() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let certificates = CertificatesApi::new(&api);
+        let private_key = certificates
+            .create_private_key(
+                mock_user.id,
+                PrivateKeysCreateParams {
+                    key_name: "pk".to_string(),
+                    alg: PrivateKeyAlgorithm::Ed25519,
+                    passphrase: None,
+                },
+            )
+            .await?;
+        // Invalid name.
+        assert_debug_snapshot!(certificates
+            .update_private_key(
+                mock_user.id,
+                private_key.id,
+                PrivateKeysUpdateParams {
+                    key_name: Some("".to_string()),
+                    passphrase: None,
+                    new_passphrase: None,
+                },
+            )
+            .await,
+            @r###"
+        Err(
+            "Private key name cannot be empty.",
+        )
+        "###
+        );
+
+        // Invalid name.
+        assert_debug_snapshot!(certificates
+            .update_private_key(
+                mock_user.id,
+                private_key.id,
+                PrivateKeysUpdateParams {
+                    key_name: Some("a".repeat(101)),
+                    passphrase: None,
+                    new_passphrase: None,
+                },
+            )
+            .await,
+            @r###"
+        Err(
+            "Private key name cannot be longer than 100 characters.",
+        )
+        "###
+        );
+
+        // Invalid params.
+        assert_eq!(
+            certificates
+                .update_private_key(
+                    mock_user.id,
+                    private_key.id,
+                    PrivateKeysUpdateParams {
+                        key_name: None,
+                        passphrase: None,
+                        new_passphrase: None,
+                    },
+                )
+                .await
+                .unwrap_err()
+                .to_string(),
+            format!(
+                "Either new name or passphrase should be provided ({}).",
+                private_key.id
+            )
+        );
+
+        // Invalid passphrases.
+        assert_eq!(
+            certificates
+                .update_private_key(
+                    mock_user.id,
+                    private_key.id,
+                    PrivateKeysUpdateParams {
+                        key_name: None,
+                        passphrase: Some("some".to_string()),
+                        new_passphrase: Some("some".to_string()),
+                    },
+                )
+                .await
+                .unwrap_err()
+                .to_string(),
+            format!(
+                "New private key passphrase should be different from the current passphrase ({}).",
+                private_key.id
+            )
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
     async fn can_export_private_key() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -1023,7 +1298,14 @@ mod tests {
         // Create private key without passphrase.
         let certificates = CertificatesApi::new(&api);
         let private_key = certificates
-            .create_private_key(mock_user.id, "pk", PrivateKeyAlgorithm::Ed25519, None)
+            .create_private_key(
+                mock_user.id,
+                PrivateKeysCreateParams {
+                    key_name: "pk".to_string(),
+                    alg: PrivateKeyAlgorithm::Ed25519,
+                    passphrase: None,
+                },
+            )
             .await?;
 
         // Export private key without passphrase and make sure it can be without passphrase.
@@ -1031,9 +1313,11 @@ mod tests {
             .export_private_key(
                 mock_user.id,
                 private_key.id,
-                ExportFormat::Pkcs8,
-                None,
-                None,
+                PrivateKeysExportParams {
+                    format: ExportFormat::Pkcs8,
+                    passphrase: None,
+                    export_passphrase: None,
+                },
             )
             .await?;
         assert!(
@@ -1047,9 +1331,11 @@ mod tests {
             .export_private_key(
                 mock_user.id,
                 private_key.id,
-                ExportFormat::Pkcs8,
-                None,
-                Some("pass"),
+                PrivateKeysExportParams {
+                    format: ExportFormat::Pkcs8,
+                    passphrase: None,
+                    export_passphrase: Some("pass".to_string()),
+                },
             )
             .await?;
         assert!(
@@ -1062,7 +1348,15 @@ mod tests {
 
         // Set passphrase and repeat.
         certificates
-            .update_private_key(mock_user.id, private_key.id, None, None, Some("pass"))
+            .update_private_key(
+                mock_user.id,
+                private_key.id,
+                PrivateKeysUpdateParams {
+                    key_name: None,
+                    passphrase: None,
+                    new_passphrase: Some("pass".to_string()),
+                },
+            )
             .await?;
 
         // Export private key without passphrase and make sure it can be without passphrase.
@@ -1070,9 +1364,11 @@ mod tests {
             .export_private_key(
                 mock_user.id,
                 private_key.id,
-                ExportFormat::Pkcs8,
-                Some("pass"),
-                None,
+                PrivateKeysExportParams {
+                    format: ExportFormat::Pkcs8,
+                    passphrase: Some("pass".to_string()),
+                    export_passphrase: None,
+                },
             )
             .await?;
         assert!(
@@ -1086,9 +1382,11 @@ mod tests {
             .export_private_key(
                 mock_user.id,
                 private_key.id,
-                ExportFormat::Pkcs8,
-                Some("pass"),
-                Some("pass"),
+                PrivateKeysExportParams {
+                    format: ExportFormat::Pkcs8,
+                    passphrase: Some("pass".to_string()),
+                    export_passphrase: Some("pass".to_string()),
+                },
             )
             .await?;
         assert!(
@@ -1111,7 +1409,14 @@ mod tests {
 
         let certificates = CertificatesApi::new(&api);
         let private_key = certificates
-            .create_private_key(mock_user.id, "pk", PrivateKeyAlgorithm::Ed25519, None)
+            .create_private_key(
+                mock_user.id,
+                PrivateKeysCreateParams {
+                    key_name: "pk".to_string(),
+                    alg: PrivateKeyAlgorithm::Ed25519,
+                    passphrase: None,
+                },
+            )
             .await?;
         assert_eq!(
             private_key,
@@ -1147,7 +1452,14 @@ mod tests {
             .is_empty());
 
         let private_key_one = certificates
-            .create_private_key(mock_user.id, "pk", PrivateKeyAlgorithm::Ed25519, None)
+            .create_private_key(
+                mock_user.id,
+                PrivateKeysCreateParams {
+                    key_name: "pk".to_string(),
+                    alg: PrivateKeyAlgorithm::Ed25519,
+                    passphrase: None,
+                },
+            )
             .await
             .map(|mut private_key| {
                 private_key.pkcs8.clear();
@@ -1159,7 +1471,14 @@ mod tests {
         );
 
         let private_key_two = certificates
-            .create_private_key(mock_user.id, "pk-2", PrivateKeyAlgorithm::Ed25519, None)
+            .create_private_key(
+                mock_user.id,
+                PrivateKeysCreateParams {
+                    key_name: "pk-2".to_string(),
+                    alg: PrivateKeyAlgorithm::Ed25519,
+                    passphrase: None,
+                },
+            )
             .await
             .map(|mut private_key| {
                 private_key.pkcs8.clear();
@@ -1194,12 +1513,61 @@ mod tests {
 
         let certificates = CertificatesApi::new(&api);
         let certificate_template = certificates
-            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .create_certificate_template(
+                mock_user.id,
+                TemplatesCreateParams {
+                    template_name: "ct".to_string(),
+                    attributes: get_mock_certificate_attributes()?,
+                },
+            )
             .await?;
         assert_eq!(certificate_template.name, "ct");
         assert_eq!(
             certificate_template.attributes,
             get_mock_certificate_attributes()?
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    async fn fails_to_create_certificate_template_if_name_is_invalid() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let certificates = CertificatesApi::new(&api);
+        assert_debug_snapshot!(certificates
+            .create_certificate_template(
+                mock_user.id,
+                TemplatesCreateParams {
+                    template_name: "".to_string(),
+                    attributes: get_mock_certificate_attributes()?,
+                },
+            )
+            .await,
+            @r###"
+        Err(
+            "Certificate template name cannot be empty.",
+        )
+        "###
+        );
+
+        assert_debug_snapshot!(certificates
+            .create_certificate_template(
+                mock_user.id,
+                TemplatesCreateParams {
+                    template_name: "a".repeat(101),
+                    attributes: get_mock_certificate_attributes()?,
+                },
+            )
+            .await,
+            @r###"
+        Err(
+            "Certificate template name cannot be longer than 100 characters.",
+        )
+        "###
         );
 
         Ok(())
@@ -1214,7 +1582,13 @@ mod tests {
 
         let certificates = CertificatesApi::new(&api);
         let certificate_template = certificates
-            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .create_certificate_template(
+                mock_user.id,
+                TemplatesCreateParams {
+                    template_name: "ct".to_string(),
+                    attributes: get_mock_certificate_attributes()?,
+                },
+            )
             .await?;
 
         // Update attributes.
@@ -1222,25 +1596,27 @@ mod tests {
             .update_certificate_template(
                 mock_user.id,
                 certificate_template.id,
-                None,
-                Some(CertificateAttributes {
-                    common_name: Some("cn-new".to_string()),
-                    country: Some("c".to_string()),
-                    state_or_province: Some("s".to_string()),
-                    locality: None,
-                    organization: None,
-                    organizational_unit: None,
-                    key_algorithm: PrivateKeyAlgorithm::Ed25519,
-                    signature_algorithm: SignatureAlgorithm::Md5,
-                    not_valid_before: OffsetDateTime::from_unix_timestamp(946720800)?,
-                    not_valid_after: OffsetDateTime::from_unix_timestamp(1262340000)?,
-                    version: Version::One,
-                    is_ca: true,
-                    key_usage: Some([KeyUsage::KeyAgreement].into_iter().collect()),
-                    extended_key_usage: Some(
-                        [ExtendedKeyUsage::EmailProtection].into_iter().collect(),
-                    ),
-                }),
+                TemplatesUpdateParams {
+                    template_name: None,
+                    attributes: Some(CertificateAttributes {
+                        common_name: Some("cn-new".to_string()),
+                        country: Some("c".to_string()),
+                        state_or_province: Some("s".to_string()),
+                        locality: None,
+                        organization: None,
+                        organizational_unit: None,
+                        key_algorithm: PrivateKeyAlgorithm::Ed25519,
+                        signature_algorithm: SignatureAlgorithm::Md5,
+                        not_valid_before: OffsetDateTime::from_unix_timestamp(946720800)?,
+                        not_valid_after: OffsetDateTime::from_unix_timestamp(1262340000)?,
+                        version: Version::One,
+                        is_ca: true,
+                        key_usage: Some([KeyUsage::KeyAgreement].into_iter().collect()),
+                        extended_key_usage: Some(
+                            [ExtendedKeyUsage::EmailProtection].into_iter().collect(),
+                        ),
+                    }),
+                },
             )
             .await?;
 
@@ -1282,7 +1658,13 @@ mod tests {
 
         let certificates = CertificatesApi::new(&api);
         let certificate_template = certificates
-            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .create_certificate_template(
+                mock_user.id,
+                TemplatesCreateParams {
+                    template_name: "ct".to_string(),
+                    attributes: get_mock_certificate_attributes()?,
+                },
+            )
             .await?;
 
         // Update name.
@@ -1290,8 +1672,10 @@ mod tests {
             .update_certificate_template(
                 mock_user.id,
                 certificate_template.id,
-                Some("ct-new".to_string()),
-                None,
+                TemplatesUpdateParams {
+                    template_name: Some("ct-new".to_string()),
+                    attributes: None,
+                },
             )
             .await?;
 
@@ -1311,25 +1695,27 @@ mod tests {
             .update_certificate_template(
                 mock_user.id,
                 certificate_template.id,
-                Some("ct-new-new".to_string()),
-                Some(CertificateAttributes {
-                    common_name: Some("cn-new".to_string()),
-                    country: Some("c".to_string()),
-                    state_or_province: Some("s".to_string()),
-                    locality: None,
-                    organization: None,
-                    organizational_unit: None,
-                    key_algorithm: PrivateKeyAlgorithm::Ed25519,
-                    signature_algorithm: SignatureAlgorithm::Md5,
-                    not_valid_before: OffsetDateTime::from_unix_timestamp(946720800)?,
-                    not_valid_after: OffsetDateTime::from_unix_timestamp(1262340000)?,
-                    version: Version::One,
-                    is_ca: true,
-                    key_usage: Some([KeyUsage::KeyAgreement].into_iter().collect()),
-                    extended_key_usage: Some(
-                        [ExtendedKeyUsage::EmailProtection].into_iter().collect(),
-                    ),
-                }),
+                TemplatesUpdateParams {
+                    template_name: Some("ct-new-new".to_string()),
+                    attributes: Some(CertificateAttributes {
+                        common_name: Some("cn-new".to_string()),
+                        country: Some("c".to_string()),
+                        state_or_province: Some("s".to_string()),
+                        locality: None,
+                        organization: None,
+                        organizational_unit: None,
+                        key_algorithm: PrivateKeyAlgorithm::Ed25519,
+                        signature_algorithm: SignatureAlgorithm::Md5,
+                        not_valid_before: OffsetDateTime::from_unix_timestamp(946720800)?,
+                        not_valid_after: OffsetDateTime::from_unix_timestamp(1262340000)?,
+                        version: Version::One,
+                        is_ca: true,
+                        key_usage: Some([KeyUsage::KeyAgreement].into_iter().collect()),
+                        extended_key_usage: Some(
+                            [ExtendedKeyUsage::EmailProtection].into_iter().collect(),
+                        ),
+                    }),
+                },
             )
             .await?;
 
@@ -1362,6 +1748,82 @@ mod tests {
     }
 
     #[actix_rt::test]
+    async fn fails_to_update_certificate_template_if_params_are_invalid() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let certificates = CertificatesApi::new(&api);
+        let certificate_template = certificates
+            .create_certificate_template(
+                mock_user.id,
+                TemplatesCreateParams {
+                    template_name: "ct".to_string(),
+                    attributes: get_mock_certificate_attributes()?,
+                },
+            )
+            .await?;
+        // Invalid name.
+        assert_debug_snapshot!(certificates
+            .update_certificate_template(
+                mock_user.id,
+                certificate_template.id,
+                TemplatesUpdateParams {
+                    template_name: Some("".to_string()),
+                    attributes: Some(get_mock_certificate_attributes()?),
+                },
+            )
+            .await,
+            @r###"
+        Err(
+            "Certificate template name cannot be empty.",
+        )
+        "###
+        );
+
+        // Invalid name.
+        assert_debug_snapshot!(certificates
+            .update_certificate_template(
+                mock_user.id,
+                certificate_template.id,
+                TemplatesUpdateParams {
+                    template_name: Some("a".repeat(101)),
+                    attributes: Some(get_mock_certificate_attributes()?),
+                },
+            )
+            .await,
+            @r###"
+        Err(
+            "Certificate template name cannot be longer than 100 characters.",
+        )
+        "###
+        );
+
+        // Invalid params.
+        assert_eq!(
+            certificates
+                .update_certificate_template(
+                    mock_user.id,
+                    certificate_template.id,
+                    TemplatesUpdateParams {
+                        template_name: None,
+                        attributes: None,
+                    },
+                )
+                .await
+                .unwrap_err()
+                .to_string(),
+            format!(
+                "Either new name or attributes should be provided ({}).",
+                certificate_template.id
+            )
+        );
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
     async fn can_remove_certificate_template() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -1370,7 +1832,13 @@ mod tests {
 
         let certificates = CertificatesApi::new(&api);
         let certificate_template = certificates
-            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .create_certificate_template(
+                mock_user.id,
+                TemplatesCreateParams {
+                    template_name: "ct".to_string(),
+                    attributes: get_mock_certificate_attributes()?,
+                },
+            )
             .await?;
         assert_eq!(
             certificate_template,
@@ -1406,7 +1874,13 @@ mod tests {
             .is_empty());
 
         let certificate_template_one = certificates
-            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .create_certificate_template(
+                mock_user.id,
+                TemplatesCreateParams {
+                    template_name: "ct".to_string(),
+                    attributes: get_mock_certificate_attributes()?,
+                },
+            )
             .await?;
         assert_eq!(
             certificates.get_certificate_templates(mock_user.id).await?,
@@ -1414,7 +1888,13 @@ mod tests {
         );
 
         let certificate_template_two = certificates
-            .create_certificate_template(mock_user.id, "ct-2", get_mock_certificate_attributes()?)
+            .create_certificate_template(
+                mock_user.id,
+                TemplatesCreateParams {
+                    template_name: "ct-2".to_string(),
+                    attributes: get_mock_certificate_attributes()?,
+                },
+            )
             .await?;
         assert_eq!(
             certificates.get_certificate_templates(mock_user.id).await?,
@@ -1516,7 +1996,13 @@ mod tests {
 
         let certificate_template = api
             .certificates()
-            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .create_certificate_template(
+                mock_user.id,
+                TemplatesCreateParams {
+                    template_name: "ct".to_string(),
+                    attributes: get_mock_certificate_attributes()?,
+                },
+            )
             .await?;
 
         let exported_certificate_pair = api
@@ -1524,8 +2010,10 @@ mod tests {
             .generate_self_signed_certificate(
                 mock_user.id,
                 certificate_template.id,
-                ExportFormat::Pkcs12,
-                None,
+                TemplatesGenerateParams {
+                    format: ExportFormat::Pkcs12,
+                    passphrase: None,
+                },
             )
             .await?;
 
@@ -1556,7 +2044,13 @@ mod tests {
         // Create and share policy.
         let certificates = CertificatesApi::new(&api);
         let certificate_template = certificates
-            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .create_certificate_template(
+                mock_user.id,
+                TemplatesCreateParams {
+                    template_name: "ct".to_string(),
+                    attributes: get_mock_certificate_attributes()?,
+                },
+            )
             .await?;
         let template_share_one = certificates
             .share_certificate_template(mock_user.id, certificate_template.id)
@@ -1590,7 +2084,13 @@ mod tests {
 
         let certificates = CertificatesApi::new(&api);
         let certificate_template = certificates
-            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .create_certificate_template(
+                mock_user.id,
+                TemplatesCreateParams {
+                    template_name: "ct".to_string(),
+                    attributes: get_mock_certificate_attributes()?,
+                },
+            )
             .await?;
         let template_share_one = certificates
             .share_certificate_template(mock_user.id, certificate_template.id)
@@ -1640,7 +2140,13 @@ mod tests {
         // Create and share template.
         let certificates = CertificatesApi::new(&api);
         let certificate_template = certificates
-            .create_certificate_template(mock_user.id, "ct", get_mock_certificate_attributes()?)
+            .create_certificate_template(
+                mock_user.id,
+                TemplatesCreateParams {
+                    template_name: "ct".to_string(),
+                    attributes: get_mock_certificate_attributes()?,
+                },
+            )
             .await?;
         let template_share = certificates
             .share_certificate_template(mock_user.id, certificate_template.id)

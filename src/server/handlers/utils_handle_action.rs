@@ -2,14 +2,14 @@ use crate::{
     error::Error as SecutilsError,
     server::AppState,
     users::{User, UserShare},
-    utils::UtilsAction,
+    utils::UtilsLegacyAction,
 };
 use actix_web::{web, HttpResponse};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct BodyParams {
-    action: UtilsAction,
+    action: UtilsLegacyAction,
 }
 
 pub async fn utils_handle_action(
@@ -33,7 +33,7 @@ pub async fn utils_handle_action(
         // If action is targeting a shared resource that doesn't belong to currently authenticated
         // user or user isn't authenticated, act on behalf of the shared resource owner assuming
         // action is authorized to be performed on a shared resource.
-        (_, Some(user_share)) if user_share.is_action_authorized(&action) => {
+        (_, Some(user_share)) if user_share.is_legacy_action_authorized(&action) => {
             // If user isn't found forbid any actions on the shared resource.
             if let Some(user) = state.api.users().get(user_share.user_id).await? {
                 user
