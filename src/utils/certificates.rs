@@ -97,7 +97,7 @@ pub async fn certificates_handle_action<DR: DnsResolver, ET: EmailTransport>(
 
             UtilsActionResult::json(json!({
                 "template": template,
-                "user_share": users
+                "userShare": users
                     .get_user_share_by_resource(
                         user.id,
                         &SharedResource::certificate_template(resource_id),
@@ -533,6 +533,7 @@ pub mod tests {
         }
 
         #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
         struct TemplateWrapper {
             template: CertificateTemplate,
             user_share: Option<UserShareWrapper>,
