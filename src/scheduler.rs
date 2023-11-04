@@ -162,7 +162,8 @@ mod tests {
     use super::Scheduler;
     use crate::{
         scheduler::scheduler_job::SchedulerJob,
-        tests::{mock_api, mock_user, MockWebPageResourcesTrackerBuilder},
+        tests::{mock_api, mock_user},
+        utils::{ResourcesCreateParams, WebPageResourcesTrackerSettings},
     };
     use futures::StreamExt;
     use insta::assert_debug_snapshot;
@@ -202,20 +203,25 @@ mod tests {
 
         // Create user, trackers and tracker jobs.
         api.users().upsert(user.clone()).await?;
-        api.web_scraping()
-            .upsert_resources_tracker(
+        let tracker = api
+            .web_scraping()
+            .create_resources_tracker(
                 user.id,
-                MockWebPageResourcesTrackerBuilder::create(
-                    "tracker-one",
-                    "http://localhost:1234/my/app?q=2",
-                    0,
-                )?
-                .with_schedule("1 2 3 4 5 6 2030")
-                .build(),
+                ResourcesCreateParams {
+                    name: "tracker-one".to_string(),
+                    url: "https://localhost:1234/my/app?q=2".parse()?,
+                    settings: WebPageResourcesTrackerSettings {
+                        revisions: 1,
+                        schedule: Some("1 2 3 4 5 6 2030".to_string()),
+                        delay: Default::default(),
+                        scripts: Default::default(),
+                        enable_notifications: true,
+                    },
+                },
             )
             .await?;
         api.web_scraping()
-            .upsert_resources_tracker_job(user.id, "tracker-one", Some(trigger_job_id))
+            .update_resources_tracker_job(tracker.id, Some(trigger_job_id))
             .await?;
 
         // Add job registrations.

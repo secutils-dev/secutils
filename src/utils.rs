@@ -32,11 +32,11 @@ pub use self::{
     utils_resource::UtilsResource,
     utils_resource_operation::UtilsResourceOperation,
     web_scraping::{
-        UtilsWebScrapingAction, UtilsWebScrapingActionResult, WebPageResource,
-        WebPageResourceContent, WebPageResourceContentData, WebPageResourceDiffStatus,
-        WebPageResourcesRevision, WebPageResourcesTracker, WebPageResourcesTrackerScripts,
-        WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesRequestScripts,
-        WebScraperResourcesResponse,
+        web_scraping_handle_action, ResourcesCreateParams, ResourcesGetHistoryParams,
+        ResourcesUpdateParams, WebPageResource, WebPageResourceContent, WebPageResourceContentData,
+        WebPageResourceDiffStatus, WebPageResourcesRevision, WebPageResourcesTracker,
+        WebPageResourcesTrackerScripts, WebPageResourcesTrackerSettings, WebScraperResource,
+        WebScraperResourcesRequest, WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
     },
     web_security::{
         ContentSecurityPolicy, ContentSecurityPolicyDirective, ContentSecurityPolicyImportType,

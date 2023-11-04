@@ -88,7 +88,7 @@ where
             .validate_credentials(&user_email, user_credentials)
             .await?;
         let user = User {
-            id: UserId::empty(),
+            id: UserId::default(),
             email: user_email,
             handle: self.generate_user_handle().await?,
             credentials,

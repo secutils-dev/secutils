@@ -2,6 +2,7 @@
 pub enum UtilsResource {
     CertificatesTemplates,
     CertificatesPrivateKeys,
+    WebScrapingResources,
 }
 
 impl TryFrom<(&str, &str)> for UtilsResource {
@@ -11,6 +12,7 @@ impl TryFrom<(&str, &str)> for UtilsResource {
         match (area, resource) {
             ("certificates", "templates") => Ok(UtilsResource::CertificatesTemplates),
             ("certificates", "private_keys") => Ok(UtilsResource::CertificatesPrivateKeys),
+            ("web_scraping", "resources") => Ok(UtilsResource::WebScrapingResources),
             _ => Err(()),
         }
     }
@@ -30,8 +32,13 @@ mod tests {
             UtilsResource::try_from(("certificates", "private_keys")),
             Ok(UtilsResource::CertificatesPrivateKeys)
         );
+        assert_eq!(
+            UtilsResource::try_from(("web_scraping", "resources")),
+            Ok(UtilsResource::WebScrapingResources)
+        );
 
         assert!(UtilsResource::try_from(("certificates_", "templates")).is_err());
         assert!(UtilsResource::try_from(("certificates_", "private_keys")).is_err());
+        assert!(UtilsResource::try_from(("web_scraping", "_resources")).is_err());
     }
 }

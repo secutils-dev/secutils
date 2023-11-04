@@ -7,7 +7,6 @@ pub enum PublicUserDataNamespace {
     AutoResponders,
     ContentSecurityPolicies,
     UserSettings,
-    WebPageResourcesTrackers,
 }
 
 impl AsRef<str> for PublicUserDataNamespace {
@@ -16,7 +15,6 @@ impl AsRef<str> for PublicUserDataNamespace {
             PublicUserDataNamespace::AutoResponders => "autoResponders",
             PublicUserDataNamespace::ContentSecurityPolicies => "contentSecurityPolicies",
             PublicUserDataNamespace::UserSettings => "userSettings",
-            PublicUserDataNamespace::WebPageResourcesTrackers => "webPageResourcesTrackers",
         }
     }
 }
@@ -49,11 +47,6 @@ mod tests {
             "userSettings"
         );
 
-        assert_eq!(
-            PublicUserDataNamespace::WebPageResourcesTrackers.as_ref(),
-            "webPageResourcesTrackers"
-        );
-
         Ok(())
     }
 
@@ -63,7 +56,6 @@ mod tests {
             assert_json_snapshot!(PublicUserDataNamespace::AutoResponders, @r###""autoResponders""###);
             assert_json_snapshot!(PublicUserDataNamespace::ContentSecurityPolicies, @r###""contentSecurityPolicies""###);
             assert_json_snapshot!(PublicUserDataNamespace::UserSettings, @r###""userSettings""###);
-            assert_json_snapshot!(PublicUserDataNamespace::WebPageResourcesTrackers, @r###""webPageResourcesTrackers""###);
         });
 
         Ok(())
@@ -84,11 +76,6 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<PublicUserDataNamespace>(r#""userSettings""#)?,
             PublicUserDataNamespace::UserSettings
-        );
-
-        assert_eq!(
-            serde_json::from_str::<PublicUserDataNamespace>(r#""webPageResourcesTrackers""#)?,
-            PublicUserDataNamespace::WebPageResourcesTrackers
         );
 
         Ok(())

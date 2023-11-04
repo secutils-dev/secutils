@@ -1,13 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Copy, Hash)]
+#[derive(Serialize, Deserialize, Default, Debug, Eq, PartialEq, Clone, Copy, Hash)]
 pub struct UserId(i64);
-impl UserId {
-    pub const fn empty() -> Self {
-        Self(0)
-    }
-}
 
 impl TryFrom<i64> for UserId {
     type Error = anyhow::Error;
@@ -34,8 +29,8 @@ mod tests {
     use crate::users::UserId;
 
     #[test]
-    fn empty() {
-        assert_eq!(*UserId::empty(), 0);
+    fn default() {
+        assert_eq!(*UserId::default(), 0);
     }
 
     #[test]

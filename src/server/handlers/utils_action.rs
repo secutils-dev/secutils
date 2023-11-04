@@ -5,8 +5,8 @@ use crate::{
     server::AppState,
     users::{User, UserShare},
     utils::{
-        certificates_handle_action, UtilsAction, UtilsActionParams, UtilsResource,
-        UtilsResourceOperation,
+        certificates_handle_action, web_scraping_handle_action, UtilsAction, UtilsActionParams,
+        UtilsResource, UtilsResourceOperation,
     },
 };
 use actix_http::Method;
@@ -108,24 +108,37 @@ pub async fn utils_action(
         return Err(SecutilsError::access_forbidden());
     };
 
+    let user_id = user.id;
     let params = body_params.map(|body| UtilsActionParams::json(body.into_inner()));
     let action_result = match resource {
         UtilsResource::CertificatesTemplates | UtilsResource::CertificatesPrivateKeys => {
-            certificates_handle_action(user, &state.api, action, resource, params).await?
+            certificates_handle_action(user, &state.api, action, resource, params).await
+        }
+        UtilsResource::WebScrapingResources => {
+            web_scraping_handle_action(user, &state.api, action, resource, params).await
         }
     };
 
-    Ok(if let Some(result) = action_result.into_inner() {
-        HttpResponse::Ok().json(result)
-    } else {
-        match action {
-            UtilsAction::List | UtilsAction::Get { .. } => HttpResponse::NotFound().finish(),
-            UtilsAction::Create
-            | UtilsAction::Update { .. }
-            | UtilsAction::Delete { .. }
-            | UtilsAction::Execute { .. } => HttpResponse::NoContent().finish(),
+    match action_result {
+        Ok(action_result) => Ok(if let Some(result) = action_result.into_inner() {
+            HttpResponse::Ok().json(result)
+        } else {
+            match action {
+                UtilsAction::List | UtilsAction::Get { .. } => HttpResponse::NotFound().finish(),
+                UtilsAction::Create
+                | UtilsAction::Update { .. }
+                | UtilsAction::Delete { .. }
+                | UtilsAction::Execute { .. } => HttpResponse::NoContent().finish(),
+            }
+        }),
+        Err(err) => {
+            log::error!(
+                "User ({}) failed to perform utility action: {err:?}",
+                *user_id
+            );
+            Err(err.into())
         }
-    })
+    }
 }
 
 #[cfg(test)]
@@ -154,6 +167,7 @@ mod tests {
             (None, Some("private_keys")),
             (Some("certificates"), Some("unknown")),
             (Some("unknown"), Some("private_keys")),
+            (Some("web_scraping"), None),
         ] {
             let request = TestRequest::with_uri("https://secutils.dev/api/utils");
             let request = if let Some(area) = area {
@@ -188,6 +202,15 @@ mod tests {
             ),
             Some(UtilsResource::CertificatesTemplates)
         );
+        assert_eq!(
+            extract_resource(
+                &TestRequest::with_uri("https://secutils.dev/api/utils")
+                    .param("area", "web_scraping")
+                    .param("resource", "resources")
+                    .to_http_request(),
+            ),
+            Some(UtilsResource::WebScrapingResources)
+        );
     }
 
     #[test]
@@ -196,6 +219,7 @@ mod tests {
         for resource in [
             UtilsResource::CertificatesPrivateKeys,
             UtilsResource::CertificatesTemplates,
+            UtilsResource::WebScrapingResources,
         ] {
             assert!(extract_action(
                 &TestRequest::with_uri("https://secutils.dev/api/utils")
@@ -222,6 +246,7 @@ mod tests {
         for resource in [
             UtilsResource::CertificatesPrivateKeys,
             UtilsResource::CertificatesTemplates,
+            UtilsResource::WebScrapingResources,
         ] {
             assert_eq!(
                 extract_action(
@@ -346,6 +371,42 @@ mod tests {
             Some(UtilsAction::Execute {
                 resource_id,
                 operation: UtilsResourceOperation::CertificatesPrivateKeyExport
+            })
+        );
+    }
+
+    #[test]
+    fn can_extract_web_scraping_resources_action() {
+        let resource = UtilsResource::WebScrapingResources;
+        let resource_id = uuid!("00000000-0000-0000-0000-000000000000");
+
+        assert_eq!(
+            extract_action(
+                &TestRequest::with_uri("https://secutils.dev/api/utils")
+                    .method(Method::POST)
+                    .param("resource_id", resource_id.to_string())
+                    .param("resource_operation", "history")
+                    .to_http_request(),
+                &resource,
+            ),
+            Some(UtilsAction::Execute {
+                resource_id,
+                operation: UtilsResourceOperation::WebScrapingResourcesGetHistory
+            })
+        );
+
+        assert_eq!(
+            extract_action(
+                &TestRequest::with_uri("https://secutils.dev/api/utils")
+                    .method(Method::POST)
+                    .param("resource_id", resource_id.to_string())
+                    .param("resource_operation", "clear")
+                    .to_http_request(),
+                &resource,
+            ),
+            Some(UtilsAction::Execute {
+                resource_id,
+                operation: UtilsResourceOperation::WebScrapingResourcesClearHistory
             })
         );
     }

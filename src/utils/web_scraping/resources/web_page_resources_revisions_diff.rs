@@ -37,7 +37,9 @@ pub fn web_page_resources_revisions_diff(
     while let Some(current_revision) = peekable_revisions.next() {
         if let Some(previous_revision) = peekable_revisions.peek() {
             revisions_diff.push(WebPageResourcesRevision {
-                timestamp: current_revision.timestamp,
+                id: current_revision.id,
+                tracker_id: current_revision.tracker_id,
+                created_at: current_revision.created_at,
                 scripts: web_page_resources_diff(
                     previous_revision.scripts.clone(),
                     current_revision.scripts,
@@ -235,6 +237,7 @@ mod tests {
     use time::OffsetDateTime;
     use tlsh2::{Tlsh, TlshDefaultBuilder};
     use url::Url;
+    use uuid::uuid;
 
     #[test]
     fn tls_hash_properly_calculated() -> anyhow::Result<()> {
@@ -615,8 +618,7 @@ mod tests {
             "url": "http://localhost/one",
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "one-digest-no-change"
+                "sha1": "one-digest-no-change"
               },
               "size": 123
             }
@@ -630,8 +632,7 @@ mod tests {
           {
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "one-digest-inline-no-change"
+                "sha1": "one-digest-inline-no-change"
               },
               "size": 123
             }
@@ -646,8 +647,7 @@ mod tests {
             "url": "http://localhost/one-multiple",
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "one-digest-multiple-no-change"
+                "sha1": "one-digest-multiple-no-change"
               },
               "size": 123
             }
@@ -656,8 +656,7 @@ mod tests {
             "url": "http://localhost/one-multiple",
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "one-digest-multiple-no-change"
+                "sha1": "one-digest-multiple-no-change"
               },
               "size": 123
             }
@@ -671,8 +670,7 @@ mod tests {
           {
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "one-digest-multiple-inline-no-change"
+                "sha1": "one-digest-multiple-inline-no-change"
               },
               "size": 123
             }
@@ -680,8 +678,7 @@ mod tests {
           {
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "one-digest-multiple-inline-no-change"
+                "sha1": "one-digest-multiple-inline-no-change"
               },
               "size": 123
             }
@@ -696,8 +693,7 @@ mod tests {
             "url": "http://localhost/two",
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "two-digest-changed"
+                "sha1": "two-digest-changed"
               },
               "size": 321
             },
@@ -713,8 +709,7 @@ mod tests {
             "url": "http://localhost/two-multiple",
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "two-digest-multiple"
+                "sha1": "two-digest-multiple"
               },
               "size": 321
             }
@@ -723,8 +718,7 @@ mod tests {
             "url": "http://localhost/two-multiple",
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "two-digest-multiple-changed"
+                "sha1": "two-digest-multiple-changed"
               },
               "size": 321
             },
@@ -739,8 +733,7 @@ mod tests {
           {
             "content": {
               "data": {
-                "type": "tlsh",
-                "value": "T16EA0020625914D256FCEFB48581C10163480057470935CDE900D52FC00457F1013E450"
+                "tlsh": "T16EA0020625914D256FCEFB48581C10163480057470935CDE900D52FC00457F1013E450"
               },
               "size": 123
             },
@@ -756,8 +749,7 @@ mod tests {
             "url": "http://localhost/three",
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "three-digest-added"
+                "sha1": "three-digest-added"
               },
               "size": 321
             },
@@ -772,8 +764,7 @@ mod tests {
           {
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "three-digest-inline-added"
+                "sha1": "three-digest-inline-added"
               },
               "size": 123
             },
@@ -789,8 +780,7 @@ mod tests {
             "url": "http://localhost/three-multiple",
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "three-digest-multiple-added"
+                "sha1": "three-digest-multiple-added"
               },
               "size": 321
             },
@@ -800,8 +790,7 @@ mod tests {
             "url": "http://localhost/three-multiple",
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "three-digest-multiple-added"
+                "sha1": "three-digest-multiple-added"
               },
               "size": 321
             },
@@ -816,8 +805,7 @@ mod tests {
           {
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "three-digest-multiple-inline-added"
+                "sha1": "three-digest-multiple-inline-added"
               },
               "size": 123
             },
@@ -826,8 +814,7 @@ mod tests {
           {
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "three-digest-multiple-inline-added"
+                "sha1": "three-digest-multiple-inline-added"
               },
               "size": 123
             },
@@ -843,8 +830,7 @@ mod tests {
             "url": "http://localhost/three-removed",
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "three-digest-removed"
+                "sha1": "three-digest-removed"
               },
               "size": 321
             },
@@ -859,8 +845,7 @@ mod tests {
           {
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "three-digest-inline-removed"
+                "sha1": "three-digest-inline-removed"
               },
               "size": 123
             },
@@ -876,8 +861,7 @@ mod tests {
             "url": "http://localhost/three-multiple-removed",
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "three-digest-multiple-removed"
+                "sha1": "three-digest-multiple-removed"
               },
               "size": 321
             },
@@ -887,8 +871,7 @@ mod tests {
             "url": "http://localhost/three-multiple-removed",
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "three-digest-multiple-removed"
+                "sha1": "three-digest-multiple-removed"
               },
               "size": 321
             },
@@ -903,8 +886,7 @@ mod tests {
           {
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "three-digest-multiple-inline-removed"
+                "sha1": "three-digest-multiple-inline-removed"
               },
               "size": 123
             },
@@ -913,8 +895,7 @@ mod tests {
           {
             "content": {
               "data": {
-                "type": "sha1",
-                "value": "three-digest-multiple-inline-removed"
+                "sha1": "three-digest-multiple-inline-removed"
               },
               "size": 123
             },
@@ -1010,17 +991,23 @@ mod tests {
 
         let diff = web_page_resources_revisions_diff(vec![
             WebPageResourcesRevision {
-                timestamp: OffsetDateTime::from_unix_timestamp(946720100)?,
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
+                tracker_id: uuid!("00000000-0000-0000-0000-000000000002"),
+                created_at: OffsetDateTime::from_unix_timestamp(946720100)?,
                 scripts: vec![resource_one_rev_1, resource_two_rev_1, resource_three_rev_1],
                 styles: vec![resource_four_rev_1],
             },
             WebPageResourcesRevision {
-                timestamp: OffsetDateTime::from_unix_timestamp(946720200)?,
+                id: uuid!("00000000-0000-0000-0000-000000000011"),
+                tracker_id: uuid!("00000000-0000-0000-0000-000000000002"),
+                created_at: OffsetDateTime::from_unix_timestamp(946720200)?,
                 scripts: vec![resource_one_rev_2, resource_two_rev_2, resource_three_rev_2],
                 styles: vec![resource_four_rev_2],
             },
             WebPageResourcesRevision {
-                timestamp: OffsetDateTime::from_unix_timestamp(946720300)?,
+                id: uuid!("00000000-0000-0000-0000-000000000021"),
+                tracker_id: uuid!("00000000-0000-0000-0000-000000000002"),
+                created_at: OffsetDateTime::from_unix_timestamp(946720300)?,
                 scripts: vec![resource_one_rev_3, resource_two_rev_3, resource_three_rev_3],
                 styles: vec![],
             },
@@ -1030,14 +1017,13 @@ mod tests {
 
         assert_json_snapshot!(diff[0], { ".scripts" => insta::sorted_redaction() }, @r###"
         {
-          "timestamp": 946720100,
+          "id": "00000000-0000-0000-0000-000000000001",
           "scripts": [
             {
               "url": "http://localhost/one",
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "one-digest-no-change"
+                  "sha1": "one-digest-no-change"
                 },
                 "size": 123
               }
@@ -1046,8 +1032,7 @@ mod tests {
               "url": "http://localhost/three-removed",
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "three-digest-removed"
+                  "sha1": "three-digest-removed"
                 },
                 "size": 321
               }
@@ -1056,8 +1041,7 @@ mod tests {
               "url": "http://localhost/two",
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "two-digest"
+                  "sha1": "two-digest"
                 },
                 "size": 321
               }
@@ -1068,25 +1052,24 @@ mod tests {
               "url": "http://localhost/four",
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "four-digest"
+                  "sha1": "four-digest"
                 },
                 "size": 321
               }
             }
-          ]
+          ],
+          "createdAt": 946720100
         }
         "###);
         assert_json_snapshot!(diff[1], { ".scripts" => insta::sorted_redaction() }, @r###"
         {
-          "timestamp": 946720200,
+          "id": "00000000-0000-0000-0000-000000000011",
           "scripts": [
             {
               "url": "http://localhost/one",
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "one-digest-no-change"
+                  "sha1": "one-digest-no-change"
                 },
                 "size": 123
               }
@@ -1095,8 +1078,7 @@ mod tests {
               "url": "http://localhost/three",
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "three-digest-added"
+                  "sha1": "three-digest-added"
                 },
                 "size": 321
               },
@@ -1106,8 +1088,7 @@ mod tests {
               "url": "http://localhost/three-removed",
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "three-digest-removed"
+                  "sha1": "three-digest-removed"
                 },
                 "size": 321
               },
@@ -1117,8 +1098,7 @@ mod tests {
               "url": "http://localhost/two",
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "two-digest-changed"
+                  "sha1": "two-digest-changed"
                 },
                 "size": 321
               },
@@ -1130,26 +1110,25 @@ mod tests {
               "url": "http://localhost/four",
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "four-digest-changed"
+                  "sha1": "four-digest-changed"
                 },
                 "size": 321
               },
               "diffStatus": "changed"
             }
-          ]
+          ],
+          "createdAt": 946720200
         }
         "###);
         assert_json_snapshot!(diff[2], { ".scripts" => insta::sorted_redaction() }, @r###"
         {
-          "timestamp": 946720300,
+          "id": "00000000-0000-0000-0000-000000000021",
           "scripts": [
             {
               "url": "http://localhost/five",
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "five-digest-added"
+                  "sha1": "five-digest-added"
                 },
                 "size": 123
               },
@@ -1159,8 +1138,7 @@ mod tests {
               "url": "http://localhost/one",
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "one-digest-no-change"
+                  "sha1": "one-digest-no-change"
                 },
                 "size": 123
               },
@@ -1170,8 +1148,7 @@ mod tests {
               "url": "http://localhost/three",
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "three-digest-changed"
+                  "sha1": "three-digest-changed"
                 },
                 "size": 321
               },
@@ -1181,8 +1158,7 @@ mod tests {
               "url": "http://localhost/two",
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "two-digest-changed"
+                  "sha1": "two-digest-changed"
                 },
                 "size": 321
               }
@@ -1193,14 +1169,14 @@ mod tests {
               "url": "http://localhost/four",
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "four-digest-changed"
+                  "sha1": "four-digest-changed"
                 },
                 "size": 321
               },
               "diffStatus": "removed"
             }
-          ]
+          ],
+          "createdAt": 946720300
         }
         "###);
 

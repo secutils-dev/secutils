@@ -23,8 +23,7 @@ mod tests {
         }, @r###"
         {
           "data": {
-            "type": "sha1",
-            "value": "some-digest"
+            "sha1": "some-digest"
           },
           "size": 123
         }
@@ -37,8 +36,7 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<WebPageResourceContent>(
-                &json!({ "data": { "type": "sha1", "value": "some-digest" }, "size": 123 })
-                    .to_string()
+                &json!({ "data": { "sha1": "some-digest" }, "size": 123 }).to_string()
             )?,
             WebPageResourceContent {
                 data: WebPageResourceContentData::Sha1("some-digest".to_string()),

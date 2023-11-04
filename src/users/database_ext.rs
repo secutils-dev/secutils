@@ -9,12 +9,9 @@ use self::{
 };
 use crate::{
     database::Database,
-    users::{
-        SharedResource, User, UserData, UserDataKey, UserDataNamespace, UserId, UserShare,
-        UserShareId,
-    },
+    users::{SharedResource, User, UserData, UserDataKey, UserId, UserShare, UserShareId},
 };
-use anyhow::{bail, Context};
+use anyhow::bail;
 use serde::{de::DeserializeOwned, Serialize};
 use sqlx::{query, query_as, query_scalar};
 use time::OffsetDateTime;
@@ -260,32 +257,6 @@ WHERE namespace = ?1 AND key = ?2 AND timestamp <= ?3
         Ok(())
     }
 
-    /// Searches user data with the specified namespace and value.
-    pub async fn search_user_data<TValue: Serialize + DeserializeOwned>(
-        &self,
-        namespace: UserDataNamespace,
-        value: TValue,
-    ) -> anyhow::Result<Vec<UserData<TValue>>> {
-        let namespace = namespace.as_ref();
-        let value =
-            serde_json::ser::to_vec(&value).with_context(|| "Cannot serialize user data value")?;
-        query_as!(
-            RawUserData,
-            r#"
-SELECT user_id, key, value, timestamp
-FROM user_data
-WHERE value = ?1 AND namespace = ?2
-                "#,
-            value,
-            namespace
-        )
-        .fetch_all(&self.pool)
-        .await?
-        .into_iter()
-        .map(UserData::try_from)
-        .collect()
-    }
-
     /// Retrieves user share from `user_shares` table using user share ID.
     pub async fn get_user_share(&self, id: UserShareId) -> anyhow::Result<Option<UserShare>> {
         let id = id.hyphenated();
@@ -371,10 +342,10 @@ RETURNING id as "id: uuid::fmt::Hyphenated", user_id as "user_id!", resource as 
 mod tests {
     use crate::{
         security::StoredCredentials,
-        tests::{mock_db, mock_user, mock_user_with_id, MockUserBuilder},
+        tests::{mock_db, mock_user_with_id, MockUserBuilder},
         users::{
-            InternalUserDataNamespace, PublicUserDataNamespace, SharedResource, User, UserData,
-            UserDataNamespace, UserId, UserShare, UserShareId,
+            InternalUserDataNamespace, PublicUserDataNamespace, SharedResource, UserData, UserId,
+            UserShare, UserShareId,
         },
     };
     use insta::assert_debug_snapshot;
@@ -392,7 +363,7 @@ mod tests {
 
         let users = vec![
             MockUserBuilder::new(
-                UserId::empty(),
+                UserId::default(),
                 "dev@secutils.dev",
                 "dev-handle",
                 StoredCredentials {
@@ -405,7 +376,7 @@ mod tests {
             .set_activated()
             .build(),
             MockUserBuilder::new(
-                UserId::empty(),
+                UserId::default(),
                 "prod@secutils.dev",
                 "prod-handle",
                 StoredCredentials {
@@ -418,7 +389,7 @@ mod tests {
             .add_role("admin")
             .build(),
             MockUserBuilder::new(
-                UserId::empty(),
+                UserId::default(),
                 "user@secutils.dev",
                 "handle",
                 StoredCredentials {
@@ -516,7 +487,7 @@ mod tests {
     #[actix_rt::test]
     async fn ignores_email_case() -> anyhow::Result<()> {
         let user = MockUserBuilder::new(
-            UserId::empty(),
+            UserId::default(),
             "DeV@secutils.dev",
             "DeV-handle",
             StoredCredentials {
@@ -569,7 +540,7 @@ mod tests {
     #[actix_rt::test]
     async fn ignores_handle_case() -> anyhow::Result<()> {
         let user = MockUserBuilder::new(
-            UserId::empty(),
+            UserId::default(),
             "DeV@secutils.dev",
             "DeV-handle",
             StoredCredentials {
@@ -620,7 +591,7 @@ mod tests {
         let user_id = db
             .insert_user(
                 &MockUserBuilder::new(
-                    UserId::empty(),
+                    UserId::default(),
                     "dev@secutils.dev",
                     "dev-handle",
                     StoredCredentials {
@@ -697,7 +668,7 @@ mod tests {
 
         db.upsert_user(
             &MockUserBuilder::new(
-                UserId::empty(),
+                UserId::default(),
                 "dev@secutils.dev",
                 "dev-handle",
                 StoredCredentials {
@@ -786,7 +757,7 @@ mod tests {
         assert!(db.get_user_by_email("prod@secutils.dev").await?.is_none());
 
         let user_dev = MockUserBuilder::new(
-            UserId::empty(),
+            UserId::default(),
             "dev@secutils.dev",
             "dev-handle",
             StoredCredentials {
@@ -799,7 +770,7 @@ mod tests {
         .set_activated()
         .build();
         let user_prod = MockUserBuilder::new(
-            UserId::empty(),
+            UserId::default(),
             "prod@secutils.dev",
             "prod-handle",
             StoredCredentials {
@@ -1079,101 +1050,6 @@ mod tests {
             )
             .await?
             .is_none());
-
-        Ok(())
-    }
-
-    #[actix_rt::test]
-    async fn can_search_user_data() -> anyhow::Result<()> {
-        let db = mock_db().await?;
-        let user_one = mock_user()?;
-        let user_two = User {
-            id: 2.try_into()?,
-            email: "dev-2@secutils.dev".to_string(),
-            handle: "dev-2-handle".to_string(),
-            ..mock_user()?
-        };
-
-        // No user and no data yet.
-        assert_eq!(
-            db.search_user_data::<Option<String>>(
-                UserDataNamespace::Public(PublicUserDataNamespace::UserSettings),
-                Some("data-bingo".to_string())
-            )
-            .await?,
-            vec![]
-        );
-
-        db.upsert_user(&user_one).await?;
-        db.upsert_user(&user_two).await?;
-
-        // Nodata yet.
-        assert_eq!(
-            db.search_user_data::<Option<String>>(
-                UserDataNamespace::Public(PublicUserDataNamespace::UserSettings),
-                Some("data-bingo".to_string())
-            )
-            .await?,
-            vec![]
-        );
-
-        // Insert data.
-        for (index, (user_id, user_data)) in [
-            (user_one.id, "data-bingo"),
-            (user_two.id, "data-2"),
-            (user_one.id, "data-3"),
-            (user_two.id, "data-bingo"),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            db.upsert_user_data(
-                (
-                    PublicUserDataNamespace::UserSettings,
-                    format!("sub-key-{}", index).as_ref(),
-                ),
-                UserData::new(
-                    user_id,
-                    user_data,
-                    OffsetDateTime::from_unix_timestamp(946720800)?,
-                ),
-            )
-            .await?;
-        }
-
-        assert_debug_snapshot!(
-            db.search_user_data::<Option<String>>(
-                UserDataNamespace::Public(PublicUserDataNamespace::UserSettings),
-                Some("data-bingo".to_string())
-            )
-            .await?, @r###"
-        [
-            UserData {
-                user_id: UserId(
-                    1,
-                ),
-                key: Some(
-                    "sub-key-0",
-                ),
-                value: Some(
-                    "data-bingo",
-                ),
-                timestamp: 2000-01-01 10:00:00.0 +00:00:00,
-            },
-            UserData {
-                user_id: UserId(
-                    2,
-                ),
-                key: Some(
-                    "sub-key-3",
-                ),
-                value: Some(
-                    "data-bingo",
-                ),
-                timestamp: 2000-01-01 10:00:00.0 +00:00:00,
-            },
-        ]
-        "###);
 
         Ok(())
     }

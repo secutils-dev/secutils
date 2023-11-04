@@ -3,7 +3,6 @@ use crate::{
     network::{DnsResolver, EmailTransport, EmailTransportError},
     notifications::{NotificationContent, NotificationContentTemplate, NotificationDestination},
     scheduler::scheduler_job::SchedulerJob,
-    users::UserData,
 };
 use futures::{pin_mut, StreamExt};
 use std::{sync::Arc, time::Instant};
@@ -75,74 +74,57 @@ impl ResourcesTrackersFetchJob {
 
         // Fetch all resources trackers jobs that are pending processing.
         let web_scraping = api.web_scraping();
-        let pending_trackers_jobs = web_scraping.get_pending_resources_tracker_jobs();
-        pin_mut!(pending_trackers_jobs);
+        let pending_trackers = web_scraping.get_pending_resources_trackers();
+        pin_mut!(pending_trackers);
 
-        while let Some(tracker_job) = pending_trackers_jobs.next().await {
-            let UserData {
-                key: tracker_name,
-                user_id,
-                value: tracker_job_id,
-                ..
-            } = tracker_job?;
-            let tracker_name = tracker_name.as_ref().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Found an pending tracker job without a tracker name: {:?}",
-                    tracker_job_id
-                )
-            })?;
-
-            let tracker = web_scraping
-                .get_resources_tracker(user_id, tracker_name)
-                .await?
-                .and_then(|tracker| {
-                    if tracker.revisions > 0 && tracker.schedule.is_some() {
-                        Some(tracker)
-                    } else {
-                        None
-                    }
-                });
-            let tracker = if let Some(tracker) = tracker {
-                tracker
-            } else {
-                log::warn!(
-                    "Found an pending tracker job for a user ({}) tracker ({}) that doesn't support tracking, removing...",
-                    *user_id, tracker_name
+        while let Some(tracker) = pending_trackers.next().await {
+            let tracker = tracker?;
+            let Some(job_id) = tracker.job_id else {
+                log::error!(
+                    "Could not find a job for a pending resources tracker ('{}'), skipping.",
+                    tracker.id
                 );
-                scheduler.remove(&tracker_job_id).await?;
+                continue;
+            };
+
+            if tracker.settings.revisions == 0 || tracker.settings.schedule.is_none() {
+                log::warn!(
+                    "Found a pending resources tracker ('{}') that doesn't support tracking, the job ('{:?}') will be removed.",
+                    tracker.id, tracker.job_id
+                );
+                scheduler.remove(&job_id).await?;
                 web_scraping
-                    .remove_resources_tracker_job(user_id, tracker_name)
+                    .update_resources_tracker_job(tracker.id, None)
                     .await?;
                 continue;
             };
 
             // Check if resources has changed, comparing new revision to the latest existing one.
             let fetch_start = Instant::now();
-            let new_revision = match web_scraping.fetch_resources(&tracker).await {
-                Ok(new_revision) => new_revision,
+
+            // Create a new revision and retrieve a diff if any changes from the previous version are
+            // detected. If there are any changes and the tracker hasn't opted out of notifications,
+            // schedule a notification about the detected changes.
+            let new_revision_with_diff = match web_scraping
+                .create_resources_tracker_revision(tracker.user_id, &tracker)
+                .await
+            {
+                Ok(new_revision_with_diff) => new_revision_with_diff,
                 Err(err) => {
                     log::error!(
-                        "Failed to fetch resources for web page resources tracker \"{}\" ({}, user: {}, {} elapsed): {:?}.",
-                        tracker.name, tracker.url, *user_id, humantime::format_duration(fetch_start.elapsed()), err
+                        "Failed to create resources tracker ('{}') history revision, took {}: {:?}.",
+                        tracker.id, humantime::format_duration(fetch_start.elapsed()), err
                     );
                     continue;
                 }
             };
             log::debug!(
-                "Fetched resources for web page resources tracker \"{}\" ({}, user: {:?}, {} elapsed).",
-                tracker.name,
-                tracker.url,
-                user_id,
+                "Successfully created resources tracker ('{}') history revision, took {}.",
+                tracker.id,
                 humantime::format_duration(fetch_start.elapsed())
             );
 
-            // Save a new revision and retrieve a diff if any changes from the previous version are
-            // detected. If there are any changes and the tracker hasn't opted out of notifications,
-            // schedule a notification about the detected changes.
-            let new_revision_with_diff = web_scraping
-                .save_resources(user_id, &tracker, new_revision)
-                .await?;
-            if !tracker.disable_change_notifications {
+            if tracker.settings.enable_notifications {
                 if let Some(new_revision_with_diff) = new_revision_with_diff {
                     let changes_count = new_revision_with_diff
                         .scripts
@@ -158,7 +140,7 @@ impl ResourcesTrackersFetchJob {
                     let notification_schedule_result = api
                         .notifications()
                         .schedule_notification(
-                            NotificationDestination::User(user_id),
+                            NotificationDestination::User(tracker.user_id),
                             NotificationContent::Template(
                                 NotificationContentTemplate::ResourcesTrackerChanges {
                                     tracker_name: tracker.name,
@@ -170,15 +152,15 @@ impl ResourcesTrackersFetchJob {
                         .await;
                     if let Err(err) = notification_schedule_result {
                         log::error!(
-                            "Failed to schedule a notification for web page resources tracker \"{}\" ({}, user: {:?}): {:?}.",
-                            tracker_name, tracker.url, user_id, err
+                            "Failed to schedule a notification for web page resources tracker ('{}'): {:?}.",
+                            tracker.id, err
                         );
                     }
                 }
             }
 
             api.db
-                .set_scheduler_job_stopped_state(tracker_job_id, false)
+                .set_scheduler_job_stopped_state(job_id, false)
                 .await?;
         }
 
@@ -207,14 +189,13 @@ mod tests {
             scheduler_job::SchedulerJob, scheduler_jobs::ResourcesTrackersTriggerJob,
             scheduler_store::SchedulerStore,
         },
-        tests::{
-            mock_api_with_config, mock_config, mock_schedule_in_sec, mock_user,
-            MockWebPageResourcesTrackerBuilder,
-        },
+        tests::{mock_api_with_config, mock_config, mock_schedule_in_sec, mock_user},
         utils::{
-            WebPageResourceContent, WebPageResourceContentData, WebPageResourcesRevision,
-            WebPageResourcesTrackerScripts, WebScraperResource, WebScraperResourcesRequest,
-            WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
+            ResourcesCreateParams, WebPageResource, WebPageResourceContent,
+            WebPageResourceContentData, WebPageResourcesRevision, WebPageResourcesTracker,
+            WebPageResourcesTrackerScripts, WebPageResourcesTrackerSettings, WebScraperResource,
+            WebScraperResourcesRequest, WebScraperResourcesRequestScripts,
+            WebScraperResourcesResponse,
         },
     };
     use cron::Schedule;
@@ -228,7 +209,7 @@ mod tests {
         SimpleNotificationCode, SimpleNotificationStore,
     };
     use url::Url;
-    use uuid::uuid;
+    use uuid::{uuid, Uuid};
 
     fn mock_job_data(job_id: JobId) -> JobStoredData {
         JobStoredData {
@@ -247,7 +228,7 @@ mod tests {
         }
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_create_job_with_correct_parameters() -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.jobs.resources_trackers_fetch = Schedule::try_from("1/5 * * * * *")?;
@@ -277,7 +258,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_resume_job() -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.jobs.resources_trackers_fetch = Schedule::try_from("0 0 * * * *")?;
@@ -314,113 +295,6 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn remove_pending_trackers_jobs_if_tracker_does_not_exist() -> anyhow::Result<()> {
-        let mut config = mock_config()?;
-        config.jobs.resources_trackers_fetch =
-            Schedule::try_from(mock_schedule_in_sec(2).as_str())?;
-
-        let user = mock_user()?;
-        let api = Arc::new(mock_api_with_config(config).await?);
-        let mut scheduler = JobScheduler::new_with_storage_and_code(
-            Box::new(SchedulerStore::new(api.db.clone())),
-            Box::<SimpleNotificationStore>::default(),
-            Box::<SimpleJobCode>::default(),
-            Box::<SimpleNotificationCode>::default(),
-        )
-        .await?;
-
-        // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
-        let tracker_job_id = scheduler
-            .add(ResourcesTrackersTriggerJob::create(api.clone(), mock_schedule_in_sec(1)).await?)
-            .await?;
-        api.web_scraping()
-            .upsert_resources_tracker_job(user.id, "tracker-one", Some(tracker_job_id))
-            .await?;
-
-        // Schedule fetch job
-        scheduler
-            .add(ResourcesTrackersFetchJob::create(api.clone()).await?)
-            .await?;
-
-        // Start scheduler and wait for a few seconds, then stop it.
-        scheduler.start().await?;
-
-        // There shouldn't be a tracker job anymore.
-        let web_scraping = api.web_scraping();
-        while web_scraping
-            .get_resources_tracker_job_by_id(tracker_job_id)
-            .await?
-            .is_some()
-        {
-            thread::sleep(Duration::from_millis(100));
-        }
-
-        scheduler.shutdown().await?;
-
-        Ok(())
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn remove_pending_trackers_jobs_if_schedule_removed() -> anyhow::Result<()> {
-        let mut config = mock_config()?;
-        config.jobs.resources_trackers_fetch =
-            Schedule::try_from(mock_schedule_in_sec(2).as_str())?;
-
-        let user = mock_user()?;
-        let api = Arc::new(mock_api_with_config(config).await?);
-        let mut scheduler = JobScheduler::new_with_storage_and_code(
-            Box::new(SchedulerStore::new(api.db.clone())),
-            Box::<SimpleNotificationStore>::default(),
-            Box::<SimpleJobCode>::default(),
-            Box::<SimpleNotificationCode>::default(),
-        )
-        .await?;
-
-        // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
-        api.web_scraping()
-            .upsert_resources_tracker(
-                user.id,
-                MockWebPageResourcesTrackerBuilder::create(
-                    "tracker-one",
-                    "http://localhost:1234/my/app?q=2",
-                    1,
-                )?
-                .build(),
-            )
-            .await?;
-        let tracker_job_id = scheduler
-            .add(ResourcesTrackersTriggerJob::create(api.clone(), mock_schedule_in_sec(1)).await?)
-            .await?;
-        api.web_scraping()
-            .upsert_resources_tracker_job(user.id, "tracker-one", Some(tracker_job_id))
-            .await?;
-
-        // Schedule fetch job
-        scheduler
-            .add(ResourcesTrackersFetchJob::create(api.clone()).await?)
-            .await?;
-
-        // Start scheduler and wait for a few seconds, then stop it.
-        scheduler.start().await?;
-
-        // There shouldn't be a tracker job anymore.
-        let web_scraping = api.web_scraping();
-        while web_scraping
-            .get_resources_tracker_job_by_id(tracker_job_id)
-            .await?
-            .is_some()
-        {
-            thread::sleep(Duration::from_millis(100));
-        }
-
-        scheduler.shutdown().await?;
-
-        Ok(())
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn remove_pending_trackers_jobs_if_zero_revisions() -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.jobs.resources_trackers_fetch =
@@ -438,23 +312,28 @@ mod tests {
 
         // Create user, tracker and tracker job.
         api.users().upsert(user.clone()).await?;
-        api.web_scraping()
-            .upsert_resources_tracker(
-                user.id,
-                MockWebPageResourcesTrackerBuilder::create(
-                    "tracker-one",
-                    "http://localhost:1234/my/app?q=2",
-                    0,
-                )?
-                .with_schedule("1/1 * * * * *")
-                .build(),
-            )
-            .await?;
         let tracker_job_id = scheduler
             .add(ResourcesTrackersTriggerJob::create(api.clone(), mock_schedule_in_sec(1)).await?)
             .await?;
+        let tracker = api
+            .web_scraping()
+            .create_resources_tracker(
+                user.id,
+                ResourcesCreateParams {
+                    name: "tracker".to_string(),
+                    url: "https://localhost:1234/my/app?q=2".parse()?,
+                    settings: WebPageResourcesTrackerSettings {
+                        revisions: 0,
+                        schedule: Some("0 0 * * * *".to_string()),
+                        delay: Default::default(),
+                        scripts: Default::default(),
+                        enable_notifications: true,
+                    },
+                },
+            )
+            .await?;
         api.web_scraping()
-            .upsert_resources_tracker_job(user.id, "tracker-one", Some(tracker_job_id))
+            .update_resources_tracker_job(tracker.id, Some(tracker_job_id))
             .await?;
 
         // Schedule fetch job
@@ -467,7 +346,7 @@ mod tests {
 
         let web_scraping = api.web_scraping();
         while web_scraping
-            .get_resources_tracker_job_by_id(tracker_job_id)
+            .get_resources_tracker_by_job_id(tracker_job_id)
             .await?
             .is_some()
         {
@@ -498,34 +377,40 @@ mod tests {
         )
         .await?;
 
-        // Make sure that the tracker is only run once during a single minute (2 seconds after the
-        // current second).
-        let tracker_schedule = mock_schedule_in_sec(1);
-
         // Create user, tracker and tracker job.
         api.users().upsert(user.clone()).await?;
 
-        let tracker = api
-            .web_scraping()
-            .upsert_resources_tracker(
-                user.id,
-                MockWebPageResourcesTrackerBuilder::create(
-                    "tracker-one",
-                    "http://localhost:1234/my/app?q=2",
-                    1,
-                )?
-                .with_schedule(&tracker_schedule)
-                .with_scripts(WebPageResourcesTrackerScripts {
-                    resource_filter_map: Some("return resource;".to_string()),
-                })
-                .build(),
-            )
-            .await?;
+        // Make sure that the tracker is only run once during a single minute (2 seconds after the
+        // current second).
+        let tracker_schedule = mock_schedule_in_sec(1);
         let trigger_job_id = scheduler
-            .add(ResourcesTrackersTriggerJob::create(api.clone(), tracker_schedule).await?)
+            .add(ResourcesTrackersTriggerJob::create(api.clone(), tracker_schedule.clone()).await?)
             .await?;
-        api.web_scraping()
-            .upsert_resources_tracker_job(user.id, "tracker-one", Some(trigger_job_id))
+        let tracker = WebPageResourcesTracker {
+            id: Uuid::now_v7(),
+            name: "tracker".to_string(),
+            url: "https://localhost:1234/my/app?q=2".parse()?,
+            settings: WebPageResourcesTrackerSettings {
+                revisions: 1,
+                schedule: Some(tracker_schedule),
+                delay: Duration::from_secs(2),
+                scripts: WebPageResourcesTrackerScripts {
+                    resource_filter_map: Some("return resource;".to_string()),
+                },
+                enable_notifications: true,
+            },
+            user_id: user.id,
+            job_id: Some(trigger_job_id),
+            // Preserve timestamp only up to seconds.
+            created_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
+        };
+
+        // Insert tracker directly to DB to bypass schedule validation.
+        api.db
+            .web_scraping(user.id)
+            .insert_resources_tracker(&tracker)
             .await?;
 
         // Schedule fetch job
@@ -575,7 +460,7 @@ mod tests {
 
         let web_scraping = api.web_scraping();
         while web_scraping
-            .get_resources(user.id, &tracker)
+            .get_resources_tracker_history(user.id, tracker.id, Default::default())
             .await?
             .is_empty()
         {
@@ -587,77 +472,27 @@ mod tests {
         resources_mock.assert();
 
         // Check that resources were saved.
-        assert_debug_snapshot!(api.web_scraping().get_resources(user.id, &tracker).await?,  @r###"
-        [
-            WebPageResourcesRevision {
-                timestamp: 2000-01-01 10:00:00.0 +00:00:00,
-                scripts: [
-                    WebPageResource {
-                        url: Some(
-                            Url {
-                                scheme: "http",
-                                cannot_be_a_base: false,
-                                username: "",
-                                password: None,
-                                host: Some(
-                                    Domain(
-                                        "localhost",
-                                    ),
-                                ),
-                                port: Some(
-                                    1234,
-                                ),
-                                path: "/script.js",
-                                query: None,
-                                fragment: None,
-                            },
-                        ),
-                        content: Some(
-                            WebPageResourceContent {
-                                data: Sha1(
-                                    "some-digest",
-                                ),
-                                size: 123,
-                            },
-                        ),
-                        diff_status: None,
-                    },
-                ],
-                styles: [
-                    WebPageResource {
-                        url: Some(
-                            Url {
-                                scheme: "http",
-                                cannot_be_a_base: false,
-                                username: "",
-                                password: None,
-                                host: Some(
-                                    Domain(
-                                        "localhost",
-                                    ),
-                                ),
-                                port: Some(
-                                    1234,
-                                ),
-                                path: "/style.css",
-                                query: None,
-                                fragment: None,
-                            },
-                        ),
-                        content: Some(
-                            WebPageResourceContent {
-                                data: Sha1(
-                                    "some-other-digest",
-                                ),
-                                size: 321,
-                            },
-                        ),
-                        diff_status: None,
-                    },
-                ],
-            },
-        ]
-        "###);
+        assert_eq!(
+            api.web_scraping()
+                .get_resources_tracker_history(user.id, tracker.id, Default::default())
+                .await?
+                .into_iter()
+                .map(|rev| (rev.created_at, rev.scripts, rev.styles))
+                .collect::<Vec<_>>(),
+            vec![(
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+                resources
+                    .scripts
+                    .into_iter()
+                    .map(WebPageResource::from)
+                    .collect::<Vec<_>>(),
+                resources
+                    .styles
+                    .into_iter()
+                    .map(WebPageResource::from)
+                    .collect::<Vec<_>>()
+            )]
+        );
 
         // Check that the tracker job was marked as NOT stopped.
         let trigger_job = api.db.get_scheduler_job(trigger_job_id).await?;
@@ -705,35 +540,42 @@ mod tests {
         // Create user, tracker and tracker job.
         api.users().upsert(user.clone()).await?;
 
-        let tracker = api
-            .web_scraping()
-            .upsert_resources_tracker(
-                user.id,
-                MockWebPageResourcesTrackerBuilder::create(
-                    "tracker-one",
-                    "http://localhost:1234/my/app?q=2",
-                    2,
-                )?
-                .with_schedule(&tracker_schedule)
-                .build(),
-            )
-            .await?;
-        api.web_scraping()
-            .save_resources(
-                user.id,
-                &tracker,
-                WebPageResourcesRevision {
-                    timestamp: OffsetDateTime::from_unix_timestamp(946720700)?,
-                    scripts: vec![],
-                    styles: vec![],
-                },
-            )
-            .await?;
         let trigger_job_id = scheduler
-            .add(ResourcesTrackersTriggerJob::create(api.clone(), tracker_schedule).await?)
+            .add(ResourcesTrackersTriggerJob::create(api.clone(), tracker_schedule.clone()).await?)
             .await?;
-        api.web_scraping()
-            .upsert_resources_tracker_job(user.id, "tracker-one", Some(trigger_job_id))
+        let tracker = WebPageResourcesTracker {
+            id: Uuid::now_v7(),
+            name: "tracker-one".to_string(),
+            url: "https://localhost:1234/my/app?q=2".parse()?,
+            settings: WebPageResourcesTrackerSettings {
+                revisions: 2,
+                schedule: Some(tracker_schedule),
+                delay: Duration::from_secs(2),
+                scripts: Default::default(),
+                enable_notifications: true,
+            },
+            user_id: user.id,
+            job_id: Some(trigger_job_id),
+            // Preserve timestamp only up to seconds.
+            created_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
+        };
+
+        // Insert tracker directly to DB to bypass schedule validation.
+        api.db
+            .web_scraping(user.id)
+            .insert_resources_tracker(&tracker)
+            .await?;
+        api.db
+            .web_scraping(user.id)
+            .insert_resources_tracker_history_revision(&WebPageResourcesRevision {
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
+                tracker_id: tracker.id,
+                created_at: OffsetDateTime::from_unix_timestamp(946720700)?,
+                scripts: vec![],
+                styles: vec![],
+            })
             .await?;
 
         // Schedule fetch job
@@ -826,7 +668,7 @@ mod tests {
 
         assert_eq!(
             api.web_scraping()
-                .get_resources(user.id, &tracker)
+                .get_resources_tracker_history(user.id, tracker.id, Default::default())
                 .await?
                 .len(),
             2

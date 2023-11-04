@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "type", content = "value", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub enum WebPageResourceContentData {
     /// Raw resource content.
     Raw(String),
@@ -32,20 +32,17 @@ mod tests {
     fn serialization() -> anyhow::Result<()> {
         assert_json_snapshot!(WebPageResourceContentData::Raw("Some content".to_string()), @r###"
         {
-          "type": "raw",
-          "value": "Some content"
+          "raw": "Some content"
         }
         "###);
         assert_json_snapshot!(WebPageResourceContentData::Tlsh("9590220E23308028".to_string()), @r###"
         {
-          "type": "tlsh",
-          "value": "9590220E23308028"
+          "tlsh": "9590220E23308028"
         }
         "###);
         assert_json_snapshot!(WebPageResourceContentData::Sha1("eeb57986d46355a4ccfab37c3071f40e2b14ab07".to_string()), @r###"
         {
-          "type": "sha1",
-          "value": "eeb57986d46355a4ccfab37c3071f40e2b14ab07"
+          "sha1": "eeb57986d46355a4ccfab37c3071f40e2b14ab07"
         }
         "###);
 
@@ -56,22 +53,21 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<WebPageResourceContentData>(
-                &json!({ "type": "raw", "value": "Some content" }).to_string()
+                &json!({ "raw": "Some content" }).to_string()
             )?,
             WebPageResourceContentData::Raw("Some content".to_string())
         );
 
         assert_eq!(
             serde_json::from_str::<WebPageResourceContentData>(
-                &json!({ "type": "tlsh", "value": "9590220E23308028" }).to_string()
+                &json!({ "tlsh": "9590220E23308028" }).to_string()
             )?,
             WebPageResourceContentData::Tlsh("9590220E23308028".to_string())
         );
 
         assert_eq!(
             serde_json::from_str::<WebPageResourceContentData>(
-                &json!({ "type": "sha1", "value": "eeb57986d46355a4ccfab37c3071f40e2b14ab07" })
-                    .to_string()
+                &json!({ "sha1": "eeb57986d46355a4ccfab37c3071f40e2b14ab07" }).to_string()
             )?,
             WebPageResourceContentData::Sha1(
                 "eeb57986d46355a4ccfab37c3071f40e2b14ab07".to_string()

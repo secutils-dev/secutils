@@ -87,18 +87,6 @@ mod tests {
                 key: Some("my-responder")
             }
         );
-        assert_eq!(
-            UserDataKey::from((
-                InternalUserDataNamespace::WebPageResourcesTrackersJobs,
-                "my-tracker"
-            )),
-            UserDataKey {
-                namespace: UserDataNamespace::Internal(
-                    InternalUserDataNamespace::WebPageResourcesTrackersJobs
-                ),
-                key: Some("my-tracker")
-            }
-        );
 
         Ok(())
     }

@@ -60,7 +60,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
                 activated: true,
             },
             None => User {
-                id: UserId::empty(),
+                id: UserId::default(),
                 email: builtin_user.email,
                 handle: builtin_user.handle,
                 credentials: builtin_user.credentials,

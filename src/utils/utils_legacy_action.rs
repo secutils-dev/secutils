@@ -2,10 +2,7 @@ use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
     users::User,
-    utils::{
-        UtilsLegacyActionResult, UtilsWebScrapingAction, UtilsWebSecurityAction,
-        UtilsWebhooksAction,
-    },
+    utils::{UtilsLegacyActionResult, UtilsWebSecurityAction, UtilsWebhooksAction},
 };
 use serde::Deserialize;
 
@@ -14,7 +11,6 @@ use serde::Deserialize;
 #[serde(tag = "type", content = "value")]
 pub enum UtilsLegacyAction {
     Webhooks(UtilsWebhooksAction),
-    WebScraping(UtilsWebScrapingAction),
     WebSecurity(UtilsWebSecurityAction),
 }
 
@@ -26,7 +22,6 @@ impl UtilsLegacyAction {
     ) -> anyhow::Result<()> {
         match self {
             UtilsLegacyAction::Webhooks(action) => action.validate(),
-            UtilsLegacyAction::WebScraping(action) => action.validate(api).await,
             UtilsLegacyAction::WebSecurity(action) => action.validate(api).await,
         }
     }
@@ -42,10 +37,6 @@ impl UtilsLegacyAction {
                 .handle(user, api)
                 .await
                 .map(UtilsLegacyActionResult::Webhooks),
-            UtilsLegacyAction::WebScraping(action) => action
-                .handle(user, api)
-                .await
-                .map(UtilsLegacyActionResult::WebScraping),
             UtilsLegacyAction::WebSecurity(action) => action
                 .handle(user, api)
                 .await
@@ -57,31 +48,13 @@ impl UtilsLegacyAction {
 #[cfg(test)]
 mod tests {
     use crate::{
-        network::Network,
-        tests::{
-            mock_api, mock_api_with_network, MockResolver, MockWebPageResourcesTrackerBuilder,
-        },
+        tests::mock_api,
         utils::{
             AutoResponder, AutoResponderMethod, ContentSecurityPolicySource, UtilsLegacyAction,
-            UtilsWebScrapingAction, UtilsWebSecurityAction, UtilsWebhooksAction,
+            UtilsWebSecurityAction, UtilsWebhooksAction,
         },
     };
     use insta::assert_debug_snapshot;
-    use lettre::transport::stub::AsyncStubTransport;
-    use std::net::Ipv4Addr;
-    use trust_dns_resolver::{
-        proto::rr::{rdata::A, RData, Record},
-        Name,
-    };
-
-    fn mock_network_with_records<const N: usize>(
-        records: Vec<Record>,
-    ) -> Network<MockResolver<N>, AsyncStubTransport> {
-        Network::new(
-            MockResolver::new_with_records::<N>(records),
-            AsyncStubTransport::new_ok(),
-        )
-    }
 
     #[actix_rt::test]
     async fn validation_webhooks() -> anyhow::Result<()> {
@@ -152,44 +125,6 @@ mod tests {
         .validate(&mock_api().await?).await, @r###"
         Err(
             "Auto responder path is not valid.",
-        )
-        "###);
-
-        Ok(())
-    }
-
-    #[actix_rt::test]
-    async fn validation_web_scraping() -> anyhow::Result<()> {
-        let tracker = MockWebPageResourcesTrackerBuilder::create(
-            "a".repeat(100),
-            "http://google.com/my/app?q=2",
-            0,
-        )?
-        .with_schedule("0 0 0 1 * *")
-        .with_delay_millis(0)
-        .build();
-        assert!(UtilsLegacyAction::WebScraping(
-            UtilsWebScrapingAction::SaveWebPageResourcesTracker { tracker }
-        )
-        .validate(
-            &mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
-                Name::new(),
-                300,
-                RData::A(A(Ipv4Addr::new(172, 32, 0, 2))),
-            )]))
-            .await?
-        )
-        .await
-        .is_ok());
-
-        assert_debug_snapshot!(UtilsLegacyAction::WebScraping(UtilsWebScrapingAction::FetchWebPageResources {
-            tracker_name: "".to_string(),
-            refresh: false,
-            calculate_diff: false
-        })
-        .validate(&mock_api().await?).await, @r###"
-        Err(
-            "Tracker name cannot be empty.",
         )
         "###);
 

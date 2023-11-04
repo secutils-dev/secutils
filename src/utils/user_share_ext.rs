@@ -70,7 +70,7 @@ mod tests {
     fn properly_checks_action_authorization_for_shared_csp() {
         let user_share = UserShare {
             id: Default::default(),
-            user_id: UserId::empty(),
+            user_id: UserId::default(),
             resource: SharedResource::content_security_policy("my-policy"),
             created_at: OffsetDateTime::now_utc(),
         };
@@ -153,7 +153,7 @@ mod tests {
         let template_id = uuid!("00000000-0000-0000-0000-000000000001");
         let user_share = UserShare {
             id: Default::default(),
-            user_id: UserId::empty(),
+            user_id: UserId::default(),
             resource: SharedResource::certificate_template(template_id),
             created_at: OffsetDateTime::now_utc(),
         };

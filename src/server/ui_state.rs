@@ -50,7 +50,7 @@ mod tests {
             },
             license: License,
             user: Some(User {
-                id: UserId::empty(),
+                id: UserId::default(),
                 email: "dev@secutils.dev".to_string(),
                 handle: "dev-handle".to_string(),
                 credentials: StoredCredentials::default(),
@@ -60,7 +60,7 @@ mod tests {
             }),
             user_share: Some(ClientUserShare::from(UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
-                user_id: UserId::empty(),
+                user_id: UserId::default(),
                 resource: SharedResource::content_security_policy("my-policy"),
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })),

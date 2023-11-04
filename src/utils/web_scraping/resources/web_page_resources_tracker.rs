@@ -1,54 +1,45 @@
-use crate::utils::WebPageResourcesTrackerScripts;
-use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DurationMilliSeconds};
-use std::time::Duration;
+use crate::{users::UserId, utils::WebPageResourcesTrackerSettings};
+use serde::Serialize;
+use time::OffsetDateTime;
 use url::Url;
+use uuid::Uuid;
 
-/// We currently support up to 10 revisions of the resources.
-pub const MAX_WEB_PAGE_RESOURCES_TRACKER_REVISIONS: usize = 10;
-
-/// We currently wait up to 60 seconds before starting to track resources.
-pub const MAX_WEB_PAGE_RESOURCES_TRACKER_DELAY: Duration = Duration::from_secs(60);
-
-#[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct WebPageResourcesTracker {
+    /// Unique web page resources tracker id (UUIDv7).
+    pub id: Uuid,
     /// Arbitrary name of the web page resources tracker.
     pub name: String,
     /// URL of the web page to track resources for.
     pub url: Url,
-    /// A number of revisions of the resources to track.
-    pub revisions: usize,
-    /// Number of milliseconds to wait after web page enters "idle" state to start tracking resources.
-    #[serde_as(as = "DurationMilliSeconds<u64>")]
-    pub delay: Duration,
-    /// Optional schedule to track resources on.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub schedule: Option<String>,
-    /// Optional scripts to inject into the web page before extracting resources to track.
-    #[serde(skip_serializing_if = "WebPageResourcesTrackerScripts::is_empty")]
-    #[serde(default)]
-    pub scripts: WebPageResourcesTrackerScripts,
-    /// Indicates that resources change notifications are disabled for this tracker. This property
-    /// intentionally looks inverted to make it easier to drop it once full blown support for custom
-    /// tracker notifications is implemented.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    #[serde(default)]
-    pub disable_change_notifications: bool,
+    /// Id of the user who owns the tracker.
+    #[serde(skip_serializing)]
+    pub user_id: UserId,
+    /// ID of the optional job that triggers resource checking. If `None` when `schedule` is set,
+    /// then the job is not scheduled it.
+    #[serde(skip_serializing)]
+    pub job_id: Option<Uuid>,
+    /// Settings of the web page resources tracker.
+    pub settings: WebPageResourcesTrackerSettings,
+    /// Date and time when the web page resources tracker was created.
+    #[serde(with = "time::serde::timestamp")]
+    pub created_at: OffsetDateTime,
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
         tests::MockWebPageResourcesTrackerBuilder,
-        utils::{web_scraping::resources::WebPageResourcesTrackerScripts, WebPageResourcesTracker},
+        utils::web_scraping::resources::WebPageResourcesTrackerScripts,
     };
     use insta::assert_json_snapshot;
-    use serde_json::json;
+    use uuid::uuid;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
         let tracker = MockWebPageResourcesTrackerBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
             "some-name",
             "http://localhost:1234/my/app?q=2",
             3,
@@ -57,14 +48,20 @@ mod tests {
         .build();
         assert_json_snapshot!(tracker, @r###"
         {
+          "id": "00000000-0000-0000-0000-000000000001",
           "name": "some-name",
           "url": "http://localhost:1234/my/app?q=2",
-          "revisions": 3,
-          "delay": 2500
+          "settings": {
+            "revisions": 3,
+            "delay": 2500,
+            "enableNotifications": true
+          },
+          "createdAt": 946720800
         }
         "###);
 
         let tracker = MockWebPageResourcesTrackerBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
             "some-name",
             "http://localhost:1234/my/app?q=2",
             3,
@@ -74,15 +71,21 @@ mod tests {
         .build();
         assert_json_snapshot!(tracker, @r###"
         {
+          "id": "00000000-0000-0000-0000-000000000001",
           "name": "some-name",
           "url": "http://localhost:1234/my/app?q=2",
-          "revisions": 3,
-          "delay": 2500,
-          "schedule": "0 0 * * *"
+          "settings": {
+            "revisions": 3,
+            "schedule": "0 0 * * *",
+            "delay": 2500,
+            "enableNotifications": true
+          },
+          "createdAt": 946720800
         }
         "###);
 
         let tracker = MockWebPageResourcesTrackerBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
             "some-name",
             "http://localhost:1234/my/app?q=2",
             3,
@@ -95,18 +98,24 @@ mod tests {
         .build();
         assert_json_snapshot!(tracker, @r###"
         {
+          "id": "00000000-0000-0000-0000-000000000001",
           "name": "some-name",
           "url": "http://localhost:1234/my/app?q=2",
-          "revisions": 3,
-          "delay": 2500,
-          "schedule": "0 0 * * *",
-          "scripts": {
-            "resourceFilterMap": "return resource;"
-          }
+          "settings": {
+            "revisions": 3,
+            "schedule": "0 0 * * *",
+            "delay": 2500,
+            "scripts": {
+              "resourceFilterMap": "return resource;"
+            },
+            "enableNotifications": true
+          },
+          "createdAt": 946720800
         }
         "###);
 
         let tracker = MockWebPageResourcesTrackerBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
             "some-name",
             "http://localhost:1234/my/app?q=2",
             3,
@@ -117,15 +126,21 @@ mod tests {
         .build();
         assert_json_snapshot!(tracker, @r###"
         {
+          "id": "00000000-0000-0000-0000-000000000001",
           "name": "some-name",
           "url": "http://localhost:1234/my/app?q=2",
-          "revisions": 3,
-          "delay": 2500,
-          "schedule": "0 0 * * *"
+          "settings": {
+            "revisions": 3,
+            "schedule": "0 0 * * *",
+            "delay": 2500,
+            "enableNotifications": true
+          },
+          "createdAt": 946720800
         }
         "###);
 
         let tracker = MockWebPageResourcesTrackerBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
             "some-name",
             "http://localhost:1234/my/app?q=2",
             3,
@@ -133,104 +148,22 @@ mod tests {
         .with_delay_millis(2500)
         .with_schedule("0 0 * * *")
         .with_scripts(WebPageResourcesTrackerScripts::default())
-        .with_disabled_notifications()
+        .without_notifications()
         .build();
         assert_json_snapshot!(tracker, @r###"
         {
+          "id": "00000000-0000-0000-0000-000000000001",
           "name": "some-name",
           "url": "http://localhost:1234/my/app?q=2",
-          "revisions": 3,
-          "delay": 2500,
-          "schedule": "0 0 * * *",
-          "disable_change_notifications": true
+          "settings": {
+            "revisions": 3,
+            "schedule": "0 0 * * *",
+            "delay": 2500,
+            "enableNotifications": false
+          },
+          "createdAt": 946720800
         }
         "###);
-
-        Ok(())
-    }
-
-    #[test]
-    fn deserialization() -> anyhow::Result<()> {
-        let tracker = MockWebPageResourcesTrackerBuilder::create(
-            "some-name",
-            "http://localhost:1234/my/app?q=2",
-            3,
-        )?
-        .build();
-        assert_eq!(
-            serde_json::from_str::<WebPageResourcesTracker>(
-                &json!({ "name": "some-name", "url": "http://localhost:1234/my/app?q=2", "revisions": 3, "delay": 2000 })
-                    .to_string()
-            )?,
-           tracker
-        );
-
-        let tracker = MockWebPageResourcesTrackerBuilder::create(
-            "some-name",
-            "http://localhost:1234/my/app?q=2",
-            3,
-        )?
-        .with_schedule("0 0 * * *")
-        .build();
-        assert_eq!(
-            serde_json::from_str::<WebPageResourcesTracker>(
-                &json!({ "name": "some-name", "url": "http://localhost:1234/my/app?q=2", "revisions": 3, "delay": 2000, "schedule": "0 0 * * *" })
-                    .to_string()
-            )?,
-            tracker
-        );
-
-        let tracker = MockWebPageResourcesTrackerBuilder::create(
-            "some-name",
-            "http://localhost:1234/my/app?q=2",
-            3,
-        )?
-        .with_schedule("0 0 * * *")
-        .with_scripts(WebPageResourcesTrackerScripts {
-            resource_filter_map: Some("return resource;".to_string()),
-        })
-        .build();
-        assert_eq!(
-            serde_json::from_str::<WebPageResourcesTracker>(
-                &json!({
-                    "name": "some-name",
-                    "url": "http://localhost:1234/my/app?q=2",
-                    "revisions": 3,
-                    "delay": 2000,
-                    "schedule": "0 0 * * *",
-                    "scripts": { "resourceFilterMap": "return resource;" }
-                })
-                .to_string()
-            )?,
-            tracker
-        );
-
-        let tracker = MockWebPageResourcesTrackerBuilder::create(
-            "some-name",
-            "http://localhost:1234/my/app?q=2",
-            3,
-        )?
-        .with_schedule("0 0 * * *")
-        .with_scripts(WebPageResourcesTrackerScripts {
-            resource_filter_map: Some("return resource;".to_string()),
-        })
-        .with_disabled_notifications()
-        .build();
-        assert_eq!(
-            serde_json::from_str::<WebPageResourcesTracker>(
-                &json!({
-                    "name": "some-name",
-                    "url": "http://localhost:1234/my/app?q=2",
-                    "revisions": 3,
-                    "delay": 2000,
-                    "schedule": "0 0 * * *",
-                    "scripts": { "resourceFilterMap": "return resource;" },
-                    "disable_change_notifications": true
-                })
-                .to_string()
-            )?,
-            tracker
-        );
 
         Ok(())
     }

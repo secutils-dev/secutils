@@ -60,46 +60,27 @@ impl ResourcesTrackersScheduleJob {
     ) -> anyhow::Result<()> {
         // First check if there any trackers to schedule.
         let web_scraping = api.web_scraping();
-        let unscheduled_trackers_jobs = web_scraping
-            .get_unscheduled_resources_tracker_jobs()
-            .await?;
-
-        if !unscheduled_trackers_jobs.is_empty() {
-            log::debug!(
-                "Found {} unscheduled trackers jobs.",
-                unscheduled_trackers_jobs.len()
-            );
+        let unscheduled_trackers = web_scraping.get_unscheduled_resources_trackers().await?;
+        if !unscheduled_trackers.is_empty() {
+            log::debug!("Found {} unscheduled trackers.", unscheduled_trackers.len());
         }
 
-        for tracker_job in unscheduled_trackers_jobs {
-            let tracker_name = tracker_job.key.as_ref().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Found an unscheduled tracker job without a tracker name: {:?}",
-                    tracker_job
-                )
-            })?;
+        for tracker in unscheduled_trackers {
+            if tracker.settings.revisions == 0 {
+                log::error!(
+                    "Found an unscheduled tracker ({}) that doesn't support tracking, skipping…",
+                    tracker.id
+                );
+                continue;
+            }
 
-            // Check if the tracker still exists, and it supports tracking.
-            let tracker = web_scraping
-                .get_resources_tracker(tracker_job.user_id, tracker_name)
-                .await?;
-            let schedule = tracker.and_then(|tracker| {
-                if tracker.revisions > 0 {
-                    tracker.schedule
-                } else {
-                    None
-                }
-            });
-            let schedule = if let Some(schedule) = schedule {
+            let schedule = if let Some(schedule) = tracker.settings.schedule {
                 schedule
             } else {
-                log::warn!(
-                    "Found an unscheduled tracker job for a tracker that doesn't support tracking, removing: {:?}",
-                    tracker_job
+                log::error!(
+                    "Found an unscheduled tracker ({}) that doesn't have tracking schedule, skipping…",
+                    tracker.id
                 );
-                web_scraping
-                    .remove_resources_tracker_job(tracker_job.user_id, tracker_name)
-                    .await?;
                 continue;
             };
 
@@ -108,7 +89,7 @@ impl ResourcesTrackersScheduleJob {
                 .add(ResourcesTrackersTriggerJob::create(api.clone(), schedule).await?)
                 .await?;
             web_scraping
-                .upsert_resources_tracker_job(tracker_job.user_id, tracker_name, Some(job_id))
+                .update_resources_tracker_job(tracker.id, Some(job_id))
                 .await?;
         }
 
@@ -121,7 +102,8 @@ mod tests {
     use super::ResourcesTrackersScheduleJob;
     use crate::{
         scheduler::{scheduler_job::SchedulerJob, scheduler_store::SchedulerStore},
-        tests::{mock_api_with_config, mock_config, mock_user, MockWebPageResourcesTrackerBuilder},
+        tests::{mock_api_with_config, mock_config, mock_user},
+        utils::{ResourcesCreateParams, WebPageResourcesTrackerSettings},
     };
     use anyhow::anyhow;
     use cron::Schedule;
@@ -132,6 +114,7 @@ mod tests {
         CronJob, JobId, JobScheduler, JobStored, JobStoredData, JobType, SimpleJobCode,
         SimpleNotificationCode, SimpleNotificationStore,
     };
+    use url::Url;
     use uuid::uuid;
 
     fn mock_job_data(job_id: JobId) -> JobStoredData {
@@ -241,44 +224,50 @@ mod tests {
 
         // Create user, trackers and tracker jobs.
         api.users().upsert(user.clone()).await?;
-        api.web_scraping()
-            .upsert_resources_tracker(
+
+        let tracker_one = api
+            .web_scraping()
+            .create_resources_tracker(
                 user.id,
-                MockWebPageResourcesTrackerBuilder::create(
-                    "tracker-one",
-                    "http://localhost:1234/my/app?q=2",
-                    1,
-                )?
-                .with_schedule("1 2 3 4 5 6 2030")
-                .build(),
+                ResourcesCreateParams {
+                    name: "tracker-one".to_string(),
+                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
+                    settings: WebPageResourcesTrackerSettings {
+                        revisions: 1,
+                        delay: Duration::from_millis(2000),
+                        enable_notifications: true,
+                        schedule: Some("1 2 3 4 5 6 2030".to_string()),
+                        scripts: Default::default(),
+                    },
+                },
             )
-            .await?;
-        api.web_scraping()
-            .upsert_resources_tracker(
-                user.id,
-                MockWebPageResourcesTrackerBuilder::create(
-                    "tracker-two",
-                    "http://localhost:1234/my/app?q=2",
-                    1,
-                )?
-                .with_schedule("1 2 3 4 5 6 2035")
-                .build(),
-            )
-            .await?;
-        api.web_scraping()
-            .upsert_resources_tracker_job(user.id, "tracker-one", None)
-            .await?;
-        api.web_scraping()
-            .upsert_resources_tracker_job(user.id, "tracker-two", None)
             .await?;
 
-        let unscheduled_jobs = api
+        let tracker_two = api
             .web_scraping()
-            .get_unscheduled_resources_tracker_jobs()
+            .create_resources_tracker(
+                user.id,
+                ResourcesCreateParams {
+                    name: "tracker-two".to_string(),
+                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
+                    settings: WebPageResourcesTrackerSettings {
+                        revisions: 1,
+                        delay: Duration::from_millis(2000),
+                        enable_notifications: true,
+                        schedule: Some("1 2 3 4 5 6 2035".to_string()),
+                        scripts: Default::default(),
+                    },
+                },
+            )
             .await?;
-        assert_eq!(unscheduled_jobs.len(), 2);
-        assert_eq!(unscheduled_jobs[0].key, Some("tracker-one".to_string()));
-        assert_eq!(unscheduled_jobs[1].key, Some("tracker-two".to_string()));
+
+        let unscheduled_trackers = api
+            .web_scraping()
+            .get_unscheduled_resources_trackers()
+            .await?;
+        assert_eq!(unscheduled_trackers.len(), 2);
+        assert_eq!(unscheduled_trackers[0].id, tracker_one.id);
+        assert_eq!(unscheduled_trackers[1].id, tracker_two.id);
 
         let mut scheduler = JobScheduler::new_with_storage_and_code(
             Box::new(SchedulerStore::new(api.db.clone())),
@@ -295,7 +284,7 @@ mod tests {
         scheduler.start().await?;
         while !api
             .web_scraping()
-            .get_unscheduled_resources_tracker_jobs()
+            .get_unscheduled_resources_trackers()
             .await?
             .is_empty()
         {
@@ -304,11 +293,11 @@ mod tests {
         scheduler.shutdown().await?;
 
         // All pending jobs should be scheduled now.
-        let unscheduled_jobs = api
+        let unscheduled_trackers = api
             .web_scraping()
-            .get_unscheduled_resources_tracker_jobs()
+            .get_unscheduled_resources_trackers()
             .await?;
-        assert!(unscheduled_jobs.is_empty());
+        assert!(unscheduled_trackers.is_empty());
 
         let jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
         assert_eq!(jobs.len(), 3);
@@ -321,18 +310,18 @@ mod tests {
                 continue;
             }
 
-            let job = api
+            let scheduled_tracker = api
                 .web_scraping()
-                .get_resources_tracker_job_by_id(job_id)
+                .get_resources_tracker_by_job_id(job_id)
                 .await?;
-            assert!(job.is_some());
+            assert!(scheduled_tracker.is_some());
         }
 
         Ok(())
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn remove_unscheduled_trackers_jobs_if_schedule_removed() -> anyhow::Result<()> {
+    async fn does_not_schedule_trackers_without_schedule() -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.jobs.resources_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
 
@@ -341,42 +330,30 @@ mod tests {
 
         // Create user, trackers and tracker jobs.
         api.users().upsert(user.clone()).await?;
-        api.web_scraping()
-            .upsert_resources_tracker(
+
+        let tracker = api
+            .web_scraping()
+            .create_resources_tracker(
                 user.id,
-                MockWebPageResourcesTrackerBuilder::create(
-                    "tracker-one",
-                    "http://localhost:1234/my/app?q=2",
-                    1,
-                )?
-                .build(),
+                ResourcesCreateParams {
+                    name: "tracker-one".to_string(),
+                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
+                    settings: WebPageResourcesTrackerSettings {
+                        revisions: 1,
+                        delay: Duration::from_millis(2000),
+                        enable_notifications: true,
+                        schedule: None,
+                        scripts: Default::default(),
+                    },
+                },
             )
-            .await?;
-        api.web_scraping()
-            .upsert_resources_tracker(
-                user.id,
-                MockWebPageResourcesTrackerBuilder::create(
-                    "tracker-two",
-                    "http://localhost:1234/my/app?q=2",
-                    1,
-                )?
-                .build(),
-            )
-            .await?;
-        api.web_scraping()
-            .upsert_resources_tracker_job(user.id, "tracker-one", None)
-            .await?;
-        api.web_scraping()
-            .upsert_resources_tracker_job(user.id, "tracker-two", None)
             .await?;
 
-        let unscheduled_jobs = api
+        assert!(api
             .web_scraping()
-            .get_unscheduled_resources_tracker_jobs()
-            .await?;
-        assert_eq!(unscheduled_jobs.len(), 2);
-        assert_eq!(unscheduled_jobs[0].key, Some("tracker-one".to_string()));
-        assert_eq!(unscheduled_jobs[1].key, Some("tracker-two".to_string()));
+            .get_unscheduled_resources_trackers()
+            .await?
+            .is_empty());
 
         let mut scheduler = JobScheduler::new_with_storage_and_code(
             Box::new(SchedulerStore::new(api.db.clone())),
@@ -391,22 +368,17 @@ mod tests {
 
         // Start scheduler and wait for a few seconds, then stop it.
         scheduler.start().await?;
-        while !api
-            .web_scraping()
-            .get_unscheduled_resources_tracker_jobs()
-            .await?
-            .is_empty()
-        {
-            thread::sleep(Duration::from_millis(100));
-        }
+        thread::sleep(Duration::from_millis(2000));
         scheduler.shutdown().await?;
 
-        // All pending jobs should be scheduled now.
-        let unscheduled_jobs = api
+        // Tracker has not been assigned job ID.
+        assert!(api
             .web_scraping()
-            .get_unscheduled_resources_tracker_jobs()
-            .await?;
-        assert!(unscheduled_jobs.is_empty());
+            .get_resources_tracker(user.id, tracker.id)
+            .await?
+            .unwrap()
+            .job_id
+            .is_none());
 
         let mut jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
         assert_eq!(jobs.len(), 1);
@@ -416,7 +388,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn remove_unscheduled_trackers_jobs_if_revisions_is_zero() -> anyhow::Result<()> {
+    async fn does_not_schedule_trackers_if_revisions_is_zero() -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.jobs.resources_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
 
@@ -425,99 +397,30 @@ mod tests {
 
         // Create user, trackers and tracker jobs.
         api.users().upsert(user.clone()).await?;
-        api.web_scraping()
-            .upsert_resources_tracker(
+
+        let tracker = api
+            .web_scraping()
+            .create_resources_tracker(
                 user.id,
-                MockWebPageResourcesTrackerBuilder::create(
-                    "tracker-one",
-                    "http://localhost:1234/my/app?q=2",
-                    0,
-                )?
-                .with_schedule("1 2 3 4 5 6 2030")
-                .build(),
+                ResourcesCreateParams {
+                    name: "tracker-one".to_string(),
+                    url: Url::parse("http://localhost:1234/my/app?q=2")?,
+                    settings: WebPageResourcesTrackerSettings {
+                        revisions: 0,
+                        delay: Duration::from_millis(2000),
+                        enable_notifications: true,
+                        schedule: Some("1 2 3 4 5 6 2030".to_string()),
+                        scripts: Default::default(),
+                    },
+                },
             )
             .await?;
-        api.web_scraping()
-            .upsert_resources_tracker_job(user.id, "tracker-one", None)
-            .await?;
 
-        let unscheduled_jobs = api
+        assert!(api
             .web_scraping()
-            .get_unscheduled_resources_tracker_jobs()
-            .await?;
-        assert_eq!(unscheduled_jobs.len(), 1);
-        assert_eq!(unscheduled_jobs[0].key, Some("tracker-one".to_string()));
-
-        let mut scheduler = JobScheduler::new_with_storage_and_code(
-            Box::new(SchedulerStore::new(api.db.clone())),
-            Box::<SimpleNotificationStore>::default(),
-            Box::<SimpleJobCode>::default(),
-            Box::<SimpleNotificationCode>::default(),
-        )
-        .await?;
-        scheduler
-            .add(ResourcesTrackersScheduleJob::create(api.clone()).await?)
-            .await?;
-
-        // Start scheduler and wait for a few seconds, then stop it.
-        scheduler.start().await?;
-        while !api
-            .web_scraping()
-            .get_unscheduled_resources_tracker_jobs()
+            .get_unscheduled_resources_trackers()
             .await?
-            .is_empty()
-        {
-            thread::sleep(Duration::from_millis(100));
-        }
-        scheduler.shutdown().await?;
-
-        // All pending jobs should be scheduled now.
-        let unscheduled_jobs = api
-            .web_scraping()
-            .get_unscheduled_resources_tracker_jobs()
-            .await?;
-        assert!(unscheduled_jobs.is_empty());
-
-        Ok(())
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn remove_unscheduled_trackers_jobs_if_tracker_do_not_exist() -> anyhow::Result<()> {
-        let mut config = mock_config()?;
-        config.jobs.resources_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
-
-        let user = mock_user()?;
-        let api = Arc::new(mock_api_with_config(config).await?);
-
-        // Create user, trackers and tracker jobs.
-        api.users().upsert(user.clone()).await?;
-
-        let web_scraping = api.web_scraping();
-        web_scraping
-            .upsert_resources_tracker(
-                user.id,
-                MockWebPageResourcesTrackerBuilder::create(
-                    "tracker-one",
-                    "http://localhost:1234/my/app?q=2",
-                    1,
-                )?
-                .with_schedule("1 2 3 4 5 6 2030")
-                .build(),
-            )
-            .await?;
-        web_scraping
-            .upsert_resources_tracker_job(user.id, "tracker-one", None)
-            .await?;
-        web_scraping
-            .upsert_resources_tracker_job(user.id, "tracker-two", None)
-            .await?;
-
-        let unscheduled_jobs = web_scraping
-            .get_unscheduled_resources_tracker_jobs()
-            .await?;
-        assert_eq!(unscheduled_jobs.len(), 2);
-        assert_eq!(unscheduled_jobs[0].key, Some("tracker-one".to_string()));
-        assert_eq!(unscheduled_jobs[1].key, Some("tracker-two".to_string()));
+            .is_empty());
 
         let mut scheduler = JobScheduler::new_with_storage_and_code(
             Box::new(SchedulerStore::new(api.db.clone())),
@@ -532,36 +435,21 @@ mod tests {
 
         // Start scheduler and wait for a few seconds, then stop it.
         scheduler.start().await?;
-        while !web_scraping
-            .get_unscheduled_resources_tracker_jobs()
-            .await?
-            .is_empty()
-        {
-            thread::sleep(Duration::from_millis(100));
-        }
+        thread::sleep(Duration::from_millis(2000));
         scheduler.shutdown().await?;
 
-        // All pending jobs should be scheduled now.
-        let unscheduled_jobs = web_scraping
-            .get_unscheduled_resources_tracker_jobs()
-            .await?;
-        assert!(unscheduled_jobs.is_empty());
+        // Tracker has not been assigned job ID.
+        assert!(api
+            .web_scraping()
+            .get_resources_tracker(user.id, tracker.id)
+            .await?
+            .unwrap()
+            .job_id
+            .is_none());
 
-        let jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
-        assert_eq!(jobs.len(), 2);
-
-        for job_data in jobs {
-            let job_id = job_data?
-                .id
-                .ok_or_else(|| anyhow!("Job without ID"))?
-                .into();
-            if job_id == schedule_job_id {
-                continue;
-            }
-
-            let job = web_scraping.get_resources_tracker_job_by_id(job_id).await?;
-            assert_eq!(job.and_then(|job| job.key), Some("tracker-one".to_string()));
-        }
+        let mut jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs.remove(0)?.id, Some(schedule_job_id.into()));
 
         Ok(())
     }

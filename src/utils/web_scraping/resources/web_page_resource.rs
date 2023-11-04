@@ -56,8 +56,7 @@ mod tests {
           "url": "http://localhost:1234/my/app?q=2",
           "content": {
             "data": {
-              "type": "sha1",
-              "value": "some-digest"
+              "sha1": "some-digest"
             },
             "size": 123
           },
@@ -73,8 +72,7 @@ mod tests {
         {
           "content": {
             "data": {
-              "type": "sha1",
-              "value": "some-digest"
+              "sha1": "some-digest"
             },
             "size": 123
           }
@@ -94,7 +92,7 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<WebPageResource>(
-                &json!({ "url": "https://localhost:1234/my/app?q=2", "content": { "data": { "type": "sha1", "value": "some-digest" }, "size": 123 } }).to_string()
+                &json!({ "url": "https://localhost:1234/my/app?q=2", "content": { "data": { "sha1": "some-digest" }, "size": 123 } }).to_string()
             )?,
             WebPageResource {
                 url: Some(Url::parse("https://localhost:1234/my/app?q=2")?),
@@ -119,7 +117,8 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<WebPageResource>(
-                &json!({ "content": { "data": { "type": "sha1", "value": "some-digest" }, "size": 123 } }).to_string()
+                &json!({ "content": { "data": { "sha1": "some-digest" }, "size": 123 } })
+                    .to_string()
             )?,
             WebPageResource {
                 url: None,

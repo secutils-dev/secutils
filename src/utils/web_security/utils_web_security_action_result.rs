@@ -87,7 +87,7 @@ mod tests {
             }),
             Some(ClientUserShare::from(UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
-                user_id: UserId::empty(),
+                user_id: UserId::default(),
                 resource: SharedResource::content_security_policy("policy-one".to_string()),
                 created_at: time::OffsetDateTime::from_unix_timestamp(123456)?,
             }))
@@ -139,7 +139,7 @@ mod tests {
         assert_json_snapshot!(UtilsWebSecurityActionResult::share(
           ClientUserShare::from(UserShare {
               id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
-              user_id: UserId::empty(),
+              user_id: UserId::default(),
               resource: SharedResource::content_security_policy("policy-one".to_string()),
               created_at: time::OffsetDateTime::from_unix_timestamp(123456)?,
           })
@@ -162,7 +162,7 @@ mod tests {
         assert_json_snapshot!(UtilsWebSecurityActionResult::unshare(
           Some(ClientUserShare::from(UserShare {
             id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
-            user_id: UserId::empty(),
+            user_id: UserId::default(),
             resource: SharedResource::content_security_policy("policy-one".to_string()),
             created_at: time::OffsetDateTime::from_unix_timestamp(123456)?,
           }))

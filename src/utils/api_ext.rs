@@ -138,6 +138,15 @@ mod tests {
                     [
                         Util {
                             id: 10,
+                            handle: "web_scraping__content",
+                            name: "Content trackers",
+                            keywords: Some(
+                                "web scraping crawl spider scraper scrape content tracker track",
+                            ),
+                            utils: None,
+                        },
+                        Util {
+                            id: 12,
                             handle: "web_scraping__resources",
                             name: "Resources trackers",
                             keywords: Some(

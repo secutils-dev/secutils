@@ -52,12 +52,12 @@ mod tests {
 {
     "timestamp": 946720800,
     "scripts": [
-        { "url": "https://secutils.dev/script.js", "content": { "data": { "type": "sha1", "value": "some-digest" }, "size": 123 } },
-        { "content": { "data": { "type": "sha1", "value": "another-digest" }, "size": 321 } }
+        { "url": "https://secutils.dev/script.js", "content": { "data": { "sha1": "some-digest" }, "size": 123 } },
+        { "content": { "data": { "sha1": "another-digest" }, "size": 321 } }
     ],
     "styles": [
-        { "url": "https://secutils.dev/style.css", "content": { "data": { "type": "sha1", "value": "some-css-digest" }, "size": 456 } },
-        { "content": { "data": { "type": "sha1", "value": "another-css-digest" }, "size": 654 } }
+        { "url": "https://secutils.dev/style.css", "content": { "data": { "sha1": "some-css-digest" }, "size": 456 } },
+        { "content": { "data": { "sha1": "another-css-digest" }, "size": 654 } }
     ]
 }
           "#
@@ -114,11 +114,11 @@ mod tests {
     "timestamp": 946720800,
     "scripts": [
         { "url": "https://secutils.dev/script.js" },
-        { "content": { "data": { "type": "sha1", "value": "another-digest" }, "size": 123 } }
+        { "content": { "data": { "sha1": "another-digest" }, "size": 123 } }
     ],
     "styles": [
         { "url": "https://secutils.dev/style.css" },
-        { "content": { "data": { "type": "sha1", "value": "another-css-digest" }, "size": 321 } }
+        { "content": { "data": { "sha1": "another-css-digest" }, "size": 321 } }
     ]
 }
           "#
@@ -207,8 +207,7 @@ mod tests {
               "url": "https://secutils.dev/script.js",
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "some-digest"
+                  "sha1": "some-digest"
                 },
                 "size": 123
               }
@@ -217,8 +216,7 @@ mod tests {
               "url": null,
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "another-digest"
+                  "sha1": "another-digest"
                 },
                 "size": 321
               }
@@ -229,8 +227,7 @@ mod tests {
               "url": "https://secutils.dev/style.css",
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "some-css-digest"
+                  "sha1": "some-css-digest"
                 },
                 "size": 456
               }
@@ -239,8 +236,7 @@ mod tests {
               "url": null,
               "content": {
                 "data": {
-                  "type": "sha1",
-                  "value": "another-css-digest"
+                  "sha1": "another-css-digest"
                 },
                 "size": 654
               }

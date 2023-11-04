@@ -1,6 +1,4 @@
-use crate::utils::{
-    UtilsWebScrapingActionResult, UtilsWebSecurityActionResult, UtilsWebhooksActionResult,
-};
+use crate::utils::{UtilsWebSecurityActionResult, UtilsWebhooksActionResult};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -8,6 +6,5 @@ use serde::Serialize;
 #[serde(tag = "type", content = "value")]
 pub enum UtilsLegacyActionResult {
     Webhooks(UtilsWebhooksActionResult),
-    WebScraping(UtilsWebScrapingActionResult),
     WebSecurity(UtilsWebSecurityActionResult),
 }
