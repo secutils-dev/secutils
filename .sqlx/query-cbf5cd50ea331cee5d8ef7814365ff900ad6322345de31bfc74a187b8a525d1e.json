@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n    SELECT id, name, url, schedule, user_id, job_id, settings, created_at\n    FROM user_data_web_scraping_resources\n    WHERE job_id = ?1\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "url",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "schedule",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "user_id",
+        "ordinal": 4,
+        "type_info": "Int64"
+      },
+      {
+        "name": "job_id",
+        "ordinal": 5,
+        "type_info": "Blob"
+      },
+      {
+        "name": "settings",
+        "ordinal": 6,
+        "type_info": "Blob"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 7,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "cbf5cd50ea331cee5d8ef7814365ff900ad6322345de31bfc74a187b8a525d1e"
+}

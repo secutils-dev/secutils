@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n    DELETE FROM user_data_web_scraping_resources\n    WHERE user_id = ?1 AND id = ?2\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "de9f3dcdd4cd09ca0c94afebc84e4e684e44948ca5bf4f2d5c568191498bb033"
+}

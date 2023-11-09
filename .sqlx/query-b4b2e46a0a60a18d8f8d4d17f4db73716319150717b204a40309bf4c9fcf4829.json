@@ -1,17 +1,17 @@
 {
   "db_name": "SQLite",
-  "query": "\nSELECT user_id, key, value, timestamp\nFROM user_data\nWHERE value = ?1 AND namespace = ?2\n                ",
+  "query": "\nSELECT id, tracker_id, value, created_at\nFROM user_data_web_scraping_resources_history\nWHERE user_id = ?1 AND tracker_id = ?2\nORDER BY created_at\n                ",
   "describe": {
     "columns": [
       {
-        "name": "user_id",
+        "name": "id",
         "ordinal": 0,
-        "type_info": "Int64"
+        "type_info": "Blob"
       },
       {
-        "name": "key",
+        "name": "tracker_id",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Blob"
       },
       {
         "name": "value",
@@ -19,7 +19,7 @@
         "type_info": "Blob"
       },
       {
-        "name": "timestamp",
+        "name": "created_at",
         "ordinal": 3,
         "type_info": "Int64"
       }
@@ -34,5 +34,5 @@
       false
     ]
   },
-  "hash": "007bb479f840229a3ac0c2f6d150e88e396a6308864007706a2a7dc633c0debe"
+  "hash": "b4b2e46a0a60a18d8f8d4d17f4db73716319150717b204a40309bf4c9fcf4829"
 }

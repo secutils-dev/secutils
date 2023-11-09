@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n    INSERT INTO user_data_web_scraping_resources_history (user_id, id, tracker_id, value, created_at)\n    VALUES ( ?1, ?2, ?3, ?4, ?5 )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "5c77de28549b0391a62940589015506e3db8262de36487071d0c4b7b2acedfd4"
+}
