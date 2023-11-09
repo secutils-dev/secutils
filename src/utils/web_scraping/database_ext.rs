@@ -1,17 +1,17 @@
-mod raw_resources_revision;
-mod raw_resources_tracker;
+mod raw_web_page_data_revision;
+mod raw_web_page_tracker;
 
 use crate::{
     database::Database,
     error::Error as SecutilsError,
     users::UserId,
     utils::{
-        web_scraping::database_ext::raw_resources_revision::RawResourcesRevision,
-        WebPageResourcesRevision, WebPageResourcesTracker,
+        web_scraping::database_ext::raw_web_page_data_revision::RawWebPageDataRevision,
+        WebPageDataRevision, WebPageTracker, WebPageTrackerTag,
     },
 };
 use anyhow::{anyhow, bail};
-use raw_resources_tracker::RawResourcesTracker;
+use raw_web_page_tracker::RawWebPageTracker;
 use sqlx::{error::ErrorKind as SqlxErrorKind, query, query_as, Pool, Sqlite};
 use uuid::Uuid;
 
@@ -26,69 +26,74 @@ impl<'pool> WebScrapingDatabaseExt<'pool> {
         Self { pool, user_id }
     }
 
-    /// Retrieves all resources trackers for the specified user.
-    pub async fn get_resources_trackers(&self) -> anyhow::Result<Vec<WebPageResourcesTracker>> {
+    /// Retrieves all web page trackers of the specified kind.
+    pub async fn get_web_page_trackers<Tag: WebPageTrackerTag>(
+        &self,
+    ) -> anyhow::Result<Vec<WebPageTracker<Tag>>> {
         let raw_trackers = query_as!(
-            RawResourcesTracker,
+            RawWebPageTracker,
             r#"
-SELECT id, name, url, schedule, job_id, user_id, settings, created_at
-FROM user_data_web_scraping_resources
-WHERE user_id = ?1
+SELECT id, name, url, kind, schedule, job_id, user_id, data, created_at
+FROM user_data_web_scraping_trackers
+WHERE user_id = ?1 AND kind = ?2
 ORDER BY created_at
                 "#,
-            *self.user_id
+            *self.user_id,
+            Tag::KIND as u8
         )
         .fetch_all(self.pool)
         .await?;
 
         let mut trackers = vec![];
         for raw_tracker in raw_trackers {
-            trackers.push(WebPageResourcesTracker::try_from(raw_tracker)?);
+            trackers.push(WebPageTracker::try_from(raw_tracker)?);
         }
 
         Ok(trackers)
     }
 
-    /// Retrieves resources tracker for the specified user with the specified ID.
-    pub async fn get_resources_tracker(
+    /// Retrieves web page tracker for the specified user with the specified ID.
+    pub async fn get_web_page_tracker<Tag: WebPageTrackerTag>(
         &self,
         id: Uuid,
-    ) -> anyhow::Result<Option<WebPageResourcesTracker>> {
+    ) -> anyhow::Result<Option<WebPageTracker<Tag>>> {
         let id = id.as_ref();
         query_as!(
-            RawResourcesTracker,
+            RawWebPageTracker,
             r#"
-    SELECT id, name, url, schedule, user_id, job_id, settings, created_at
-    FROM user_data_web_scraping_resources
-    WHERE user_id = ?1 AND id = ?2
+    SELECT id, name, url, kind, schedule, user_id, job_id, data, created_at
+    FROM user_data_web_scraping_trackers
+    WHERE user_id = ?1 AND id = ?2 AND kind = ?3
                     "#,
             *self.user_id,
-            id
+            id,
+            Tag::KIND as u8
         )
         .fetch_optional(self.pool)
         .await?
-        .map(WebPageResourcesTracker::try_from)
+        .map(WebPageTracker::try_from)
         .transpose()
     }
 
-    /// Inserts resources tracker.
-    pub async fn insert_resources_tracker(
+    /// Inserts web page tracker.
+    pub async fn insert_web_page_tracker<Tag: WebPageTrackerTag>(
         &self,
-        tracker: &WebPageResourcesTracker,
+        tracker: &WebPageTracker<Tag>,
     ) -> anyhow::Result<()> {
-        let raw_tracker = RawResourcesTracker::try_from(tracker)?;
+        let raw_tracker = RawWebPageTracker::try_from(tracker)?;
         let result = query!(
             r#"
-    INSERT INTO user_data_web_scraping_resources (user_id, id, name, url, schedule, job_id, settings, created_at)
-    VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8 )
+    INSERT INTO user_data_web_scraping_trackers (user_id, id, name, url, kind, schedule, job_id, data, created_at)
+    VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9 )
             "#,
             *self.user_id,
             raw_tracker.id,
             raw_tracker.name,
             raw_tracker.url,
+            raw_tracker.kind,
             raw_tracker.schedule,
             raw_tracker.job_id,
-            raw_tracker.settings,
+            raw_tracker.data,
             raw_tracker.created_at
         )
         .execute(self.pool)
@@ -101,12 +106,12 @@ ORDER BY created_at
                 .unwrap_or_default();
             bail!(if is_conflict_error {
                 SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
-                    "Resources tracker ('{}') already exists.",
+                    "Web page tracker ('{}') already exists.",
                     tracker.name
                 )))
             } else {
                 SecutilsError::from(anyhow!(err).context(format!(
-                    "Couldn't create resources tracker ('{}') due to unknown reason.",
+                    "Couldn't create web page tracker ('{}') due to unknown reason.",
                     tracker.name
                 )))
             });
@@ -115,16 +120,16 @@ ORDER BY created_at
         Ok(())
     }
 
-    /// Updates web page resources tracker.
-    pub async fn update_resources_tracker(
+    /// Updates web page tracker.
+    pub async fn update_web_page_tracker<Tag: WebPageTrackerTag>(
         &self,
-        tracker: &WebPageResourcesTracker,
+        tracker: &WebPageTracker<Tag>,
     ) -> anyhow::Result<()> {
-        let raw_tracker = RawResourcesTracker::try_from(tracker)?;
+        let raw_tracker = RawWebPageTracker::try_from(tracker)?;
         let result = query!(
             r#"
-UPDATE user_data_web_scraping_resources
-SET name = ?3, url = ?4, schedule = ?5, settings = ?6, job_id = ?7
+UPDATE user_data_web_scraping_trackers
+SET name = ?3, url = ?4, schedule = ?5, data = ?6, job_id = ?7
 WHERE user_id = ?1 AND id = ?2
         "#,
             *self.user_id,
@@ -132,7 +137,7 @@ WHERE user_id = ?1 AND id = ?2
             raw_tracker.name,
             raw_tracker.url,
             raw_tracker.schedule,
-            raw_tracker.settings,
+            raw_tracker.data,
             raw_tracker.job_id
         )
         .execute(self.pool)
@@ -142,7 +147,7 @@ WHERE user_id = ?1 AND id = ?2
             Ok(result) => {
                 if result.rows_affected() == 0 {
                     bail!(SecutilsError::client(format!(
-                        "A resources tracker ('{}') doesn't exist.",
+                        "A web page tracker ('{}') doesn't exist.",
                         tracker.name
                     )));
                 }
@@ -154,12 +159,12 @@ WHERE user_id = ?1 AND id = ?2
                     .unwrap_or_default();
                 bail!(if is_conflict_error {
                     SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
-                        "Resources tracker ('{}') already exists.",
+                        "Web page tracker ('{}') already exists.",
                         tracker.name
                     )))
                 } else {
                     SecutilsError::from(anyhow!(err).context(format!(
-                        "Couldn't update resources tracker ('{}') due to unknown reason.",
+                        "Couldn't update web page tracker ('{}') due to unknown reason.",
                         tracker.name
                     )))
                 });
@@ -169,12 +174,12 @@ WHERE user_id = ?1 AND id = ?2
         Ok(())
     }
 
-    /// Removes resources tracker for the specified user with the specified ID.
-    pub async fn remove_resources_tracker(&self, id: Uuid) -> anyhow::Result<()> {
+    /// Removes web page tracker for the specified user with the specified ID.
+    pub async fn remove_web_page_tracker(&self, id: Uuid) -> anyhow::Result<()> {
         let id = id.as_ref();
         query!(
             r#"
-    DELETE FROM user_data_web_scraping_resources
+    DELETE FROM user_data_web_scraping_trackers
     WHERE user_id = ?1 AND id = ?2
                     "#,
             *self.user_id,
@@ -186,39 +191,42 @@ WHERE user_id = ?1 AND id = ?2
         Ok(())
     }
 
-    /// Retrieves all tracked revisions for the specified resources tracker.
-    pub async fn get_resources_tracker_history(
+    /// Retrieves all tracked revisions for the specified web page tracker.
+    pub async fn get_web_page_tracker_history<Tag: WebPageTrackerTag>(
         &self,
         tracker_id: Uuid,
-    ) -> anyhow::Result<Vec<WebPageResourcesRevision>> {
+    ) -> anyhow::Result<Vec<WebPageDataRevision<Tag>>> {
         let raw_revisions = query_as!(
-            RawResourcesRevision,
+            RawWebPageDataRevision,
             r#"
-SELECT id, tracker_id, value, created_at
-FROM user_data_web_scraping_resources_history
-WHERE user_id = ?1 AND tracker_id = ?2
-ORDER BY created_at
+SELECT history.id, history.tracker_id, history.data, history.created_at
+FROM user_data_web_scraping_trackers_history as history
+INNER JOIN user_data_web_scraping_trackers as trackers
+ON history.tracker_id = trackers.id
+WHERE history.user_id = ?1 AND history.tracker_id = ?2 AND trackers.kind = ?3
+ORDER BY history.created_at
                 "#,
             *self.user_id,
-            tracker_id
+            tracker_id,
+            Tag::KIND as u8
         )
         .fetch_all(self.pool)
         .await?;
 
         let mut revisions = vec![];
         for raw_revision in raw_revisions {
-            revisions.push(WebPageResourcesRevision::try_from(raw_revision)?);
+            revisions.push(WebPageDataRevision::try_from(raw_revision)?);
         }
 
         Ok(revisions)
     }
 
-    /// Removes resources tracker history.
-    pub async fn clear_resources_tracker_history(&self, tracker_id: Uuid) -> anyhow::Result<()> {
+    /// Removes web page tracker history.
+    pub async fn clear_web_page_tracker_history(&self, tracker_id: Uuid) -> anyhow::Result<()> {
         let id = tracker_id.as_ref();
         query!(
             r#"
-    DELETE FROM user_data_web_scraping_resources_history
+    DELETE FROM user_data_web_scraping_trackers_history
     WHERE user_id = ?1 AND tracker_id = ?2
                     "#,
             *self.user_id,
@@ -230,21 +238,21 @@ ORDER BY created_at
         Ok(())
     }
 
-    // Inserts resources tracker revision.
-    pub async fn insert_resources_tracker_history_revision(
+    // Inserts web page tracker revision.
+    pub async fn insert_web_page_tracker_history_revision<Tag: WebPageTrackerTag>(
         &self,
-        revision: &WebPageResourcesRevision,
+        revision: &WebPageDataRevision<Tag>,
     ) -> anyhow::Result<()> {
-        let raw_revision = RawResourcesRevision::try_from(revision)?;
+        let raw_revision = RawWebPageDataRevision::try_from(revision)?;
         let result = query!(
             r#"
-    INSERT INTO user_data_web_scraping_resources_history (user_id, id, tracker_id, value, created_at)
+    INSERT INTO user_data_web_scraping_trackers_history (user_id, id, tracker_id, data, created_at)
     VALUES ( ?1, ?2, ?3, ?4, ?5 )
             "#,
             *self.user_id,
             raw_revision.id,
             raw_revision.tracker_id,
-            raw_revision.value,
+            raw_revision.data,
             raw_revision.created_at
         )
         .execute(self.pool)
@@ -257,12 +265,12 @@ ORDER BY created_at
                 .unwrap_or_default();
             bail!(if is_conflict_error {
                 SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
-                    "Resources tracker revision ('{}') already exists.",
+                    "Web page tracker revision ('{}') already exists.",
                     revision.id
                 )))
             } else {
                 SecutilsError::from(anyhow!(err).context(format!(
-                    "Couldn't create resources tracker revision ('{}') due to unknown reason.",
+                    "Couldn't create web page tracker revision ('{}') due to unknown reason.",
                     revision.id
                 )))
             });
@@ -271,15 +279,15 @@ ORDER BY created_at
         Ok(())
     }
 
-    /// Removes resources tracker history.
-    pub async fn remove_resources_tracker_history_revision(
+    /// Removes web page tracker history.
+    pub async fn remove_web_page_tracker_history_revision(
         &self,
         tracker_id: Uuid,
         id: Uuid,
     ) -> anyhow::Result<()> {
         query!(
             r#"
-    DELETE FROM user_data_web_scraping_resources_history
+    DELETE FROM user_data_web_scraping_trackers_history
     WHERE user_id = ?1 AND tracker_id = ?2 AND id = ?3
                     "#,
             *self.user_id,
@@ -304,15 +312,15 @@ impl<'pool> WebScrapingDatabaseSystemExt<'pool> {
         Self { pool }
     }
 
-    /// Retrieves all resources trackers that need to be scheduled.
-    pub async fn get_unscheduled_resources_trackers(
+    /// Retrieves all web page trackers that need to be scheduled.
+    pub async fn get_unscheduled_web_page_trackers<Tag: WebPageTrackerTag>(
         &self,
-    ) -> anyhow::Result<Vec<WebPageResourcesTracker>> {
+    ) -> anyhow::Result<Vec<WebPageTracker<Tag>>> {
         let raw_trackers = query_as!(
-            RawResourcesTracker,
+            RawWebPageTracker,
             r#"
-SELECT id, name, url, schedule, user_id, job_id, settings, created_at
-FROM user_data_web_scraping_resources
+SELECT id, name, url, kind, schedule, user_id, job_id, data, created_at
+FROM user_data_web_scraping_trackers
 WHERE schedule IS NOT NULL AND job_id IS NULL
 ORDER BY created_at
                 "#
@@ -322,7 +330,7 @@ ORDER BY created_at
 
         let mut trackers = vec![];
         for raw_tracker in raw_trackers {
-            let tracker = WebPageResourcesTracker::try_from(raw_tracker)?;
+            let tracker = WebPageTracker::try_from(raw_tracker)?;
             // Tracker without revisions shouldn't be scheduled.
             if tracker.settings.revisions > 0 {
                 trackers.push(tracker);
@@ -332,35 +340,35 @@ ORDER BY created_at
         Ok(trackers)
     }
 
-    /// Retrieves resources tracker by the specified job ID.
-    pub async fn get_resources_tracker_by_job_id(
+    /// Retrieves web page tracker by the specified job ID.
+    pub async fn get_web_page_tracker_by_job_id<Tag: WebPageTrackerTag>(
         &self,
         job_id: Uuid,
-    ) -> anyhow::Result<Option<WebPageResourcesTracker>> {
+    ) -> anyhow::Result<Option<WebPageTracker<Tag>>> {
         query_as!(
-            RawResourcesTracker,
+            RawWebPageTracker,
             r#"
-    SELECT id, name, url, schedule, user_id, job_id, settings, created_at
-    FROM user_data_web_scraping_resources
+    SELECT id, name, url, kind, schedule, user_id, job_id, data, created_at
+    FROM user_data_web_scraping_trackers
     WHERE job_id = ?1
                     "#,
             job_id
         )
         .fetch_optional(self.pool)
         .await?
-        .map(WebPageResourcesTracker::try_from)
+        .map(WebPageTracker::try_from)
         .transpose()
     }
 
-    /// Inserts resources tracker.
-    pub async fn update_resources_tracker_job(
+    /// Inserts web page tracker.
+    pub async fn update_web_page_tracker_job(
         &self,
         id: Uuid,
         job_id: Option<Uuid>,
     ) -> anyhow::Result<()> {
         let result = query!(
             r#"
-    UPDATE user_data_web_scraping_resources
+    UPDATE user_data_web_scraping_trackers
     SET job_id = ?2
     WHERE id = ?1
             "#,
@@ -372,7 +380,7 @@ ORDER BY created_at
 
         if result.rows_affected() == 0 {
             bail!(SecutilsError::client(format!(
-                "A resource tracker ('{id}') doesn't exist.",
+                "A web page tracker ('{id}') doesn't exist.",
             )));
         }
 
@@ -398,10 +406,11 @@ impl Database {
 mod tests {
     use crate::{
         error::Error as SecutilsError,
-        tests::{mock_db, mock_user, MockWebPageResourcesTrackerBuilder},
+        tests::{mock_db, mock_user, MockWebPageTrackerBuilder},
         utils::{
-            WebPageResource, WebPageResourceContent, WebPageResourceContentData,
-            WebPageResourcesRevision, WebPageResourcesTracker,
+            web_scraping::WebPageResourcesTrackerTag, WebPageDataRevision, WebPageResource,
+            WebPageResourceContent, WebPageResourceContentData, WebPageResourcesData,
+            WebPageTracker,
         },
     };
     use insta::assert_debug_snapshot;
@@ -413,45 +422,47 @@ mod tests {
         id: Uuid,
         tracker_id: Uuid,
         time_shift: i64,
-    ) -> anyhow::Result<WebPageResourcesRevision> {
-        Ok(WebPageResourcesRevision {
+    ) -> anyhow::Result<WebPageDataRevision<WebPageResourcesTrackerTag>> {
+        Ok(WebPageDataRevision {
             id,
             tracker_id,
             created_at: OffsetDateTime::from_unix_timestamp(946720800 + time_shift)?,
-            scripts: vec![WebPageResource {
-                url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
-                content: Some(WebPageResourceContent {
-                    data: WebPageResourceContentData::Sha1("some-digest".to_string()),
-                    size: 123,
-                }),
-                diff_status: None,
-            }],
-            styles: vec![WebPageResource {
-                url: Some(Url::parse("http://localhost:1234/my/app.css?q=2")?),
-                content: Some(WebPageResourceContent {
-                    data: WebPageResourceContentData::Sha1("another-digest".to_string()),
-                    size: 321,
-                }),
-                diff_status: None,
-            }],
+            data: WebPageResourcesData {
+                scripts: vec![WebPageResource {
+                    url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
+                    content: Some(WebPageResourceContent {
+                        data: WebPageResourceContentData::Sha1("some-digest".to_string()),
+                        size: 123,
+                    }),
+                    diff_status: None,
+                }],
+                styles: vec![WebPageResource {
+                    url: Some(Url::parse("http://localhost:1234/my/app.css?q=2")?),
+                    content: Some(WebPageResourceContent {
+                        data: WebPageResourceContentData::Sha1("another-digest".to_string()),
+                        size: 321,
+                    }),
+                    diff_status: None,
+                }],
+            },
         })
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_add_and_retrieve_resources_trackers() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
         db.insert_user(&user).await?;
 
-        let mut trackers = vec![
-            MockWebPageResourcesTrackerBuilder::create(
+        let mut trackers: Vec<WebPageTracker<WebPageResourcesTrackerTag>> = vec![
+            MockWebPageTrackerBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",
                 "https://secutils.dev",
                 3,
             )?
             .build(),
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000002"),
                 "some-name-2",
                 "https://secutils.dev",
@@ -462,36 +473,38 @@ mod tests {
 
         let web_scraping = db.web_scraping(user.id);
         for tracker in trackers.iter() {
-            web_scraping.insert_resources_tracker(tracker).await?;
+            web_scraping.insert_web_page_tracker(tracker).await?;
         }
 
         let tracker = web_scraping
-            .get_resources_tracker(trackers[0].id)
+            .get_web_page_tracker(trackers[0].id)
             .await?
             .unwrap();
         assert_eq!(tracker, trackers.remove(0));
 
         let tracker = web_scraping
-            .get_resources_tracker(trackers[0].id)
+            .get_web_page_tracker(trackers[0].id)
             .await?
             .unwrap();
         assert_eq!(tracker, trackers.remove(0));
 
         assert!(web_scraping
-            .get_resources_tracker(uuid!("00000000-0000-0000-0000-000000000003"))
+            .get_web_page_tracker::<WebPageResourcesTrackerTag>(uuid!(
+                "00000000-0000-0000-0000-000000000003"
+            ))
             .await?
             .is_none());
 
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn correctly_handles_duplicated_resources_trackers_on_insert() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
         db.insert_user(&user).await?;
 
-        let tracker = MockWebPageResourcesTrackerBuilder::create(
+        let tracker = MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
             uuid!("00000000-0000-0000-0000-000000000001"),
             "some-name",
             "https://secutils.dev",
@@ -500,11 +513,11 @@ mod tests {
         .build();
 
         let web_scraping = db.web_scraping(user.id);
-        web_scraping.insert_resources_tracker(&tracker).await?;
+        web_scraping.insert_web_page_tracker(&tracker).await?;
 
         let insert_error = web_scraping
-            .insert_resources_tracker(
-                &MockWebPageResourcesTrackerBuilder::create(
+            .insert_web_page_tracker(
+                &MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
                     uuid!("00000000-0000-0000-0000-000000000002"),
                     "some-name",
                     "https://secutils.dev",
@@ -520,11 +533,11 @@ mod tests {
             insert_error,
             @r###"
         Error {
-            context: "Resources tracker (\'some-name\') already exists.",
+            context: "Web page tracker (\'some-name\') already exists.",
             source: Database(
                 SqliteError {
                     code: 2067,
-                    message: "UNIQUE constraint failed: user_data_web_scraping_resources.name, user_data_web_scraping_resources.user_id",
+                    message: "UNIQUE constraint failed: user_data_web_scraping_trackers.name, user_data_web_scraping_trackers.user_id",
                 },
             ),
         }
@@ -534,7 +547,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_update_resources_tracker() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
@@ -542,8 +555,8 @@ mod tests {
 
         let web_scraping = db.web_scraping(user.id);
         web_scraping
-            .insert_resources_tracker(
-                &MockWebPageResourcesTrackerBuilder::create(
+            .insert_web_page_tracker(
+                &MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
                     uuid!("00000000-0000-0000-0000-000000000001"),
                     "some-name",
                     "https://secutils.dev",
@@ -554,8 +567,8 @@ mod tests {
             .await?;
 
         web_scraping
-            .update_resources_tracker(
-                &MockWebPageResourcesTrackerBuilder::create(
+            .update_web_page_tracker(
+                &MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
                     uuid!("00000000-0000-0000-0000-000000000001"),
                     "some-name-2",
                     "https://secutils.dev",
@@ -566,12 +579,12 @@ mod tests {
             .await?;
 
         let tracker = web_scraping
-            .get_resources_tracker(uuid!("00000000-0000-0000-0000-000000000001"))
+            .get_web_page_tracker(uuid!("00000000-0000-0000-0000-000000000001"))
             .await?
             .unwrap();
         assert_eq!(
             tracker,
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name-2",
                 "https://secutils.dev",
@@ -583,34 +596,34 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn correctly_handles_duplicated_resources_trackers_on_update() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
         db.insert_user(&user).await?;
 
         let web_scraping = db.web_scraping(user.id);
-        let tracker_a = MockWebPageResourcesTrackerBuilder::create(
+        let tracker_a = MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
             uuid!("00000000-0000-0000-0000-000000000001"),
             "some-name",
             "https://secutils.dev",
             3,
         )?
         .build();
-        web_scraping.insert_resources_tracker(&tracker_a).await?;
+        web_scraping.insert_web_page_tracker(&tracker_a).await?;
 
-        let tracker_b = MockWebPageResourcesTrackerBuilder::create(
+        let tracker_b = MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
             uuid!("00000000-0000-0000-0000-000000000002"),
             "some-name-2",
             "https://secutils.dev",
             3,
         )?
         .build();
-        web_scraping.insert_resources_tracker(&tracker_b).await?;
+        web_scraping.insert_web_page_tracker(&tracker_b).await?;
 
         let update_error = web_scraping
-            .update_resources_tracker(
-                &MockWebPageResourcesTrackerBuilder::create(
+            .update_web_page_tracker(
+                &MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
                     uuid!("00000000-0000-0000-0000-000000000002"),
                     "some-name",
                     "https://secutils.dev",
@@ -626,11 +639,11 @@ mod tests {
             update_error,
             @r###"
         Error {
-            context: "Resources tracker (\'some-name\') already exists.",
+            context: "Web page tracker (\'some-name\') already exists.",
             source: Database(
                 SqliteError {
                     code: 2067,
-                    message: "UNIQUE constraint failed: user_data_web_scraping_resources.name, user_data_web_scraping_resources.user_id",
+                    message: "UNIQUE constraint failed: user_data_web_scraping_trackers.name, user_data_web_scraping_trackers.user_id",
                 },
             ),
         }
@@ -640,7 +653,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn correctly_handles_non_existent_resources_trackers_on_update() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
@@ -648,8 +661,8 @@ mod tests {
 
         let update_error = db
             .web_scraping(user.id)
-            .update_resources_tracker(
-                &MockWebPageResourcesTrackerBuilder::create(
+            .update_web_page_tracker(
+                &MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
                     uuid!("00000000-0000-0000-0000-000000000001"),
                     "some-name-2",
                     "https://secutils.dev",
@@ -663,27 +676,27 @@ mod tests {
             .unwrap();
         assert_debug_snapshot!(
             update_error,
-            @r###""A resources tracker ('some-name-2') doesn't exist.""###
+            @r###""A web page tracker ('some-name-2') doesn't exist.""###
         );
 
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_remove_resources_trackers() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
         db.insert_user(&user).await?;
 
         let mut trackers = vec![
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",
                 "https://secutils.dev",
                 3,
             )?
             .build(),
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
                 uuid!("00000000-0000-0000-0000-000000000002"),
                 "some-name-2",
                 "https://secutils.dev",
@@ -694,68 +707,76 @@ mod tests {
 
         let web_scraping = db.web_scraping(user.id);
         for tracker in trackers.iter() {
-            web_scraping.insert_resources_tracker(tracker).await?;
+            web_scraping.insert_web_page_tracker(tracker).await?;
         }
 
         let tracker = web_scraping
-            .get_resources_tracker(uuid!("00000000-0000-0000-0000-000000000001"))
+            .get_web_page_tracker(uuid!("00000000-0000-0000-0000-000000000001"))
             .await?
             .unwrap();
         assert_eq!(tracker, trackers.remove(0));
 
         let tracker_2 = web_scraping
-            .get_resources_tracker(uuid!("00000000-0000-0000-0000-000000000002"))
+            .get_web_page_tracker(uuid!("00000000-0000-0000-0000-000000000002"))
             .await?
             .unwrap();
         assert_eq!(tracker_2, trackers[0].clone());
 
         web_scraping
-            .remove_resources_tracker(uuid!("00000000-0000-0000-0000-000000000001"))
+            .remove_web_page_tracker(uuid!("00000000-0000-0000-0000-000000000001"))
             .await?;
 
         let tracker = web_scraping
-            .get_resources_tracker(uuid!("00000000-0000-0000-0000-000000000001"))
+            .get_web_page_tracker::<WebPageResourcesTrackerTag>(uuid!(
+                "00000000-0000-0000-0000-000000000001"
+            ))
             .await?;
         assert!(tracker.is_none());
 
         let tracker = web_scraping
-            .get_resources_tracker(uuid!("00000000-0000-0000-0000-000000000002"))
+            .get_web_page_tracker::<WebPageResourcesTrackerTag>(uuid!(
+                "00000000-0000-0000-0000-000000000002"
+            ))
             .await?
             .unwrap();
         assert_eq!(tracker, trackers.remove(0));
 
         web_scraping
-            .remove_resources_tracker(uuid!("00000000-0000-0000-0000-000000000002"))
+            .remove_web_page_tracker(uuid!("00000000-0000-0000-0000-000000000002"))
             .await?;
 
         let tracker = web_scraping
-            .get_resources_tracker(uuid!("00000000-0000-0000-0000-000000000001"))
+            .get_web_page_tracker::<WebPageResourcesTrackerTag>(uuid!(
+                "00000000-0000-0000-0000-000000000001"
+            ))
             .await?;
         assert!(tracker.is_none());
 
         let tracker = web_scraping
-            .get_resources_tracker(uuid!("00000000-0000-0000-0000-000000000002"))
+            .get_web_page_tracker::<WebPageResourcesTrackerTag>(uuid!(
+                "00000000-0000-0000-0000-000000000002"
+            ))
             .await?;
         assert!(tracker.is_none());
 
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_retrieve_all_resources_trackers() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
         db.insert_user(&user).await?;
 
         let trackers = vec![
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",
                 "https://secutils.dev",
                 3,
             )?
             .build(),
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
                 uuid!("00000000-0000-0000-0000-000000000002"),
                 "some-name-2",
                 "https://secutils.dev",
@@ -766,29 +787,29 @@ mod tests {
 
         let web_scraping = db.web_scraping(user.id);
         for tracker in trackers.iter() {
-            web_scraping.insert_resources_tracker(tracker).await?;
+            web_scraping.insert_web_page_tracker(tracker).await?;
         }
 
-        assert_eq!(web_scraping.get_resources_trackers().await?, trackers);
+        assert_eq!(web_scraping.get_web_page_trackers().await?, trackers);
 
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_add_and_retrieve_resources_revisions() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
         db.insert_user(&user).await?;
 
         let trackers = vec![
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",
                 "https://secutils.dev",
                 3,
             )?
             .build(),
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
                 uuid!("00000000-0000-0000-0000-000000000002"),
                 "some-name-2",
                 "https://secutils.dev",
@@ -799,13 +820,13 @@ mod tests {
 
         let web_scraping = db.web_scraping(user.id);
         for tracker in trackers.iter() {
-            web_scraping.insert_resources_tracker(tracker).await?;
+            web_scraping.insert_web_page_tracker(tracker).await?;
         }
 
         // No history yet.
         for tracker in trackers.iter() {
             assert!(web_scraping
-                .get_resources_tracker_history(tracker.id)
+                .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(tracker.id)
                 .await?
                 .is_empty());
         }
@@ -829,43 +850,45 @@ mod tests {
         ];
         for revision in revisions.iter() {
             web_scraping
-                .insert_resources_tracker_history_revision(revision)
+                .insert_web_page_tracker_history_revision(revision)
                 .await?;
         }
 
         let history = web_scraping
-            .get_resources_tracker_history(trackers[0].id)
+            .get_web_page_tracker_history(trackers[0].id)
             .await?;
         assert_eq!(history, vec![revisions.remove(0), revisions.remove(0)]);
 
         let history = web_scraping
-            .get_resources_tracker_history(trackers[1].id)
+            .get_web_page_tracker_history(trackers[1].id)
             .await?;
         assert_eq!(history, vec![revisions.remove(0)]);
 
         assert!(web_scraping
-            .get_resources_tracker_history(uuid!("00000000-0000-0000-0000-000000000004"))
+            .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(uuid!(
+                "00000000-0000-0000-0000-000000000004"
+            ))
             .await?
             .is_empty());
 
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_remove_resources_revisions() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
         db.insert_user(&user).await?;
 
         let trackers = vec![
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",
                 "https://secutils.dev",
                 3,
             )?
             .build(),
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000002"),
                 "some-name-2",
                 "https://secutils.dev",
@@ -876,7 +899,7 @@ mod tests {
 
         let web_scraping = db.web_scraping(user.id);
         for tracker in trackers.iter() {
-            web_scraping.insert_resources_tracker(tracker).await?;
+            web_scraping.insert_web_page_tracker(tracker).await?;
         }
 
         let revisions = vec![
@@ -898,70 +921,70 @@ mod tests {
         ];
         for revision in revisions.iter() {
             web_scraping
-                .insert_resources_tracker_history_revision(revision)
+                .insert_web_page_tracker_history_revision(revision)
                 .await?;
         }
 
         let history = web_scraping
-            .get_resources_tracker_history(trackers[0].id)
+            .get_web_page_tracker_history(trackers[0].id)
             .await?;
         assert_eq!(history, vec![revisions[0].clone(), revisions[1].clone()]);
 
         let history = web_scraping
-            .get_resources_tracker_history(trackers[1].id)
+            .get_web_page_tracker_history(trackers[1].id)
             .await?;
         assert_eq!(history, vec![revisions[2].clone()]);
 
         // Remove one revision.
         web_scraping
-            .remove_resources_tracker_history_revision(trackers[0].id, revisions[0].id)
+            .remove_web_page_tracker_history_revision(trackers[0].id, revisions[0].id)
             .await?;
 
         let history = web_scraping
-            .get_resources_tracker_history(trackers[0].id)
+            .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(trackers[0].id)
             .await?;
         assert_eq!(history, vec![revisions[1].clone()]);
 
         let history = web_scraping
-            .get_resources_tracker_history(trackers[1].id)
+            .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(trackers[1].id)
             .await?;
         assert_eq!(history, vec![revisions[2].clone()]);
 
         // Remove the rest of revisions.
         web_scraping
-            .remove_resources_tracker_history_revision(trackers[0].id, revisions[1].id)
+            .remove_web_page_tracker_history_revision(trackers[0].id, revisions[1].id)
             .await?;
         web_scraping
-            .remove_resources_tracker_history_revision(trackers[1].id, revisions[2].id)
+            .remove_web_page_tracker_history_revision(trackers[1].id, revisions[2].id)
             .await?;
 
         assert!(web_scraping
-            .get_resources_tracker_history(trackers[0].id)
+            .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(trackers[0].id)
             .await?
             .is_empty());
         assert!(web_scraping
-            .get_resources_tracker_history(trackers[1].id)
+            .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(trackers[1].id)
             .await?
             .is_empty());
 
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_clear_all_resources_revisions_at_once() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
         db.insert_user(&user).await?;
 
         let trackers = vec![
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",
                 "https://secutils.dev",
                 3,
             )?
             .build(),
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
                 uuid!("00000000-0000-0000-0000-000000000002"),
                 "some-name-2",
                 "https://secutils.dev",
@@ -972,7 +995,7 @@ mod tests {
 
         let web_scraping = db.web_scraping(user.id);
         for tracker in trackers.iter() {
-            web_scraping.insert_resources_tracker(tracker).await?;
+            web_scraping.insert_web_page_tracker(tracker).await?;
         }
 
         let revisions = vec![
@@ -994,48 +1017,48 @@ mod tests {
         ];
         for revision in revisions.iter() {
             web_scraping
-                .insert_resources_tracker_history_revision(revision)
+                .insert_web_page_tracker_history_revision(revision)
                 .await?;
         }
 
         let history = web_scraping
-            .get_resources_tracker_history(trackers[0].id)
+            .get_web_page_tracker_history(trackers[0].id)
             .await?;
         assert_eq!(history, vec![revisions[0].clone(), revisions[1].clone()]);
 
         let history = web_scraping
-            .get_resources_tracker_history(trackers[1].id)
+            .get_web_page_tracker_history(trackers[1].id)
             .await?;
         assert_eq!(history, vec![revisions[2].clone()]);
 
         // Clear all revisions.
         web_scraping
-            .clear_resources_tracker_history(trackers[0].id)
+            .clear_web_page_tracker_history(trackers[0].id)
             .await?;
         web_scraping
-            .clear_resources_tracker_history(trackers[1].id)
+            .clear_web_page_tracker_history(trackers[1].id)
             .await?;
 
         assert!(web_scraping
-            .get_resources_tracker_history(trackers[0].id)
+            .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(trackers[0].id)
             .await?
             .is_empty());
         assert!(web_scraping
-            .get_resources_tracker_history(trackers[1].id)
+            .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(trackers[1].id)
             .await?
             .is_empty());
 
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_retrieve_all_unscheduled_resources_trackers() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
         db.insert_user(&user).await?;
 
-        let trackers = vec![
-            MockWebPageResourcesTrackerBuilder::create(
+        let trackers: Vec<WebPageTracker<WebPageResourcesTrackerTag>> = vec![
+            MockWebPageTrackerBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",
                 "https://secutils.dev",
@@ -1043,7 +1066,7 @@ mod tests {
             )?
             .with_schedule("* * * * *")
             .build(),
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000002"),
                 "some-name-2",
                 "https://secutils.dev",
@@ -1051,7 +1074,7 @@ mod tests {
             )?
             .with_schedule("* * * * *")
             .build(),
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000003"),
                 "some-name-3",
                 "https://secutils.dev",
@@ -1059,14 +1082,14 @@ mod tests {
             )?
             .with_schedule("* * * * *")
             .build(),
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000004"),
                 "some-name-4",
                 "https://secutils.dev",
                 3,
             )?
             .build(),
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000005"),
                 "some-name-5",
                 "https://secutils.dev",
@@ -1078,15 +1101,15 @@ mod tests {
 
         let web_scraping = db.web_scraping(user.id);
         for tracker in trackers.iter() {
-            web_scraping.insert_resources_tracker(tracker).await?;
+            web_scraping.insert_web_page_tracker(tracker).await?;
         }
 
-        assert_eq!(web_scraping.get_resources_trackers().await?, trackers);
+        assert_eq!(web_scraping.get_web_page_trackers().await?, trackers);
 
         let web_scraping_system = db.web_scraping_system();
         assert_eq!(
             web_scraping_system
-                .get_unscheduled_resources_trackers()
+                .get_unscheduled_web_page_trackers()
                 .await?,
             vec![
                 trackers[0].clone(),
@@ -1096,16 +1119,16 @@ mod tests {
         );
 
         web_scraping_system
-            .update_resources_tracker_job(
+            .update_web_page_tracker_job(
                 trackers[1].id,
                 Some(uuid!("00000000-0000-0000-0000-000000000001")),
             )
             .await?;
         assert_eq!(
-            web_scraping.get_resources_trackers().await?,
+            web_scraping.get_web_page_trackers().await?,
             vec![
                 trackers[0].clone(),
-                WebPageResourcesTracker {
+                WebPageTracker {
                     job_id: Some(uuid!("00000000-0000-0000-0000-000000000001")),
                     ..trackers[1].clone()
                 },
@@ -1116,7 +1139,7 @@ mod tests {
         );
         assert_eq!(
             web_scraping_system
-                .get_unscheduled_resources_trackers()
+                .get_unscheduled_web_page_trackers()
                 .await?,
             vec![trackers[0].clone(), trackers[2].clone()]
         );
@@ -1124,14 +1147,14 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_retrieve_resources_tracker_by_job_id() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
         db.insert_user(&user).await?;
 
-        let trackers = vec![
-            MockWebPageResourcesTrackerBuilder::create(
+        let trackers: Vec<WebPageTracker<WebPageResourcesTrackerTag>> = vec![
+            MockWebPageTrackerBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",
                 "https://secutils.dev",
@@ -1140,7 +1163,7 @@ mod tests {
             .with_schedule("* * * * *")
             .with_job_id(uuid!("00000000-0000-0000-0000-000000000011"))
             .build(),
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000002"),
                 "some-name-2",
                 "https://secutils.dev",
@@ -1149,7 +1172,7 @@ mod tests {
             .with_schedule("* * * * *")
             .with_job_id(uuid!("00000000-0000-0000-0000-000000000022"))
             .build(),
-            MockWebPageResourcesTrackerBuilder::create(
+            MockWebPageTrackerBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000003"),
                 "some-name-3",
                 "https://secutils.dev",
@@ -1161,19 +1184,19 @@ mod tests {
 
         let web_scraping = db.web_scraping(user.id);
         for tracker in trackers.iter() {
-            web_scraping.insert_resources_tracker(tracker).await?;
+            web_scraping.insert_web_page_tracker(tracker).await?;
         }
 
         let web_scraping_system = db.web_scraping_system();
         assert_eq!(
             web_scraping_system
-                .get_resources_tracker_by_job_id(uuid!("00000000-0000-0000-0000-000000000011"))
+                .get_web_page_tracker_by_job_id(uuid!("00000000-0000-0000-0000-000000000011"))
                 .await?,
             Some(trackers[0].clone())
         );
         assert_eq!(
             web_scraping_system
-                .get_resources_tracker_by_job_id(uuid!("00000000-0000-0000-0000-000000000022"))
+                .get_web_page_tracker_by_job_id(uuid!("00000000-0000-0000-0000-000000000022"))
                 .await?,
             Some(trackers[1].clone())
         );
@@ -1187,7 +1210,7 @@ mod tests {
         let db = mock_db().await?;
         db.insert_user(&user).await?;
 
-        let tracker = MockWebPageResourcesTrackerBuilder::create(
+        let tracker = MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
             uuid!("00000000-0000-0000-0000-000000000001"),
             "some-name",
             "https://secutils.dev",
@@ -1197,11 +1220,11 @@ mod tests {
         .build();
 
         let web_scraping = db.web_scraping(user.id);
-        web_scraping.insert_resources_tracker(&tracker).await?;
+        web_scraping.insert_web_page_tracker(&tracker).await?;
 
         assert_eq!(
             web_scraping
-                .get_resources_tracker(tracker.id)
+                .get_web_page_tracker::<WebPageResourcesTrackerTag>(tracker.id)
                 .await?
                 .unwrap()
                 .job_id,
@@ -1210,14 +1233,14 @@ mod tests {
 
         let web_scraping_system = db.web_scraping_system();
         web_scraping_system
-            .update_resources_tracker_job(
+            .update_web_page_tracker_job(
                 tracker.id,
                 Some(uuid!("00000000-0000-0000-0000-000000000011")),
             )
             .await?;
         assert_eq!(
             web_scraping
-                .get_resources_tracker(tracker.id)
+                .get_web_page_tracker::<WebPageResourcesTrackerTag>(tracker.id)
                 .await?
                 .unwrap()
                 .job_id,
@@ -1225,14 +1248,14 @@ mod tests {
         );
 
         web_scraping_system
-            .update_resources_tracker_job(
+            .update_web_page_tracker_job(
                 tracker.id,
                 Some(uuid!("00000000-0000-0000-0000-000000000022")),
             )
             .await?;
         assert_eq!(
             web_scraping
-                .get_resources_tracker(tracker.id)
+                .get_web_page_tracker::<WebPageResourcesTrackerTag>(tracker.id)
                 .await?
                 .unwrap()
                 .job_id,
@@ -1248,7 +1271,7 @@ mod tests {
         let db = mock_db().await?;
         db.insert_user(&user).await?;
 
-        let tracker = MockWebPageResourcesTrackerBuilder::create(
+        let tracker = MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
             uuid!("00000000-0000-0000-0000-000000000001"),
             "some-name",
             "https://secutils.dev",
@@ -1263,7 +1286,7 @@ mod tests {
         // Non-existent tracker
         let update_result = update_and_fail(
             db.web_scraping_system()
-                .update_resources_tracker_job(
+                .update_web_page_tracker_job(
                     tracker.id,
                     Some(uuid!("00000000-0000-0000-0000-000000000011")),
                 )
@@ -1271,7 +1294,7 @@ mod tests {
         );
         assert_eq!(
             update_result.to_string(),
-            format!("A resource tracker ('{}') doesn't exist.", tracker.id)
+            format!("A web page tracker ('{}') doesn't exist.", tracker.id)
         );
 
         Ok(())

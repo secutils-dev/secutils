@@ -15,7 +15,7 @@ use crate::{
         UtilsAction, UtilsActionParams, UtilsActionResult, UtilsResource, UtilsResourceOperation,
     },
 };
-use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use serde_json::json;
 
 pub use self::{
@@ -29,7 +29,9 @@ pub use self::{
     x509::{ExtendedKeyUsage, KeyUsage, SignatureAlgorithm, Version},
 };
 
-fn extract_params<T: DeserializeOwned>(params: Option<UtilsActionParams>) -> anyhow::Result<T> {
+fn extract_params<T: for<'de> Deserialize<'de>>(
+    params: Option<UtilsActionParams>,
+) -> anyhow::Result<T> {
     params
         .ok_or_else(|| SecutilsError::client("Missing required action parameters."))?
         .into_inner()

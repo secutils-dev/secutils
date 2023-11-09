@@ -1,6 +1,6 @@
 use crate::error::Error as SecutilsError;
 use anyhow::anyhow;
-use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use serde_json::Value;
 
 /// Describes the parameters of an action.
@@ -12,7 +12,7 @@ impl UtilsActionParams {
     }
 
     /// Consumes and returns the inner value deserialized to a specified type.
-    pub fn into_inner<T: DeserializeOwned>(self) -> anyhow::Result<T> {
+    pub fn into_inner<T: for<'de> Deserialize<'de>>(self) -> anyhow::Result<T> {
         Ok(serde_json::from_value(self.0).map_err(|err| {
             SecutilsError::client_with_root_cause(
                 anyhow!(err).context("Invalid action parameters."),

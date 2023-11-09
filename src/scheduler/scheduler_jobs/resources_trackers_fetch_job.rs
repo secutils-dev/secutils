@@ -94,7 +94,7 @@ impl ResourcesTrackersFetchJob {
                 );
                 scheduler.remove(&job_id).await?;
                 web_scraping
-                    .update_resources_tracker_job(tracker.id, None)
+                    .update_web_page_tracker_job(tracker.id, None)
                     .await?;
                 continue;
             };
@@ -127,11 +127,13 @@ impl ResourcesTrackersFetchJob {
             if tracker.settings.enable_notifications {
                 if let Some(new_revision_with_diff) = new_revision_with_diff {
                     let changes_count = new_revision_with_diff
+                        .data
                         .scripts
                         .iter()
                         .filter(|resource| resource.diff_status.is_some())
                         .chain(
                             new_revision_with_diff
+                                .data
                                 .styles
                                 .iter()
                                 .filter(|resource| resource.diff_status.is_some()),
@@ -191,11 +193,11 @@ mod tests {
         },
         tests::{mock_api_with_config, mock_config, mock_schedule_in_sec, mock_user},
         utils::{
-            ResourcesCreateParams, WebPageResource, WebPageResourceContent,
-            WebPageResourceContentData, WebPageResourcesRevision, WebPageResourcesTracker,
-            WebPageResourcesTrackerScripts, WebPageResourcesTrackerSettings, WebScraperResource,
-            WebScraperResourcesRequest, WebScraperResourcesRequestScripts,
-            WebScraperResourcesResponse,
+            ResourcesCreateParams, WebPageDataRevision, WebPageResource, WebPageResourceContent,
+            WebPageResourceContentData, WebPageResourcesData, WebPageResourcesTrackerTag,
+            WebPageTracker, WebPageTrackerSettings, WebScraperResource, WebScraperResourcesRequest,
+            WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
+            WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
         },
     };
     use cron::Schedule;
@@ -322,7 +324,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "tracker".to_string(),
                     url: "https://localhost:1234/my/app?q=2".parse()?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 0,
                         schedule: Some("0 0 * * * *".to_string()),
                         delay: Default::default(),
@@ -333,7 +335,7 @@ mod tests {
             )
             .await?;
         api.web_scraping()
-            .update_resources_tracker_job(tracker.id, Some(tracker_job_id))
+            .update_web_page_tracker_job(tracker.id, Some(tracker_job_id))
             .await?;
 
         // Schedule fetch job
@@ -386,17 +388,22 @@ mod tests {
         let trigger_job_id = scheduler
             .add(ResourcesTrackersTriggerJob::create(api.clone(), tracker_schedule.clone()).await?)
             .await?;
-        let tracker = WebPageResourcesTracker {
+        let tracker = WebPageTracker::<WebPageResourcesTrackerTag> {
             id: Uuid::now_v7(),
             name: "tracker".to_string(),
             url: "https://localhost:1234/my/app?q=2".parse()?,
-            settings: WebPageResourcesTrackerSettings {
+            settings: WebPageTrackerSettings {
                 revisions: 1,
                 schedule: Some(tracker_schedule),
                 delay: Duration::from_secs(2),
-                scripts: WebPageResourcesTrackerScripts {
-                    resource_filter_map: Some("return resource;".to_string()),
-                },
+                scripts: Some(
+                    [(
+                        WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME.to_string(),
+                        "return resource;".to_string(),
+                    )]
+                    .into_iter()
+                    .collect(),
+                ),
                 enable_notifications: true,
             },
             user_id: user.id,
@@ -405,12 +412,13 @@ mod tests {
             created_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
             )?,
+            meta: None,
         };
 
         // Insert tracker directly to DB to bypass schedule validation.
         api.db
             .web_scraping(user.id)
-            .insert_resources_tracker(&tracker)
+            .insert_web_page_tracker(&tracker)
             .await?;
 
         // Schedule fetch job
@@ -477,7 +485,7 @@ mod tests {
                 .get_resources_tracker_history(user.id, tracker.id, Default::default())
                 .await?
                 .into_iter()
-                .map(|rev| (rev.created_at, rev.scripts, rev.styles))
+                .map(|rev| (rev.created_at, rev.data.scripts, rev.data.styles))
                 .collect::<Vec<_>>(),
             vec![(
                 OffsetDateTime::from_unix_timestamp(946720800)?,
@@ -543,11 +551,11 @@ mod tests {
         let trigger_job_id = scheduler
             .add(ResourcesTrackersTriggerJob::create(api.clone(), tracker_schedule.clone()).await?)
             .await?;
-        let tracker = WebPageResourcesTracker {
+        let tracker = WebPageTracker::<WebPageResourcesTrackerTag> {
             id: Uuid::now_v7(),
             name: "tracker-one".to_string(),
             url: "https://localhost:1234/my/app?q=2".parse()?,
-            settings: WebPageResourcesTrackerSettings {
+            settings: WebPageTrackerSettings {
                 revisions: 2,
                 schedule: Some(tracker_schedule),
                 delay: Duration::from_secs(2),
@@ -560,22 +568,27 @@ mod tests {
             created_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
             )?,
+            meta: None,
         };
 
         // Insert tracker directly to DB to bypass schedule validation.
         api.db
             .web_scraping(user.id)
-            .insert_resources_tracker(&tracker)
+            .insert_web_page_tracker(&tracker)
             .await?;
         api.db
             .web_scraping(user.id)
-            .insert_resources_tracker_history_revision(&WebPageResourcesRevision {
-                id: uuid!("00000000-0000-0000-0000-000000000001"),
-                tracker_id: tracker.id,
-                created_at: OffsetDateTime::from_unix_timestamp(946720700)?,
-                scripts: vec![],
-                styles: vec![],
-            })
+            .insert_web_page_tracker_history_revision::<WebPageResourcesTrackerTag>(
+                &WebPageDataRevision {
+                    id: uuid!("00000000-0000-0000-0000-000000000001"),
+                    tracker_id: tracker.id,
+                    created_at: OffsetDateTime::from_unix_timestamp(946720700)?,
+                    data: WebPageResourcesData {
+                        scripts: vec![],
+                        styles: vec![],
+                    },
+                },
+            )
             .await?;
 
         // Schedule fetch job

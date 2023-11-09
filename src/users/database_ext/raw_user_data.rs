@@ -1,6 +1,6 @@
 use crate::users::UserData;
 use anyhow::Context;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -11,7 +11,7 @@ pub(super) struct RawUserData {
     pub timestamp: i64,
 }
 
-impl<V: DeserializeOwned> TryFrom<RawUserData> for UserData<V> {
+impl<V: for<'de> Deserialize<'de>> TryFrom<RawUserData> for UserData<V> {
     type Error = anyhow::Error;
 
     fn try_from(raw_user_data: RawUserData) -> Result<Self, Self::Error> {

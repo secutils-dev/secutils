@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n    DELETE FROM user_data_web_scraping_trackers_history\n    WHERE user_id = ?1 AND tracker_id = ?2 AND id = ?3\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "6e27910122bf31bdc7c67785ff9bcf5b2cf87483280fdc7f366fd8f7c6f19142"
+}

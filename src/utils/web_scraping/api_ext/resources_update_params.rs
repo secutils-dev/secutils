@@ -1,4 +1,4 @@
-use crate::utils::WebPageResourcesTrackerSettings;
+use crate::utils::WebPageTrackerSettings;
 use serde::Deserialize;
 use url::Url;
 
@@ -10,13 +10,14 @@ pub struct ResourcesUpdateParams {
     /// URL of the web page to track resources for.
     pub url: Option<Url>,
     /// Settings of the web page resources tracker.
-    pub settings: Option<WebPageResourcesTrackerSettings>,
+    pub settings: Option<WebPageTrackerSettings>,
 }
 
 #[cfg(test)]
 mod tests {
     use crate::utils::{
-        ResourcesUpdateParams, WebPageResourcesTrackerScripts, WebPageResourcesTrackerSettings,
+        ResourcesUpdateParams, WebPageTrackerSettings,
+        WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
     };
     use std::time::Duration;
     use url::Url;
@@ -59,13 +60,18 @@ mod tests {
             ResourcesUpdateParams {
                 name: Some("pk".to_string()),
                 url: Some(Url::parse("https://secutils.dev")?),
-                settings: Some(WebPageResourcesTrackerSettings {
+                settings: Some(WebPageTrackerSettings {
                     revisions: 3,
                     schedule: Some("0 0 * * *".to_string()),
                     delay: Duration::from_millis(2000),
-                    scripts: WebPageResourcesTrackerScripts {
-                        resource_filter_map: Some("return resource;".to_string()),
-                    },
+                    scripts: Some(
+                        [(
+                            WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME.to_string(),
+                            "return resource;".to_string()
+                        )]
+                        .into_iter()
+                        .collect()
+                    ),
                     enable_notifications: true,
                 }),
             }

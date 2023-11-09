@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\nSELECT id, name, url, schedule, job_id, user_id, settings, created_at\nFROM user_data_web_scraping_resources\nWHERE user_id = ?1\nORDER BY created_at\n                ",
+  "query": "\n    SELECT id, name, url, kind, schedule, user_id, job_id, data, created_at\n    FROM user_data_web_scraping_trackers\n    WHERE user_id = ?1 AND id = ?2 AND kind = ?3\n                    ",
   "describe": {
     "columns": [
       {
@@ -19,14 +19,14 @@
         "type_info": "Text"
       },
       {
-        "name": "schedule",
+        "name": "kind",
         "ordinal": 3,
-        "type_info": "Text"
+        "type_info": "Int64"
       },
       {
-        "name": "job_id",
+        "name": "schedule",
         "ordinal": 4,
-        "type_info": "Blob"
+        "type_info": "Text"
       },
       {
         "name": "user_id",
@@ -34,29 +34,35 @@
         "type_info": "Int64"
       },
       {
-        "name": "settings",
+        "name": "job_id",
         "ordinal": 6,
         "type_info": "Blob"
       },
       {
-        "name": "created_at",
+        "name": "data",
         "ordinal": 7,
+        "type_info": "Blob"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 8,
         "type_info": "Int64"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 3
     },
     "nullable": [
       false,
       false,
       false,
-      true,
+      false,
       true,
       false,
+      true,
       false,
       false
     ]
   },
-  "hash": "4495433fad788e6171d7cd2b8216d005e819149b0259faca07d9e23c2d7ebc8b"
+  "hash": "c7681bf27d43ae8b64967e4ef1006816a207886df229136a8bdbc8d71625cc3b"
 }

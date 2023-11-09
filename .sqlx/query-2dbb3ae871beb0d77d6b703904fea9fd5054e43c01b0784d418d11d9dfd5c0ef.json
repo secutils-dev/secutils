@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n    UPDATE user_data_web_scraping_trackers\n    SET job_id = ?2\n    WHERE id = ?1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "2dbb3ae871beb0d77d6b703904fea9fd5054e43c01b0784d418d11d9dfd5c0ef"
+}

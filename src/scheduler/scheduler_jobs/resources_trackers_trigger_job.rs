@@ -35,7 +35,7 @@ impl ResourcesTrackersTriggerJob {
                 tracker.id
             );
             web_scraping
-                .update_resources_tracker_job(tracker.id, None)
+                .update_web_page_tracker_job(tracker.id, None)
                 .await?;
             return Ok(None);
         };
@@ -47,7 +47,7 @@ impl ResourcesTrackersTriggerJob {
                 tracker.id
             );
             web_scraping
-                .update_resources_tracker_job(tracker.id, None)
+                .update_web_page_tracker_job(tracker.id, None)
                 .await?;
             return Ok(None);
         };
@@ -59,7 +59,7 @@ impl ResourcesTrackersTriggerJob {
             Some(new_job)
         } else {
             web_scraping
-                .update_resources_tracker_job(tracker.id, None)
+                .update_web_page_tracker_job(tracker.id, None)
                 .await?;
             None
         })
@@ -105,7 +105,7 @@ mod tests {
     use crate::{
         scheduler::{scheduler_job::SchedulerJob, scheduler_store::SchedulerStore},
         tests::{mock_api, mock_user},
-        utils::{ResourcesCreateParams, WebPageResourcesTracker, WebPageResourcesTrackerSettings},
+        utils::{ResourcesCreateParams, WebPageTracker, WebPageTrackerSettings},
     };
     use insta::assert_debug_snapshot;
     use std::sync::Arc;
@@ -181,7 +181,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "tracker".to_string(),
                     url: "https://localhost:1234/my/app?q=2".parse()?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 4,
                         schedule: Some("0 0 * * * *".to_string()),
                         delay: Default::default(),
@@ -192,7 +192,7 @@ mod tests {
             )
             .await?;
         api.web_scraping()
-            .update_resources_tracker_job(tracker.id, Some(job_id))
+            .update_web_page_tracker_job(tracker.id, Some(job_id))
             .await?;
 
         let mut job =
@@ -253,7 +253,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "tracker".to_string(),
                     url: "https://localhost:1234/my/app?q=2".parse()?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 4,
                         schedule: Some("1 0 * * * *".to_string()),
                         delay: Default::default(),
@@ -264,7 +264,7 @@ mod tests {
             )
             .await?;
         api.web_scraping()
-            .update_resources_tracker_job(tracker.id, Some(job_id))
+            .update_web_page_tracker_job(tracker.id, Some(job_id))
             .await?;
 
         let job =
@@ -278,7 +278,7 @@ mod tests {
             .await?;
         assert_eq!(
             unscheduled_trackers,
-            vec![WebPageResourcesTracker {
+            vec![WebPageTracker {
                 job_id: None,
                 ..tracker
             }]
@@ -309,7 +309,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "tracker".to_string(),
                     url: "https://localhost:1234/my/app?q=2".parse()?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 4,
                         schedule: None,
                         delay: Default::default(),
@@ -320,7 +320,7 @@ mod tests {
             )
             .await?;
         api.web_scraping()
-            .update_resources_tracker_job(tracker.id, Some(job_id))
+            .update_web_page_tracker_job(tracker.id, Some(job_id))
             .await?;
 
         let job =
@@ -361,7 +361,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "tracker".to_string(),
                     url: "https://localhost:1234/my/app?q=2".parse()?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 0,
                         schedule: Some("0 0 * * * *".to_string()),
                         delay: Default::default(),
@@ -372,7 +372,7 @@ mod tests {
             )
             .await?;
         api.web_scraping()
-            .update_resources_tracker_job(tracker.id, Some(job_id))
+            .update_web_page_tracker_job(tracker.id, Some(job_id))
             .await?;
 
         let job =

@@ -1,17 +1,22 @@
 mod api_ext;
 mod database_ext;
 mod resources;
+mod web_page_trackers;
 
 pub use self::{
     api_ext::{
         ResourcesCreateParams, ResourcesGetHistoryParams, ResourcesUpdateParams, WebScrapingApiExt,
+        WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
     },
     resources::{
         WebPageResource, WebPageResourceContent, WebPageResourceContentData,
-        WebPageResourceDiffStatus, WebPageResourcesRevision, WebPageResourcesTracker,
-        WebPageResourcesTrackerScripts, WebPageResourcesTrackerSettings, WebScraperResource,
-        WebScraperResourcesRequest, WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
-        MAX_WEB_PAGE_RESOURCES_TRACKER_DELAY, MAX_WEB_PAGE_RESOURCES_TRACKER_REVISIONS,
+        WebPageResourceDiffStatus, WebPageResourcesData, WebPageResourcesTrackerTag,
+        WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesRequestScripts,
+        WebScraperResourcesResponse,
+    },
+    web_page_trackers::{
+        WebPageDataRevision, WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings,
+        WebPageTrackerTag, MAX_WEB_PAGE_TRACKER_DELAY, MAX_WEB_PAGE_TRACKER_REVISIONS,
     },
 };
 use crate::{
@@ -23,9 +28,11 @@ use crate::{
         UtilsAction, UtilsActionParams, UtilsActionResult, UtilsResource, UtilsResourceOperation,
     },
 };
-use serde::de::DeserializeOwned;
+use serde::Deserialize;
 
-fn extract_params<T: DeserializeOwned>(params: Option<UtilsActionParams>) -> anyhow::Result<T> {
+fn extract_params<T: for<'de> Deserialize<'de>>(
+    params: Option<UtilsActionParams>,
+) -> anyhow::Result<T> {
     params
         .ok_or_else(|| SecutilsError::client("Missing required action parameters."))?
         .into_inner()
@@ -56,7 +63,7 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
         }
         (UtilsResource::WebScrapingResources, UtilsAction::Delete { resource_id }) => {
             web_scraping
-                .remove_resources_tracker(user.id, resource_id)
+                .remove_web_page_tracker(user.id, resource_id)
                 .await?;
             Ok(UtilsActionResult::empty())
         }
@@ -79,7 +86,7 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
             },
         ) => {
             web_scraping
-                .clear_resources_tracker_history(user.id, resource_id)
+                .clear_web_page_tracker_history(user.id, resource_id)
                 .await?;
             Ok(UtilsActionResult::empty())
         }
@@ -92,24 +99,27 @@ pub mod tests {
     use crate::{
         tests::{mock_api, mock_user},
         utils::{
-            web_scraping::resources::WebPageResourcesTrackerScripts, web_scraping_handle_action,
-            ResourcesCreateParams, ResourcesGetHistoryParams, UtilsAction, UtilsActionParams,
-            UtilsResource, UtilsResourceOperation, WebPageResource, WebPageResourcesRevision,
-            WebPageResourcesTracker, WebPageResourcesTrackerSettings,
+            web_scraping::resources::{
+                WebPageResourceInternal, WebPageResourcesTrackerInternalTag,
+            },
+            web_scraping_handle_action, ResourcesCreateParams, ResourcesGetHistoryParams,
+            UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
+            WebPageDataRevision, WebPageResourcesData, WebPageTracker, WebPageTrackerSettings,
+            WebPageTrackerTag,
         },
     };
     use insta::assert_json_snapshot;
     use serde_json::json;
-    use std::time::Duration;
+    use std::{collections::HashMap, time::Duration};
     use time::OffsetDateTime;
     use url::Url;
     use uuid::{uuid, Uuid};
 
-    pub struct MockWebPageResourcesTrackerBuilder {
-        tracker: WebPageResourcesTracker,
+    pub struct MockWebPageTrackerBuilder<Tag: WebPageTrackerTag> {
+        tracker: WebPageTracker<Tag>,
     }
 
-    impl MockWebPageResourcesTrackerBuilder {
+    impl<Tag: WebPageTrackerTag> MockWebPageTrackerBuilder<Tag> {
         pub fn create<N: Into<String>>(
             id: Uuid,
             name: N,
@@ -117,13 +127,13 @@ pub mod tests {
             revisions: usize,
         ) -> anyhow::Result<Self> {
             Ok(Self {
-                tracker: WebPageResourcesTracker {
+                tracker: WebPageTracker {
                     id,
                     name: name.into(),
                     user_id: mock_user()?.id,
                     job_id: None,
                     url: Url::parse(url)?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions,
                         delay: Duration::from_millis(2000),
                         schedule: None,
@@ -131,6 +141,7 @@ pub mod tests {
                         enable_notifications: true,
                     },
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    meta: None,
                 },
             })
         }
@@ -150,8 +161,8 @@ pub mod tests {
             self
         }
 
-        pub fn with_scripts(mut self, scripts: WebPageResourcesTrackerScripts) -> Self {
-            self.tracker.settings.scripts = scripts;
+        pub fn with_scripts(mut self, scripts: HashMap<String, String>) -> Self {
+            self.tracker.settings.scripts = Some(scripts);
             self
         }
 
@@ -160,7 +171,7 @@ pub mod tests {
             self
         }
 
-        pub fn build(self) -> WebPageResourcesTracker {
+        pub fn build(self) -> WebPageTracker<Tag> {
             self.tracker
         }
     }
@@ -188,7 +199,7 @@ pub mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -249,7 +260,7 @@ pub mod tests {
             Some(UtilsActionParams::json(json!({
                 "name": "name_one",
                 "url": "https://secutils.dev",
-                "settings": WebPageResourcesTrackerSettings {
+                "settings": WebPageTrackerSettings {
                     revisions: 3,
                     delay: Duration::from_millis(2000),
                     enable_notifications: true,
@@ -297,7 +308,7 @@ pub mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -318,7 +329,7 @@ pub mod tests {
             Some(UtilsActionParams::json(json!({
                 "name": "name_one_updated",
                 "url": "https://secutils.dev/update",
-                "settings": WebPageResourcesTrackerSettings {
+                "settings": WebPageTrackerSettings {
                     revisions: 10,
                     delay: Duration::from_millis(3000),
                     enable_notifications: false,
@@ -338,20 +349,21 @@ pub mod tests {
             .unwrap();
         assert_eq!(
             updated_tracker,
-            WebPageResourcesTracker {
+            WebPageTracker {
                 id: tracker.id,
                 name: "name_one_updated".to_string(),
                 url: "https://secutils.dev/update".parse()?,
                 user_id: mock_user.id,
                 job_id: None,
-                settings: WebPageResourcesTrackerSettings {
+                settings: WebPageTrackerSettings {
                     revisions: 10,
                     delay: Duration::from_millis(3000),
                     enable_notifications: false,
                     schedule: Some("0 1 * * * *".to_string()),
                     scripts: Default::default(),
                 },
-                created_at: tracker.created_at
+                created_at: tracker.created_at,
+                meta: None
             }
         );
 
@@ -371,7 +383,7 @@ pub mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -418,7 +430,7 @@ pub mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -430,39 +442,43 @@ pub mod tests {
             .await?;
         api.db
             .web_scraping(mock_user.id)
-            .insert_resources_tracker_history_revision(&WebPageResourcesRevision {
-                id: uuid!("00000000-0000-0000-0000-000000000001"),
-                tracker_id: tracker.id,
-                scripts: vec![WebPageResource {
-                    url: Some(Url::parse("http://localhost:1234/script_one.js")?),
-                    content: None,
-                    diff_status: None,
-                }],
-                styles: vec![WebPageResource {
-                    url: Some(Url::parse("http://localhost:1234/style_one.css")?),
-                    content: None,
-                    diff_status: None,
-                }],
-                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
-            })
+            .insert_web_page_tracker_history_revision::<WebPageResourcesTrackerInternalTag>(
+                &WebPageDataRevision {
+                    id: uuid!("00000000-0000-0000-0000-000000000001"),
+                    tracker_id: tracker.id,
+                    data: WebPageResourcesData {
+                        scripts: vec![WebPageResourceInternal {
+                            url: Some(Url::parse("http://localhost:1234/script_one.js")?),
+                            content: None,
+                        }],
+                        styles: vec![WebPageResourceInternal {
+                            url: Some(Url::parse("http://localhost:1234/style_one.css")?),
+                            content: None,
+                        }],
+                    },
+                    created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                },
+            )
             .await?;
         api.db
             .web_scraping(mock_user.id)
-            .insert_resources_tracker_history_revision(&WebPageResourcesRevision {
-                id: uuid!("00000000-0000-0000-0000-000000000002"),
-                tracker_id: tracker.id,
-                scripts: vec![WebPageResource {
-                    url: Some(Url::parse("http://localhost:1234/script_two.js")?),
-                    content: None,
-                    diff_status: None,
-                }],
-                styles: vec![WebPageResource {
-                    url: Some(Url::parse("http://localhost:1234/style_two.css")?),
-                    content: None,
-                    diff_status: None,
-                }],
-                created_at: OffsetDateTime::from_unix_timestamp(946720900)?,
-            })
+            .insert_web_page_tracker_history_revision::<WebPageResourcesTrackerInternalTag>(
+                &WebPageDataRevision {
+                    id: uuid!("00000000-0000-0000-0000-000000000002"),
+                    tracker_id: tracker.id,
+                    data: WebPageResourcesData {
+                        scripts: vec![WebPageResourceInternal {
+                            url: Some(Url::parse("http://localhost:1234/script_two.js")?),
+                            content: None,
+                        }],
+                        styles: vec![WebPageResourceInternal {
+                            url: Some(Url::parse("http://localhost:1234/style_two.css")?),
+                            content: None,
+                        }],
+                    },
+                    created_at: OffsetDateTime::from_unix_timestamp(946720900)?,
+                },
+            )
             .await?;
 
         let action_result = web_scraping_handle_action(
@@ -482,7 +498,7 @@ pub mod tests {
 
         assert_json_snapshot!(
             serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-            @r###""[{\"createdAt\":946720800,\"id\":\"00000000-0000-0000-0000-000000000001\",\"scripts\":[{\"url\":\"http://localhost:1234/script_one.js\"}],\"styles\":[{\"url\":\"http://localhost:1234/style_one.css\"}]},{\"createdAt\":946720900,\"id\":\"00000000-0000-0000-0000-000000000002\",\"scripts\":[{\"diffStatus\":\"added\",\"url\":\"http://localhost:1234/script_two.js\"},{\"diffStatus\":\"removed\",\"url\":\"http://localhost:1234/script_one.js\"}],\"styles\":[{\"diffStatus\":\"added\",\"url\":\"http://localhost:1234/style_two.css\"},{\"diffStatus\":\"removed\",\"url\":\"http://localhost:1234/style_one.css\"}]}]""###
+            @r###""[{\"createdAt\":946720800,\"data\":{\"scripts\":[{\"url\":\"http://localhost:1234/script_one.js\"}],\"styles\":[{\"url\":\"http://localhost:1234/style_one.css\"}]},\"id\":\"00000000-0000-0000-0000-000000000001\"},{\"createdAt\":946720900,\"data\":{\"scripts\":[{\"diffStatus\":\"added\",\"url\":\"http://localhost:1234/script_two.js\"},{\"diffStatus\":\"removed\",\"url\":\"http://localhost:1234/script_one.js\"}],\"styles\":[{\"diffStatus\":\"added\",\"url\":\"http://localhost:1234/style_two.css\"},{\"diffStatus\":\"removed\",\"url\":\"http://localhost:1234/style_one.css\"}]},\"id\":\"00000000-0000-0000-0000-000000000002\"}]""###
         );
 
         Ok(())
@@ -502,7 +518,7 @@ pub mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -514,39 +530,43 @@ pub mod tests {
             .await?;
         api.db
             .web_scraping(mock_user.id)
-            .insert_resources_tracker_history_revision(&WebPageResourcesRevision {
-                id: uuid!("00000000-0000-0000-0000-000000000001"),
-                tracker_id: tracker.id,
-                scripts: vec![WebPageResource {
-                    url: Some(Url::parse("http://localhost:1234/script_one.js")?),
-                    content: None,
-                    diff_status: None,
-                }],
-                styles: vec![WebPageResource {
-                    url: Some(Url::parse("http://localhost:1234/style_one.css")?),
-                    content: None,
-                    diff_status: None,
-                }],
-                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
-            })
+            .insert_web_page_tracker_history_revision::<WebPageResourcesTrackerInternalTag>(
+                &WebPageDataRevision {
+                    id: uuid!("00000000-0000-0000-0000-000000000001"),
+                    tracker_id: tracker.id,
+                    data: WebPageResourcesData {
+                        scripts: vec![WebPageResourceInternal {
+                            url: Some(Url::parse("http://localhost:1234/script_one.js")?),
+                            content: None,
+                        }],
+                        styles: vec![WebPageResourceInternal {
+                            url: Some(Url::parse("http://localhost:1234/style_one.css")?),
+                            content: None,
+                        }],
+                    },
+                    created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                },
+            )
             .await?;
         api.db
             .web_scraping(mock_user.id)
-            .insert_resources_tracker_history_revision(&WebPageResourcesRevision {
-                id: uuid!("00000000-0000-0000-0000-000000000002"),
-                tracker_id: tracker.id,
-                scripts: vec![WebPageResource {
-                    url: Some(Url::parse("http://localhost:1234/script_two.js")?),
-                    content: None,
-                    diff_status: None,
-                }],
-                styles: vec![WebPageResource {
-                    url: Some(Url::parse("http://localhost:1234/style_two.css")?),
-                    content: None,
-                    diff_status: None,
-                }],
-                created_at: OffsetDateTime::from_unix_timestamp(946720900)?,
-            })
+            .insert_web_page_tracker_history_revision::<WebPageResourcesTrackerInternalTag>(
+                &WebPageDataRevision {
+                    id: uuid!("00000000-0000-0000-0000-000000000002"),
+                    tracker_id: tracker.id,
+                    data: WebPageResourcesData {
+                        scripts: vec![WebPageResourceInternal {
+                            url: Some(Url::parse("http://localhost:1234/script_two.js")?),
+                            content: None,
+                        }],
+                        styles: vec![WebPageResourceInternal {
+                            url: Some(Url::parse("http://localhost:1234/style_two.css")?),
+                            content: None,
+                        }],
+                    },
+                    created_at: OffsetDateTime::from_unix_timestamp(946720900)?,
+                },
+            )
             .await?;
 
         assert_eq!(

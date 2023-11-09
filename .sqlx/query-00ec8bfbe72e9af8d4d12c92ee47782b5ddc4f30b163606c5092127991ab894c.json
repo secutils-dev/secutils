@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\nSELECT id, tracker_id, value, created_at\nFROM user_data_web_scraping_resources_history\nWHERE user_id = ?1 AND tracker_id = ?2\nORDER BY created_at\n                ",
+  "query": "\nSELECT history.id, history.tracker_id, history.data, history.created_at\nFROM user_data_web_scraping_trackers_history as history\nINNER JOIN user_data_web_scraping_trackers as trackers\nON history.tracker_id = trackers.id\nWHERE history.user_id = ?1 AND history.tracker_id = ?2 AND trackers.kind = ?3\nORDER BY history.created_at\n                ",
   "describe": {
     "columns": [
       {
@@ -14,7 +14,7 @@
         "type_info": "Blob"
       },
       {
-        "name": "value",
+        "name": "data",
         "ordinal": 2,
         "type_info": "Blob"
       },
@@ -25,7 +25,7 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 3
     },
     "nullable": [
       false,
@@ -34,5 +34,5 @@
       false
     ]
   },
-  "hash": "b4b2e46a0a60a18d8f8d4d17f4db73716319150717b204a40309bf4c9fcf4829"
+  "hash": "00ec8bfbe72e9af8d4d12c92ee47782b5ddc4f30b163606c5092127991ab894c"
 }

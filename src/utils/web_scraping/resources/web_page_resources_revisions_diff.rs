@@ -1,6 +1,6 @@
 use crate::utils::{
-    web_scraping::WebPageResourceDiffStatus, WebPageResource, WebPageResourceContentData,
-    WebPageResourcesRevision,
+    WebPageDataRevision, WebPageResource, WebPageResourceContentData, WebPageResourceDiffStatus,
+    WebPageResourcesData, WebPageResourcesTrackerTag,
 };
 use anyhow::anyhow;
 use itertools::{EitherOrBoth, Itertools};
@@ -25,8 +25,8 @@ struct WebPageResourcesDiffMap {
 /// Takes multiple web page resources revisions and updates diff status for resources in the
 /// adjacent revisions.
 pub fn web_page_resources_revisions_diff(
-    revisions: Vec<WebPageResourcesRevision>,
-) -> anyhow::Result<Vec<WebPageResourcesRevision>> {
+    revisions: Vec<WebPageDataRevision<WebPageResourcesTrackerTag>>,
+) -> anyhow::Result<Vec<WebPageDataRevision<WebPageResourcesTrackerTag>>> {
     // We can only calculate diff if there are at least two revisions.
     if revisions.len() < 2 {
         return Ok(revisions);
@@ -36,18 +36,20 @@ pub fn web_page_resources_revisions_diff(
     let mut peekable_revisions = revisions.into_iter().rev().peekable();
     while let Some(current_revision) = peekable_revisions.next() {
         if let Some(previous_revision) = peekable_revisions.peek() {
-            revisions_diff.push(WebPageResourcesRevision {
+            revisions_diff.push(WebPageDataRevision {
                 id: current_revision.id,
                 tracker_id: current_revision.tracker_id,
                 created_at: current_revision.created_at,
-                scripts: web_page_resources_diff(
-                    previous_revision.scripts.clone(),
-                    current_revision.scripts,
-                )?,
-                styles: web_page_resources_diff(
-                    previous_revision.styles.clone(),
-                    current_revision.styles,
-                )?,
+                data: WebPageResourcesData {
+                    scripts: web_page_resources_diff(
+                        previous_revision.data.scripts.clone(),
+                        current_revision.data.scripts,
+                    )?,
+                    styles: web_page_resources_diff(
+                        previous_revision.data.styles.clone(),
+                        current_revision.data.styles,
+                    )?,
+                },
             });
         } else {
             revisions_diff.push(current_revision);
@@ -229,7 +231,7 @@ mod tests {
                 web_page_resources_revisions_diff,
                 web_page_resources_revisions_diff::web_page_resources_diff,
             },
-            WebPageResourceContentData, WebPageResourcesRevision,
+            WebPageDataRevision, WebPageResourceContentData, WebPageResourcesData,
         },
     };
     use insta::assert_json_snapshot;
@@ -990,192 +992,204 @@ mod tests {
                 .build();
 
         let diff = web_page_resources_revisions_diff(vec![
-            WebPageResourcesRevision {
+            WebPageDataRevision {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 tracker_id: uuid!("00000000-0000-0000-0000-000000000002"),
                 created_at: OffsetDateTime::from_unix_timestamp(946720100)?,
-                scripts: vec![resource_one_rev_1, resource_two_rev_1, resource_three_rev_1],
-                styles: vec![resource_four_rev_1],
+                data: WebPageResourcesData {
+                    scripts: vec![resource_one_rev_1, resource_two_rev_1, resource_three_rev_1],
+                    styles: vec![resource_four_rev_1],
+                },
             },
-            WebPageResourcesRevision {
+            WebPageDataRevision {
                 id: uuid!("00000000-0000-0000-0000-000000000011"),
                 tracker_id: uuid!("00000000-0000-0000-0000-000000000002"),
                 created_at: OffsetDateTime::from_unix_timestamp(946720200)?,
-                scripts: vec![resource_one_rev_2, resource_two_rev_2, resource_three_rev_2],
-                styles: vec![resource_four_rev_2],
+                data: WebPageResourcesData {
+                    scripts: vec![resource_one_rev_2, resource_two_rev_2, resource_three_rev_2],
+                    styles: vec![resource_four_rev_2],
+                },
             },
-            WebPageResourcesRevision {
+            WebPageDataRevision {
                 id: uuid!("00000000-0000-0000-0000-000000000021"),
                 tracker_id: uuid!("00000000-0000-0000-0000-000000000002"),
                 created_at: OffsetDateTime::from_unix_timestamp(946720300)?,
-                scripts: vec![resource_one_rev_3, resource_two_rev_3, resource_three_rev_3],
-                styles: vec![],
+                data: WebPageResourcesData {
+                    scripts: vec![resource_one_rev_3, resource_two_rev_3, resource_three_rev_3],
+                    styles: vec![],
+                },
             },
         ])?;
 
         assert_eq!(diff.len(), 3);
 
-        assert_json_snapshot!(diff[0], { ".scripts" => insta::sorted_redaction() }, @r###"
+        assert_json_snapshot!(diff[0], { ".data.scripts" => insta::sorted_redaction() }, @r###"
         {
           "id": "00000000-0000-0000-0000-000000000001",
-          "scripts": [
-            {
-              "url": "http://localhost/one",
-              "content": {
-                "data": {
-                  "sha1": "one-digest-no-change"
-                },
-                "size": 123
+          "data": {
+            "scripts": [
+              {
+                "url": "http://localhost/one",
+                "content": {
+                  "data": {
+                    "sha1": "one-digest-no-change"
+                  },
+                  "size": 123
+                }
+              },
+              {
+                "url": "http://localhost/three-removed",
+                "content": {
+                  "data": {
+                    "sha1": "three-digest-removed"
+                  },
+                  "size": 321
+                }
+              },
+              {
+                "url": "http://localhost/two",
+                "content": {
+                  "data": {
+                    "sha1": "two-digest"
+                  },
+                  "size": 321
+                }
               }
-            },
-            {
-              "url": "http://localhost/three-removed",
-              "content": {
-                "data": {
-                  "sha1": "three-digest-removed"
-                },
-                "size": 321
+            ],
+            "styles": [
+              {
+                "url": "http://localhost/four",
+                "content": {
+                  "data": {
+                    "sha1": "four-digest"
+                  },
+                  "size": 321
+                }
               }
-            },
-            {
-              "url": "http://localhost/two",
-              "content": {
-                "data": {
-                  "sha1": "two-digest"
-                },
-                "size": 321
-              }
-            }
-          ],
-          "styles": [
-            {
-              "url": "http://localhost/four",
-              "content": {
-                "data": {
-                  "sha1": "four-digest"
-                },
-                "size": 321
-              }
-            }
-          ],
+            ]
+          },
           "createdAt": 946720100
         }
         "###);
-        assert_json_snapshot!(diff[1], { ".scripts" => insta::sorted_redaction() }, @r###"
+        assert_json_snapshot!(diff[1], { ".data.scripts" => insta::sorted_redaction() }, @r###"
         {
           "id": "00000000-0000-0000-0000-000000000011",
-          "scripts": [
-            {
-              "url": "http://localhost/one",
-              "content": {
-                "data": {
-                  "sha1": "one-digest-no-change"
+          "data": {
+            "scripts": [
+              {
+                "url": "http://localhost/one",
+                "content": {
+                  "data": {
+                    "sha1": "one-digest-no-change"
+                  },
+                  "size": 123
+                }
+              },
+              {
+                "url": "http://localhost/three",
+                "content": {
+                  "data": {
+                    "sha1": "three-digest-added"
+                  },
+                  "size": 321
                 },
-                "size": 123
+                "diffStatus": "added"
+              },
+              {
+                "url": "http://localhost/three-removed",
+                "content": {
+                  "data": {
+                    "sha1": "three-digest-removed"
+                  },
+                  "size": 321
+                },
+                "diffStatus": "removed"
+              },
+              {
+                "url": "http://localhost/two",
+                "content": {
+                  "data": {
+                    "sha1": "two-digest-changed"
+                  },
+                  "size": 321
+                },
+                "diffStatus": "changed"
               }
-            },
-            {
-              "url": "http://localhost/three",
-              "content": {
-                "data": {
-                  "sha1": "three-digest-added"
+            ],
+            "styles": [
+              {
+                "url": "http://localhost/four",
+                "content": {
+                  "data": {
+                    "sha1": "four-digest-changed"
+                  },
+                  "size": 321
                 },
-                "size": 321
-              },
-              "diffStatus": "added"
-            },
-            {
-              "url": "http://localhost/three-removed",
-              "content": {
-                "data": {
-                  "sha1": "three-digest-removed"
-                },
-                "size": 321
-              },
-              "diffStatus": "removed"
-            },
-            {
-              "url": "http://localhost/two",
-              "content": {
-                "data": {
-                  "sha1": "two-digest-changed"
-                },
-                "size": 321
-              },
-              "diffStatus": "changed"
-            }
-          ],
-          "styles": [
-            {
-              "url": "http://localhost/four",
-              "content": {
-                "data": {
-                  "sha1": "four-digest-changed"
-                },
-                "size": 321
-              },
-              "diffStatus": "changed"
-            }
-          ],
+                "diffStatus": "changed"
+              }
+            ]
+          },
           "createdAt": 946720200
         }
         "###);
-        assert_json_snapshot!(diff[2], { ".scripts" => insta::sorted_redaction() }, @r###"
+        assert_json_snapshot!(diff[2], { ".data.scripts" => insta::sorted_redaction() }, @r###"
         {
           "id": "00000000-0000-0000-0000-000000000021",
-          "scripts": [
-            {
-              "url": "http://localhost/five",
-              "content": {
-                "data": {
-                  "sha1": "five-digest-added"
+          "data": {
+            "scripts": [
+              {
+                "url": "http://localhost/five",
+                "content": {
+                  "data": {
+                    "sha1": "five-digest-added"
+                  },
+                  "size": 123
                 },
-                "size": 123
+                "diffStatus": "added"
               },
-              "diffStatus": "added"
-            },
-            {
-              "url": "http://localhost/one",
-              "content": {
-                "data": {
-                  "sha1": "one-digest-no-change"
+              {
+                "url": "http://localhost/one",
+                "content": {
+                  "data": {
+                    "sha1": "one-digest-no-change"
+                  },
+                  "size": 123
                 },
-                "size": 123
+                "diffStatus": "removed"
               },
-              "diffStatus": "removed"
-            },
-            {
-              "url": "http://localhost/three",
-              "content": {
-                "data": {
-                  "sha1": "three-digest-changed"
+              {
+                "url": "http://localhost/three",
+                "content": {
+                  "data": {
+                    "sha1": "three-digest-changed"
+                  },
+                  "size": 321
                 },
-                "size": 321
+                "diffStatus": "changed"
               },
-              "diffStatus": "changed"
-            },
-            {
-              "url": "http://localhost/two",
-              "content": {
-                "data": {
-                  "sha1": "two-digest-changed"
-                },
-                "size": 321
+              {
+                "url": "http://localhost/two",
+                "content": {
+                  "data": {
+                    "sha1": "two-digest-changed"
+                  },
+                  "size": 321
+                }
               }
-            }
-          ],
-          "styles": [
-            {
-              "url": "http://localhost/four",
-              "content": {
-                "data": {
-                  "sha1": "four-digest-changed"
+            ],
+            "styles": [
+              {
+                "url": "http://localhost/four",
+                "content": {
+                  "data": {
+                    "sha1": "four-digest-changed"
+                  },
+                  "size": 321
                 },
-                "size": 321
-              },
-              "diffStatus": "removed"
-            }
-          ],
+                "diffStatus": "removed"
+              }
+            ]
+          },
           "createdAt": 946720300
         }
         "###);

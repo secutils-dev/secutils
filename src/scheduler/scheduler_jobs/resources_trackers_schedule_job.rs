@@ -89,7 +89,7 @@ impl ResourcesTrackersScheduleJob {
                 .add(ResourcesTrackersTriggerJob::create(api.clone(), schedule).await?)
                 .await?;
             web_scraping
-                .update_resources_tracker_job(tracker.id, Some(job_id))
+                .update_web_page_tracker_job(tracker.id, Some(job_id))
                 .await?;
         }
 
@@ -103,7 +103,7 @@ mod tests {
     use crate::{
         scheduler::{scheduler_job::SchedulerJob, scheduler_store::SchedulerStore},
         tests::{mock_api_with_config, mock_config, mock_user},
-        utils::{ResourcesCreateParams, WebPageResourcesTrackerSettings},
+        utils::{ResourcesCreateParams, WebPageTrackerSettings},
     };
     use anyhow::anyhow;
     use cron::Schedule;
@@ -232,7 +232,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "tracker-one".to_string(),
                     url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 1,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -250,7 +250,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "tracker-two".to_string(),
                     url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 1,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -338,7 +338,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "tracker-one".to_string(),
                     url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 1,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -405,7 +405,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "tracker-one".to_string(),
                     url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 0,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,

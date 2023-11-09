@@ -12,7 +12,7 @@ use crate::{
     users::{SharedResource, User, UserData, UserDataKey, UserId, UserShare, UserShareId},
 };
 use anyhow::bail;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Deserialize, Serialize};
 use sqlx::{query, query_as, query_scalar};
 use time::OffsetDateTime;
 
@@ -154,7 +154,7 @@ RETURNING id as "id!", email as "email!", handle as "handle!", credentials as "c
     }
 
     /// Retrieves user data from the `UserData` table using user id and data key.
-    pub async fn get_user_data<R: DeserializeOwned>(
+    pub async fn get_user_data<R: for<'de> Deserialize<'de>>(
         &self,
         user_id: UserId,
         user_data_key: impl Into<UserDataKey<'_>>,

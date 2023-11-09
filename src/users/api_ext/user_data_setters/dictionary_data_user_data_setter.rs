@@ -2,12 +2,12 @@ use crate::{
     database::Database,
     users::{UserData, UserDataKey},
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub struct DictionaryDataUserDataSetter;
 impl DictionaryDataUserDataSetter {
-    pub async fn upsert<R: DeserializeOwned + Serialize>(
+    pub async fn upsert<R: for<'de> Deserialize<'de> + Serialize>(
         db: &Database,
         user_data_key: impl Into<UserDataKey<'_>>,
         user_data: UserData<BTreeMap<String, Option<R>>>,

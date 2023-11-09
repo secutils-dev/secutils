@@ -163,7 +163,7 @@ mod tests {
     use crate::{
         scheduler::scheduler_job::SchedulerJob,
         tests::{mock_api, mock_user},
-        utils::{ResourcesCreateParams, WebPageResourcesTrackerSettings},
+        utils::{ResourcesCreateParams, WebPageTrackerSettings},
     };
     use futures::StreamExt;
     use insta::assert_debug_snapshot;
@@ -210,7 +210,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "tracker-one".to_string(),
                     url: "https://localhost:1234/my/app?q=2".parse()?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 1,
                         schedule: Some("1 2 3 4 5 6 2030".to_string()),
                         delay: Default::default(),
@@ -221,7 +221,7 @@ mod tests {
             )
             .await?;
         api.web_scraping()
-            .update_resources_tracker_job(tracker.id, Some(trigger_job_id))
+            .update_web_page_tracker_job(tracker.id, Some(trigger_job_id))
             .await?;
 
         // Add job registrations.

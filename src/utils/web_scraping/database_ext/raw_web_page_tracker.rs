@@ -1,37 +1,37 @@
-use crate::utils::{
-    WebPageResourcesTracker, WebPageResourcesTrackerScripts, WebPageResourcesTrackerSettings,
-};
+use crate::utils::{WebPageTracker, WebPageTrackerSettings, WebPageTrackerTag};
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
-pub(super) struct RawResourcesTracker {
+pub(super) struct RawWebPageTracker {
     pub id: Vec<u8>,
     pub name: String,
     pub url: String,
+    pub kind: i64,
     pub schedule: Option<String>,
     pub user_id: i64,
     pub job_id: Option<Vec<u8>>,
-    pub settings: Vec<u8>,
+    pub data: Vec<u8>,
     pub created_at: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
-pub(super) struct RawResourcesTrackerSettings {
+pub(super) struct RawWebPageTrackerData<Tag: WebPageTrackerTag> {
     pub revisions: usize,
     pub delay: u64,
-    pub resource_filter_map_script: Option<String>,
+    pub scripts: Option<HashMap<String, String>>,
     pub enable_notifications: bool,
+    pub meta: Option<Tag::TrackerMeta>,
 }
 
-impl TryFrom<RawResourcesTracker> for WebPageResourcesTracker {
+impl<Tag: WebPageTrackerTag> TryFrom<RawWebPageTracker> for WebPageTracker<Tag> {
     type Error = anyhow::Error;
 
-    fn try_from(raw: RawResourcesTracker) -> Result<Self, Self::Error> {
-        let raw_settings = postcard::from_bytes::<RawResourcesTrackerSettings>(&raw.settings)?;
-        Ok(WebPageResourcesTracker {
+    fn try_from(raw: RawWebPageTracker) -> Result<Self, Self::Error> {
+        let raw_data = postcard::from_bytes::<RawWebPageTrackerData<Tag>>(&raw.data)?;
+        Ok(WebPageTracker {
             id: Uuid::from_slice(raw.id.as_slice())?,
             name: raw.name,
             url: raw.url.parse()?,
@@ -40,40 +40,41 @@ impl TryFrom<RawResourcesTracker> for WebPageResourcesTracker {
                 .job_id
                 .map(|job_id| Uuid::from_slice(job_id.as_slice()))
                 .transpose()?,
-            settings: WebPageResourcesTrackerSettings {
-                revisions: raw_settings.revisions,
-                delay: Duration::from_millis(raw_settings.delay),
+            settings: WebPageTrackerSettings {
+                revisions: raw_data.revisions,
+                delay: Duration::from_millis(raw_data.delay),
                 schedule: raw.schedule,
-                scripts: WebPageResourcesTrackerScripts {
-                    resource_filter_map: raw_settings.resource_filter_map_script,
-                },
-                enable_notifications: raw_settings.enable_notifications,
+                scripts: raw_data.scripts,
+                enable_notifications: raw_data.enable_notifications,
             },
             created_at: OffsetDateTime::from_unix_timestamp(raw.created_at)?,
+            meta: raw_data.meta,
         })
     }
 }
 
-impl TryFrom<&WebPageResourcesTracker> for RawResourcesTracker {
+impl<Tag: WebPageTrackerTag> TryFrom<&WebPageTracker<Tag>> for RawWebPageTracker {
     type Error = anyhow::Error;
 
-    fn try_from(item: &WebPageResourcesTracker) -> Result<Self, Self::Error> {
-        let raw_settings = RawResourcesTrackerSettings {
+    fn try_from(item: &WebPageTracker<Tag>) -> Result<Self, Self::Error> {
+        let raw_data = RawWebPageTrackerData::<Tag> {
             revisions: item.settings.revisions,
             delay: item.settings.delay.as_millis() as u64,
-            resource_filter_map_script: item.settings.scripts.resource_filter_map.clone(),
+            scripts: item.settings.scripts.clone(),
             enable_notifications: item.settings.enable_notifications,
+            meta: item.meta.clone(),
         };
 
-        Ok(RawResourcesTracker {
+        Ok(RawWebPageTracker {
             id: item.id.as_ref().to_vec(),
             name: item.name.clone(),
             url: item.url.to_string(),
+            kind: Tag::KIND as i64,
             /// Move schedule to a dedicated database table field to allow searching.
             schedule: item.settings.schedule.clone(),
             user_id: *item.user_id,
             job_id: item.job_id.as_ref().map(|job_id| job_id.as_ref().to_vec()),
-            settings: postcard::to_stdvec(&raw_settings)?,
+            data: postcard::to_stdvec(&raw_data)?,
             created_at: item.created_at.unix_timestamp(),
         })
     }
@@ -81,12 +82,12 @@ impl TryFrom<&WebPageResourcesTracker> for RawResourcesTracker {
 
 #[cfg(test)]
 mod tests {
-    use super::RawResourcesTracker;
+    use super::RawWebPageTracker;
     use crate::{
         tests::mock_user,
         utils::{
-            WebPageResourcesTracker, WebPageResourcesTrackerScripts,
-            WebPageResourcesTrackerSettings,
+            WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings,
+            WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
         },
     };
     use std::time::Duration;
@@ -95,28 +96,29 @@ mod tests {
     use uuid::uuid;
 
     #[test]
-    fn can_convert_into_resources_tracker() -> anyhow::Result<()> {
+    fn can_convert_into_web_page_tracker() -> anyhow::Result<()> {
         assert_eq!(
-            WebPageResourcesTracker::try_from(RawResourcesTracker {
+            WebPageTracker::<WebPageResourcesTrackerTag>::try_from(RawWebPageTracker {
                 id: uuid!("00000000-0000-0000-0000-000000000001")
                     .as_bytes()
                     .to_vec(),
                 name: "tk".to_string(),
                 url: "https://secutils.dev".to_string(),
+                kind: WebPageTrackerKind::WebPageResources as i64,
                 schedule: None,
                 user_id: *mock_user()?.id,
                 job_id: None,
-                settings: vec![1, 0, 0, 0],
+                data: vec![1, 0, 0, 0, 0],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
             })?,
-            WebPageResourcesTracker {
+            WebPageTracker {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "tk".to_string(),
                 url: Url::parse("https://secutils.dev")?,
                 user_id: mock_user()?.id,
                 job_id: None,
-                settings: WebPageResourcesTrackerSettings {
+                settings: WebPageTrackerSettings {
                     revisions: 1,
                     schedule: None,
                     delay: Default::default(),
@@ -124,16 +126,18 @@ mod tests {
                     enable_notifications: false,
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                meta: None
             }
         );
 
         assert_eq!(
-            WebPageResourcesTracker::try_from(RawResourcesTracker {
+            WebPageTracker::<WebPageResourcesTrackerTag>::try_from(RawWebPageTracker {
                 id: uuid!("00000000-0000-0000-0000-000000000001")
                     .as_bytes()
                     .to_vec(),
                 name: "tk".to_string(),
                 url: "https://secutils.dev".to_string(),
+                kind: WebPageTrackerKind::WebPageResources as i64,
                 schedule: Some("0 0 * * *".to_string()),
                 user_id: *mock_user()?.id,
                 job_id: Some(
@@ -141,29 +145,36 @@ mod tests {
                         .as_bytes()
                         .to_vec()
                 ),
-                settings: vec![
-                    1, 208, 15, 1, 16, 114, 101, 116, 117, 114, 110, 32, 114, 101, 115, 111, 117,
-                    114, 99, 101, 59, 1
+                data: vec![
+                    1, 208, 15, 1, 1, 17, 114, 101, 115, 111, 117, 114, 99, 101, 70, 105, 108, 116,
+                    101, 114, 77, 97, 112, 16, 114, 101, 116, 117, 114, 110, 32, 114, 101, 115,
+                    111, 117, 114, 99, 101, 59, 1, 0
                 ],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
             })?,
-            WebPageResourcesTracker {
+            WebPageTracker {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "tk".to_string(),
                 url: Url::parse("https://secutils.dev")?,
                 user_id: mock_user()?.id,
                 job_id: Some(uuid!("00000000-0000-0000-0000-000000000002")),
-                settings: WebPageResourcesTrackerSettings {
+                settings: WebPageTrackerSettings {
                     revisions: 1,
                     schedule: Some("0 0 * * *".to_string()),
                     delay: Duration::from_millis(2000),
-                    scripts: WebPageResourcesTrackerScripts {
-                        resource_filter_map: Some("return resource;".to_string()),
-                    },
+                    scripts: Some(
+                        [(
+                            WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME.to_string(),
+                            "return resource;".to_string(),
+                        )]
+                        .into_iter()
+                        .collect()
+                    ),
                     enable_notifications: true,
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                meta: None
             }
         );
 
@@ -171,15 +182,15 @@ mod tests {
     }
 
     #[test]
-    fn can_convert_into_raw_resources_tracker() -> anyhow::Result<()> {
+    fn can_convert_into_raw_web_page_tracker() -> anyhow::Result<()> {
         assert_eq!(
-            RawResourcesTracker::try_from(&WebPageResourcesTracker {
+            RawWebPageTracker::try_from(&WebPageTracker::<WebPageResourcesTrackerTag> {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "tk".to_string(),
                 url: Url::parse("https://secutils.dev")?,
                 user_id: mock_user()?.id,
                 job_id: None,
-                settings: WebPageResourcesTrackerSettings {
+                settings: WebPageTrackerSettings {
                     revisions: 1,
                     schedule: None,
                     delay: Default::default(),
@@ -187,46 +198,55 @@ mod tests {
                     enable_notifications: false,
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                meta: None
             })?,
-            RawResourcesTracker {
+            RawWebPageTracker {
                 id: uuid!("00000000-0000-0000-0000-000000000001")
                     .as_bytes()
                     .to_vec(),
                 name: "tk".to_string(),
                 url: "https://secutils.dev/".to_string(),
+                kind: WebPageTrackerKind::WebPageResources as i64,
                 schedule: None,
                 user_id: *mock_user()?.id,
                 job_id: None,
-                settings: vec![1, 0, 0, 0],
+                data: vec![1, 0, 0, 0, 0],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
             }
         );
 
         assert_eq!(
-            RawResourcesTracker::try_from(&WebPageResourcesTracker {
+            RawWebPageTracker::try_from(&WebPageTracker::<WebPageResourcesTrackerTag> {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "tk".to_string(),
                 url: Url::parse("https://secutils.dev")?,
                 user_id: mock_user()?.id,
                 job_id: Some(uuid!("00000000-0000-0000-0000-000000000002")),
-                settings: WebPageResourcesTrackerSettings {
+                settings: WebPageTrackerSettings {
                     revisions: 1,
                     schedule: Some("0 0 * * *".to_string()),
                     delay: Duration::from_millis(2000),
-                    scripts: WebPageResourcesTrackerScripts {
-                        resource_filter_map: Some("return resource;".to_string()),
-                    },
+                    scripts: Some(
+                        [(
+                            WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME.to_string(),
+                            "return resource;".to_string(),
+                        )]
+                        .into_iter()
+                        .collect()
+                    ),
                     enable_notifications: true,
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                meta: None
             })?,
-            RawResourcesTracker {
+            RawWebPageTracker {
                 id: uuid!("00000000-0000-0000-0000-000000000001")
                     .as_bytes()
                     .to_vec(),
                 name: "tk".to_string(),
                 url: "https://secutils.dev/".to_string(),
+                kind: WebPageTrackerKind::WebPageResources as i64,
                 schedule: Some("0 0 * * *".to_string()),
                 user_id: *mock_user()?.id,
                 job_id: Some(
@@ -234,9 +254,10 @@ mod tests {
                         .as_bytes()
                         .to_vec()
                 ),
-                settings: vec![
-                    1, 208, 15, 1, 16, 114, 101, 116, 117, 114, 110, 32, 114, 101, 115, 111, 117,
-                    114, 99, 101, 59, 1
+                data: vec![
+                    1, 208, 15, 1, 1, 17, 114, 101, 115, 111, 117, 114, 99, 101, 70, 105, 108, 116,
+                    101, 114, 77, 97, 112, 16, 114, 101, 116, 117, 114, 110, 32, 114, 101, 115,
+                    111, 117, 114, 99, 101, 59, 1, 0
                 ],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,

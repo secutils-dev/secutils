@@ -1,4 +1,4 @@
-use crate::utils::WebPageResourcesTrackerSettings;
+use crate::utils::WebPageTrackerSettings;
 use serde::Deserialize;
 use url::Url;
 
@@ -10,13 +10,14 @@ pub struct ResourcesCreateParams {
     /// URL of the web page to track resources for.
     pub url: Url,
     /// Settings of the web page resources tracker.
-    pub settings: WebPageResourcesTrackerSettings,
+    pub settings: WebPageTrackerSettings,
 }
 
 #[cfg(test)]
 mod tests {
     use crate::utils::{
-        ResourcesCreateParams, WebPageResourcesTrackerScripts, WebPageResourcesTrackerSettings,
+        web_scraping::api_ext::WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
+        ResourcesCreateParams, WebPageTrackerSettings,
     };
     use std::time::Duration;
     use url::Url;
@@ -40,7 +41,7 @@ mod tests {
             ResourcesCreateParams {
                 name: "pk".to_string(),
                 url: Url::parse("https://secutils.dev")?,
-                settings: WebPageResourcesTrackerSettings {
+                settings: WebPageTrackerSettings {
                     revisions: 3,
                     schedule: None,
                     delay: Duration::from_millis(2000),
@@ -71,13 +72,19 @@ mod tests {
             ResourcesCreateParams {
                 name: "pk".to_string(),
                 url: Url::parse("https://secutils.dev")?,
-                settings: WebPageResourcesTrackerSettings {
+                settings: WebPageTrackerSettings {
                     revisions: 3,
                     schedule: Some("0 0 * * *".to_string()),
                     delay: Duration::from_millis(2000),
-                    scripts: WebPageResourcesTrackerScripts {
-                        resource_filter_map: Some("return resource;".to_string()),
-                    },
+                    scripts: Some(
+                        [(
+                            WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME.to_string(),
+                            "return resource;".to_string()
+                        )]
+                        .iter()
+                        .cloned()
+                        .collect()
+                    ),
                     enable_notifications: true,
                 },
             }

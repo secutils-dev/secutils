@@ -1,4 +1,4 @@
-use crate::utils::{web_scraping::WebPageResourceDiffStatus, WebPageResourceContent};
+use crate::utils::{WebPageResourceContent, WebPageResourceDiffStatus};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -31,13 +31,38 @@ impl WebPageResource {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub(in crate::utils::web_scraping) struct WebPageResourceInternal {
+    pub url: Option<Url>,
+    pub content: Option<WebPageResourceContent>,
+}
+
+impl From<WebPageResource> for WebPageResourceInternal {
+    fn from(resource: WebPageResource) -> Self {
+        Self {
+            url: resource.url,
+            content: resource.content,
+        }
+    }
+}
+
+impl From<WebPageResourceInternal> for WebPageResource {
+    fn from(resource: WebPageResourceInternal) -> Self {
+        Self {
+            url: resource.url,
+            content: resource.content,
+            diff_status: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
         tests::MockWebPageResourceBuilder,
         utils::{
-            web_scraping::WebPageResourceDiffStatus, WebPageResource, WebPageResourceContent,
-            WebPageResourceContentData,
+            WebPageResource, WebPageResourceContent, WebPageResourceContentData,
+            WebPageResourceDiffStatus,
         },
     };
     use insta::assert_json_snapshot;

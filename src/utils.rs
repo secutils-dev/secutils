@@ -33,10 +33,12 @@ pub use self::{
     utils_resource_operation::UtilsResourceOperation,
     web_scraping::{
         web_scraping_handle_action, ResourcesCreateParams, ResourcesGetHistoryParams,
-        ResourcesUpdateParams, WebPageResource, WebPageResourceContent, WebPageResourceContentData,
-        WebPageResourceDiffStatus, WebPageResourcesRevision, WebPageResourcesTracker,
-        WebPageResourcesTrackerScripts, WebPageResourcesTrackerSettings, WebScraperResource,
-        WebScraperResourcesRequest, WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
+        ResourcesUpdateParams, WebPageDataRevision, WebPageResource, WebPageResourceContent,
+        WebPageResourceContentData, WebPageResourceDiffStatus, WebPageResourcesData,
+        WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings,
+        WebPageTrackerTag, WebScraperResource, WebScraperResourcesRequest,
+        WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
+        WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
     },
     web_security::{
         ContentSecurityPolicy, ContentSecurityPolicyDirective, ContentSecurityPolicyImportType,
@@ -55,6 +57,6 @@ pub use self::{
 pub mod tests {
     pub use super::{
         certificates::tests::MockCertificateAttributes,
-        web_scraping::tests::MockWebPageResourcesTrackerBuilder,
+        web_scraping::tests::MockWebPageTrackerBuilder,
     };
 }

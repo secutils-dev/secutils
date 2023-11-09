@@ -8,7 +8,7 @@ use crate::{
     },
 };
 use anyhow::{bail, Context};
-use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use time::OffsetDateTime;
 
 pub mod errors;
@@ -82,7 +82,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
     }
 
     /// Retrieves data with the specified key for the user with the specified id.
-    pub async fn get_data<R: DeserializeOwned>(
+    pub async fn get_data<R: for<'de> Deserialize<'de>>(
         &self,
         user_id: UserId,
         user_data_key: impl Into<UserDataKey<'_>>,

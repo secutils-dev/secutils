@@ -16,11 +16,15 @@ use crate::{
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
         web_scraping::{
-            resources::{web_page_resources_revisions_diff, WebScraperResource},
-            MAX_WEB_PAGE_RESOURCES_TRACKER_DELAY, MAX_WEB_PAGE_RESOURCES_TRACKER_REVISIONS,
+            resources::{
+                web_page_resources_revisions_diff, WebPageResourcesTrackerInternalTag,
+                WebScraperResource,
+            },
+            MAX_WEB_PAGE_TRACKER_DELAY, MAX_WEB_PAGE_TRACKER_REVISIONS,
         },
-        WebPageResource, WebPageResourcesRevision, WebPageResourcesTracker,
-        WebScraperResourcesRequest, WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
+        WebPageDataRevision, WebPageResource, WebPageResourcesData, WebPageResourcesTrackerTag,
+        WebPageTracker, WebPageTrackerTag, WebScraperResourcesRequest,
+        WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
     },
 };
 use anyhow::{anyhow, bail};
@@ -34,6 +38,9 @@ use uuid::Uuid;
 
 /// Defines a maximum number of jobs that can be retrieved from the database at once.
 const MAX_JOBS_PAGE_SIZE: usize = 1000;
+
+/// Script used to `filter_map` resource that needs to be tracked.
+pub const WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME: &str = "resourceFilterMap";
 
 pub struct WebScrapingApiExt<'a, DR: DnsResolver, ET: EmailTransport> {
     api: &'a Api<DR, ET>,
@@ -49,29 +56,29 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
     pub async fn get_resources_trackers(
         &self,
         user_id: UserId,
-    ) -> anyhow::Result<Vec<WebPageResourcesTracker>> {
+    ) -> anyhow::Result<Vec<WebPageTracker<WebPageResourcesTrackerTag>>> {
         self.api
             .db
             .web_scraping(user_id)
-            .get_resources_trackers()
+            .get_web_page_trackers()
             .await
     }
 
     /// Returns all web page resources tracker job references that have jobs that need to be scheduled.
     pub async fn get_unscheduled_resources_trackers(
         &self,
-    ) -> anyhow::Result<Vec<WebPageResourcesTracker>> {
+    ) -> anyhow::Result<Vec<WebPageTracker<WebPageResourcesTrackerTag>>> {
         self.api
             .db
             .web_scraping_system()
-            .get_unscheduled_resources_trackers()
+            .get_unscheduled_web_page_trackers()
             .await
     }
 
     /// Returns all web page resources trackers that have pending jobs.
     pub fn get_pending_resources_trackers(
         &self,
-    ) -> impl Stream<Item = anyhow::Result<WebPageResourcesTracker>> + '_ {
+    ) -> impl Stream<Item = anyhow::Result<WebPageTracker<WebPageResourcesTrackerTag>>> + '_ {
         try_stream! {
             let jobs = self.api.db.get_stopped_scheduler_jobs_by_extra(
                 MAX_JOBS_PAGE_SIZE,
@@ -98,11 +105,11 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
         &self,
         user_id: UserId,
         id: Uuid,
-    ) -> anyhow::Result<Option<WebPageResourcesTracker>> {
+    ) -> anyhow::Result<Option<WebPageTracker<WebPageResourcesTrackerTag>>> {
         self.api
             .db
             .web_scraping(user_id)
-            .get_resources_tracker(id)
+            .get_web_page_tracker(id)
             .await
     }
 
@@ -110,11 +117,11 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
     pub async fn get_resources_tracker_by_job_id(
         &self,
         job_id: Uuid,
-    ) -> anyhow::Result<Option<WebPageResourcesTracker>> {
+    ) -> anyhow::Result<Option<WebPageTracker<WebPageResourcesTrackerTag>>> {
         self.api
             .db
             .web_scraping_system()
-            .get_resources_tracker_by_job_id(job_id)
+            .get_web_page_tracker_by_job_id(job_id)
             .await
     }
 
@@ -123,8 +130,8 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
         &self,
         user_id: UserId,
         params: ResourcesCreateParams,
-    ) -> anyhow::Result<WebPageResourcesTracker> {
-        let tracker = WebPageResourcesTracker {
+    ) -> anyhow::Result<WebPageTracker<WebPageResourcesTrackerTag>> {
+        let tracker = WebPageTracker {
             id: Uuid::now_v7(),
             name: params.name,
             url: params.url,
@@ -135,14 +142,15 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             created_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
             )?,
+            meta: None,
         };
 
-        self.validate_resources_tracker(&tracker).await?;
+        self.validate_web_page_resources_tracker(&tracker).await?;
 
         self.api
             .db
             .web_scraping(user_id)
-            .insert_resources_tracker(&tracker)
+            .insert_web_page_tracker(&tracker)
             .await?;
 
         Ok(tracker)
@@ -154,7 +162,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
         user_id: UserId,
         id: Uuid,
         params: ResourcesUpdateParams,
-    ) -> anyhow::Result<WebPageResourcesTracker> {
+    ) -> anyhow::Result<WebPageTracker<WebPageResourcesTrackerTag>> {
         if params.name.is_none() && params.url.is_none() && params.settings.is_none() {
             bail!(SecutilsError::client(format!(
                 "Either new name, url, or settings should be provided ({id})."
@@ -185,7 +193,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             (_, job_id) => job_id,
         };
 
-        let tracker = WebPageResourcesTracker {
+        let tracker = WebPageTracker {
             name: params.name.unwrap_or(existing_tracker.name),
             url: params.url.unwrap_or(existing_tracker.url),
             settings: params.settings.unwrap_or(existing_tracker.settings),
@@ -193,23 +201,23 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             ..existing_tracker
         };
 
-        self.validate_resources_tracker(&tracker).await?;
+        self.validate_web_page_resources_tracker(&tracker).await?;
 
         let web_scraping = self.api.db.web_scraping(user_id);
-        web_scraping.update_resources_tracker(&tracker).await?;
+        web_scraping.update_web_page_tracker(&tracker).await?;
 
         if changed_url {
             log::debug!(
                 "Web resources tracker ('{id}') changed URL, clearing web resources history."
             );
-            web_scraping.clear_resources_tracker_history(id).await?;
+            web_scraping.clear_web_page_tracker_history(id).await?;
         }
 
         Ok(tracker)
     }
 
     /// Update resources tracker job ID reference (link or unlink).
-    pub async fn update_resources_tracker_job(
+    pub async fn update_web_page_tracker_job(
         &self,
         id: Uuid,
         job_id: Option<Uuid>,
@@ -217,16 +225,16 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
         self.api
             .db
             .web_scraping_system()
-            .update_resources_tracker_job(id, job_id)
+            .update_web_page_tracker_job(id, job_id)
             .await
     }
 
     /// Removes existing web page resources tracker and all history.
-    pub async fn remove_resources_tracker(&self, user_id: UserId, id: Uuid) -> anyhow::Result<()> {
+    pub async fn remove_web_page_tracker(&self, user_id: UserId, id: Uuid) -> anyhow::Result<()> {
         self.api
             .db
             .web_scraping(user_id)
-            .remove_resources_tracker(id)
+            .remove_web_page_tracker(id)
             .await
     }
 
@@ -234,8 +242,8 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
     pub async fn create_resources_tracker_revision(
         &self,
         user_id: UserId,
-        tracker: &WebPageResourcesTracker,
-    ) -> anyhow::Result<Option<WebPageResourcesRevision>> {
+        tracker: &WebPageTracker<WebPageResourcesTrackerTag>,
+    ) -> anyhow::Result<Option<WebPageDataRevision<WebPageResourcesTrackerTag>>> {
         // If tracker is configured to persist resource, and client requests refresh, fetch
         // resources with the scraper and persist them.
         // Checks if the specific hostname is a domain and public (not pointing to the local network).
@@ -266,10 +274,20 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             };
 
         let scraper_request = WebScraperResourcesRequest::with_default_parameters(&tracker.url)
-            .set_delay(tracker.settings.delay)
-            .set_scripts(WebScraperResourcesRequestScripts {
-                resource_filter_map: tracker.settings.scripts.resource_filter_map.as_deref(),
-            });
+            .set_delay(tracker.settings.delay);
+        let resources_filter_map_script = tracker
+            .settings
+            .scripts
+            .as_ref()
+            .and_then(|scripts| scripts.get(WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME));
+        let scraper_request = if let Some(resources_filter_map) = resources_filter_map_script {
+            scraper_request.set_scripts(WebScraperResourcesRequestScripts {
+                resource_filter_map: Some(resources_filter_map),
+            })
+        } else {
+            scraper_request
+        };
+
         let scraper_response = reqwest::Client::new()
             .post(format!(
                 "{}api/resources",
@@ -293,7 +311,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
         // Check if there is a revision with the same timestamp. If so, drop newly fetched revision.
         let web_scraping = self.api.db.web_scraping(user_id);
         let revisions = web_scraping
-            .get_resources_tracker_history(tracker.id)
+            .get_web_page_tracker_history(tracker.id)
             .await?;
         if revisions
             .iter()
@@ -302,11 +320,13 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             return Ok(None);
         }
 
-        let new_revision = WebPageResourcesRevision {
+        let new_revision = WebPageDataRevision {
             id: Uuid::now_v7(),
             tracker_id: tracker.id,
-            scripts: convert_to_web_page_resources(scraper_response.scripts),
-            styles: convert_to_web_page_resources(scraper_response.styles),
+            data: WebPageResourcesData {
+                scripts: convert_to_web_page_resources(scraper_response.scripts),
+                styles: convert_to_web_page_resources(scraper_response.styles),
+            },
             created_at: scraper_response.timestamp,
         };
 
@@ -322,7 +342,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
                 .ok_or_else(|| anyhow!("Invalid revisions diff result."))?;
 
             // Return the latest revision back to the queue if it's different from the new one.
-            if !new_revision_with_diff.has_diff() {
+            if !new_revision_with_diff.data.has_diff() {
                 return Ok(None);
             }
 
@@ -333,7 +353,27 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
 
         // Insert new revision.
         web_scraping
-            .insert_resources_tracker_history_revision(&new_revision)
+            .insert_web_page_tracker_history_revision::<WebPageResourcesTrackerInternalTag>(
+                &WebPageDataRevision {
+                    id: new_revision.id,
+                    tracker_id: new_revision.tracker_id,
+                    data: WebPageResourcesData {
+                        scripts: new_revision
+                            .data
+                            .scripts
+                            .into_iter()
+                            .map(Into::into)
+                            .collect(),
+                        styles: new_revision
+                            .data
+                            .styles
+                            .into_iter()
+                            .map(Into::into)
+                            .collect(),
+                    },
+                    created_at: new_revision.created_at,
+                },
+            )
             .await?;
 
         // Enforce revisions limit and displace old ones.
@@ -341,7 +381,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             let revisions_to_remove = revisions.len() - tracker.settings.revisions + 1;
             for revision in revisions.iter().take(revisions_to_remove) {
                 web_scraping
-                    .remove_resources_tracker_history_revision(tracker.id, revision.id)
+                    .remove_web_page_tracker_history_revision(tracker.id, revision.id)
                     .await?;
             }
         }
@@ -355,7 +395,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
         user_id: UserId,
         tracker_id: Uuid,
         params: ResourcesGetHistoryParams,
-    ) -> anyhow::Result<Vec<WebPageResourcesRevision>> {
+    ) -> anyhow::Result<Vec<WebPageDataRevision<WebPageResourcesTrackerTag>>> {
         let Some(tracker) = self.get_resources_tracker(user_id, tracker_id).await? else {
             bail!(SecutilsError::client(format!(
                 "Resources tracker ('{tracker_id}') is not found."
@@ -373,8 +413,19 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             .api
             .db
             .web_scraping(user_id)
-            .get_resources_tracker_history(tracker.id)
-            .await?;
+            .get_web_page_tracker_history::<WebPageResourcesTrackerInternalTag>(tracker.id)
+            .await?
+            .into_iter()
+            .map(|revision| WebPageDataRevision {
+                id: revision.id,
+                tracker_id: revision.tracker_id,
+                data: WebPageResourcesData {
+                    scripts: revision.data.scripts.into_iter().map(Into::into).collect(),
+                    styles: revision.data.styles.into_iter().map(Into::into).collect(),
+                },
+                created_at: revision.created_at,
+            })
+            .collect::<Vec<_>>();
         if params.calculate_diff {
             web_page_resources_revisions_diff(revisions)
         } else {
@@ -383,7 +434,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
     }
 
     /// Removes all persisted resources for the specified web page resources tracker.
-    pub async fn clear_resources_tracker_history(
+    pub async fn clear_web_page_tracker_history(
         &self,
         user_id: UserId,
         tracker_id: Uuid,
@@ -391,45 +442,48 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
         self.api
             .db
             .web_scraping(user_id)
-            .clear_resources_tracker_history(tracker_id)
+            .clear_web_page_tracker_history(tracker_id)
             .await
     }
 
-    async fn validate_resources_tracker(
+    async fn validate_web_page_tracker<Tag: WebPageTrackerTag>(
         &self,
-        tracker: &WebPageResourcesTracker,
+        tracker: &WebPageTracker<Tag>,
     ) -> anyhow::Result<()> {
         if tracker.name.is_empty() {
             bail!(SecutilsError::client(
-                "Resources tracker name cannot be empty.",
+                "Web page tracker name cannot be empty.",
             ));
         }
 
         if tracker.name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
             bail!(SecutilsError::client(format!(
-                "Resources tracker name cannot be longer than {} characters.",
+                "Web page tracker name cannot be longer than {} characters.",
                 MAX_UTILS_ENTITY_NAME_LENGTH
             )));
         }
 
-        if tracker.settings.revisions > MAX_WEB_PAGE_RESOURCES_TRACKER_REVISIONS {
+        if tracker.settings.revisions > MAX_WEB_PAGE_TRACKER_REVISIONS {
             bail!(SecutilsError::client(format!(
-                "Resources tracker revisions count cannot be greater than {}.",
-                MAX_WEB_PAGE_RESOURCES_TRACKER_REVISIONS
+                "Web page tracker revisions count cannot be greater than {}.",
+                MAX_WEB_PAGE_TRACKER_REVISIONS
             )));
         }
 
-        if tracker.settings.delay > MAX_WEB_PAGE_RESOURCES_TRACKER_DELAY {
+        if tracker.settings.delay > MAX_WEB_PAGE_TRACKER_DELAY {
             bail!(SecutilsError::client(format!(
-                "Resources tracker delay cannot be greater than {}ms.",
-                MAX_WEB_PAGE_RESOURCES_TRACKER_DELAY.as_millis()
+                "Web page tracker delay cannot be greater than {}ms.",
+                MAX_WEB_PAGE_TRACKER_DELAY.as_millis()
             )));
         }
 
-        if let Some(ref resource_filter) = tracker.settings.scripts.resource_filter_map {
-            if resource_filter.is_empty() {
+        if let Some(ref scripts) = tracker.settings.scripts {
+            if scripts
+                .iter()
+                .any(|(name, script)| name.is_empty() || script.is_empty())
+            {
                 bail!(SecutilsError::client(
-                    "Resources tracker resource filter script cannot be empty."
+                    "Web page tracker scripts cannot be empty or have an empty name."
                 ));
             }
         }
@@ -441,7 +495,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
                 Err(err) => {
                     bail!(SecutilsError::client_with_root_cause(
                         anyhow!("Failed to parse schedule `{schedule}`: {err:?}")
-                            .context("Resources tracker schedule must be a valid cron expression.")
+                            .context("Web page tracker schedule must be a valid cron expression.")
                     ));
                 }
             };
@@ -453,7 +507,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
                 let interval = (*occurrence - next_occurrences[index - 1]).to_std()?;
                 if interval < minimum_interval {
                     bail!(SecutilsError::client(format!(
-                        "Resources tracker schedule must have at least {} between occurrences, detected {}.",
+                        "Web page tracker schedule must have at least {} between occurrences, detected {}.",
                         format_duration(minimum_interval),
                         format_duration(interval)
                     )));
@@ -463,8 +517,27 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
 
         if !self.api.network.is_public_web_url(&tracker.url).await {
             bail!(SecutilsError::client(
-                "Resources tracker URL must be either `http` or `https` and have a valid public reachable domain name."
+                "Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name."
             ));
+        }
+
+        Ok(())
+    }
+
+    async fn validate_web_page_resources_tracker(
+        &self,
+        tracker: &WebPageTracker<WebPageResourcesTrackerTag>,
+    ) -> anyhow::Result<()> {
+        self.validate_web_page_tracker(tracker).await?;
+
+        if let Some(ref scripts) = tracker.settings.scripts {
+            if !scripts.is_empty()
+                && !scripts.contains_key(WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME)
+            {
+                bail!(SecutilsError::client(
+                    "Web page tracker contains unrecognized scripts."
+                ));
+            }
         }
 
         Ok(())
@@ -489,9 +562,9 @@ mod tests {
         },
         utils::{
             web_scraping::WebScrapingApiExt, ResourcesCreateParams, ResourcesUpdateParams,
-            WebPageResource, WebPageResourceDiffStatus, WebPageResourcesTracker,
-            WebPageResourcesTrackerScripts, WebPageResourcesTrackerSettings, WebScraperResource,
-            WebScraperResourcesRequest, WebScraperResourcesResponse,
+            WebPageResource, WebPageResourceDiffStatus, WebPageResourcesTrackerTag, WebPageTracker,
+            WebPageTrackerSettings, WebScraperResource, WebScraperResourcesRequest,
+            WebScraperResourcesResponse, WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
         },
     };
     use futures::StreamExt;
@@ -539,7 +612,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -568,7 +641,7 @@ mod tests {
 
         let api = WebScrapingApiExt::new(&api);
 
-        let settings = WebPageResourcesTrackerSettings {
+        let settings = WebPageTrackerSettings {
             revisions: 3,
             delay: Duration::from_millis(2000),
             enable_notifications: true,
@@ -588,7 +661,7 @@ mod tests {
                 url: url.clone(),
                 settings: settings.clone(),
             }).await),
-            @r###""Resources tracker name cannot be empty.""###
+            @r###""Web page tracker name cannot be empty.""###
         );
 
         // Very long name.
@@ -598,7 +671,7 @@ mod tests {
                 url: url.clone(),
                 settings: settings.clone(),
             }).await),
-            @r###""Resources tracker name cannot be longer than 100 characters.""###
+            @r###""Web page tracker name cannot be longer than 100 characters.""###
         );
 
         // Too many revisions.
@@ -606,12 +679,12 @@ mod tests {
             create_and_fail(api.create_resources_tracker(mock_user.id, ResourcesCreateParams {
                 name: "name".to_string(),
                 url: url.clone(),
-                settings: WebPageResourcesTrackerSettings {
+                settings: WebPageTrackerSettings {
                     revisions: 11,
                     ..settings.clone()
                 },
             }).await),
-            @r###""Resources tracker revisions count cannot be greater than 10.""###
+            @r###""Web page tracker revisions count cannot be greater than 10.""###
         );
 
         // Too long delay.
@@ -619,12 +692,12 @@ mod tests {
             create_and_fail(api.create_resources_tracker(mock_user.id, ResourcesCreateParams {
                 name: "name".to_string(),
                 url: url.clone(),
-                settings: WebPageResourcesTrackerSettings {
+                settings: WebPageTrackerSettings {
                     delay: Duration::from_secs(61),
                     ..settings.clone()
                 },
             }).await),
-            @r###""Resources tracker delay cannot be greater than 60000ms.""###
+            @r###""Web page tracker delay cannot be greater than 60000ms.""###
         );
 
         // Empty resource filter.
@@ -632,14 +705,37 @@ mod tests {
             create_and_fail(api.create_resources_tracker(mock_user.id, ResourcesCreateParams {
                 name: "name".to_string(),
                 url: url.clone(),
-                settings: WebPageResourcesTrackerSettings {
-                   scripts: WebPageResourcesTrackerScripts {
-                        resource_filter_map: Some("".to_string()),
-                   },
+                settings: WebPageTrackerSettings {
+                    scripts: Some([(
+                        WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME.to_string(),
+                            "".to_string()
+                        )]
+                        .into_iter()
+                        .collect()
+                    ),
                     ..settings.clone()
                 },
             }).await),
-            @r###""Resources tracker resource filter script cannot be empty.""###
+            @r###""Web page tracker scripts cannot be empty or have an empty name.""###
+        );
+
+        // Empty resource filter.
+        assert_debug_snapshot!(
+            create_and_fail(api.create_resources_tracker(mock_user.id, ResourcesCreateParams {
+                name: "name".to_string(),
+                url: url.clone(),
+                settings: WebPageTrackerSettings {
+                    scripts: Some([(
+                        "someScript".to_string(),
+                            "return resource;".to_string()
+                        )]
+                        .into_iter()
+                        .collect()
+                    ),
+                    ..settings.clone()
+                },
+            }).await),
+            @r###""Web page tracker contains unrecognized scripts.""###
         );
 
         // Invalid schedule.
@@ -647,14 +743,14 @@ mod tests {
             create_and_fail(api.create_resources_tracker(mock_user.id, ResourcesCreateParams {
                 name: "name".to_string(),
                 url: url.clone(),
-                settings: WebPageResourcesTrackerSettings {
+                settings: WebPageTrackerSettings {
                    schedule: Some("-".to_string()),
                     ..settings.clone()
                 },
             }).await),
             @r###"
         Error {
-            context: "Resources tracker schedule must be a valid cron expression.",
+            context: "Web page tracker schedule must be a valid cron expression.",
             source: "Failed to parse schedule `-`: Error { kind: Expression(\"Invalid cron expression.\") }",
         }
         "###
@@ -665,12 +761,12 @@ mod tests {
             create_and_fail(api.create_resources_tracker(mock_user.id, ResourcesCreateParams {
                 name: "name".to_string(),
                 url: url.clone(),
-                settings: WebPageResourcesTrackerSettings {
+                settings: WebPageTrackerSettings {
                    schedule: Some("0 * * * * *".to_string()),
                     ..settings.clone()
                 },
             }).await),
-            @r###""Resources tracker schedule must have at least 1h between occurrences, detected 1m.""###
+            @r###""Web page tracker schedule must have at least 1h between occurrences, detected 1m.""###
         );
 
         // Invalid URL schema.
@@ -680,7 +776,7 @@ mod tests {
                 url: Url::parse("ftp://secutils.dev")?,
                 settings: settings.clone(),
             }).await),
-            @r###""Resources tracker URL must be either `http` or `https` and have a valid public reachable domain name.""###
+            @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name.""###
         );
 
         let api_with_local_network =
@@ -698,7 +794,7 @@ mod tests {
                 url: Url::parse("https://127.0.0.1")?,
                 settings: settings.clone(),
             }).await),
-            @r###""Resources tracker URL must be either `http` or `https` and have a valid public reachable domain name.""###
+            @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name.""###
         );
 
         Ok(())
@@ -717,7 +813,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -739,7 +835,7 @@ mod tests {
                 },
             )
             .await?;
-        let expected_tracker = WebPageResourcesTracker {
+        let expected_tracker = WebPageTracker {
             name: "name_two".to_string(),
             ..tracker.clone()
         };
@@ -762,7 +858,7 @@ mod tests {
                 },
             )
             .await?;
-        let expected_tracker = WebPageResourcesTracker {
+        let expected_tracker = WebPageTracker {
             name: "name_two".to_string(),
             url: "http://localhost:1234/my/app?q=3".parse()?,
             ..tracker.clone()
@@ -781,7 +877,7 @@ mod tests {
                 mock_user.id,
                 tracker.id,
                 ResourcesUpdateParams {
-                    settings: Some(WebPageResourcesTrackerSettings {
+                    settings: Some(WebPageTrackerSettings {
                         revisions: 4,
                         enable_notifications: false,
                         ..tracker.settings.clone()
@@ -790,10 +886,10 @@ mod tests {
                 },
             )
             .await?;
-        let expected_tracker = WebPageResourcesTracker {
+        let expected_tracker = WebPageTracker {
             name: "name_two".to_string(),
             url: "http://localhost:1234/my/app?q=3".parse()?,
-            settings: WebPageResourcesTrackerSettings {
+            settings: WebPageTrackerSettings {
                 revisions: 4,
                 enable_notifications: false,
                 ..tracker.settings.clone()
@@ -824,7 +920,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -875,7 +971,7 @@ mod tests {
                 name: Some("".to_string()),
                 ..Default::default()
             }).await),
-            @r###""Resources tracker name cannot be empty.""###
+            @r###""Web page tracker name cannot be empty.""###
         );
 
         // Very long name.
@@ -884,51 +980,71 @@ mod tests {
                 name: Some("a".repeat(101)),
                 ..Default::default()
             }).await),
-            @r###""Resources tracker name cannot be longer than 100 characters.""###
+            @r###""Web page tracker name cannot be longer than 100 characters.""###
         );
 
         // Too many revisions.
         assert_debug_snapshot!(
             update_and_fail(api.update_resources_tracker(mock_user.id, tracker.id, ResourcesUpdateParams {
-                settings: Some(WebPageResourcesTrackerSettings {
+                settings: Some(WebPageTrackerSettings {
                     revisions: 11,
                     ..tracker.settings.clone()
                 }),
                 ..Default::default()
             }).await),
-            @r###""Resources tracker revisions count cannot be greater than 10.""###
+            @r###""Web page tracker revisions count cannot be greater than 10.""###
         );
 
         // Too long delay.
         assert_debug_snapshot!(
             update_and_fail(api.update_resources_tracker(mock_user.id, tracker.id, ResourcesUpdateParams {
-                settings: Some(WebPageResourcesTrackerSettings {
+                settings: Some(WebPageTrackerSettings {
                     delay: Duration::from_secs(61),
                     ..tracker.settings.clone()
                 }),
                 ..Default::default()
             }).await),
-            @r###""Resources tracker delay cannot be greater than 60000ms.""###
+            @r###""Web page tracker delay cannot be greater than 60000ms.""###
         );
 
         // Empty resource filter.
         assert_debug_snapshot!(
             update_and_fail(api.update_resources_tracker(mock_user.id, tracker.id, ResourcesUpdateParams {
-                settings: Some(WebPageResourcesTrackerSettings {
-                   scripts: WebPageResourcesTrackerScripts {
-                        resource_filter_map: Some("".to_string()),
-                   },
+                settings: Some(WebPageTrackerSettings {
+                    scripts: Some([(
+                        WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME.to_string(),
+                        "".to_string()
+                    )]
+                    .into_iter()
+                    .collect()),
                    ..tracker.settings.clone()
                 }),
                 ..Default::default()
             }).await),
-            @r###""Resources tracker resource filter script cannot be empty.""###
+            @r###""Web page tracker scripts cannot be empty or have an empty name.""###
+        );
+
+        // Unknown script.
+        assert_debug_snapshot!(
+            update_and_fail(api.update_resources_tracker(mock_user.id, tracker.id, ResourcesUpdateParams {
+                settings: Some(WebPageTrackerSettings {
+                    scripts: Some([(
+                        "someScript".to_string(),
+                        "return resource;".to_string()
+                    )]
+                    .into_iter()
+                    .collect()),
+                   ..tracker.settings.clone()
+                }),
+                ..Default::default()
+            }).await),
+            @r###""Web page tracker contains unrecognized scripts.""###
         );
 
         // Invalid schedule.
         assert_debug_snapshot!(
             update_and_fail(api.update_resources_tracker(mock_user.id, tracker.id, ResourcesUpdateParams {
-                settings: Some(WebPageResourcesTrackerSettings {
+                settings: Some(WebPageTrackerSettings {
                    schedule: Some("-".to_string()),
                    ..tracker.settings.clone()
                 }),
@@ -936,7 +1052,7 @@ mod tests {
             }).await),
             @r###"
         Error {
-            context: "Resources tracker schedule must be a valid cron expression.",
+            context: "Web page tracker schedule must be a valid cron expression.",
             source: "Failed to parse schedule `-`: Error { kind: Expression(\"Invalid cron expression.\") }",
         }
         "###
@@ -945,13 +1061,13 @@ mod tests {
         // Invalid schedule interval.
         assert_debug_snapshot!(
             update_and_fail(api.update_resources_tracker(mock_user.id, tracker.id, ResourcesUpdateParams {
-                settings: Some(WebPageResourcesTrackerSettings {
+                settings: Some(WebPageTrackerSettings {
                    schedule: Some("0 * * * * *".to_string()),
                    ..tracker.settings.clone()
                 }),
                 ..Default::default()
             }).await),
-            @r###""Resources tracker schedule must have at least 1h between occurrences, detected 1m.""###
+            @r###""Web page tracker schedule must have at least 1h between occurrences, detected 1m.""###
         );
 
         // Invalid URL schema.
@@ -960,7 +1076,7 @@ mod tests {
                 url: Some(Url::parse("ftp://secutils.dev")?),
                 ..Default::default()
             }).await),
-            @r###""Resources tracker URL must be either `http` or `https` and have a valid public reachable domain name.""###
+            @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name.""###
         );
 
         let api_with_local_network =
@@ -974,7 +1090,7 @@ mod tests {
         api_with_local_network
             .db
             .web_scraping(mock_user.id)
-            .insert_resources_tracker(&tracker)
+            .insert_web_page_tracker(&tracker)
             .await?;
 
         // Non-public URL.
@@ -984,7 +1100,7 @@ mod tests {
                 url: Some(Url::parse("https://127.0.0.1")?),
                 ..Default::default()
             }).await),
-            @r###""Resources tracker URL must be either `http` or `https` and have a valid public reachable domain name.""###
+            @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name.""###
         );
 
         Ok(())
@@ -1003,7 +1119,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -1015,7 +1131,7 @@ mod tests {
             .await?;
 
         // Set job ID.
-        api.update_resources_tracker_job(
+        api.update_web_page_tracker_job(
             tracker.id,
             Some(uuid!("00000000-0000-0000-0000-000000000001")),
         )
@@ -1038,7 +1154,7 @@ mod tests {
                 },
             )
             .await?;
-        let expected_tracker = WebPageResourcesTracker {
+        let expected_tracker = WebPageTracker {
             name: "name_two".to_string(),
             job_id: Some(uuid!("00000000-0000-0000-0000-000000000001")),
             ..tracker.clone()
@@ -1057,7 +1173,7 @@ mod tests {
                 mock_user.id,
                 tracker.id,
                 ResourcesUpdateParams {
-                    settings: Some(WebPageResourcesTrackerSettings {
+                    settings: Some(WebPageTrackerSettings {
                         schedule: Some("0 1 * * * *".to_string()),
                         ..tracker.settings.clone()
                     }),
@@ -1065,10 +1181,10 @@ mod tests {
                 },
             )
             .await?;
-        let expected_tracker = WebPageResourcesTracker {
+        let expected_tracker = WebPageTracker {
             name: "name_two".to_string(),
             job_id: None,
-            settings: WebPageResourcesTrackerSettings {
+            settings: WebPageTrackerSettings {
                 schedule: Some("0 1 * * * *".to_string()),
                 ..tracker.settings.clone()
             },
@@ -1098,7 +1214,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -1124,7 +1240,7 @@ mod tests {
             vec![tracker_one.clone(), tracker_two.clone()],
         );
 
-        api.remove_resources_tracker(mock_user.id, tracker_one.id)
+        api.remove_web_page_tracker(mock_user.id, tracker_one.id)
             .await?;
 
         assert_eq!(
@@ -1132,7 +1248,7 @@ mod tests {
             vec![tracker_two.clone()],
         );
 
-        api.remove_resources_tracker(mock_user.id, tracker_two.id)
+        api.remove_web_page_tracker(mock_user.id, tracker_two.id)
             .await?;
 
         assert!(api.get_resources_trackers(mock_user.id).await?.is_empty());
@@ -1159,7 +1275,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -1211,7 +1327,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -1261,7 +1377,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev/one")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -1323,7 +1439,7 @@ mod tests {
         assert_eq!(tracker_one_resources.len(), 1);
         assert_eq!(tracker_one_resources[0].tracker_id, tracker_one.id);
         assert_eq!(
-            tracker_one_resources[0].scripts,
+            tracker_one_resources[0].data.scripts,
             resources_one
                 .scripts
                 .into_iter()
@@ -1331,7 +1447,7 @@ mod tests {
                 .collect::<Vec<_>>()
         );
         assert_eq!(
-            tracker_one_resources[0].styles,
+            tracker_one_resources[0].data.styles,
             resources_one
                 .styles
                 .into_iter()
@@ -1364,7 +1480,7 @@ mod tests {
             OffsetDateTime::from_unix_timestamp(946720900)?
         );
         assert_eq!(
-            diff.scripts,
+            diff.data.scripts,
             vec![
                 WebPageResource {
                     url: Some(Url::parse("http://localhost:1234/script_rev_2.js")?),
@@ -1440,7 +1556,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev/one")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -1509,7 +1625,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev/one")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -1595,7 +1711,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev/one")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -1638,7 +1754,7 @@ mod tests {
         resources_mock.assert();
 
         web_scraping
-            .clear_resources_tracker_history(mock_user.id, tracker.id)
+            .clear_web_page_tracker_history(mock_user.id, tracker.id)
             .await?;
 
         let tracker_resources = web_scraping
@@ -1666,7 +1782,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev/one")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -1709,13 +1825,13 @@ mod tests {
         resources_mock.assert();
 
         web_scraping
-            .remove_resources_tracker(mock_user.id, tracker.id)
+            .remove_web_page_tracker(mock_user.id, tracker.id)
             .await?;
 
         let tracker_resources = api
             .db
             .web_scraping(mock_user.id)
-            .get_resources_tracker_history(tracker.id)
+            .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(tracker.id)
             .await?;
         assert!(tracker_resources.is_empty());
 
@@ -1739,7 +1855,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev/one")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -1831,7 +1947,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev/one")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -1842,7 +1958,7 @@ mod tests {
             )
             .await?;
         web_scraping
-            .update_resources_tracker_job(
+            .update_web_page_tracker_job(
                 tracker.id,
                 Some(uuid!("00000000-0000-0000-0000-000000000001")),
             )
@@ -1864,13 +1980,18 @@ mod tests {
                 ResourcesUpdateParams {
                     name: Some("name_one_new".to_string()),
                     url: Some(Url::parse("https://secutils.dev/two")?),
-                    settings: Some(WebPageResourcesTrackerSettings {
+                    settings: Some(WebPageTrackerSettings {
                         revisions: 4,
                         delay: Duration::from_millis(3000),
                         enable_notifications: false,
-                        scripts: WebPageResourcesTrackerScripts {
-                            resource_filter_map: Some("some".to_string()),
-                        },
+                        scripts: Some(
+                            [(
+                                WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME.to_string(),
+                                "some".to_string(),
+                            )]
+                            .into_iter()
+                            .collect(),
+                        ),
                         ..tracker.settings.clone()
                     }),
                 },
@@ -1892,7 +2013,7 @@ mod tests {
                 mock_user.id,
                 tracker.id,
                 ResourcesUpdateParams {
-                    settings: Some(WebPageResourcesTrackerSettings {
+                    settings: Some(WebPageTrackerSettings {
                         schedule: Some("0 1 * * * *".to_string()),
                         ..tracker.settings.clone()
                     }),
@@ -1926,7 +2047,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev/one")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -1937,7 +2058,7 @@ mod tests {
             )
             .await?;
         web_scraping
-            .update_resources_tracker_job(
+            .update_web_page_tracker_job(
                 tracker.id,
                 Some(uuid!("00000000-0000-0000-0000-000000000001")),
             )
@@ -1959,13 +2080,18 @@ mod tests {
                 ResourcesUpdateParams {
                     name: Some("name_one_new".to_string()),
                     url: Some(Url::parse("https://secutils.dev/two")?),
-                    settings: Some(WebPageResourcesTrackerSettings {
+                    settings: Some(WebPageTrackerSettings {
                         revisions: 4,
                         delay: Duration::from_millis(3000),
                         enable_notifications: false,
-                        scripts: WebPageResourcesTrackerScripts {
-                            resource_filter_map: Some("some".to_string()),
-                        },
+                        scripts: Some(
+                            [(
+                                WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME.to_string(),
+                                "some".to_string(),
+                            )]
+                            .into_iter()
+                            .collect(),
+                        ),
                         ..tracker.settings.clone()
                     }),
                 },
@@ -1987,7 +2113,7 @@ mod tests {
                 mock_user.id,
                 tracker.id,
                 ResourcesUpdateParams {
-                    settings: Some(WebPageResourcesTrackerSettings {
+                    settings: Some(WebPageTrackerSettings {
                         revisions: 0,
                         ..tracker.settings.clone()
                     }),
@@ -2025,7 +2151,7 @@ mod tests {
                 ResourcesCreateParams {
                     name: "name_one".to_string(),
                     url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageResourcesTrackerSettings {
+                    settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
                         enable_notifications: true,
@@ -2039,7 +2165,7 @@ mod tests {
         let unscheduled_trackers = api.get_unscheduled_resources_trackers().await?;
         assert_eq!(unscheduled_trackers, vec![tracker.clone()]);
 
-        api.update_resources_tracker_job(
+        api.update_web_page_tracker_job(
             tracker.id,
             Some(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c8")),
         )
@@ -2053,7 +2179,7 @@ mod tests {
             .await?;
         assert_eq!(
             scheduled_tracker,
-            Some(WebPageResourcesTracker {
+            Some(WebPageTracker {
                 job_id: Some(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c8")),
                 ..tracker.clone()
             })
@@ -2066,7 +2192,7 @@ mod tests {
             ResourcesUpdateParams {
                 name: None,
                 url: None,
-                settings: Some(WebPageResourcesTrackerSettings {
+                settings: Some(WebPageTrackerSettings {
                     schedule: None,
                     ..tracker.settings
                 }),
@@ -2128,7 +2254,7 @@ mod tests {
                     ResourcesCreateParams {
                         name: format!("name_{}", n),
                         url: Url::parse("https://secutils.dev")?,
-                        settings: WebPageResourcesTrackerSettings {
+                        settings: WebPageTrackerSettings {
                             revisions: 3,
                             delay: Duration::from_millis(2000),
                             enable_notifications: true,
@@ -2150,7 +2276,7 @@ mod tests {
         let all_trackers = web_scraping.get_resources_trackers(mock_user.id).await?;
         for (n, tracker) in all_trackers.iter().enumerate() {
             web_scraping
-                .update_resources_tracker_job(
+                .update_web_page_tracker_job(
                     tracker.id,
                     Some(uuid::Uuid::parse_str(&format!(
                         "67e55044-10b1-426f-9247-bb680e5fe0c{}",

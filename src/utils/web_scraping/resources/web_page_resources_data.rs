@@ -1,26 +1,19 @@
 use crate::utils::WebPageResource;
-use serde::Serialize;
-use time::OffsetDateTime;
-use uuid::Uuid;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct WebPageResourcesRevision {
-    /// Unique private key id (UUIDv7).
-    pub id: Uuid,
-    /// Id of the user who owns the tracker.
-    #[serde(skip_serializing)]
-    pub tracker_id: Uuid,
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WebPageResourcesData<
+    R: Clone + Serialize + for<'des> Deserialize<'des> = WebPageResource,
+> {
     /// List of JavaScript resources.
-    pub scripts: Vec<WebPageResource>,
+    #[serde(bound(deserialize = ""))]
+    pub scripts: Vec<R>,
     /// List of CSS resources.
-    pub styles: Vec<WebPageResource>,
-    /// Timestamp indicating when resources were fetched.
-    #[serde(with = "time::serde::timestamp")]
-    pub created_at: OffsetDateTime,
+    #[serde(bound(deserialize = ""))]
+    pub styles: Vec<R>,
 }
 
-impl WebPageResourcesRevision {
+impl WebPageResourcesData {
     /// Returns `true` if any of the scripts or styles has a diff status, otherwise returns `false`.
     pub fn has_diff(&self) -> bool {
         self.scripts
@@ -33,22 +26,15 @@ impl WebPageResourcesRevision {
 #[cfg(test)]
 mod tests {
     use crate::utils::{
-        web_scraping::WebPageResourceDiffStatus, WebPageResource, WebPageResourceContent,
-        WebPageResourceContentData, WebPageResourcesRevision,
+        WebPageResource, WebPageResourceContent, WebPageResourceContentData,
+        WebPageResourceDiffStatus, WebPageResourcesData,
     };
     use insta::assert_json_snapshot;
-    use time::OffsetDateTime;
     use url::Url;
-    use uuid::uuid;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
-        assert_json_snapshot!(WebPageResourcesRevision {
-            id: uuid!("00000000-0000-0000-0000-000000000001"),
-            tracker_id: uuid!("00000000-0000-0000-0000-000000000002"),
-            created_at: OffsetDateTime::from_unix_timestamp(
-                946720800,
-            )?,
+        assert_json_snapshot!(WebPageResourcesData {
             scripts: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
                 content: Some(WebPageResourceContent{
@@ -67,7 +53,6 @@ mod tests {
             }]
         }, @r###"
         {
-          "id": "00000000-0000-0000-0000-000000000001",
           "scripts": [
             {
               "url": "http://localhost:1234/my/app?q=2",
@@ -89,8 +74,7 @@ mod tests {
                 "size": 321
               }
             }
-          ],
-          "createdAt": 946720800
+          ]
         }
         "###);
 
@@ -98,11 +82,62 @@ mod tests {
     }
 
     #[test]
+    fn deserialization() -> anyhow::Result<()> {
+        assert_eq!(
+            WebPageResourcesData {
+                scripts: vec![WebPageResource {
+                    url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
+                    content: Some(WebPageResourceContent {
+                        data: WebPageResourceContentData::Sha1("some-digest".to_string()),
+                        size: 123
+                    }),
+                    diff_status: None,
+                }],
+                styles: vec![WebPageResource {
+                    url: Some(Url::parse("http://localhost:1234/my/app.css?q=2")?),
+                    content: Some(WebPageResourceContent {
+                        data: WebPageResourceContentData::Sha1("another-digest".to_string()),
+                        size: 321
+                    }),
+                    diff_status: None,
+                }]
+            },
+            serde_json::from_str(
+                r#"
+        {
+          "scripts": [
+            {
+              "url": "http://localhost:1234/my/app?q=2",
+              "content": {
+                "data": {
+                  "sha1": "some-digest"
+                },
+                "size": 123
+              }
+            }
+          ],
+          "styles": [
+            {
+              "url": "http://localhost:1234/my/app.css?q=2",
+              "content": {
+                "data": {
+                  "sha1": "another-digest"
+                },
+                "size": 321
+              }
+            }
+          ]
+        }
+        "#
+            )?
+        );
+
+        Ok(())
+    }
+
+    #[test]
     fn checks_has_diff() -> anyhow::Result<()> {
-        let revision = WebPageResourcesRevision {
-            id: uuid!("00000000-0000-0000-0000-000000000001"),
-            tracker_id: uuid!("00000000-0000-0000-0000-000000000002"),
-            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+        let data = WebPageResourcesData {
             scripts: vec![WebPageResource {
                 url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
                 content: Some(WebPageResourceContent {
@@ -120,12 +155,9 @@ mod tests {
                 diff_status: None,
             }],
         };
-        assert!(!revision.has_diff());
+        assert!(!data.has_diff());
 
-        let revision = WebPageResourcesRevision {
-            id: uuid!("00000000-0000-0000-0000-000000000001"),
-            tracker_id: uuid!("00000000-0000-0000-0000-000000000002"),
-            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+        let data = WebPageResourcesData {
             scripts: vec![
                 WebPageResource {
                     url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
@@ -153,12 +185,9 @@ mod tests {
                 diff_status: None,
             }],
         };
-        assert!(revision.has_diff());
+        assert!(data.has_diff());
 
-        let revision = WebPageResourcesRevision {
-            id: uuid!("00000000-0000-0000-0000-000000000001"),
-            tracker_id: uuid!("00000000-0000-0000-0000-000000000002"),
-            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+        let data = WebPageResourcesData {
             scripts: vec![
                 WebPageResource {
                     url: Some(Url::parse("http://localhost:1234/my/app?q=2")?),
@@ -196,7 +225,7 @@ mod tests {
                 },
             ],
         };
-        assert!(revision.has_diff());
+        assert!(data.has_diff());
 
         Ok(())
     }
