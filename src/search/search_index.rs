@@ -232,7 +232,7 @@ impl SearchIndex {
 
     fn acquire_index_writer(&self) -> anyhow::Result<IndexWriter> {
         loop {
-            match self.index.writer(3_000_000) {
+            match self.index.writer(15_000_000) {
                 Ok(writer) => break Ok(writer),
                 Err(TantivyError::LockFailure(LockError::LockBusy, reason)) => {
                     log::warn!(
