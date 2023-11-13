@@ -223,15 +223,12 @@ fn web_page_resources_to_map(resources: Vec<WebPageResource>) -> WebPageResource
 
 #[cfg(test)]
 mod tests {
-    use super::web_page_resources_to_map;
+    use super::{web_page_resources_diff, web_page_resources_to_map};
     use crate::{
         tests::MockWebPageResourceBuilder,
         utils::{
-            web_scraping::resources::{
-                web_page_resources_revisions_diff,
-                web_page_resources_revisions_diff::web_page_resources_diff,
-            },
-            WebPageDataRevision, WebPageResourceContentData, WebPageResourcesData,
+            web_scraping::web_page_resources_revisions_diff, WebPageDataRevision,
+            WebPageResourceContentData, WebPageResourcesData,
         },
     };
     use insta::assert_json_snapshot;

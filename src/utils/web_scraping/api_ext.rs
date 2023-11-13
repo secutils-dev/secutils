@@ -16,11 +16,8 @@ use crate::{
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
         web_scraping::{
-            resources::{
-                web_page_resources_revisions_diff, WebPageResourcesTrackerInternalTag,
-                WebScraperResource,
-            },
-            MAX_WEB_PAGE_TRACKER_DELAY, MAX_WEB_PAGE_TRACKER_REVISIONS,
+            web_page_resources_revisions_diff, WebPageResourcesTrackerInternalTag,
+            WebScraperResource, MAX_WEB_PAGE_TRACKER_DELAY, MAX_WEB_PAGE_TRACKER_REVISIONS,
         },
         WebPageDataRevision, WebPageResource, WebPageResourcesData, WebPageResourcesTrackerTag,
         WebPageTracker, WebPageTrackerTag, WebScraperResourcesRequest,

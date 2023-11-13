@@ -1,5 +1,5 @@
 use crate::utils::{
-    web_scraping::resources::WebPageResourceInternal, WebPageResourcesData, WebPageTrackerKind,
+    web_scraping::WebPageResourceInternal, WebPageResourcesData, WebPageTrackerKind,
     WebPageTrackerTag,
 };
 

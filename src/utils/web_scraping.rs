@@ -1,22 +1,20 @@
 mod api_ext;
 mod database_ext;
-mod resources;
 mod web_page_trackers;
 
+use self::web_page_trackers::{WebPageResourceInternal, WebPageResourcesTrackerInternalTag};
 pub use self::{
     api_ext::{
         ResourcesCreateParams, ResourcesGetHistoryParams, ResourcesUpdateParams, WebScrapingApiExt,
         WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
     },
-    resources::{
-        WebPageResource, WebPageResourceContent, WebPageResourceContentData,
-        WebPageResourceDiffStatus, WebPageResourcesData, WebPageResourcesTrackerTag,
-        WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesRequestScripts,
-        WebScraperResourcesResponse,
-    },
     web_page_trackers::{
-        WebPageDataRevision, WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings,
-        WebPageTrackerTag, MAX_WEB_PAGE_TRACKER_DELAY, MAX_WEB_PAGE_TRACKER_REVISIONS,
+        web_page_resources_revisions_diff, WebPageDataRevision, WebPageResource,
+        WebPageResourceContent, WebPageResourceContentData, WebPageResourceDiffStatus,
+        WebPageResourcesData, WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerKind,
+        WebPageTrackerSettings, WebPageTrackerTag, WebScraperResource, WebScraperResourcesRequest,
+        WebScraperResourcesRequestScripts, WebScraperResourcesResponse, MAX_WEB_PAGE_TRACKER_DELAY,
+        MAX_WEB_PAGE_TRACKER_REVISIONS,
     },
 };
 use crate::{
@@ -99,9 +97,7 @@ pub mod tests {
     use crate::{
         tests::{mock_api, mock_user},
         utils::{
-            web_scraping::resources::{
-                WebPageResourceInternal, WebPageResourcesTrackerInternalTag,
-            },
+            web_scraping::{WebPageResourceInternal, WebPageResourcesTrackerInternalTag},
             web_scraping_handle_action, ResourcesCreateParams, ResourcesGetHistoryParams,
             UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
             WebPageDataRevision, WebPageResourcesData, WebPageTracker, WebPageTrackerSettings,
