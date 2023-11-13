@@ -4,12 +4,12 @@ use url::Url;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ResourcesCreateParams {
-    /// Arbitrary name of the web page resources tracker.
+pub struct WebPageTrackerCreateParams {
+    /// Arbitrary name of the web page tracker.
     pub name: String,
-    /// URL of the web page to track resources for.
+    /// URL of the web page to track.
     pub url: Url,
-    /// Settings of the web page resources tracker.
+    /// Settings of the web page tracker.
     pub settings: WebPageTrackerSettings,
 }
 
@@ -17,7 +17,7 @@ pub struct ResourcesCreateParams {
 mod tests {
     use crate::utils::{
         web_scraping::api_ext::WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
-        ResourcesCreateParams, WebPageTrackerSettings,
+        WebPageTrackerCreateParams, WebPageTrackerSettings,
     };
     use std::time::Duration;
     use url::Url;
@@ -25,7 +25,7 @@ mod tests {
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<ResourcesCreateParams>(
+            serde_json::from_str::<WebPageTrackerCreateParams>(
                 r#"
 {
     "name": "pk",
@@ -38,7 +38,7 @@ mod tests {
 }
           "#
             )?,
-            ResourcesCreateParams {
+            WebPageTrackerCreateParams {
                 name: "pk".to_string(),
                 url: Url::parse("https://secutils.dev")?,
                 settings: WebPageTrackerSettings {
@@ -52,7 +52,7 @@ mod tests {
         );
 
         assert_eq!(
-            serde_json::from_str::<ResourcesCreateParams>(
+            serde_json::from_str::<WebPageTrackerCreateParams>(
                 r#"
 {
     "name": "pk",
@@ -69,7 +69,7 @@ mod tests {
 }
           "#
             )?,
-            ResourcesCreateParams {
+            WebPageTrackerCreateParams {
                 name: "pk".to_string(),
                 url: Url::parse("https://secutils.dev")?,
                 settings: WebPageTrackerSettings {

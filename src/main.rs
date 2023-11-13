@@ -100,21 +100,21 @@ fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Err
             search_index_version: 3,
         },
         jobs: SchedulerJobsConfig {
-            resources_trackers_schedule: matches
-                .get_one::<String>("JOBS_RESOURCES_TRACKERS_SCHEDULE")
+            web_page_trackers_schedule: matches
+                .get_one::<String>("JOBS_WEB_PAGE_TRACKERS_SCHEDULE")
                 .ok_or_else(|| {
-                    anyhow!("<JOBS_RESOURCES_TRACKERS_SCHEDULE> argument is not provided.")
+                    anyhow!("<JOBS_WEB_PAGE_TRACKERS_SCHEDULE> argument is not provided.")
                 })
                 .and_then(|schedule| {
                     Schedule::try_from(schedule.as_str())
-                        .with_context(|| "Cannot parse resources trackers schedule job schedule.")
+                        .with_context(|| "Cannot parse web page trackers schedule job schedule.")
                 })?,
-            resources_trackers_fetch: matches
-                .get_one::<String>("JOBS_RESOURCES_TRACKERS_FETCH")
-                .ok_or_else(|| anyhow!("<JOBS_RESOURCES_TRACKERS_FETCH> argument is not provided."))
+            web_page_trackers_fetch: matches
+                .get_one::<String>("JOBS_WEB_PAGE_TRACKERS_FETCH")
+                .ok_or_else(|| anyhow!("<JOBS_WEB_PAGE_TRACKERS_FETCH> argument is not provided."))
                 .and_then(|schedule| {
                     Schedule::try_from(schedule.as_str())
-                        .with_context(|| "Cannot parse resources trackers fetch job schedule.")
+                        .with_context(|| "Cannot parse web page trackers fetch job schedule.")
                 })?,
             notifications_send: matches
                 .get_one::<String>("JOBS_NOTIFICATIONS_SEND")
@@ -254,20 +254,20 @@ fn main() -> Result<(), anyhow::Error> {
                 .help("The URL to access the Web Scraper component."),
         )
         .arg(
-            Arg::new("JOBS_RESOURCES_TRACKERS_SCHEDULE")
-                .long("jobs-resources-trackers-schedule")
+            Arg::new("JOBS_WEB_PAGE_TRACKERS_SCHEDULE")
+                .long("jobs-web-page-trackers-schedule")
                 .global(true)
-                .env("SECUTILS_JOBS_RESOURCES_TRACKERS_SCHEDULE")
+                .env("SECUTILS_JOBS_WEB_PAGE_TRACKERS_SCHEDULE")
                 .default_value("0 * * * * * *")
-                .help("The cron schedule to use for the resources trackers schedule job."),
+                .help("The cron schedule to use for the web page trackers schedule job."),
         )
         .arg(
-            Arg::new("JOBS_RESOURCES_TRACKERS_FETCH")
-                .long("jobs-resources-trackers-fetch")
+            Arg::new("JOBS_WEB_PAGE_TRACKERS_FETCH")
+                .long("jobs-web-page-trackers-fetch")
                 .global(true)
-                .env("SECUTILS_JOBS_RESOURCES_TRACKERS_FETCH")
+                .env("SECUTILS_JOBS_WEB_PAGE_TRACKERS_FETCH")
                 .default_value("0 * * * * * *")
-                .help("The cron schedule to use for the resources trackers fetch job."),
+                .help("The cron schedule to use for the web page trackers fetch job."),
         ).arg(
         Arg::new("JOBS_NOTIFICATIONS_SEND")
             .long("jobs-notifications-send")
@@ -480,8 +480,8 @@ mod tests {
                 search_index_version: 3,
             },
             jobs: SchedulerJobsConfig {
-                resources_trackers_schedule: Schedule::try_from("0 * 0 * * * *")?,
-                resources_trackers_fetch: Schedule::try_from("0 * 1 * * * *")?,
+                web_page_trackers_schedule: Schedule::try_from("0 * 0 * * * *")?,
+                web_page_trackers_fetch: Schedule::try_from("0 * 1 * * * *")?,
                 notifications_send: Schedule::try_from("0 * 2 * * * *")?,
             },
         })

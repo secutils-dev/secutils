@@ -52,7 +52,7 @@ impl NotificationsSendJob {
 
         let job_data = job.job_data()?;
         job.set_job_data(JobStoredData {
-            extra: vec![SchedulerJob::NotificationsSend as u8],
+            extra: SchedulerJob::NotificationsSend.try_into()?,
             ..job_data
         })?;
 
@@ -128,7 +128,7 @@ mod tests {
             ran: false,
             stopped: false,
             last_updated: None,
-            extra: vec![SchedulerJob::NotificationsSend as u8],
+            extra: SchedulerJob::NotificationsSend.try_into().unwrap(),
             job: Some(JobStored::CronJob(CronJob {
                 schedule: "0 0 * * * *".to_string(),
             })),

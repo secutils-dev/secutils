@@ -8,8 +8,8 @@ pub enum UtilsResourceOperation {
     CertificatesTemplateShare,
     CertificatesTemplateUnshare,
     CertificatesPrivateKeyExport,
-    WebScrapingResourcesGetHistory,
-    WebScrapingResourcesClearHistory,
+    WebScrapingGetHistory,
+    WebScrapingClearHistory,
 }
 
 impl UtilsResourceOperation {
@@ -19,7 +19,7 @@ impl UtilsResourceOperation {
             self,
             Self::CertificatesTemplateGenerate
                 | Self::CertificatesPrivateKeyExport
-                | Self::WebScrapingResourcesGetHistory
+                | Self::WebScrapingGetHistory
         )
     }
 }
@@ -46,11 +46,15 @@ impl TryFrom<(&UtilsResource, &str)> for UtilsResourceOperation {
             }
 
             // Web scraping custom actions.
-            UtilsResource::WebScrapingResources if operation == "history" => {
-                Ok(UtilsResourceOperation::WebScrapingResourcesGetHistory)
+            UtilsResource::WebScrapingResources | UtilsResource::WebScrapingContent
+                if operation == "history" =>
+            {
+                Ok(UtilsResourceOperation::WebScrapingGetHistory)
             }
-            UtilsResource::WebScrapingResources if operation == "clear" => {
-                Ok(UtilsResourceOperation::WebScrapingResourcesClearHistory)
+            UtilsResource::WebScrapingResources | UtilsResource::WebScrapingContent
+                if operation == "clear" =>
+            {
+                Ok(UtilsResourceOperation::WebScrapingClearHistory)
             }
 
             _ => Err(()),
@@ -71,8 +75,8 @@ mod tests {
         assert!(!UtilsResourceOperation::CertificatesTemplateShare.requires_params());
         assert!(!UtilsResourceOperation::CertificatesTemplateUnshare.requires_params());
 
-        assert!(UtilsResourceOperation::WebScrapingResourcesGetHistory.requires_params());
-        assert!(!UtilsResourceOperation::WebScrapingResourcesClearHistory.requires_params());
+        assert!(UtilsResourceOperation::WebScrapingGetHistory.requires_params());
+        assert!(!UtilsResourceOperation::WebScrapingClearHistory.requires_params());
     }
 
     #[test]
@@ -119,11 +123,19 @@ mod tests {
 
         assert_eq!(
             UtilsResourceOperation::try_from((&UtilsResource::WebScrapingResources, "history")),
-            Ok(UtilsResourceOperation::WebScrapingResourcesGetHistory)
+            Ok(UtilsResourceOperation::WebScrapingGetHistory)
         );
         assert_eq!(
             UtilsResourceOperation::try_from((&UtilsResource::WebScrapingResources, "clear")),
-            Ok(UtilsResourceOperation::WebScrapingResourcesClearHistory)
+            Ok(UtilsResourceOperation::WebScrapingClearHistory)
+        );
+        assert_eq!(
+            UtilsResourceOperation::try_from((&UtilsResource::WebScrapingContent, "history")),
+            Ok(UtilsResourceOperation::WebScrapingGetHistory)
+        );
+        assert_eq!(
+            UtilsResourceOperation::try_from((&UtilsResource::WebScrapingContent, "clear")),
+            Ok(UtilsResourceOperation::WebScrapingClearHistory)
         );
         assert!(UtilsResourceOperation::try_from((
             &UtilsResource::CertificatesPrivateKeys,

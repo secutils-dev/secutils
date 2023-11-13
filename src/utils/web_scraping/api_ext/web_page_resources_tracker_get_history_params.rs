@@ -2,7 +2,7 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Default, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct ResourcesGetHistoryParams {
+pub struct WebPageResourcesTrackerGetHistoryParams {
     #[serde(default)]
     pub refresh: bool,
     #[serde(default)]
@@ -11,20 +11,20 @@ pub struct ResourcesGetHistoryParams {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::ResourcesGetHistoryParams;
+    use crate::utils::WebPageResourcesTrackerGetHistoryParams;
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<ResourcesGetHistoryParams>(r#"{}"#)?,
-            ResourcesGetHistoryParams {
+            serde_json::from_str::<WebPageResourcesTrackerGetHistoryParams>(r#"{}"#)?,
+            WebPageResourcesTrackerGetHistoryParams {
                 refresh: false,
                 calculate_diff: false,
             }
         );
 
         assert_eq!(
-            serde_json::from_str::<ResourcesGetHistoryParams>(
+            serde_json::from_str::<WebPageResourcesTrackerGetHistoryParams>(
                 r#"
 {
     "refresh": true,
@@ -32,7 +32,7 @@ mod tests {
 }
           "#
             )?,
-            ResourcesGetHistoryParams {
+            WebPageResourcesTrackerGetHistoryParams {
                 refresh: true,
                 calculate_diff: true,
             }

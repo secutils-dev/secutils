@@ -10,13 +10,13 @@ CREATE TABLE IF NOT EXISTS user_data_web_scraping_trackers
     id              BLOB PRIMARY KEY,
     name            TEXT NOT NULL COLLATE NOCASE,
     url             TEXT NOT NULL,
-    kind            INTEGER NOT NULL,
+    kind            BLOB NOT NULL,
     schedule        TEXT,
     job_id          BLOB UNIQUE,
     data            BLOB NOT NULL,
     created_at      INTEGER NOT NULL,
     user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE          (name, user_id)
+    UNIQUE          (name, kind, user_id)
 ) STRICT;
 
 -- Create table to store web page trackers history.

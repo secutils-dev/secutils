@@ -1,3 +1,4 @@
+mod web_page_content;
 mod web_page_data_revision;
 mod web_page_resources;
 mod web_page_tracker;
@@ -6,6 +7,10 @@ mod web_page_tracker_settings;
 mod web_page_tracker_tag;
 
 pub use self::{
+    web_page_content::{
+        WebPageContentTrackerTag, WebScraperContentRequest, WebScraperContentRequestScripts,
+        WebScraperContentResponse,
+    },
     web_page_data_revision::WebPageDataRevision,
     web_page_resources::{
         web_page_resources_revisions_diff, WebPageResource, WebPageResourceContent,

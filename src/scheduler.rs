@@ -13,8 +13,8 @@ use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport, EmailTransportError},
     scheduler::scheduler_jobs::{
-        NotificationsSendJob, ResourcesTrackersFetchJob, ResourcesTrackersScheduleJob,
-        ResourcesTrackersTriggerJob,
+        NotificationsSendJob, WebPageTrackersFetchJob, WebPageTrackersScheduleJob,
+        WebPageTrackersTriggerJob,
     },
 };
 pub use scheduler_job::SchedulerJob;
@@ -48,17 +48,17 @@ where
 
         // First, try to resume existing jobs.
         let resumed_unique_jobs = scheduler.resume().await?;
-        if !resumed_unique_jobs.contains(&SchedulerJob::ResourcesTrackersSchedule) {
+        if !resumed_unique_jobs.contains(&SchedulerJob::WebPageTrackersSchedule) {
             scheduler
                 .inner_scheduler
-                .add(ResourcesTrackersScheduleJob::create(scheduler.api.clone()).await?)
+                .add(WebPageTrackersScheduleJob::create(scheduler.api.clone()).await?)
                 .await?;
         }
 
-        if !resumed_unique_jobs.contains(&SchedulerJob::ResourcesTrackersFetch) {
+        if !resumed_unique_jobs.contains(&SchedulerJob::WebPageTrackersFetch) {
             scheduler
                 .inner_scheduler
-                .add(ResourcesTrackersFetchJob::create(scheduler.api.clone()).await?)
+                .add(WebPageTrackersFetchJob::create(scheduler.api.clone()).await?)
                 .await?;
         }
 
@@ -116,17 +116,16 @@ where
             // First try to resume the job, and if it's not possible, the job will be removed and
             // re-scheduled at a later step if needed.
             let job = match &job_type {
-                SchedulerJob::ResourcesTrackersTrigger => {
-                    ResourcesTrackersTriggerJob::try_resume(self.api.clone(), job_id, job_data)
+                SchedulerJob::WebPageTrackersTrigger { kind } => {
+                    WebPageTrackersTriggerJob::try_resume(self.api.clone(), job_id, job_data, *kind)
                         .await?
                 }
-                SchedulerJob::ResourcesTrackersSchedule => {
-                    ResourcesTrackersScheduleJob::try_resume(self.api.clone(), job_id, job_data)
+                SchedulerJob::WebPageTrackersSchedule => {
+                    WebPageTrackersScheduleJob::try_resume(self.api.clone(), job_id, job_data)
                         .await?
                 }
-                SchedulerJob::ResourcesTrackersFetch => {
-                    ResourcesTrackersFetchJob::try_resume(self.api.clone(), job_id, job_data)
-                        .await?
+                SchedulerJob::WebPageTrackersFetch => {
+                    WebPageTrackersFetchJob::try_resume(self.api.clone(), job_id, job_data).await?
                 }
                 SchedulerJob::NotificationsSend => {
                     NotificationsSendJob::try_resume(self.api.clone(), job_id, job_data).await?
@@ -163,11 +162,11 @@ mod tests {
     use crate::{
         scheduler::scheduler_job::SchedulerJob,
         tests::{mock_api, mock_user},
-        utils::{ResourcesCreateParams, WebPageTrackerSettings},
+        utils::{WebPageTrackerCreateParams, WebPageTrackerKind, WebPageTrackerSettings},
     };
     use futures::StreamExt;
     use insta::assert_debug_snapshot;
-    use std::sync::Arc;
+    use std::{sync::Arc, vec::Vec};
     use tokio_cron_scheduler::{CronJob, JobId, JobStored, JobStoredData, JobType};
     use uuid::uuid;
 
@@ -185,7 +184,7 @@ mod tests {
             ran: false,
             stopped: false,
             last_updated: None,
-            extra: vec![typ as u8],
+            extra: typ.try_into().unwrap(),
             job: Some(JobStored::CronJob(CronJob {
                 schedule: schedule.into(),
             })),
@@ -197,17 +196,35 @@ mod tests {
         let user = mock_user()?;
         let api = Arc::new(mock_api().await?);
 
-        let trigger_job_id = uuid!("00000000-0000-0000-0000-000000000001");
-        let schedule_job_id = uuid!("00000000-0000-0000-0000-000000000002");
-        let notifications_send_job_id = uuid!("00000000-0000-0000-0000-000000000003");
+        let resources_trigger_job_id = uuid!("00000000-0000-0000-0000-000000000001");
+        let content_trigger_job_id = uuid!("00000000-0000-0000-0000-000000000002");
+        let schedule_job_id = uuid!("00000000-0000-0000-0000-000000000003");
+        let notifications_send_job_id = uuid!("00000000-0000-0000-0000-000000000004");
 
         // Create user, trackers and tracker jobs.
         api.users().upsert(user.clone()).await?;
-        let tracker = api
+        let resources_tracker = api
             .web_scraping()
             .create_resources_tracker(
                 user.id,
-                ResourcesCreateParams {
+                WebPageTrackerCreateParams {
+                    name: "tracker-one".to_string(),
+                    url: "https://localhost:1234/my/app?q=2".parse()?,
+                    settings: WebPageTrackerSettings {
+                        revisions: 1,
+                        schedule: Some("1 2 3 4 5 6 2030".to_string()),
+                        delay: Default::default(),
+                        scripts: Default::default(),
+                        enable_notifications: true,
+                    },
+                },
+            )
+            .await?;
+        let content_tracker = api
+            .web_scraping()
+            .create_content_tracker(
+                user.id,
+                WebPageTrackerCreateParams {
                     name: "tracker-one".to_string(),
                     url: "https://localhost:1234/my/app?q=2".parse()?,
                     settings: WebPageTrackerSettings {
@@ -221,21 +238,35 @@ mod tests {
             )
             .await?;
         api.web_scraping()
-            .update_web_page_tracker_job(tracker.id, Some(trigger_job_id))
+            .update_web_page_tracker_job(resources_tracker.id, Some(resources_trigger_job_id))
+            .await?;
+        api.web_scraping()
+            .update_web_page_tracker_job(content_tracker.id, Some(content_trigger_job_id))
             .await?;
 
         // Add job registrations.
         api.db
             .upsert_scheduler_job(&mock_job_data(
-                trigger_job_id,
-                SchedulerJob::ResourcesTrackersTrigger,
+                resources_trigger_job_id,
+                SchedulerJob::WebPageTrackersTrigger {
+                    kind: WebPageTrackerKind::WebPageResources,
+                },
+                "1 2 3 4 5 6 2030",
+            ))
+            .await?;
+        api.db
+            .upsert_scheduler_job(&mock_job_data(
+                content_trigger_job_id,
+                SchedulerJob::WebPageTrackersTrigger {
+                    kind: WebPageTrackerKind::WebPageContent,
+                },
                 "1 2 3 4 5 6 2030",
             ))
             .await?;
         api.db
             .upsert_scheduler_job(&mock_job_data(
                 schedule_job_id,
-                SchedulerJob::ResourcesTrackersSchedule,
+                SchedulerJob::WebPageTrackersSchedule,
                 "0 * 0 * * * *",
             ))
             .await?;
@@ -251,7 +282,13 @@ mod tests {
 
         assert!(scheduler
             .inner_scheduler
-            .next_tick_for_job(trigger_job_id)
+            .next_tick_for_job(resources_trigger_job_id)
+            .await?
+            .is_some());
+
+        assert!(scheduler
+            .inner_scheduler
+            .next_tick_for_job(content_trigger_job_id)
             .await?
             .is_some());
 
@@ -290,13 +327,17 @@ mod tests {
                 })
             })
             .collect::<anyhow::Result<Vec<(_, _, _)>>>()?;
-        jobs.sort_by(|job_a, job_b| (job_a.1 as u8).cmp(&(job_b.1 as u8)));
+        jobs.sort_by(|job_a, job_b| {
+            Vec::try_from(job_a.1)
+                .unwrap()
+                .cmp(&Vec::try_from(job_b.1).unwrap())
+        });
 
         assert_debug_snapshot!(jobs, @r###"
         [
             (
                 0,
-                ResourcesTrackersSchedule,
+                WebPageTrackersSchedule,
                 Some(
                     CronJob(
                         CronJob {
@@ -307,7 +348,7 @@ mod tests {
             ),
             (
                 0,
-                ResourcesTrackersFetch,
+                WebPageTrackersFetch,
                 Some(
                     CronJob(
                         CronJob {
@@ -345,7 +386,7 @@ mod tests {
         api.db
             .upsert_scheduler_job(&mock_job_data(
                 schedule_job_id,
-                SchedulerJob::ResourcesTrackersSchedule,
+                SchedulerJob::WebPageTrackersSchedule,
                 // Different schedule - every hour, not every minute.
                 "0 0 * * * * *",
             ))
@@ -353,7 +394,7 @@ mod tests {
         api.db
             .upsert_scheduler_job(&mock_job_data(
                 fetch_job_id,
-                SchedulerJob::ResourcesTrackersFetch,
+                SchedulerJob::WebPageTrackersFetch,
                 // Different schedule - every day, not every minute.
                 "0 0 0 * * * *",
             ))
@@ -393,13 +434,17 @@ mod tests {
                 })
             })
             .collect::<anyhow::Result<Vec<(_, _, _)>>>()?;
-        jobs.sort_by(|job_a, job_b| (job_a.1 as u8).cmp(&(job_b.1 as u8)));
+        jobs.sort_by(|job_a, job_b| {
+            Vec::try_from(job_a.1)
+                .unwrap()
+                .cmp(&Vec::try_from(job_b.1).unwrap())
+        });
 
         assert_debug_snapshot!(jobs, @r###"
         [
             (
                 0,
-                ResourcesTrackersSchedule,
+                WebPageTrackersSchedule,
                 Some(
                     CronJob(
                         CronJob {
@@ -410,7 +455,7 @@ mod tests {
             ),
             (
                 0,
-                ResourcesTrackersFetch,
+                WebPageTrackersFetch,
                 Some(
                     CronJob(
                         CronJob {

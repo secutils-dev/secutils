@@ -8,7 +8,7 @@ use serde_json::json;
 pub const NOTIFICATION_LOGO_BYTES: &[u8] =
     include_bytes!("../../../assets/logo/secutils-logo-with-text.png");
 
-/// Compiles account activation template as an email.
+/// Compiles web page tracker resources changes template as an email.
 pub async fn compile_to_email<DR: DnsResolver, ET: EmailTransport>(
     api: &Api<DR, ET>,
     tracker_name: &str,
@@ -25,7 +25,7 @@ pub async fn compile_to_email<DR: DnsResolver, ET: EmailTransport>(
             tracker_name, changes_count, back_link
         ),
         api.templates.render(
-            "resources_tracker_changes_email",
+            "web_page_resources_tracker_changes_email",
             &json!({
                 "tracker_name": tracker_name,
                 "changes_count": changes_count,

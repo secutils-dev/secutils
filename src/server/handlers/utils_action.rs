@@ -114,7 +114,7 @@ pub async fn utils_action(
         UtilsResource::CertificatesTemplates | UtilsResource::CertificatesPrivateKeys => {
             certificates_handle_action(user, &state.api, action, resource, params).await
         }
-        UtilsResource::WebScrapingResources => {
+        UtilsResource::WebScrapingResources | UtilsResource::WebScrapingContent => {
             web_scraping_handle_action(user, &state.api, action, resource, params).await
         }
     };
@@ -211,6 +211,15 @@ mod tests {
             ),
             Some(UtilsResource::WebScrapingResources)
         );
+        assert_eq!(
+            extract_resource(
+                &TestRequest::with_uri("https://secutils.dev/api/utils")
+                    .param("area", "web_scraping")
+                    .param("resource", "content")
+                    .to_http_request(),
+            ),
+            Some(UtilsResource::WebScrapingContent)
+        );
     }
 
     #[test]
@@ -220,6 +229,7 @@ mod tests {
             UtilsResource::CertificatesPrivateKeys,
             UtilsResource::CertificatesTemplates,
             UtilsResource::WebScrapingResources,
+            UtilsResource::WebScrapingContent,
         ] {
             assert!(extract_action(
                 &TestRequest::with_uri("https://secutils.dev/api/utils")
@@ -247,6 +257,7 @@ mod tests {
             UtilsResource::CertificatesPrivateKeys,
             UtilsResource::CertificatesTemplates,
             UtilsResource::WebScrapingResources,
+            UtilsResource::WebScrapingContent,
         ] {
             assert_eq!(
                 extract_action(
@@ -391,7 +402,7 @@ mod tests {
             ),
             Some(UtilsAction::Execute {
                 resource_id,
-                operation: UtilsResourceOperation::WebScrapingResourcesGetHistory
+                operation: UtilsResourceOperation::WebScrapingGetHistory
             })
         );
 
@@ -406,7 +417,43 @@ mod tests {
             ),
             Some(UtilsAction::Execute {
                 resource_id,
-                operation: UtilsResourceOperation::WebScrapingResourcesClearHistory
+                operation: UtilsResourceOperation::WebScrapingClearHistory
+            })
+        );
+    }
+
+    #[test]
+    fn can_extract_web_scraping_content_action() {
+        let resource = UtilsResource::WebScrapingContent;
+        let resource_id = uuid!("00000000-0000-0000-0000-000000000000");
+
+        assert_eq!(
+            extract_action(
+                &TestRequest::with_uri("https://secutils.dev/api/utils")
+                    .method(Method::POST)
+                    .param("resource_id", resource_id.to_string())
+                    .param("resource_operation", "history")
+                    .to_http_request(),
+                &resource,
+            ),
+            Some(UtilsAction::Execute {
+                resource_id,
+                operation: UtilsResourceOperation::WebScrapingGetHistory
+            })
+        );
+
+        assert_eq!(
+            extract_action(
+                &TestRequest::with_uri("https://secutils.dev/api/utils")
+                    .method(Method::POST)
+                    .param("resource_id", resource_id.to_string())
+                    .param("resource_operation", "clear")
+                    .to_http_request(),
+                &resource,
+            ),
+            Some(UtilsAction::Execute {
+                resource_id,
+                operation: UtilsResourceOperation::WebScrapingClearHistory
             })
         );
     }

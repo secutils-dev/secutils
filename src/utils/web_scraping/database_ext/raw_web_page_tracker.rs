@@ -9,7 +9,7 @@ pub(super) struct RawWebPageTracker {
     pub id: Vec<u8>,
     pub name: String,
     pub url: String,
-    pub kind: i64,
+    pub kind: Vec<u8>,
     pub schedule: Option<String>,
     pub user_id: i64,
     pub job_id: Option<Vec<u8>>,
@@ -69,7 +69,7 @@ impl<Tag: WebPageTrackerTag> TryFrom<&WebPageTracker<Tag>> for RawWebPageTracker
             id: item.id.as_ref().to_vec(),
             name: item.name.clone(),
             url: item.url.to_string(),
-            kind: Tag::KIND as i64,
+            kind: Tag::KIND.try_into()?,
             /// Move schedule to a dedicated database table field to allow searching.
             schedule: item.settings.schedule.clone(),
             user_id: *item.user_id,
@@ -86,7 +86,7 @@ mod tests {
     use crate::{
         tests::mock_user,
         utils::{
-            WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings,
+            WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerSettings,
             WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
         },
     };
@@ -104,7 +104,7 @@ mod tests {
                     .to_vec(),
                 name: "tk".to_string(),
                 url: "https://secutils.dev".to_string(),
-                kind: WebPageTrackerKind::WebPageResources as i64,
+                kind: vec![0],
                 schedule: None,
                 user_id: *mock_user()?.id,
                 job_id: None,
@@ -137,7 +137,7 @@ mod tests {
                     .to_vec(),
                 name: "tk".to_string(),
                 url: "https://secutils.dev".to_string(),
-                kind: WebPageTrackerKind::WebPageResources as i64,
+                kind: vec![0],
                 schedule: Some("0 0 * * *".to_string()),
                 user_id: *mock_user()?.id,
                 job_id: Some(
@@ -206,7 +206,7 @@ mod tests {
                     .to_vec(),
                 name: "tk".to_string(),
                 url: "https://secutils.dev/".to_string(),
-                kind: WebPageTrackerKind::WebPageResources as i64,
+                kind: vec![0],
                 schedule: None,
                 user_id: *mock_user()?.id,
                 job_id: None,
@@ -246,7 +246,7 @@ mod tests {
                     .to_vec(),
                 name: "tk".to_string(),
                 url: "https://secutils.dev/".to_string(),
-                kind: WebPageTrackerKind::WebPageResources as i64,
+                kind: vec![0],
                 schedule: Some("0 0 * * *".to_string()),
                 user_id: *mock_user()?.id,
                 job_id: Some(
