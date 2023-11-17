@@ -22,9 +22,9 @@ use crate::{
             WebScraperResource, MAX_WEB_PAGE_TRACKER_DELAY, MAX_WEB_PAGE_TRACKER_REVISIONS,
         },
         WebPageContentTrackerTag, WebPageDataRevision, WebPageResource, WebPageResourcesData,
-        WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerTag, WebScraperContentRequest,
-        WebScraperContentRequestScripts, WebScraperContentResponse, WebScraperResourcesRequest,
-        WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
+        WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerTag, WebScraperContentError,
+        WebScraperContentRequest, WebScraperContentRequestScripts, WebScraperContentResponse,
+        WebScraperResourcesRequest, WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
     },
 };
 use anyhow::{anyhow, bail};
@@ -413,17 +413,47 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             ))
             .json(&scraper_request)
             .send()
-            .await?
+            .await
+            .map_err(|err| {
+                anyhow!(
+                    "Could not connect to the web scraper service to extract content for the web tracker ('{}'): {:?}",
+                    tracker.id,
+                    err
+                )
+            })?;
+
+        if !scraper_response.status().is_success() {
+            let is_client_error = scraper_response.status().is_client_error();
+            let scraper_error_response = scraper_response
+                .json::<WebScraperContentError>()
+                .await
+                .map_err(|err| {
+                    anyhow!(
+                        "Could not deserialize scraper error response for the web tracker ('{}'): {:?}",
+                        tracker.id,
+                        err
+                    )
+                })?;
+            if is_client_error {
+                bail!(SecutilsError::client(scraper_error_response.message));
+            } else {
+                bail!(
+                    "Unexpected scraper error for the web tracker ('{}'): {:?}",
+                    tracker.id,
+                    scraper_error_response.message
+                );
+            }
+        }
+
+        let scraper_response = scraper_response
             .json::<WebScraperContentResponse>()
             .await
             .map_err(|err| {
-                log::error!(
-                    "Cannot fetch content for `{}` ('{}'): {:?}",
-                    tracker.url,
+                anyhow!(
+                    "Could not deserialize scraper response for the web tracker ('{}'): {:?}",
                     tracker.id,
                     err
-                );
-                anyhow!("Web page tracker cannot fetch content due to unexpected error")
+                )
             })?;
 
         // Check if there is a revision with the same timestamp. If so, drop newly fetched revision.
@@ -868,12 +898,13 @@ mod tests {
             WebPageContentTrackerTag, WebPageResource, WebPageResourceDiffStatus,
             WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerCreateParams,
             WebPageTrackerKind, WebPageTrackerSettings, WebPageTrackerUpdateParams,
-            WebScraperContentRequest, WebScraperContentResponse, WebScraperResource,
-            WebScraperResourcesRequest, WebScraperResourcesResponse,
+            WebScraperContentError, WebScraperContentRequest, WebScraperContentResponse,
+            WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesResponse,
             WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
             WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
         },
     };
+    use actix_web::ResponseError;
     use futures::StreamExt;
     use httpmock::MockServer;
     use insta::assert_debug_snapshot;
@@ -2707,6 +2738,76 @@ mod tests {
             .await?;
         assert_eq!(tracker_one_content.len(), 2);
         assert_eq!(tracker_two_content.len(), 1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn properly_forwards_error_if_web_page_content_extraction_fails() -> anyhow::Result<()> {
+        let server = MockServer::start();
+        let mut config = mock_config()?;
+        config.components.web_scraper_url = Url::parse(&server.base_url())?;
+
+        let api = mock_api_with_config(config).await?;
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let web_scraping = WebScrapingApiExt::new(&api);
+        let tracker = web_scraping
+            .create_content_tracker(
+                mock_user.id,
+                WebPageTrackerCreateParams {
+                    name: "name_one".to_string(),
+                    url: Url::parse("https://secutils.dev/one")?,
+                    settings: WebPageTrackerSettings {
+                        revisions: 3,
+                        delay: Duration::from_millis(2000),
+                        enable_notifications: true,
+                        schedule: Some("0 0 * * * *".to_string()),
+                        scripts: Default::default(),
+                    },
+                },
+            )
+            .await?;
+
+        let content_mock = server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/web_page/content")
+                .json_body(
+                    serde_json::to_value(
+                        WebScraperContentRequest::with_default_parameters(&tracker.url)
+                            .set_delay(Duration::from_millis(2000)),
+                    )
+                    .unwrap(),
+                );
+            then.status(400)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&WebScraperContentError {
+                    message: "some client-error".to_string(),
+                });
+        });
+
+        let scraper_error = web_scraping
+            .get_content_tracker_history(
+                mock_user.id,
+                tracker.id,
+                WebPageContentTrackerGetHistoryParams { refresh: true },
+            )
+            .await
+            .unwrap_err()
+            .downcast::<SecutilsError>()
+            .unwrap();
+        assert_eq!(scraper_error.status_code(), 400);
+        assert_debug_snapshot!(
+            scraper_error,
+            @r###""some client-error""###
+        );
+
+        let tracker_content = web_scraping
+            .get_content_tracker_history(mock_user.id, tracker.id, Default::default())
+            .await?;
+        assert!(tracker_content.is_empty());
+        content_mock.assert();
 
         Ok(())
     }

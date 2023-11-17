@@ -15,9 +15,10 @@ pub use self::{
         WebPageResource, WebPageResourceContent, WebPageResourceContentData,
         WebPageResourceDiffStatus, WebPageResourcesData, WebPageResourcesTrackerTag,
         WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings, WebPageTrackerTag,
-        WebScraperContentRequest, WebScraperContentRequestScripts, WebScraperContentResponse,
-        WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesRequestScripts,
-        WebScraperResourcesResponse, MAX_WEB_PAGE_TRACKER_DELAY, MAX_WEB_PAGE_TRACKER_REVISIONS,
+        WebScraperContentError, WebScraperContentRequest, WebScraperContentRequestScripts,
+        WebScraperContentResponse, WebScraperResource, WebScraperResourcesRequest,
+        WebScraperResourcesRequestScripts, WebScraperResourcesResponse, MAX_WEB_PAGE_TRACKER_DELAY,
+        MAX_WEB_PAGE_TRACKER_REVISIONS,
     },
 };
 use crate::{

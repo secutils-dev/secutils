@@ -8,8 +8,8 @@ mod web_page_tracker_tag;
 
 pub use self::{
     web_page_content::{
-        WebPageContentTrackerTag, WebScraperContentRequest, WebScraperContentRequestScripts,
-        WebScraperContentResponse,
+        WebPageContentTrackerTag, WebScraperContentError, WebScraperContentRequest,
+        WebScraperContentRequestScripts, WebScraperContentResponse,
     },
     web_page_data_revision::WebPageDataRevision,
     web_page_resources::{
