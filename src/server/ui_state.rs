@@ -65,7 +65,7 @@ mod tests {
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })),
             settings: Some(serde_json::from_value(serde_json::to_value(
-                &[("common.uiTheme".to_string(), Some(json!("light")))]
+                [("common.uiTheme".to_string(), Some(json!("light")))]
                     .into_iter()
                     .collect::<BTreeMap<_, _>>(),
             )?)?),

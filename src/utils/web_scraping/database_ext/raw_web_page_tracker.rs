@@ -70,7 +70,7 @@ impl<Tag: WebPageTrackerTag> TryFrom<&WebPageTracker<Tag>> for RawWebPageTracker
             name: item.name.clone(),
             url: item.url.to_string(),
             kind: Tag::KIND.try_into()?,
-            /// Move schedule to a dedicated database table field to allow searching.
+            // Move schedule to a dedicated database table field to allow searching.
             schedule: item.settings.schedule.clone(),
             user_id: *item.user_id,
             job_id: item.job_id.as_ref().map(|job_id| job_id.as_ref().to_vec()),
