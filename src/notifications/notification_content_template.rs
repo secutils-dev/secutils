@@ -25,7 +25,6 @@ pub enum NotificationContentTemplate {
     },
     WebPageContentTrackerChanges {
         tracker_name: String,
-        content: String,
     },
 }
 
@@ -53,11 +52,8 @@ impl NotificationContentTemplate {
                 )
                 .await
             }
-            NotificationContentTemplate::WebPageContentTrackerChanges {
-                tracker_name,
-                content,
-            } => {
-                web_page_content_tracker_changes::compile_to_email(api, tracker_name, content).await
+            NotificationContentTemplate::WebPageContentTrackerChanges { tracker_name } => {
+                web_page_content_tracker_changes::compile_to_email(api, tracker_name).await
             }
         }
     }
@@ -168,7 +164,7 @@ mod tests {
             subject: "Notification: \"tracker\" resources tracker detected 10 changes",
             text: "\"tracker\" resources tracker detected 10 changes. Visit http://localhost:1234/ws/web_scraping__resources to learn more.",
             html: Some(
-                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" resources tracker detected 10 changes</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .button-link {\n      color: #fff;\n      background-color: #2196F3;\n      padding: 10px 20px;\n      text-decoration: none;\n      border-radius: 5px;\n    }\n  </style>\n  <style>\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" resources tracker detected 10 changes</h1>\n  <p>To learn more, visit the <b>Resources Trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/ws/web_scraping__resources\">Web Scraping → Resources Trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>http://localhost:1234/ws/web_scraping__resources</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
+                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" resources tracker detected 10 changes</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .button-link {\n      color: #fff;\n      background-color: #2196F3;\n      padding: 10px 20px;\n      text-decoration: none;\n      border-radius: 5px;\n    }\n  </style>\n  <style>\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" resources tracker detected 10 changes</h1>\n  <p>To learn more, visit the <b>Resources trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/ws/web_scraping__resources\">Web Scraping → Resources trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>http://localhost:1234/ws/web_scraping__resources</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
             ),
             attachments: Some(
                 [
@@ -203,7 +199,6 @@ mod tests {
 
         let mut template = NotificationContentTemplate::WebPageContentTrackerChanges {
             tracker_name: "tracker".to_string(),
-            content: "some-content".to_string(),
         }
         .compile_to_email(&api)
         .await?;
@@ -219,9 +214,9 @@ mod tests {
         assert_debug_snapshot!(template, @r###"
         EmailNotificationContent {
             subject: "Notification: \"tracker\" content tracker detected changes",
-            text: "\"tracker\" content tracker detected changes: \"http://localhost:1234/ws/web_scraping__content\". Visit some-content to learn more.",
+            text: "\"tracker\" content tracker detected changes. Visit http://localhost:1234/ws/web_scraping__content to learn more.",
             html: Some(
-                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" content tracker detected changes</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .button-link {\n      color: #fff;\n      background-color: #2196F3;\n      padding: 10px 20px;\n      text-decoration: none;\n      border-radius: 5px;\n    }\n  </style>\n  <style>\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" content tracker detected changes: \"some-content\"</h1>\n  <p>To learn more, visit the <b>Resources Trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/ws/web_scraping__content\">Web Scraping → Resources Trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>http://localhost:1234/ws/web_scraping__content</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
+                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" content tracker detected changes</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .button-link {\n      color: #fff;\n      background-color: #2196F3;\n      padding: 10px 20px;\n      text-decoration: none;\n      border-radius: 5px;\n    }\n  </style>\n  <style>\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" content tracker detected changes</h1>\n  <p>To learn more, visit the <b>Content trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/ws/web_scraping__content\">Web Scraping → Content trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>http://localhost:1234/ws/web_scraping__content</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
             ),
             attachments: Some(
                 [

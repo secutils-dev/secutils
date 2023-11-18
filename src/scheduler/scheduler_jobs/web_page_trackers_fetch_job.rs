@@ -227,28 +227,25 @@ impl WebPageTrackersFetchJob {
                 humantime::format_duration(fetch_start.elapsed())
             );
 
-            if tracker.settings.enable_notifications {
-                if let Some(new_revision) = new_revision {
-                    let notification_schedule_result = api
-                        .notifications()
-                        .schedule_notification(
-                            NotificationDestination::User(tracker.user_id),
-                            NotificationContent::Template(
-                                NotificationContentTemplate::WebPageContentTrackerChanges {
-                                    tracker_name: tracker.name,
-                                    content: new_revision.data,
-                                },
-                            ),
-                            OffsetDateTime::now_utc(),
-                        )
-                        .await;
-                    if let Err(err) = notification_schedule_result {
-                        log::error!(
-                            "Failed to schedule a notification for web page tracker ('{}'): {:?}.",
-                            tracker.id,
-                            err
-                        );
-                    }
+            if tracker.settings.enable_notifications && new_revision.is_some() {
+                let notification_schedule_result = api
+                    .notifications()
+                    .schedule_notification(
+                        NotificationDestination::User(tracker.user_id),
+                        NotificationContent::Template(
+                            NotificationContentTemplate::WebPageContentTrackerChanges {
+                                tracker_name: tracker.name,
+                            },
+                        ),
+                        OffsetDateTime::now_utc(),
+                    )
+                    .await;
+                if let Err(err) = notification_schedule_result {
+                    log::error!(
+                        "Failed to schedule a notification for web page tracker ('{}'): {:?}.",
+                        tracker.id,
+                        err
+                    );
                 }
             }
 
@@ -1146,7 +1143,6 @@ mod tests {
                 Template(
                     WebPageContentTrackerChanges {
                         tracker_name: "tracker-one",
-                        content: "other-content",
                     },
                 ),
             ),
