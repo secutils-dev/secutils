@@ -1,29 +1,29 @@
 use serde::{Deserialize, Serialize};
 
-/// Represents error response if scraper couldn't extract content.
+/// Represents an error returned by the web scraper service.
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct WebScraperContentError {
+pub struct WebScraperErrorResponse {
     /// Error message.
     pub message: String,
 }
 
 #[cfg(test)]
 mod tests {
-    use super::WebScraperContentError;
+    use super::WebScraperErrorResponse;
     use insta::assert_json_snapshot;
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            serde_json::from_str::<WebScraperContentError>(
+            serde_json::from_str::<WebScraperErrorResponse>(
                 r#"
 {
     "message": "some-error"
 }
           "#
             )?,
-            WebScraperContentError {
+            WebScraperErrorResponse {
                 message: "some-error".to_string(),
             }
         );
@@ -33,7 +33,7 @@ mod tests {
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
-        assert_json_snapshot!(WebScraperContentError {
+        assert_json_snapshot!(WebScraperErrorResponse {
             message: "some-error".to_string(),
         }, @r###"
         {

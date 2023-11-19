@@ -5,11 +5,12 @@ mod web_page_tracker;
 mod web_page_tracker_kind;
 mod web_page_tracker_settings;
 mod web_page_tracker_tag;
+mod web_scraper;
 
 pub use self::{
     web_page_content::{
-        WebPageContentTrackerTag, WebScraperContentError, WebScraperContentRequest,
-        WebScraperContentRequestScripts, WebScraperContentResponse,
+        WebPageContentTrackerTag, WebScraperContentRequest, WebScraperContentRequestScripts,
+        WebScraperContentResponse,
     },
     web_page_data_revision::WebPageDataRevision,
     web_page_resources::{
@@ -24,6 +25,7 @@ pub use self::{
         WebPageTrackerSettings, MAX_WEB_PAGE_TRACKER_DELAY, MAX_WEB_PAGE_TRACKER_REVISIONS,
     },
     web_page_tracker_tag::WebPageTrackerTag,
+    web_scraper::WebScraperErrorResponse,
 };
 
 pub(in crate::utils::web_scraping) use self::web_page_resources::{
