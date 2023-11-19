@@ -263,6 +263,12 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             scraper_request
         };
 
+        let scraper_request = if let Some(headers) = tracker.settings.headers.as_ref() {
+            scraper_request.set_headers(headers)
+        } else {
+            scraper_request
+        };
+
         let scraper_response = reqwest::Client::new()
             .post(format!(
                 "{}api/web_page/resources",
@@ -432,6 +438,12 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             scraper_request.set_scripts(WebScraperContentRequestScripts {
                 extract_content: Some(extract_content),
             })
+        } else {
+            scraper_request
+        };
+
+        let scraper_request = if let Some(headers) = tracker.settings.headers.as_ref() {
+            scraper_request.set_headers(headers)
         } else {
             scraper_request
         };
@@ -993,6 +1005,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: None,
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -1028,6 +1041,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: None,
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -1057,6 +1071,7 @@ mod tests {
             enable_notifications: true,
             schedule: None,
             scripts: Default::default(),
+            headers: Default::default(),
         };
         let url = Url::parse("https://secutils.dev")?;
 
@@ -1224,6 +1239,7 @@ mod tests {
             enable_notifications: true,
             schedule: None,
             scripts: Default::default(),
+            headers: Default::default(),
         };
         let url = Url::parse("https://secutils.dev")?;
 
@@ -1396,6 +1412,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: None,
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -1503,6 +1520,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: None,
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -1702,6 +1720,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: None,
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -1809,6 +1828,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: None,
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -2008,6 +2028,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -2103,6 +2124,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -2198,6 +2220,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -2259,6 +2282,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -2314,6 +2338,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -2366,6 +2391,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -2415,6 +2441,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -2465,6 +2492,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -2645,6 +2673,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -2718,6 +2747,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -2869,6 +2899,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -2939,6 +2970,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -3008,6 +3040,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -3094,6 +3127,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -3180,6 +3214,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -3267,6 +3302,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -3338,6 +3374,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -3409,6 +3446,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -3482,6 +3520,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -3555,6 +3594,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -3651,6 +3691,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -3744,6 +3785,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -3845,6 +3887,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -3946,6 +3989,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -4047,6 +4091,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -4153,6 +4198,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -4169,6 +4215,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -4315,6 +4362,7 @@ mod tests {
                             enable_notifications: true,
                             schedule: Some("0 0 * * * *".to_string()),
                             scripts: Default::default(),
+                            headers: Default::default(),
                         },
                     },
                 )
@@ -4413,6 +4461,7 @@ mod tests {
                             enable_notifications: true,
                             schedule: Some("0 0 * * * *".to_string()),
                             scripts: Default::default(),
+                            headers: Default::default(),
                         },
                     },
                 )

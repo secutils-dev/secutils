@@ -22,6 +22,7 @@ pub(super) struct RawWebPageTrackerData<Tag: WebPageTrackerTag> {
     pub revisions: usize,
     pub delay: u64,
     pub scripts: Option<HashMap<String, String>>,
+    pub headers: Option<HashMap<String, String>>,
     pub enable_notifications: bool,
     pub meta: Option<Tag::TrackerMeta>,
 }
@@ -45,6 +46,7 @@ impl<Tag: WebPageTrackerTag> TryFrom<RawWebPageTracker> for WebPageTracker<Tag> 
                 delay: Duration::from_millis(raw_data.delay),
                 schedule: raw.schedule,
                 scripts: raw_data.scripts,
+                headers: raw_data.headers,
                 enable_notifications: raw_data.enable_notifications,
             },
             created_at: OffsetDateTime::from_unix_timestamp(raw.created_at)?,
@@ -61,6 +63,7 @@ impl<Tag: WebPageTrackerTag> TryFrom<&WebPageTracker<Tag>> for RawWebPageTracker
             revisions: item.settings.revisions,
             delay: item.settings.delay.as_millis() as u64,
             scripts: item.settings.scripts.clone(),
+            headers: item.settings.headers.clone(),
             enable_notifications: item.settings.enable_notifications,
             meta: item.meta.clone(),
         };
@@ -108,7 +111,7 @@ mod tests {
                 schedule: None,
                 user_id: *mock_user()?.id,
                 job_id: None,
-                data: vec![1, 0, 0, 0, 0],
+                data: vec![1, 0, 0, 0, 0, 0],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
             })?,
@@ -123,6 +126,7 @@ mod tests {
                     schedule: None,
                     delay: Default::default(),
                     scripts: Default::default(),
+                    headers: Default::default(),
                     enable_notifications: false,
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
@@ -148,7 +152,8 @@ mod tests {
                 data: vec![
                     1, 208, 15, 1, 1, 17, 114, 101, 115, 111, 117, 114, 99, 101, 70, 105, 108, 116,
                     101, 114, 77, 97, 112, 16, 114, 101, 116, 117, 114, 110, 32, 114, 101, 115,
-                    111, 117, 114, 99, 101, 59, 1, 0
+                    111, 117, 114, 99, 101, 59, 1, 1, 6, 99, 111, 111, 107, 105, 101, 9, 109, 121,
+                    45, 99, 111, 111, 107, 105, 101, 1, 0
                 ],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
@@ -170,6 +175,11 @@ mod tests {
                         )]
                         .into_iter()
                         .collect()
+                    ),
+                    headers: Some(
+                        [("cookie".to_string(), "my-cookie".to_string())]
+                            .into_iter()
+                            .collect()
                     ),
                     enable_notifications: true,
                 },
@@ -195,6 +205,7 @@ mod tests {
                     schedule: None,
                     delay: Default::default(),
                     scripts: Default::default(),
+                    headers: Default::default(),
                     enable_notifications: false,
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
@@ -210,7 +221,7 @@ mod tests {
                 schedule: None,
                 user_id: *mock_user()?.id,
                 job_id: None,
-                data: vec![1, 0, 0, 0, 0],
+                data: vec![1, 0, 0, 0, 0, 0],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
             }
@@ -235,6 +246,11 @@ mod tests {
                         .into_iter()
                         .collect()
                     ),
+                    headers: Some(
+                        [("cookie".to_string(), "my-cookie".to_string())]
+                            .into_iter()
+                            .collect()
+                    ),
                     enable_notifications: true,
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
@@ -257,7 +273,8 @@ mod tests {
                 data: vec![
                     1, 208, 15, 1, 1, 17, 114, 101, 115, 111, 117, 114, 99, 101, 70, 105, 108, 116,
                     101, 114, 77, 97, 112, 16, 114, 101, 116, 117, 114, 110, 32, 114, 101, 115,
-                    111, 117, 114, 99, 101, 59, 1, 0
+                    111, 117, 114, 99, 101, 59, 1, 1, 6, 99, 111, 111, 107, 105, 101, 9, 109, 121,
+                    45, 99, 111, 111, 107, 105, 101, 1, 0
                 ],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,

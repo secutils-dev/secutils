@@ -46,6 +46,7 @@ mod tests {
                     schedule: None,
                     delay: Duration::from_millis(2000),
                     scripts: Default::default(),
+                    headers: Default::default(),
                     enable_notifications: true,
                 },
             }
@@ -63,6 +64,9 @@ mod tests {
         "schedule": "0 0 * * *",
         "scripts": {
             "resourceFilterMap": "return resource;"
+        },
+        "headers": {
+            "cookie": "my-cookie"
         },
         "enableNotifications": true
     }
@@ -84,6 +88,11 @@ mod tests {
                         .iter()
                         .cloned()
                         .collect()
+                    ),
+                    headers: Some(
+                        [("cookie".to_string(), "my-cookie".to_string())]
+                            .into_iter()
+                            .collect(),
                     ),
                     enable_notifications: true,
                 },

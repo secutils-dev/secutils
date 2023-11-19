@@ -1,5 +1,5 @@
 use serde::Serialize;
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 use url::Url;
 
 /// Scripts to inject into the web page before extracting resources to track.
@@ -40,6 +40,10 @@ pub struct WebScraperResourcesRequest<'a> {
     /// Optional scripts to inject into the web page before extracting resources to track..
     #[serde(skip_serializing_if = "WebScraperResourcesRequestScripts::is_empty")]
     pub scripts: WebScraperResourcesRequestScripts<'a>,
+
+    /// Optional content of the web page that has been extracted previously.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headers: Option<&'a HashMap<String, String>>,
 }
 
 impl<'a> WebScraperResourcesRequest<'a> {
@@ -52,6 +56,7 @@ impl<'a> WebScraperResourcesRequest<'a> {
             delay: None,
             wait_selector: None,
             scripts: Default::default(),
+            headers: None,
         }
     }
 
@@ -66,6 +71,14 @@ impl<'a> WebScraperResourcesRequest<'a> {
     /// Sets scripts to inject into the web page before extracting resources to track.
     pub fn set_scripts(self, scripts: WebScraperResourcesRequestScripts<'a>) -> Self {
         Self { scripts, ..self }
+    }
+
+    /// Sets headers to attach to every request to the tracked web page.
+    pub fn set_headers(self, headers: &'a HashMap<String, String>) -> Self {
+        Self {
+            headers: Some(headers),
+            ..self
+        }
     }
 }
 
@@ -84,7 +97,12 @@ mod tests {
             wait_selector: Some("body"),
             scripts: WebScraperResourcesRequestScripts {
                 resource_filter_map: Some("return resource;")
-            }
+            },
+            headers: Some(
+                &[("cookie".to_string(), "my-cookie".to_string())]
+                    .into_iter()
+                    .collect(),
+            ),
         }, @r###"
         {
           "url": "http://localhost:1234/my/app?q=2",
@@ -93,6 +111,9 @@ mod tests {
           "waitSelector": "body",
           "scripts": {
             "resourceFilterMap": "return resource;"
+          },
+          "headers": {
+            "cookie": "my-cookie"
           }
         }
         "###);
@@ -127,6 +148,7 @@ mod tests {
         assert!(request.delay.is_none());
         assert!(request.timeout.is_none());
         assert!(request.scripts.is_empty());
+        assert!(request.headers.is_none());
 
         Ok(())
     }

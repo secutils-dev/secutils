@@ -52,6 +52,9 @@ mod tests {
         "scripts": {
             "resourceFilterMap": "return resource;"
         },
+        "headers": {
+            "cookie": "my-cookie"
+        },
         "enableNotifications": true
     }
 }
@@ -71,6 +74,11 @@ mod tests {
                         )]
                         .into_iter()
                         .collect()
+                    ),
+                    headers: Some(
+                        [("cookie".to_string(), "my-cookie".to_string())]
+                            .into_iter()
+                            .collect(),
                     ),
                     enable_notifications: true,
                 }),

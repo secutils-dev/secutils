@@ -262,6 +262,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("1 2 3 4 5 6 2030".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -279,6 +280,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("1 2 3 4 5 6 2035".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -296,6 +298,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("1 2 3 4 5 6 2040".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -437,6 +440,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: None,
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -455,6 +459,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: None,
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -534,6 +539,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("1 2 3 4 5 6 2030".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )
@@ -551,6 +557,7 @@ mod tests {
                         enable_notifications: true,
                         schedule: Some("1 2 3 4 5 6 2030".to_string()),
                         scripts: Default::default(),
+                        headers: Default::default(),
                     },
                 },
             )

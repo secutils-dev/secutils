@@ -1,5 +1,5 @@
 use serde::Serialize;
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 use url::Url;
 
 /// Scripts to inject into the web page before extracting content to track.
@@ -44,6 +44,10 @@ pub struct WebScraperContentRequest<'a> {
     /// Optional scripts to inject into the web page before extracting content.
     #[serde(skip_serializing_if = "WebScraperContentRequestScripts::is_empty")]
     pub scripts: WebScraperContentRequestScripts<'a>,
+
+    /// Optional content of the web page that has been extracted previously.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headers: Option<&'a HashMap<String, String>>,
 }
 
 impl<'a> WebScraperContentRequest<'a> {
@@ -57,6 +61,7 @@ impl<'a> WebScraperContentRequest<'a> {
             wait_selector: None,
             previous_content: None,
             scripts: Default::default(),
+            headers: None,
         }
     }
 
@@ -80,6 +85,14 @@ impl<'a> WebScraperContentRequest<'a> {
     pub fn set_scripts(self, scripts: WebScraperContentRequestScripts<'a>) -> Self {
         Self { scripts, ..self }
     }
+
+    /// Sets headers to attach to every request to the tracked web page.
+    pub fn set_headers(self, headers: &'a HashMap<String, String>) -> Self {
+        Self {
+            headers: Some(headers),
+            ..self
+        }
+    }
 }
 
 #[cfg(test)]
@@ -98,7 +111,12 @@ mod tests {
             previous_content: Some("some content"),
             scripts: WebScraperContentRequestScripts {
                 extract_content: Some("return resource;")
-            }
+            },
+            headers: Some(
+                &[("cookie".to_string(), "my-cookie".to_string())]
+                    .into_iter()
+                    .collect(),
+            ),
         }, @r###"
         {
           "url": "http://localhost:1234/my/app?q=2",
@@ -108,6 +126,9 @@ mod tests {
           "previousContent": "some content",
           "scripts": {
             "extractContent": "return resource;"
+          },
+          "headers": {
+            "cookie": "my-cookie"
           }
         }
         "###);
@@ -143,6 +164,7 @@ mod tests {
         assert!(request.delay.is_none());
         assert!(request.timeout.is_none());
         assert!(request.scripts.is_empty());
+        assert!(request.headers.is_none());
 
         Ok(())
     }

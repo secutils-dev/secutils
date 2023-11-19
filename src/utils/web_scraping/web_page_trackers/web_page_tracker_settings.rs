@@ -23,6 +23,9 @@ pub struct WebPageTrackerSettings {
     /// Optional scripts to inject into the tracked web page.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scripts: Option<HashMap<String, String>>,
+    /// Optional list of HTTP headers that should be sent with the tracker requests.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headers: Option<HashMap<String, String>>,
     /// Indicates that web page change notifications are enabled for this tracker.
     pub enable_notifications: bool,
 }
@@ -43,6 +46,7 @@ mod tests {
             schedule: None,
             delay: Duration::from_millis(2500),
             scripts: Default::default(),
+            headers: Default::default(),
             enable_notifications: true,
         };
         assert_json_snapshot!(settings, @r###"
@@ -58,6 +62,7 @@ mod tests {
             schedule: Some("0 0 * * *".to_string()),
             delay: Duration::from_millis(2500),
             scripts: Default::default(),
+            headers: Default::default(),
             enable_notifications: true,
         };
         assert_json_snapshot!(settings, @r###"
@@ -81,6 +86,11 @@ mod tests {
                 .into_iter()
                 .collect(),
             ),
+            headers: Some(
+                [("cookie".to_string(), "my-cookie".to_string())]
+                    .into_iter()
+                    .collect(),
+            ),
             enable_notifications: true,
         };
         assert_json_snapshot!(settings, @r###"
@@ -91,6 +101,9 @@ mod tests {
           "scripts": {
             "resourceFilterMap": "return resource;"
           },
+          "headers": {
+            "cookie": "my-cookie"
+          },
           "enableNotifications": true
         }
         "###);
@@ -100,6 +113,7 @@ mod tests {
             schedule: Some("0 0 * * *".to_string()),
             delay: Duration::from_millis(2500),
             scripts: Default::default(),
+            headers: Default::default(),
             enable_notifications: true,
         };
         assert_json_snapshot!(settings, @r###"
@@ -116,6 +130,7 @@ mod tests {
             schedule: Some("0 0 * * *".to_string()),
             delay: Duration::from_millis(2500),
             scripts: Default::default(),
+            headers: Default::default(),
             enable_notifications: false,
         };
         assert_json_snapshot!(settings, @r###"
@@ -137,6 +152,7 @@ mod tests {
             schedule: None,
             delay: Duration::from_millis(2000),
             scripts: Default::default(),
+            headers: Default::default(),
             enable_notifications: true,
         };
         assert_eq!(
@@ -151,6 +167,7 @@ mod tests {
             schedule: Some("0 0 * * *".to_string()),
             delay: Duration::from_millis(2000),
             scripts: Default::default(),
+            headers: Default::default(),
             enable_notifications: true,
         };
         assert_eq!(
@@ -172,6 +189,11 @@ mod tests {
                 .into_iter()
                 .collect(),
             ),
+            headers: Some(
+                [("cookie".to_string(), "my-cookie".to_string())]
+                    .into_iter()
+                    .collect(),
+            ),
             enable_notifications: true,
         };
         assert_eq!(
@@ -181,6 +203,7 @@ mod tests {
                     "delay": 2000,
                     "schedule": "0 0 * * *",
                     "scripts": { "resourceFilterMap": "return resource;" },
+                    "headers": { "cookie": "my-cookie" },
                     "enableNotifications": true
                 })
                 .to_string()
@@ -200,6 +223,11 @@ mod tests {
                 .into_iter()
                 .collect(),
             ),
+            headers: Some(
+                [("cookie".to_string(), "my-cookie".to_string())]
+                    .into_iter()
+                    .collect(),
+            ),
             enable_notifications: false,
         };
         assert_eq!(
@@ -209,6 +237,7 @@ mod tests {
                     "delay": 2000,
                     "schedule": "0 0 * * *",
                     "scripts": { "resourceFilterMap": "return resource;" },
+                    "headers": { "cookie": "my-cookie" },
                     "enableNotifications": false
                 })
                 .to_string()

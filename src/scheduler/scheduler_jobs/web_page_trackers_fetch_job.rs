@@ -494,6 +494,7 @@ mod tests {
                         schedule: Some("0 0 * * * *".to_string()),
                         delay: Default::default(),
                         scripts: Default::default(),
+                        headers: Default::default(),
                         enable_notifications: true,
                     },
                 },
@@ -525,6 +526,7 @@ mod tests {
                         schedule: Some("0 0 * * * *".to_string()),
                         delay: Default::default(),
                         scripts: Default::default(),
+                        headers: Default::default(),
                         enable_notifications: true,
                     },
                 },
@@ -610,6 +612,11 @@ mod tests {
                     .into_iter()
                     .collect(),
                 ),
+                headers: Some(
+                    [("cookie".to_string(), "my-cookie".to_string())]
+                        .into_iter()
+                        .collect(),
+                ),
                 enable_notifications: true,
             },
             user_id: user.id,
@@ -660,6 +667,11 @@ mod tests {
                             .set_scripts(WebScraperResourcesRequestScripts {
                                 resource_filter_map: Some("return resource;"),
                             })
+                            .set_headers(
+                                &[("cookie".to_string(), "my-cookie".to_string())]
+                                    .into_iter()
+                                    .collect(),
+                            )
                             .set_delay(Duration::from_millis(2000)),
                     )
                     .unwrap(),
@@ -778,6 +790,11 @@ mod tests {
                     .into_iter()
                     .collect(),
                 ),
+                headers: Some(
+                    [("cookie".to_string(), "my-cookie".to_string())]
+                        .into_iter()
+                        .collect(),
+                ),
                 enable_notifications: false,
             },
             user_id: user.id,
@@ -815,6 +832,11 @@ mod tests {
                             .set_scripts(WebScraperContentRequestScripts {
                                 extract_content: Some("return document.body.innerText;"),
                             })
+                            .set_headers(
+                                &[("cookie".to_string(), "my-cookie".to_string())]
+                                    .into_iter()
+                                    .collect(),
+                            )
                             .set_delay(Duration::from_millis(2000)),
                     )
                     .unwrap(),
@@ -918,6 +940,7 @@ mod tests {
                 schedule: Some(tracker_schedule),
                 delay: Duration::from_secs(2),
                 scripts: Default::default(),
+                headers: Default::default(),
                 enable_notifications: true,
             },
             user_id: user.id,
@@ -1099,6 +1122,7 @@ mod tests {
                 schedule: Some(tracker_schedule),
                 delay: Duration::from_secs(2),
                 scripts: Default::default(),
+                headers: Default::default(),
                 enable_notifications: true,
             },
             user_id: user.id,
@@ -1265,6 +1289,7 @@ mod tests {
                 schedule: Some(tracker_schedule),
                 delay: Duration::from_secs(2),
                 scripts: Default::default(),
+                headers: Default::default(),
                 enable_notifications: true,
             },
             user_id: user.id,
@@ -1430,6 +1455,7 @@ mod tests {
                 schedule: Some(tracker_schedule),
                 delay: Duration::from_secs(2),
                 scripts: Default::default(),
+                headers: Default::default(),
                 enable_notifications: true,
             },
             user_id: user.id,
