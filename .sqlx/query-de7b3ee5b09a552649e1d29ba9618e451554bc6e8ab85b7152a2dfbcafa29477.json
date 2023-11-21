@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n    UPDATE user_data_web_security_csp\n    SET name = ?3, directives = ?4\n    WHERE user_id = ?1 AND id = ?2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "de7b3ee5b09a552649e1d29ba9618e451554bc6e8ab85b7152a2dfbcafa29477"
+}

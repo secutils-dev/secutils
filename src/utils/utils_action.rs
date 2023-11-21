@@ -13,6 +13,10 @@ pub enum UtilsAction {
     Update { resource_id: Uuid },
     /// Delete util's resource (DELETE).
     Delete { resource_id: Uuid },
+    /// Share util's resource (POST).
+    Share { resource_id: Uuid },
+    /// Unshare util's resource (POST).
+    Unshare { resource_id: Uuid },
     /// Execute util's resource custom operation (POST).
     Execute {
         resource_id: Uuid,
@@ -25,7 +29,11 @@ impl UtilsAction {
     pub fn requires_params(&self) -> bool {
         match self {
             UtilsAction::Create | UtilsAction::Update { .. } => true,
-            UtilsAction::List | UtilsAction::Get { .. } | UtilsAction::Delete { .. } => false,
+            UtilsAction::List
+            | UtilsAction::Get { .. }
+            | UtilsAction::Delete { .. }
+            | UtilsAction::Share { .. }
+            | UtilsAction::Unshare { .. } => false,
             UtilsAction::Execute { operation, .. } => operation.requires_params(),
         }
     }
@@ -54,6 +62,14 @@ mod tests {
             resource_id: uuid!("00000000-0000-0000-0000-000000000001")
         }
         .requires_params());
+        assert!(!UtilsAction::Share {
+            resource_id: uuid!("00000000-0000-0000-0000-000000000001")
+        }
+        .requires_params());
+        assert!(!UtilsAction::Unshare {
+            resource_id: uuid!("00000000-0000-0000-0000-000000000001")
+        }
+        .requires_params());
 
         assert!(UtilsAction::Execute {
             resource_id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -63,6 +79,11 @@ mod tests {
         assert!(UtilsAction::Execute {
             resource_id: uuid!("00000000-0000-0000-0000-000000000001"),
             operation: UtilsResourceOperation::CertificatesTemplateGenerate,
+        }
+        .requires_params());
+        assert!(UtilsAction::Execute {
+            resource_id: uuid!("00000000-0000-0000-0000-000000000001"),
+            operation: UtilsResourceOperation::WebScrapingGetHistory,
         }
         .requires_params());
     }

@@ -356,7 +356,7 @@ mod tests {
     use time::OffsetDateTime;
     use uuid::uuid;
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_add_and_retrieve_users() -> anyhow::Result<()> {
         let db = mock_db().await?;
         assert!(db.get_user_by_email("some-id").await?.is_none());
@@ -484,7 +484,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn ignores_email_case() -> anyhow::Result<()> {
         let user = MockUserBuilder::new(
             UserId::default(),
@@ -537,7 +537,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn ignores_handle_case() -> anyhow::Result<()> {
         let user = MockUserBuilder::new(
             UserId::default(),
@@ -584,7 +584,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_insert_user() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
@@ -662,7 +662,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_update_user() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
@@ -750,7 +750,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_remove_user() -> anyhow::Result<()> {
         let db = mock_db().await?;
         assert!(db.get_user_by_email("dev@secutils.dev").await?.is_none());
@@ -824,7 +824,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_manipulate_user_data() -> anyhow::Result<()> {
         let db = mock_db().await?;
         let user = MockUserBuilder::new(
@@ -908,7 +908,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_remove_old_user_data() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
@@ -1054,19 +1054,23 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_add_and_retrieve_user_shares() -> anyhow::Result<()> {
         let user_shares = vec![
             UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
                 user_id: 1.try_into()?,
-                resource: SharedResource::content_security_policy("my-policy"),
+                resource: SharedResource::content_security_policy(uuid!(
+                    "00000000-0000-0000-0000-000000000001"
+                )),
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             },
             UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000002")),
                 user_id: 2.try_into()?,
-                resource: SharedResource::content_security_policy("my-policy"),
+                resource: SharedResource::content_security_policy(uuid!(
+                    "00000000-0000-0000-0000-000000000002"
+                )),
                 created_at: OffsetDateTime::from_unix_timestamp(946720801)?,
             },
         ];
@@ -1095,19 +1099,23 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_retrieve_user_shares_by_resource() -> anyhow::Result<()> {
         let user_shares = vec![
             UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
                 user_id: 1.try_into()?,
-                resource: SharedResource::content_security_policy("my-policy"),
+                resource: SharedResource::content_security_policy(uuid!(
+                    "00000000-0000-0000-0000-000000000001"
+                )),
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             },
             UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000002")),
                 user_id: 2.try_into()?,
-                resource: SharedResource::content_security_policy("my-policy"),
+                resource: SharedResource::content_security_policy(uuid!(
+                    "00000000-0000-0000-0000-000000000002"
+                )),
                 created_at: OffsetDateTime::from_unix_timestamp(946720801)?,
             },
         ];
@@ -1139,7 +1147,9 @@ mod tests {
         assert!(db
             .get_user_share_by_resource(
                 user_shares[0].user_id,
-                &SharedResource::content_security_policy("not-my-policy")
+                &SharedResource::content_security_policy(uuid!(
+                    "00000000-0000-0000-0000-000000000003"
+                ))
             )
             .await?
             .is_none());
@@ -1147,19 +1157,23 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_remove_user_shares() -> anyhow::Result<()> {
         let user_shares = vec![
             UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
                 user_id: 1.try_into()?,
-                resource: SharedResource::content_security_policy("my-policy"),
+                resource: SharedResource::content_security_policy(uuid!(
+                    "00000000-0000-0000-0000-000000000001"
+                )),
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             },
             UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000002")),
                 user_id: 2.try_into()?,
-                resource: SharedResource::content_security_policy("my-policy"),
+                resource: SharedResource::content_security_policy(uuid!(
+                    "00000000-0000-0000-0000-000000000002"
+                )),
                 created_at: OffsetDateTime::from_unix_timestamp(946720801)?,
             },
         ];

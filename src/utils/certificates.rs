@@ -125,6 +125,22 @@ pub async fn certificates_handle_action<DR: DnsResolver, ET: EmailTransport>(
                 .await?;
             Ok(UtilsActionResult::empty())
         }
+        (UtilsResource::CertificatesTemplates, UtilsAction::Share { resource_id }) => {
+            UtilsActionResult::json(
+                certificates
+                    .share_certificate_template(user.id, resource_id)
+                    .await
+                    .map(ClientUserShare::from)?,
+            )
+        }
+        (UtilsResource::CertificatesTemplates, UtilsAction::Unshare { resource_id }) => {
+            UtilsActionResult::json(
+                certificates
+                    .unshare_certificate_template(user.id, resource_id)
+                    .await
+                    .map(|user_share| user_share.map(ClientUserShare::from))?,
+            )
+        }
         (
             UtilsResource::CertificatesTemplates,
             UtilsAction::Execute {
@@ -135,30 +151,6 @@ pub async fn certificates_handle_action<DR: DnsResolver, ET: EmailTransport>(
             certificates
                 .generate_self_signed_certificate(user.id, resource_id, extract_params(params)?)
                 .await?,
-        ),
-        (
-            UtilsResource::CertificatesTemplates,
-            UtilsAction::Execute {
-                resource_id,
-                operation: UtilsResourceOperation::CertificatesTemplateShare,
-            },
-        ) => UtilsActionResult::json(
-            certificates
-                .share_certificate_template(user.id, resource_id)
-                .await
-                .map(ClientUserShare::from)?,
-        ),
-        (
-            UtilsResource::CertificatesTemplates,
-            UtilsAction::Execute {
-                resource_id,
-                operation: UtilsResourceOperation::CertificatesTemplateUnshare,
-            },
-        ) => UtilsActionResult::json(
-            certificates
-                .unshare_certificate_template(user.id, resource_id)
-                .await
-                .map(|user_share| user_share.map(ClientUserShare::from))?,
         ),
 
         _ => Err(SecutilsError::client("Invalid resource or action.").into()),
@@ -757,9 +749,8 @@ pub mod tests {
         let serialized_user_share = certificates_handle_action(
             mock_user.clone(),
             &api,
-            UtilsAction::Execute {
+            UtilsAction::Share {
                 resource_id: template.id,
-                operation: UtilsResourceOperation::CertificatesTemplateShare,
             },
             UtilsResource::CertificatesTemplates,
             None,
@@ -788,9 +779,8 @@ pub mod tests {
         let serialized_user_share = certificates_handle_action(
             mock_user.clone(),
             &api,
-            UtilsAction::Execute {
+            UtilsAction::Unshare {
                 resource_id: template.id,
-                operation: UtilsResourceOperation::CertificatesTemplateUnshare,
             },
             UtilsResource::CertificatesTemplates,
             None,
@@ -808,9 +798,8 @@ pub mod tests {
         let serialized_user_share = certificates_handle_action(
             mock_user.clone(),
             &api,
-            UtilsAction::Execute {
+            UtilsAction::Unshare {
                 resource_id: template.id,
-                operation: UtilsResourceOperation::CertificatesTemplateUnshare,
             },
             UtilsResource::CertificatesTemplates,
             None,

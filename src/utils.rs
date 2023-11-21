@@ -44,11 +44,12 @@ pub use self::{
         WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
     },
     web_security::{
-        ContentSecurityPolicy, ContentSecurityPolicyDirective, ContentSecurityPolicyImportType,
+        web_security_handle_action, ContentSecurityPoliciesCreateParams,
+        ContentSecurityPoliciesSerializeParams, ContentSecurityPoliciesUpdateParams,
+        ContentSecurityPolicy, ContentSecurityPolicyContent, ContentSecurityPolicyDirective,
         ContentSecurityPolicyRequireTrustedTypesForDirectiveValue,
         ContentSecurityPolicySandboxDirectiveValue, ContentSecurityPolicySource,
         ContentSecurityPolicyTrustedTypesDirectiveValue, ContentSecurityPolicyWebrtcDirectiveValue,
-        UtilsWebSecurityAction, UtilsWebSecurityActionResult,
     },
     webhooks::{
         AutoResponder, AutoResponderMethod, AutoResponderRequest, UtilsWebhooksAction,

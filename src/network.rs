@@ -7,7 +7,8 @@ pub use self::{
     email_transport::{EmailTransport, EmailTransportError},
     ip_addr_ext::IpAddrExt,
 };
-use url::Url;
+use std::net::IpAddr;
+use url::{Host, Url};
 
 /// Network utilities.
 #[derive(Clone)]
@@ -32,16 +33,17 @@ impl<DR: DnsResolver, ET: EmailTransport> Network<DR, ET> {
         }
 
         // Checks if the specific hostname is a domain and public (not pointing to the local network).
-        if let Some(domain) = url.domain() {
-            match self.resolver.lookup_ip(domain).await {
+        match url.host() {
+            Some(Host::Domain(domain)) => match self.resolver.lookup_ip(domain).await {
                 Ok(lookup) => lookup.iter().all(|ip| IpAddrExt::is_global(&ip)),
                 Err(err) => {
                     log::error!("Cannot resolve domain ({domain}) to IP: {err}");
                     false
                 }
-            }
-        } else {
-            false
+            },
+            Some(Host::Ipv4(ip)) => IpAddrExt::is_global(&IpAddr::V4(ip)),
+            Some(Host::Ipv6(ip)) => IpAddrExt::is_global(&IpAddr::V6(ip)),
+            None => false,
         }
     }
 }
@@ -60,7 +62,7 @@ pub mod tests {
 
     pub use super::dns_resolver::tests::*;
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn correctly_checks_public_web_urls() -> anyhow::Result<()> {
         let public_network = Network::new(
             MockResolver::new_with_records::<1>(vec![Record::from_rdata(
@@ -104,6 +106,26 @@ pub mod tests {
             AsyncStubTransport::new_ok(),
         );
         assert!(!broken_network.is_public_web_url(&url).await);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn correctly_checks_public_ips() -> anyhow::Result<()> {
+        let network = Network::new(MockResolver::new(), AsyncStubTransport::new_ok());
+        for (ip, is_supported) in [
+            ("127.0.0.1", false),
+            ("10.254.0.0", false),
+            ("192.168.10.65", false),
+            ("172.16.10.65", false),
+            ("[2001:0db8:85a3:0000:0000:8a2e:0370:7334]", false),
+            ("[::1]", false),
+            ("217.88.39.143", true),
+            ("[2001:1234:abcd:5678:0221:2fff:feb5:6e10]", true),
+        ] {
+            let url = Url::parse(&format!("http://{}/my-page", ip))?;
+            assert_eq!(network.is_public_web_url(&url).await, is_supported);
+        }
 
         Ok(())
     }

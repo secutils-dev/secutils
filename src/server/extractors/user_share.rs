@@ -72,6 +72,7 @@ mod tests {
     use actix_web::{test::TestRequest, FromRequest};
     use insta::assert_debug_snapshot;
     use time::OffsetDateTime;
+    use uuid::uuid;
 
     #[actix_rt::test]
     async fn fails_if_header_is_not_provided() -> anyhow::Result<()> {
@@ -104,7 +105,7 @@ mod tests {
             id: UserShareId::new(),
             user_id: user.id,
             resource: SharedResource::ContentSecurityPolicy {
-                policy_name: "my-policy".to_string(),
+                policy_id: uuid!("00000000-0000-0000-0000-000000000000"),
             },
             created_at: OffsetDateTime::now_utc(),
         };
@@ -135,7 +136,7 @@ mod tests {
             id: UserShareId::new(),
             user_id: user.id,
             resource: SharedResource::ContentSecurityPolicy {
-                policy_name: "my-policy".to_string(),
+                policy_id: uuid!("00000000-0000-0000-0000-000000000000"),
             },
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
         };

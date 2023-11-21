@@ -5,8 +5,8 @@ use crate::{
     server::AppState,
     users::{User, UserShare},
     utils::{
-        certificates_handle_action, web_scraping_handle_action, UtilsAction, UtilsActionParams,
-        UtilsResource, UtilsResourceOperation,
+        certificates_handle_action, web_scraping_handle_action, web_security_handle_action,
+        UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
     },
 };
 use actix_http::Method;
@@ -25,7 +25,7 @@ fn extract_resource(req: &HttpRequest) -> Option<UtilsResource> {
 
 fn extract_action(req: &HttpRequest, resource: &UtilsResource) -> Option<UtilsAction> {
     let match_info = req.match_info();
-    let (Ok(resource_id), Ok(resource_operation)) = (
+    let (Ok(resource_id), resource_operation, generic_operation) = (
         match_info
             .get("resource_id")
             .map(Uuid::parse_str)
@@ -34,19 +34,35 @@ fn extract_action(req: &HttpRequest, resource: &UtilsResource) -> Option<UtilsAc
             .get("resource_operation")
             .map(|operation| UtilsResourceOperation::try_from((resource, operation)))
             .transpose(),
+        match_info.get("resource_operation"),
     ) else {
         return None;
     };
 
-    match (req.method(), resource_id, resource_operation) {
+    match (
+        req.method(),
+        resource_id,
+        resource_operation,
+        generic_operation,
+    ) {
         // Resource collection based actions.
-        (&Method::GET, None, None) => Some(UtilsAction::List),
-        (&Method::POST, None, None) => Some(UtilsAction::Create),
+        (&Method::GET, None, Ok(None), None) => Some(UtilsAction::List),
+        (&Method::POST, None, Ok(None), None) => Some(UtilsAction::Create),
         // Resource based actions.
-        (&Method::GET, Some(resource_id), None) => Some(UtilsAction::Get { resource_id }),
-        (&Method::PUT, Some(resource_id), None) => Some(UtilsAction::Update { resource_id }),
-        (&Method::DELETE, Some(resource_id), None) => Some(UtilsAction::Delete { resource_id }),
-        (&Method::POST, Some(resource_id), Some(operation)) => Some(UtilsAction::Execute {
+        (&Method::GET, Some(resource_id), Ok(None), None) => Some(UtilsAction::Get { resource_id }),
+        (&Method::PUT, Some(resource_id), Ok(None), None) => {
+            Some(UtilsAction::Update { resource_id })
+        }
+        (&Method::DELETE, Some(resource_id), Ok(None), None) => {
+            Some(UtilsAction::Delete { resource_id })
+        }
+        (&Method::POST, Some(resource_id), _, Some("share")) => {
+            Some(UtilsAction::Share { resource_id })
+        }
+        (&Method::POST, Some(resource_id), _, Some("unshare")) => {
+            Some(UtilsAction::Unshare { resource_id })
+        }
+        (&Method::POST, Some(resource_id), Ok(Some(operation)), _) => Some(UtilsAction::Execute {
             resource_id,
             operation,
         }),
@@ -117,6 +133,9 @@ pub async fn utils_action(
         UtilsResource::WebScrapingResources | UtilsResource::WebScrapingContent => {
             web_scraping_handle_action(user, &state.api, action, resource, params).await
         }
+        UtilsResource::WebSecurityContentSecurityPolicies => {
+            web_security_handle_action(user, &state.api, action, resource, params).await
+        }
     };
 
     match action_result {
@@ -128,6 +147,8 @@ pub async fn utils_action(
                 UtilsAction::Create
                 | UtilsAction::Update { .. }
                 | UtilsAction::Delete { .. }
+                | UtilsAction::Share { .. }
+                | UtilsAction::Unshare { .. }
                 | UtilsAction::Execute { .. } => HttpResponse::NoContent().finish(),
             }
         }),
@@ -230,6 +251,7 @@ mod tests {
             UtilsResource::CertificatesTemplates,
             UtilsResource::WebScrapingResources,
             UtilsResource::WebScrapingContent,
+            UtilsResource::WebSecurityContentSecurityPolicies,
         ] {
             assert!(extract_action(
                 &TestRequest::with_uri("https://secutils.dev/api/utils")
@@ -258,6 +280,7 @@ mod tests {
             UtilsResource::CertificatesTemplates,
             UtilsResource::WebScrapingResources,
             UtilsResource::WebScrapingContent,
+            UtilsResource::WebSecurityContentSecurityPolicies,
         ] {
             assert_eq!(
                 extract_action(
@@ -311,6 +334,30 @@ mod tests {
                 ),
                 Some(UtilsAction::Delete { resource_id })
             );
+
+            assert_eq!(
+                extract_action(
+                    &TestRequest::with_uri("https://secutils.dev/api/utils")
+                        .method(Method::POST)
+                        .param("resource_id", resource_id.to_string())
+                        .param("resource_operation", "share")
+                        .to_http_request(),
+                    &resource,
+                ),
+                Some(UtilsAction::Share { resource_id })
+            );
+
+            assert_eq!(
+                extract_action(
+                    &TestRequest::with_uri("https://secutils.dev/api/utils")
+                        .method(Method::POST)
+                        .param("resource_id", resource_id.to_string())
+                        .param("resource_operation", "unshare")
+                        .to_http_request(),
+                    &resource,
+                ),
+                Some(UtilsAction::Unshare { resource_id })
+            );
         }
     }
 
@@ -331,36 +378,6 @@ mod tests {
             Some(UtilsAction::Execute {
                 resource_id,
                 operation: UtilsResourceOperation::CertificatesTemplateGenerate
-            })
-        );
-
-        assert_eq!(
-            extract_action(
-                &TestRequest::with_uri("https://secutils.dev/api/utils")
-                    .method(Method::POST)
-                    .param("resource_id", resource_id.to_string())
-                    .param("resource_operation", "share")
-                    .to_http_request(),
-                &resource,
-            ),
-            Some(UtilsAction::Execute {
-                resource_id,
-                operation: UtilsResourceOperation::CertificatesTemplateShare
-            })
-        );
-
-        assert_eq!(
-            extract_action(
-                &TestRequest::with_uri("https://secutils.dev/api/utils")
-                    .method(Method::POST)
-                    .param("resource_id", resource_id.to_string())
-                    .param("resource_operation", "unshare")
-                    .to_http_request(),
-                &resource,
-            ),
-            Some(UtilsAction::Execute {
-                resource_id,
-                operation: UtilsResourceOperation::CertificatesTemplateUnshare
             })
         );
     }
@@ -454,6 +471,27 @@ mod tests {
             Some(UtilsAction::Execute {
                 resource_id,
                 operation: UtilsResourceOperation::WebScrapingClearHistory
+            })
+        );
+    }
+
+    #[test]
+    fn can_extract_web_security_content_security_policies_actions() {
+        let resource = UtilsResource::WebSecurityContentSecurityPolicies;
+        let resource_id = uuid!("00000000-0000-0000-0000-000000000000");
+
+        assert_eq!(
+            extract_action(
+                &TestRequest::with_uri("https://secutils.dev/api/utils")
+                    .method(Method::POST)
+                    .param("resource_id", resource_id.to_string())
+                    .param("resource_operation", "serialize")
+                    .to_http_request(),
+                &resource,
+            ),
+            Some(UtilsAction::Execute {
+                resource_id,
+                operation: UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize
             })
         );
     }

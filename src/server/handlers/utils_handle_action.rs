@@ -30,24 +30,12 @@ pub async fn utils_handle_action(
         // user, act on behalf of the currently authenticated user.
         (Some(user), Some(user_share)) if user.id == user_share.user_id => user,
 
-        // If action is targeting a shared resource that doesn't belong to currently authenticated
-        // user or user isn't authenticated, act on behalf of the shared resource owner assuming
-        // action is authorized to be performed on a shared resource.
-        (_, Some(user_share)) if user_share.is_legacy_action_authorized(&action) => {
-            // If user isn't found forbid any actions on the shared resource.
-            if let Some(user) = state.api.users().get(user_share.user_id).await? {
-                user
-            } else {
-                return Err(SecutilsError::access_forbidden());
-            }
-        }
-
         // Otherwise return "Access forbidden" error.
         _ => return Err(SecutilsError::access_forbidden()),
     };
 
     // Validate action parameters.
-    if let Err(err) = action.validate(&state.api).await {
+    if let Err(err) = action.validate().await {
         log::error!(
             "User ({}) tried to perform invalid utility action: {err:?}",
             *user.id

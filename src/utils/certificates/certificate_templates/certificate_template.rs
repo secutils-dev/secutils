@@ -13,7 +13,7 @@ pub struct CertificateTemplate {
     pub name: String,
     /// Attributes of the certificate that the template defines.
     pub attributes: CertificateAttributes,
-    /// Date and time when the private key was created.
+    /// Date and time when the certificate template was created.
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
 }
@@ -45,7 +45,7 @@ mod tests {
                 .set_common_name("CA Issuer")
                 .set_country("US")
                 .build(),
-                 // January 1, 2000 11:00:00
+                // January 1, 2000 11:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?
             },
             @r###"

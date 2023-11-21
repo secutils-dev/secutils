@@ -49,7 +49,7 @@ mod tests {
         assert_debug_snapshot!(UserShare::try_from(RawUserShare {
             id: uuid!("00000000-0000-0000-0000-000000000001").hyphenated(),
             user_id: 1,
-            resource: vec![0, 9, 109, 121, 45, 112, 111, 108, 105, 99, 121],
+            resource: vec![0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
             // January 1, 2000 10:00:00
             created_at: 946720800,
         })?, @r###"
@@ -61,7 +61,7 @@ mod tests {
                 1,
             ),
             resource: ContentSecurityPolicy {
-                policy_name: "my-policy",
+                policy_id: 00000000-0000-0000-0000-000000000001,
             },
             created_at: 2000-01-01 10:00:00.0 +00:00:00,
         }
@@ -75,7 +75,7 @@ mod tests {
         assert_debug_snapshot!(RawUserShare::try_from(&UserShare {
             id: uuid!("00000000-0000-0000-0000-000000000001").into(),
             user_id: 1.try_into()?,
-            resource: SharedResource::content_security_policy("my-policy"),
+            resource: SharedResource::content_security_policy(uuid!("00000000-0000-0000-0000-000000000001")),
             // January 1, 2000 10:00:00
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
         })?, @r###"
@@ -86,16 +86,23 @@ mod tests {
             user_id: 1,
             resource: [
                 0,
-                9,
-                109,
-                121,
-                45,
-                112,
-                111,
-                108,
-                105,
-                99,
-                121,
+                16,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
             ],
             created_at: 946720800,
         }
@@ -109,7 +116,9 @@ mod tests {
         assert!(UserShare::try_from(RawUserShare {
             id: uuid!("00000000-0000-0000-0000-000000000001").hyphenated(),
             user_id: -1,
-            resource: postcard::to_stdvec(&SharedResource::content_security_policy("my-policy"))?,
+            resource: postcard::to_stdvec(&SharedResource::content_security_policy(uuid!(
+                "00000000-0000-0000-0000-000000000001"
+            )))?,
             // January 1, 2000 10:00:00
             created_at: 946720800,
         })

@@ -45,11 +45,13 @@ impl From<UserShare> for ClientUserShare {
 mod tests {
     use super::{ClientSharedResource, ClientUserShare};
     use crate::users::{SharedResource, UserId, UserShare, UserShareId};
+    use uuid::uuid;
 
     #[test]
     fn can_create_client_user_share() {
         let user_share_id = UserShareId::new();
-        let resource = SharedResource::content_security_policy("my-policy");
+        let resource =
+            SharedResource::content_security_policy(uuid!("00000000-0000-0000-0000-000000000001"));
         let created_at = time::OffsetDateTime::now_utc();
 
         assert_eq!(

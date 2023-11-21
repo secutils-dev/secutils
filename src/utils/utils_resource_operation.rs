@@ -5,11 +5,10 @@ use crate::utils::UtilsResource;
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum UtilsResourceOperation {
     CertificatesTemplateGenerate,
-    CertificatesTemplateShare,
-    CertificatesTemplateUnshare,
     CertificatesPrivateKeyExport,
     WebScrapingGetHistory,
     WebScrapingClearHistory,
+    WebSecurityContentSecurityPolicySerialize,
 }
 
 impl UtilsResourceOperation {
@@ -20,6 +19,7 @@ impl UtilsResourceOperation {
             Self::CertificatesTemplateGenerate
                 | Self::CertificatesPrivateKeyExport
                 | Self::WebScrapingGetHistory
+                | Self::WebSecurityContentSecurityPolicySerialize
         )
     }
 }
@@ -38,12 +38,6 @@ impl TryFrom<(&UtilsResource, &str)> for UtilsResourceOperation {
             UtilsResource::CertificatesTemplates if operation == "generate" => {
                 Ok(UtilsResourceOperation::CertificatesTemplateGenerate)
             }
-            UtilsResource::CertificatesTemplates if operation == "share" => {
-                Ok(UtilsResourceOperation::CertificatesTemplateShare)
-            }
-            UtilsResource::CertificatesTemplates if operation == "unshare" => {
-                Ok(UtilsResourceOperation::CertificatesTemplateUnshare)
-            }
 
             // Web scraping custom actions.
             UtilsResource::WebScrapingResources | UtilsResource::WebScrapingContent
@@ -55,6 +49,11 @@ impl TryFrom<(&UtilsResource, &str)> for UtilsResourceOperation {
                 if operation == "clear" =>
             {
                 Ok(UtilsResourceOperation::WebScrapingClearHistory)
+            }
+
+            // Web security custom actions.
+            UtilsResource::WebSecurityContentSecurityPolicies if operation == "serialize" => {
+                Ok(UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize)
             }
 
             _ => Err(()),
@@ -72,11 +71,13 @@ mod tests {
         assert!(UtilsResourceOperation::CertificatesPrivateKeyExport.requires_params());
 
         assert!(UtilsResourceOperation::CertificatesTemplateGenerate.requires_params());
-        assert!(!UtilsResourceOperation::CertificatesTemplateShare.requires_params());
-        assert!(!UtilsResourceOperation::CertificatesTemplateUnshare.requires_params());
 
         assert!(UtilsResourceOperation::WebScrapingGetHistory.requires_params());
         assert!(!UtilsResourceOperation::WebScrapingClearHistory.requires_params());
+
+        assert!(
+            UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize.requires_params()
+        );
     }
 
     #[test]
@@ -101,20 +102,12 @@ mod tests {
         ))
         .is_err());
 
-        assert_eq!(
-            UtilsResourceOperation::try_from((&UtilsResource::CertificatesTemplates, "share")),
-            Ok(UtilsResourceOperation::CertificatesTemplateShare)
-        );
         assert!(UtilsResourceOperation::try_from((
             &UtilsResource::CertificatesPrivateKeys,
             "share"
         ))
         .is_err());
 
-        assert_eq!(
-            UtilsResourceOperation::try_from((&UtilsResource::CertificatesTemplates, "unshare")),
-            Ok(UtilsResourceOperation::CertificatesTemplateUnshare)
-        );
         assert!(UtilsResourceOperation::try_from((
             &UtilsResource::CertificatesPrivateKeys,
             "unshare"
@@ -140,6 +133,19 @@ mod tests {
         assert!(UtilsResourceOperation::try_from((
             &UtilsResource::CertificatesPrivateKeys,
             "history"
+        ))
+        .is_err());
+
+        assert_eq!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebSecurityContentSecurityPolicies,
+                "serialize"
+            )),
+            Ok(UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize)
+        );
+        assert!(UtilsResourceOperation::try_from((
+            &UtilsResource::WebSecurityContentSecurityPolicies,
+            "generate"
         ))
         .is_err());
     }

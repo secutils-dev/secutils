@@ -61,7 +61,9 @@ mod tests {
             user_share: Some(ClientUserShare::from(UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
                 user_id: UserId::default(),
-                resource: SharedResource::content_security_policy("my-policy"),
+                resource: SharedResource::content_security_policy(uuid!(
+                    "00000000-0000-0000-0000-000000000001"
+                )),
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })),
             settings: Some(serde_json::from_value(serde_json::to_value(
@@ -102,7 +104,7 @@ mod tests {
             "id": "00000000-0000-0000-0000-000000000001",
             "resource": {
               "type": "contentSecurityPolicy",
-              "policyName": "my-policy"
+              "policyId": "00000000-0000-0000-0000-000000000001"
             },
             "createdAt": 946720800
           },

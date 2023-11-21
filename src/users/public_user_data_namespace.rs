@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub enum PublicUserDataNamespace {
     AutoResponders,
-    ContentSecurityPolicies,
     UserSettings,
 }
 
@@ -13,7 +12,6 @@ impl AsRef<str> for PublicUserDataNamespace {
     fn as_ref(&self) -> &str {
         match self {
             PublicUserDataNamespace::AutoResponders => "autoResponders",
-            PublicUserDataNamespace::ContentSecurityPolicies => "contentSecurityPolicies",
             PublicUserDataNamespace::UserSettings => "userSettings",
         }
     }
@@ -38,11 +36,6 @@ mod tests {
         );
 
         assert_eq!(
-            PublicUserDataNamespace::ContentSecurityPolicies.as_ref(),
-            "contentSecurityPolicies"
-        );
-
-        assert_eq!(
             PublicUserDataNamespace::UserSettings.as_ref(),
             "userSettings"
         );
@@ -54,7 +47,6 @@ mod tests {
     fn serialization() -> anyhow::Result<()> {
         insta::with_settings!({ sort_maps => true }, {
             assert_json_snapshot!(PublicUserDataNamespace::AutoResponders, @r###""autoResponders""###);
-            assert_json_snapshot!(PublicUserDataNamespace::ContentSecurityPolicies, @r###""contentSecurityPolicies""###);
             assert_json_snapshot!(PublicUserDataNamespace::UserSettings, @r###""userSettings""###);
         });
 
@@ -66,11 +58,6 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<PublicUserDataNamespace>(r#""autoResponders""#)?,
             PublicUserDataNamespace::AutoResponders
-        );
-
-        assert_eq!(
-            serde_json::from_str::<PublicUserDataNamespace>(r#""contentSecurityPolicies""#)?,
-            PublicUserDataNamespace::ContentSecurityPolicies
         );
 
         assert_eq!(

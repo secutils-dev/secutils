@@ -4,16 +4,14 @@ use uuid::Uuid;
 /// Describes a resource that can be shared with other users.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum SharedResource {
-    ContentSecurityPolicy { policy_name: String },
+    ContentSecurityPolicy { policy_id: Uuid },
     CertificateTemplate { template_id: Uuid },
 }
 
 impl SharedResource {
     /// Creates a new shared resource referencing a user content security policy.
-    pub fn content_security_policy<T: Into<String>>(policy_name: T) -> SharedResource {
-        SharedResource::ContentSecurityPolicy {
-            policy_name: policy_name.into(),
-        }
+    pub fn content_security_policy(policy_id: Uuid) -> SharedResource {
+        SharedResource::ContentSecurityPolicy { policy_id }
     }
 
     /// Creates a new shared resource referencing a user certificate template.
@@ -29,7 +27,7 @@ impl SharedResource {
 #[serde(tag = "type")]
 pub enum ClientSharedResource {
     #[serde(rename_all = "camelCase")]
-    ContentSecurityPolicy { policy_name: String },
+    ContentSecurityPolicy { policy_id: Uuid },
     #[serde(rename_all = "camelCase")]
     CertificateTemplate { template_id: Uuid },
 }
@@ -37,8 +35,8 @@ pub enum ClientSharedResource {
 impl From<SharedResource> for ClientSharedResource {
     fn from(value: SharedResource) -> Self {
         match value {
-            SharedResource::ContentSecurityPolicy { policy_name } => {
-                Self::ContentSecurityPolicy { policy_name }
+            SharedResource::ContentSecurityPolicy { policy_id } => {
+                Self::ContentSecurityPolicy { policy_id }
             }
             SharedResource::CertificateTemplate { template_id } => {
                 Self::CertificateTemplate { template_id }
@@ -55,9 +53,9 @@ mod tests {
     #[test]
     fn can_create_csp_shared_resource() {
         assert_eq!(
-            SharedResource::content_security_policy("my-policy"),
+            SharedResource::content_security_policy(uuid!("00000000-0000-0000-0000-000000000001")),
             SharedResource::ContentSecurityPolicy {
-                policy_name: "my-policy".to_string()
+                policy_id: uuid!("00000000-0000-0000-0000-000000000001")
             }
         );
 
@@ -72,9 +70,11 @@ mod tests {
     #[test]
     fn can_create_client_shared_resource() {
         assert_eq!(
-            ClientSharedResource::from(SharedResource::content_security_policy("my-policy")),
+            ClientSharedResource::from(SharedResource::content_security_policy(uuid!(
+                "00000000-0000-0000-0000-000000000001"
+            ))),
             ClientSharedResource::ContentSecurityPolicy {
-                policy_name: "my-policy".to_string()
+                policy_id: uuid!("00000000-0000-0000-0000-000000000001")
             }
         );
 
