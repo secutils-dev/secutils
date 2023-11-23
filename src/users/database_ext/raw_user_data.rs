@@ -123,22 +123,6 @@ mod tests {
             }
         );
 
-        assert_eq!(
-            RawUserData::try_from(&UserData::new_with_key(
-                UserId::default(),
-                "some-key",
-                "data",
-                OffsetDateTime::from_unix_timestamp(946720800)?
-            ))?,
-            RawUserData {
-                user_id: *UserId::default(),
-                key: Some("some-key".to_string()),
-                value: serde_json::to_vec("data")?,
-                // January 1, 2000 11:00:00
-                timestamp: 946720800,
-            }
-        );
-
         Ok(())
     }
 }

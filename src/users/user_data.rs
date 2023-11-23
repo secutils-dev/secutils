@@ -18,18 +18,4 @@ impl<V> UserData<V> {
             timestamp,
         }
     }
-
-    pub fn new_with_key<K: Into<String>>(
-        user_id: UserId,
-        key: K,
-        value: V,
-        timestamp: OffsetDateTime,
-    ) -> Self {
-        Self {
-            user_id,
-            key: Some(key.into()),
-            value,
-            timestamp,
-        }
-    }
 }

@@ -102,9 +102,6 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
                 PublicUserDataNamespace::UserSettings => {
                     self.set_user_settings_data(user_data).await
                 }
-                namespace => {
-                    bail!("Namespace is not supported: {}.", namespace.as_ref())
-                }
             },
             UserDataNamespace::Internal(_) => {
                 self.api.db.upsert_user_data(user_data_key, user_data).await

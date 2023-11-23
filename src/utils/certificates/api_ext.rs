@@ -812,7 +812,7 @@ mod tests {
         })
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_create_private_key() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -866,7 +866,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn fails_to_create_private_key_if_name_is_invalid() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -913,7 +913,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_change_private_key_passphrase() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -1072,7 +1072,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_change_private_key_name() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -1187,7 +1187,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn fails_to_update_private_key_if_params_are_invalid() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -1288,7 +1288,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_export_private_key() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -1400,7 +1400,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_remove_private_key() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -1438,7 +1438,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_return_multiple_private_keys() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -1504,7 +1504,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_create_certificate_template() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -1530,7 +1530,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn fails_to_create_certificate_template_if_name_is_invalid() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -1573,7 +1573,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_change_certificate_template_attributes() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -1649,7 +1649,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_change_certificate_template_name() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -1747,7 +1747,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn fails_to_update_certificate_template_if_params_are_invalid() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -1823,7 +1823,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_remove_certificate_template() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -1860,7 +1860,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_return_multiple_certificate_templates() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -1987,7 +1987,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn correctly_generates_x509_certificate() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -2034,7 +2034,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn properly_shares_certificate_template() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -2075,7 +2075,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn properly_unshares_certificate_template() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -2130,7 +2130,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn properly_unshares_certificate_template_when_it_is_removed() -> anyhow::Result<()> {
         let api = mock_api().await?;
 

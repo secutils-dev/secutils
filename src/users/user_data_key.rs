@@ -80,13 +80,6 @@ mod tests {
                 key: None
             }
         );
-        assert_eq!(
-            UserDataKey::from((PublicUserDataNamespace::AutoResponders, "my-responder")),
-            UserDataKey {
-                namespace: UserDataNamespace::Public(PublicUserDataNamespace::AutoResponders),
-                key: Some("my-responder")
-            }
-        );
 
         Ok(())
     }

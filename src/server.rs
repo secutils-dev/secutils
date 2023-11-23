@@ -170,16 +170,14 @@ pub async fn run(
                             .route("/remove", web::post().to(handlers::security_users_remove)),
                     )
                     .service(
-                        web::scope("/utils")
-                            .route("/action", web::post().to(handlers::utils_handle_action))
-                            .service(
-                                web::resource([
-                                    "/{area}/{resource}",
-                                    "/{area}/{resource}/{resource_id}",
-                                    "/{area}/{resource}/{resource_id}/{resource_operation}",
-                                ])
-                                .to(handlers::utils_action),
-                            ),
+                        web::scope("/utils").service(
+                            web::resource([
+                                "/{area}/{resource}",
+                                "/{area}/{resource}/{resource_id}",
+                                "/{area}/{resource}/{resource_id}/{resource_operation}",
+                            ])
+                            .to(handlers::utils_action),
+                        ),
                     )
                     .service(
                         web::scope("/ui").route("/state", web::get().to(handlers::ui_state_get)),

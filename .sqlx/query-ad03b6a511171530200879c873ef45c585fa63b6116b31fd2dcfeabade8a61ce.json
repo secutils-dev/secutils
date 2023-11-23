@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO user_data_webhooks_responders_history (user_id, id, responder_id, data, created_at)\n        VALUES ( ?1, ?2, ?3, ?4, ?5 )\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "ad03b6a511171530200879c873ef45c585fa63b6116b31fd2dcfeabade8a61ce"
+}

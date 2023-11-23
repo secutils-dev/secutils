@@ -4,14 +4,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Ord, PartialOrd, Copy, Clone)]
 #[serde(rename_all = "camelCase")]
 pub enum PublicUserDataNamespace {
-    AutoResponders,
     UserSettings,
 }
 
 impl AsRef<str> for PublicUserDataNamespace {
     fn as_ref(&self) -> &str {
         match self {
-            PublicUserDataNamespace::AutoResponders => "autoResponders",
             PublicUserDataNamespace::UserSettings => "userSettings",
         }
     }
@@ -31,11 +29,6 @@ mod tests {
     #[test]
     fn proper_str_reference() -> anyhow::Result<()> {
         assert_eq!(
-            PublicUserDataNamespace::AutoResponders.as_ref(),
-            "autoResponders"
-        );
-
-        assert_eq!(
             PublicUserDataNamespace::UserSettings.as_ref(),
             "userSettings"
         );
@@ -46,7 +39,6 @@ mod tests {
     #[test]
     fn serialization() -> anyhow::Result<()> {
         insta::with_settings!({ sort_maps => true }, {
-            assert_json_snapshot!(PublicUserDataNamespace::AutoResponders, @r###""autoResponders""###);
             assert_json_snapshot!(PublicUserDataNamespace::UserSettings, @r###""userSettings""###);
         });
 
@@ -55,11 +47,6 @@ mod tests {
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
-        assert_eq!(
-            serde_json::from_str::<PublicUserDataNamespace>(r#""autoResponders""#)?,
-            PublicUserDataNamespace::AutoResponders
-        );
-
         assert_eq!(
             serde_json::from_str::<PublicUserDataNamespace>(r#""userSettings""#)?,
             PublicUserDataNamespace::UserSettings

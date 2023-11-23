@@ -19,7 +19,6 @@ mod user_data_get;
 mod user_data_set;
 mod user_get;
 mod utils_action;
-mod utils_handle_action;
 mod webhooks_responders;
 
 pub use self::{
@@ -47,6 +46,5 @@ pub use self::{
     user_data_set::user_data_set,
     user_get::user_get,
     utils_action::utils_action,
-    utils_handle_action::utils_handle_action,
     webhooks_responders::webhooks_responders,
 };

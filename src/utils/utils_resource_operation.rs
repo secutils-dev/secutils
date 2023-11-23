@@ -6,6 +6,8 @@ use crate::utils::UtilsResource;
 pub enum UtilsResourceOperation {
     CertificatesTemplateGenerate,
     CertificatesPrivateKeyExport,
+    WebhooksRespondersGetHistory,
+    WebhooksRespondersClearHistory,
     WebScrapingGetHistory,
     WebScrapingClearHistory,
     WebSecurityContentSecurityPolicySerialize,
@@ -37,6 +39,14 @@ impl TryFrom<(&UtilsResource, &str)> for UtilsResourceOperation {
             // Certificate templates custom actions.
             UtilsResource::CertificatesTemplates if operation == "generate" => {
                 Ok(UtilsResourceOperation::CertificatesTemplateGenerate)
+            }
+
+            // Webhooks custom actions.
+            UtilsResource::WebhooksResponders if operation == "history" => {
+                Ok(UtilsResourceOperation::WebhooksRespondersGetHistory)
+            }
+            UtilsResource::WebhooksResponders if operation == "clear" => {
+                Ok(UtilsResourceOperation::WebhooksRespondersClearHistory)
             }
 
             // Web scraping custom actions.
@@ -71,6 +81,9 @@ mod tests {
         assert!(UtilsResourceOperation::CertificatesPrivateKeyExport.requires_params());
 
         assert!(UtilsResourceOperation::CertificatesTemplateGenerate.requires_params());
+
+        assert!(!UtilsResourceOperation::WebhooksRespondersGetHistory.requires_params());
+        assert!(!UtilsResourceOperation::WebhooksRespondersClearHistory.requires_params());
 
         assert!(UtilsResourceOperation::WebScrapingGetHistory.requires_params());
         assert!(!UtilsResourceOperation::WebScrapingClearHistory.requires_params());
@@ -113,6 +126,15 @@ mod tests {
             "unshare"
         ))
         .is_err());
+
+        assert_eq!(
+            UtilsResourceOperation::try_from((&UtilsResource::WebhooksResponders, "history")),
+            Ok(UtilsResourceOperation::WebhooksRespondersGetHistory)
+        );
+        assert_eq!(
+            UtilsResourceOperation::try_from((&UtilsResource::WebhooksResponders, "clear")),
+            Ok(UtilsResourceOperation::WebhooksRespondersClearHistory)
+        );
 
         assert_eq!(
             UtilsResourceOperation::try_from((&UtilsResource::WebScrapingResources, "history")),

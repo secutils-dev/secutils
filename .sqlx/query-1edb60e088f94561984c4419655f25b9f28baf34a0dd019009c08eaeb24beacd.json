@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\nSELECT id, name, path, method, settings, created_at\nFROM user_data_webhooks_responders\nWHERE user_id = ?1\nORDER BY created_at\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "path",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "method",
+        "ordinal": 3,
+        "type_info": "Blob"
+      },
+      {
+        "name": "settings",
+        "ordinal": 4,
+        "type_info": "Blob"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 5,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1edb60e088f94561984c4419655f25b9f28baf34a0dd019009c08eaeb24beacd"
+}

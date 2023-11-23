@@ -6,7 +6,8 @@ use crate::{
     users::{User, UserShare},
     utils::{
         certificates_handle_action, web_scraping_handle_action, web_security_handle_action,
-        UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
+        webhooks_handle_action, UtilsAction, UtilsActionParams, UtilsResource,
+        UtilsResourceOperation,
     },
 };
 use actix_http::Method;
@@ -130,6 +131,9 @@ pub async fn utils_action(
         UtilsResource::CertificatesTemplates | UtilsResource::CertificatesPrivateKeys => {
             certificates_handle_action(user, &state.api, action, resource, params).await
         }
+        UtilsResource::WebhooksResponders => {
+            webhooks_handle_action(user, &state.api, action, resource, params).await
+        }
         UtilsResource::WebScrapingResources | UtilsResource::WebScrapingContent => {
             web_scraping_handle_action(user, &state.api, action, resource, params).await
         }
@@ -187,7 +191,7 @@ mod tests {
             (Some("certificates"), None),
             (None, Some("private_keys")),
             (Some("certificates"), Some("unknown")),
-            (Some("unknown"), Some("private_keys")),
+            (Some("webhooks"), None),
             (Some("web_scraping"), None),
         ] {
             let request = TestRequest::with_uri("https://secutils.dev/api/utils");
@@ -226,6 +230,15 @@ mod tests {
         assert_eq!(
             extract_resource(
                 &TestRequest::with_uri("https://secutils.dev/api/utils")
+                    .param("area", "webhooks")
+                    .param("resource", "responders")
+                    .to_http_request(),
+            ),
+            Some(UtilsResource::WebhooksResponders)
+        );
+        assert_eq!(
+            extract_resource(
+                &TestRequest::with_uri("https://secutils.dev/api/utils")
                     .param("area", "web_scraping")
                     .param("resource", "resources")
                     .to_http_request(),
@@ -249,6 +262,7 @@ mod tests {
         for resource in [
             UtilsResource::CertificatesPrivateKeys,
             UtilsResource::CertificatesTemplates,
+            UtilsResource::WebhooksResponders,
             UtilsResource::WebScrapingResources,
             UtilsResource::WebScrapingContent,
             UtilsResource::WebSecurityContentSecurityPolicies,
@@ -278,6 +292,7 @@ mod tests {
         for resource in [
             UtilsResource::CertificatesPrivateKeys,
             UtilsResource::CertificatesTemplates,
+            UtilsResource::WebhooksResponders,
             UtilsResource::WebScrapingResources,
             UtilsResource::WebScrapingContent,
             UtilsResource::WebSecurityContentSecurityPolicies,
@@ -399,6 +414,42 @@ mod tests {
             Some(UtilsAction::Execute {
                 resource_id,
                 operation: UtilsResourceOperation::CertificatesPrivateKeyExport
+            })
+        );
+    }
+
+    #[test]
+    fn can_extract_webhooks_responders_action() {
+        let resource = UtilsResource::WebhooksResponders;
+        let resource_id = uuid!("00000000-0000-0000-0000-000000000000");
+
+        assert_eq!(
+            extract_action(
+                &TestRequest::with_uri("https://secutils.dev/api/utils")
+                    .method(Method::POST)
+                    .param("resource_id", resource_id.to_string())
+                    .param("resource_operation", "history")
+                    .to_http_request(),
+                &resource,
+            ),
+            Some(UtilsAction::Execute {
+                resource_id,
+                operation: UtilsResourceOperation::WebhooksRespondersGetHistory
+            })
+        );
+
+        assert_eq!(
+            extract_action(
+                &TestRequest::with_uri("https://secutils.dev/api/utils")
+                    .method(Method::POST)
+                    .param("resource_id", resource_id.to_string())
+                    .param("resource_operation", "clear")
+                    .to_http_request(),
+                &resource,
+            ),
+            Some(UtilsAction::Execute {
+                resource_id,
+                operation: UtilsResourceOperation::WebhooksRespondersClearHistory
             })
         );
     }

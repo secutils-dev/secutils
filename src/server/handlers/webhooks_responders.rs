@@ -1,5 +1,6 @@
 use crate::{
-    error::Error as SecutilsError, server::app_state::AppState, utils::AutoResponderRequest,
+    error::Error as SecutilsError, server::app_state::AppState,
+    utils::RespondersRequestCreateParams,
 };
 use actix_http::{body::MessageBody, StatusCode};
 use actix_web::{
@@ -9,7 +10,6 @@ use actix_web::{
 use bytes::Bytes;
 use serde::Deserialize;
 use std::borrow::Cow;
-use time::OffsetDateTime;
 
 const X_REPLACED_PATH_HEADER_NAME: &str = "x-replaced-path";
 
@@ -91,25 +91,39 @@ pub async fn webhooks_responders(
         responder_path.pop();
     }
 
-    // Try to retrieve auto responder by the name.
-    let auto_responders = state.api.auto_responders();
-    let http_responder = match auto_responders
-        .get_auto_responder(user.id, &responder_path)
+    let responder_method = match request.method().try_into() {
+        Ok(responder_method) => responder_method,
+        Err(err) => {
+            log::error!(
+                "Failed to parse HTTP method ({}) into responder method: {:?}",
+                request.method(),
+                err
+            );
+            return Ok(HttpResponse::NotFound().finish());
+        }
+    };
+
+    // Try to retrieve responder by the name.
+    let webhooks = state.api.webhooks();
+    let responder = match webhooks
+        .find_responder(user.id, &responder_path, responder_method)
         .await
     {
-        Ok(Some(auto_responder)) => auto_responder,
+        Ok(Some(responder)) => responder,
         Ok(None) => {
             log::error!(
-                "User ({}) doesn't have HTTP responder ({}) configured.",
+                "User ('{}') doesn't have an HTTP responder ({} {}) configured.",
                 *user.id,
-                responder_path
+                request.method().as_str(),
+                responder_path,
             );
             return Ok(HttpResponse::NotFound().finish());
         }
         Err(err) => {
             log::error!(
-                "Failed to retrieve user ({}) HTTP responder ({}): {:?}.",
+                "Failed to retrieve user ({}) HTTP responder ({} {}): {:?}.",
                 *user.id,
+                request.method().as_str(),
                 responder_path,
                 err
             );
@@ -117,20 +131,8 @@ pub async fn webhooks_responders(
         }
     };
 
-    // Check if responder configured for the HTTP method.
-    if !http_responder.method.matches_http_method(request.method()) {
-        log::error!(
-            "User ({}) has HTTP responder ({}) configured, but for another HTTP method, expected: {:?}, actual: {}.",
-            *user.id,
-            http_responder.path,
-            http_responder.method,
-            request.method()
-        );
-        return Ok(HttpResponse::NotFound().finish());
-    }
-
     // Record request
-    if http_responder.requests_to_track > 0 {
+    if responder.settings.requests_to_track > 0 {
         let headers = request
             .headers()
             .iter()
@@ -141,12 +143,11 @@ pub async fn webhooks_responders(
                 )
             })
             .collect::<Vec<_>>();
-        auto_responders
-            .track_request(
+        webhooks
+            .create_responder_request(
                 user.id,
-                &http_responder,
-                AutoResponderRequest {
-                    timestamp: OffsetDateTime::now_utc(),
+                responder.id,
+                RespondersRequestCreateParams {
                     client_address: request.peer_addr().map(|addr| addr.ip()),
                     method: Cow::Borrowed(request.method().as_str()),
                     headers: if headers.is_empty() {
@@ -165,13 +166,13 @@ pub async fn webhooks_responders(
     }
 
     // Prepare response, set response status code.
-    let status_code = match StatusCode::from_u16(http_responder.status_code) {
+    let status_code = match StatusCode::from_u16(responder.settings.status_code) {
         Ok(status_code) => status_code,
         Err(err) => {
             log::error!(
                 "Failed to parse status code for the user ({}) HTTP responder ({}): {:?}",
                 *user.id,
-                http_responder.path,
+                responder.path,
                 err
             );
             return Ok(HttpResponse::InternalServerError().finish());
@@ -180,7 +181,7 @@ pub async fn webhooks_responders(
 
     // Prepare response, set response headers.
     let mut response = HttpResponse::new(status_code);
-    for (header_name, header_value) in http_responder.headers.iter().flatten() {
+    for (header_name, header_value) in responder.settings.headers.iter().flatten() {
         match (
             HeaderName::from_bytes(header_name.as_bytes()),
             HeaderValue::from_str(header_value),
@@ -193,7 +194,7 @@ pub async fn webhooks_responders(
                     "Failed to parse header name {} for the user ({}) HTTP responder ({}): {:?}",
                     header_name,
                     *user.id,
-                    http_responder.path,
+                    responder.path,
                     err
                 );
                 return Ok(HttpResponse::InternalServerError().finish());
@@ -203,7 +204,7 @@ pub async fn webhooks_responders(
                     "Failed to parse header value {} for the user ({}) HTTP responder ({}): {:?}",
                     header_value,
                     *user.id,
-                    http_responder.path,
+                    responder.path,
                     err
                 );
                 return Ok(HttpResponse::InternalServerError().finish());
@@ -212,7 +213,7 @@ pub async fn webhooks_responders(
     }
 
     // Prepare response, set response body.
-    Ok(if let Some(body) = http_responder.body {
+    Ok(if let Some(body) = responder.settings.body {
         response.set_body(body.boxed())
     } else {
         response
@@ -225,14 +226,15 @@ mod tests {
     use crate::{
         server::handlers::webhooks_responders::PathParams,
         tests::{mock_app_state, mock_user},
-        utils::{AutoResponder, AutoResponderMethod},
+        utils::{ResponderMethod, ResponderSettings, RespondersCreateParams},
     };
-    use actix_http::{body::MessageBody, Payload};
+    use actix_http::{body::MessageBody, Method, Payload};
     use actix_web::{test::TestRequest, web, FromRequest};
     use bytes::Bytes;
     use insta::assert_debug_snapshot;
+    use std::{borrow::Cow, time::Duration};
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_handle_request_with_path_url_type() -> anyhow::Result<()> {
         let app_state = mock_app_state().await?;
 
@@ -241,33 +243,47 @@ mod tests {
         let users = app_state.api.users();
         users.upsert(&user).await?;
 
-        // Insert auto responders data.
-        let responder = AutoResponder {
-            path: "/one/two".to_string(),
-            method: AutoResponderMethod::Any,
-            requests_to_track: 3,
-            status_code: 200,
-            body: Some("body".to_string()),
-            headers: Some(vec![("key".to_string(), "value".to_string())]),
-            delay: None,
-        };
-        app_state
+        // Insert responders data.
+        let responder = app_state
             .api
-            .auto_responders()
-            .upsert_auto_responder(user.id, responder)
+            .webhooks()
+            .create_responder(
+                user.id,
+                RespondersCreateParams {
+                    name: "name_one".to_string(),
+                    path: "/one/two".to_string(),
+                    method: ResponderMethod::Any,
+                    settings: ResponderSettings {
+                        requests_to_track: 3,
+                        status_code: 200,
+                        body: Some("body".to_string()),
+                        headers: Some(vec![("key".to_string(), "value".to_string())]),
+                        delay: Duration::from_millis(0),
+                    },
+                },
+            )
             .await?;
 
         let request =
             TestRequest::with_uri("https://secutils.dev/api/webhooks/dev-handle-1/one/two")
+                .method(Method::PUT)
+                .insert_header(("x-key", "x-value"))
+                .insert_header(("x-key-2", "x-value-2"))
                 .param("user_handle", "dev-handle-1")
                 .param("responder_path", "one/two")
                 .to_http_request();
         let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
             .await
             .unwrap();
-        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
-            .await
-            .unwrap();
+        let app_state = web::Data::new(app_state);
+        let response = webhooks_responders(
+            app_state.clone(),
+            request,
+            Bytes::from_static(b"incoming-body"),
+            path,
+        )
+        .await
+        .unwrap();
         assert_debug_snapshot!(response, @r###"
         HttpResponse {
             error: None,
@@ -283,10 +299,41 @@ mod tests {
         let body = response.into_body().try_into_bytes().unwrap();
         assert_eq!(body, Bytes::from_static(b"body"));
 
+        let mut responder_requests = app_state
+            .api
+            .webhooks()
+            .get_responder_requests(user.id, responder.id)
+            .await?;
+        assert_eq!(responder_requests.len(), 1);
+        assert_eq!(responder_requests[0].method, "PUT");
+
+        let headers = responder_requests[0].headers.as_mut().unwrap();
+        headers.sort_by(|(name1, _), (name2, _)| name1.cmp(name2));
+        assert_eq!(
+            headers,
+            [
+                (
+                    Cow::Borrowed("x-key"),
+                    Cow::Borrowed([120, 45, 118, 97, 108, 117, 101].as_ref())
+                ),
+                (
+                    Cow::Borrowed("x-key-2"),
+                    Cow::Borrowed([120, 45, 118, 97, 108, 117, 101, 45, 50].as_ref())
+                ),
+            ]
+            .as_ref()
+        );
+        assert_eq!(
+            responder_requests[0].body,
+            Some(Cow::Borrowed(
+                [105, 110, 99, 111, 109, 105, 110, 103, 45, 98, 111, 100, 121].as_ref()
+            ))
+        );
+
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_handle_request_with_subdomain_url_type() -> anyhow::Result<()> {
         let app_state = mock_app_state().await?;
 
@@ -295,20 +342,25 @@ mod tests {
         let users = app_state.api.users();
         users.upsert(&user).await?;
 
-        // Insert auto responders data.
-        let responder = AutoResponder {
-            path: "/one/two".to_string(),
-            method: AutoResponderMethod::Any,
-            requests_to_track: 3,
-            status_code: 200,
-            body: Some("body".to_string()),
-            headers: Some(vec![("key".to_string(), "value".to_string())]),
-            delay: None,
-        };
-        app_state
+        // Insert responders data.
+        let responder = app_state
             .api
-            .auto_responders()
-            .upsert_auto_responder(user.id, responder)
+            .webhooks()
+            .create_responder(
+                user.id,
+                RespondersCreateParams {
+                    name: "name_one".to_string(),
+                    path: "/one/two".to_string(),
+                    method: ResponderMethod::Any,
+                    settings: ResponderSettings {
+                        requests_to_track: 3,
+                        status_code: 200,
+                        body: Some("body".to_string()),
+                        headers: Some(vec![("key".to_string(), "value".to_string())]),
+                        delay: Duration::from_millis(0),
+                    },
+                },
+            )
             .await?;
 
         let request = TestRequest::with_uri("https://dev-handle-1.webhooks.secutils.dev/one/two")
@@ -318,7 +370,8 @@ mod tests {
         let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
             .await
             .unwrap();
-        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+        let app_state = web::Data::new(app_state);
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
             .await
             .unwrap();
         assert_debug_snapshot!(response, @r###"
@@ -336,10 +389,17 @@ mod tests {
         let body = response.into_body().try_into_bytes().unwrap();
         assert_eq!(body, Bytes::from_static(b"body"));
 
+        let responder_requests = app_state
+            .api
+            .webhooks()
+            .get_responder_requests(user.id, responder.id)
+            .await?;
+        assert_eq!(responder_requests.len(), 1);
+
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_handle_request_with_subdomain_url_type_for_root_path() -> anyhow::Result<()> {
         let app_state = mock_app_state().await?;
 
@@ -348,20 +408,25 @@ mod tests {
         let users = app_state.api.users();
         users.upsert(&user).await?;
 
-        // Insert auto responders data.
-        let responder = AutoResponder {
-            path: "/".to_string(),
-            method: AutoResponderMethod::Any,
-            requests_to_track: 3,
-            status_code: 200,
-            body: Some("body".to_string()),
-            headers: Some(vec![("key".to_string(), "value".to_string())]),
-            delay: None,
-        };
-        app_state
+        // Insert responders data.
+        let responder = app_state
             .api
-            .auto_responders()
-            .upsert_auto_responder(user.id, responder)
+            .webhooks()
+            .create_responder(
+                user.id,
+                RespondersCreateParams {
+                    name: "name_one".to_string(),
+                    path: "/".to_string(),
+                    method: ResponderMethod::Any,
+                    settings: ResponderSettings {
+                        requests_to_track: 3,
+                        status_code: 200,
+                        body: Some("body".to_string()),
+                        headers: Some(vec![("key".to_string(), "value".to_string())]),
+                        delay: Duration::from_millis(0),
+                    },
+                },
+            )
             .await?;
 
         let request = TestRequest::with_uri("https://dev-handle-1.webhooks.secutils.dev")
@@ -371,7 +436,8 @@ mod tests {
         let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
             .await
             .unwrap();
-        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+        let app_state = web::Data::new(app_state);
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
             .await
             .unwrap();
         assert_debug_snapshot!(response, @r###"
@@ -388,6 +454,13 @@ mod tests {
 
         let body = response.into_body().try_into_bytes().unwrap();
         assert_eq!(body, Bytes::from_static(b"body"));
+
+        let responder_requests = app_state
+            .api
+            .webhooks()
+            .get_responder_requests(user.id, responder.id)
+            .await?;
+        assert_eq!(responder_requests.len(), 1);
 
         Ok(())
     }

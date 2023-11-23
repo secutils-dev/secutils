@@ -7,8 +7,6 @@ mod utils_action;
 mod utils_action_params;
 mod utils_action_result;
 mod utils_action_validation;
-mod utils_legacy_action;
-mod utils_legacy_action_result;
 mod utils_resource;
 mod utils_resource_operation;
 mod web_scraping;
@@ -27,8 +25,6 @@ pub use self::{
     utils_action::UtilsAction,
     utils_action_params::UtilsActionParams,
     utils_action_result::UtilsActionResult,
-    utils_legacy_action::UtilsLegacyAction,
-    utils_legacy_action_result::UtilsLegacyActionResult,
     utils_resource::UtilsResource,
     utils_resource_operation::UtilsResourceOperation,
     web_scraping::{
@@ -52,8 +48,9 @@ pub use self::{
         ContentSecurityPolicyTrustedTypesDirectiveValue, ContentSecurityPolicyWebrtcDirectiveValue,
     },
     webhooks::{
-        AutoResponder, AutoResponderMethod, AutoResponderRequest, UtilsWebhooksAction,
-        UtilsWebhooksActionResult,
+        webhooks_handle_action, Responder, ResponderMethod, ResponderRequest,
+        ResponderRequestHeaders, ResponderSettings, RespondersCreateParams,
+        RespondersRequestCreateParams, RespondersUpdateParams, WebhooksApiExt,
     },
 };
 
@@ -61,6 +58,6 @@ pub use self::{
 pub mod tests {
     pub use super::{
         certificates::tests::MockCertificateAttributes,
-        web_scraping::tests::MockWebPageTrackerBuilder,
+        web_scraping::tests::MockWebPageTrackerBuilder, webhooks::tests::MockResponderBuilder,
     };
 }

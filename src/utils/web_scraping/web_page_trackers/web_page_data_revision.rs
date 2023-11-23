@@ -6,9 +6,9 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WebPageDataRevision<Tag: WebPageTrackerTag> {
-    /// Unique private key id (UUIDv7).
+    /// Unique web page tracker data revision id (UUIDv7).
     pub id: Uuid,
-    /// Id of the user who owns the tracker.
+    /// Id of the tracker captured data belongs to.
     #[serde(skip_serializing)]
     pub tracker_id: Uuid,
     /// Web page data revision value.

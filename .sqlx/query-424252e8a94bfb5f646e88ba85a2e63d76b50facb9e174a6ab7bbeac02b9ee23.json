@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        DELETE FROM user_data_webhooks_responders_history\n        WHERE user_id = ?1 AND responder_id = ?2\n                        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "424252e8a94bfb5f646e88ba85a2e63d76b50facb9e174a6ab7bbeac02b9ee23"
+}

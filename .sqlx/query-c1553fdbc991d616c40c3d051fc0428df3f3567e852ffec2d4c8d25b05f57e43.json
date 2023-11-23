@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        WITH new_responder(user_id, id, name, path, method, settings, created_at) AS (\n            VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7 )\n        )\n        INSERT INTO user_data_webhooks_responders (user_id, id, name, path, method, settings, created_at)\n        SELECT * FROM new_responder\n        WHERE NOT EXISTS(\n            SELECT id FROM user_data_webhooks_responders \n            WHERE user_id = ?1 AND path = ?4 AND (method = ?8 OR ?5 = ?8)\n        )\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "c1553fdbc991d616c40c3d051fc0428df3f3567e852ffec2d4c8d25b05f57e43"
+}

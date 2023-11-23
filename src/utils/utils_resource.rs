@@ -2,6 +2,7 @@
 pub enum UtilsResource {
     CertificatesTemplates,
     CertificatesPrivateKeys,
+    WebhooksResponders,
     WebScrapingResources,
     WebScrapingContent,
     WebSecurityContentSecurityPolicies,
@@ -14,6 +15,7 @@ impl TryFrom<(&str, &str)> for UtilsResource {
         match (area, resource) {
             ("certificates", "templates") => Ok(UtilsResource::CertificatesTemplates),
             ("certificates", "private_keys") => Ok(UtilsResource::CertificatesPrivateKeys),
+            ("webhooks", "responders") => Ok(UtilsResource::WebhooksResponders),
             ("web_scraping", "resources") => Ok(UtilsResource::WebScrapingResources),
             ("web_scraping", "content") => Ok(UtilsResource::WebScrapingContent),
             ("web_security", "csp") => Ok(UtilsResource::WebSecurityContentSecurityPolicies),
@@ -37,6 +39,10 @@ mod tests {
             Ok(UtilsResource::CertificatesPrivateKeys)
         );
         assert_eq!(
+            UtilsResource::try_from(("webhooks", "responders")),
+            Ok(UtilsResource::WebhooksResponders)
+        );
+        assert_eq!(
             UtilsResource::try_from(("web_scraping", "resources")),
             Ok(UtilsResource::WebScrapingResources)
         );
@@ -51,6 +57,7 @@ mod tests {
 
         assert!(UtilsResource::try_from(("certificates_", "templates")).is_err());
         assert!(UtilsResource::try_from(("certificates_", "private_keys")).is_err());
+        assert!(UtilsResource::try_from(("webhooks", "_responders")).is_err());
         assert!(UtilsResource::try_from(("web_scraping", "_resources")).is_err());
         assert!(UtilsResource::try_from(("web_scraping", "_content")).is_err());
         assert!(UtilsResource::try_from(("web_security", "_csp")).is_err());
