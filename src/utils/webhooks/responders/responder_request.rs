@@ -94,7 +94,7 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<ResponderRequest>(
-                r###"
+                r#"
         {
           "id": "00000000-0000-0000-0000-000000000001",
           "responderId": "00000000-0000-0000-0000-000000000002",
@@ -117,7 +117,7 @@ mod tests {
           ],
           "createdAt": 946720800
         }
-        "###
+        "#
             )?,
             ResponderRequest {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -135,14 +135,14 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<ResponderRequest>(
-                r###"
+                r#"
         {
           "id": "00000000-0000-0000-0000-000000000001",
           "responderId": "00000000-0000-0000-0000-000000000002",
           "method": "POST",
           "createdAt": 946720800
         }
-        "###
+        "#
             )?,
             ResponderRequest {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),

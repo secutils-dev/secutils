@@ -58,7 +58,7 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<ResponderSettings>(
-                r###"
+                r#"
         {
           "requestsToTrack": 10,
           "statusCode": 123,
@@ -71,7 +71,7 @@ mod tests {
           ],
           "delay": 1000
         }
-        "###
+        "#
             )?,
             ResponderSettings {
                 requests_to_track: 10,
@@ -84,12 +84,12 @@ mod tests {
 
         assert_eq!(
             serde_json::from_str::<ResponderSettings>(
-                r###"
+                r#"
         {
           "statusCode": 123,
           "delay": 1000
         }
-        "###
+        "#
             )?,
             ResponderSettings {
                 requests_to_track: 0,

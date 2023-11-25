@@ -73,7 +73,7 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<Responder>(
-                r###"
+                r#"
         {
           "id": "00000000-0000-0000-0000-000000000001",
           "name": "some-name",
@@ -93,7 +93,7 @@ mod tests {
           },
           "createdAt": 946720800
         }
-        "###
+        "#
             )?,
             Responder {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
