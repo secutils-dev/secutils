@@ -139,12 +139,10 @@ impl WebPageTrackersFetchJob {
                         tracker,
                         NotificationContentTemplate::WebPageResourcesTrackerChanges {
                             tracker_name,
-                            changes_count: 0,
-                            error_message: Some(
-                                err.downcast::<SecutilsError>()
-                                    .map(|err| format!("{}", err))
-                                    .unwrap_or_else(|_| "Unknown error".to_string()),
-                            ),
+                            content: Err(err
+                                .downcast::<SecutilsError>()
+                                .map(|err| format!("{}", err))
+                                .unwrap_or_else(|_| "Unknown error".to_string())),
                         },
                     )
                     .await;
@@ -181,8 +179,7 @@ impl WebPageTrackersFetchJob {
                         tracker,
                         NotificationContentTemplate::WebPageResourcesTrackerChanges {
                             tracker_name,
-                            changes_count,
-                            error_message: None,
+                            content: Ok(changes_count),
                         },
                     )
                     .await;
@@ -239,11 +236,10 @@ impl WebPageTrackersFetchJob {
                         tracker,
                         NotificationContentTemplate::WebPageContentTrackerChanges {
                             tracker_name,
-                            error_message: Some(
-                                err.downcast::<SecutilsError>()
-                                    .map(|err| format!("{}", err))
-                                    .unwrap_or_else(|_| "Unknown error".to_string()),
-                            ),
+                            content: Err(err
+                                .downcast::<SecutilsError>()
+                                .map(|err| format!("{}", err))
+                                .unwrap_or_else(|_| "Unknown error".to_string())),
                         },
                     )
                     .await;
@@ -259,14 +255,14 @@ impl WebPageTrackersFetchJob {
                 humantime::format_duration(fetch_start.elapsed())
             );
 
-            if new_revision.is_some() {
+            if let Some(revision) = new_revision {
                 let tracker_name = tracker.name.clone();
                 Self::try_notify_user(
                     &api,
                     tracker,
                     NotificationContentTemplate::WebPageContentTrackerChanges {
                         tracker_name,
-                        error_message: None,
+                        content: Ok(revision.data),
                     },
                 )
                 .await;
@@ -1053,8 +1049,9 @@ mod tests {
                 Template(
                     WebPageResourcesTrackerChanges {
                         tracker_name: "tracker-one",
-                        changes_count: 2,
-                        error_message: None,
+                        content: Ok(
+                            2,
+                        ),
                     },
                 ),
             ),
@@ -1218,8 +1215,7 @@ mod tests {
                 Template(
                     WebPageResourcesTrackerChanges {
                         tracker_name: "tracker-one",
-                        changes_count: 0,
-                        error_message: Some(
+                        content: Err(
                             "some client-error",
                         ),
                     },
@@ -1387,7 +1383,9 @@ mod tests {
                 Template(
                     WebPageContentTrackerChanges {
                         tracker_name: "tracker-one",
-                        error_message: None,
+                        content: Ok(
+                            "other-content",
+                        ),
                     },
                 ),
             ),
@@ -1549,7 +1547,7 @@ mod tests {
                 Template(
                     WebPageContentTrackerChanges {
                         tracker_name: "tracker-one",
-                        error_message: Some(
+                        content: Err(
                             "some client-error",
                         ),
                     },

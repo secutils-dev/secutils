@@ -21,12 +21,11 @@ pub enum NotificationContentTemplate {
     },
     WebPageResourcesTrackerChanges {
         tracker_name: String,
-        changes_count: usize,
-        error_message: Option<String>,
+        content: Result<usize, String>,
     },
     WebPageContentTrackerChanges {
         tracker_name: String,
-        error_message: Option<String>,
+        content: Result<String, String>,
     },
 }
 
@@ -45,27 +44,16 @@ impl NotificationContentTemplate {
             }
             NotificationContentTemplate::WebPageResourcesTrackerChanges {
                 tracker_name,
-                changes_count,
-                error_message,
+                content,
             } => {
-                web_page_resources_tracker_changes::compile_to_email(
-                    api,
-                    tracker_name,
-                    *changes_count,
-                    error_message.as_deref(),
-                )
-                .await
+                web_page_resources_tracker_changes::compile_to_email(api, tracker_name, content)
+                    .await
             }
             NotificationContentTemplate::WebPageContentTrackerChanges {
                 tracker_name,
-                error_message,
+                content,
             } => {
-                web_page_content_tracker_changes::compile_to_email(
-                    api,
-                    tracker_name,
-                    error_message.as_deref(),
-                )
-                .await
+                web_page_content_tracker_changes::compile_to_email(api, tracker_name, content).await
             }
         }
     }
@@ -158,8 +146,7 @@ mod tests {
 
         let mut template = NotificationContentTemplate::WebPageResourcesTrackerChanges {
             tracker_name: "tracker".to_string(),
-            changes_count: 10,
-            error_message: None,
+            content: Ok(10),
         }
         .compile_to_email(&api)
         .await?;
@@ -212,8 +199,7 @@ mod tests {
 
         let mut template = NotificationContentTemplate::WebPageResourcesTrackerChanges {
             tracker_name: "tracker".to_string(),
-            changes_count: 0,
-            error_message: Some("Something went wrong".to_string()),
+            content: Err("Something went wrong".to_string()),
         }
         .compile_to_email(&api)
         .await?;
@@ -266,7 +252,7 @@ mod tests {
 
         let mut template = NotificationContentTemplate::WebPageContentTrackerChanges {
             tracker_name: "tracker".to_string(),
-            error_message: None,
+            content: Ok("content".to_string()),
         }
         .compile_to_email(&api)
         .await?;
@@ -284,7 +270,7 @@ mod tests {
             subject: "[Secutils.dev] Change detected: \"tracker\"",
             text: "\"tracker\" tracker detected content changes. Visit http://localhost:1234/ws/web_scraping__content to learn more.",
             html: Some(
-                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" tracker detected content changes</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .button-link {\n      color: #fff;\n      background-color: #2196F3;\n      padding: 10px 20px;\n      text-decoration: none;\n      border-radius: 5px;\n    }\n  </style>\n  <style>\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" tracker detected content changes</h1>\n  <p>To learn more, visit the <b>Content trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/ws/web_scraping__content\">Web Scraping → Content trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>http://localhost:1234/ws/web_scraping__content</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
+                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" tracker detected content changes</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .button-link {\n      color: #fff;\n      background-color: #2196F3;\n      padding: 10px 20px;\n      text-decoration: none;\n      border-radius: 5px;\n    }\n  </style>\n  <style>\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" tracker detected content changes</h1>\n  <p>Current content: content</p>\n  <p>To learn more, visit the <b>Content trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/ws/web_scraping__content\">Web Scraping → Content trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>http://localhost:1234/ws/web_scraping__content</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
             ),
             attachments: Some(
                 [
@@ -319,7 +305,7 @@ mod tests {
 
         let mut template = NotificationContentTemplate::WebPageContentTrackerChanges {
             tracker_name: "tracker".to_string(),
-            error_message: Some("Something went wrong".to_string()),
+            content: Err("Something went wrong".to_string()),
         }
         .compile_to_email(&api)
         .await?;
