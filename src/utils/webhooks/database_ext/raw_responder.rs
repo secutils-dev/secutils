@@ -64,7 +64,7 @@ impl TryFrom<&Responder> for RawResponder {
         };
 
         Ok(RawResponder {
-            id: item.id.as_ref().to_vec(),
+            id: item.id.into(),
             name: item.name.clone(),
             path: item.path.to_string(),
             method: postcard::to_stdvec(&item.method)?,

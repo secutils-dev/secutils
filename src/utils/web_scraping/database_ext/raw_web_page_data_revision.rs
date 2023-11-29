@@ -28,8 +28,8 @@ impl<Tag: WebPageTrackerTag> TryFrom<&WebPageDataRevision<Tag>> for RawWebPageDa
 
     fn try_from(item: &WebPageDataRevision<Tag>) -> Result<Self, Self::Error> {
         Ok(Self {
-            id: item.id.as_ref().to_vec(),
-            tracker_id: item.tracker_id.as_ref().to_vec(),
+            id: item.id.into(),
+            tracker_id: item.tracker_id.into(),
             data: postcard::to_stdvec(&item.data)?,
             created_at: item.created_at.unix_timestamp(),
         })

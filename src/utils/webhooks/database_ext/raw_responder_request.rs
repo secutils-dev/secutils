@@ -49,8 +49,8 @@ impl<'a> TryFrom<&ResponderRequest<'a>> for RawResponderRequest {
         };
 
         Ok(Self {
-            id: item.id.as_ref().to_vec(),
-            responder_id: item.responder_id.as_ref().to_vec(),
+            id: item.id.into(),
+            responder_id: item.responder_id.into(),
             data: postcard::to_stdvec(&raw_data)?,
             created_at: item.created_at.unix_timestamp(),
         })

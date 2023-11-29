@@ -259,15 +259,14 @@ WHERE namespace = ?1 AND key = ?2 AND timestamp <= ?3
 
     /// Retrieves user share from `user_shares` table using user share ID.
     pub async fn get_user_share(&self, id: UserShareId) -> anyhow::Result<Option<UserShare>> {
-        let id = id.hyphenated();
         query_as!(
             RawUserShare,
             r#"
-SELECT id as "id: uuid::fmt::Hyphenated", user_id, resource, created_at
+SELECT id, user_id, resource, created_at
 FROM user_shares
 WHERE id = ?1
                 "#,
-            id
+            *id
         )
         .fetch_optional(&self.pool)
         .await?
@@ -285,7 +284,7 @@ WHERE id = ?1
         query_as!(
             RawUserShare,
             r#"
-SELECT id as "id: uuid::fmt::Hyphenated", user_id, resource, created_at
+SELECT id, user_id, resource, created_at
 FROM user_shares
 WHERE user_id = ?1 AND resource = ?2
                 "#,
@@ -321,15 +320,14 @@ VALUES (?1, ?2, ?3, ?4)
     /// Removes user share from the `user_shares` table using user share ID and returns removed
     /// user share object if it was found.
     pub async fn remove_user_share(&self, id: UserShareId) -> anyhow::Result<Option<UserShare>> {
-        let id = id.hyphenated();
         query_as!(
             RawUserShare,
             r#"
 DELETE FROM user_shares
 WHERE id = ?1
-RETURNING id as "id: uuid::fmt::Hyphenated", user_id as "user_id!", resource as "resource!", created_at as "created_at!"
+RETURNING id as "id!", user_id as "user_id!", resource as "resource!", created_at as "created_at!"
             "#,
-            id
+            *id
         )
         .fetch_optional(&self.pool)
         .await?

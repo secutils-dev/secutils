@@ -30,7 +30,7 @@ impl TryFrom<&CertificateTemplate> for RawCertificateTemplate {
 
     fn try_from(item: &CertificateTemplate) -> Result<Self, Self::Error> {
         Ok(RawCertificateTemplate {
-            id: item.id.as_ref().to_vec(),
+            id: item.id.into(),
             name: item.name.clone(),
             attributes: postcard::to_stdvec(&RawCertificateAttributes::from(
                 item.attributes.clone(),

@@ -1,12 +1,12 @@
 {
   "db_name": "SQLite",
-  "query": "\nSELECT id as \"id: uuid::fmt::Hyphenated\", user_id, resource, created_at\nFROM user_shares\nWHERE id = ?1\n                ",
+  "query": "\nSELECT id, user_id, resource, created_at\nFROM user_shares\nWHERE id = ?1\n                ",
   "describe": {
     "columns": [
       {
-        "name": "id: uuid::fmt::Hyphenated",
+        "name": "id",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Blob"
       },
       {
         "name": "user_id",
@@ -34,5 +34,5 @@
       false
     ]
   },
-  "hash": "bf66332e2ff3a8f98a2603cf8e28a4afe82accdb06626864268d67b6f8174319"
+  "hash": "9dc09626a7fc6ad1ea5bdd27f2531dd2d7ab6855d4e57c012882bdbe4e84d31e"
 }

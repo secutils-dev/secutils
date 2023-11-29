@@ -34,7 +34,7 @@ impl TryFrom<&PrivateKey> for RawPrivateKey {
 
     fn try_from(item: &PrivateKey) -> Result<Self, Self::Error> {
         Ok(RawPrivateKey {
-            id: item.id.as_ref().to_vec(),
+            id: item.id.into(),
             name: item.name.clone(),
             alg: postcard::to_stdvec(&RawPrivateKeyAlgorithm::from(item.alg))?,
             pkcs8: item.pkcs8.clone(),

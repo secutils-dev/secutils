@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS scheduler_jobs
 (
-    id              TEXT PRIMARY KEY NOT NULL COLLATE NOCASE,
+    id              BLOB PRIMARY KEY,
     last_updated    INTEGER,
     next_tick       INTEGER,
     last_tick       INTEGER,
@@ -16,14 +16,14 @@ CREATE TABLE IF NOT EXISTS scheduler_jobs
 
 CREATE TABLE IF NOT EXISTS scheduler_notifications
 (
-    id              TEXT PRIMARY KEY NOT NULL COLLATE NOCASE,
-    job_id          TEXT NOT NULL COLLATE NOCASE,
+    id              BLOB PRIMARY KEY,
+    job_id          BLOB NOT NULL,
     extra           BLOB
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS scheduler_notification_states
 (
-    id           TEXT NOT NULL COLLATE NOCASE REFERENCES scheduler_notifications(id) ON DELETE CASCADE,
+    id           BLOB NOT NULL REFERENCES scheduler_notifications(id) ON DELETE CASCADE,
     state        INTEGER NOT NULL,
     PRIMARY KEY (id, state)
 ) STRICT;
@@ -34,4 +34,13 @@ CREATE TABLE IF NOT EXISTS notifications
     destination     BLOB NOT NULL,
     content         BLOB NOT NULL,
     scheduled_at    INTEGER NOT NULL
+) STRICT;
+
+-- Table to store user public shares (content security policies, certificate templates etc.).
+CREATE TABLE IF NOT EXISTS user_shares
+(
+    id              BLOB PRIMARY KEY,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    resource        BLOB NOT NULL,
+    created_at      INTEGER NOT NULL
 ) STRICT;

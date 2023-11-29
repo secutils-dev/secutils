@@ -50,7 +50,7 @@ impl TryFrom<&ContentSecurityPolicy> for RawContentSecurityPolicy {
                 .collect::<Result<Vec<_>, _>>()?,
         )?;
         Ok(RawContentSecurityPolicy {
-            id: item.id.as_ref().to_vec(),
+            id: item.id.into(),
             name: item.name.clone(),
             directives,
             created_at: item.created_at.unix_timestamp(),

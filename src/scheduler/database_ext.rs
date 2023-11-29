@@ -11,6 +11,7 @@ use tokio_cron_scheduler::{
     JobAndNextTick, JobId, JobIdAndNotification, JobNotification, JobStoredData, NotificationData,
     NotificationId,
 };
+use uuid::Uuid;
 
 use self::raw_scheduler_job_stored_data::RawSchedulerJobStoredData;
 
@@ -18,21 +19,20 @@ use self::raw_scheduler_job_stored_data::RawSchedulerJobStoredData;
 impl Database {
     /// Retrieves scheduler job from the `scheduler_jobs` table using Job ID.
     pub async fn get_scheduler_job(&self, id: JobId) -> anyhow::Result<Option<JobStoredData>> {
-        let id = id.hyphenated();
         query_as!(
             RawSchedulerJobStoredData,
             r#"
-SELECT id as "id: uuid::fmt::Hyphenated", last_updated, next_tick, last_tick, job_type as "job_type!", count,
+SELECT id, last_updated, next_tick, last_tick, job_type as "job_type!", count,
        ran, stopped, schedule, repeating, repeated_every, extra
 FROM scheduler_jobs
 WHERE id = ?1
                 "#,
             id
         )
-            .fetch_optional(&self.pool)
-            .await?
-            .map(JobStoredData::try_from)
-            .transpose()
+        .fetch_optional(&self.pool)
+        .await?
+        .map(JobStoredData::try_from)
+        .transpose()
     }
 
     /// Upserts scheduler job to the `scheduler_jobs` table.
@@ -75,7 +75,6 @@ ON CONFLICT(id) DO UPDATE SET last_updated=excluded.last_updated, next_tick=excl
         id: JobId,
         stopped: bool,
     ) -> anyhow::Result<()> {
-        let id = id.hyphenated();
         let stopped = stopped as i64;
 
         query!(
@@ -95,7 +94,6 @@ WHERE id = ?1
 
     /// Removes scheduler job from the `scheduler_jobs` table using Job ID.
     pub async fn remove_scheduler_job(&self, id: JobId) -> anyhow::Result<()> {
-        let id = id.hyphenated();
         query!(
             r#"
 DELETE FROM scheduler_jobs
@@ -116,12 +114,11 @@ WHERE id = ?1
     ) -> impl Stream<Item = anyhow::Result<JobStoredData>> + '_ {
         let page_limit = page_size as i64;
         try_stream! {
-            let mut last_id = "".to_string();
-
+            let mut last_id = Uuid::nil();
             loop {
                  let jobs = query_as!(RawSchedulerJobStoredData,
 r#"
-SELECT id as "id: uuid::fmt::Hyphenated", last_updated, next_tick, last_tick, job_type as "job_type!", count,
+SELECT id, last_updated, next_tick, last_tick, job_type as "job_type!", count,
        ran, stopped, schedule, repeating, repeated_every, extra
 FROM scheduler_jobs
 WHERE id > ?1
@@ -135,7 +132,7 @@ LIMIT ?2;
 
                 let is_last_page = jobs.len() < page_size;
                 for job in jobs {
-                    last_id = job.id.to_string();
+                    last_id = Uuid::from_slice(job.id.as_slice())?;
                     yield JobStoredData::try_from(job)?;
                 }
 
@@ -155,12 +152,11 @@ LIMIT ?2;
     ) -> impl Stream<Item = anyhow::Result<JobStoredData>> + '_ {
         let page_limit = page_size as i64;
         try_stream! {
-            let mut last_id = "".to_string();
-
+            let mut last_id = Uuid::nil();
             loop {
                  let jobs = query_as!(RawSchedulerJobStoredData,
 r#"
-SELECT id as "id: uuid::fmt::Hyphenated", last_updated, next_tick, last_tick, job_type as "job_type!", count,
+SELECT id, last_updated, next_tick, last_tick, job_type as "job_type!", count,
        ran, stopped, schedule, repeating, repeated_every, extra
 FROM scheduler_jobs
 WHERE id > ?1 AND stopped = 1 AND extra = ?3
@@ -174,7 +170,7 @@ LIMIT ?2;
 
                 let is_last_page = jobs.len() < page_size;
                 for job in jobs {
-                    last_id = job.id.to_string();
+                    last_id = Uuid::from_slice(job.id.as_slice())?;
                     yield JobStoredData::try_from(job)?;
                 }
 
@@ -190,7 +186,7 @@ LIMIT ?2;
         let now = OffsetDateTime::now_utc().unix_timestamp();
         let jobs = query!(
             r#"
-SELECT id as "id: uuid::fmt::Hyphenated", job_type, next_tick, last_tick
+SELECT id, job_type, next_tick, last_tick
 FROM scheduler_jobs
 WHERE next_tick > 0 AND next_tick < ?1
             "#,
@@ -199,15 +195,18 @@ WHERE next_tick > 0 AND next_tick < ?1
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(jobs
-            .into_iter()
-            .map(|record| JobAndNextTick {
-                id: Some(record.id.into_uuid().into()),
-                last_tick: record.last_tick.map(|ts| ts as u64),
-                next_tick: record.next_tick.unwrap_or_default() as u64,
-                job_type: record.job_type as i32,
-            })
-            .collect())
+        let mut result = vec![];
+        for job in jobs {
+            let id = Uuid::from_slice(job.id.as_slice())?;
+            result.push(JobAndNextTick {
+                id: Some(id.into()),
+                job_type: job.job_type as i32,
+                last_tick: job.last_tick.map(|ts| ts as u64),
+                next_tick: job.next_tick.unwrap_or_default() as u64,
+            });
+        }
+
+        Ok(result)
     }
 
     /// Updates scheduler job ticks in the `scheduler_jobs` table.
@@ -217,7 +216,6 @@ WHERE next_tick > 0 AND next_tick < ?1
         next_tick: Option<OffsetDateTime>,
         last_tick: Option<OffsetDateTime>,
     ) -> anyhow::Result<()> {
-        let id = id.hyphenated();
         let next_tick = next_tick
             .map(|tick| tick.unix_timestamp())
             .unwrap_or_default();
@@ -272,10 +270,9 @@ ORDER BY next_tick ASC
         &self,
         id: NotificationId,
     ) -> anyhow::Result<Option<NotificationData>> {
-        let id = id.hyphenated();
         let notification = query!(
             r#"
-SELECT job_id as "job_id: uuid::fmt::Hyphenated", extra
+SELECT job_id, extra
 FROM scheduler_notifications
 WHERE id = ?1
                 "#,
@@ -303,8 +300,8 @@ WHERE id = ?1
 
         Ok(Some(NotificationData {
             job_id: Some(JobIdAndNotification {
-                job_id: Some(notification.job_id.into_uuid().into()),
-                notification_id: Some(id.into_uuid().into()),
+                job_id: Some(Uuid::from_slice(notification.job_id.as_slice())?.into()),
+                notification_id: Some(id.into()),
             }),
             job_states: states
                 .into_iter()
@@ -327,8 +324,6 @@ WHERE id = ?1
                 );
             }
         };
-
-        let notification_id = notification_id.hyphenated();
         query!(
             r#"
 DELETE FROM scheduler_notification_states
@@ -339,7 +334,6 @@ WHERE id = ?1
         .execute(&self.pool)
         .await?;
 
-        let job_id = job_id.hyphenated();
         query!(
             r#"
 INSERT INTO scheduler_notifications (id, job_id, extra)
@@ -368,7 +362,6 @@ ON CONFLICT(id) DO UPDATE SET job_id=excluded.job_id, extra=excluded.extra
 
     /// Removes scheduler notification from the `scheduler_notifications` table using notification ID.
     pub async fn remove_scheduler_notification(&self, id: NotificationId) -> anyhow::Result<()> {
-        let id = id.hyphenated();
         query!(
             r#"
 DELETE FROM scheduler_notifications
@@ -388,11 +381,10 @@ WHERE id = ?1
         job_id: JobId,
         state: JobNotification,
     ) -> anyhow::Result<Vec<NotificationId>> {
-        let job_id = job_id.hyphenated();
         let state = state as i32;
         let notifications = query!(
             r#"
-SELECT DISTINCT notifications.id as "id!: uuid::fmt::Hyphenated"
+SELECT DISTINCT notifications.id
 FROM scheduler_notifications as notifications
 RIGHT JOIN scheduler_notification_states as states ON notifications.id = states.id
 WHERE notifications.job_id = ?1 AND states.state = ?2
@@ -403,10 +395,12 @@ WHERE notifications.job_id = ?1 AND states.state = ?2
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(notifications
-            .into_iter()
-            .map(|notification| notification.id.into_uuid())
-            .collect())
+        let mut result = vec![];
+        for notification in notifications {
+            result.push(Uuid::from_slice(notification.id.as_slice())?);
+        }
+
+        Ok(result)
     }
 
     /// Retrieves notification ids from `scheduler_notifications` table.
@@ -414,10 +408,9 @@ WHERE notifications.job_id = ?1 AND states.state = ?2
         &self,
         job_id: JobId,
     ) -> anyhow::Result<Vec<NotificationId>> {
-        let job_id = job_id.hyphenated();
         let notifications = query!(
             r#"
-SELECT DISTINCT id as "id!: uuid::fmt::Hyphenated"
+SELECT DISTINCT id
 FROM scheduler_notifications
 WHERE job_id = ?1
             "#,
@@ -426,10 +419,12 @@ WHERE job_id = ?1
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(notifications
-            .into_iter()
-            .map(|notification| notification.id.into_uuid())
-            .collect())
+        let mut result = vec![];
+        for notification in notifications {
+            result.push(Uuid::from_slice(notification.id.as_slice())?);
+        }
+
+        Ok(result)
     }
 
     /// Removes scheduler notification from the `scheduler_notifications` table using notification ID.
@@ -438,7 +433,6 @@ WHERE job_id = ?1
         notification_id: NotificationId,
         state: JobNotification,
     ) -> anyhow::Result<bool> {
-        let notification_id = notification_id.hyphenated();
         let state = state as i32;
         let result = query!(
             r#"
@@ -456,7 +450,6 @@ WHERE id = ?1 AND state = ?2
 
     /// Removes scheduler notification from the `scheduler_notifications` table using notification ID.
     pub async fn remove_scheduler_notification_for_job(&self, job_id: JobId) -> anyhow::Result<()> {
-        let job_id = job_id.hyphenated();
         query!(
             r#"
 DELETE FROM scheduler_notifications
@@ -484,7 +477,7 @@ mod tests {
     };
     use uuid::uuid;
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_add_and_retrieve_scheduler_jobs() -> anyhow::Result<()> {
         let db = mock_db().await?;
         assert!(db
@@ -606,7 +599,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_update_scheduler_jobs() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
@@ -812,7 +805,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_update_scheduler_job_stopped_state() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
@@ -930,7 +923,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_remove_scheduler_jobs() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
@@ -1012,7 +1005,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_get_next_scheduler_jobs() -> anyhow::Result<()> {
         let db = mock_db().await?;
         assert!(db.get_next_scheduler_jobs().await?.is_empty());
@@ -1087,7 +1080,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_update_scheduler_job_ticks() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
@@ -1200,7 +1193,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_get_scheduler_time_until_next_job() -> anyhow::Result<()> {
         let db = mock_db().await?;
         assert!(db
@@ -1279,7 +1272,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_retrieve_all_jobs() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
@@ -1323,7 +1316,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_retrieve_all_stopped_jobs() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
@@ -1390,7 +1383,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_add_and_retrieve_scheduler_notifications() -> anyhow::Result<()> {
         let db = mock_db().await?;
         assert!(db
@@ -1502,7 +1495,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_update_scheduler_notifications() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
@@ -1617,7 +1610,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_remove_scheduler_notifications() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
@@ -1689,7 +1682,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_get_notification_ids_for_job_and_state() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
@@ -1774,7 +1767,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_get_notification_ids_for_job() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
@@ -1839,7 +1832,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_remove_notifications_for_state() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
@@ -1934,7 +1927,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_remove_notifications_for_job() -> anyhow::Result<()> {
         let db = mock_db().await?;
 

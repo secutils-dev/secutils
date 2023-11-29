@@ -1,12 +1,12 @@
 {
   "db_name": "SQLite",
-  "query": "\nSELECT id as \"id: uuid::fmt::Hyphenated\", job_type, next_tick, last_tick\nFROM scheduler_jobs\nWHERE next_tick > 0 AND next_tick < ?1\n            ",
+  "query": "\nSELECT id, job_type, next_tick, last_tick\nFROM scheduler_jobs\nWHERE next_tick > 0 AND next_tick < ?1\n            ",
   "describe": {
     "columns": [
       {
-        "name": "id: uuid::fmt::Hyphenated",
+        "name": "id",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Blob"
       },
       {
         "name": "job_type",
@@ -34,5 +34,5 @@
       true
     ]
   },
-  "hash": "30f06665ca0dca176f26b6911f39602755873918d9c8acd654569c7c216e06e5"
+  "hash": "12df12109591999baac1f9ba5f3faaeac81f3d9bc9bd2ba88dd9db17fce92117"
 }

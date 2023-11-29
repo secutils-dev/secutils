@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct RawSchedulerJobStoredData {
-    pub id: uuid::fmt::Hyphenated,
+    pub id: Vec<u8>,
     pub last_updated: Option<i64>,
     pub last_tick: Option<i64>,
     pub next_tick: Option<i64>,
@@ -37,7 +37,7 @@ impl TryFrom<RawSchedulerJobStoredData> for JobStoredData {
         };
 
         Ok(JobStoredData {
-            id: Some(raw_data.id.as_uuid().into()),
+            id: Some(Uuid::from_slice(raw_data.id.as_slice())?.into()),
             last_updated: raw_data.last_updated.map(|ts| ts as u64),
             last_tick: raw_data.last_tick.map(|ts| ts as u64),
             next_tick: raw_data.next_tick.unwrap_or_default() as u64,

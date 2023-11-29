@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct RawUserShare {
-    pub id: uuid::fmt::Hyphenated,
+    pub id: Vec<u8>,
     pub user_id: i64,
     pub resource: Vec<u8>,
     pub created_at: i64,
@@ -15,7 +15,7 @@ impl TryFrom<RawUserShare> for UserShare {
 
     fn try_from(raw_user_share: RawUserShare) -> Result<Self, Self::Error> {
         Ok(UserShare {
-            id: (*raw_user_share.id.as_uuid()).into(),
+            id: Uuid::from_slice(raw_user_share.id.as_slice())?.into(),
             user_id: raw_user_share.user_id.try_into()?,
             resource: postcard::from_bytes(&raw_user_share.resource)?,
             created_at: OffsetDateTime::from_unix_timestamp(raw_user_share.created_at)?,
@@ -28,7 +28,7 @@ impl TryFrom<&UserShare> for RawUserShare {
 
     fn try_from(user_share: &UserShare) -> Result<Self, Self::Error> {
         Ok(RawUserShare {
-            id: Uuid::from(&user_share.id).into(),
+            id: (*user_share.id).into(),
             user_id: *user_share.user_id,
             resource: postcard::to_stdvec(&user_share.resource)?,
             created_at: user_share.created_at.unix_timestamp(),
@@ -47,7 +47,7 @@ mod tests {
     #[test]
     fn can_convert_into_user_share() -> anyhow::Result<()> {
         assert_debug_snapshot!(UserShare::try_from(RawUserShare {
-            id: uuid!("00000000-0000-0000-0000-000000000001").hyphenated(),
+            id: uuid!("00000000-0000-0000-0000-000000000001").into(),
             user_id: 1,
             resource: vec![0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
             // January 1, 2000 10:00:00
@@ -80,9 +80,24 @@ mod tests {
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
         })?, @r###"
         RawUserShare {
-            id: Hyphenated(
-                00000000-0000-0000-0000-000000000001,
-            ),
+            id: [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+            ],
             user_id: 1,
             resource: [
                 0,
@@ -114,7 +129,7 @@ mod tests {
     #[test]
     fn fails_if_malformed() -> anyhow::Result<()> {
         assert!(UserShare::try_from(RawUserShare {
-            id: uuid!("00000000-0000-0000-0000-000000000001").hyphenated(),
+            id: uuid!("00000000-0000-0000-0000-000000000001").into(),
             user_id: -1,
             resource: postcard::to_stdvec(&SharedResource::content_security_policy(uuid!(
                 "00000000-0000-0000-0000-000000000001"

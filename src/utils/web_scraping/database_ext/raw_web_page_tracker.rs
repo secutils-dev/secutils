@@ -69,14 +69,14 @@ impl<Tag: WebPageTrackerTag> TryFrom<&WebPageTracker<Tag>> for RawWebPageTracker
         };
 
         Ok(RawWebPageTracker {
-            id: item.id.as_ref().to_vec(),
+            id: item.id.into(),
             name: item.name.clone(),
             url: item.url.to_string(),
             kind: Tag::KIND.try_into()?,
             // Move schedule to a dedicated database table field to allow searching.
             schedule: item.settings.schedule.clone(),
             user_id: *item.user_id,
-            job_id: item.job_id.as_ref().map(|job_id| job_id.as_ref().to_vec()),
+            job_id: item.job_id.as_ref().map(|job_id| (*job_id).into()),
             data: postcard::to_stdvec(&raw_data)?,
             created_at: item.created_at.unix_timestamp(),
         })

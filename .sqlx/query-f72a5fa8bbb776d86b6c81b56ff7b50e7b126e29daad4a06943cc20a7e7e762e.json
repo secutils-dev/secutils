@@ -1,12 +1,12 @@
 {
   "db_name": "SQLite",
-  "query": "\nSELECT id as \"id: uuid::fmt::Hyphenated\", last_updated, next_tick, last_tick, job_type as \"job_type!\", count,\n       ran, stopped, schedule, repeating, repeated_every, extra\nFROM scheduler_jobs\nWHERE id > ?1\nORDER BY id\nLIMIT ?2;\n",
+  "query": "\nSELECT id, last_updated, next_tick, last_tick, job_type as \"job_type!\", count,\n       ran, stopped, schedule, repeating, repeated_every, extra\nFROM scheduler_jobs\nWHERE id > ?1 AND stopped = 1 AND extra = ?3\nORDER BY id\nLIMIT ?2;\n",
   "describe": {
     "columns": [
       {
-        "name": "id: uuid::fmt::Hyphenated",
+        "name": "id",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Blob"
       },
       {
         "name": "last_updated",
@@ -65,7 +65,7 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 3
     },
     "nullable": [
       false,
@@ -82,5 +82,5 @@
       true
     ]
   },
-  "hash": "89e89ba6f7d92156d4fe71ccbe00f50de46bfe08e4497a2bd47275b0b2d6b98d"
+  "hash": "f72a5fa8bbb776d86b6c81b56ff7b50e7b126e29daad4a06943cc20a7e7e762e"
 }
