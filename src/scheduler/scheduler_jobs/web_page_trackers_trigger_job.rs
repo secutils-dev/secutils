@@ -1,7 +1,7 @@
 use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
-    scheduler::scheduler_job::SchedulerJob,
+    scheduler::{job_ext::JobExt, scheduler_job::SchedulerJob},
     utils::WebPageTrackerKind,
 };
 use std::sync::Arc;
@@ -23,15 +23,15 @@ impl WebPageTrackersTriggerJob {
     ) -> anyhow::Result<Option<Job>> {
         // First, check if the tracker job exists.
         let web_scraping = api.web_scraping();
-        let Some((tracker_id, tracker_settings)) = (match tracker_kind {
+        let Some((tracker_id, tracker_settings, tracker_job_config)) = (match tracker_kind {
             WebPageTrackerKind::WebPageResources => web_scraping
                 .get_resources_tracker_by_job_id(job_id)
                 .await?
-                .map(|tracker| (tracker.id, tracker.settings)),
+                .map(|tracker| (tracker.id, tracker.settings, tracker.job_config)),
             WebPageTrackerKind::WebPageContent => web_scraping
                 .get_content_tracker_by_job_id(job_id)
                 .await?
-                .map(|tracker| (tracker.id, tracker.settings)),
+                .map(|tracker| (tracker.id, tracker.settings, tracker.job_config)),
         }) else {
             log::warn!(
                 "Web page tracker job reference doesn't exist, the job ('{job_id}') will be removed."
@@ -52,9 +52,9 @@ impl WebPageTrackersTriggerJob {
         };
 
         // Then, check if the tracker still has a schedule.
-        let Some(schedule) = tracker_settings.schedule else {
+        let Some(job_config) = tracker_job_config else {
             log::warn!(
-                "Web page tracker ('{}') no longer has a schedule, the job ('{job_id}') will be removed.",
+                "Web page tracker ('{}') no longer has a job config, the job ('{job_id}') will be removed.",
                 tracker_id
             );
             web_scraping
@@ -64,7 +64,7 @@ impl WebPageTrackersTriggerJob {
         };
 
         // If we changed the job parameters, we need to remove the old job and create a new one.
-        let mut new_job = Self::create(api.clone(), schedule, tracker_kind).await?;
+        let mut new_job = Self::create(api.clone(), job_config.schedule, tracker_kind).await?;
         Ok(if new_job.job_data()?.job == existing_job_data.job {
             new_job.set_job_data(existing_job_data)?;
             Some(new_job)
@@ -90,7 +90,7 @@ impl WebPageTrackersTriggerJob {
                 // up stopped jobs, processes them, and then un-stops. Stopped flag is basically
                 // serving as a pending processing flag. Eventually we might need to add a separate
                 // table for pending jobs.
-                if let Err(err) = db.set_scheduler_job_stopped_state(uuid, true).await {
+                if let Err(err) = db.reset_scheduler_job_state(uuid, true).await {
                     log::error!(
                         "Error marking web page tracker trigger job as pending: {}",
                         err
@@ -101,11 +101,7 @@ impl WebPageTrackersTriggerJob {
             })
         })?;
 
-        let job_data = job.job_data()?;
-        job.set_job_data(JobStoredData {
-            extra: SchedulerJob::WebPageTrackersTrigger { kind: tracker_kind }.try_into()?,
-            ..job_data
-        })?;
+        job.set_job_type(SchedulerJob::WebPageTrackersTrigger { kind: tracker_kind })?;
 
         Ok(job)
     }
@@ -115,7 +111,10 @@ impl WebPageTrackersTriggerJob {
 mod tests {
     use super::WebPageTrackersTriggerJob;
     use crate::{
-        scheduler::{scheduler_job::SchedulerJob, scheduler_store::SchedulerStore},
+        scheduler::{
+            scheduler_job::SchedulerJob, scheduler_store::SchedulerStore, SchedulerJobConfig,
+            SchedulerJobMetadata,
+        },
         tests::{mock_api, mock_user},
         utils::{
             WebPageTracker, WebPageTrackerCreateParams, WebPageTrackerKind, WebPageTrackerSettings,
@@ -139,7 +138,7 @@ mod tests {
             ran: false,
             stopped: false,
             last_updated: None,
-            extra: job_type.try_into().unwrap(),
+            extra: SchedulerJobMetadata::new(job_type).try_into().unwrap(),
             job: Some(JobStored::CronJob(CronJob {
                 schedule: "0 0 * * * *".to_string(),
             })),
@@ -174,6 +173,7 @@ mod tests {
                 [
                     0,
                     0,
+                    0,
                 ],
                 Some(
                     CronJob(
@@ -189,6 +189,7 @@ mod tests {
                 [
                     0,
                     1,
+                    0,
                 ],
                 Some(
                     CronJob(
@@ -223,12 +224,15 @@ mod tests {
                     url: "https://localhost:1234/my/app?q=2".parse()?,
                     settings: WebPageTrackerSettings {
                         revisions: 4,
-                        schedule: Some("0 0 * * * *".to_string()),
                         delay: Default::default(),
                         scripts: Default::default(),
                         headers: Default::default(),
-                        enable_notifications: true,
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -257,6 +261,7 @@ mod tests {
         (
             0,
             [
+                0,
                 0,
                 0,
             ],
@@ -306,12 +311,15 @@ mod tests {
                     url: "https://localhost:1234/my/app?q=2".parse()?,
                     settings: WebPageTrackerSettings {
                         revisions: 4,
-                        schedule: Some("0 0 * * * *".to_string()),
                         delay: Default::default(),
                         scripts: Default::default(),
                         headers: Default::default(),
-                        enable_notifications: true,
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -342,6 +350,7 @@ mod tests {
             [
                 0,
                 1,
+                0,
             ],
             Some(
                 CronJob(
@@ -389,12 +398,15 @@ mod tests {
                     url: "https://localhost:1234/my/app?q=2".parse()?,
                     settings: WebPageTrackerSettings {
                         revisions: 4,
-                        schedule: Some("1 0 * * * *".to_string()),
                         delay: Default::default(),
                         scripts: Default::default(),
                         headers: Default::default(),
-                        enable_notifications: true,
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "1 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -455,12 +467,11 @@ mod tests {
                     url: "https://localhost:1234/my/app?q=2".parse()?,
                     settings: WebPageTrackerSettings {
                         revisions: 4,
-                        schedule: None,
                         delay: Default::default(),
                         scripts: Default::default(),
                         headers: Default::default(),
-                        enable_notifications: true,
                     },
+                    job_config: None,
                 },
             )
             .await?;
@@ -517,12 +528,15 @@ mod tests {
                     url: "https://localhost:1234/my/app?q=2".parse()?,
                     settings: WebPageTrackerSettings {
                         revisions: 0,
-                        schedule: Some("0 0 * * * *".to_string()),
                         delay: Default::default(),
                         scripts: Default::default(),
                         headers: Default::default(),
-                        enable_notifications: true,
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;

@@ -1,4 +1,5 @@
 use crate::{
+    scheduler::SchedulerJobConfig,
     users::UserId,
     utils::{WebPageTrackerSettings, WebPageTrackerTag},
 };
@@ -19,10 +20,13 @@ pub struct WebPageTracker<Tag: WebPageTrackerTag> {
     /// Id of the user who owns the tracker.
     #[serde(skip_serializing)]
     pub user_id: UserId,
-    /// ID of the optional job that triggers web page checking. If `None` when `schedule` is set,
+    /// ID of the optional job that triggers web page checking. If `None` when `job_config` is set,
     /// then the job is not scheduled it.
     #[serde(skip_serializing)]
     pub job_id: Option<Uuid>,
+    /// Configuration of the job that triggers web page checking, if configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub job_config: Option<SchedulerJobConfig>,
     /// Settings of the web page tracker.
     pub settings: WebPageTrackerSettings,
     /// Optional meta data of the web page tracker.
@@ -36,10 +40,12 @@ pub struct WebPageTracker<Tag: WebPageTrackerTag> {
 #[cfg(test)]
 mod tests {
     use crate::{
+        scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
         tests::MockWebPageTrackerBuilder,
         utils::{WebPageResourcesTrackerTag, WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME},
     };
     use insta::assert_json_snapshot;
+    use std::time::Duration;
     use uuid::uuid;
 
     #[test]
@@ -59,8 +65,7 @@ mod tests {
           "url": "http://localhost:1234/my/app?q=2",
           "settings": {
             "revisions": 3,
-            "delay": 2500,
-            "enableNotifications": true
+            "delay": 2500
           },
           "createdAt": 946720800
         }
@@ -80,11 +85,13 @@ mod tests {
           "id": "00000000-0000-0000-0000-000000000001",
           "name": "some-name",
           "url": "http://localhost:1234/my/app?q=2",
+          "jobConfig": {
+            "schedule": "0 0 * * *",
+            "notifications": false
+          },
           "settings": {
             "revisions": 3,
-            "schedule": "0 0 * * *",
-            "delay": 2500,
-            "enableNotifications": true
+            "delay": 2500
           },
           "createdAt": 946720800
         }
@@ -112,67 +119,85 @@ mod tests {
           "id": "00000000-0000-0000-0000-000000000001",
           "name": "some-name",
           "url": "http://localhost:1234/my/app?q=2",
+          "jobConfig": {
+            "schedule": "0 0 * * *",
+            "notifications": false
+          },
           "settings": {
             "revisions": 3,
-            "schedule": "0 0 * * *",
             "delay": 2500,
             "scripts": {
               "resourceFilterMap": "return resource;"
+            }
+          },
+          "createdAt": 946720800
+        }
+        "###);
+
+        let tracker = MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .with_delay_millis(2500)
+        .with_schedule("0 0 * * *")
+        .with_scripts(Default::default())
+        .build();
+        assert_json_snapshot!(tracker, @r###"
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "name": "some-name",
+          "url": "http://localhost:1234/my/app?q=2",
+          "jobConfig": {
+            "schedule": "0 0 * * *",
+            "notifications": false
+          },
+          "settings": {
+            "revisions": 3,
+            "delay": 2500,
+            "scripts": {}
+          },
+          "createdAt": 946720800
+        }
+        "###);
+
+        let tracker = MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .with_delay_millis(2500)
+        .with_schedule("0 0 * * *")
+        .with_scripts(Default::default())
+        .with_job_config(SchedulerJobConfig {
+            schedule: "0 0 * * *".to_string(),
+            notifications: false,
+            retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                interval: Duration::from_secs(1000),
+                max_attempts: 10,
+            }),
+        })
+        .build();
+        assert_json_snapshot!(tracker, @r###"
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "name": "some-name",
+          "url": "http://localhost:1234/my/app?q=2",
+          "jobConfig": {
+            "schedule": "0 0 * * *",
+            "retryStrategy": {
+              "type": "constant",
+              "interval": 1000000,
+              "maxAttempts": 10
             },
-            "enableNotifications": true
+            "notifications": false
           },
-          "createdAt": 946720800
-        }
-        "###);
-
-        let tracker = MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
-            uuid!("00000000-0000-0000-0000-000000000001"),
-            "some-name",
-            "http://localhost:1234/my/app?q=2",
-            3,
-        )?
-        .with_delay_millis(2500)
-        .with_schedule("0 0 * * *")
-        .with_scripts(Default::default())
-        .build();
-        assert_json_snapshot!(tracker, @r###"
-        {
-          "id": "00000000-0000-0000-0000-000000000001",
-          "name": "some-name",
-          "url": "http://localhost:1234/my/app?q=2",
           "settings": {
             "revisions": 3,
-            "schedule": "0 0 * * *",
             "delay": 2500,
-            "scripts": {},
-            "enableNotifications": true
-          },
-          "createdAt": 946720800
-        }
-        "###);
-
-        let tracker = MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
-            uuid!("00000000-0000-0000-0000-000000000001"),
-            "some-name",
-            "http://localhost:1234/my/app?q=2",
-            3,
-        )?
-        .with_delay_millis(2500)
-        .with_schedule("0 0 * * *")
-        .with_scripts(Default::default())
-        .without_notifications()
-        .build();
-        assert_json_snapshot!(tracker, @r###"
-        {
-          "id": "00000000-0000-0000-0000-000000000001",
-          "name": "some-name",
-          "url": "http://localhost:1234/my/app?q=2",
-          "settings": {
-            "revisions": 3,
-            "schedule": "0 0 * * *",
-            "delay": 2500,
-            "scripts": {},
-            "enableNotifications": false
+            "scripts": {}
           },
           "createdAt": 946720800
         }

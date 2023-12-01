@@ -537,6 +537,21 @@ mod tests {
         )
     }
 
+    pub fn mock_schedule_in_secs(secs: &[u64]) -> String {
+        format!(
+            "{} * * * * *",
+            secs.iter()
+                .map(|secs| {
+                    OffsetDateTime::now_utc()
+                        .add(Duration::from_secs(*secs))
+                        .second()
+                        .to_string()
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        )
+    }
+
     pub mod webauthn {
         pub const SERIALIZED_PASSKEY: &str = r#"{
           "cred": {

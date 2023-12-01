@@ -13,13 +13,13 @@ use crate::{
     api::Api,
     error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
-    scheduler::SchedulerJob,
+    scheduler::{ScheduleExt, SchedulerJobRetryStrategy},
     users::UserId,
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
         web_scraping::{
-            web_page_resources_revisions_diff, WebPageResourcesTrackerInternalTag,
-            WebScraperResource, MAX_WEB_PAGE_TRACKER_DELAY, MAX_WEB_PAGE_TRACKER_REVISIONS,
+            database_ext::WebScrapingDatabaseSystemExt, web_page_resources_revisions_diff,
+            WebPageResourcesTrackerInternalTag, WebScraperResource,
         },
         WebPageContentTrackerTag, WebPageDataRevision, WebPageResource, WebPageResourcesData,
         WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerTag, WebScraperContentRequest,
@@ -28,10 +28,8 @@ use crate::{
     },
 };
 use anyhow::{anyhow, bail};
-use async_stream::try_stream;
 use cron::Schedule;
-use futures::{pin_mut, Stream, StreamExt};
-use humantime::format_duration;
+use futures::Stream;
 use std::time::Duration;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -45,14 +43,33 @@ pub const WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME: &str = "resourceFilterM
 /// Script used to extract web page content that needs to be tracked.
 pub const WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME: &str = "extractContent";
 
+/// We currently support up to 10 revisions of the web page content.
+const MAX_WEB_PAGE_TRACKER_REVISIONS: usize = 10;
+
+/// We currently wait up to 60 seconds before starting to track web page.
+const MAX_WEB_PAGE_TRACKER_DELAY: Duration = Duration::from_secs(60);
+
+/// We currently support up to 10 retry attempts for the web page tracker.
+const MAX_WEB_PAGE_TRACKER_RETRY_ATTEMPTS: u32 = 10;
+
+/// We currently support minimum 60 seconds between retry attempts for the web page tracker.
+const MIN_WEB_PAGE_TRACKER_RETRY_INTERVAL: Duration = Duration::from_secs(60);
+
+/// We currently support maximum 12 hours between retry attempts for the web page tracker.
+const MAX_WEB_PAGE_TRACKER_RETRY_INTERVAL: Duration = Duration::from_secs(12 * 3600);
+
 pub struct WebScrapingApiExt<'a, DR: DnsResolver, ET: EmailTransport> {
     api: &'a Api<DR, ET>,
+    web_scraping_system: WebScrapingDatabaseSystemExt<'a>,
 }
 
 impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
     /// Creates WebScraping API.
     pub fn new(api: &'a Api<DR, ET>) -> Self {
-        Self { api }
+        Self {
+            api,
+            web_scraping_system: api.db.web_scraping_system(),
+        }
     }
 
     /// Returns all web page resources trackers.
@@ -89,14 +106,16 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
     pub fn get_pending_resources_trackers(
         &self,
     ) -> impl Stream<Item = anyhow::Result<WebPageTracker<WebPageResourcesTrackerTag>>> + '_ {
-        self.get_pending_web_page_trackers()
+        self.web_scraping_system
+            .get_pending_web_page_trackers(MAX_JOBS_PAGE_SIZE)
     }
 
     /// Returns all web page resources trackers that have pending jobs.
     pub fn get_pending_content_trackers(
         &self,
     ) -> impl Stream<Item = anyhow::Result<WebPageTracker<WebPageContentTrackerTag>>> + '_ {
-        self.get_pending_web_page_trackers()
+        self.web_scraping_system
+            .get_pending_web_page_trackers(MAX_JOBS_PAGE_SIZE)
     }
 
     /// Returns web page resources tracker by its ID.
@@ -687,6 +706,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             settings: params.settings,
             user_id,
             job_id: None,
+            job_config: params.job_config,
             // Preserve timestamp only up to seconds.
             created_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
@@ -720,9 +740,13 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
     where
         V: Fn(&WebPageTracker<Tag>) -> anyhow::Result<()>,
     {
-        if params.name.is_none() && params.url.is_none() && params.settings.is_none() {
+        if params.name.is_none()
+            && params.url.is_none()
+            && params.settings.is_none()
+            && params.job_config.is_none()
+        {
             bail!(SecutilsError::client(format!(
-                "Either new name, url, or settings should be provided ({id})."
+                "Either new name, url, settings, or job config should be provided ({id})."
             )));
         }
 
@@ -744,16 +768,29 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             .map(|url| url != &existing_tracker.url)
             .unwrap_or_default();
 
-        let job_id = match (&params.settings, existing_tracker.job_id) {
-            (Some(settings), Some(job_id)) => {
-                let changed_schedule = settings.schedule != existing_tracker.settings.schedule;
-                if changed_schedule || settings.revisions == 0 {
-                    None
-                } else {
-                    Some(job_id)
-                }
-            }
-            (_, job_id) => job_id,
+        let disabled_revisions = params
+            .settings
+            .as_ref()
+            .map(|settings| settings.revisions == 0)
+            .unwrap_or_default();
+
+        let changed_schedule = params
+            .job_config
+            .as_ref()
+            .map(
+                |job_config| match (&existing_tracker.job_config, job_config) {
+                    (Some(existing_job_config), Some(job_config)) => {
+                        job_config.schedule != existing_job_config.schedule
+                    }
+                    _ => true,
+                },
+            )
+            .unwrap_or_default();
+
+        let job_id = if disabled_revisions || changed_schedule {
+            None
+        } else {
+            existing_tracker.job_id
         };
 
         let tracker = WebPageTracker {
@@ -761,6 +798,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             url: params.url.unwrap_or(existing_tracker.url),
             settings: params.settings.unwrap_or(existing_tracker.settings),
             job_id,
+            job_config: params.job_config.unwrap_or(existing_tracker.job_config),
             ..existing_tracker
         };
 
@@ -778,32 +816,6 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
         }
 
         Ok(tracker)
-    }
-
-    /// Returns all web page trackers that have pending jobs.
-    pub fn get_pending_web_page_trackers<'b, Tag: WebPageTrackerTag + 'b>(
-        &'b self,
-    ) -> impl Stream<Item = anyhow::Result<WebPageTracker<Tag>>> + '_ {
-        try_stream! {
-            let extra = Vec::try_from(SchedulerJob::WebPageTrackersTrigger { kind: Tag::KIND })?;
-            let jobs = self.api.db.get_stopped_scheduler_jobs_by_extra(
-                MAX_JOBS_PAGE_SIZE,
-                &extra,
-            );
-            pin_mut!(jobs);
-
-            while let Some(job_data) = jobs.next().await {
-                let job_id = job_data?
-                    .id
-                    .ok_or_else(|| anyhow!("Job without ID"))?
-                    .into();
-                if let Some(tracker) = self.get_web_page_tracker_by_job_id(job_id).await? {
-                    yield tracker;
-                } else {
-                    log::error!("Found job ('{job_id}') without corresponding web page tracker.");
-                }
-            }
-        }
     }
 
     async fn validate_web_page_tracker<Tag: WebPageTrackerTag>(
@@ -848,29 +860,77 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             }
         }
 
-        if let Some(schedule) = &tracker.settings.schedule {
+        if let Some(job_config) = &tracker.job_config {
             // Validate that the schedule is a valid cron expression.
-            let schedule = match Schedule::try_from(schedule.as_str()) {
+            let schedule = match Schedule::try_from(job_config.schedule.as_str()) {
                 Ok(schedule) => schedule,
                 Err(err) => {
                     bail!(SecutilsError::client_with_root_cause(
-                        anyhow!("Failed to parse schedule `{schedule}`: {err:?}")
-                            .context("Web page tracker schedule must be a valid cron expression.")
+                        anyhow!(
+                            "Failed to parse schedule `{}`: {err:?}",
+                            job_config.schedule
+                        )
+                        .context("Web page tracker schedule must be a valid cron expression.")
                     ));
                 }
             };
 
             // Check if the interval between 10 next occurrences is at least 1 hour.
-            let next_occurrences = schedule.upcoming(chrono::Utc).take(10).collect::<Vec<_>>();
-            let minimum_interval = Duration::from_secs(60 * 60);
-            for (index, occurrence) in next_occurrences.iter().enumerate().skip(1) {
-                let interval = (*occurrence - next_occurrences[index - 1]).to_std()?;
-                if interval < minimum_interval {
-                    bail!(SecutilsError::client(format!(
-                        "Web page tracker schedule must have at least {} between occurrences, detected {}.",
-                        format_duration(minimum_interval),
-                        format_duration(interval)
-                    )));
+            let min_schedule_interval = schedule.min_interval()?;
+            let min_allowed_interval = Duration::from_secs(60 * 60);
+            if min_schedule_interval < min_allowed_interval {
+                bail!(SecutilsError::client(format!(
+                    "Web page tracker schedule must have at least {} between occurrences, but detected {}.",
+                    humantime::format_duration(min_allowed_interval),
+                    humantime::format_duration(min_schedule_interval)
+                )));
+            }
+
+            // Validate retry strategy.
+            if let Some(retry_strategy) = &job_config.retry_strategy {
+                let max_attempts = retry_strategy.max_attempts();
+                if max_attempts == 0 || max_attempts > MAX_WEB_PAGE_TRACKER_RETRY_ATTEMPTS {
+                    bail!(SecutilsError::client(
+                        format!("Web page tracker max retry attempts cannot be zero or greater than {MAX_WEB_PAGE_TRACKER_RETRY_ATTEMPTS}, but received {max_attempts}.")
+                    ));
+                }
+
+                let min_interval = *retry_strategy.min_interval();
+                if min_interval < MIN_WEB_PAGE_TRACKER_RETRY_INTERVAL {
+                    bail!(SecutilsError::client(
+                        format!(
+                            "Web page tracker min retry interval cannot be less than {}, but received {}.",
+                            humantime::format_duration(MIN_WEB_PAGE_TRACKER_RETRY_INTERVAL),
+                            humantime::format_duration(min_interval)
+                        )
+                    ));
+                }
+
+                if let SchedulerJobRetryStrategy::Linear { max_interval, .. }
+                | SchedulerJobRetryStrategy::Exponential { max_interval, .. } = retry_strategy
+                {
+                    let max_interval = *max_interval;
+                    if max_interval < MIN_WEB_PAGE_TRACKER_RETRY_INTERVAL {
+                        bail!(SecutilsError::client(
+                            format!(
+                                "Web page tracker retry strategy max interval cannot be less than {}, but received {}.",
+                                humantime::format_duration(MIN_WEB_PAGE_TRACKER_RETRY_INTERVAL),
+                                humantime::format_duration(max_interval)
+                            )
+                        ));
+                    }
+
+                    if max_interval > MAX_WEB_PAGE_TRACKER_RETRY_INTERVAL
+                        || max_interval > min_schedule_interval
+                    {
+                        bail!(SecutilsError::client(
+                            format!(
+                                "Web page tracker retry strategy max interval cannot be greater than {}, but received {}.",
+                                humantime::format_duration(MAX_WEB_PAGE_TRACKER_RETRY_INTERVAL.min(min_schedule_interval)),
+                                humantime::format_duration(max_interval)
+                            )
+                        ));
+                    }
                 }
             }
         }
@@ -930,19 +990,21 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 mod tests {
     use crate::{
         error::Error as SecutilsError,
-        scheduler::SchedulerJob,
+        scheduler::{
+            SchedulerJob, SchedulerJobConfig, SchedulerJobMetadata, SchedulerJobRetryStrategy,
+        },
         tests::{
             mock_api, mock_api_with_config, mock_api_with_network, mock_config,
             mock_network_with_records, mock_user,
         },
         utils::{
-            web_scraping::WebScrapingApiExt, WebPageContentTrackerGetHistoryParams,
-            WebPageContentTrackerTag, WebPageResource, WebPageResourceDiffStatus,
-            WebPageResourcesTrackerGetHistoryParams, WebPageResourcesTrackerTag, WebPageTracker,
-            WebPageTrackerCreateParams, WebPageTrackerKind, WebPageTrackerSettings,
-            WebPageTrackerUpdateParams, WebScraperContentRequest, WebScraperContentResponse,
-            WebScraperErrorResponse, WebScraperResource, WebScraperResourcesRequest,
-            WebScraperResourcesResponse, WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
+            WebPageContentTrackerGetHistoryParams, WebPageContentTrackerTag, WebPageResource,
+            WebPageResourceDiffStatus, WebPageResourcesTrackerGetHistoryParams,
+            WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerCreateParams,
+            WebPageTrackerKind, WebPageTrackerSettings, WebPageTrackerUpdateParams,
+            WebScraperContentRequest, WebScraperContentResponse, WebScraperErrorResponse,
+            WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesResponse,
+            WebScrapingApiExt, WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
             WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
         },
     };
@@ -1002,11 +1064,17 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: None,
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "@hourly".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 5,
+                        }),
+                        notifications: false,
+                    }),
                 },
             )
             .await?;
@@ -1038,11 +1106,17 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: None,
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "@hourly".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 5,
+                        }),
+                        notifications: false,
+                    }),
                 },
             )
             .await?;
@@ -1068,8 +1142,6 @@ mod tests {
         let settings = WebPageTrackerSettings {
             revisions: 3,
             delay: Duration::from_millis(2000),
-            enable_notifications: true,
-            schedule: None,
             scripts: Default::default(),
             headers: Default::default(),
         };
@@ -1085,6 +1157,7 @@ mod tests {
                 name: "".to_string(),
                 url: url.clone(),
                 settings: settings.clone(),
+                job_config: None
             }).await),
             @r###""Web page tracker name cannot be empty.""###
         );
@@ -1095,6 +1168,7 @@ mod tests {
                 name: "a".repeat(101),
                 url: url.clone(),
                 settings: settings.clone(),
+                job_config: None
             }).await),
             @r###""Web page tracker name cannot be longer than 100 characters.""###
         );
@@ -1108,6 +1182,7 @@ mod tests {
                     revisions: 11,
                     ..settings.clone()
                 },
+                job_config: None
             }).await),
             @r###""Web page tracker revisions count cannot be greater than 10.""###
         );
@@ -1121,6 +1196,7 @@ mod tests {
                     delay: Duration::from_secs(61),
                     ..settings.clone()
                 },
+                job_config: None
             }).await),
             @r###""Web page tracker delay cannot be greater than 60000ms.""###
         );
@@ -1140,6 +1216,7 @@ mod tests {
                     ),
                     ..settings.clone()
                 },
+                job_config: None
             }).await),
             @r###""Web page tracker scripts cannot be empty or have an empty name.""###
         );
@@ -1159,6 +1236,7 @@ mod tests {
                     ),
                     ..settings.clone()
                 },
+                job_config: None
             }).await),
             @r###""Web page tracker contains unrecognized scripts.""###
         );
@@ -1168,10 +1246,12 @@ mod tests {
             create_and_fail(api.create_resources_tracker(mock_user.id, WebPageTrackerCreateParams {
                 name: "name".to_string(),
                 url: url.clone(),
-                settings: WebPageTrackerSettings {
-                   schedule: Some("-".to_string()),
-                    ..settings.clone()
-                },
+                settings: settings.clone(),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "-".to_string(),
+                    retry_strategy: None,
+                    notifications: false,
+                }),
             }).await),
             @r###"
         Error {
@@ -1186,12 +1266,127 @@ mod tests {
             create_and_fail(api.create_resources_tracker(mock_user.id, WebPageTrackerCreateParams {
                 name: "name".to_string(),
                 url: url.clone(),
-                settings: WebPageTrackerSettings {
-                   schedule: Some("0 * * * * *".to_string()),
-                    ..settings.clone()
-                },
+                settings: settings.clone(),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 * * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: false,
+                }),
             }).await),
-            @r###""Web page tracker schedule must have at least 1h between occurrences, detected 1m.""###
+            @r###""Web page tracker schedule must have at least 1h between occurrences, but detected 1m.""###
+        );
+
+        // Too few retry attempts.
+        assert_debug_snapshot!(
+            create_and_fail(api.create_resources_tracker(mock_user.id, WebPageTrackerCreateParams {
+                name: "name".to_string(),
+                url: url.clone(),
+                settings: settings.clone(),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "@daily".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                        interval: Duration::from_secs(120),
+                        max_attempts: 0,
+                    }),
+                    notifications: false,
+                }),
+            }).await),
+            @r###""Web page tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
+        );
+
+        // Too many retry attempts.
+        assert_debug_snapshot!(
+            create_and_fail(api.create_resources_tracker(mock_user.id, WebPageTrackerCreateParams {
+                name: "name".to_string(),
+                url: url.clone(),
+                settings: settings.clone(),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "@daily".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                        interval: Duration::from_secs(120),
+                        max_attempts: 11,
+                    }),
+                    notifications: false,
+                }),
+            }).await),
+            @r###""Web page tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
+        );
+
+        // Too low retry interval.
+        assert_debug_snapshot!(
+            create_and_fail(api.create_resources_tracker(mock_user.id, WebPageTrackerCreateParams {
+                name: "name".to_string(),
+                url: url.clone(),
+                settings: settings.clone(),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "@daily".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                        interval: Duration::from_secs(30),
+                        max_attempts: 5,
+                    }),
+                    notifications: false,
+                }),
+            }).await),
+            @r###""Web page tracker min retry interval cannot be less than 1m, but received 30s.""###
+        );
+
+        // Too low max retry interval.
+        assert_debug_snapshot!(
+            create_and_fail(api.create_resources_tracker(mock_user.id, WebPageTrackerCreateParams {
+                name: "name".to_string(),
+                url: url.clone(),
+                settings: settings.clone(),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "@daily".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                        initial_interval: Duration::from_secs(120),
+                        increment: Duration::from_secs(10),
+                        max_interval: Duration::from_secs(30),
+                        max_attempts: 5,
+                    }),
+                    notifications: false,
+                }),
+            }).await),
+            @r###""Web page tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
+        );
+
+        // Too high max retry interval.
+        assert_debug_snapshot!(
+            create_and_fail(api.create_resources_tracker(mock_user.id, WebPageTrackerCreateParams {
+                name: "name".to_string(),
+                url: url.clone(),
+                settings: settings.clone(),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "@monthly".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                        initial_interval: Duration::from_secs(120),
+                        increment: Duration::from_secs(10),
+                        max_interval: Duration::from_secs(13 * 3600),
+                        max_attempts: 5,
+                    }),
+                    notifications: false,
+                }),
+            }).await),
+            @r###""Web page tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
+        );
+
+        assert_debug_snapshot!(
+            create_and_fail(api.create_resources_tracker(mock_user.id, WebPageTrackerCreateParams {
+                name: "name".to_string(),
+                url: url.clone(),
+                settings: settings.clone(),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "@hourly".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                        initial_interval: Duration::from_secs(120),
+                        increment: Duration::from_secs(10),
+                        max_interval: Duration::from_secs(2 * 3600),
+                        max_attempts: 5,
+                    }),
+                    notifications: false,
+                }),
+            }).await),
+            @r###""Web page tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
         );
 
         // Invalid URL schema.
@@ -1200,6 +1395,7 @@ mod tests {
                 name: "name".to_string(),
                 url: Url::parse("ftp://secutils.dev")?,
                 settings: settings.clone(),
+                job_config: None
             }).await),
             @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received ftp://secutils.dev/.""###
         );
@@ -1218,6 +1414,7 @@ mod tests {
                 name: "name".to_string(),
                 url: Url::parse("https://127.0.0.1")?,
                 settings: settings.clone(),
+                job_config: None
             }).await),
             @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received https://127.0.0.1/.""###
         );
@@ -1236,8 +1433,6 @@ mod tests {
         let settings = WebPageTrackerSettings {
             revisions: 3,
             delay: Duration::from_millis(2000),
-            enable_notifications: true,
-            schedule: None,
             scripts: Default::default(),
             headers: Default::default(),
         };
@@ -1253,6 +1448,7 @@ mod tests {
                 name: "".to_string(),
                 url: url.clone(),
                 settings: settings.clone(),
+                job_config: None
             }).await),
             @r###""Web page tracker name cannot be empty.""###
         );
@@ -1263,6 +1459,7 @@ mod tests {
                 name: "a".repeat(101),
                 url: url.clone(),
                 settings: settings.clone(),
+                job_config: None
             }).await),
             @r###""Web page tracker name cannot be longer than 100 characters.""###
         );
@@ -1276,6 +1473,7 @@ mod tests {
                     revisions: 11,
                     ..settings.clone()
                 },
+                job_config: None
             }).await),
             @r###""Web page tracker revisions count cannot be greater than 10.""###
         );
@@ -1289,6 +1487,7 @@ mod tests {
                     delay: Duration::from_secs(61),
                     ..settings.clone()
                 },
+                job_config: None
             }).await),
             @r###""Web page tracker delay cannot be greater than 60000ms.""###
         );
@@ -1308,11 +1507,12 @@ mod tests {
                     ),
                     ..settings.clone()
                 },
+                job_config: None
             }).await),
             @r###""Web page tracker scripts cannot be empty or have an empty name.""###
         );
 
-        // Empty content extractor.
+        // Empty resource filter.
         assert_debug_snapshot!(
             create_and_fail(api.create_content_tracker(mock_user.id, WebPageTrackerCreateParams {
                 name: "name".to_string(),
@@ -1327,6 +1527,7 @@ mod tests {
                     ),
                     ..settings.clone()
                 },
+                job_config: None
             }).await),
             @r###""Web page tracker contains unrecognized scripts.""###
         );
@@ -1336,10 +1537,12 @@ mod tests {
             create_and_fail(api.create_content_tracker(mock_user.id, WebPageTrackerCreateParams {
                 name: "name".to_string(),
                 url: url.clone(),
-                settings: WebPageTrackerSettings {
-                   schedule: Some("-".to_string()),
-                    ..settings.clone()
-                },
+                settings: settings.clone(),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "-".to_string(),
+                    retry_strategy: None,
+                    notifications: false,
+                }),
             }).await),
             @r###"
         Error {
@@ -1354,12 +1557,127 @@ mod tests {
             create_and_fail(api.create_content_tracker(mock_user.id, WebPageTrackerCreateParams {
                 name: "name".to_string(),
                 url: url.clone(),
-                settings: WebPageTrackerSettings {
-                   schedule: Some("0 * * * * *".to_string()),
-                    ..settings.clone()
-                },
+                settings: settings.clone(),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 * * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: false,
+                }),
             }).await),
-            @r###""Web page tracker schedule must have at least 1h between occurrences, detected 1m.""###
+            @r###""Web page tracker schedule must have at least 1h between occurrences, but detected 1m.""###
+        );
+
+        // Too few retry attempts.
+        assert_debug_snapshot!(
+            create_and_fail(api.create_content_tracker(mock_user.id, WebPageTrackerCreateParams {
+                name: "name".to_string(),
+                url: url.clone(),
+                settings: settings.clone(),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "@daily".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                        interval: Duration::from_secs(120),
+                        max_attempts: 0,
+                    }),
+                    notifications: false,
+                }),
+            }).await),
+            @r###""Web page tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
+        );
+
+        // Too many retry attempts.
+        assert_debug_snapshot!(
+            create_and_fail(api.create_content_tracker(mock_user.id, WebPageTrackerCreateParams {
+                name: "name".to_string(),
+                url: url.clone(),
+                settings: settings.clone(),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "@daily".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                        interval: Duration::from_secs(120),
+                        max_attempts: 11,
+                    }),
+                    notifications: false,
+                }),
+            }).await),
+            @r###""Web page tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
+        );
+
+        // Too low retry interval.
+        assert_debug_snapshot!(
+            create_and_fail(api.create_content_tracker(mock_user.id, WebPageTrackerCreateParams {
+                name: "name".to_string(),
+                url: url.clone(),
+                settings: settings.clone(),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "@daily".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                        interval: Duration::from_secs(30),
+                        max_attempts: 5,
+                    }),
+                    notifications: false,
+                }),
+            }).await),
+            @r###""Web page tracker min retry interval cannot be less than 1m, but received 30s.""###
+        );
+
+        // Too low max retry interval.
+        assert_debug_snapshot!(
+            create_and_fail(api.create_content_tracker(mock_user.id, WebPageTrackerCreateParams {
+                name: "name".to_string(),
+                url: url.clone(),
+                settings: settings.clone(),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "@daily".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                        initial_interval: Duration::from_secs(120),
+                        increment: Duration::from_secs(10),
+                        max_interval: Duration::from_secs(30),
+                        max_attempts: 5,
+                    }),
+                    notifications: false,
+                }),
+            }).await),
+            @r###""Web page tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
+        );
+
+        // Too high max retry interval.
+        assert_debug_snapshot!(
+            create_and_fail(api.create_content_tracker(mock_user.id, WebPageTrackerCreateParams {
+                name: "name".to_string(),
+                url: url.clone(),
+                settings: settings.clone(),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "@monthly".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                        initial_interval: Duration::from_secs(120),
+                        increment: Duration::from_secs(10),
+                        max_interval: Duration::from_secs(13 * 3600),
+                        max_attempts: 5,
+                    }),
+                    notifications: false,
+                }),
+            }).await),
+            @r###""Web page tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
+        );
+
+        assert_debug_snapshot!(
+            create_and_fail(api.create_content_tracker(mock_user.id, WebPageTrackerCreateParams {
+                name: "name".to_string(),
+                url: url.clone(),
+                settings: settings.clone(),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "@hourly".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                        initial_interval: Duration::from_secs(120),
+                        increment: Duration::from_secs(10),
+                        max_interval: Duration::from_secs(2 * 3600),
+                        max_attempts: 5,
+                    }),
+                    notifications: false,
+                }),
+            }).await),
+            @r###""Web page tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
         );
 
         // Invalid URL schema.
@@ -1368,6 +1686,7 @@ mod tests {
                 name: "name".to_string(),
                 url: Url::parse("ftp://secutils.dev")?,
                 settings: settings.clone(),
+                job_config: None
             }).await),
             @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received ftp://secutils.dev/.""###
         );
@@ -1386,6 +1705,7 @@ mod tests {
                 name: "name".to_string(),
                 url: Url::parse("https://127.0.0.1")?,
                 settings: settings.clone(),
+                job_config: None
             }).await),
             @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received https://127.0.0.1/.""###
         );
@@ -1409,11 +1729,10 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: None,
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: None,
                 },
             )
             .await?;
@@ -1473,7 +1792,6 @@ mod tests {
                 WebPageTrackerUpdateParams {
                     settings: Some(WebPageTrackerSettings {
                         revisions: 4,
-                        enable_notifications: false,
                         ..tracker.settings.clone()
                     }),
                     ..Default::default()
@@ -1485,9 +1803,80 @@ mod tests {
             url: "http://localhost:1234/my/app?q=3".parse()?,
             settings: WebPageTrackerSettings {
                 revisions: 4,
-                enable_notifications: false,
                 ..tracker.settings.clone()
             },
+            ..tracker.clone()
+        };
+        assert_eq!(expected_tracker, updated_tracker);
+        assert_eq!(
+            expected_tracker,
+            api.get_resources_tracker(mock_user.id, tracker.id)
+                .await?
+                .unwrap()
+        );
+
+        // Update job config.
+        let updated_tracker = api
+            .update_resources_tracker(
+                mock_user.id,
+                tracker.id,
+                WebPageTrackerUpdateParams {
+                    job_config: Some(Some(SchedulerJobConfig {
+                        schedule: "@hourly".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 5,
+                        }),
+                        notifications: false,
+                    })),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let expected_tracker = WebPageTracker {
+            name: "name_two".to_string(),
+            url: "http://localhost:1234/my/app?q=3".parse()?,
+            settings: WebPageTrackerSettings {
+                revisions: 4,
+                ..tracker.settings.clone()
+            },
+            job_config: Some(SchedulerJobConfig {
+                schedule: "@hourly".to_string(),
+                retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                    interval: Duration::from_secs(120),
+                    max_attempts: 5,
+                }),
+                notifications: false,
+            }),
+            ..tracker.clone()
+        };
+        assert_eq!(expected_tracker, updated_tracker);
+        assert_eq!(
+            expected_tracker,
+            api.get_resources_tracker(mock_user.id, tracker.id)
+                .await?
+                .unwrap()
+        );
+
+        // Remove job config.
+        let updated_tracker = api
+            .update_resources_tracker(
+                mock_user.id,
+                tracker.id,
+                WebPageTrackerUpdateParams {
+                    job_config: Some(None),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let expected_tracker = WebPageTracker {
+            name: "name_two".to_string(),
+            url: "http://localhost:1234/my/app?q=3".parse()?,
+            settings: WebPageTrackerSettings {
+                revisions: 4,
+                ..tracker.settings.clone()
+            },
+            job_config: None,
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);
@@ -1517,11 +1906,17 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: None,
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "@hourly".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 5,
+                        }),
+                        notifications: false,
+                    }),
                 },
             )
             .await?;
@@ -1538,7 +1933,7 @@ mod tests {
         assert_eq!(
             update_result.to_string(),
             format!(
-                "Either new name, url, or settings should be provided ({}).",
+                "Either new name, url, settings, or job config should be provided ({}).",
                 tracker.id
             )
         );
@@ -1639,10 +2034,11 @@ mod tests {
         // Invalid schedule.
         assert_debug_snapshot!(
             update_and_fail(api.update_resources_tracker(mock_user.id, tracker.id, WebPageTrackerUpdateParams {
-                settings: Some(WebPageTrackerSettings {
-                   schedule: Some("-".to_string()),
-                   ..tracker.settings.clone()
-                }),
+                job_config: Some(Some(SchedulerJobConfig {
+                    schedule: "-".to_string(),
+                    retry_strategy: None,
+                    notifications: false,
+                })),
                 ..Default::default()
             }).await),
             @r###"
@@ -1656,13 +2052,115 @@ mod tests {
         // Invalid schedule interval.
         assert_debug_snapshot!(
             update_and_fail(api.update_resources_tracker(mock_user.id, tracker.id, WebPageTrackerUpdateParams {
-                settings: Some(WebPageTrackerSettings {
-                   schedule: Some("0 * * * * *".to_string()),
-                   ..tracker.settings.clone()
-                }),
+                job_config: Some(Some(SchedulerJobConfig {
+                    schedule: "0 * * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: false,
+                })),
                 ..Default::default()
             }).await),
-            @r###""Web page tracker schedule must have at least 1h between occurrences, detected 1m.""###
+            @r###""Web page tracker schedule must have at least 1h between occurrences, but detected 1m.""###
+        );
+
+        // Too few retry attempts.
+        assert_debug_snapshot!(
+            update_and_fail(api.update_resources_tracker(mock_user.id, tracker.id, WebPageTrackerUpdateParams {
+                job_config: Some(Some(SchedulerJobConfig {
+                    schedule: "@daily".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                        interval: Duration::from_secs(120),
+                        max_attempts: 0,
+                    }),
+                    notifications: false,
+                })),
+                ..Default::default()
+            }).await),
+            @r###""Web page tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
+        );
+
+        // Too many retry attempts.
+        assert_debug_snapshot!(
+            update_and_fail(api.update_resources_tracker(mock_user.id, tracker.id, WebPageTrackerUpdateParams {
+                job_config: Some(Some(SchedulerJobConfig {
+                    schedule: "@daily".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                        interval: Duration::from_secs(120),
+                        max_attempts: 11,
+                    }),
+                    notifications: false,
+                })),
+                ..Default::default()
+            }).await),
+            @r###""Web page tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
+        );
+
+        // Too low retry interval.
+        assert_debug_snapshot!(
+           update_and_fail(api.update_resources_tracker(mock_user.id, tracker.id, WebPageTrackerUpdateParams {
+                job_config: Some(Some(SchedulerJobConfig {
+                    schedule: "@daily".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                        interval: Duration::from_secs(30),
+                        max_attempts: 5,
+                    }),
+                    notifications: false,
+                })),
+                ..Default::default()
+            }).await),
+            @r###""Web page tracker min retry interval cannot be less than 1m, but received 30s.""###
+        );
+
+        // Too low max retry interval.
+        assert_debug_snapshot!(
+            update_and_fail(api.update_resources_tracker(mock_user.id, tracker.id, WebPageTrackerUpdateParams {
+                job_config: Some(Some(SchedulerJobConfig {
+                    schedule: "@daily".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                        initial_interval: Duration::from_secs(120),
+                        increment: Duration::from_secs(10),
+                        max_interval: Duration::from_secs(30),
+                        max_attempts: 5,
+                    }),
+                    notifications: false,
+                })),
+                ..Default::default()
+            }).await),
+            @r###""Web page tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
+        );
+
+        // Too high max retry interval.
+        assert_debug_snapshot!(
+            update_and_fail(api.update_resources_tracker(mock_user.id, tracker.id, WebPageTrackerUpdateParams {
+                job_config: Some(Some(SchedulerJobConfig {
+                    schedule: "@monthly".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                        initial_interval: Duration::from_secs(120),
+                        increment: Duration::from_secs(10),
+                        max_interval: Duration::from_secs(13 * 3600),
+                        max_attempts: 5,
+                    }),
+                    notifications: false,
+                })),
+                ..Default::default()
+            }).await),
+            @r###""Web page tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
+        );
+
+        assert_debug_snapshot!(
+            update_and_fail(api.update_resources_tracker(mock_user.id, tracker.id, WebPageTrackerUpdateParams {
+                job_config: Some(Some(SchedulerJobConfig {
+                    schedule: "@hourly".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                        initial_interval: Duration::from_secs(120),
+                        increment: Duration::from_secs(10),
+                        max_interval: Duration::from_secs(2 * 3600),
+                        max_attempts: 5,
+                    }),
+                    notifications: false,
+                })),
+               ..Default::default()
+            }).await),
+            @r###""Web page tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
         );
 
         // Invalid URL schema.
@@ -1717,11 +2215,10 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: None,
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: None,
                 },
             )
             .await?;
@@ -1781,7 +2278,6 @@ mod tests {
                 WebPageTrackerUpdateParams {
                     settings: Some(WebPageTrackerSettings {
                         revisions: 4,
-                        enable_notifications: false,
                         ..tracker.settings.clone()
                     }),
                     ..Default::default()
@@ -1793,9 +2289,80 @@ mod tests {
             url: "http://localhost:1234/my/app?q=3".parse()?,
             settings: WebPageTrackerSettings {
                 revisions: 4,
-                enable_notifications: false,
                 ..tracker.settings.clone()
             },
+            ..tracker.clone()
+        };
+        assert_eq!(expected_tracker, updated_tracker);
+        assert_eq!(
+            expected_tracker,
+            api.get_content_tracker(mock_user.id, tracker.id)
+                .await?
+                .unwrap()
+        );
+
+        // Update job config.
+        let updated_tracker = api
+            .update_content_tracker(
+                mock_user.id,
+                tracker.id,
+                WebPageTrackerUpdateParams {
+                    job_config: Some(Some(SchedulerJobConfig {
+                        schedule: "@hourly".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 5,
+                        }),
+                        notifications: false,
+                    })),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let expected_tracker = WebPageTracker {
+            name: "name_two".to_string(),
+            url: "http://localhost:1234/my/app?q=3".parse()?,
+            settings: WebPageTrackerSettings {
+                revisions: 4,
+                ..tracker.settings.clone()
+            },
+            job_config: Some(SchedulerJobConfig {
+                schedule: "@hourly".to_string(),
+                retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                    interval: Duration::from_secs(120),
+                    max_attempts: 5,
+                }),
+                notifications: false,
+            }),
+            ..tracker.clone()
+        };
+        assert_eq!(expected_tracker, updated_tracker);
+        assert_eq!(
+            expected_tracker,
+            api.get_content_tracker(mock_user.id, tracker.id)
+                .await?
+                .unwrap()
+        );
+
+        // Remove job config.
+        let updated_tracker = api
+            .update_content_tracker(
+                mock_user.id,
+                tracker.id,
+                WebPageTrackerUpdateParams {
+                    job_config: Some(None),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        let expected_tracker = WebPageTracker {
+            name: "name_two".to_string(),
+            url: "http://localhost:1234/my/app?q=3".parse()?,
+            settings: WebPageTrackerSettings {
+                revisions: 4,
+                ..tracker.settings.clone()
+            },
+            job_config: None,
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);
@@ -1825,11 +2392,17 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: None,
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "@hourly".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 5,
+                        }),
+                        notifications: false,
+                    }),
                 },
             )
             .await?;
@@ -1846,7 +2419,7 @@ mod tests {
         assert_eq!(
             update_result.to_string(),
             format!(
-                "Either new name, url, or settings should be provided ({}).",
+                "Either new name, url, settings, or job config should be provided ({}).",
                 tracker.id
             )
         );
@@ -1947,10 +2520,11 @@ mod tests {
         // Invalid schedule.
         assert_debug_snapshot!(
             update_and_fail(api.update_content_tracker(mock_user.id, tracker.id, WebPageTrackerUpdateParams {
-                settings: Some(WebPageTrackerSettings {
-                   schedule: Some("-".to_string()),
-                   ..tracker.settings.clone()
-                }),
+                job_config: Some(Some(SchedulerJobConfig {
+                    schedule: "-".to_string(),
+                    retry_strategy: None,
+                    notifications: false,
+                })),
                 ..Default::default()
             }).await),
             @r###"
@@ -1964,13 +2538,115 @@ mod tests {
         // Invalid schedule interval.
         assert_debug_snapshot!(
             update_and_fail(api.update_content_tracker(mock_user.id, tracker.id, WebPageTrackerUpdateParams {
-                settings: Some(WebPageTrackerSettings {
-                   schedule: Some("0 * * * * *".to_string()),
-                   ..tracker.settings.clone()
-                }),
+                job_config: Some(Some(SchedulerJobConfig {
+                    schedule: "0 * * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: false,
+                })),
                 ..Default::default()
             }).await),
-            @r###""Web page tracker schedule must have at least 1h between occurrences, detected 1m.""###
+            @r###""Web page tracker schedule must have at least 1h between occurrences, but detected 1m.""###
+        );
+
+        // Too few retry attempts.
+        assert_debug_snapshot!(
+            update_and_fail(api.update_content_tracker(mock_user.id, tracker.id, WebPageTrackerUpdateParams {
+                job_config: Some(Some(SchedulerJobConfig {
+                    schedule: "@daily".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                        interval: Duration::from_secs(120),
+                        max_attempts: 0,
+                    }),
+                    notifications: false,
+                })),
+                ..Default::default()
+            }).await),
+            @r###""Web page tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
+        );
+
+        // Too many retry attempts.
+        assert_debug_snapshot!(
+            update_and_fail(api.update_content_tracker(mock_user.id, tracker.id, WebPageTrackerUpdateParams {
+                job_config: Some(Some(SchedulerJobConfig {
+                    schedule: "@daily".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                        interval: Duration::from_secs(120),
+                        max_attempts: 11,
+                    }),
+                    notifications: false,
+                })),
+                ..Default::default()
+            }).await),
+            @r###""Web page tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
+        );
+
+        // Too low retry interval.
+        assert_debug_snapshot!(
+           update_and_fail(api.update_content_tracker(mock_user.id, tracker.id, WebPageTrackerUpdateParams {
+                job_config: Some(Some(SchedulerJobConfig {
+                    schedule: "@daily".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                        interval: Duration::from_secs(30),
+                        max_attempts: 5,
+                    }),
+                    notifications: false,
+                })),
+                ..Default::default()
+            }).await),
+            @r###""Web page tracker min retry interval cannot be less than 1m, but received 30s.""###
+        );
+
+        // Too low max retry interval.
+        assert_debug_snapshot!(
+            update_and_fail(api.update_content_tracker(mock_user.id, tracker.id, WebPageTrackerUpdateParams {
+                job_config: Some(Some(SchedulerJobConfig {
+                    schedule: "@daily".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                        initial_interval: Duration::from_secs(120),
+                        increment: Duration::from_secs(10),
+                        max_interval: Duration::from_secs(30),
+                        max_attempts: 5,
+                    }),
+                    notifications: false,
+                })),
+                ..Default::default()
+            }).await),
+            @r###""Web page tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
+        );
+
+        // Too high max retry interval.
+        assert_debug_snapshot!(
+            update_and_fail(api.update_content_tracker(mock_user.id, tracker.id, WebPageTrackerUpdateParams {
+                job_config: Some(Some(SchedulerJobConfig {
+                    schedule: "@monthly".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                        initial_interval: Duration::from_secs(120),
+                        increment: Duration::from_secs(10),
+                        max_interval: Duration::from_secs(13 * 3600),
+                        max_attempts: 5,
+                    }),
+                    notifications: false,
+                })),
+                ..Default::default()
+            }).await),
+            @r###""Web page tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
+        );
+
+        assert_debug_snapshot!(
+            update_and_fail(api.update_content_tracker(mock_user.id, tracker.id, WebPageTrackerUpdateParams {
+                job_config: Some(Some(SchedulerJobConfig {
+                    schedule: "@hourly".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                        initial_interval: Duration::from_secs(120),
+                        increment: Duration::from_secs(10),
+                        max_interval: Duration::from_secs(2 * 3600),
+                        max_attempts: 5,
+                    }),
+                    notifications: false,
+                })),
+               ..Default::default()
+            }).await),
+            @r###""Web page tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
         );
 
         // Invalid URL schema.
@@ -2025,11 +2701,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -2077,10 +2756,11 @@ mod tests {
                 mock_user.id,
                 tracker.id,
                 WebPageTrackerUpdateParams {
-                    settings: Some(WebPageTrackerSettings {
-                        schedule: Some("0 1 * * * *".to_string()),
-                        ..tracker.settings.clone()
-                    }),
+                    job_config: Some(Some(SchedulerJobConfig {
+                        schedule: "0 1 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    })),
                     ..Default::default()
                 },
             )
@@ -2088,10 +2768,11 @@ mod tests {
         let expected_tracker = WebPageTracker {
             name: "name_two".to_string(),
             job_id: None,
-            settings: WebPageTrackerSettings {
-                schedule: Some("0 1 * * * *".to_string()),
-                ..tracker.settings.clone()
-            },
+            job_config: Some(SchedulerJobConfig {
+                schedule: "0 1 * * * *".to_string(),
+                retry_strategy: None,
+                notifications: true,
+            }),
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);
@@ -2121,11 +2802,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -2173,10 +2857,11 @@ mod tests {
                 mock_user.id,
                 tracker.id,
                 WebPageTrackerUpdateParams {
-                    settings: Some(WebPageTrackerSettings {
-                        schedule: Some("0 1 * * * *".to_string()),
-                        ..tracker.settings.clone()
-                    }),
+                    job_config: Some(Some(SchedulerJobConfig {
+                        schedule: "0 1 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    })),
                     ..Default::default()
                 },
             )
@@ -2184,10 +2869,11 @@ mod tests {
         let expected_tracker = WebPageTracker {
             name: "name_two".to_string(),
             job_id: None,
-            settings: WebPageTrackerSettings {
-                schedule: Some("0 1 * * * *".to_string()),
-                ..tracker.settings.clone()
-            },
+            job_config: Some(SchedulerJobConfig {
+                schedule: "0 1 * * * *".to_string(),
+                retry_strategy: None,
+                notifications: true,
+            }),
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);
@@ -2217,11 +2903,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -2232,6 +2921,7 @@ mod tests {
                     name: "name_two".to_string(),
                     url: Url::parse("https://secutils.dev")?,
                     settings: tracker_one.settings.clone(),
+                    job_config: tracker_one.job_config.clone(),
                 },
             )
             .await?;
@@ -2279,11 +2969,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -2300,6 +2993,7 @@ mod tests {
                     name: "name_two".to_string(),
                     url: Url::parse("https://secutils.dev")?,
                     settings: tracker_one.settings.clone(),
+                    job_config: tracker_one.job_config.clone(),
                 },
             )
             .await?;
@@ -2335,11 +3029,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -2356,6 +3053,7 @@ mod tests {
                     name: "name_two".to_string(),
                     url: Url::parse("https://secutils.dev")?,
                     settings: tracker_one.settings.clone(),
+                    job_config: tracker_one.job_config.clone(),
                 },
             )
             .await?;
@@ -2388,11 +3086,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -2407,6 +3108,7 @@ mod tests {
                     name: "name_two".to_string(),
                     url: Url::parse("https://secutils.dev")?,
                     settings: tracker_one.settings.clone(),
+                    job_config: tracker_one.job_config.clone(),
                 },
             )
             .await?;
@@ -2438,11 +3140,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -2457,6 +3162,7 @@ mod tests {
                     name: "name_two".to_string(),
                     url: Url::parse("https://secutils.dev")?,
                     settings: tracker_one.settings.clone(),
+                    job_config: tracker_one.job_config.clone(),
                 },
             )
             .await?;
@@ -2489,11 +3195,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -2504,6 +3213,7 @@ mod tests {
                     name: "name_two".to_string(),
                     url: Url::parse("https://secutils.dev/two")?,
                     settings: tracker_one.settings.clone(),
+                    job_config: tracker_one.job_config.clone(),
                 },
             )
             .await?;
@@ -2670,11 +3380,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -2744,11 +3457,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -2759,6 +3475,7 @@ mod tests {
                     name: "name_two".to_string(),
                     url: Url::parse("https://secutils.dev/two")?,
                     settings: tracker_one.settings.clone(),
+                    job_config: tracker_one.job_config.clone(),
                 },
             )
             .await?;
@@ -2896,11 +3613,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -2967,11 +3687,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -3037,11 +3760,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -3124,11 +3850,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -3211,11 +3940,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -3299,11 +4031,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -3371,11 +4106,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -3443,11 +4181,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -3517,11 +4258,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -3591,11 +4335,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -3688,11 +4435,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -3782,11 +4532,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -3816,7 +4569,6 @@ mod tests {
                     settings: Some(WebPageTrackerSettings {
                         revisions: 4,
                         delay: Duration::from_millis(3000),
-                        enable_notifications: false,
                         scripts: Some(
                             [(
                                 WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME.to_string(),
@@ -3827,6 +4579,14 @@ mod tests {
                         ),
                         ..tracker.settings.clone()
                     }),
+                    job_config: Some(Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 5,
+                        }),
+                        notifications: false,
+                    })),
                 },
             )
             .await?;
@@ -3846,10 +4606,14 @@ mod tests {
                 mock_user.id,
                 tracker.id,
                 WebPageTrackerUpdateParams {
-                    settings: Some(WebPageTrackerSettings {
-                        schedule: Some("0 1 * * * *".to_string()),
-                        ..tracker.settings.clone()
-                    }),
+                    job_config: Some(Some(SchedulerJobConfig {
+                        schedule: "0 1 * * * *".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 5,
+                        }),
+                        notifications: false,
+                    })),
                     ..Default::default()
                 },
             )
@@ -3884,11 +4648,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -3918,7 +4685,6 @@ mod tests {
                     settings: Some(WebPageTrackerSettings {
                         revisions: 4,
                         delay: Duration::from_millis(3000),
-                        enable_notifications: false,
                         scripts: Some(
                             [(
                                 WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME.to_string(),
@@ -3929,6 +4695,14 @@ mod tests {
                         ),
                         ..tracker.settings.clone()
                     }),
+                    job_config: Some(Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 5,
+                        }),
+                        notifications: false,
+                    })),
                 },
             )
             .await?;
@@ -3948,10 +4722,14 @@ mod tests {
                 mock_user.id,
                 tracker.id,
                 WebPageTrackerUpdateParams {
-                    settings: Some(WebPageTrackerSettings {
-                        schedule: Some("0 1 * * * *".to_string()),
-                        ..tracker.settings.clone()
-                    }),
+                    job_config: Some(Some(SchedulerJobConfig {
+                        schedule: "0 1 * * * *".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 5,
+                        }),
+                        notifications: false,
+                    })),
                     ..Default::default()
                 },
             )
@@ -3986,11 +4764,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -4020,7 +4801,6 @@ mod tests {
                     settings: Some(WebPageTrackerSettings {
                         revisions: 4,
                         delay: Duration::from_millis(3000),
-                        enable_notifications: false,
                         scripts: Some(
                             [(
                                 WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME.to_string(),
@@ -4031,6 +4811,14 @@ mod tests {
                         ),
                         ..tracker.settings.clone()
                     }),
+                    job_config: Some(Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 5,
+                        }),
+                        notifications: false,
+                    })),
                 },
             )
             .await?;
@@ -4088,11 +4876,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -4122,7 +4913,6 @@ mod tests {
                     settings: Some(WebPageTrackerSettings {
                         revisions: 4,
                         delay: Duration::from_millis(3000),
-                        enable_notifications: false,
                         scripts: Some(
                             [(
                                 WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME.to_string(),
@@ -4133,6 +4923,14 @@ mod tests {
                         ),
                         ..tracker.settings.clone()
                     }),
+                    job_config: Some(Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 5,
+                        }),
+                        notifications: false,
+                    })),
                 },
             )
             .await?;
@@ -4195,11 +4993,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -4212,11 +5013,14 @@ mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -4269,12 +5073,8 @@ mod tests {
             mock_user.id,
             resources_tracker.id,
             WebPageTrackerUpdateParams {
-                name: None,
-                url: None,
-                settings: Some(WebPageTrackerSettings {
-                    schedule: None,
-                    ..resources_tracker.settings
-                }),
+                job_config: Some(None),
+                ..Default::default()
             },
         )
         .await?;
@@ -4282,12 +5082,8 @@ mod tests {
             mock_user.id,
             content_tracker.id,
             WebPageTrackerUpdateParams {
-                name: None,
-                url: None,
-                settings: Some(WebPageTrackerSettings {
-                    schedule: None,
-                    ..content_tracker.settings
-                }),
+                job_config: Some(None),
+                ..Default::default()
             },
         )
         .await?;
@@ -4335,9 +5131,9 @@ mod tests {
                 next_tick: 946720900u64,
                 count: n as u32,
                 job_type: JobType::Cron as i32,
-                extra: SchedulerJob::WebPageTrackersTrigger {
+                extra: (SchedulerJobMetadata::new(SchedulerJob::WebPageTrackersTrigger {
                     kind: WebPageTrackerKind::WebPageResources,
-                }
+                }))
                 .try_into()?,
                 ran: true,
                 stopped: n != 1,
@@ -4359,11 +5155,14 @@ mod tests {
                         settings: WebPageTrackerSettings {
                             revisions: 3,
                             delay: Duration::from_millis(2000),
-                            enable_notifications: true,
-                            schedule: Some("0 0 * * * *".to_string()),
                             scripts: Default::default(),
                             headers: Default::default(),
                         },
+                        job_config: Some(SchedulerJobConfig {
+                            schedule: "0 0 * * * *".to_string(),
+                            retry_strategy: None,
+                            notifications: true,
+                        }),
                     },
                 )
                 .await?;
@@ -4434,9 +5233,9 @@ mod tests {
                 next_tick: 946720900u64,
                 count: n as u32,
                 job_type: JobType::Cron as i32,
-                extra: SchedulerJob::WebPageTrackersTrigger {
+                extra: (SchedulerJobMetadata::new(SchedulerJob::WebPageTrackersTrigger {
                     kind: WebPageTrackerKind::WebPageContent,
-                }
+                }))
                 .try_into()?,
                 ran: true,
                 stopped: n != 1,
@@ -4458,11 +5257,14 @@ mod tests {
                         settings: WebPageTrackerSettings {
                             revisions: 3,
                             delay: Duration::from_millis(2000),
-                            enable_notifications: true,
-                            schedule: Some("0 0 * * * *".to_string()),
                             scripts: Default::default(),
                             headers: Default::default(),
                         },
+                        job_config: Some(SchedulerJobConfig {
+                            schedule: "0 0 * * * *".to_string(),
+                            retry_strategy: None,
+                            notifications: true,
+                        }),
                     },
                 )
                 .await?;

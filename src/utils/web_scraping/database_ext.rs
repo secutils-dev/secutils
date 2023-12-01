@@ -4,6 +4,7 @@ mod raw_web_page_tracker;
 use crate::{
     database::Database,
     error::Error as SecutilsError,
+    scheduler::SchedulerJobMetadata,
     users::UserId,
     utils::{
         web_scraping::database_ext::raw_web_page_data_revision::RawWebPageDataRevision,
@@ -11,8 +12,11 @@ use crate::{
     },
 };
 use anyhow::{anyhow, bail};
+use async_stream::try_stream;
+use futures::Stream;
 use raw_web_page_tracker::RawWebPageTracker;
 use sqlx::{error::ErrorKind as SqlxErrorKind, query, query_as, Pool, Sqlite};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 /// A database extension for the web scraping utility-related operations.
@@ -34,7 +38,7 @@ impl<'pool> WebScrapingDatabaseExt<'pool> {
         let raw_trackers = query_as!(
             RawWebPageTracker,
             r#"
-SELECT id, name, url, kind, schedule, job_id, user_id, data, created_at
+SELECT id, name, url, kind, job_id, job_config, user_id, data, created_at
 FROM user_data_web_scraping_trackers
 WHERE user_id = ?1 AND kind = ?2
 ORDER BY created_at
@@ -63,7 +67,7 @@ ORDER BY created_at
         query_as!(
             RawWebPageTracker,
             r#"
-    SELECT id, name, url, kind, schedule, user_id, job_id, data, created_at
+    SELECT id, name, url, kind, user_id, job_id, job_config, data, created_at
     FROM user_data_web_scraping_trackers
     WHERE user_id = ?1 AND id = ?2 AND kind = ?3
                     "#,
@@ -85,7 +89,7 @@ ORDER BY created_at
         let raw_tracker = RawWebPageTracker::try_from(tracker)?;
         let result = query!(
             r#"
-    INSERT INTO user_data_web_scraping_trackers (user_id, id, name, url, kind, schedule, job_id, data, created_at)
+    INSERT INTO user_data_web_scraping_trackers (user_id, id, name, url, kind, job_id, job_config, data, created_at)
     VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9 )
             "#,
             *self.user_id,
@@ -93,8 +97,8 @@ ORDER BY created_at
             raw_tracker.name,
             raw_tracker.url,
             raw_tracker.kind,
-            raw_tracker.schedule,
             raw_tracker.job_id,
+            raw_tracker.job_config,
             raw_tracker.data,
             raw_tracker.created_at
         )
@@ -132,7 +136,7 @@ ORDER BY created_at
         let result = query!(
             r#"
 UPDATE user_data_web_scraping_trackers
-SET name = ?4, url = ?5, schedule = ?6, data = ?7, job_id = ?8
+SET name = ?4, url = ?5, job_config = ?6, data = ?7, job_id = ?8
 WHERE user_id = ?1 AND id = ?2 AND kind = ?3
         "#,
             *self.user_id,
@@ -140,7 +144,7 @@ WHERE user_id = ?1 AND id = ?2 AND kind = ?3
             kind,
             raw_tracker.name,
             raw_tracker.url,
-            raw_tracker.schedule,
+            raw_tracker.job_config,
             raw_tracker.data,
             raw_tracker.job_id
         )
@@ -325,9 +329,9 @@ impl<'pool> WebScrapingDatabaseSystemExt<'pool> {
         let raw_trackers = query_as!(
             RawWebPageTracker,
             r#"
-SELECT id, name, url, kind, schedule, user_id, job_id, data, created_at
+SELECT id, name, url, kind, user_id, job_id, job_config, data, created_at
 FROM user_data_web_scraping_trackers
-WHERE schedule IS NOT NULL AND job_id IS NULL AND kind = ?1
+WHERE job_config IS NOT NULL AND job_id IS NULL AND kind = ?1
 ORDER BY created_at
                 "#,
             kind
@@ -347,6 +351,65 @@ ORDER BY created_at
         Ok(trackers)
     }
 
+    /// Retrieves all scheduled jobs from `scheduler_jobs` table that are in a `stopped` state.
+    pub fn get_pending_web_page_trackers<'a, Tag: WebPageTrackerTag + 'a>(
+        &'a self,
+        page_size: usize,
+    ) -> impl Stream<Item = anyhow::Result<WebPageTracker<Tag>>> + '_ {
+        let page_limit = page_size as i64;
+        try_stream! {
+            let mut last_created_at = 0;
+            let kind = Vec::try_from(Tag::KIND)?;
+            loop {
+                 let records = query!(
+r#"
+SELECT trackers.id, trackers.name, trackers.url, trackers.kind, trackers.job_id, 
+       trackers.job_config, trackers.user_id, trackers.data, trackers.created_at, jobs.extra
+FROM user_data_web_scraping_trackers as trackers
+INNER JOIN scheduler_jobs as jobs
+ON trackers.job_id = jobs.id
+WHERE trackers.kind = ?1 AND jobs.stopped = 1 AND trackers.created_at > ?2
+ORDER BY trackers.created_at
+LIMIT ?3;
+"#,
+             kind, last_created_at, page_limit
+        )
+            .fetch_all(self.pool)
+            .await?;
+
+                let is_last_page = records.len() < page_size;
+                let now = OffsetDateTime::now_utc();
+                for record in records {
+                    last_created_at = record.created_at;
+
+                    // Check if the tracker job is pending the retry attempt.
+                    let job_meta = record.extra.map(|extra| SchedulerJobMetadata::try_from(extra.as_slice())).transpose()?;
+                    if let Some(SchedulerJobMetadata { retry: Some(retry), .. }) = job_meta {
+                        if retry.next_at > now {
+                            continue;
+                        }
+                    }
+
+                    yield WebPageTracker::<Tag>::try_from(RawWebPageTracker {
+                        id: record.id,
+                        name: record.name,
+                        url: record.url,
+                        kind: record.kind,
+                        job_id: record.job_id,
+                        job_config: record.job_config,
+                        user_id: record.user_id,
+                        data: record.data,
+                        created_at: record.created_at,
+                    })?;
+                }
+
+                if is_last_page {
+                    break;
+                }
+            }
+        }
+    }
+
     /// Retrieves web page tracker by the specified job ID.
     pub async fn get_web_page_tracker_by_job_id<Tag: WebPageTrackerTag>(
         &self,
@@ -356,7 +419,7 @@ ORDER BY created_at
         query_as!(
             RawWebPageTracker,
             r#"
-    SELECT id, name, url, kind, schedule, user_id, job_id, data, created_at
+    SELECT id, name, url, kind, user_id, job_id, job_config, data, created_at
     FROM user_data_web_scraping_trackers
     WHERE job_id = ?1 AND kind = ?2
                     "#,
@@ -415,15 +478,25 @@ impl Database {
 mod tests {
     use crate::{
         error::Error as SecutilsError,
+        scheduler::{
+            SchedulerJob, SchedulerJobConfig, SchedulerJobMetadata, SchedulerJobRetryState,
+            SchedulerJobRetryStrategy,
+        },
         tests::{mock_db, mock_user, MockWebPageTrackerBuilder},
         utils::{
             web_scraping::WebPageResourcesTrackerTag, WebPageContentTrackerTag,
             WebPageDataRevision, WebPageResource, WebPageResourceContent,
-            WebPageResourceContentData, WebPageResourcesData, WebPageTracker,
+            WebPageResourceContentData, WebPageResourcesData, WebPageTracker, WebPageTrackerKind,
         },
     };
+    use futures::StreamExt;
     use insta::assert_debug_snapshot;
+    use std::{
+        ops::{Add, Sub},
+        time::Duration,
+    };
     use time::OffsetDateTime;
+    use tokio_cron_scheduler::{CronJob, JobStored, JobStoredData, JobType};
     use url::Url;
     use uuid::{uuid, Uuid};
 
@@ -477,6 +550,14 @@ mod tests {
                 "https://secutils.dev",
                 3,
             )?
+            .with_job_config(SchedulerJobConfig {
+                schedule: "* * * * *".to_string(),
+                retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                    interval: Duration::from_secs(120),
+                    max_attempts: 5,
+                }),
+                notifications: true,
+            })
             .build(),
         ];
 
@@ -1551,6 +1632,249 @@ mod tests {
         assert_eq!(
             update_result.to_string(),
             format!("A web page tracker ('{}') doesn't exist.", tracker.id)
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn can_return_tracker_with_pending_jobs() -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = mock_db().await?;
+        db.insert_user(&user).await?;
+
+        let pending_trackers = db
+            .web_scraping_system()
+            .get_pending_web_page_trackers::<WebPageContentTrackerTag>(10)
+            .collect::<Vec<_>>()
+            .await;
+        assert!(pending_trackers.is_empty());
+
+        let pending_trackers = db
+            .web_scraping_system()
+            .get_pending_web_page_trackers::<WebPageResourcesTrackerTag>(10)
+            .collect::<Vec<_>>()
+            .await;
+        assert!(pending_trackers.is_empty());
+
+        for n in 0..=2 {
+            let job = JobStoredData {
+                id: Some(
+                    Uuid::parse_str(&format!("67e55044-10b1-426f-9247-bb680e5fe0c{}", n))?.into(),
+                ),
+                last_updated: Some(946720800u64 + n),
+                last_tick: Some(946720700u64),
+                next_tick: 946720900u64,
+                count: n as u32,
+                job_type: JobType::Cron as i32,
+                extra: SchedulerJobMetadata::new(SchedulerJob::WebPageTrackersTrigger {
+                    kind: WebPageTrackerKind::WebPageContent,
+                })
+                .try_into()?,
+                ran: true,
+                stopped: n != 1,
+                job: Some(JobStored::CronJob(CronJob {
+                    schedule: format!("{} 0 0 1 1 * *", n),
+                })),
+            };
+
+            db.upsert_scheduler_job(&job).await?;
+        }
+
+        for n in 0..=2 {
+            let job = JobStoredData {
+                id: Some(
+                    Uuid::parse_str(&format!("68e55044-10b1-426f-9247-bb680e5fe0c{}", n))?.into(),
+                ),
+                last_updated: Some(946720800u64 + n),
+                last_tick: Some(946720700u64),
+                next_tick: 946720900u64,
+                count: n as u32,
+                job_type: JobType::Cron as i32,
+                extra: SchedulerJobMetadata::new(SchedulerJob::WebPageTrackersTrigger {
+                    kind: WebPageTrackerKind::WebPageResources,
+                })
+                .try_into()?,
+                ran: true,
+                stopped: n != 1,
+                job: Some(JobStored::CronJob(CronJob {
+                    schedule: format!("{} 0 0 1 1 * *", n),
+                })),
+            };
+
+            db.upsert_scheduler_job(&job).await?;
+        }
+
+        for n in 0..=2 {
+            db.web_scraping(user.id)
+                .insert_web_page_tracker(
+                    &MockWebPageTrackerBuilder::<WebPageContentTrackerTag>::create(
+                        Uuid::parse_str(&format!("77e55044-10b1-426f-9247-bb680e5fe0c{}", n))?,
+                        format!("name_{}", n),
+                        "https://secutils.dev",
+                        3,
+                    )?
+                    .with_schedule("0 0 * * * *")
+                    .with_job_id(Uuid::parse_str(&format!(
+                        "67e55044-10b1-426f-9247-bb680e5fe0c{}",
+                        n
+                    ))?)
+                    .build(),
+                )
+                .await?;
+        }
+
+        for n in 0..=2 {
+            db.web_scraping(user.id)
+                .insert_web_page_tracker(
+                    &MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
+                        Uuid::parse_str(&format!("78e55044-10b1-426f-9247-bb680e5fe0c{}", n))?,
+                        format!("name_{}", n),
+                        "https://secutils.dev",
+                        3,
+                    )?
+                    .with_schedule("0 0 * * * *")
+                    .with_job_id(Uuid::parse_str(&format!(
+                        "68e55044-10b1-426f-9247-bb680e5fe0c{}",
+                        n
+                    ))?)
+                    .build(),
+                )
+                .await?;
+        }
+
+        let pending_trackers = db
+            .web_scraping_system()
+            .get_pending_web_page_trackers::<WebPageContentTrackerTag>(10)
+            .collect::<Vec<_>>()
+            .await;
+        assert_eq!(pending_trackers.len(), 2);
+
+        let pending_trackers = db
+            .web_scraping_system()
+            .get_pending_web_page_trackers::<WebPageResourcesTrackerTag>(10)
+            .collect::<Vec<_>>()
+            .await;
+        assert_eq!(pending_trackers.len(), 2);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn can_return_tracker_with_pending_jobs_with_retry() -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = mock_db().await?;
+        db.insert_user(&user).await?;
+
+        let pending_trackers = db
+            .web_scraping_system()
+            .get_pending_web_page_trackers::<WebPageContentTrackerTag>(10)
+            .collect::<Vec<_>>()
+            .await;
+        assert!(pending_trackers.is_empty());
+
+        for n in 0..=2 {
+            let job = JobStoredData {
+                id: Some(
+                    Uuid::parse_str(&format!("67e55044-10b1-426f-9247-bb680e5fe0c{}", n))?.into(),
+                ),
+                last_updated: Some(946720800u64 + n),
+                last_tick: Some(946720700u64),
+                next_tick: 946720900u64,
+                count: n as u32,
+                job_type: JobType::Cron as i32,
+                extra: (if n == 2 {
+                    SchedulerJobMetadata {
+                        job_type: SchedulerJob::WebPageTrackersTrigger {
+                            kind: WebPageTrackerKind::WebPageContent,
+                        },
+                        retry: Some(SchedulerJobRetryState {
+                            attempts: 1,
+                            next_at: OffsetDateTime::now_utc().add(Duration::from_secs(3600)),
+                        }),
+                    }
+                } else {
+                    SchedulerJobMetadata::new(SchedulerJob::WebPageTrackersTrigger {
+                        kind: WebPageTrackerKind::WebPageContent,
+                    })
+                })
+                .try_into()?,
+                ran: true,
+                stopped: n != 1,
+                job: Some(JobStored::CronJob(CronJob {
+                    schedule: format!("{} 0 0 1 1 * *", n),
+                })),
+            };
+
+            db.upsert_scheduler_job(&job).await?;
+        }
+
+        for n in 0..=2 {
+            db.web_scraping(user.id)
+                .insert_web_page_tracker(
+                    &MockWebPageTrackerBuilder::<WebPageContentTrackerTag>::create(
+                        Uuid::parse_str(&format!("77e55044-10b1-426f-9247-bb680e5fe0c{}", n))?,
+                        format!("name_{}", n),
+                        "https://secutils.dev",
+                        3,
+                    )?
+                    .with_schedule("0 0 * * * *")
+                    .with_job_id(Uuid::parse_str(&format!(
+                        "67e55044-10b1-426f-9247-bb680e5fe0c{}",
+                        n
+                    ))?)
+                    .build(),
+                )
+                .await?;
+        }
+
+        let mut pending_trackers = db
+            .web_scraping_system()
+            .get_pending_web_page_trackers::<WebPageContentTrackerTag>(10)
+            .collect::<Vec<_>>()
+            .await;
+        assert_eq!(pending_trackers.len(), 1);
+
+        let tracker = pending_trackers.remove(0)?;
+        assert_eq!(tracker.id, uuid!("77e55044-10b1-426f-9247-bb680e5fe0c0"));
+        assert_eq!(
+            tracker.job_id,
+            Some(uuid!("67e55044-10b1-426f-9247-bb680e5fe0c0"))
+        );
+
+        db.update_scheduler_job_meta(
+            uuid!("67e55044-10b1-426f-9247-bb680e5fe0c2"),
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersTrigger {
+                    kind: WebPageTrackerKind::WebPageContent,
+                },
+                retry: Some(SchedulerJobRetryState {
+                    attempts: 1,
+                    next_at: OffsetDateTime::now_utc().sub(Duration::from_secs(3600)),
+                }),
+            },
+        )
+        .await?;
+
+        let mut pending_trackers = db
+            .web_scraping_system()
+            .get_pending_web_page_trackers::<WebPageContentTrackerTag>(10)
+            .collect::<Vec<_>>()
+            .await;
+        assert_eq!(pending_trackers.len(), 2);
+
+        let tracker = pending_trackers.remove(0)?;
+        assert_eq!(tracker.id, uuid!("77e55044-10b1-426f-9247-bb680e5fe0c0"));
+        assert_eq!(
+            tracker.job_id,
+            Some(uuid!("67e55044-10b1-426f-9247-bb680e5fe0c0"))
+        );
+
+        let tracker = pending_trackers.remove(0)?;
+        assert_eq!(tracker.id, uuid!("77e55044-10b1-426f-9247-bb680e5fe0c2"));
+        assert_eq!(
+            tracker.job_id,
+            Some(uuid!("67e55044-10b1-426f-9247-bb680e5fe0c2"))
         );
 
         Ok(())

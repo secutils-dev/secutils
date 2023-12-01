@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\nSELECT id, name, url, kind, schedule, user_id, job_id, data, created_at\nFROM user_data_web_scraping_trackers\nWHERE schedule IS NOT NULL AND job_id IS NULL AND kind = ?1\nORDER BY created_at\n                ",
+  "query": "\nSELECT id, name, url, kind, user_id, job_id, job_config, data, created_at\nFROM user_data_web_scraping_trackers\nWHERE job_config IS NOT NULL AND job_id IS NULL AND kind = ?1\nORDER BY created_at\n                ",
   "describe": {
     "columns": [
       {
@@ -24,17 +24,17 @@
         "type_info": "Blob"
       },
       {
-        "name": "schedule",
-        "ordinal": 4,
-        "type_info": "Text"
-      },
-      {
         "name": "user_id",
-        "ordinal": 5,
+        "ordinal": 4,
         "type_info": "Int64"
       },
       {
         "name": "job_id",
+        "ordinal": 5,
+        "type_info": "Blob"
+      },
+      {
+        "name": "job_config",
         "ordinal": 6,
         "type_info": "Blob"
       },
@@ -57,12 +57,12 @@
       false,
       false,
       false,
-      true,
       false,
+      true,
       true,
       false,
       false
     ]
   },
-  "hash": "ef6b364bd90bd015c80fdd830e3e2a28eb24e034bbec16e76cb95869c4e0a8bd"
+  "hash": "95cc743b6e8c181e9b877d63a95218d9efde1bd3f207197aa482af0fb11de268"
 }

@@ -2,21 +2,12 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
 use std::{collections::HashMap, time::Duration};
 
-/// We currently support up to 10 revisions of the web page content.
-pub const MAX_WEB_PAGE_TRACKER_REVISIONS: usize = 10;
-
-/// We currently wait up to 60 seconds before starting to track web page.
-pub const MAX_WEB_PAGE_TRACKER_DELAY: Duration = Duration::from_secs(60);
-
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WebPageTrackerSettings {
     /// A number of revisions of the web page content to track.
     pub revisions: usize,
-    /// Optional schedule to track web page on.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub schedule: Option<String>,
     /// Number of milliseconds to wait after web page enters "idle" state to start tracking.
     #[serde_as(as = "DurationMilliSeconds<u64>")]
     pub delay: Duration,
@@ -26,8 +17,6 @@ pub struct WebPageTrackerSettings {
     /// Optional list of HTTP headers that should be sent with the tracker requests.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<HashMap<String, String>>,
-    /// Indicates that web page change notifications are enabled for this tracker.
-    pub enable_notifications: bool,
 }
 
 #[cfg(test)]
@@ -43,40 +32,19 @@ mod tests {
     fn serialization() -> anyhow::Result<()> {
         let settings = WebPageTrackerSettings {
             revisions: 3,
-            schedule: None,
             delay: Duration::from_millis(2500),
             scripts: Default::default(),
             headers: Default::default(),
-            enable_notifications: true,
         };
         assert_json_snapshot!(settings, @r###"
         {
           "revisions": 3,
-          "delay": 2500,
-          "enableNotifications": true
+          "delay": 2500
         }
         "###);
 
         let settings = WebPageTrackerSettings {
             revisions: 3,
-            schedule: Some("0 0 * * *".to_string()),
-            delay: Duration::from_millis(2500),
-            scripts: Default::default(),
-            headers: Default::default(),
-            enable_notifications: true,
-        };
-        assert_json_snapshot!(settings, @r###"
-        {
-          "revisions": 3,
-          "schedule": "0 0 * * *",
-          "delay": 2500,
-          "enableNotifications": true
-        }
-        "###);
-
-        let settings = WebPageTrackerSettings {
-            revisions: 3,
-            schedule: Some("0 0 * * *".to_string()),
             delay: Duration::from_millis(2500),
             scripts: Some(
                 [(
@@ -91,54 +59,17 @@ mod tests {
                     .into_iter()
                     .collect(),
             ),
-            enable_notifications: true,
         };
         assert_json_snapshot!(settings, @r###"
         {
           "revisions": 3,
-          "schedule": "0 0 * * *",
           "delay": 2500,
           "scripts": {
             "resourceFilterMap": "return resource;"
           },
           "headers": {
             "cookie": "my-cookie"
-          },
-          "enableNotifications": true
-        }
-        "###);
-
-        let settings = WebPageTrackerSettings {
-            revisions: 3,
-            schedule: Some("0 0 * * *".to_string()),
-            delay: Duration::from_millis(2500),
-            scripts: Default::default(),
-            headers: Default::default(),
-            enable_notifications: true,
-        };
-        assert_json_snapshot!(settings, @r###"
-        {
-          "revisions": 3,
-          "schedule": "0 0 * * *",
-          "delay": 2500,
-          "enableNotifications": true
-        }
-        "###);
-
-        let settings = WebPageTrackerSettings {
-            revisions: 3,
-            schedule: Some("0 0 * * *".to_string()),
-            delay: Duration::from_millis(2500),
-            scripts: Default::default(),
-            headers: Default::default(),
-            enable_notifications: false,
-        };
-        assert_json_snapshot!(settings, @r###"
-        {
-          "revisions": 3,
-          "schedule": "0 0 * * *",
-          "delay": 2500,
-          "enableNotifications": false
+          }
         }
         "###);
 
@@ -149,37 +80,19 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         let settings = WebPageTrackerSettings {
             revisions: 3,
-            schedule: None,
             delay: Duration::from_millis(2000),
             scripts: Default::default(),
             headers: Default::default(),
-            enable_notifications: true,
         };
         assert_eq!(
             serde_json::from_str::<WebPageTrackerSettings>(
-                &json!({ "revisions": 3, "delay": 2000, "enableNotifications": true }).to_string()
+                &json!({ "revisions": 3, "delay": 2000 }).to_string()
             )?,
             settings
         );
 
         let settings = WebPageTrackerSettings {
             revisions: 3,
-            schedule: Some("0 0 * * *".to_string()),
-            delay: Duration::from_millis(2000),
-            scripts: Default::default(),
-            headers: Default::default(),
-            enable_notifications: true,
-        };
-        assert_eq!(
-            serde_json::from_str::<WebPageTrackerSettings>(
-                &json!({ "revisions": 3, "delay": 2000, "schedule": "0 0 * * *", "enableNotifications": true }).to_string()
-            )?,
-            settings
-        );
-
-        let settings = WebPageTrackerSettings {
-            revisions: 3,
-            schedule: Some("0 0 * * *".to_string()),
             delay: Duration::from_millis(2000),
             scripts: Some(
                 [(
@@ -194,51 +107,14 @@ mod tests {
                     .into_iter()
                     .collect(),
             ),
-            enable_notifications: true,
         };
         assert_eq!(
             serde_json::from_str::<WebPageTrackerSettings>(
                 &json!({
                     "revisions": 3,
                     "delay": 2000,
-                    "schedule": "0 0 * * *",
                     "scripts": { "resourceFilterMap": "return resource;" },
-                    "headers": { "cookie": "my-cookie" },
-                    "enableNotifications": true
-                })
-                .to_string()
-            )?,
-            settings
-        );
-
-        let settings = WebPageTrackerSettings {
-            revisions: 3,
-            schedule: Some("0 0 * * *".to_string()),
-            delay: Duration::from_millis(2000),
-            scripts: Some(
-                [(
-                    WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME.to_string(),
-                    "return resource;".to_string(),
-                )]
-                .into_iter()
-                .collect(),
-            ),
-            headers: Some(
-                [("cookie".to_string(), "my-cookie".to_string())]
-                    .into_iter()
-                    .collect(),
-            ),
-            enable_notifications: false,
-        };
-        assert_eq!(
-            serde_json::from_str::<WebPageTrackerSettings>(
-                &json!({
-                    "revisions": 3,
-                    "delay": 2000,
-                    "schedule": "0 0 * * *",
-                    "scripts": { "resourceFilterMap": "return resource;" },
-                    "headers": { "cookie": "my-cookie" },
-                    "enableNotifications": false
+                    "headers": { "cookie": "my-cookie" }
                 })
                 .to_string()
             )?,

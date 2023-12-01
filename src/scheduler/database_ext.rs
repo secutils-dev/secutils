@@ -1,7 +1,7 @@
 mod raw_scheduler_job_stored_data;
 
-use crate::database::Database;
-use anyhow::bail;
+use crate::{database::Database, scheduler::SchedulerJobMetadata};
+use anyhow::{anyhow, bail};
 use async_stream::try_stream;
 use futures::Stream;
 use sqlx::{query, query_as, QueryBuilder, Sqlite};
@@ -33,6 +33,41 @@ WHERE id = ?1
         .await?
         .map(JobStoredData::try_from)
         .transpose()
+    }
+
+    /// Retrieves scheduler job metadata from the `scheduler_jobs` table using Job ID.
+    pub async fn get_scheduler_job_meta(
+        &self,
+        id: JobId,
+    ) -> anyhow::Result<Option<SchedulerJobMetadata>> {
+        query!(r#"SELECT extra FROM scheduler_jobs WHERE id = ?1"#, id)
+            .fetch_optional(&self.pool)
+            .await?
+            .and_then(|record| record.extra)
+            .map(|extra| SchedulerJobMetadata::try_from(extra.as_slice()))
+            .transpose()
+    }
+
+    /// Updates scheduler job metadata in the `scheduler_jobs` table using Job ID.
+    pub async fn update_scheduler_job_meta(
+        &self,
+        id: JobId,
+        meta: SchedulerJobMetadata,
+    ) -> anyhow::Result<()> {
+        let meta = Vec::try_from(meta)?;
+        let result = query!(
+            r#"UPDATE scheduler_jobs SET extra = ?2 WHERE id = ?1"#,
+            id,
+            meta
+        )
+        .execute(&self.pool)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            bail!(format!("A scheduler job ('{id}') doesn't exist."));
+        }
+
+        Ok(())
     }
 
     /// Upserts scheduler job to the `scheduler_jobs` table.
@@ -70,21 +105,24 @@ ON CONFLICT(id) DO UPDATE SET last_updated=excluded.last_updated, next_tick=excl
     }
 
     /// Updates `stopped` job value to the `scheduler_jobs` table.
-    pub async fn set_scheduler_job_stopped_state(
-        &self,
-        id: JobId,
-        stopped: bool,
-    ) -> anyhow::Result<()> {
-        let stopped = stopped as i64;
+    pub async fn reset_scheduler_job_state(&self, id: JobId, stopped: bool) -> anyhow::Result<()> {
+        let metadata = self
+            .get_scheduler_job_meta(id)
+            .await?
+            .ok_or_else(|| anyhow!("A scheduler job ('{id}') doesn't exist."))?;
 
+        let stopped = stopped as i64;
+        // Every time the job state is reset, we should reset retry state.
+        let metadata = Vec::try_from(SchedulerJobMetadata::new(metadata.job_type))?;
         query!(
             r#"
 UPDATE scheduler_jobs
-SET stopped = ?2
+SET stopped = ?2, extra = ?3
 WHERE id = ?1
         "#,
             id,
-            stopped
+            stopped,
+            metadata
         )
         .execute(&self.pool)
         .await?;
@@ -126,44 +164,6 @@ ORDER BY id
 LIMIT ?2;
 "#,
             last_id, page_limit
-        )
-            .fetch_all(&self.pool)
-            .await?;
-
-                let is_last_page = jobs.len() < page_size;
-                for job in jobs {
-                    last_id = Uuid::from_slice(job.id.as_slice())?;
-                    yield JobStoredData::try_from(job)?;
-                }
-
-                if is_last_page {
-                    break;
-                }
-            }
-        }
-    }
-
-    /// Retrieves all scheduled jobs from `scheduler_jobs` table that are in a `stopped` state with
-    /// the specified value in the `extra` field.
-    pub fn get_stopped_scheduler_jobs_by_extra<'a>(
-        &'a self,
-        page_size: usize,
-        extra: &'a [u8],
-    ) -> impl Stream<Item = anyhow::Result<JobStoredData>> + '_ {
-        let page_limit = page_size as i64;
-        try_stream! {
-            let mut last_id = Uuid::nil();
-            loop {
-                 let jobs = query_as!(RawSchedulerJobStoredData,
-r#"
-SELECT id, last_updated, next_tick, last_tick, job_type as "job_type!", count,
-       ran, stopped, schedule, repeating, repeated_every, extra
-FROM scheduler_jobs
-WHERE id > ?1 AND stopped = 1 AND extra = ?3
-ORDER BY id
-LIMIT ?2;
-"#,
-            last_id, page_limit, extra
         )
             .fetch_all(&self.pool)
             .await?;
@@ -466,7 +466,10 @@ WHERE job_id = ?1
 
 #[cfg(test)]
 mod tests {
-    use crate::tests::mock_db;
+    use crate::{
+        scheduler::{SchedulerJob, SchedulerJobMetadata, SchedulerJobRetryState},
+        tests::mock_db,
+    };
     use futures::{Stream, StreamExt};
     use insta::assert_debug_snapshot;
     use std::time::Duration;
@@ -806,7 +809,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn can_update_scheduler_job_stopped_state() -> anyhow::Result<()> {
+    async fn can_reset_scheduler_job_state() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
         let job_one_id = uuid!("00000000-0000-0000-0000-000000000001");
@@ -820,7 +823,14 @@ mod tests {
                 next_tick: 946720900u64,
                 count: 3,
                 job_type: JobType::Cron as i32,
-                extra: vec![1, 2, 3],
+                extra: SchedulerJobMetadata {
+                    job_type: SchedulerJob::WebPageTrackersSchedule,
+                    retry: Some(SchedulerJobRetryState {
+                        attempts: 5,
+                        next_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    }),
+                }
+                .try_into()?,
                 ran: true,
                 stopped: false,
                 job: Some(JobStored::CronJob(CronJob {
@@ -834,7 +844,11 @@ mod tests {
                 next_tick: 946820900u64,
                 count: 0,
                 job_type: JobType::OneShot as i32,
-                extra: vec![1, 2, 3],
+                extra: SchedulerJobMetadata {
+                    job_type: SchedulerJob::WebPageTrackersSchedule,
+                    retry: None,
+                }
+                .try_into()?,
                 ran: true,
                 stopped: false,
                 job: Some(JobStored::NonCronJob(NonCronJob {
@@ -848,76 +862,270 @@ mod tests {
             db.upsert_scheduler_job(&job).await?;
         }
 
-        let job_one_stopped = db
-            .get_scheduler_job(job_one_id)
-            .await?
-            .map(|job| job.stopped);
-        let job_two_stopped = db
-            .get_scheduler_job(job_two_id)
-            .await?
-            .map(|job| job.stopped);
+        let job_one = db.get_scheduler_job(job_one_id).await?.unwrap();
+        assert!(!job_one.stopped);
         assert_eq!(
-            (job_one_stopped, job_two_stopped),
-            (Some(false), Some(false))
+            SchedulerJobMetadata::try_from(job_one.extra.as_slice())?,
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersSchedule,
+                retry: Some(SchedulerJobRetryState {
+                    attempts: 5,
+                    next_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                }),
+            }
         );
 
-        db.set_scheduler_job_stopped_state(job_one_id, true).await?;
-
-        let job_one_stopped = db
-            .get_scheduler_job(job_one_id)
-            .await?
-            .map(|job| job.stopped);
-        let job_two_stopped = db
-            .get_scheduler_job(job_two_id)
-            .await?
-            .map(|job| job.stopped);
+        let job_two = db.get_scheduler_job(job_two_id).await?.unwrap();
+        assert!(!job_two.stopped);
         assert_eq!(
-            (job_one_stopped, job_two_stopped),
-            (Some(true), Some(false))
+            SchedulerJobMetadata::try_from(job_two.extra.as_slice())?,
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersSchedule,
+                retry: None
+            }
         );
 
-        db.set_scheduler_job_stopped_state(job_two_id, true).await?;
+        db.reset_scheduler_job_state(job_one_id, true).await?;
 
-        let job_one_stopped = db
-            .get_scheduler_job(job_one_id)
-            .await?
-            .map(|job| job.stopped);
-        let job_two_stopped = db
-            .get_scheduler_job(job_two_id)
-            .await?
-            .map(|job| job.stopped);
-        assert_eq!((job_one_stopped, job_two_stopped), (Some(true), Some(true)));
-
-        db.set_scheduler_job_stopped_state(job_two_id, false)
-            .await?;
-
-        let job_one_stopped = db
-            .get_scheduler_job(job_one_id)
-            .await?
-            .map(|job| job.stopped);
-        let job_two_stopped = db
-            .get_scheduler_job(job_two_id)
-            .await?
-            .map(|job| job.stopped);
+        let job_one = db.get_scheduler_job(job_one_id).await?.unwrap();
+        assert!(job_one.stopped);
         assert_eq!(
-            (job_one_stopped, job_two_stopped),
-            (Some(true), Some(false))
+            SchedulerJobMetadata::try_from(job_one.extra.as_slice())?,
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersSchedule,
+                retry: None,
+            }
         );
 
-        db.set_scheduler_job_stopped_state(job_one_id, false)
-            .await?;
-
-        let job_one_stopped = db
-            .get_scheduler_job(job_one_id)
-            .await?
-            .map(|job| job.stopped);
-        let job_two_stopped = db
-            .get_scheduler_job(job_two_id)
-            .await?
-            .map(|job| job.stopped);
+        let job_two = db.get_scheduler_job(job_two_id).await?.unwrap();
+        assert!(!job_two.stopped);
         assert_eq!(
-            (job_one_stopped, job_two_stopped),
-            (Some(false), Some(false))
+            SchedulerJobMetadata::try_from(job_two.extra.as_slice())?,
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersSchedule,
+                retry: None
+            }
+        );
+
+        db.reset_scheduler_job_state(job_two_id, true).await?;
+
+        let job_one = db.get_scheduler_job(job_one_id).await?.unwrap();
+        assert!(job_one.stopped);
+        assert_eq!(
+            SchedulerJobMetadata::try_from(job_one.extra.as_slice())?,
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersSchedule,
+                retry: None,
+            }
+        );
+
+        let job_two = db.get_scheduler_job(job_two_id).await?.unwrap();
+        assert!(job_two.stopped);
+        assert_eq!(
+            SchedulerJobMetadata::try_from(job_two.extra.as_slice())?,
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersSchedule,
+                retry: None
+            }
+        );
+
+        db.update_scheduler_job_meta(
+            job_one_id,
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersSchedule,
+                retry: Some(SchedulerJobRetryState {
+                    attempts: 5,
+                    next_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                }),
+            },
+        )
+        .await?;
+        db.update_scheduler_job_meta(
+            job_two_id,
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersSchedule,
+                retry: Some(SchedulerJobRetryState {
+                    attempts: 10,
+                    next_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                }),
+            },
+        )
+        .await?;
+
+        let job_one = db.get_scheduler_job(job_one_id).await?.unwrap();
+        assert!(job_one.stopped);
+        assert_eq!(
+            SchedulerJobMetadata::try_from(job_one.extra.as_slice())?,
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersSchedule,
+                retry: Some(SchedulerJobRetryState {
+                    attempts: 5,
+                    next_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                }),
+            }
+        );
+
+        let job_two = db.get_scheduler_job(job_two_id).await?.unwrap();
+        assert!(job_two.stopped);
+        assert_eq!(
+            SchedulerJobMetadata::try_from(job_two.extra.as_slice())?,
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersSchedule,
+                retry: Some(SchedulerJobRetryState {
+                    attempts: 10,
+                    next_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                }),
+            }
+        );
+
+        db.reset_scheduler_job_state(job_two_id, false).await?;
+
+        let job_one = db.get_scheduler_job(job_one_id).await?.unwrap();
+        assert!(job_one.stopped);
+        assert_eq!(
+            SchedulerJobMetadata::try_from(job_one.extra.as_slice())?,
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersSchedule,
+                retry: Some(SchedulerJobRetryState {
+                    attempts: 5,
+                    next_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                }),
+            }
+        );
+
+        let job_two = db.get_scheduler_job(job_two_id).await?.unwrap();
+        assert!(!job_two.stopped);
+        assert_eq!(
+            SchedulerJobMetadata::try_from(job_two.extra.as_slice())?,
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersSchedule,
+                retry: None,
+            }
+        );
+
+        db.reset_scheduler_job_state(job_one_id, false).await?;
+
+        let job_one = db.get_scheduler_job(job_one_id).await?.unwrap();
+        assert!(!job_one.stopped);
+        assert_eq!(
+            SchedulerJobMetadata::try_from(job_one.extra.as_slice())?,
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersSchedule,
+                retry: None,
+            }
+        );
+
+        let job_two = db.get_scheduler_job(job_two_id).await?.unwrap();
+        assert!(!job_two.stopped);
+        assert_eq!(
+            SchedulerJobMetadata::try_from(job_two.extra.as_slice())?,
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersSchedule,
+                retry: None,
+            }
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn can_update_and_retrieve_scheduler_job_metadata() -> anyhow::Result<()> {
+        let db = mock_db().await?;
+        let jobs = vec![
+            JobStoredData {
+                id: Some(uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8").into()),
+                last_updated: Some(946720800u64),
+                last_tick: Some(946720700u64),
+                next_tick: 946720900u64,
+                count: 3,
+                job_type: JobType::Cron as i32,
+                extra: Vec::try_from(SchedulerJobMetadata::new(SchedulerJob::NotificationsSend))?,
+                ran: true,
+                stopped: false,
+                job: Some(JobStored::CronJob(CronJob {
+                    schedule: "0 0 0 1 1 * *".to_string(),
+                })),
+            },
+            JobStoredData {
+                id: Some(uuid!("00e55044-10b1-426f-9247-bb680e5fe0c8").into()),
+                last_updated: Some(946820800u64),
+                last_tick: Some(946820700u64),
+                next_tick: 946820900u64,
+                count: 0,
+                job_type: JobType::OneShot as i32,
+                extra: Vec::try_from(SchedulerJobMetadata {
+                    job_type: SchedulerJob::WebPageTrackersSchedule,
+                    retry: Some(SchedulerJobRetryState {
+                        attempts: 5,
+                        next_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    }),
+                })?,
+                ran: true,
+                stopped: false,
+                job: Some(JobStored::NonCronJob(NonCronJob {
+                    repeating: false,
+                    repeated_every: 0,
+                })),
+            },
+        ];
+
+        for job in jobs {
+            db.upsert_scheduler_job(&job).await?;
+        }
+
+        assert_eq!(
+            db.get_scheduler_job_meta(uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"))
+                .await?
+                .unwrap(),
+            SchedulerJobMetadata::new(SchedulerJob::NotificationsSend)
+        );
+        assert_eq!(
+            db.get_scheduler_job_meta(uuid!("00e55044-10b1-426f-9247-bb680e5fe0c8"))
+                .await?
+                .unwrap(),
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersSchedule,
+                retry: Some(SchedulerJobRetryState {
+                    attempts: 5,
+                    next_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                }),
+            }
+        );
+
+        db.update_scheduler_job_meta(
+            uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"),
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersSchedule,
+                retry: Some(SchedulerJobRetryState {
+                    attempts: 5,
+                    next_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                }),
+            },
+        )
+        .await?;
+        db.update_scheduler_job_meta(
+            uuid!("00e55044-10b1-426f-9247-bb680e5fe0c8"),
+            SchedulerJobMetadata::new(SchedulerJob::NotificationsSend),
+        )
+        .await?;
+
+        assert_eq!(
+            db.get_scheduler_job_meta(uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"))
+                .await?
+                .unwrap(),
+            SchedulerJobMetadata {
+                job_type: SchedulerJob::WebPageTrackersSchedule,
+                retry: Some(SchedulerJobRetryState {
+                    attempts: 5,
+                    next_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                }),
+            }
+        );
+        assert_eq!(
+            db.get_scheduler_job_meta(uuid!("00e55044-10b1-426f-9247-bb680e5fe0c8"))
+                .await?
+                .unwrap(),
+            SchedulerJobMetadata::new(SchedulerJob::NotificationsSend)
         );
 
         Ok(())
@@ -1311,73 +1519,6 @@ mod tests {
                 .collect::<Result<Vec<_>, _>>()
                 .unwrap(),
             (0..=9).map(|n| Some(946720800u64 + n)).collect::<Vec<_>>()
-        );
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn can_retrieve_all_stopped_jobs() -> anyhow::Result<()> {
-        let db = mock_db().await?;
-
-        let jobs = db
-            .get_stopped_scheduler_jobs_by_extra(2, &[1])
-            .collect::<Vec<_>>()
-            .await;
-        assert_eq!(jobs.len(), 0);
-
-        for n in 0..=9 {
-            let job = JobStoredData {
-                id: Some(
-                    uuid::Uuid::parse_str(&format!("67e55044-10b1-426f-9247-bb680e5fe0c{}", n))?
-                        .into(),
-                ),
-                last_updated: Some(946720800u64 + n),
-                last_tick: Some(946720700u64),
-                next_tick: 946720900u64,
-                count: n as u32,
-                job_type: JobType::Cron as i32,
-                extra: vec![if n % 3 == 0 { 2 } else { 1 }],
-                ran: true,
-                stopped: n % 2 == 0,
-                job: Some(JobStored::CronJob(CronJob {
-                    schedule: format!("{} 0 0 1 1 * *", n),
-                })),
-            };
-
-            db.upsert_scheduler_job(&job).await?;
-        }
-
-        let jobs = db
-            .get_stopped_scheduler_jobs_by_extra(2, &[2])
-            .collect::<Vec<_>>()
-            .await;
-        assert_eq!(jobs.len(), 2);
-        assert_eq!(
-            jobs.into_iter()
-                .map(|job| job.map(|job| job.last_updated))
-                .collect::<Result<Vec<_>, _>>()
-                .unwrap(),
-            [0, 6]
-                .into_iter()
-                .map(|n| Some(946720800u64 + n))
-                .collect::<Vec<_>>()
-        );
-
-        let jobs = db
-            .get_stopped_scheduler_jobs_by_extra(2, &[1])
-            .collect::<Vec<_>>()
-            .await;
-        assert_eq!(jobs.len(), 3);
-        assert_eq!(
-            jobs.into_iter()
-                .map(|job| job.map(|job| job.last_updated))
-                .collect::<Result<Vec<_>, _>>()
-                .unwrap(),
-            [2, 4, 8]
-                .into_iter()
-                .map(|n| Some(946720800u64 + n))
-                .collect::<Vec<_>>()
         );
 
         Ok(())

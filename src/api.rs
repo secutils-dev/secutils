@@ -6,6 +6,7 @@ use crate::{
 };
 use handlebars::Handlebars;
 
+#[derive(Clone)]
 pub struct Api<DR: DnsResolver, ET: EmailTransport> {
     pub db: Database,
     pub search_index: SearchIndex,

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\nUPDATE scheduler_jobs\nSET stopped = ?2, extra = ?3\nWHERE id = ?1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "65959184e9283cb9364688d9f948413757b29c126a5cf84a80c294db1f28bc9e"
+}

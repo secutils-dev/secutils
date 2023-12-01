@@ -36,7 +36,7 @@ pub use self::{
         WebPageTrackerUpdateParams, WebScraperContentRequest, WebScraperContentRequestScripts,
         WebScraperContentResponse, WebScraperErrorResponse, WebScraperResource,
         WebScraperResourcesRequest, WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
-        WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
+        WebScrapingApiExt, WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
         WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
     },
     web_security::{

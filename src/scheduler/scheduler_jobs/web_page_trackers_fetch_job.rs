@@ -3,7 +3,7 @@ use crate::{
     error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport, EmailTransportError},
     notifications::{NotificationContent, NotificationContentTemplate, NotificationDestination},
-    scheduler::scheduler_job::SchedulerJob,
+    scheduler::{job_ext::JobExt, scheduler_job::SchedulerJob},
     utils::{WebPageTracker, WebPageTrackerTag},
 };
 use futures::{pin_mut, StreamExt};
@@ -56,11 +56,7 @@ impl WebPageTrackersFetchJob {
             },
         )?;
 
-        let job_data = job.job_data()?;
-        job.set_job_data(JobStoredData {
-            extra: SchedulerJob::WebPageTrackersFetch.try_into()?,
-            ..job_data
-        })?;
+        job.set_job_type(SchedulerJob::WebPageTrackersFetch)?;
 
         Ok(job)
     }
@@ -132,23 +128,44 @@ impl WebPageTrackersFetchJob {
                         err
                     );
 
-                    // Notify user about the error and re-schedule the job.
-                    let tracker_name = tracker.name.clone();
-                    Self::try_notify_user(
-                        &api,
-                        tracker,
-                        NotificationContentTemplate::WebPageResourcesTrackerChanges {
-                            tracker_name,
-                            content: Err(err
-                                .downcast::<SecutilsError>()
-                                .map(|err| format!("{}", err))
-                                .unwrap_or_else(|_| "Unknown error".to_string())),
-                        },
-                    )
-                    .await;
-                    api.db
-                        .set_scheduler_job_stopped_state(job_id, false)
-                        .await?;
+                    // Check if the tracker has a retry strategy.
+                    let retry_strategy = tracker
+                        .job_config
+                        .as_ref()
+                        .and_then(|job_config| job_config.retry_strategy);
+                    let retry_state = if let Some(retry_strategy) = retry_strategy {
+                        api.scheduler()
+                            .schedule_retry(job_id, &retry_strategy)
+                            .await?
+                    } else {
+                        None
+                    };
+
+                    if let Some(retry) = retry_state {
+                        log::warn!(
+                            "Scheduled a retry ('{}') to create web page resources tracker ('{}') history revision at {}.",
+                            retry.attempts,
+                            tracker.id,
+                            retry.next_at,
+                        );
+                    } else {
+                        // Notify user about the error and re-schedule the job.
+                        let tracker_name = tracker.name.clone();
+                        Self::try_notify_user(
+                            &api,
+                            tracker,
+                            NotificationContentTemplate::WebPageResourcesTrackerChanges {
+                                tracker_name,
+                                content: Err(err
+                                    .downcast::<SecutilsError>()
+                                    .map(|err| format!("{}", err))
+                                    .unwrap_or_else(|_| "Unknown error".to_string())),
+                            },
+                        )
+                        .await;
+                        api.db.reset_scheduler_job_state(job_id, false).await?;
+                    }
+
                     continue;
                 }
             };
@@ -158,7 +175,12 @@ impl WebPageTrackersFetchJob {
                 humantime::format_duration(fetch_start.elapsed())
             );
 
-            if tracker.settings.enable_notifications {
+            let enable_notifications = tracker
+                .job_config
+                .as_ref()
+                .map(|job_config| job_config.notifications)
+                .unwrap_or_default();
+            if enable_notifications {
                 if let Some(new_revision_with_diff) = new_revision_with_diff {
                     let changes_count = new_revision_with_diff
                         .data
@@ -186,9 +208,7 @@ impl WebPageTrackersFetchJob {
                 }
             }
 
-            api.db
-                .set_scheduler_job_stopped_state(job_id, false)
-                .await?;
+            api.db.reset_scheduler_job_state(job_id, false).await?;
         }
 
         Ok(())
@@ -229,23 +249,44 @@ impl WebPageTrackersFetchJob {
                         err
                     );
 
-                    // Notify user about the error and re-schedule the job.
-                    let tracker_name = tracker.name.clone();
-                    Self::try_notify_user(
-                        &api,
-                        tracker,
-                        NotificationContentTemplate::WebPageContentTrackerChanges {
-                            tracker_name,
-                            content: Err(err
-                                .downcast::<SecutilsError>()
-                                .map(|err| format!("{}", err))
-                                .unwrap_or_else(|_| "Unknown error".to_string())),
-                        },
-                    )
-                    .await;
-                    api.db
-                        .set_scheduler_job_stopped_state(job_id, false)
-                        .await?;
+                    // Check if the tracker has a retry strategy.
+                    let retry_strategy = tracker
+                        .job_config
+                        .as_ref()
+                        .and_then(|job_config| job_config.retry_strategy);
+                    let retry_state = if let Some(retry_strategy) = retry_strategy {
+                        api.scheduler()
+                            .schedule_retry(job_id, &retry_strategy)
+                            .await?
+                    } else {
+                        None
+                    };
+
+                    if let Some(retry) = retry_state {
+                        log::warn!(
+                            "Scheduled a retry ('{}') to create web page content tracker ('{}') history revision at {}.",
+                            retry.attempts,
+                            tracker.id,
+                            retry.next_at,
+                        );
+                    } else {
+                        // Notify user about the error and re-schedule the job.
+                        let tracker_name = tracker.name.clone();
+                        Self::try_notify_user(
+                            &api,
+                            tracker,
+                            NotificationContentTemplate::WebPageContentTrackerChanges {
+                                tracker_name,
+                                content: Err(err
+                                    .downcast::<SecutilsError>()
+                                    .map(|err| format!("{}", err))
+                                    .unwrap_or_else(|_| "Unknown error".to_string())),
+                            },
+                        )
+                        .await;
+                        api.db.reset_scheduler_job_state(job_id, false).await?;
+                    }
+
                     continue;
                 }
             };
@@ -268,9 +309,7 @@ impl WebPageTrackersFetchJob {
                 .await;
             }
 
-            api.db
-                .set_scheduler_job_stopped_state(job_id, false)
-                .await?;
+            api.db.reset_scheduler_job_state(job_id, false).await?;
         }
 
         Ok(())
@@ -292,7 +331,7 @@ impl WebPageTrackersFetchJob {
             return Ok(None);
         };
 
-        if tracker.settings.revisions == 0 || tracker.settings.schedule.is_none() {
+        if tracker.settings.revisions == 0 || tracker.job_config.is_none() {
             log::warn!(
                 "Found a pending web page tracker ('{}') that doesn't support tracking, the job ('{:?}') will be removed.",
                 tracker.id, tracker.job_id
@@ -314,7 +353,12 @@ impl WebPageTrackersFetchJob {
     ) where
         ET::Error: EmailTransportError,
     {
-        if !tracker.settings.enable_notifications {
+        let enable_notifications = tracker
+            .job_config
+            .as_ref()
+            .map(|job_config| job_config.notifications)
+            .unwrap_or_default();
+        if !enable_notifications {
             return;
         }
 
@@ -342,9 +386,13 @@ mod tests {
     use crate::{
         scheduler::{
             scheduler_job::SchedulerJob, scheduler_jobs::WebPageTrackersTriggerJob,
-            scheduler_store::SchedulerStore,
+            scheduler_store::SchedulerStore, SchedulerJobConfig, SchedulerJobMetadata,
+            SchedulerJobRetryStrategy,
         },
-        tests::{mock_api_with_config, mock_config, mock_schedule_in_sec, mock_user},
+        tests::{
+            mock_api_with_config, mock_config, mock_schedule_in_sec, mock_schedule_in_secs,
+            mock_user,
+        },
         utils::{
             WebPageContentTrackerTag, WebPageDataRevision, WebPageResource, WebPageResourceContent,
             WebPageResourceContentData, WebPageResourcesData, WebPageResourcesTrackerTag,
@@ -379,7 +427,9 @@ mod tests {
             ran: false,
             stopped: false,
             last_updated: None,
-            extra: SchedulerJob::WebPageTrackersFetch.try_into().unwrap(),
+            extra: SchedulerJobMetadata::new(SchedulerJob::WebPageTrackersFetch)
+                .try_into()
+                .unwrap(),
             job: Some(JobStored::CronJob(CronJob {
                 schedule: "0 0 * * * *".to_string(),
             })),
@@ -402,6 +452,7 @@ mod tests {
             0,
             [
                 2,
+                0,
             ],
             Some(
                 CronJob(
@@ -436,6 +487,7 @@ mod tests {
                 0,
                 [
                     2,
+                    0,
                 ],
                 Some(
                     CronJob(
@@ -487,12 +539,15 @@ mod tests {
                     url: "https://localhost:1234/my/app?q=2".parse()?,
                     settings: WebPageTrackerSettings {
                         revisions: 0,
-                        schedule: Some("0 0 * * * *".to_string()),
                         delay: Default::default(),
                         scripts: Default::default(),
                         headers: Default::default(),
-                        enable_notifications: true,
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -519,12 +574,15 @@ mod tests {
                     url: "https://localhost:1234/my/app?q=2".parse()?,
                     settings: WebPageTrackerSettings {
                         revisions: 0,
-                        schedule: Some("0 0 * * * *".to_string()),
                         delay: Default::default(),
                         scripts: Default::default(),
                         headers: Default::default(),
-                        enable_notifications: true,
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -598,7 +656,6 @@ mod tests {
             url: "https://localhost:1234/my/app?q=2".parse()?,
             settings: WebPageTrackerSettings {
                 revisions: 1,
-                schedule: Some(tracker_schedule),
                 delay: Duration::from_secs(2),
                 scripts: Some(
                     [(
@@ -613,8 +670,12 @@ mod tests {
                         .into_iter()
                         .collect(),
                 ),
-                enable_notifications: true,
             },
+            job_config: Some(SchedulerJobConfig {
+                schedule: tracker_schedule,
+                retry_strategy: None,
+                notifications: true,
+            }),
             user_id: user.id,
             job_id: Some(trigger_job_id),
             // Preserve timestamp only up to seconds.
@@ -776,7 +837,6 @@ mod tests {
             url: "https://localhost:1234/my/app?q=2".parse()?,
             settings: WebPageTrackerSettings {
                 revisions: 1,
-                schedule: Some(tracker_schedule),
                 delay: Duration::from_secs(2),
                 scripts: Some(
                     [(
@@ -791,8 +851,12 @@ mod tests {
                         .into_iter()
                         .collect(),
                 ),
-                enable_notifications: false,
             },
+            job_config: Some(SchedulerJobConfig {
+                schedule: tracker_schedule,
+                retry_strategy: None,
+                notifications: false,
+            }),
             user_id: user.id,
             job_id: Some(trigger_job_id),
             // Preserve timestamp only up to seconds.
@@ -933,12 +997,15 @@ mod tests {
             url: "https://localhost:1234/my/app?q=2".parse()?,
             settings: WebPageTrackerSettings {
                 revisions: 2,
-                schedule: Some(tracker_schedule),
                 delay: Duration::from_secs(2),
                 scripts: Default::default(),
                 headers: Default::default(),
-                enable_notifications: true,
             },
+            job_config: Some(SchedulerJobConfig {
+                schedule: tracker_schedule,
+                retry_strategy: None,
+                notifications: true,
+            }),
             user_id: user.id,
             job_id: Some(trigger_job_id),
             // Preserve timestamp only up to seconds.
@@ -1116,12 +1183,15 @@ mod tests {
             url: "https://localhost:1234/my/app?q=2".parse()?,
             settings: WebPageTrackerSettings {
                 revisions: 2,
-                schedule: Some(tracker_schedule),
                 delay: Duration::from_secs(2),
                 scripts: Default::default(),
                 headers: Default::default(),
-                enable_notifications: true,
             },
+            job_config: Some(SchedulerJobConfig {
+                schedule: tracker_schedule,
+                retry_strategy: None,
+                notifications: true,
+            }),
             user_id: user.id,
             job_id: Some(trigger_job_id),
             // Preserve timestamp only up to seconds.
@@ -1242,6 +1312,459 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn retries_when_resources_change_check_fails() -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        config.jobs.web_page_trackers_fetch =
+            Schedule::try_from(mock_schedule_in_secs(&[3, 6]).as_str())?;
+
+        let server = MockServer::start();
+        config.components.web_scraper_url = Url::parse(&server.base_url())?;
+
+        let user = mock_user()?;
+        let api = Arc::new(mock_api_with_config(config).await?);
+        let mut scheduler = JobScheduler::new_with_storage_and_code(
+            Box::new(SchedulerStore::new(api.db.clone())),
+            Box::<SimpleNotificationStore>::default(),
+            Box::<SimpleJobCode>::default(),
+            Box::<SimpleNotificationCode>::default(),
+        )
+        .await?;
+
+        // Make sure that the tracker is only run once during a single minute (2 seconds after the
+        // current second).
+        let tracker_schedule = mock_schedule_in_sec(1);
+
+        // Create user, tracker and tracker job.
+        api.users().upsert(user.clone()).await?;
+
+        let trigger_job_id = scheduler
+            .add(
+                WebPageTrackersTriggerJob::create(
+                    api.clone(),
+                    tracker_schedule.clone(),
+                    WebPageTrackerKind::WebPageResources,
+                )
+                .await?,
+            )
+            .await?;
+        let tracker = WebPageTracker::<WebPageResourcesTrackerTag> {
+            id: Uuid::now_v7(),
+            name: "tracker-one".to_string(),
+            url: "https://localhost:1234/my/app?q=2".parse()?,
+            settings: WebPageTrackerSettings {
+                revisions: 2,
+                delay: Duration::from_secs(2),
+                scripts: Default::default(),
+                headers: Default::default(),
+            },
+            job_config: Some(SchedulerJobConfig {
+                schedule: tracker_schedule,
+                retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                    interval: Duration::from_secs(1),
+                    max_attempts: 1,
+                }),
+                notifications: true,
+            }),
+            user_id: user.id,
+            job_id: Some(trigger_job_id),
+            // Preserve timestamp only up to seconds.
+            created_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
+            meta: None,
+        };
+
+        // Insert tracker directly to DB to bypass schedule validation.
+        api.db
+            .web_scraping(user.id)
+            .insert_web_page_tracker(&tracker)
+            .await?;
+        api.db
+            .web_scraping(user.id)
+            .insert_web_page_tracker_history_revision::<WebPageResourcesTrackerTag>(
+                &WebPageDataRevision {
+                    id: uuid!("00000000-0000-0000-0000-000000000001"),
+                    tracker_id: tracker.id,
+                    created_at: OffsetDateTime::from_unix_timestamp(946720700)?,
+                    data: WebPageResourcesData {
+                        scripts: vec![],
+                        styles: vec![],
+                    },
+                },
+            )
+            .await?;
+
+        // Schedule fetch job
+        scheduler
+            .add(WebPageTrackersFetchJob::create(api.clone()).await?)
+            .await?;
+
+        let resources_mock = server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/web_page/resources")
+                .json_body(
+                    serde_json::to_value(
+                        WebScraperResourcesRequest::with_default_parameters(&tracker.url)
+                            .set_delay(Duration::from_millis(2000)),
+                    )
+                    .unwrap(),
+                );
+            then.status(400)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&WebScraperErrorResponse {
+                    message: "some client-error".to_string(),
+                });
+        });
+
+        // Start scheduler and wait for a few seconds, then stop it.
+        scheduler.start().await?;
+
+        while api
+            .db
+            .get_scheduler_job_meta(trigger_job_id)
+            .await?
+            .unwrap()
+            .retry
+            .is_none()
+        {
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        resources_mock.assert();
+
+        let notification_ids = api
+            .db
+            .get_notification_ids(
+                OffsetDateTime::now_utc().add(Duration::from_secs(3600 * 24 * 365)),
+                10,
+            )
+            .collect::<Vec<_>>()
+            .await;
+        assert!(notification_ids.is_empty());
+
+        assert_eq!(
+            api.web_scraping()
+                .get_resources_tracker_history(user.id, tracker.id, Default::default())
+                .await?
+                .len(),
+            1
+        );
+        assert!(api
+            .db
+            .get_scheduler_job(trigger_job_id)
+            .await?
+            .map(|job| job.stopped)
+            .unwrap_or_default());
+
+        while api
+            .db
+            .get_notification_ids(
+                OffsetDateTime::now_utc().add(Duration::from_secs(3600 * 24 * 365)),
+                10,
+            )
+            .collect::<Vec<_>>()
+            .await
+            .is_empty()
+        {
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        scheduler.shutdown().await?;
+
+        let mut notification_ids = api
+            .db
+            .get_notification_ids(
+                OffsetDateTime::now_utc().add(Duration::from_secs(3600 * 24 * 365)),
+                10,
+            )
+            .collect::<Vec<_>>()
+            .await;
+        assert_eq!(notification_ids.len(), 1);
+
+        let notification = api.db.get_notification(notification_ids.remove(0)?).await?;
+        assert_debug_snapshot!(notification.map(|notification| (notification.destination, notification.content)), @r###"
+        Some(
+            (
+                User(
+                    UserId(
+                        1,
+                    ),
+                ),
+                Template(
+                    WebPageResourcesTrackerChanges {
+                        tracker_name: "tracker-one",
+                        content: Err(
+                            "some client-error",
+                        ),
+                    },
+                ),
+            ),
+        )
+        "###);
+
+        assert_eq!(
+            api.web_scraping()
+                .get_resources_tracker_history(user.id, tracker.id, Default::default())
+                .await?
+                .len(),
+            1
+        );
+        assert!(!api
+            .db
+            .get_scheduler_job(trigger_job_id)
+            .await?
+            .map(|job| job.stopped)
+            .unwrap_or_default());
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn retries_when_resources_change_check_fails_until_succeeds() -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        config.jobs.web_page_trackers_fetch =
+            Schedule::try_from(mock_schedule_in_secs(&[3, 6]).as_str())?;
+
+        let server = MockServer::start();
+        config.components.web_scraper_url = Url::parse(&server.base_url())?;
+
+        let user = mock_user()?;
+        let api = Arc::new(mock_api_with_config(config).await?);
+        let mut scheduler = JobScheduler::new_with_storage_and_code(
+            Box::new(SchedulerStore::new(api.db.clone())),
+            Box::<SimpleNotificationStore>::default(),
+            Box::<SimpleJobCode>::default(),
+            Box::<SimpleNotificationCode>::default(),
+        )
+        .await?;
+
+        // Make sure that the tracker is only run once during a single minute (2 seconds after the
+        // current second).
+        let tracker_schedule = mock_schedule_in_sec(1);
+
+        // Create user, tracker and tracker job.
+        api.users().upsert(user.clone()).await?;
+
+        let trigger_job_id = scheduler
+            .add(
+                WebPageTrackersTriggerJob::create(
+                    api.clone(),
+                    tracker_schedule.clone(),
+                    WebPageTrackerKind::WebPageResources,
+                )
+                .await?,
+            )
+            .await?;
+        let tracker = WebPageTracker::<WebPageResourcesTrackerTag> {
+            id: Uuid::now_v7(),
+            name: "tracker-one".to_string(),
+            url: "https://localhost:1234/my/app?q=2".parse()?,
+            settings: WebPageTrackerSettings {
+                revisions: 2,
+                delay: Duration::from_secs(2),
+                scripts: Default::default(),
+                headers: Default::default(),
+            },
+            job_config: Some(SchedulerJobConfig {
+                schedule: tracker_schedule,
+                retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                    interval: Duration::from_secs(1),
+                    max_attempts: 1,
+                }),
+                notifications: true,
+            }),
+            user_id: user.id,
+            job_id: Some(trigger_job_id),
+            // Preserve timestamp only up to seconds.
+            created_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
+            meta: None,
+        };
+
+        // Insert tracker directly to DB to bypass schedule validation.
+        api.db
+            .web_scraping(user.id)
+            .insert_web_page_tracker(&tracker)
+            .await?;
+        api.db
+            .web_scraping(user.id)
+            .insert_web_page_tracker_history_revision::<WebPageResourcesTrackerTag>(
+                &WebPageDataRevision {
+                    id: uuid!("00000000-0000-0000-0000-000000000001"),
+                    tracker_id: tracker.id,
+                    created_at: OffsetDateTime::from_unix_timestamp(946720700)?,
+                    data: WebPageResourcesData {
+                        scripts: vec![],
+                        styles: vec![],
+                    },
+                },
+            )
+            .await?;
+
+        // Schedule fetch job
+        scheduler
+            .add(WebPageTrackersFetchJob::create(api.clone()).await?)
+            .await?;
+
+        let mut resources_mock = server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/web_page/resources")
+                .json_body(
+                    serde_json::to_value(
+                        WebScraperResourcesRequest::with_default_parameters(&tracker.url)
+                            .set_delay(Duration::from_millis(2000)),
+                    )
+                    .unwrap(),
+                );
+            then.status(400)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&WebScraperErrorResponse {
+                    message: "some client-error".to_string(),
+                });
+        });
+
+        // Start scheduler and wait for a few seconds, then stop it.
+        scheduler.start().await?;
+
+        while api
+            .db
+            .get_scheduler_job_meta(trigger_job_id)
+            .await?
+            .unwrap()
+            .retry
+            .is_none()
+        {
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        resources_mock.assert();
+        resources_mock.delete();
+
+        let notification_ids = api
+            .db
+            .get_notification_ids(
+                OffsetDateTime::now_utc().add(Duration::from_secs(3600 * 24 * 365)),
+                10,
+            )
+            .collect::<Vec<_>>()
+            .await;
+        assert!(notification_ids.is_empty());
+
+        assert_eq!(
+            api.web_scraping()
+                .get_resources_tracker_history(user.id, tracker.id, Default::default())
+                .await?
+                .len(),
+            1
+        );
+        assert!(api
+            .db
+            .get_scheduler_job(trigger_job_id)
+            .await?
+            .map(|job| job.stopped)
+            .unwrap_or_default());
+
+        // Create a mock
+        let resources = WebScraperResourcesResponse {
+            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
+            scripts: vec![WebScraperResource {
+                url: Some(Url::parse("http://localhost:1234/script.js")?),
+                content: Some(WebPageResourceContent {
+                    data: WebPageResourceContentData::Sha1("some-digest".to_string()),
+                    size: 123,
+                }),
+            }],
+            styles: vec![WebScraperResource {
+                url: Some(Url::parse("http://localhost:1234/style.css")?),
+                content: Some(WebPageResourceContent {
+                    data: WebPageResourceContentData::Sha1("some-other-digest".to_string()),
+                    size: 321,
+                }),
+            }],
+        };
+
+        let resources_mock = server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/web_page/resources")
+                .json_body(
+                    serde_json::to_value(
+                        WebScraperResourcesRequest::with_default_parameters(&tracker.url)
+                            .set_delay(Duration::from_millis(2000)),
+                    )
+                    .unwrap(),
+                );
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&resources);
+        });
+
+        while api
+            .db
+            .get_notification_ids(
+                OffsetDateTime::now_utc().add(Duration::from_secs(3600 * 24 * 365)),
+                10,
+            )
+            .collect::<Vec<_>>()
+            .await
+            .is_empty()
+        {
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        scheduler.shutdown().await?;
+
+        resources_mock.assert();
+
+        let mut notification_ids = api
+            .db
+            .get_notification_ids(
+                OffsetDateTime::now_utc().add(Duration::from_secs(3600 * 24 * 365)),
+                10,
+            )
+            .collect::<Vec<_>>()
+            .await;
+        assert_eq!(notification_ids.len(), 1);
+
+        let notification = api.db.get_notification(notification_ids.remove(0)?).await?;
+        assert_debug_snapshot!(notification.map(|notification| (notification.destination, notification.content)), @r###"
+        Some(
+            (
+                User(
+                    UserId(
+                        1,
+                    ),
+                ),
+                Template(
+                    WebPageResourcesTrackerChanges {
+                        tracker_name: "tracker-one",
+                        content: Ok(
+                            2,
+                        ),
+                    },
+                ),
+            ),
+        )
+        "###);
+
+        assert_eq!(
+            api.web_scraping()
+                .get_resources_tracker_history(user.id, tracker.id, Default::default())
+                .await?
+                .len(),
+            2
+        );
+        assert!(!api
+            .db
+            .get_scheduler_job(trigger_job_id)
+            .await?
+            .map(|job| job.stopped)
+            .unwrap_or_default());
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn schedules_notification_when_content_change() -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.jobs.web_page_trackers_fetch = Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
@@ -1282,12 +1805,15 @@ mod tests {
             url: "https://localhost:1234/my/app?q=2".parse()?,
             settings: WebPageTrackerSettings {
                 revisions: 2,
-                schedule: Some(tracker_schedule),
                 delay: Duration::from_secs(2),
                 scripts: Default::default(),
                 headers: Default::default(),
-                enable_notifications: true,
             },
+            job_config: Some(SchedulerJobConfig {
+                schedule: tracker_schedule,
+                retry_strategy: None,
+                notifications: true,
+            }),
             user_id: user.id,
             job_id: Some(trigger_job_id),
             // Preserve timestamp only up to seconds.
@@ -1320,11 +1846,10 @@ mod tests {
             .await?;
 
         // Create a mock
-        let resources = WebScraperContentResponse {
+        let content = WebScraperContentResponse {
             timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             content: "other-content".to_string(),
         };
-
         let content_mock = server.mock(|when, then| {
             when.method(httpmock::Method::POST)
                 .path("/api/web_page/content")
@@ -1338,7 +1863,7 @@ mod tests {
                 );
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&resources);
+                .json_body_obj(&content);
         });
 
         // Start scheduler and wait for a few seconds, then stop it.
@@ -1450,12 +1975,15 @@ mod tests {
             url: "https://localhost:1234/my/app?q=2".parse()?,
             settings: WebPageTrackerSettings {
                 revisions: 2,
-                schedule: Some(tracker_schedule),
                 delay: Duration::from_secs(2),
                 scripts: Default::default(),
                 headers: Default::default(),
-                enable_notifications: true,
             },
+            job_config: Some(SchedulerJobConfig {
+                schedule: tracker_schedule,
+                retry_strategy: None,
+                notifications: true,
+            }),
             user_id: user.id,
             job_id: Some(trigger_job_id),
             // Preserve timestamp only up to seconds.
@@ -1562,6 +2090,442 @@ mod tests {
                 .await?
                 .len(),
             1
+        );
+        assert!(!api
+            .db
+            .get_scheduler_job(trigger_job_id)
+            .await?
+            .map(|job| job.stopped)
+            .unwrap_or_default());
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn retries_when_content_change_check_fails() -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        config.jobs.web_page_trackers_fetch =
+            Schedule::try_from(mock_schedule_in_secs(&[3, 6]).as_str())?;
+
+        let server = MockServer::start();
+        config.components.web_scraper_url = Url::parse(&server.base_url())?;
+
+        let user = mock_user()?;
+        let api = Arc::new(mock_api_with_config(config).await?);
+        let mut scheduler = JobScheduler::new_with_storage_and_code(
+            Box::new(SchedulerStore::new(api.db.clone())),
+            Box::<SimpleNotificationStore>::default(),
+            Box::<SimpleJobCode>::default(),
+            Box::<SimpleNotificationCode>::default(),
+        )
+        .await?;
+
+        // Make sure that the tracker is only run once during a single minute (2 seconds after the
+        // current second).
+        let tracker_schedule = mock_schedule_in_sec(1);
+
+        // Create user, tracker and tracker job.
+        api.users().upsert(user.clone()).await?;
+
+        let trigger_job_id = scheduler
+            .add(
+                WebPageTrackersTriggerJob::create(
+                    api.clone(),
+                    tracker_schedule.clone(),
+                    WebPageTrackerKind::WebPageContent,
+                )
+                .await?,
+            )
+            .await?;
+        let tracker = WebPageTracker::<WebPageContentTrackerTag> {
+            id: Uuid::now_v7(),
+            name: "tracker-one".to_string(),
+            url: "https://localhost:1234/my/app?q=2".parse()?,
+            settings: WebPageTrackerSettings {
+                revisions: 2,
+                delay: Duration::from_secs(2),
+                scripts: Default::default(),
+                headers: Default::default(),
+            },
+            job_config: Some(SchedulerJobConfig {
+                schedule: tracker_schedule,
+                retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                    interval: Duration::from_secs(1),
+                    max_attempts: 1,
+                }),
+                notifications: true,
+            }),
+            user_id: user.id,
+            job_id: Some(trigger_job_id),
+            // Preserve timestamp only up to seconds.
+            created_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
+            meta: None,
+        };
+
+        // Insert tracker directly to DB to bypass schedule validation.
+        api.db
+            .web_scraping(user.id)
+            .insert_web_page_tracker(&tracker)
+            .await?;
+        api.db
+            .web_scraping(user.id)
+            .insert_web_page_tracker_history_revision::<WebPageContentTrackerTag>(
+                &WebPageDataRevision {
+                    id: uuid!("00000000-0000-0000-0000-000000000001"),
+                    tracker_id: tracker.id,
+                    created_at: OffsetDateTime::from_unix_timestamp(946720700)?,
+                    data: "some-content".to_string(),
+                },
+            )
+            .await?;
+
+        // Schedule fetch job
+        scheduler
+            .add(WebPageTrackersFetchJob::create(api.clone()).await?)
+            .await?;
+
+        let content_mock = server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/web_page/content")
+                .json_body(
+                    serde_json::to_value(
+                        WebScraperContentRequest::with_default_parameters(&tracker.url)
+                            .set_delay(Duration::from_millis(2000))
+                            .set_previous_content("some-content"),
+                    )
+                    .unwrap(),
+                );
+            then.status(400)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&WebScraperErrorResponse {
+                    message: "some client-error".to_string(),
+                });
+        });
+
+        // Start scheduler and wait for a few seconds, then stop it.
+        scheduler.start().await?;
+
+        while api
+            .db
+            .get_scheduler_job_meta(trigger_job_id)
+            .await?
+            .unwrap()
+            .retry
+            .is_none()
+        {
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        content_mock.assert();
+
+        let notification_ids = api
+            .db
+            .get_notification_ids(
+                OffsetDateTime::now_utc().add(Duration::from_secs(3600 * 24 * 365)),
+                10,
+            )
+            .collect::<Vec<_>>()
+            .await;
+        assert!(notification_ids.is_empty());
+
+        assert_eq!(
+            api.web_scraping()
+                .get_content_tracker_history(user.id, tracker.id, Default::default())
+                .await?
+                .len(),
+            1
+        );
+        assert!(api
+            .db
+            .get_scheduler_job(trigger_job_id)
+            .await?
+            .map(|job| job.stopped)
+            .unwrap_or_default());
+
+        while api
+            .db
+            .get_notification_ids(
+                OffsetDateTime::now_utc().add(Duration::from_secs(3600 * 24 * 365)),
+                10,
+            )
+            .collect::<Vec<_>>()
+            .await
+            .is_empty()
+        {
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        scheduler.shutdown().await?;
+
+        let mut notification_ids = api
+            .db
+            .get_notification_ids(
+                OffsetDateTime::now_utc().add(Duration::from_secs(3600 * 24 * 365)),
+                10,
+            )
+            .collect::<Vec<_>>()
+            .await;
+        assert_eq!(notification_ids.len(), 1);
+
+        let notification = api.db.get_notification(notification_ids.remove(0)?).await?;
+        assert_debug_snapshot!(notification.map(|notification| (notification.destination, notification.content)), @r###"
+        Some(
+            (
+                User(
+                    UserId(
+                        1,
+                    ),
+                ),
+                Template(
+                    WebPageContentTrackerChanges {
+                        tracker_name: "tracker-one",
+                        content: Err(
+                            "some client-error",
+                        ),
+                    },
+                ),
+            ),
+        )
+        "###);
+
+        assert_eq!(
+            api.web_scraping()
+                .get_content_tracker_history(user.id, tracker.id, Default::default())
+                .await?
+                .len(),
+            1
+        );
+        assert!(!api
+            .db
+            .get_scheduler_job(trigger_job_id)
+            .await?
+            .map(|job| job.stopped)
+            .unwrap_or_default());
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn retries_when_content_change_check_fails_until_succeeds() -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        config.jobs.web_page_trackers_fetch =
+            Schedule::try_from(mock_schedule_in_secs(&[3, 6]).as_str())?;
+
+        let server = MockServer::start();
+        config.components.web_scraper_url = Url::parse(&server.base_url())?;
+
+        let user = mock_user()?;
+        let api = Arc::new(mock_api_with_config(config).await?);
+        let mut scheduler = JobScheduler::new_with_storage_and_code(
+            Box::new(SchedulerStore::new(api.db.clone())),
+            Box::<SimpleNotificationStore>::default(),
+            Box::<SimpleJobCode>::default(),
+            Box::<SimpleNotificationCode>::default(),
+        )
+        .await?;
+
+        // Make sure that the tracker is only run once during a single minute (2 seconds after the
+        // current second).
+        let tracker_schedule = mock_schedule_in_sec(1);
+
+        // Create user, tracker and tracker job.
+        api.users().upsert(user.clone()).await?;
+
+        let trigger_job_id = scheduler
+            .add(
+                WebPageTrackersTriggerJob::create(
+                    api.clone(),
+                    tracker_schedule.clone(),
+                    WebPageTrackerKind::WebPageContent,
+                )
+                .await?,
+            )
+            .await?;
+        let tracker = WebPageTracker::<WebPageContentTrackerTag> {
+            id: Uuid::now_v7(),
+            name: "tracker-one".to_string(),
+            url: "https://localhost:1234/my/app?q=2".parse()?,
+            settings: WebPageTrackerSettings {
+                revisions: 2,
+                delay: Duration::from_secs(2),
+                scripts: Default::default(),
+                headers: Default::default(),
+            },
+            job_config: Some(SchedulerJobConfig {
+                schedule: tracker_schedule,
+                retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                    interval: Duration::from_secs(1),
+                    max_attempts: 1,
+                }),
+                notifications: true,
+            }),
+            user_id: user.id,
+            job_id: Some(trigger_job_id),
+            // Preserve timestamp only up to seconds.
+            created_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
+            meta: None,
+        };
+
+        // Insert tracker directly to DB to bypass schedule validation.
+        api.db
+            .web_scraping(user.id)
+            .insert_web_page_tracker(&tracker)
+            .await?;
+        api.db
+            .web_scraping(user.id)
+            .insert_web_page_tracker_history_revision::<WebPageContentTrackerTag>(
+                &WebPageDataRevision {
+                    id: uuid!("00000000-0000-0000-0000-000000000001"),
+                    tracker_id: tracker.id,
+                    created_at: OffsetDateTime::from_unix_timestamp(946720700)?,
+                    data: "some-content".to_string(),
+                },
+            )
+            .await?;
+
+        // Schedule fetch job
+        scheduler
+            .add(WebPageTrackersFetchJob::create(api.clone()).await?)
+            .await?;
+
+        let mut content_mock = server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/web_page/content")
+                .json_body(
+                    serde_json::to_value(
+                        WebScraperContentRequest::with_default_parameters(&tracker.url)
+                            .set_delay(Duration::from_millis(2000))
+                            .set_previous_content("some-content"),
+                    )
+                    .unwrap(),
+                );
+            then.status(400)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&WebScraperErrorResponse {
+                    message: "some client-error".to_string(),
+                });
+        });
+
+        // Start scheduler and wait for a few seconds, then stop it.
+        scheduler.start().await?;
+
+        while api
+            .db
+            .get_scheduler_job_meta(trigger_job_id)
+            .await?
+            .unwrap()
+            .retry
+            .is_none()
+        {
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        content_mock.assert();
+        content_mock.delete();
+
+        let notification_ids = api
+            .db
+            .get_notification_ids(
+                OffsetDateTime::now_utc().add(Duration::from_secs(3600 * 24 * 365)),
+                10,
+            )
+            .collect::<Vec<_>>()
+            .await;
+        assert!(notification_ids.is_empty());
+
+        assert_eq!(
+            api.web_scraping()
+                .get_content_tracker_history(user.id, tracker.id, Default::default())
+                .await?
+                .len(),
+            1
+        );
+        assert!(api
+            .db
+            .get_scheduler_job(trigger_job_id)
+            .await?
+            .map(|job| job.stopped)
+            .unwrap_or_default());
+
+        // Create a mock
+        let content = WebScraperContentResponse {
+            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
+            content: "other-content".to_string(),
+        };
+        let content_mock = server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/web_page/content")
+                .json_body(
+                    serde_json::to_value(
+                        WebScraperContentRequest::with_default_parameters(&tracker.url)
+                            .set_delay(Duration::from_millis(2000))
+                            .set_previous_content("some-content"),
+                    )
+                    .unwrap(),
+                );
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&content);
+        });
+
+        while api
+            .db
+            .get_notification_ids(
+                OffsetDateTime::now_utc().add(Duration::from_secs(3600 * 24 * 365)),
+                10,
+            )
+            .collect::<Vec<_>>()
+            .await
+            .is_empty()
+        {
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        scheduler.shutdown().await?;
+
+        content_mock.assert();
+
+        let mut notification_ids = api
+            .db
+            .get_notification_ids(
+                OffsetDateTime::now_utc().add(Duration::from_secs(3600 * 24 * 365)),
+                10,
+            )
+            .collect::<Vec<_>>()
+            .await;
+        assert_eq!(notification_ids.len(), 1);
+
+        let notification = api.db.get_notification(notification_ids.remove(0)?).await?;
+        assert_debug_snapshot!(notification.map(|notification| (notification.destination, notification.content)), @r###"
+        Some(
+            (
+                User(
+                    UserId(
+                        1,
+                    ),
+                ),
+                Template(
+                    WebPageContentTrackerChanges {
+                        tracker_name: "tracker-one",
+                        content: Ok(
+                            "other-content",
+                        ),
+                    },
+                ),
+            ),
+        )
+        "###);
+
+        assert_eq!(
+            api.web_scraping()
+                .get_content_tracker_history(user.id, tracker.id, Default::default())
+                .await?
+                .len(),
+            2
         );
         assert!(!api
             .db

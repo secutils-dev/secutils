@@ -1,7 +1,7 @@
 use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport, EmailTransportError},
-    scheduler::scheduler_job::SchedulerJob,
+    scheduler::{job_ext::JobExt, scheduler_job::SchedulerJob},
 };
 use std::{sync::Arc, time::Instant};
 use tokio_cron_scheduler::{Job, JobId, JobScheduler, JobStoredData};
@@ -50,11 +50,7 @@ impl NotificationsSendJob {
             },
         )?;
 
-        let job_data = job.job_data()?;
-        job.set_job_data(JobStoredData {
-            extra: SchedulerJob::NotificationsSend.try_into()?,
-            ..job_data
-        })?;
+        job.set_job_type(SchedulerJob::NotificationsSend)?;
 
         Ok(job)
     }
@@ -104,7 +100,9 @@ mod tests {
     use super::{NotificationsSendJob, MAX_NOTIFICATIONS_TO_SEND};
     use crate::{
         notifications::{NotificationContent, NotificationDestination},
-        scheduler::{scheduler_job::SchedulerJob, scheduler_store::SchedulerStore},
+        scheduler::{
+            scheduler_job::SchedulerJob, scheduler_store::SchedulerStore, SchedulerJobMetadata,
+        },
         tests::{mock_api_with_config, mock_config, mock_schedule_in_sec, mock_user},
     };
     use cron::Schedule;
@@ -128,7 +126,9 @@ mod tests {
             ran: false,
             stopped: false,
             last_updated: None,
-            extra: SchedulerJob::NotificationsSend.try_into().unwrap(),
+            extra: SchedulerJobMetadata::new(SchedulerJob::NotificationsSend)
+                .try_into()
+                .unwrap(),
             job: Some(JobStored::CronJob(CronJob {
                 schedule: "0 0 * * * *".to_string(),
             })),
@@ -151,6 +151,7 @@ mod tests {
             0,
             [
                 3,
+                0,
             ],
             Some(
                 CronJob(
@@ -185,6 +186,7 @@ mod tests {
                 0,
                 [
                     3,
+                    0,
                 ],
                 Some(
                     CronJob(

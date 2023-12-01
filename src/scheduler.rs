@@ -1,5 +1,12 @@
+mod api_ext;
 mod database_ext;
+mod job_ext;
+mod schedule_ext;
 mod scheduler_job;
+mod scheduler_job_config;
+mod scheduler_job_metadata;
+mod scheduler_job_retry_state;
+mod scheduler_job_retry_strategy;
 mod scheduler_jobs;
 mod scheduler_store;
 
@@ -9,6 +16,12 @@ use std::{collections::HashSet, sync::Arc};
 use tokio_cron_scheduler::{JobScheduler, SimpleJobCode, SimpleNotificationCode};
 use uuid::Uuid;
 
+pub use self::{
+    schedule_ext::ScheduleExt, scheduler_job::SchedulerJob,
+    scheduler_job_config::SchedulerJobConfig, scheduler_job_metadata::SchedulerJobMetadata,
+    scheduler_job_retry_state::SchedulerJobRetryState,
+    scheduler_job_retry_strategy::SchedulerJobRetryStrategy,
+};
 use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport, EmailTransportError},
@@ -17,7 +30,6 @@ use crate::{
         WebPageTrackersTriggerJob,
     },
 };
-pub use scheduler_job::SchedulerJob;
 use scheduler_store::SchedulerStore;
 
 /// Defines a maximum number of jobs that can be retrieved from the database at once.
@@ -89,13 +101,13 @@ where
                 .map(Uuid::from)
                 .ok_or_else(|| anyhow!("The job does not have ID: `{:?}`", job_data))?;
 
-            let job_type = match SchedulerJob::try_from(job_data.extra.as_ref()) {
-                Ok(job_type) if unique_resumed_jobs.contains(&job_type) => {
+            let job_meta = match SchedulerJobMetadata::try_from(job_data.extra.as_ref()) {
+                Ok(job_meta) if unique_resumed_jobs.contains(&job_meta.job_type) => {
                     // There can only be one job of each type. If we detect that there are multiple, we log
                     // a warning and remove the job, keeping only the first one.
                     log::error!(
                         "Found multiple jobs of type `{:?}`. All duplicated jobs except for the first one will be removed.",
-                        job_type
+                        job_meta.job_type
                     );
                     db.remove_scheduler_job(job_id).await?;
                     continue;
@@ -110,12 +122,12 @@ where
                     db.remove_scheduler_job(job_id).await?;
                     continue;
                 }
-                Ok(job_type) => job_type,
+                Ok(job_meta) => job_meta,
             };
 
             // First try to resume the job, and if it's not possible, the job will be removed and
             // re-scheduled at a later step if needed.
-            let job = match &job_type {
+            let job = match &job_meta.job_type {
                 SchedulerJob::WebPageTrackersTrigger { kind } => {
                     WebPageTrackersTriggerJob::try_resume(self.api.clone(), job_id, job_data, *kind)
                         .await?
@@ -134,17 +146,17 @@ where
 
             match job {
                 Some(job) => {
-                    log::debug!("Resumed job (`{:?}`): {}.", job_type, job_id);
+                    log::debug!("Resumed job (`{:?}`): {}.", job_meta.job_type, job_id);
                     self.inner_scheduler.add(job).await?;
 
-                    if job_type.is_unique() {
-                        unique_resumed_jobs.insert(job_type);
+                    if job_meta.job_type.is_unique() {
+                        unique_resumed_jobs.insert(job_meta.job_type);
                     }
                 }
                 None => {
                     log::warn!(
                         "Failed to resume job (`{:?}`): {}. The job will be removed and re-scheduled if needed.",
-                        job_type,
+                        job_meta.job_type,
                         job_id
                     );
                     db.remove_scheduler_job(job_id).await?;
@@ -158,7 +170,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::Scheduler;
+    use super::{Scheduler, SchedulerJobConfig, SchedulerJobMetadata};
     use crate::{
         scheduler::scheduler_job::SchedulerJob,
         tests::{mock_api, mock_user},
@@ -172,7 +184,7 @@ mod tests {
 
     fn mock_job_data(
         job_id: JobId,
-        typ: SchedulerJob,
+        job_type: SchedulerJob,
         schedule: impl Into<String>,
     ) -> JobStoredData {
         JobStoredData {
@@ -184,7 +196,7 @@ mod tests {
             ran: false,
             stopped: false,
             last_updated: None,
-            extra: typ.try_into().unwrap(),
+            extra: SchedulerJobMetadata::new(job_type).try_into().unwrap(),
             job: Some(JobStored::CronJob(CronJob {
                 schedule: schedule.into(),
             })),
@@ -212,12 +224,15 @@ mod tests {
                     url: "https://localhost:1234/my/app?q=2".parse()?,
                     settings: WebPageTrackerSettings {
                         revisions: 1,
-                        schedule: Some("1 2 3 4 5 6 2030".to_string()),
                         delay: Default::default(),
                         scripts: Default::default(),
                         headers: Default::default(),
-                        enable_notifications: true,
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "1 2 3 4 5 6 2030".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -230,12 +245,15 @@ mod tests {
                     url: "https://localhost:1234/my/app?q=2".parse()?,
                     settings: WebPageTrackerSettings {
                         revisions: 1,
-                        schedule: Some("1 2 3 4 5 6 2030".to_string()),
                         delay: Default::default(),
                         scripts: Default::default(),
                         headers: Default::default(),
-                        enable_notifications: true,
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "1 2 3 4 5 6 2030".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -319,27 +337,18 @@ mod tests {
 
         let mut jobs = jobs
             .into_iter()
-            .map(|job_result| {
-                job_result.and_then(|job| {
-                    Ok((
-                        job.job_type,
-                        SchedulerJob::try_from(job.extra.as_ref())?,
-                        job.job,
-                    ))
-                })
-            })
+            .map(|job_result| job_result.map(|job| (job.job_type, job.extra, job.job)))
             .collect::<anyhow::Result<Vec<(_, _, _)>>>()?;
-        jobs.sort_by(|job_a, job_b| {
-            Vec::try_from(job_a.1)
-                .unwrap()
-                .cmp(&Vec::try_from(job_b.1).unwrap())
-        });
+        jobs.sort_by(|job_a, job_b| job_a.1.cmp(&job_b.1));
 
         assert_debug_snapshot!(jobs, @r###"
         [
             (
                 0,
-                WebPageTrackersSchedule,
+                [
+                    1,
+                    0,
+                ],
                 Some(
                     CronJob(
                         CronJob {
@@ -350,7 +359,10 @@ mod tests {
             ),
             (
                 0,
-                WebPageTrackersFetch,
+                [
+                    2,
+                    0,
+                ],
                 Some(
                     CronJob(
                         CronJob {
@@ -361,7 +373,10 @@ mod tests {
             ),
             (
                 0,
-                NotificationsSend,
+                [
+                    3,
+                    0,
+                ],
                 Some(
                     CronJob(
                         CronJob {
@@ -426,27 +441,18 @@ mod tests {
 
         let mut jobs = jobs
             .into_iter()
-            .map(|job_result| {
-                job_result.and_then(|job| {
-                    Ok((
-                        job.job_type,
-                        SchedulerJob::try_from(job.extra.as_ref())?,
-                        job.job,
-                    ))
-                })
-            })
+            .map(|job_result| job_result.map(|job| (job.job_type, job.extra, job.job)))
             .collect::<anyhow::Result<Vec<(_, _, _)>>>()?;
-        jobs.sort_by(|job_a, job_b| {
-            Vec::try_from(job_a.1)
-                .unwrap()
-                .cmp(&Vec::try_from(job_b.1).unwrap())
-        });
+        jobs.sort_by(|job_a, job_b| job_a.1.cmp(&job_b.1));
 
         assert_debug_snapshot!(jobs, @r###"
         [
             (
                 0,
-                WebPageTrackersSchedule,
+                [
+                    1,
+                    0,
+                ],
                 Some(
                     CronJob(
                         CronJob {
@@ -457,7 +463,10 @@ mod tests {
             ),
             (
                 0,
-                WebPageTrackersFetch,
+                [
+                    2,
+                    0,
+                ],
                 Some(
                     CronJob(
                         CronJob {
@@ -468,7 +477,10 @@ mod tests {
             ),
             (
                 0,
-                NotificationsSend,
+                [
+                    3,
+                    0,
+                ],
                 Some(
                     CronJob(
                         CronJob {

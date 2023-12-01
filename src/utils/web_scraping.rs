@@ -17,8 +17,7 @@ pub use self::{
         WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings, WebPageTrackerTag,
         WebScraperContentRequest, WebScraperContentRequestScripts, WebScraperContentResponse,
         WebScraperErrorResponse, WebScraperResource, WebScraperResourcesRequest,
-        WebScraperResourcesRequestScripts, WebScraperResourcesResponse, MAX_WEB_PAGE_TRACKER_DELAY,
-        MAX_WEB_PAGE_TRACKER_REVISIONS,
+        WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
     },
 };
 use crate::{
@@ -127,6 +126,7 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
 #[cfg(test)]
 pub mod tests {
     use crate::{
+        scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
         tests::{mock_api, mock_user},
         utils::{
             web_scraping::{WebPageResourceInternal, WebPageResourcesTrackerInternalTag},
@@ -161,14 +161,13 @@ pub mod tests {
                     name: name.into(),
                     user_id: mock_user()?.id,
                     job_id: None,
+                    job_config: None,
                     url: Url::parse(url)?,
                     settings: WebPageTrackerSettings {
                         revisions,
                         delay: Duration::from_millis(2000),
-                        schedule: None,
                         scripts: Default::default(),
                         headers: Default::default(),
-                        enable_notifications: true,
                     },
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     meta: None,
@@ -177,7 +176,16 @@ pub mod tests {
         }
 
         pub fn with_schedule<S: Into<String>>(mut self, schedule: S) -> Self {
-            self.tracker.settings.schedule = Some(schedule.into());
+            self.tracker.job_config = Some(SchedulerJobConfig {
+                schedule: schedule.into(),
+                retry_strategy: None,
+                notifications: false,
+            });
+            self
+        }
+
+        pub fn with_job_config(mut self, job_config: SchedulerJobConfig) -> Self {
+            self.tracker.job_config = Some(job_config);
             self
         }
 
@@ -193,11 +201,6 @@ pub mod tests {
 
         pub fn with_scripts(mut self, scripts: HashMap<String, String>) -> Self {
             self.tracker.settings.scripts = Some(scripts);
-            self
-        }
-
-        pub fn without_notifications(mut self) -> Self {
-            self.tracker.settings.enable_notifications = false;
             self
         }
 
@@ -232,11 +235,14 @@ pub mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -248,6 +254,7 @@ pub mod tests {
                     name: "name_two".to_string(),
                     url: Url::parse("https://secutils.dev")?,
                     settings: tracker_one.settings.clone(),
+                    job_config: tracker_one.job_config.clone(),
                 },
             )
             .await?;
@@ -270,7 +277,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""[{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"name\":\"name_one\",\"settings\":{\"delay\":2000,\"enableNotifications\":true,\"revisions\":3,\"schedule\":\"0 0 * * * *\"},\"url\":\"https://secutils.dev/\"},{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"name\":\"name_two\",\"settings\":{\"delay\":2000,\"enableNotifications\":true,\"revisions\":3,\"schedule\":\"0 0 * * * *\"},\"url\":\"https://secutils.dev/\"}]""###
+                @r###""[{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"jobConfig\":{\"notifications\":true,\"schedule\":\"0 0 * * * *\"},\"name\":\"name_one\",\"settings\":{\"delay\":2000,\"revisions\":3},\"url\":\"https://secutils.dev/\"},{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"jobConfig\":{\"notifications\":true,\"schedule\":\"0 0 * * * *\"},\"name\":\"name_two\",\"settings\":{\"delay\":2000,\"revisions\":3},\"url\":\"https://secutils.dev/\"}]""###
             );
         });
 
@@ -303,11 +310,17 @@ pub mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(1000),
+                            max_attempts: 5,
+                        }),
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -319,6 +332,7 @@ pub mod tests {
                     name: "name_two".to_string(),
                     url: Url::parse("https://secutils.dev")?,
                     settings: tracker_one.settings.clone(),
+                    job_config: tracker_one.job_config.clone(),
                 },
             )
             .await?;
@@ -341,7 +355,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""[{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"name\":\"name_one\",\"settings\":{\"delay\":2000,\"enableNotifications\":true,\"revisions\":3,\"schedule\":\"0 0 * * * *\"},\"url\":\"https://secutils.dev/\"},{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"name\":\"name_two\",\"settings\":{\"delay\":2000,\"enableNotifications\":true,\"revisions\":3,\"schedule\":\"0 0 * * * *\"},\"url\":\"https://secutils.dev/\"}]""###
+                @r###""[{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"jobConfig\":{\"notifications\":true,\"retryStrategy\":{\"interval\":1000000,\"maxAttempts\":5,\"type\":\"constant\"},\"schedule\":\"0 0 * * * *\"},\"name\":\"name_one\",\"settings\":{\"delay\":2000,\"revisions\":3},\"url\":\"https://secutils.dev/\"},{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"jobConfig\":{\"notifications\":true,\"retryStrategy\":{\"interval\":1000000,\"maxAttempts\":5,\"type\":\"constant\"},\"schedule\":\"0 0 * * * *\"},\"name\":\"name_two\",\"settings\":{\"delay\":2000,\"revisions\":3},\"url\":\"https://secutils.dev/\"}]""###
             );
         });
 
@@ -365,10 +379,18 @@ pub mod tests {
                 "settings": WebPageTrackerSettings {
                     revisions: 3,
                     delay: Duration::from_millis(2000),
-                    enable_notifications: true,
-                    schedule: Some("0 0 * * * *".to_string()),
                     scripts: Default::default(),
                     headers: Default::default(),
+                },
+                "jobConfig": SchedulerJobConfig {
+                    schedule: "0 0 * * * *".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                        initial_interval: Duration::from_secs(120),
+                        increment: Duration::from_secs(1),
+                        max_interval: Duration::from_secs(200),
+                        max_attempts: 10,
+                    }),
+                    notifications: true,
                 }
             }))),
         )
@@ -391,7 +413,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"name\":\"name_one\",\"settings\":{\"delay\":2000,\"enableNotifications\":true,\"revisions\":3,\"schedule\":\"0 0 * * * *\"},\"url\":\"https://secutils.dev/\"}""###
+                @r###""{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"jobConfig\":{\"notifications\":true,\"retryStrategy\":{\"increment\":1000,\"initialInterval\":120000,\"maxAttempts\":10,\"maxInterval\":200000,\"type\":\"linear\"},\"schedule\":\"0 0 * * * *\"},\"name\":\"name_one\",\"settings\":{\"delay\":2000,\"revisions\":3},\"url\":\"https://secutils.dev/\"}""###
             );
         });
 
@@ -415,10 +437,18 @@ pub mod tests {
                 "settings": WebPageTrackerSettings {
                     revisions: 3,
                     delay: Duration::from_millis(2000),
-                    enable_notifications: true,
-                    schedule: Some("0 0 * * * *".to_string()),
                     scripts: Default::default(),
                     headers: Default::default(),
+                },
+                 "jobConfig": SchedulerJobConfig {
+                    schedule: "0 0 * * * *".to_string(),
+                     retry_strategy: Some(SchedulerJobRetryStrategy::Exponential {
+                        initial_interval: Duration::from_secs(120),
+                        multiplier: 2,
+                        max_interval: Duration::from_secs(200),
+                        max_attempts: 10,
+                    }),
+                    notifications: true,
                 }
             }))),
         )
@@ -441,7 +471,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"name\":\"name_one\",\"settings\":{\"delay\":2000,\"enableNotifications\":true,\"revisions\":3,\"schedule\":\"0 0 * * * *\"},\"url\":\"https://secutils.dev/\"}""###
+                @r###""{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"jobConfig\":{\"notifications\":true,\"retryStrategy\":{\"initialInterval\":120000,\"maxAttempts\":10,\"maxInterval\":200000,\"multiplier\":2,\"type\":\"exponential\"},\"schedule\":\"0 0 * * * *\"},\"name\":\"name_one\",\"settings\":{\"delay\":2000,\"revisions\":3},\"url\":\"https://secutils.dev/\"}""###
             );
         });
 
@@ -464,11 +494,14 @@ pub mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -486,10 +519,13 @@ pub mod tests {
                 "settings": WebPageTrackerSettings {
                     revisions: 10,
                     delay: Duration::from_millis(3000),
-                    enable_notifications: false,
-                    schedule: Some("0 1 * * * *".to_string()),
                     scripts: Default::default(),
                     headers: Default::default(),
+                },
+                "jobConfig": SchedulerJobConfig {
+                    schedule: "0 1 * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: false,
                 }
             }))),
         )
@@ -513,11 +549,14 @@ pub mod tests {
                 settings: WebPageTrackerSettings {
                     revisions: 10,
                     delay: Duration::from_millis(3000),
-                    enable_notifications: false,
-                    schedule: Some("0 1 * * * *".to_string()),
                     scripts: Default::default(),
                     headers: Default::default(),
                 },
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 1 * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: false,
+                }),
                 created_at: tracker.created_at,
                 meta: None
             }
@@ -542,11 +581,14 @@ pub mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -564,11 +606,14 @@ pub mod tests {
                 "settings": WebPageTrackerSettings {
                     revisions: 10,
                     delay: Duration::from_millis(3000),
-                    enable_notifications: false,
-                    schedule: Some("0 1 * * * *".to_string()),
                     scripts: Default::default(),
                     headers: Default::default(),
-                }
+                },
+                "jobConfig": SchedulerJobConfig {
+                    schedule: "0 1 * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: false,
+                },
             }))),
         )
         .await?;
@@ -591,11 +636,14 @@ pub mod tests {
                 settings: WebPageTrackerSettings {
                     revisions: 10,
                     delay: Duration::from_millis(3000),
-                    enable_notifications: false,
-                    schedule: Some("0 1 * * * *".to_string()),
                     scripts: Default::default(),
                     headers: Default::default(),
                 },
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 1 * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: false,
+                }),
                 created_at: tracker.created_at,
                 meta: None
             }
@@ -620,11 +668,14 @@ pub mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -667,11 +718,14 @@ pub mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -715,11 +769,14 @@ pub mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -733,11 +790,14 @@ pub mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -863,11 +923,14 @@ pub mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;
@@ -880,11 +943,14 @@ pub mod tests {
                     settings: WebPageTrackerSettings {
                         revisions: 3,
                         delay: Duration::from_millis(2000),
-                        enable_notifications: true,
-                        schedule: Some("0 0 * * * *".to_string()),
                         scripts: Default::default(),
                         headers: Default::default(),
                     },
+                    job_config: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                        notifications: true,
+                    }),
                 },
             )
             .await?;

@@ -1,4 +1,4 @@
-use crate::utils::WebPageTrackerSettings;
+use crate::{scheduler::SchedulerJobConfig, utils::WebPageTrackerSettings};
 use serde::Deserialize;
 use url::Url;
 
@@ -11,13 +11,18 @@ pub struct WebPageTrackerCreateParams {
     pub url: Url,
     /// Settings of the web page tracker.
     pub settings: WebPageTrackerSettings,
+    /// Configuration for a job, if tracker needs to be scheduled for automatic change detection.
+    pub job_config: Option<SchedulerJobConfig>,
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{
-        web_scraping::api_ext::WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
-        WebPageTrackerCreateParams, WebPageTrackerSettings,
+    use crate::{
+        scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
+        utils::{
+            web_scraping::api_ext::WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
+            WebPageTrackerCreateParams, WebPageTrackerSettings,
+        },
     };
     use std::time::Duration;
     use url::Url;
@@ -27,58 +32,64 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<WebPageTrackerCreateParams>(
                 r#"
-{
-    "name": "pk",
-    "url": "https://secutils.dev",
-    "settings": {
-        "revisions": 3,
-        "delay": 2000,
-        "enableNotifications": true
+    {
+        "name": "tck",
+        "url": "https://secutils.dev",
+        "settings": {
+            "revisions": 3,
+            "delay": 2000
+        }
     }
-}
-          "#
+              "#
             )?,
             WebPageTrackerCreateParams {
-                name: "pk".to_string(),
+                name: "tck".to_string(),
                 url: Url::parse("https://secutils.dev")?,
                 settings: WebPageTrackerSettings {
                     revisions: 3,
-                    schedule: None,
                     delay: Duration::from_millis(2000),
                     scripts: Default::default(),
                     headers: Default::default(),
-                    enable_notifications: true,
                 },
+                job_config: None,
             }
         );
 
         assert_eq!(
             serde_json::from_str::<WebPageTrackerCreateParams>(
                 r#"
-{
-    "name": "pk",
-    "url": "https://secutils.dev",
-    "settings": {
-        "revisions": 3,
-        "delay": 2000,
-        "schedule": "0 0 * * *",
-        "scripts": {
-            "resourceFilterMap": "return resource;"
+    {
+        "name": "tck",
+        "url": "https://secutils.dev",
+        "settings": {
+            "revisions": 3,
+            "delay": 2000,
+            "scripts": {
+                "resourceFilterMap": "return resource;"
+            },
+            "headers": {
+                "cookie": "my-cookie"
+            }
         },
-        "headers": {
-            "cookie": "my-cookie"
-        },
-        "enableNotifications": true
+        "jobConfig": {
+            "schedule": "0 0 * * *",
+            "retryStrategy": {
+                "type": "exponential",
+                "initialInterval": 1234,
+                "multiplier": 2,
+                "maxInterval": 120000,
+                "maxAttempts": 5
+            },
+            "notifications": true
+        }
     }
-}
-          "#
+              "#
             )?,
             WebPageTrackerCreateParams {
-                name: "pk".to_string(),
+                name: "tck".to_string(),
                 url: Url::parse("https://secutils.dev")?,
                 settings: WebPageTrackerSettings {
                     revisions: 3,
-                    schedule: Some("0 0 * * *".to_string()),
                     delay: Duration::from_millis(2000),
                     scripts: Some(
                         [(
@@ -93,9 +104,18 @@ mod tests {
                         [("cookie".to_string(), "my-cookie".to_string())]
                             .into_iter()
                             .collect(),
-                    ),
-                    enable_notifications: true,
+                    )
                 },
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 0 * * *".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Exponential {
+                        initial_interval: Duration::from_millis(1234),
+                        multiplier: 2,
+                        max_interval: Duration::from_secs(120),
+                        max_attempts: 5,
+                    }),
+                    notifications: true,
+                }),
             }
         );
 

@@ -6,11 +6,11 @@ use crate::{
 };
 use std::borrow::Cow;
 
-pub struct UtilsApi<'a> {
+pub struct UtilsApiExt<'a> {
     db: Cow<'a, Database>,
 }
 
-impl<'a> UtilsApi<'a> {
+impl<'a> UtilsApiExt<'a> {
     /// Creates Utils API.
     pub fn new(db: &'a Database) -> Self {
         Self {
@@ -26,21 +26,21 @@ impl<'a> UtilsApi<'a> {
 
 impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
     /// Returns an API to retrieve available utils.
-    pub fn utils(&self) -> UtilsApi {
-        UtilsApi::new(&self.db)
+    pub fn utils(&self) -> UtilsApiExt {
+        UtilsApiExt::new(&self.db)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::UtilsApi;
+    use super::UtilsApiExt;
     use crate::tests::mock_db;
     use insta::assert_debug_snapshot;
 
     #[actix_rt::test]
     async fn can_get_all_utils() -> anyhow::Result<()> {
         let mock_db = mock_db().await?;
-        let api = UtilsApi::new(&mock_db);
+        let api = UtilsApiExt::new(&mock_db);
 
         assert_debug_snapshot!(api.get_all().await?, @r###"
         [

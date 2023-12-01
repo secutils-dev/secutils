@@ -1,4 +1,7 @@
-use crate::utils::{WebPageTracker, WebPageTrackerSettings, WebPageTrackerTag};
+use crate::{
+    scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
+    utils::{WebPageTracker, WebPageTrackerSettings, WebPageTrackerTag},
+};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::Duration};
 use time::OffsetDateTime;
@@ -10,9 +13,9 @@ pub(super) struct RawWebPageTracker {
     pub name: String,
     pub url: String,
     pub kind: Vec<u8>,
-    pub schedule: Option<String>,
     pub user_id: i64,
     pub job_id: Option<Vec<u8>>,
+    pub job_config: Option<Vec<u8>>,
     pub data: Vec<u8>,
     pub created_at: i64,
 }
@@ -23,8 +26,17 @@ pub(super) struct RawWebPageTrackerData<Tag: WebPageTrackerTag> {
     pub delay: u64,
     pub scripts: Option<HashMap<String, String>>,
     pub headers: Option<HashMap<String, String>>,
-    pub enable_notifications: bool,
     pub meta: Option<Tag::TrackerMeta>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct RawSchedulerJobConfig(String, Option<RawSchedulerJobRetryStrategy>, bool);
+
+#[derive(Serialize, Deserialize)]
+enum RawSchedulerJobRetryStrategy {
+    Constant(Duration, u32),
+    Exponential(Duration, u32, Duration, u32),
+    Linear(Duration, Duration, Duration, u32),
 }
 
 impl<Tag: WebPageTrackerTag> TryFrom<RawWebPageTracker> for WebPageTracker<Tag> {
@@ -32,6 +44,48 @@ impl<Tag: WebPageTrackerTag> TryFrom<RawWebPageTracker> for WebPageTracker<Tag> 
 
     fn try_from(raw: RawWebPageTracker) -> Result<Self, Self::Error> {
         let raw_data = postcard::from_bytes::<RawWebPageTrackerData<Tag>>(&raw.data)?;
+
+        let job_config = if let Some(job_config) = raw.job_config {
+            let RawSchedulerJobConfig(schedule, retry_strategy, notifications) =
+                postcard::from_bytes(&job_config)?;
+            Some(SchedulerJobConfig {
+                schedule,
+                retry_strategy: retry_strategy.map(|retry_strategy| match retry_strategy {
+                    RawSchedulerJobRetryStrategy::Constant(interval, max_attempts) => {
+                        SchedulerJobRetryStrategy::Constant {
+                            interval,
+                            max_attempts,
+                        }
+                    }
+                    RawSchedulerJobRetryStrategy::Exponential(
+                        initial_interval,
+                        multiplier,
+                        max_interval,
+                        max_attempts,
+                    ) => SchedulerJobRetryStrategy::Exponential {
+                        initial_interval,
+                        multiplier,
+                        max_interval,
+                        max_attempts,
+                    },
+                    RawSchedulerJobRetryStrategy::Linear(
+                        initial_interval,
+                        increment,
+                        max_interval,
+                        max_attempts,
+                    ) => SchedulerJobRetryStrategy::Linear {
+                        initial_interval,
+                        increment,
+                        max_interval,
+                        max_attempts,
+                    },
+                }),
+                notifications,
+            })
+        } else {
+            None
+        };
+
         Ok(WebPageTracker {
             id: Uuid::from_slice(raw.id.as_slice())?,
             name: raw.name,
@@ -41,13 +95,12 @@ impl<Tag: WebPageTrackerTag> TryFrom<RawWebPageTracker> for WebPageTracker<Tag> 
                 .job_id
                 .map(|job_id| Uuid::from_slice(job_id.as_slice()))
                 .transpose()?,
+            job_config,
             settings: WebPageTrackerSettings {
                 revisions: raw_data.revisions,
                 delay: Duration::from_millis(raw_data.delay),
-                schedule: raw.schedule,
                 scripts: raw_data.scripts,
                 headers: raw_data.headers,
-                enable_notifications: raw_data.enable_notifications,
             },
             created_at: OffsetDateTime::from_unix_timestamp(raw.created_at)?,
             meta: raw_data.meta,
@@ -64,8 +117,49 @@ impl<Tag: WebPageTrackerTag> TryFrom<&WebPageTracker<Tag>> for RawWebPageTracker
             delay: item.settings.delay.as_millis() as u64,
             scripts: item.settings.scripts.clone(),
             headers: item.settings.headers.clone(),
-            enable_notifications: item.settings.enable_notifications,
             meta: item.meta.clone(),
+        };
+
+        let job_config = if let Some(SchedulerJobConfig {
+            schedule,
+            retry_strategy,
+            notifications,
+        }) = &item.job_config
+        {
+            Some(postcard::to_stdvec(&RawSchedulerJobConfig(
+                schedule.to_string(),
+                retry_strategy.map(|retry_strategy| match retry_strategy {
+                    SchedulerJobRetryStrategy::Constant {
+                        interval,
+                        max_attempts,
+                    } => RawSchedulerJobRetryStrategy::Constant(interval, max_attempts),
+                    SchedulerJobRetryStrategy::Exponential {
+                        initial_interval,
+                        multiplier,
+                        max_interval,
+                        max_attempts,
+                    } => RawSchedulerJobRetryStrategy::Exponential(
+                        initial_interval,
+                        multiplier,
+                        max_interval,
+                        max_attempts,
+                    ),
+                    SchedulerJobRetryStrategy::Linear {
+                        initial_interval,
+                        increment,
+                        max_interval,
+                        max_attempts,
+                    } => RawSchedulerJobRetryStrategy::Linear(
+                        initial_interval,
+                        increment,
+                        max_interval,
+                        max_attempts,
+                    ),
+                }),
+                *notifications,
+            ))?)
+        } else {
+            None
         };
 
         Ok(RawWebPageTracker {
@@ -73,10 +167,9 @@ impl<Tag: WebPageTrackerTag> TryFrom<&WebPageTracker<Tag>> for RawWebPageTracker
             name: item.name.clone(),
             url: item.url.to_string(),
             kind: Tag::KIND.try_into()?,
-            // Move schedule to a dedicated database table field to allow searching.
-            schedule: item.settings.schedule.clone(),
             user_id: *item.user_id,
             job_id: item.job_id.as_ref().map(|job_id| (*job_id).into()),
+            job_config,
             data: postcard::to_stdvec(&raw_data)?,
             created_at: item.created_at.unix_timestamp(),
         })
@@ -87,6 +180,7 @@ impl<Tag: WebPageTrackerTag> TryFrom<&WebPageTracker<Tag>> for RawWebPageTracker
 mod tests {
     use super::RawWebPageTracker;
     use crate::{
+        scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
         tests::mock_user,
         utils::{
             WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerSettings,
@@ -108,10 +202,10 @@ mod tests {
                 name: "tk".to_string(),
                 url: "https://secutils.dev".to_string(),
                 kind: vec![0],
-                schedule: None,
                 user_id: *mock_user()?.id,
                 job_id: None,
-                data: vec![1, 0, 0, 0, 0, 0],
+                job_config: None,
+                data: vec![1, 0, 0, 0, 0],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
             })?,
@@ -121,13 +215,12 @@ mod tests {
                 url: Url::parse("https://secutils.dev")?,
                 user_id: mock_user()?.id,
                 job_id: None,
+                job_config: None,
                 settings: WebPageTrackerSettings {
                     revisions: 1,
-                    schedule: None,
                     delay: Default::default(),
                     scripts: Default::default(),
-                    headers: Default::default(),
-                    enable_notifications: false,
+                    headers: Default::default()
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 meta: None
@@ -142,18 +235,21 @@ mod tests {
                 name: "tk".to_string(),
                 url: "https://secutils.dev".to_string(),
                 kind: vec![0],
-                schedule: Some("0 0 * * *".to_string()),
                 user_id: *mock_user()?.id,
                 job_id: Some(
                     uuid!("00000000-0000-0000-0000-000000000002")
                         .as_bytes()
                         .to_vec()
                 ),
+                job_config: Some(vec![
+                    9, 48, 32, 48, 32, 42, 32, 42, 32, 42, 1, 1, 1, 128, 157, 202, 111, 2, 120, 0,
+                    5, 1
+                ]),
                 data: vec![
                     1, 208, 15, 1, 1, 17, 114, 101, 115, 111, 117, 114, 99, 101, 70, 105, 108, 116,
                     101, 114, 77, 97, 112, 16, 114, 101, 116, 117, 114, 110, 32, 114, 101, 115,
                     111, 117, 114, 99, 101, 59, 1, 1, 6, 99, 111, 111, 107, 105, 101, 9, 109, 121,
-                    45, 99, 111, 111, 107, 105, 101, 1, 0
+                    45, 99, 111, 111, 107, 105, 101, 0
                 ],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
@@ -164,9 +260,18 @@ mod tests {
                 url: Url::parse("https://secutils.dev")?,
                 user_id: mock_user()?.id,
                 job_id: Some(uuid!("00000000-0000-0000-0000-000000000002")),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 0 * * *".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Exponential {
+                        initial_interval: Duration::from_millis(1234),
+                        multiplier: 2,
+                        max_interval: Duration::from_secs(120),
+                        max_attempts: 5,
+                    }),
+                    notifications: true
+                }),
                 settings: WebPageTrackerSettings {
                     revisions: 1,
-                    schedule: Some("0 0 * * *".to_string()),
                     delay: Duration::from_millis(2000),
                     scripts: Some(
                         [(
@@ -180,8 +285,7 @@ mod tests {
                         [("cookie".to_string(), "my-cookie".to_string())]
                             .into_iter()
                             .collect()
-                    ),
-                    enable_notifications: true,
+                    )
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 meta: None
@@ -200,13 +304,12 @@ mod tests {
                 url: Url::parse("https://secutils.dev")?,
                 user_id: mock_user()?.id,
                 job_id: None,
+                job_config: None,
                 settings: WebPageTrackerSettings {
                     revisions: 1,
-                    schedule: None,
                     delay: Default::default(),
                     scripts: Default::default(),
                     headers: Default::default(),
-                    enable_notifications: false,
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 meta: None
@@ -218,10 +321,10 @@ mod tests {
                 name: "tk".to_string(),
                 url: "https://secutils.dev/".to_string(),
                 kind: vec![0],
-                schedule: None,
                 user_id: *mock_user()?.id,
                 job_id: None,
-                data: vec![1, 0, 0, 0, 0, 0],
+                job_config: None,
+                data: vec![1, 0, 0, 0, 0],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
             }
@@ -234,9 +337,18 @@ mod tests {
                 url: Url::parse("https://secutils.dev")?,
                 user_id: mock_user()?.id,
                 job_id: Some(uuid!("00000000-0000-0000-0000-000000000002")),
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 0 * * *".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Exponential {
+                        initial_interval: Duration::from_millis(1234),
+                        multiplier: 2,
+                        max_interval: Duration::from_secs(120),
+                        max_attempts: 5,
+                    }),
+                    notifications: true
+                }),
                 settings: WebPageTrackerSettings {
                     revisions: 1,
-                    schedule: Some("0 0 * * *".to_string()),
                     delay: Duration::from_millis(2000),
                     scripts: Some(
                         [(
@@ -251,7 +363,6 @@ mod tests {
                             .into_iter()
                             .collect()
                     ),
-                    enable_notifications: true,
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 meta: None
@@ -263,18 +374,21 @@ mod tests {
                 name: "tk".to_string(),
                 url: "https://secutils.dev/".to_string(),
                 kind: vec![0],
-                schedule: Some("0 0 * * *".to_string()),
                 user_id: *mock_user()?.id,
                 job_id: Some(
                     uuid!("00000000-0000-0000-0000-000000000002")
                         .as_bytes()
                         .to_vec()
                 ),
+                job_config: Some(vec![
+                    9, 48, 32, 48, 32, 42, 32, 42, 32, 42, 1, 1, 1, 128, 157, 202, 111, 2, 120, 0,
+                    5, 1
+                ]),
                 data: vec![
                     1, 208, 15, 1, 1, 17, 114, 101, 115, 111, 117, 114, 99, 101, 70, 105, 108, 116,
                     101, 114, 77, 97, 112, 16, 114, 101, 116, 117, 114, 110, 32, 114, 101, 115,
                     111, 117, 114, 99, 101, 59, 1, 1, 6, 99, 111, 111, 107, 105, 101, 9, 109, 121,
-                    45, 99, 111, 111, 107, 105, 101, 1, 0
+                    45, 99, 111, 111, 107, 105, 101, 0
                 ],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,

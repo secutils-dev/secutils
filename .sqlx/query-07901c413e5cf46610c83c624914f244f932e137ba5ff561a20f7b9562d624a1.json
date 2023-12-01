@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\nSELECT id, name, url, kind, schedule, job_id, user_id, data, created_at\nFROM user_data_web_scraping_trackers\nWHERE user_id = ?1 AND kind = ?2\nORDER BY created_at\n                ",
+  "query": "\nSELECT trackers.id, trackers.name, trackers.url, trackers.kind, trackers.job_id, \n       trackers.job_config, trackers.user_id, trackers.data, trackers.created_at, jobs.extra\nFROM user_data_web_scraping_trackers as trackers\nINNER JOIN scheduler_jobs as jobs\nON trackers.job_id = jobs.id\nWHERE trackers.kind = ?1 AND jobs.stopped = 1 AND trackers.created_at > ?2\nORDER BY trackers.created_at\nLIMIT ?3;\n",
   "describe": {
     "columns": [
       {
@@ -24,12 +24,12 @@
         "type_info": "Blob"
       },
       {
-        "name": "schedule",
+        "name": "job_id",
         "ordinal": 4,
-        "type_info": "Text"
+        "type_info": "Blob"
       },
       {
-        "name": "job_id",
+        "name": "job_config",
         "ordinal": 5,
         "type_info": "Blob"
       },
@@ -47,10 +47,15 @@
         "name": "created_at",
         "ordinal": 8,
         "type_info": "Int64"
+      },
+      {
+        "name": "extra",
+        "ordinal": 9,
+        "type_info": "Blob"
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 3
     },
     "nullable": [
       false,
@@ -61,8 +66,9 @@
       true,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "74922f5fa35e20e168eda9a00aa5a004572e0c75abad03034bc65216954266d7"
+  "hash": "07901c413e5cf46610c83c624914f244f932e137ba5ff561a20f7b9562d624a1"
 }

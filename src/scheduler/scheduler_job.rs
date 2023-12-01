@@ -22,27 +22,10 @@ impl SchedulerJob {
     }
 }
 
-impl TryFrom<&[u8]> for SchedulerJob {
-    type Error = anyhow::Error;
-
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        Ok(postcard::from_bytes(value)?)
-    }
-}
-
-impl TryFrom<SchedulerJob> for Vec<u8> {
-    type Error = anyhow::Error;
-
-    fn try_from(value: SchedulerJob) -> Result<Self, Self::Error> {
-        Ok(postcard::to_stdvec(&value)?)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::SchedulerJob;
     use crate::utils::WebPageTrackerKind;
-    use insta::assert_debug_snapshot;
 
     #[test]
     fn properly_determines_unique_jobs() -> anyhow::Result<()> {
@@ -57,70 +40,6 @@ mod tests {
         assert!(SchedulerJob::WebPageTrackersSchedule.is_unique());
         assert!(SchedulerJob::WebPageTrackersFetch.is_unique());
         assert!(SchedulerJob::NotificationsSend.is_unique());
-
-        Ok(())
-    }
-
-    #[test]
-    fn serialize() -> anyhow::Result<()> {
-        assert_eq!(
-            Vec::try_from(SchedulerJob::WebPageTrackersTrigger {
-                kind: WebPageTrackerKind::WebPageResources
-            })?,
-            vec![0, 0]
-        );
-        assert_eq!(
-            Vec::try_from(SchedulerJob::WebPageTrackersTrigger {
-                kind: WebPageTrackerKind::WebPageContent
-            })?,
-            vec![0, 1]
-        );
-        assert_eq!(
-            Vec::try_from(SchedulerJob::WebPageTrackersSchedule)?,
-            vec![1]
-        );
-        assert_eq!(Vec::try_from(SchedulerJob::WebPageTrackersFetch)?, vec![2]);
-        assert_eq!(Vec::try_from(SchedulerJob::NotificationsSend)?, vec![3]);
-
-        Ok(())
-    }
-
-    #[test]
-    fn deserialize() -> anyhow::Result<()> {
-        assert_eq!(
-            SchedulerJob::try_from([0, 0].as_ref())?,
-            SchedulerJob::WebPageTrackersTrigger {
-                kind: WebPageTrackerKind::WebPageResources
-            }
-        );
-
-        assert_eq!(
-            SchedulerJob::try_from([0, 1].as_ref())?,
-            SchedulerJob::WebPageTrackersTrigger {
-                kind: WebPageTrackerKind::WebPageContent
-            }
-        );
-
-        assert_eq!(
-            SchedulerJob::try_from([1].as_ref())?,
-            SchedulerJob::WebPageTrackersSchedule
-        );
-
-        assert_eq!(
-            SchedulerJob::try_from([2].as_ref())?,
-            SchedulerJob::WebPageTrackersFetch
-        );
-
-        assert_eq!(
-            SchedulerJob::try_from([3].as_ref())?,
-            SchedulerJob::NotificationsSend
-        );
-
-        assert_debug_snapshot!(SchedulerJob::try_from([4].as_ref()), @r###"
-        Err(
-            SerdeDeCustom,
-        )
-        "###);
 
         Ok(())
     }
