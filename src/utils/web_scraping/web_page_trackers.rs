@@ -9,8 +9,8 @@ mod web_scraper;
 
 pub use self::{
     web_page_content::{
-        WebPageContentTrackerTag, WebScraperContentRequest, WebScraperContentRequestScripts,
-        WebScraperContentResponse,
+        web_page_content_revisions_diff, WebPageContentTrackerTag, WebScraperContentRequest,
+        WebScraperContentRequestScripts, WebScraperContentResponse,
     },
     web_page_data_revision::WebPageDataRevision,
     web_page_resources::{

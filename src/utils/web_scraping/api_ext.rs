@@ -18,8 +18,9 @@ use crate::{
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
         web_scraping::{
-            database_ext::WebScrapingDatabaseSystemExt, web_page_resources_revisions_diff,
-            WebPageResourcesTrackerInternalTag, WebScraperResource,
+            database_ext::WebScrapingDatabaseSystemExt, web_page_content_revisions_diff,
+            web_page_resources_revisions_diff, WebPageResourcesTrackerInternalTag,
+            WebScraperResource,
         },
         WebPageContentTrackerTag, WebPageDataRevision, WebPageResource, WebPageResourcesData,
         WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerTag, WebScraperContentRequest,
@@ -621,11 +622,17 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             )));
         }
 
-        self.api
+        let revisions = self
+            .api
             .db
             .web_scraping(user_id)
             .get_web_page_tracker_history::<WebPageContentTrackerTag>(tracker_id)
-            .await
+            .await?;
+        if params.calculate_diff {
+            web_page_content_revisions_diff(revisions)
+        } else {
+            Ok(revisions)
+        }
     }
 
     /// Removes all persisted resources for the specified web page resources tracker.
@@ -3489,7 +3496,7 @@ mod tests {
         assert!(tracker_one_history.is_empty());
         assert!(tracker_two_history.is_empty());
 
-        let content_one = get_content(946720800, "rev_1")?;
+        let content_one = get_content(946720800, "\"rev_1\"")?;
         let mut content_mock = server.mock(|when, then| {
             when.method(httpmock::Method::POST)
                 .path("/api/web_page/content")
@@ -3509,7 +3516,10 @@ mod tests {
             .get_content_tracker_history(
                 mock_user.id,
                 tracker_one.id,
-                WebPageContentTrackerGetHistoryParams { refresh: true },
+                WebPageContentTrackerGetHistoryParams {
+                    refresh: true,
+                    calculate_diff: false,
+                },
             )
             .await?;
         let tracker_two_content = web_scraping
@@ -3523,7 +3533,7 @@ mod tests {
         content_mock.assert();
         content_mock.delete();
 
-        let content_two = get_content(946720900, "rev_2")?;
+        let content_two = get_content(946720900, "\"rev_2\"")?;
         let mut content_mock = server.mock(|when, then| {
             when.method(httpmock::Method::POST)
                 .path("/api/web_page/content")
@@ -3531,7 +3541,7 @@ mod tests {
                     serde_json::to_value(
                         WebScraperContentRequest::with_default_parameters(&tracker_one.url)
                             .set_delay(Duration::from_millis(2000))
-                            .set_previous_content("rev_1"),
+                            .set_previous_content("\"rev_1\""),
                     )
                     .unwrap(),
                 );
@@ -3547,7 +3557,7 @@ mod tests {
             revision.created_at,
             OffsetDateTime::from_unix_timestamp(946720900)?
         );
-        assert_eq!(revision.data, "rev_2");
+        assert_eq!(revision.data, "\"rev_2\"");
         content_mock.assert();
         content_mock.delete();
 
@@ -3560,7 +3570,7 @@ mod tests {
         assert_eq!(tracker_one_content.len(), 2);
         assert!(tracker_two_content.is_empty());
 
-        let content_two = get_content(946720900, "rev_3")?;
+        let content_two = get_content(946720900, "\"rev_3\"")?;
         let content_mock = server.mock(|when, then| {
             when.method(httpmock::Method::POST)
                 .path("/api/web_page/content")
@@ -3578,17 +3588,87 @@ mod tests {
         let revision = web_scraping
             .create_content_tracker_revision(mock_user.id, tracker_two.id)
             .await?;
-        assert_eq!(revision.unwrap().data, "rev_3");
+        assert_eq!(revision.unwrap().data, "\"rev_3\"");
         content_mock.assert();
 
         let tracker_one_content = web_scraping
-            .get_content_tracker_history(mock_user.id, tracker_one.id, Default::default())
+            .get_content_tracker_history(
+                mock_user.id,
+                tracker_one.id,
+                WebPageContentTrackerGetHistoryParams {
+                    refresh: false,
+                    calculate_diff: true,
+                },
+            )
             .await?;
         let tracker_two_content = web_scraping
             .get_content_tracker_history(mock_user.id, tracker_two.id, Default::default())
             .await?;
         assert_eq!(tracker_one_content.len(), 2);
         assert_eq!(tracker_two_content.len(), 1);
+
+        assert_debug_snapshot!(
+            tracker_one_content,
+            @r###"
+        [
+            WebPageDataRevision {
+                id: 018c46e7-12f1-7c19-bf60-20b1c256143d,
+                tracker_id: 018c46e7-12dd-7702-8168-8cc8163b5150,
+                data: "\"rev_1\"",
+                created_at: 2000-01-01 10:00:00.0 +00:00:00,
+            },
+            WebPageDataRevision {
+                id: 018c46e7-1307-7413-a3e4-0c91fd7c708e,
+                tracker_id: 018c46e7-12dd-7702-8168-8cc8163b5150,
+                data: "@@ -1 +1 @@\n-rev_1\n+rev_2\n",
+                created_at: 2000-01-01 10:01:40.0 +00:00:00,
+            },
+        ]
+        "###
+        );
+        assert_debug_snapshot!(
+            tracker_two_content,
+            @r###"
+        [
+            WebPageDataRevision {
+                id: 018c46e7-131e-74fd-be07-dad9ff835c0d,
+                tracker_id: 018c46e7-12df-7c10-b05b-2fe1a64455b6,
+                data: "\"rev_3\"",
+                created_at: 2000-01-01 10:01:40.0 +00:00:00,
+            },
+        ]
+        "###
+        );
+
+        let tracker_one_content = web_scraping
+            .get_content_tracker_history(
+                mock_user.id,
+                tracker_one.id,
+                WebPageContentTrackerGetHistoryParams {
+                    refresh: false,
+                    calculate_diff: false,
+                },
+            )
+            .await?;
+        assert_debug_snapshot!(
+            tracker_one_content,
+            @r###"
+        [
+            WebPageDataRevision {
+                id: 018c46e7-12f1-7c19-bf60-20b1c256143d,
+                tracker_id: 018c46e7-12dd-7702-8168-8cc8163b5150,
+                data: "\"rev_1\"",
+                created_at: 2000-01-01 10:00:00.0 +00:00:00,
+            },
+            WebPageDataRevision {
+                id: 018c46e7-1307-7413-a3e4-0c91fd7c708e,
+                tracker_id: 018c46e7-12dd-7702-8168-8cc8163b5150,
+                data: "\"rev_2\"",
+                created_at: 2000-01-01 10:01:40.0 +00:00:00,
+            },
+        ]
+        "###
+        );
 
         Ok(())
     }
@@ -3646,7 +3726,10 @@ mod tests {
             .get_content_tracker_history(
                 mock_user.id,
                 tracker.id,
-                WebPageContentTrackerGetHistoryParams { refresh: true },
+                WebPageContentTrackerGetHistoryParams {
+                    refresh: true,
+                    calculate_diff: false,
+                },
             )
             .await
             .unwrap_err()
@@ -3777,7 +3860,7 @@ mod tests {
             .await?;
         assert!(tracker_content.is_empty());
 
-        let content_one = get_content(946720800, "rev_1")?;
+        let content_one = get_content(946720800, "\"rev_1\"")?;
         let mut content_mock = server.mock(|when, then| {
             when.method(httpmock::Method::POST)
                 .path("/api/web_page/content")
@@ -3796,7 +3879,7 @@ mod tests {
         let revision = web_scraping
             .create_content_tracker_revision(mock_user.id, tracker.id)
             .await?;
-        assert_eq!(revision.unwrap().data, "rev_1");
+        assert_eq!(revision.unwrap().data, "\"rev_1\"");
         content_mock.assert_hits(1);
 
         content_mock.delete();
@@ -3807,7 +3890,7 @@ mod tests {
                     serde_json::to_value(
                         WebScraperContentRequest::with_default_parameters(&tracker.url)
                             .set_delay(Duration::from_millis(2000))
-                            .set_previous_content("rev_1"),
+                            .set_previous_content("\"rev_1\""),
                     )
                     .unwrap(),
                 );
@@ -3957,7 +4040,7 @@ mod tests {
             .await?;
         assert!(tracker_content.is_empty());
 
-        let content_one = get_content(946720800, "rev_1")?;
+        let content_one = get_content(946720800, "\"rev_1\"")?;
         let mut content_mock = server.mock(|when, then| {
             when.method(httpmock::Method::POST)
                 .path("/api/web_page/content")
@@ -3976,11 +4059,11 @@ mod tests {
         let revision = web_scraping
             .create_content_tracker_revision(mock_user.id, tracker.id)
             .await?;
-        assert_eq!(revision.unwrap().data, "rev_1");
+        assert_eq!(revision.unwrap().data, "\"rev_1\"");
         content_mock.assert();
         content_mock.delete();
 
-        let content_two = get_content(946720900, "rev_1")?;
+        let content_two = get_content(946720900, "\"rev_1\"")?;
         let content_mock = server.mock(|when, then| {
             when.method(httpmock::Method::POST)
                 .path("/api/web_page/content")
@@ -3988,7 +4071,7 @@ mod tests {
                     serde_json::to_value(
                         WebScraperContentRequest::with_default_parameters(&tracker.url)
                             .set_delay(Duration::from_millis(2000))
-                            .set_previous_content("rev_1"),
+                            .set_previous_content("\"rev_1\""),
                     )
                     .unwrap(),
                 );
@@ -4123,7 +4206,7 @@ mod tests {
             .await?;
         assert!(tracker_content.is_empty());
 
-        let content = get_content(946720800, "rev_1")?;
+        let content = get_content(946720800, "\"rev_1\"")?;
         let content_mock = server.mock(|when, then| {
             when.method(httpmock::Method::POST)
                 .path("/api/web_page/content")
@@ -4275,7 +4358,7 @@ mod tests {
             .await?;
         assert!(tracker_content.is_empty());
 
-        let content = get_content(946720800, "rev_1")?;
+        let content = get_content(946720800, "\"rev_1\"")?;
         let content_mock = server.mock(|when, then| {
             when.method(httpmock::Method::POST)
                 .path("/api/web_page/content")
@@ -4452,7 +4535,7 @@ mod tests {
             .await?;
         assert!(tracker_content.is_empty());
 
-        let content = get_content(946720800, "rev_1")?;
+        let content = get_content(946720800, "\"rev_1\"")?;
         let content_mock = server.mock(|when, then| {
             when.method(httpmock::Method::POST)
                 .path("/api/web_page/content")

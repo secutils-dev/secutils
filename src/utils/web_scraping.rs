@@ -11,13 +11,13 @@ pub use self::{
         WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
     },
     web_page_trackers::{
-        web_page_resources_revisions_diff, WebPageContentTrackerTag, WebPageDataRevision,
-        WebPageResource, WebPageResourceContent, WebPageResourceContentData,
-        WebPageResourceDiffStatus, WebPageResourcesData, WebPageResourcesTrackerTag,
-        WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings, WebPageTrackerTag,
-        WebScraperContentRequest, WebScraperContentRequestScripts, WebScraperContentResponse,
-        WebScraperErrorResponse, WebScraperResource, WebScraperResourcesRequest,
-        WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
+        web_page_content_revisions_diff, web_page_resources_revisions_diff,
+        WebPageContentTrackerTag, WebPageDataRevision, WebPageResource, WebPageResourceContent,
+        WebPageResourceContentData, WebPageResourceDiffStatus, WebPageResourcesData,
+        WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings,
+        WebPageTrackerTag, WebScraperContentRequest, WebScraperContentRequestScripts,
+        WebScraperContentResponse, WebScraperErrorResponse, WebScraperResource,
+        WebScraperResourcesRequest, WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
     },
 };
 use crate::{
@@ -1036,7 +1036,10 @@ pub mod tests {
                 .get_content_tracker_history(
                     mock_user.id,
                     content_tracker.id,
-                    WebPageContentTrackerGetHistoryParams { refresh: false }
+                    WebPageContentTrackerGetHistoryParams {
+                        refresh: false,
+                        calculate_diff: false
+                    }
                 )
                 .await?
                 .len(),
@@ -1086,7 +1089,10 @@ pub mod tests {
             .get_content_tracker_history(
                 mock_user.id,
                 content_tracker.id,
-                WebPageContentTrackerGetHistoryParams { refresh: false }
+                WebPageContentTrackerGetHistoryParams {
+                    refresh: false,
+                    calculate_diff: false
+                }
             )
             .await?
             .is_empty());
