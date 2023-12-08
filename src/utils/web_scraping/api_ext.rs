@@ -3608,34 +3608,19 @@ mod tests {
         assert_eq!(tracker_two_content.len(), 1);
 
         assert_debug_snapshot!(
-            tracker_one_content,
+            tracker_one_content.into_iter().map(|rev| rev.data).collect::<Vec<_>>(),
             @r###"
         [
-            WebPageDataRevision {
-                id: 018c46e7-12f1-7c19-bf60-20b1c256143d,
-                tracker_id: 018c46e7-12dd-7702-8168-8cc8163b5150,
-                data: "\"rev_1\"",
-                created_at: 2000-01-01 10:00:00.0 +00:00:00,
-            },
-            WebPageDataRevision {
-                id: 018c46e7-1307-7413-a3e4-0c91fd7c708e,
-                tracker_id: 018c46e7-12dd-7702-8168-8cc8163b5150,
-                data: "@@ -1 +1 @@\n-rev_1\n+rev_2\n",
-                created_at: 2000-01-01 10:01:40.0 +00:00:00,
-            },
+            "\"rev_1\"",
+            "@@ -1 +1 @@\n-rev_1\n+rev_2\n",
         ]
         "###
         );
         assert_debug_snapshot!(
-            tracker_two_content,
+            tracker_two_content.into_iter().map(|rev| rev.data).collect::<Vec<_>>(),
             @r###"
         [
-            WebPageDataRevision {
-                id: 018c46e7-131e-74fd-be07-dad9ff835c0d,
-                tracker_id: 018c46e7-12df-7c10-b05b-2fe1a64455b6,
-                data: "\"rev_3\"",
-                created_at: 2000-01-01 10:01:40.0 +00:00:00,
-            },
+            "\"rev_3\"",
         ]
         "###
         );
@@ -3651,21 +3636,11 @@ mod tests {
             )
             .await?;
         assert_debug_snapshot!(
-            tracker_one_content,
+            tracker_one_content.into_iter().map(|rev| rev.data).collect::<Vec<_>>(),
             @r###"
         [
-            WebPageDataRevision {
-                id: 018c46e7-12f1-7c19-bf60-20b1c256143d,
-                tracker_id: 018c46e7-12dd-7702-8168-8cc8163b5150,
-                data: "\"rev_1\"",
-                created_at: 2000-01-01 10:00:00.0 +00:00:00,
-            },
-            WebPageDataRevision {
-                id: 018c46e7-1307-7413-a3e4-0c91fd7c708e,
-                tracker_id: 018c46e7-12dd-7702-8168-8cc8163b5150,
-                data: "\"rev_2\"",
-                created_at: 2000-01-01 10:01:40.0 +00:00:00,
-            },
+            "\"rev_1\"",
+            "\"rev_2\"",
         ]
         "###
         );

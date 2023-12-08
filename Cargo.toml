@@ -37,7 +37,7 @@ itertools = "0.12.0"
 lettre = { version = "0.11.2", default-features = false  }
 log = "0.4.20"
 mailchecker = "6.0.1"
-openssl = "0.10.60"
+openssl = "0.10.61"
 postcard = { version = "1.0.8", default-features = false  }
 rand_core = "0.6.4"
 regex = "1.10.2"
