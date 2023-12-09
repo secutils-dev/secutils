@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.2
 
-FROM --platform=$BUILDPLATFORM rust:1.73-alpine3.18 as SERVER_BUILDER
+FROM --platform=$BUILDPLATFORM rust:1.74-alpine3.18 as SERVER_BUILDER
 ARG TARGETPLATFORM
 
 ## Statically link binary to OpenSSL libraries.
