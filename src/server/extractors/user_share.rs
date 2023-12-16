@@ -24,15 +24,21 @@ impl FromRequest for UserShare {
             let header_value = if let Some(header) = req.headers().get(&USER_SHARE_ID_HEADER_NAME) {
                 header
                     .to_str()
-                    .map_err(|_| ErrorBadRequest(anyhow!("Invalid X-Share-ID header.")))?
+                    .map_err(|_| ErrorBadRequest(anyhow!("Invalid X-User-Share-ID header.")))?
             } else {
-                return Err(ErrorUnauthorized(anyhow!("X-Share-ID header is missing.")));
+                return Err(ErrorUnauthorized(anyhow!(
+                    "X-User-Share-ID header is missing."
+                )));
             };
 
             // 2. Make sure that the header value is a valid `UserShareId` (UUIDv4).
             let user_share_id: UserShareId = header_value.parse().map_err(|err| {
-                log::error!("Invalid X-Share-ID header `{}`: {:?}", header_value, err);
-                ErrorBadRequest(anyhow!("Invalid X-Share-ID header."))
+                log::error!(
+                    "Invalid X-User-Share-ID header `{}`: {:?}",
+                    header_value,
+                    err
+                );
+                ErrorBadRequest(anyhow!("Invalid X-User-Share-ID header."))
             })?;
 
             // 3. Retrieve `UserShare` from the database using the extracted `UserShareId`.
@@ -54,7 +60,7 @@ impl FromRequest for UserShare {
                     *user_share_id
                 );
                 ErrorUnauthorized(anyhow!(
-                    "X-Share-ID header points to non-existent user share."
+                    "X-User-Share-ID header points to non-existent user share."
                 ))
             })
         })
@@ -79,7 +85,7 @@ mod tests {
         let request = TestRequest::default().to_http_request();
         assert_debug_snapshot!(UserShare::from_request(&request, &mut Payload::None).await, @r###"
         Err(
-            X-Share-ID header is missing.,
+            X-User-Share-ID header is missing.,
         )
         "###);
         Ok(())
@@ -92,7 +98,7 @@ mod tests {
             .to_http_request();
         assert_debug_snapshot!(UserShare::from_request(&request, &mut Payload::None).await, @r###"
         Err(
-            Invalid X-Share-ID header.,
+            Invalid X-User-Share-ID header.,
         )
         "###);
         Ok(())
@@ -123,7 +129,7 @@ mod tests {
             .to_http_request();
         assert_debug_snapshot!(UserShare::from_request(&request, &mut Payload::None).await, @r###"
         Err(
-            X-Share-ID header points to non-existent user share.,
+            X-User-Share-ID header points to non-existent user share.,
         )
         "###);
         Ok(())
