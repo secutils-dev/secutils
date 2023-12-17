@@ -1,18 +1,21 @@
 # <img src="https://raw.githubusercontent.com/secutils-dev/secutils/main/assets/logo/secutils-logo-initials.png" alt="Secutils.dev" width="22"> [Secutils.dev](https://secutils.dev) &middot; [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://github.com/secutils-dev/secutils/blob/main/LICENSE) [![Build Status](https://github.com/secutils-dev/secutils/actions/workflows/ci.yml/badge.svg)](https://github.com/secutils-dev/secutils/actions)
 
-Secutils.dev is an open-source, versatile, yet simple toolbox for security-minded engineers.
+Secutils.dev is an open-source, versatile, yet simple toolbox for security-minded engineers built by application security engineers.
 
 Refer to [secutils-dev/secutils-webui](https://github.com/secutils-dev/secutils-webui) for the web interface component of Secutils.dev.
 
-## Benefits
+![Secutils.dev UI](https://github.com/secutils-dev/.github/blob/main/profile/promo.png?raw=true)
 
-The main goal of this project is to provide security-minded engineers with a user-friendly, all-in-one toolbox for their day-to-day job that adheres to [open security principles](https://en.wikipedia.org/wiki/Open_security). You might want to consider Secutils.dev as a part of your usual development workflow for the following reasons:
+## Why Secutils.dev?
 
-* Built by application security engineer for security-minded engineers
-* Carefully selected utilities that are commonly used in daily work
+Big security solutions are impressive, but often too expensive, complex, and kind of overkill for us regular engineers. On the other hand, there's a bunch of handy tools and scripts tackling specific security problems - they're simple and affordable, but trying to juggle them is hard and messy. Secutils.dev aims to be the sweet spot between hefty solutions and scattered tools. It's open, user-friendly, and your go-to toolbox filled with carefully selected utilities commonly used in daily work, whether you're operating solo or part of a big team.
+
+Secutils.dev adheres to [open security principles](https://en.wikipedia.org/wiki/Open_security) and offers:
 * Guided experience for complex security concepts
-* Request bin, CSP builder, certificate generator, web scraper and more
-* Intuitive and customizable user interface
+* [Request responders](https://secutils.dev/docs/guides/webhooks) for rapid mocking of HTTP APIs and webhooks
+* [Templates](https://secutils.dev/docs/guides/digital_certificates) for certificates and private keys to test cryptographic security protocols
+* [Content Security Policy (CSP) management](https://secutils.dev/docs/guides/web_security/csp), enabling the import and creation of policies from scratch
+* Tools for [web page resource scraping](https://secutils.dev/docs/guides/web_scraping/resources), content tracking, and more
 
 ## Getting started
 
