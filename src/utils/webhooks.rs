@@ -202,7 +202,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""[{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"method\":\"GET\",\"name\":\"name_one\",\"path\":\"/\",\"settings\":{\"delay\":2000,\"requestsToTrack\":3,\"statusCode\":200}},{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"method\":\"GET\",\"name\":\"name_two\",\"path\":\"/path\",\"settings\":{\"delay\":2000,\"requestsToTrack\":3,\"statusCode\":200}}]""###
+                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"path\":\"/\",\"method\":\"GET\",\"settings\":{\"requestsToTrack\":3,\"statusCode\":200,\"delay\":2000},\"createdAt\":[TIMESTAMP]},{\"id\":\"[UUID]\",\"name\":\"name_two\",\"path\":\"/path\",\"method\":\"GET\",\"settings\":{\"requestsToTrack\":3,\"statusCode\":200,\"delay\":2000},\"createdAt\":[TIMESTAMP]}]""###
             );
         });
 
@@ -248,7 +248,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"method\":\"GET\",\"name\":\"name_one\",\"path\":\"/\",\"settings\":{\"delay\":2000,\"requestsToTrack\":3,\"statusCode\":200}}""###
+                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"path\":\"/\",\"method\":\"GET\",\"settings\":{\"requestsToTrack\":3,\"statusCode\":200,\"delay\":2000},\"createdAt\":[TIMESTAMP]}""###
             );
         });
 
@@ -452,7 +452,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""[{\"createdAt\":[TIMESTAMP-1],\"id\":\"[UUID-1]\",\"method\":\"POST\"},{\"createdAt\":[TIMESTAMP-1],\"id\":\"[UUID-2]\",\"method\":\"POST\"}]""###
+                @r###""[{\"id\":\"[UUID-1]\",\"method\":\"POST\",\"createdAt\":[TIMESTAMP-1]},{\"id\":\"[UUID-2]\",\"method\":\"POST\",\"createdAt\":[TIMESTAMP-1]}]""###
             );
         });
 

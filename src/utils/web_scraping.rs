@@ -277,7 +277,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""[{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"jobConfig\":{\"notifications\":true,\"schedule\":\"0 0 * * * *\"},\"name\":\"name_one\",\"settings\":{\"delay\":2000,\"revisions\":3},\"url\":\"https://secutils.dev/\"},{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"jobConfig\":{\"notifications\":true,\"schedule\":\"0 0 * * * *\"},\"name\":\"name_two\",\"settings\":{\"delay\":2000,\"revisions\":3},\"url\":\"https://secutils.dev/\"}]""###
+                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP]},{\"id\":\"[UUID]\",\"name\":\"name_two\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP]}]""###
             );
         });
 
@@ -355,7 +355,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""[{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"jobConfig\":{\"notifications\":true,\"retryStrategy\":{\"interval\":1000000,\"maxAttempts\":5,\"type\":\"constant\"},\"schedule\":\"0 0 * * * *\"},\"name\":\"name_one\",\"settings\":{\"delay\":2000,\"revisions\":3},\"url\":\"https://secutils.dev/\"},{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"jobConfig\":{\"notifications\":true,\"retryStrategy\":{\"interval\":1000000,\"maxAttempts\":5,\"type\":\"constant\"},\"schedule\":\"0 0 * * * *\"},\"name\":\"name_two\",\"settings\":{\"delay\":2000,\"revisions\":3},\"url\":\"https://secutils.dev/\"}]""###
+                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"retryStrategy\":{\"type\":\"constant\",\"interval\":1000000,\"maxAttempts\":5},\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP]},{\"id\":\"[UUID]\",\"name\":\"name_two\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"retryStrategy\":{\"type\":\"constant\",\"interval\":1000000,\"maxAttempts\":5},\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP]}]""###
             );
         });
 
@@ -413,7 +413,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"jobConfig\":{\"notifications\":true,\"retryStrategy\":{\"increment\":1000,\"initialInterval\":120000,\"maxAttempts\":10,\"maxInterval\":200000,\"type\":\"linear\"},\"schedule\":\"0 0 * * * *\"},\"name\":\"name_one\",\"settings\":{\"delay\":2000,\"revisions\":3},\"url\":\"https://secutils.dev/\"}""###
+                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"retryStrategy\":{\"type\":\"linear\",\"initialInterval\":120000,\"increment\":1000,\"maxInterval\":200000,\"maxAttempts\":10},\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP]}""###
             );
         });
 
@@ -471,7 +471,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""{\"createdAt\":[TIMESTAMP],\"id\":\"[UUID]\",\"jobConfig\":{\"notifications\":true,\"retryStrategy\":{\"initialInterval\":120000,\"maxAttempts\":10,\"maxInterval\":200000,\"multiplier\":2,\"type\":\"exponential\"},\"schedule\":\"0 0 * * * *\"},\"name\":\"name_one\",\"settings\":{\"delay\":2000,\"revisions\":3},\"url\":\"https://secutils.dev/\"}""###
+                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"retryStrategy\":{\"type\":\"exponential\",\"initialInterval\":120000,\"multiplier\":2,\"maxInterval\":200000,\"maxAttempts\":10},\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP]}""###
             );
         });
 
@@ -881,7 +881,7 @@ pub mod tests {
 
         assert_json_snapshot!(
             serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-            @r###""[{\"createdAt\":946720800,\"data\":{\"scripts\":[{\"url\":\"http://localhost:1234/script_one.js\"}],\"styles\":[{\"url\":\"http://localhost:1234/style_one.css\"}]},\"id\":\"00000000-0000-0000-0000-000000000001\"},{\"createdAt\":946720900,\"data\":{\"scripts\":[{\"diffStatus\":\"added\",\"url\":\"http://localhost:1234/script_two.js\"},{\"diffStatus\":\"removed\",\"url\":\"http://localhost:1234/script_one.js\"}],\"styles\":[{\"diffStatus\":\"added\",\"url\":\"http://localhost:1234/style_two.css\"},{\"diffStatus\":\"removed\",\"url\":\"http://localhost:1234/style_one.css\"}]},\"id\":\"00000000-0000-0000-0000-000000000002\"}]""###
+            @r###""[{\"id\":\"00000000-0000-0000-0000-000000000001\",\"data\":{\"scripts\":[{\"url\":\"http://localhost:1234/script_one.js\"}],\"styles\":[{\"url\":\"http://localhost:1234/style_one.css\"}]},\"createdAt\":946720800},{\"id\":\"00000000-0000-0000-0000-000000000002\",\"data\":{\"scripts\":[{\"url\":\"http://localhost:1234/script_two.js\",\"diffStatus\":\"added\"},{\"url\":\"http://localhost:1234/script_one.js\",\"diffStatus\":\"removed\"}],\"styles\":[{\"url\":\"http://localhost:1234/style_two.css\",\"diffStatus\":\"added\"},{\"url\":\"http://localhost:1234/style_one.css\",\"diffStatus\":\"removed\"}]},\"createdAt\":946720900}]""###
         );
 
         let action_result = web_scraping_handle_action(
@@ -900,7 +900,7 @@ pub mod tests {
 
         assert_json_snapshot!(
             serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-            @r###""[{\"createdAt\":946720800,\"data\":\"some-data\",\"id\":\"00000000-0000-0000-0000-000000000003\"},{\"createdAt\":946720900,\"data\":\"other-data\",\"id\":\"00000000-0000-0000-0000-000000000004\"}]""###
+            @r###""[{\"id\":\"00000000-0000-0000-0000-000000000003\",\"data\":\"some-data\",\"createdAt\":946720800},{\"id\":\"00000000-0000-0000-0000-000000000004\",\"data\":\"other-data\",\"createdAt\":946720900}]""###
         );
 
         Ok(())
