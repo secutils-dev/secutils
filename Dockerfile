@@ -1,53 +1,46 @@
 # syntax=docker/dockerfile:1.2
 
-FROM --platform=$BUILDPLATFORM rust:1.74-alpine3.18 as SERVER_BUILDER
+FROM --platform=$BUILDPLATFORM rust:1.74-slim-bookworm as SERVER_BUILDER
 ARG TARGETPLATFORM
 
 ## Statically link binary to OpenSSL libraries.
-ENV OPENSSL_STATIC=yes
-ENV OPENSSL_STATIC=yes
-ENV OPENSSL_LIB_DIR=/usr/lib/
-ENV OPENSSL_INCLUDE_DIR=/usr/include/
-
-ENV PATH="$PATH:/app/aarch64-linux-musl-cross/bin"
+ENV OPENSSL_STATIC=yes \
+    AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu \
+    AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR=/usr/include/aarch64-linux-gnu \
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+    CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
+    CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++ \
+    PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig/:${PKG_CONFIG_PATH}"
 
 WORKDIR /app
-RUN set -x && apk add --no-cache pkgconfig musl-dev openssl-dev perl make curl
 
-# Prepare environment: for cross compilation we download toolchain and `aarch64` OpenSSL libs.
-RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; \
-    then set -x && \
-        curl --remote-name-all https://musl.cc/aarch64-linux-musl-cross.tgz https://dl-cdn.alpinelinux.org/alpine/v3.18/main/aarch64/openssl-libs-static-3.1.4-r1.apk && \
-        apk add --allow-untrusted openssl-libs-static-3.1.4-r1.apk && \
-        tar xzf ./aarch64-linux-musl-cross.tgz && \
-        rustup target add aarch64-unknown-linux-musl; \
-    else set -x && \
-        set -x && apk add --no-cache openssl-libs-static; \
-    fi
+# Install dependencies (including cross-compilation toolchain).
+RUN set -x && \
+    dpkg --add-architecture arm64 && \
+    apt-get update && \
+    apt-get install -y pkg-config curl libssl-dev libssl-dev:arm64 g++-aarch64-linux-gnu libc6-dev-arm64-cross && \
+    rustup target add aarch64-unknown-linux-gnu
 
-# Copy vendored crates.
+# Copy vendored crates, assets and manifest.
 COPY ["./vendor", "./vendor"]
-
-# Copy assets.
 COPY ["./assets", "./assets"]
+COPY ["./Cargo.lock", "./Cargo.toml", "./"]
 
 # Fetch dependencies if they change.
-COPY ["./Cargo.lock", "./Cargo.toml", "./"]
 RUN set -x && cargo fetch
 
+# Copy source code and build.
 COPY [".", "./"]
 RUN --mount=type=cache,target=/app/target if [ "$TARGETPLATFORM" = "linux/arm64" ]; \
     then set -x && \
-        cargo test --target=aarch64-unknown-linux-musl --config target.aarch64-unknown-linux-musl.linker=\"aarch64-linux-musl-gcc\" && \
-        cargo build --release --target=aarch64-unknown-linux-musl --config target.aarch64-unknown-linux-musl.linker=\"aarch64-linux-musl-gcc\" && \
-        cp ./target/aarch64-unknown-linux-musl/release/secutils ./; \
+        cargo build --release --target=aarch64-unknown-linux-gnu && \
+        cp ./target/aarch64-unknown-linux-gnu/release/secutils ./; \
     else set -x && \
-        cargo test && \
         cargo build --release && \
         cp ./target/release/secutils ./; \
     fi
 
-FROM alpine:3.18
+FROM debian:bookworm-slim
 EXPOSE 7070
 
 ENV APP_USER=secutils
@@ -57,8 +50,8 @@ WORKDIR /app
 COPY --from=SERVER_BUILDER ["/app/secutils", "./"]
 
 # Configure group and user.
-RUN addgroup -S -g $APP_USER_UID $APP_USER \
-    && adduser -S -u $APP_USER_UID -G $APP_USER $APP_USER
+RUN addgroup --system --gid $APP_USER_UID $APP_USER \
+    && adduser --system --uid $APP_USER_UID --ingroup $APP_USER $APP_USER
 RUN chown -R $APP_USER:$APP_USER ./
 USER $APP_USER
 

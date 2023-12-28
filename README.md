@@ -56,6 +56,20 @@ sqlx database create
 sqlx migrate run
 ```
 
+### Docker
+
+Build images with the following commands:
+```shell
+# Host architecture
+docker build --tag secutils-api:latest .
+
+# Cross-compile to ARM64 architecture
+docker build --platform linux/arm64 --tag secutils-api:latest .
+
+# Cross-compile to ARM64 musl architecture
+docker build --platform linux/arm64 --tag secutils-api:latest -f Dockerfile.aarch64-unknown-linux-musl .
+```
+
 ## Documentation
 
 The documentation for Secutils.dev is located in [github.com/secutils-dev/secutils-docs](https://github.com/secutils-dev/secutils-docs/) and hosted at [secutils.dev/docs](https://secutils.dev/docs).
