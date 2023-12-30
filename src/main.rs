@@ -5,6 +5,7 @@ mod config;
 mod database;
 mod directories;
 mod error;
+mod js_runtime;
 mod network;
 mod notifications;
 mod scheduler;
@@ -16,7 +17,10 @@ mod users;
 mod utils;
 
 use crate::{
-    config::{ComponentsConfig, Config, SchedulerJobsConfig, SmtpCatchAllConfig, SmtpConfig},
+    config::{
+        ComponentsConfig, Config, JsRuntimeConfig, SchedulerJobsConfig, SmtpCatchAllConfig,
+        SmtpConfig,
+    },
     server::WebhookUrlType,
 };
 use anyhow::{anyhow, Context};
@@ -24,7 +28,7 @@ use bytes::Buf;
 use clap::{value_parser, Arg, ArgMatches, Command};
 use cron::Schedule;
 use lettre::message::Mailbox;
-use std::str::FromStr;
+use std::{str::FromStr, time::Duration};
 use url::Url;
 
 fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Error> {
@@ -122,6 +126,17 @@ fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Err
                 .and_then(|schedule| {
                     Schedule::try_from(schedule.as_str())
                         .with_context(|| "Cannot parse notifications send job schedule.")
+                })?,
+        },
+        js_runtime: JsRuntimeConfig {
+            max_heap_size_bytes: *matches
+                .get_one("JS_RUNTIME_MAX_HEAP_SIZE")
+                .ok_or_else(|| anyhow!("<JS_RUNTIME_MAX_HEAP_SIZE> argument is not provided."))?,
+            max_user_script_execution_time: matches
+                .get_one::<u64>("JS_RUNTIME_MAX_USER_SCRIPT_EXECUTION_TIME")
+                .map(|value| Duration::from_secs(*value))
+                .ok_or_else(|| {
+                    anyhow!("<JS_RUNTIME_MAX_USER_SCRIPT_EXECUTION_TIME> argument is not provided.")
                 })?,
         },
     };
@@ -276,6 +291,25 @@ fn main() -> Result<(), anyhow::Error> {
             .default_value("0/30 * * * * * *")
             .help("The cron schedule to use for the notifications send job."),
         )
+        .arg(
+            Arg::new("JS_RUNTIME_MAX_HEAP_SIZE")
+                .value_parser(value_parser!(usize))
+                .long("js-runtime-max-heap-size")
+                .global(true)
+                .env("SECUTILS_JS_RUNTIME_MAX_HEAP_SIZE")
+                // 10485760 bytes is 10 MB.
+                .default_value("10485760")
+                .help("Defines the maximum heap size for the JS runtime in bytes."),
+        )
+        .arg(
+            Arg::new("JS_RUNTIME_MAX_USER_SCRIPT_EXECUTION_TIME")
+                .value_parser(value_parser!(u64))
+                .long("js-runtime-max-user-script-execution-time")
+                .global(true)
+                .env("SECUTILS_JS_RUNTIME_MAX_USER_SCRIPT_EXECUTION_TIME")
+                .default_value("30")
+                .help("Defines the maximum duration for a single JS script execution in seconds."),
+        )
         .get_matches();
 
     process_command(version, matches)
@@ -306,8 +340,11 @@ mod tests {
     use trust_dns_resolver::proto::rr::Record;
     use url::Url;
 
+    use crate::{
+        config::JsRuntimeConfig, search::SearchIndex, server::WebhookUrlType,
+        templates::create_templates,
+    };
     pub use crate::{network::tests::*, server::tests::*, utils::tests::*};
-    use crate::{search::SearchIndex, server::WebhookUrlType, templates::create_templates};
 
     pub struct MockUserBuilder {
         user: User,
@@ -483,6 +520,10 @@ mod tests {
                 web_page_trackers_schedule: Schedule::try_from("0 * 0 * * * *")?,
                 web_page_trackers_fetch: Schedule::try_from("0 * 1 * * * *")?,
                 notifications_send: Schedule::try_from("0 * 2 * * * *")?,
+            },
+            js_runtime: JsRuntimeConfig {
+                max_heap_size_bytes: 10485760,
+                max_user_script_execution_time: Duration::from_secs(30),
             },
         })
     }

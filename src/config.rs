@@ -1,4 +1,5 @@
 mod components_config;
+mod js_runtime_config;
 mod scheduler_jobs_config;
 mod smtp_catch_all_config;
 mod smtp_config;
@@ -7,8 +8,9 @@ use crate::server::WebhookUrlType;
 use url::Url;
 
 pub use self::{
-    components_config::ComponentsConfig, scheduler_jobs_config::SchedulerJobsConfig,
-    smtp_catch_all_config::SmtpCatchAllConfig, smtp_config::SmtpConfig,
+    components_config::ComponentsConfig, js_runtime_config::JsRuntimeConfig,
+    scheduler_jobs_config::SchedulerJobsConfig, smtp_catch_all_config::SmtpCatchAllConfig,
+    smtp_config::SmtpConfig,
 };
 
 /// Secutils.dev user agent name used for all HTTP requests.
@@ -32,6 +34,8 @@ pub struct Config {
     pub components: ComponentsConfig,
     /// Configuration for the scheduler jobs.
     pub jobs: SchedulerJobsConfig,
+    /// Configuration for the JS runtime.
+    pub js_runtime: JsRuntimeConfig,
 }
 
 impl AsRef<Config> for Config {

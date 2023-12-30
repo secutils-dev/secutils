@@ -9,6 +9,7 @@ use crate::{
     config::Config,
     database::Database,
     directories::Directories,
+    js_runtime::JsRuntime,
     network::{Network, TokioDnsResolver},
     scheduler::Scheduler,
     search::{populate_search_index, SearchIndex},
@@ -74,6 +75,8 @@ pub async fn run(
     populate_search_index(&api).await?;
 
     Scheduler::start(api.clone()).await?;
+
+    JsRuntime::init_platform();
 
     let http_server_url = format!("0.0.0.0:{}", config.http_port);
     let state = web::Data::new(AppState::new(config, security, api.clone()));
