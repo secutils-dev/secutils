@@ -260,6 +260,12 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
             )));
         }
 
+        if let Some(ref script) = responder.settings.script {
+            if script.is_empty() {
+                bail!(SecutilsError::client("Responder script cannot be empty."));
+            }
+        }
+
         Ok(())
     }
 }
@@ -282,7 +288,7 @@ mod tests {
         },
     };
     use insta::assert_debug_snapshot;
-    use std::{borrow::Cow, time::Duration};
+    use std::borrow::Cow;
     use uuid::uuid;
 
     fn get_request_create_params<'r>() -> RespondersRequestCreateParams<'r> {
@@ -313,7 +319,7 @@ mod tests {
                         status_code: 302,
                         body: Some("body".to_string()),
                         headers: Some(vec![("key".to_string(), "value".to_string())]),
-                        delay: Duration::from_millis(1000),
+                        script: Some("return { body: `custom body` };".to_string()),
                     },
                 },
             )
@@ -342,7 +348,7 @@ mod tests {
             status_code: 200,
             body: None,
             headers: None,
-            delay: Duration::from_millis(1000),
+            script: Some("return { body: `custom body` };".to_string()),
         };
 
         let create_and_fail = |result: anyhow::Result<_>| -> SecutilsError {
@@ -457,6 +463,20 @@ mod tests {
             @r###""Responder can track only up to 100 requests, but received 101.""###
         );
 
+        // Invalid script.
+        assert_debug_snapshot!(
+            create_and_fail(webhooks.create_responder(mock_user.id, RespondersCreateParams {
+                name: "some-name".to_string(),
+                path: "/path".to_string(),
+                method: ResponderMethod::Get,
+                settings: ResponderSettings {
+                   script: Some("".to_string()),
+                    ..settings.clone()
+                }
+            }).await),
+            @r###""Responder script cannot be empty.""###
+        );
+
         Ok(())
     }
 
@@ -479,7 +499,7 @@ mod tests {
                         status_code: 200,
                         body: None,
                         headers: None,
-                        delay: Duration::from_millis(1000),
+                        script: None,
                     },
                 },
             )
@@ -580,7 +600,7 @@ mod tests {
                         status_code: 789,
                         body: Some("some-new-body".to_string()),
                         headers: Some(vec![("new-key".to_string(), "value".to_string())]),
-                        delay: Duration::from_millis(2000),
+                        script: Some("return { body: `custom body` };".to_string()),
                     }),
                 },
             )
@@ -594,7 +614,7 @@ mod tests {
                 status_code: 789,
                 body: Some("some-new-body".to_string()),
                 headers: Some(vec![("new-key".to_string(), "value".to_string())]),
-                delay: Duration::from_millis(2000),
+                script: Some("return { body: `custom body` };".to_string()),
             },
             ..responder.clone()
         };
@@ -622,7 +642,7 @@ mod tests {
             status_code: 200,
             body: None,
             headers: None,
-            delay: Duration::from_millis(1000),
+            script: None,
         };
         let responder = webhooks
             .create_responder(
@@ -791,6 +811,20 @@ mod tests {
             @r###""Responder can track only up to 100 requests, but received 101.""###
         );
 
+        // Invalid script.
+        assert_debug_snapshot!(
+            update_and_fail(webhooks.update_responder(mock_user.id, responder.id, RespondersUpdateParams {
+                name: None,
+                path: None,
+                method: None,
+                settings: Some(ResponderSettings {
+                    script: Some("".to_string()),
+                    ..settings.clone()
+                })
+            }).await),
+            @r###""Responder script cannot be empty.""###
+        );
+
         Ok(())
     }
 
@@ -806,7 +840,7 @@ mod tests {
             status_code: 200,
             body: None,
             headers: None,
-            delay: Duration::from_millis(1000),
+            script: None,
         };
 
         let responders = [
@@ -884,7 +918,7 @@ mod tests {
             status_code: 200,
             body: None,
             headers: None,
-            delay: Duration::from_millis(1000),
+            script: None,
         };
         let responder_one = webhooks
             .create_responder(
@@ -944,7 +978,7 @@ mod tests {
             status_code: 200,
             body: None,
             headers: None,
-            delay: Duration::from_millis(1000),
+            script: None,
         };
         let responder_one = webhooks
             .create_responder(
@@ -993,7 +1027,7 @@ mod tests {
             status_code: 200,
             body: None,
             headers: None,
-            delay: Duration::from_millis(1000),
+            script: None,
         };
         let responder_one = webhooks
             .create_responder(
@@ -1083,7 +1117,7 @@ mod tests {
             status_code: 200,
             body: None,
             headers: None,
-            delay: Duration::from_millis(1000),
+            script: None,
         };
         let responder_one = webhooks
             .create_responder(
@@ -1177,7 +1211,7 @@ mod tests {
             status_code: 200,
             body: None,
             headers: None,
-            delay: Duration::from_millis(1000),
+            script: None,
         };
         let responder_one = webhooks
             .create_responder(

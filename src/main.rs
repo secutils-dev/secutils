@@ -345,6 +345,7 @@ mod tests {
         templates::create_templates,
     };
     pub use crate::{network::tests::*, server::tests::*, utils::tests::*};
+    use ctor::ctor;
 
     pub struct MockUserBuilder {
         user: User,
@@ -686,5 +687,11 @@ mod tests {
               "allow_backup_eligible_upgrade": true
             }
        }"#;
+    }
+
+    #[ctor]
+    fn init_deno_runtime() {
+        // Make sure deno runtime is initialized in the main thread before other tests.
+        deno_core::JsRuntime::init_platform(None);
     }
 }

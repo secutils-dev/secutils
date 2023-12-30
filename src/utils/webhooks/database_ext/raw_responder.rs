@@ -1,6 +1,5 @@
 use crate::utils::{Responder, ResponderMethod, ResponderSettings};
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -26,7 +25,7 @@ struct RawResponderSettings {
     status_code: u16,
     body: Option<String>,
     headers: Option<Vec<(String, String)>>,
-    delay: u64,
+    script: Option<String>,
 }
 
 impl TryFrom<RawResponder> for Responder {
@@ -44,7 +43,7 @@ impl TryFrom<RawResponder> for Responder {
                 status_code: raw_settings.status_code,
                 body: raw_settings.body,
                 headers: raw_settings.headers,
-                delay: Duration::from_millis(raw_settings.delay),
+                script: raw_settings.script,
             },
             created_at: OffsetDateTime::from_unix_timestamp(raw.created_at)?,
         })
@@ -60,7 +59,7 @@ impl TryFrom<&Responder> for RawResponder {
             status_code: item.settings.status_code,
             body: item.settings.body.clone(),
             headers: item.settings.headers.clone(),
-            delay: item.settings.delay.as_millis() as u64,
+            script: item.settings.script.clone(),
         };
 
         Ok(RawResponder {
@@ -80,7 +79,6 @@ mod tests {
         webhooks::database_ext::raw_responder::RawResponder, Responder, ResponderMethod,
         ResponderSettings,
     };
-    use std::time::Duration;
     use time::OffsetDateTime;
     use uuid::uuid;
 
@@ -97,7 +95,7 @@ mod tests {
                     status_code: 200,
                     body: None,
                     headers: None,
-                    delay: Duration::from_millis(0),
+                    script: None,
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?
             })?,
@@ -125,7 +123,7 @@ mod tests {
                     status_code: 200,
                     body: Some("body".to_string()),
                     headers: Some(vec![("key".to_string(), "value".to_string())]),
-                    delay: Duration::from_millis(1000),
+                    script: Some("return { body: `custom body` };".to_string()),
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?
             })?,
@@ -138,7 +136,9 @@ mod tests {
                 method: vec![7],
                 settings: vec![
                     3, 200, 1, 1, 4, 98, 111, 100, 121, 1, 1, 3, 107, 101, 121, 5, 118, 97, 108,
-                    117, 101, 232, 7
+                    117, 101, 1, 31, 114, 101, 116, 117, 114, 110, 32, 123, 32, 98, 111, 100, 121,
+                    58, 32, 96, 99, 117, 115, 116, 111, 109, 32, 98, 111, 100, 121, 96, 32, 125,
+                    59
                 ],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
@@ -172,7 +172,7 @@ mod tests {
                     status_code: 200,
                     body: None,
                     headers: None,
-                    delay: Duration::from_millis(0),
+                    script: None,
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?
             }
@@ -188,7 +188,9 @@ mod tests {
                 method: vec![7],
                 settings: vec![
                     3, 200, 1, 1, 4, 98, 111, 100, 121, 1, 1, 3, 107, 101, 121, 5, 118, 97, 108,
-                    117, 101, 232, 7
+                    117, 101, 1, 31, 114, 101, 116, 117, 114, 110, 32, 123, 32, 98, 111, 100, 121,
+                    58, 32, 96, 99, 117, 115, 116, 111, 109, 32, 98, 111, 100, 121, 96, 32, 125,
+                    59
                 ],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
@@ -203,7 +205,7 @@ mod tests {
                     status_code: 200,
                     body: Some("body".to_string()),
                     headers: Some(vec![("key".to_string(), "value".to_string())]),
-                    delay: Duration::from_millis(1000),
+                    script: Some("return { body: `custom body` };".to_string()),
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?
             }

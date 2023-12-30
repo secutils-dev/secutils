@@ -25,7 +25,6 @@ pub struct Responder {
 mod tests {
     use crate::utils::{Responder, ResponderMethod, ResponderSettings};
     use insta::assert_json_snapshot;
-    use std::time::Duration;
     use time::OffsetDateTime;
     use uuid::uuid;
 
@@ -41,7 +40,7 @@ mod tests {
                 status_code: 123,
                 body: Some("some-body".to_string()),
                 headers: Some(vec![("key".to_string(), "value".to_string())]),
-                delay: Duration::from_millis(1000),
+                script: Some("return { body: `custom body` };".to_string()),
             },
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?
         }, @r###"
@@ -60,7 +59,7 @@ mod tests {
                 "value"
               ]
             ],
-            "delay": 1000
+            "script": "return { body: `custom body` };"
           },
           "createdAt": 946720800
         }
@@ -89,7 +88,7 @@ mod tests {
                 "value"
               ]
             ],
-            "delay": 1000
+            "script": "return { body: `custom body` };"
           },
           "createdAt": 946720800
         }
@@ -105,7 +104,7 @@ mod tests {
                     status_code: 123,
                     body: Some("some-body".to_string()),
                     headers: Some(vec![("key".to_string(), "value".to_string())]),
-                    delay: Duration::from_millis(1000),
+                    script: Some("return { body: `custom body` };".to_string()),
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?
             }

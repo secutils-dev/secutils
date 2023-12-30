@@ -16,7 +16,6 @@ pub struct RespondersUpdateParams {
 #[cfg(test)]
 mod tests {
     use crate::utils::{ResponderMethod, ResponderSettings, RespondersUpdateParams};
-    use std::time::Duration;
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
@@ -32,7 +31,7 @@ mod tests {
         "statusCode": 302,
         "body": "some-body",
         "headers": [["key", "value"], ["key2", "value2"]],
-        "delay": 123
+        "script": "return { body: `custom body` };"
     }
 }
           "#
@@ -49,7 +48,7 @@ mod tests {
                         ("key".to_string(), "value".to_string()),
                         ("key2".to_string(), "value2".to_string())
                     ]),
-                    delay: Duration::from_millis(123),
+                    script: Some("return { body: `custom body` };".to_string()),
                 })
             }
         );
@@ -65,7 +64,7 @@ mod tests {
         "statusCode": 302,
         "body": "some-body",
         "headers": [["key", "value"], ["key2", "value2"]],
-        "delay": 123
+        "script": "return { body: `custom body` };"
     }
 }
           "#
@@ -82,7 +81,7 @@ mod tests {
                         ("key".to_string(), "value".to_string()),
                         ("key2".to_string(), "value2".to_string())
                     ]),
-                    delay: Duration::from_millis(123),
+                    script: Some("return { body: `custom body` };".to_string()),
                 })
             }
         );
@@ -97,7 +96,7 @@ mod tests {
         "statusCode": 302,
         "body": "some-body",
         "headers": [["key", "value"], ["key2", "value2"]],
-        "delay": 123
+        "script": "return { body: `custom body` };"
     }
 }
           "#
@@ -114,7 +113,7 @@ mod tests {
                         ("key".to_string(), "value".to_string()),
                         ("key2".to_string(), "value2".to_string())
                     ]),
-                    delay: Duration::from_millis(123),
+                    script: Some("return { body: `custom body` };".to_string()),
                 })
             }
         );
@@ -128,7 +127,7 @@ mod tests {
         "statusCode": 302,
         "body": "some-body",
         "headers": [["key", "value"], ["key2", "value2"]],
-        "delay": 123
+        "script": "return { body: `custom body` };"
     }
 }
           "#
@@ -145,7 +144,7 @@ mod tests {
                         ("key".to_string(), "value".to_string()),
                         ("key2".to_string(), "value2".to_string())
                     ]),
-                    delay: Duration::from_millis(123),
+                    script: Some("return { body: `custom body` };".to_string()),
                 })
             }
         );
@@ -155,8 +154,7 @@ mod tests {
                 r#"
 {
     "settings": {
-        "statusCode": 302,
-        "delay": 123
+        "statusCode": 302
     }
 }
           "#
@@ -170,7 +168,7 @@ mod tests {
                     status_code: 302,
                     body: None,
                     headers: None,
-                    delay: Duration::from_millis(123),
+                    script: None
                 })
             }
         );

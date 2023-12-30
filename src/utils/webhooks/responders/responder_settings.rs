@@ -1,8 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DurationMilliSeconds};
-use std::time::Duration;
 
-#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ResponderSettings {
@@ -17,16 +14,16 @@ pub struct ResponderSettings {
     /// Optional headers to respond with.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<Vec<(String, String)>>,
-    /// Number of milliseconds to wait before responding to request.
-    #[serde_as(as = "DurationMilliSeconds<u64>")]
-    pub delay: Duration,
+    /// Optional JavaScript code to execute for every received request that allows overriding response status code, body
+    /// and headers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub script: Option<String>,
 }
 
 #[cfg(test)]
 mod tests {
     use crate::utils::ResponderSettings;
     use insta::assert_json_snapshot;
-    use std::time::Duration;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
@@ -35,7 +32,7 @@ mod tests {
             status_code: 123,
             body: Some("some-body".to_string()),
             headers: Some(vec![("key".to_string(), "value".to_string())]),
-            delay: Duration::from_millis(1000),
+            script: Some("return { body: `custom body` };".to_string()),
         }, @r###"
         {
           "requestsToTrack": 10,
@@ -47,7 +44,7 @@ mod tests {
               "value"
             ]
           ],
-          "delay": 1000
+          "script": "return { body: `custom body` };"
         }
         "###);
 
@@ -69,7 +66,7 @@ mod tests {
               "value"
             ]
           ],
-          "delay": 1000
+          "script": "return { body: `custom body` };"
         }
         "#
             )?,
@@ -78,7 +75,7 @@ mod tests {
                 status_code: 123,
                 body: Some("some-body".to_string()),
                 headers: Some(vec![("key".to_string(), "value".to_string())]),
-                delay: Duration::from_millis(1000),
+                script: Some("return { body: `custom body` };".to_string()),
             }
         );
 
@@ -86,8 +83,7 @@ mod tests {
             serde_json::from_str::<ResponderSettings>(
                 r#"
         {
-          "statusCode": 123,
-          "delay": 1000
+          "statusCode": 123
         }
         "#
             )?,
@@ -96,7 +92,7 @@ mod tests {
                 status_code: 123,
                 body: None,
                 headers: None,
-                delay: Duration::from_millis(1000),
+                script: None
             }
         );
 

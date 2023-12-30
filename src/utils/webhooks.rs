@@ -8,7 +8,8 @@ pub use self::{
         WebhooksApiExt,
     },
     responders::{
-        Responder, ResponderMethod, ResponderRequest, ResponderRequestHeaders, ResponderSettings,
+        Responder, ResponderMethod, ResponderRequest, ResponderRequestHeaders,
+        ResponderScriptContext, ResponderScriptResult, ResponderSettings,
     },
 };
 use crate::{
@@ -96,7 +97,7 @@ pub mod tests {
     };
     use insta::assert_json_snapshot;
     use serde_json::json;
-    use std::{borrow::Cow, time::Duration};
+    use std::borrow::Cow;
     use time::OffsetDateTime;
     use uuid::Uuid;
 
@@ -117,7 +118,7 @@ pub mod tests {
                         status_code: 200,
                         body: None,
                         headers: None,
-                        delay: Duration::from_secs(0),
+                        script: None,
                     },
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 },
@@ -164,7 +165,7 @@ pub mod tests {
                     method: ResponderMethod::Get,
                     settings: ResponderSettings {
                         requests_to_track: 3,
-                        delay: Duration::from_millis(2000),
+                        script: None,
                         status_code: 200,
                         body: None,
                         headers: None,
@@ -202,7 +203,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"path\":\"/\",\"method\":\"GET\",\"settings\":{\"requestsToTrack\":3,\"statusCode\":200,\"delay\":2000},\"createdAt\":[TIMESTAMP]},{\"id\":\"[UUID]\",\"name\":\"name_two\",\"path\":\"/path\",\"method\":\"GET\",\"settings\":{\"requestsToTrack\":3,\"statusCode\":200,\"delay\":2000},\"createdAt\":[TIMESTAMP]}]""###
+                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"path\":\"/\",\"method\":\"GET\",\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]},{\"id\":\"[UUID]\",\"name\":\"name_two\",\"path\":\"/path\",\"method\":\"GET\",\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]}]""###
             );
         });
 
@@ -226,7 +227,7 @@ pub mod tests {
                 "method": "GET",
                 "settings": ResponderSettings {
                     requests_to_track: 3,
-                    delay: Duration::from_millis(2000),
+                    script: None,
                     status_code: 200,
                     body: None,
                     headers: None,
@@ -248,7 +249,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"path\":\"/\",\"method\":\"GET\",\"settings\":{\"requestsToTrack\":3,\"statusCode\":200,\"delay\":2000},\"createdAt\":[TIMESTAMP]}""###
+                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"path\":\"/\",\"method\":\"GET\",\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]}""###
             );
         });
 
@@ -271,7 +272,7 @@ pub mod tests {
                     method: ResponderMethod::Get,
                     settings: ResponderSettings {
                         requests_to_track: 3,
-                        delay: Duration::from_millis(2000),
+                        script: None,
                         status_code: 200,
                         body: None,
                         headers: None,
@@ -293,7 +294,7 @@ pub mod tests {
                 "method": "GET",
                 "settings": ResponderSettings {
                     requests_to_track: 10,
-                    delay: Duration::from_millis(3000),
+                    script: None,
                     status_code: 200,
                     body: None,
                     headers: None,
@@ -317,7 +318,7 @@ pub mod tests {
                 method: ResponderMethod::Get,
                 settings: ResponderSettings {
                     requests_to_track: 10,
-                    delay: Duration::from_millis(3000),
+                    script: None,
                     status_code: 200,
                     body: None,
                     headers: None,
@@ -345,7 +346,7 @@ pub mod tests {
                     method: ResponderMethod::Get,
                     settings: ResponderSettings {
                         requests_to_track: 3,
-                        delay: Duration::from_millis(2000),
+                        script: None,
                         status_code: 200,
                         body: None,
                         headers: None,
@@ -390,7 +391,7 @@ pub mod tests {
                     method: ResponderMethod::Get,
                     settings: ResponderSettings {
                         requests_to_track: 3,
-                        delay: Duration::from_millis(2000),
+                        script: None,
                         status_code: 200,
                         body: None,
                         headers: None,
@@ -476,7 +477,7 @@ pub mod tests {
                     method: ResponderMethod::Get,
                     settings: ResponderSettings {
                         requests_to_track: 3,
-                        delay: Duration::from_millis(2000),
+                        script: None,
                         status_code: 200,
                         body: None,
                         headers: None,

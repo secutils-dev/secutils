@@ -1,6 +1,8 @@
 use crate::{
-    error::Error as SecutilsError, server::app_state::AppState,
-    utils::RespondersRequestCreateParams,
+    error::Error as SecutilsError,
+    js_runtime::JsRuntime,
+    server::app_state::AppState,
+    utils::{ResponderScriptContext, ResponderScriptResult, RespondersRequestCreateParams},
 };
 use actix_http::{body::MessageBody, StatusCode};
 use actix_web::{
@@ -9,7 +11,7 @@ use actix_web::{
 };
 use bytes::Bytes;
 use serde::Deserialize;
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashMap};
 
 const X_REPLACED_PATH_HEADER_NAME: &str = "x-replaced-path";
 
@@ -165,14 +167,75 @@ pub async fn webhooks_responders(
             .await?;
     }
 
+    let responder_id = responder.id;
+
+    // Check if body is supposed to be a JavaScript code.
+    let (status_code, headers, body) = match responder.settings.script {
+        Some(script) => {
+            let query = web::Query::<HashMap<String, String>>::from_query(request.query_string())
+                .unwrap()
+                .into_inner();
+            let js_script_context = ResponderScriptContext {
+                method: request.method().as_str(),
+                headers: request
+                    .headers()
+                    .iter()
+                    .map(|(name, value)| (name.as_str(), value.to_str().unwrap_or_default()))
+                    .collect(),
+                path: request.path(),
+                query: query
+                    .iter()
+                    .map(|(k, v)| (k.as_str(), v.as_str()))
+                    .collect(),
+                body: &payload,
+            };
+
+            let js_code = format!(r#"(async (globalThis) => {{ {script} }})(globalThis);"#);
+            let override_result = match JsRuntime::new(&state.config.js_runtime)
+                .execute_script::<Option<ResponderScriptResult>>(js_code, Some(js_script_context))
+                .await
+            {
+                Ok(override_result) => override_result.unwrap_or_default(),
+                Err(err) => {
+                    log::error!(
+                        "Failed to execute user ({}) script for HTTP responder ({}): {:?}",
+                        *user.id,
+                        responder.id,
+                        err
+                    );
+                    return Ok(HttpResponse::InternalServerError().body(err.to_string()));
+                }
+            };
+
+            (
+                override_result
+                    .status_code
+                    .unwrap_or(responder.settings.status_code),
+                override_result
+                    .headers
+                    .map(|headers| headers.into_iter().collect())
+                    .or(responder.settings.headers),
+                override_result
+                    .body
+                    .map(|override_body| override_body.boxed())
+                    .or_else(|| responder.settings.body.map(|body| body.boxed())),
+            )
+        }
+        None => (
+            responder.settings.status_code,
+            responder.settings.headers,
+            responder.settings.body.map(|body| body.boxed()),
+        ),
+    };
+
     // Prepare response, set response status code.
-    let status_code = match StatusCode::from_u16(responder.settings.status_code) {
+    let status_code = match StatusCode::from_u16(status_code) {
         Ok(status_code) => status_code,
         Err(err) => {
             log::error!(
                 "Failed to parse status code for the user ({}) HTTP responder ({}): {:?}",
                 *user.id,
-                responder.path,
+                responder_id,
                 err
             );
             return Ok(HttpResponse::InternalServerError().finish());
@@ -181,7 +244,7 @@ pub async fn webhooks_responders(
 
     // Prepare response, set response headers.
     let mut response = HttpResponse::new(status_code);
-    for (header_name, header_value) in responder.settings.headers.iter().flatten() {
+    for (header_name, header_value) in headers.iter().flatten() {
         match (
             HeaderName::from_bytes(header_name.as_bytes()),
             HeaderValue::from_str(header_value),
@@ -194,7 +257,7 @@ pub async fn webhooks_responders(
                     "Failed to parse header name {} for the user ({}) HTTP responder ({}): {:?}",
                     header_name,
                     *user.id,
-                    responder.path,
+                    responder_id,
                     err
                 );
                 return Ok(HttpResponse::InternalServerError().finish());
@@ -204,7 +267,7 @@ pub async fn webhooks_responders(
                     "Failed to parse header value {} for the user ({}) HTTP responder ({}): {:?}",
                     header_value,
                     *user.id,
-                    responder.path,
+                    responder_id,
                     err
                 );
                 return Ok(HttpResponse::InternalServerError().finish());
@@ -213,8 +276,8 @@ pub async fn webhooks_responders(
     }
 
     // Prepare response, set response body.
-    Ok(if let Some(body) = responder.settings.body {
-        response.set_body(body.boxed())
+    Ok(if let Some(body) = body {
+        response.set_body(body)
     } else {
         response
     })
@@ -232,7 +295,8 @@ mod tests {
     use actix_web::{test::TestRequest, web, FromRequest};
     use bytes::Bytes;
     use insta::assert_debug_snapshot;
-    use std::{borrow::Cow, time::Duration};
+    use serde_json::json;
+    use std::borrow::Cow;
 
     #[tokio::test]
     async fn can_handle_request_with_path_url_type() -> anyhow::Result<()> {
@@ -258,7 +322,7 @@ mod tests {
                         status_code: 200,
                         body: Some("body".to_string()),
                         headers: Some(vec![("key".to_string(), "value".to_string())]),
-                        delay: Duration::from_millis(0),
+                        script: None,
                     },
                 },
             )
@@ -357,7 +421,7 @@ mod tests {
                         status_code: 200,
                         body: Some("body".to_string()),
                         headers: Some(vec![("key".to_string(), "value".to_string())]),
-                        delay: Duration::from_millis(0),
+                        script: None,
                     },
                 },
             )
@@ -423,7 +487,7 @@ mod tests {
                         status_code: 200,
                         body: Some("body".to_string()),
                         headers: Some(vec![("key".to_string(), "value".to_string())]),
-                        delay: Duration::from_millis(0),
+                        script: None,
                     },
                 },
             )
@@ -454,6 +518,94 @@ mod tests {
 
         let body = response.into_body().try_into_bytes().unwrap();
         assert_eq!(body, Bytes::from_static(b"body"));
+
+        let responder_requests = app_state
+            .api
+            .webhooks()
+            .get_responder_requests(user.id, responder.id)
+            .await?;
+        assert_eq!(responder_requests.len(), 1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn can_handle_responders_with_script() -> anyhow::Result<()> {
+        let app_state = mock_app_state().await?;
+
+        // Insert user into the database.
+        let user = mock_user()?;
+        let users = app_state.api.users();
+        users.upsert(&user).await?;
+
+        // Insert responders data.
+        let responder = app_state
+            .api
+            .webhooks()
+            .create_responder(
+                user.id,
+                RespondersCreateParams {
+                    name: "name_one".to_string(),
+                    path: "/one/two".to_string(),
+                    method: ResponderMethod::Any,
+                    settings: ResponderSettings {
+                        requests_to_track: 3,
+                        status_code: 200,
+                        body: Some("body".to_string()),
+                        headers: Some(vec![("key".to_string(), "value".to_string())]),
+                        script: Some(
+                            "return { statusCode: 300, headers: { one: `two` }, body: Deno.core.encode(JSON.stringify(context)) };".to_string(),
+                        ),
+                    },
+                },
+            )
+            .await?;
+
+        let request =
+            TestRequest::with_uri("https://dev-handle-1.webhooks.secutils.dev/one/two?query=some")
+                .insert_header(("x-replaced-path", "/one/two"))
+                .insert_header(("x-forwarded-host", "dev-handle-1.webhooks.secutils.dev"))
+                .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let app_state = web::Data::new(app_state);
+        let response = webhooks_responders(
+            app_state.clone(),
+            request,
+            Bytes::from_static(b"incoming-body"),
+            path,
+        )
+        .await
+        .unwrap();
+        assert_debug_snapshot!(response, @r###"
+        HttpResponse {
+            error: None,
+            res: 
+            Response HTTP/1.1 300 Multiple Choices
+              headers:
+                "one": "two"
+              body: Sized(214)
+            ,
+        }
+        "###);
+
+        let body = response.into_body().try_into_bytes().unwrap();
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&body)?,
+            json!({
+                "method": "GET",
+                "headers": {
+                    "x-replaced-path": "/one/two",
+                    "x-forwarded-host": "dev-handle-1.webhooks.secutils.dev",
+                },
+                "path": "/one/two",
+                "query": {
+                    "query": "some",
+                },
+                "body": [105, 110, 99, 111, 109, 105, 110, 103, 45, 98, 111, 100, 121],
+            })
+        );
 
         let responder_requests = app_state
             .api

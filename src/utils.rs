@@ -49,8 +49,9 @@ pub use self::{
     },
     webhooks::{
         webhooks_handle_action, Responder, ResponderMethod, ResponderRequest,
-        ResponderRequestHeaders, ResponderSettings, RespondersCreateParams,
-        RespondersRequestCreateParams, RespondersUpdateParams, WebhooksApiExt,
+        ResponderRequestHeaders, ResponderScriptContext, ResponderScriptResult, ResponderSettings,
+        RespondersCreateParams, RespondersRequestCreateParams, RespondersUpdateParams,
+        WebhooksApiExt,
     },
 };
 
