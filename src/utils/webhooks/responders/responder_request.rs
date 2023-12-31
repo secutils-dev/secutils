@@ -21,6 +21,8 @@ pub struct ResponderRequest<'a> {
     /// HTTP headers of the request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<ResponderRequestHeaders<'a>>,
+    /// HTTP path of the request + query string.
+    pub url: Cow<'a, str>,
     /// HTTP body of the request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<Cow<'a, [u8]>>,
@@ -46,6 +48,7 @@ mod tests {
             method: Cow::Borrowed("GET"),
             headers: Some(vec![(Cow::Borrowed("Content-Type"), Cow::Borrowed(&[1, 2, 3]))]),
             body: Some(Cow::Borrowed(&[4, 5, 6])),
+            url: Cow::Borrowed("/some-path?query=value"),
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?
         }, @r###"
         {
@@ -62,6 +65,7 @@ mod tests {
               ]
             ]
           ],
+          "url": "/some-path?query=value",
           "body": [
             4,
             5,
@@ -78,11 +82,13 @@ mod tests {
             method: Cow::Borrowed("POST"),
             headers: None,
             body: None,
+            url: Cow::Borrowed("/some-path?query=value"),
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?
         }, @r###"
         {
           "id": "00000000-0000-0000-0000-000000000001",
           "method": "POST",
+          "url": "/some-path?query=value",
           "createdAt": 946720800
         }
         "###);
@@ -110,6 +116,7 @@ mod tests {
               ]
             ]
           ],
+          "url": "/some-path?query=value",
           "body": [
             4,
             5,
@@ -128,6 +135,7 @@ mod tests {
                     Cow::Borrowed("Content-Type"),
                     Cow::Borrowed(&[1, 2, 3])
                 )]),
+                url: Cow::Borrowed("/some-path?query=value"),
                 body: Some(Cow::Borrowed(&[4, 5, 6])),
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?
             }
@@ -140,6 +148,7 @@ mod tests {
           "id": "00000000-0000-0000-0000-000000000001",
           "responderId": "00000000-0000-0000-0000-000000000002",
           "method": "POST",
+          "url": "/some-path?query=value",
           "createdAt": 946720800
         }
         "#
@@ -150,6 +159,7 @@ mod tests {
                 client_address: None,
                 method: Cow::Borrowed("POST"),
                 headers: None,
+                url: Cow::Borrowed("/some-path?query=value"),
                 body: None,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?
             }

@@ -376,6 +376,7 @@ mod tests {
                 Cow::Owned("Content-Type".to_string()),
                 Cow::Owned(vec![1, 2, 3]),
             )]),
+            url: Cow::Borrowed("/some-path?query=value"),
             body: Some(Cow::Owned(vec![4, 5, 6])),
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
         })

@@ -407,6 +407,7 @@ pub mod tests {
                     client_address: None,
                     method: Cow::Borrowed("POST"),
                     headers: None,
+                    url: Cow::Borrowed("/?query=value"),
                     body: None,
                 },
             )
@@ -420,6 +421,7 @@ pub mod tests {
                     client_address: None,
                     method: Cow::Borrowed("POST"),
                     headers: None,
+                    url: Cow::Borrowed("/?query=other-value"),
                     body: None,
                 },
             )
@@ -453,7 +455,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""[{\"id\":\"[UUID-1]\",\"method\":\"POST\",\"createdAt\":[TIMESTAMP-1]},{\"id\":\"[UUID-2]\",\"method\":\"POST\",\"createdAt\":[TIMESTAMP-1]}]""###
+                @r###""[{\"id\":\"[UUID-1]\",\"method\":\"POST\",\"url\":\"/?query=value\",\"createdAt\":[TIMESTAMP-1]},{\"id\":\"[UUID-2]\",\"method\":\"POST\",\"url\":\"/?query=other-value\",\"createdAt\":[TIMESTAMP-1]}]""###
             );
         });
 
@@ -493,6 +495,7 @@ pub mod tests {
                     client_address: None,
                     method: Cow::Borrowed("POST"),
                     headers: None,
+                    url: Cow::Borrowed("/?query=value"),
                     body: None,
                 },
             )
@@ -505,6 +508,7 @@ pub mod tests {
                     client_address: None,
                     method: Cow::Borrowed("POST"),
                     headers: None,
+                    url: Cow::Borrowed("/?query=other-value"),
                     body: None,
                 },
             )

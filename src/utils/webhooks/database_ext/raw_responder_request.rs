@@ -17,6 +17,7 @@ struct RawResponderRequestData<'a> {
     client_address: Option<IpAddr>,
     method: Cow<'a, str>,
     headers: Option<ResponderRequestHeaders<'a>>,
+    url: Cow<'a, str>,
     body: Option<Cow<'a, [u8]>>,
 }
 
@@ -32,6 +33,7 @@ impl<'a> TryFrom<RawResponderRequest> for ResponderRequest<'a> {
             method: raw_data.method,
             body: raw_data.body,
             headers: raw_data.headers,
+            url: raw_data.url,
             created_at: OffsetDateTime::from_unix_timestamp(raw.created_at)?,
         })
     }
@@ -46,6 +48,7 @@ impl<'a> TryFrom<&ResponderRequest<'a>> for RawResponderRequest {
             method: item.method.clone(),
             body: item.body.clone(),
             headers: item.headers.clone(),
+            url: item.url.clone(),
         };
 
         Ok(Self {
@@ -78,6 +81,7 @@ mod tests {
                 method: Cow::Owned("post".to_string()),
                 headers: None,
                 body: None,
+                url: Cow::Borrowed("/some-path?query=value"),
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?
             })?,
             RawResponderRequest {
@@ -87,7 +91,10 @@ mod tests {
                 responder_id: uuid!("00000000-0000-0000-0000-000000000002")
                     .as_bytes()
                     .to_vec(),
-                data: vec![0, 4, 112, 111, 115, 116, 0, 0],
+                data: vec![
+                    0, 4, 112, 111, 115, 116, 0, 22, 47, 115, 111, 109, 101, 45, 112, 97, 116, 104,
+                    63, 113, 117, 101, 114, 121, 61, 118, 97, 108, 117, 101, 0
+                ],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
             }
@@ -103,6 +110,7 @@ mod tests {
                     Cow::Owned("Content-Type".to_string()),
                     Cow::Owned(vec![1, 2, 3]),
                 )]),
+                url: Cow::Borrowed("/some-path?query=value"),
                 body: Some(Cow::Owned(vec![4, 5, 6])),
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?
             })?,
@@ -115,7 +123,9 @@ mod tests {
                     .to_vec(),
                 data: vec![
                     1, 0, 127, 0, 0, 1, 4, 112, 111, 115, 116, 1, 1, 12, 67, 111, 110, 116, 101,
-                    110, 116, 45, 84, 121, 112, 101, 3, 1, 2, 3, 1, 3, 4, 5, 6
+                    110, 116, 45, 84, 121, 112, 101, 3, 1, 2, 3, 22, 47, 115, 111, 109, 101, 45,
+                    112, 97, 116, 104, 63, 113, 117, 101, 114, 121, 61, 118, 97, 108, 117, 101, 1,
+                    3, 4, 5, 6
                 ],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
@@ -135,7 +145,10 @@ mod tests {
                 responder_id: uuid!("00000000-0000-0000-0000-000000000002")
                     .as_bytes()
                     .to_vec(),
-                data: vec![0, 4, 112, 111, 115, 116, 0, 0],
+                data: vec![
+                    0, 4, 112, 111, 115, 116, 0, 22, 47, 115, 111, 109, 101, 45, 112, 97, 116, 104,
+                    63, 113, 117, 101, 114, 121, 61, 118, 97, 108, 117, 101, 0
+                ],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
             })?,
@@ -146,6 +159,7 @@ mod tests {
                 method: Cow::Owned("post".to_string()),
                 headers: None,
                 body: None,
+                url: Cow::Borrowed("/some-path?query=value"),
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?
             }
         );
@@ -160,7 +174,9 @@ mod tests {
                     .to_vec(),
                 data: vec![
                     1, 0, 127, 0, 0, 1, 4, 112, 111, 115, 116, 1, 1, 12, 67, 111, 110, 116, 101,
-                    110, 116, 45, 84, 121, 112, 101, 3, 1, 2, 3, 1, 3, 4, 5, 6
+                    110, 116, 45, 84, 121, 112, 101, 3, 1, 2, 3, 22, 47, 115, 111, 109, 101, 45,
+                    112, 97, 116, 104, 63, 113, 117, 101, 114, 121, 61, 118, 97, 108, 117, 101, 1,
+                    3, 4, 5, 6
                 ],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
@@ -175,6 +191,7 @@ mod tests {
                     Cow::Owned(vec![1, 2, 3]),
                 )]),
                 body: Some(Cow::Owned(vec![4, 5, 6])),
+                url: Cow::Borrowed("/some-path?query=value"),
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?
             }
         );

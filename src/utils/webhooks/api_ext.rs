@@ -14,6 +14,7 @@ use crate::{
 };
 use anyhow::bail;
 use time::OffsetDateTime;
+use url::Url;
 use uuid::Uuid;
 
 pub use self::{
@@ -164,12 +165,15 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
             client_address: params.client_address,
             method: params.method,
             headers: params.headers,
+            url: params.url,
             body: params.body,
             // Preserve timestamp only up to seconds.
             created_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
             )?,
         };
+
+        Self::validate_responder_request(&responder, &request)?;
 
         // Insert new revision.
         webhooks.insert_responder_request(user_id, &request).await?;
@@ -268,6 +272,29 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
 
         Ok(())
     }
+
+    fn validate_responder_request(
+        responder: &Responder,
+        request: &ResponderRequest,
+    ) -> anyhow::Result<()> {
+        let request_url =
+            Url::parse(&format!("https://localhost{}", request.url)).map_err(|_| {
+                SecutilsError::client(format!(
+                    "Responder request URL ('{}') is not valid.",
+                    request.url
+                ))
+            })?;
+
+        if responder.path != request_url.path() {
+            bail!(SecutilsError::client(format!(
+                "Responder request path ('{}') does not match responder path ('{}').",
+                request_url.path(),
+                responder.path
+            )));
+        }
+
+        Ok(())
+    }
 }
 
 impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
@@ -291,11 +318,12 @@ mod tests {
     use std::borrow::Cow;
     use uuid::uuid;
 
-    fn get_request_create_params<'r>() -> RespondersRequestCreateParams<'r> {
+    fn get_request_create_params(url: &str) -> RespondersRequestCreateParams {
         RespondersRequestCreateParams {
             client_address: None,
             method: Cow::Borrowed("POST"),
             headers: None,
+            url: Cow::Borrowed(url),
             body: None,
         }
     }
@@ -1062,7 +1090,11 @@ mod tests {
         assert!(responder_two_requests.is_empty());
 
         webhooks
-            .create_responder_request(mock_user.id, responder_one.id, get_request_create_params())
+            .create_responder_request(
+                mock_user.id,
+                responder_one.id,
+                get_request_create_params("/?query=value"),
+            )
             .await?;
 
         let responder_one_requests = webhooks
@@ -1077,7 +1109,11 @@ mod tests {
         assert!(responder_two_requests.is_empty());
 
         webhooks
-            .create_responder_request(mock_user.id, responder_one.id, get_request_create_params())
+            .create_responder_request(
+                mock_user.id,
+                responder_one.id,
+                get_request_create_params("/"),
+            )
             .await?;
 
         let responder_one_requests = webhooks
@@ -1090,7 +1126,11 @@ mod tests {
         assert!(responder_two_requests.is_empty());
 
         webhooks
-            .create_responder_request(mock_user.id, responder_two.id, get_request_create_params())
+            .create_responder_request(
+                mock_user.id,
+                responder_two.id,
+                get_request_create_params("/two?query=value"),
+            )
             .await?;
 
         let responder_one_requests = webhooks
@@ -1101,6 +1141,73 @@ mod tests {
             .await?;
         assert_eq!(responder_one_requests.len(), 2);
         assert_eq!(responder_two_requests.len(), 1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn properly_validates_responder_request_at_creation() -> anyhow::Result<()> {
+        let api = mock_api().await?;
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let webhooks = api.webhooks();
+        let settings = ResponderSettings {
+            requests_to_track: 3,
+            status_code: 200,
+            body: None,
+            headers: None,
+            script: None,
+        };
+        let responder = webhooks
+            .create_responder(
+                mock_user.id,
+                RespondersCreateParams {
+                    name: "name_one".to_string(),
+                    path: "/path".to_string(),
+                    method: ResponderMethod::Any,
+                    settings: settings.clone(),
+                },
+            )
+            .await?;
+
+        let create_and_fail = |result: anyhow::Result<_>| -> SecutilsError {
+            result.unwrap_err().downcast::<SecutilsError>().unwrap()
+        };
+
+        // Paths do not match.
+        assert_debug_snapshot!(
+            create_and_fail(webhooks.create_responder_request(
+                mock_user.id,
+                responder.id,
+                get_request_create_params("/"),
+            ).await),
+            @r###""Responder request path ('/') does not match responder path ('/path').""###
+        );
+        assert_debug_snapshot!(
+            create_and_fail(webhooks.create_responder_request(
+                mock_user.id,
+                responder.id,
+                get_request_create_params("/?query=value"),
+            ).await),
+            @r###""Responder request path ('/') does not match responder path ('/path').""###
+        );
+        assert_debug_snapshot!(
+            create_and_fail(webhooks.create_responder_request(
+                mock_user.id,
+                responder.id,
+                get_request_create_params("/other-path"),
+            ).await),
+            @r###""Responder request path ('/other-path') does not match responder path ('/path').""###
+        );
+        assert_debug_snapshot!(
+            create_and_fail(webhooks.create_responder_request(
+                mock_user.id,
+                responder.id,
+                get_request_create_params("/other-path?query=value"),
+            ).await),
+            @r###""Responder request path ('/other-path') does not match responder path ('/path').""###
+        );
 
         Ok(())
     }
@@ -1143,13 +1250,25 @@ mod tests {
             .await?;
 
         webhooks
-            .create_responder_request(mock_user.id, responder_one.id, get_request_create_params())
+            .create_responder_request(
+                mock_user.id,
+                responder_one.id,
+                get_request_create_params("/?query=value"),
+            )
             .await?;
         webhooks
-            .create_responder_request(mock_user.id, responder_one.id, get_request_create_params())
+            .create_responder_request(
+                mock_user.id,
+                responder_one.id,
+                get_request_create_params("/"),
+            )
             .await?;
         webhooks
-            .create_responder_request(mock_user.id, responder_two.id, get_request_create_params())
+            .create_responder_request(
+                mock_user.id,
+                responder_two.id,
+                get_request_create_params("/two?query=value"),
+            )
             .await?;
 
         let responder_one_requests = webhooks
@@ -1237,13 +1356,25 @@ mod tests {
             .await?;
 
         webhooks
-            .create_responder_request(mock_user.id, responder_one.id, get_request_create_params())
+            .create_responder_request(
+                mock_user.id,
+                responder_one.id,
+                get_request_create_params("/?query=value"),
+            )
             .await?;
         webhooks
-            .create_responder_request(mock_user.id, responder_one.id, get_request_create_params())
+            .create_responder_request(
+                mock_user.id,
+                responder_one.id,
+                get_request_create_params("/"),
+            )
             .await?;
         webhooks
-            .create_responder_request(mock_user.id, responder_two.id, get_request_create_params())
+            .create_responder_request(
+                mock_user.id,
+                responder_two.id,
+                get_request_create_params("/two?query=value"),
+            )
             .await?;
 
         let responder_one_requests = webhooks

@@ -157,6 +157,11 @@ pub async fn webhooks_responders(
                     } else {
                         Some(headers)
                     },
+                    url: Cow::Owned(if let Some(query) = request.uri().query() {
+                        format!("{}?{}", responder_path, query)
+                    } else {
+                        responder_path
+                    }),
                     body: if payload.is_empty() {
                         None
                     } else {
@@ -328,14 +333,15 @@ mod tests {
             )
             .await?;
 
-        let request =
-            TestRequest::with_uri("https://secutils.dev/api/webhooks/dev-handle-1/one/two")
-                .method(Method::PUT)
-                .insert_header(("x-key", "x-value"))
-                .insert_header(("x-key-2", "x-value-2"))
-                .param("user_handle", "dev-handle-1")
-                .param("responder_path", "one/two")
-                .to_http_request();
+        let request = TestRequest::with_uri(
+            "https://secutils.dev/api/webhooks/dev-handle-1/one/two?query=value",
+        )
+        .method(Method::PUT)
+        .insert_header(("x-key", "x-value"))
+        .insert_header(("x-key-2", "x-value-2"))
+        .param("user_handle", "dev-handle-1")
+        .param("responder_path", "one/two")
+        .to_http_request();
         let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
             .await
             .unwrap();
@@ -393,6 +399,10 @@ mod tests {
                 [105, 110, 99, 111, 109, 105, 110, 103, 45, 98, 111, 100, 121].as_ref()
             ))
         );
+        assert_eq!(
+            responder_requests[0].url,
+            Cow::Borrowed("/one/two?query=value")
+        );
 
         Ok(())
     }
@@ -427,10 +437,11 @@ mod tests {
             )
             .await?;
 
-        let request = TestRequest::with_uri("https://dev-handle-1.webhooks.secutils.dev/one/two")
-            .insert_header(("x-replaced-path", "/one/two"))
-            .insert_header(("x-forwarded-host", "dev-handle-1.webhooks.secutils.dev"))
-            .to_http_request();
+        let request =
+            TestRequest::with_uri("https://dev-handle-1.webhooks.secutils.dev/one/two?query=value")
+                .insert_header(("x-replaced-path", "/one/two"))
+                .insert_header(("x-forwarded-host", "dev-handle-1.webhooks.secutils.dev"))
+                .to_http_request();
         let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
             .await
             .unwrap();
@@ -459,6 +470,10 @@ mod tests {
             .get_responder_requests(user.id, responder.id)
             .await?;
         assert_eq!(responder_requests.len(), 1);
+        assert_eq!(
+            responder_requests[0].url,
+            Cow::Borrowed("/one/two?query=value")
+        );
 
         Ok(())
     }

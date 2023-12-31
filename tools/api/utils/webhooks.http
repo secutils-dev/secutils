@@ -9,3 +9,12 @@ Accept: application/json
 Content-Type: application/json
 X-Forwarded-Host: su.{{host}}
 X-Replaced-Path: /a
+
+### Clear responder requests history.
+POST {{host}}/api/utils/webhooks/responders/018cb666-e66c-755c-8d1e-7ff6cacb8641/clear
+Authorization: {{api-credentials}}
+Accept: application/json
+
+###
+
+

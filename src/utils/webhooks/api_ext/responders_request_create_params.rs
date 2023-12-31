@@ -9,6 +9,8 @@ pub struct RespondersRequestCreateParams<'a> {
     pub method: Cow<'a, str>,
     /// HTTP headers of the request.
     pub headers: Option<ResponderRequestHeaders<'a>>,
+    /// HTTP path of the request + query string.
+    pub url: Cow<'a, str>,
     /// HTTP body of the request.
     pub body: Option<Cow<'a, [u8]>>,
 }
