@@ -1,6 +1,6 @@
 use crate::utils::{webhooks::ResponderRequestHeaders, ResponderRequest};
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, net::IpAddr};
+use std::{borrow::Cow, net::SocketAddr};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -14,7 +14,7 @@ pub(super) struct RawResponderRequest {
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 struct RawResponderRequestData<'a> {
-    client_address: Option<IpAddr>,
+    client_address: Option<SocketAddr>,
     method: Cow<'a, str>,
     headers: Option<ResponderRequestHeaders<'a>>,
     url: Cow<'a, str>,
@@ -64,10 +64,7 @@ impl<'a> TryFrom<&ResponderRequest<'a>> for RawResponderRequest {
 mod tests {
     use super::RawResponderRequest;
     use crate::utils::ResponderRequest;
-    use std::{
-        borrow::Cow,
-        net::{IpAddr, Ipv4Addr},
-    };
+    use std::borrow::Cow;
     use time::OffsetDateTime;
     use uuid::uuid;
 
@@ -104,7 +101,7 @@ mod tests {
             RawResponderRequest::try_from(&ResponderRequest {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 responder_id: uuid!("00000000-0000-0000-0000-000000000002"),
-                client_address: Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
+                client_address: Some("127.0.0.1:8080".parse()?),
                 method: Cow::Owned("post".to_string()),
                 headers: Some(vec![(
                     Cow::Owned("Content-Type".to_string()),
@@ -122,10 +119,10 @@ mod tests {
                     .as_bytes()
                     .to_vec(),
                 data: vec![
-                    1, 0, 127, 0, 0, 1, 4, 112, 111, 115, 116, 1, 1, 12, 67, 111, 110, 116, 101,
-                    110, 116, 45, 84, 121, 112, 101, 3, 1, 2, 3, 22, 47, 115, 111, 109, 101, 45,
-                    112, 97, 116, 104, 63, 113, 117, 101, 114, 121, 61, 118, 97, 108, 117, 101, 1,
-                    3, 4, 5, 6
+                    1, 0, 127, 0, 0, 1, 144, 63, 4, 112, 111, 115, 116, 1, 1, 12, 67, 111, 110,
+                    116, 101, 110, 116, 45, 84, 121, 112, 101, 3, 1, 2, 3, 22, 47, 115, 111, 109,
+                    101, 45, 112, 97, 116, 104, 63, 113, 117, 101, 114, 121, 61, 118, 97, 108, 117,
+                    101, 1, 3, 4, 5, 6
                 ],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
@@ -173,10 +170,10 @@ mod tests {
                     .as_bytes()
                     .to_vec(),
                 data: vec![
-                    1, 0, 127, 0, 0, 1, 4, 112, 111, 115, 116, 1, 1, 12, 67, 111, 110, 116, 101,
-                    110, 116, 45, 84, 121, 112, 101, 3, 1, 2, 3, 22, 47, 115, 111, 109, 101, 45,
-                    112, 97, 116, 104, 63, 113, 117, 101, 114, 121, 61, 118, 97, 108, 117, 101, 1,
-                    3, 4, 5, 6
+                    1, 0, 127, 0, 0, 1, 144, 63, 4, 112, 111, 115, 116, 1, 1, 12, 67, 111, 110,
+                    116, 101, 110, 116, 45, 84, 121, 112, 101, 3, 1, 2, 3, 22, 47, 115, 111, 109,
+                    101, 45, 112, 97, 116, 104, 63, 113, 117, 101, 114, 121, 61, 118, 97, 108, 117,
+                    101, 1, 3, 4, 5, 6
                 ],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
@@ -184,7 +181,7 @@ mod tests {
             ResponderRequest {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 responder_id: uuid!("00000000-0000-0000-0000-000000000002"),
-                client_address: Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
+                client_address: Some("127.0.0.1:8080".parse()?),
                 method: Cow::Owned("post".to_string()),
                 headers: Some(vec![(
                     Cow::Owned("Content-Type".to_string()),

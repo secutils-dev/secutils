@@ -359,10 +359,7 @@ mod tests {
         utils::{Responder, ResponderMethod, ResponderRequest},
     };
     use insta::assert_debug_snapshot;
-    use std::{
-        borrow::Cow,
-        net::{IpAddr, Ipv4Addr},
-    };
+    use std::borrow::Cow;
     use time::OffsetDateTime;
     use uuid::{uuid, Uuid};
 
@@ -370,7 +367,7 @@ mod tests {
         Ok(ResponderRequest {
             id,
             responder_id,
-            client_address: Some(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
+            client_address: Some("127.0.0.1:8080".parse()?),
             method: Cow::Owned("post".to_string()),
             headers: Some(vec![(
                 Cow::Owned("Content-Type".to_string()),

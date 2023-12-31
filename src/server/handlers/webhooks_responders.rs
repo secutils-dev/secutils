@@ -150,7 +150,7 @@ pub async fn webhooks_responders(
                 user.id,
                 responder.id,
                 RespondersRequestCreateParams {
-                    client_address: request.peer_addr().map(|addr| addr.ip()),
+                    client_address: request.peer_addr(),
                     method: Cow::Borrowed(request.method().as_str()),
                     headers: if headers.is_empty() {
                         None
@@ -181,6 +181,7 @@ pub async fn webhooks_responders(
                 .unwrap()
                 .into_inner();
             let js_script_context = ResponderScriptContext {
+                client_address: request.peer_addr(),
                 method: request.method().as_str(),
                 headers: request
                     .headers()
@@ -580,6 +581,7 @@ mod tests {
             TestRequest::with_uri("https://dev-handle-1.webhooks.secutils.dev/one/two?query=some")
                 .insert_header(("x-replaced-path", "/one/two"))
                 .insert_header(("x-forwarded-host", "dev-handle-1.webhooks.secutils.dev"))
+                .peer_addr("127.0.0.1:8080".parse()?)
                 .to_http_request();
         let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
             .await
@@ -600,7 +602,7 @@ mod tests {
             Response HTTP/1.1 300 Multiple Choices
               headers:
                 "one": "two"
-              body: Sized(214)
+              body: Sized(247)
             ,
         }
         "###);
@@ -609,6 +611,7 @@ mod tests {
         assert_eq!(
             serde_json::from_slice::<serde_json::Value>(&body)?,
             json!({
+                "clientAddress": "127.0.0.1:8080",
                 "method": "GET",
                 "headers": {
                     "x-replaced-path": "/one/two",

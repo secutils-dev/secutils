@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, net::IpAddr};
+use std::{borrow::Cow, net::SocketAddr};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -13,9 +13,9 @@ pub struct ResponderRequest<'a> {
     /// Id of the responder captured request belongs to.
     #[serde(skip_serializing)]
     pub responder_id: Uuid,
-    /// IP address of the client that made the request.
+    /// An internet socket address of the client that made the request.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_address: Option<IpAddr>,
+    pub client_address: Option<SocketAddr>,
     /// HTTP method of the request.
     pub method: Cow<'a, str>,
     /// HTTP headers of the request.
@@ -44,7 +44,7 @@ mod tests {
         assert_json_snapshot!(ResponderRequest {
             id: uuid!("00000000-0000-0000-0000-000000000001"),
             responder_id: uuid!("00000000-0000-0000-0000-000000000002"),
-            client_address: Some("127.0.0.1".parse()?),
+            client_address: Some("127.0.0.1:8080".parse()?),
             method: Cow::Borrowed("GET"),
             headers: Some(vec![(Cow::Borrowed("Content-Type"), Cow::Borrowed(&[1, 2, 3]))]),
             body: Some(Cow::Borrowed(&[4, 5, 6])),
@@ -53,7 +53,7 @@ mod tests {
         }, @r###"
         {
           "id": "00000000-0000-0000-0000-000000000001",
-          "clientAddress": "127.0.0.1",
+          "clientAddress": "127.0.0.1:8080",
           "method": "GET",
           "headers": [
             [
@@ -104,7 +104,7 @@ mod tests {
         {
           "id": "00000000-0000-0000-0000-000000000001",
           "responderId": "00000000-0000-0000-0000-000000000002",
-          "clientAddress": "127.0.0.1",
+          "clientAddress": "127.0.0.1:8080",
           "method": "GET",
           "headers": [
             [
@@ -129,7 +129,7 @@ mod tests {
             ResponderRequest {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 responder_id: uuid!("00000000-0000-0000-0000-000000000002"),
-                client_address: Some("127.0.0.1".parse()?),
+                client_address: Some("127.0.0.1:8080".parse()?),
                 method: Cow::Borrowed("GET"),
                 headers: Some(vec![(
                     Cow::Borrowed("Content-Type"),

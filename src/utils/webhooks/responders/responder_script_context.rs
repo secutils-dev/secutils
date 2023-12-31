@@ -1,10 +1,13 @@
 use serde::Serialize;
-use std::collections::HashMap;
+use std::{collections::HashMap, net::SocketAddr};
 
 /// Context available to the responder scripts through global `context` variable.
 #[derive(Serialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ResponderScriptContext<'a> {
+    /// An internet socket address of the client that made the request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_address: Option<SocketAddr>,
     /// HTTP method of the received request.
     pub method: &'a str,
     /// HTTP headers of the received request.
