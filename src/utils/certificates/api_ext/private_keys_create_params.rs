@@ -1,4 +1,4 @@
-use crate::utils::PrivateKeyAlgorithm;
+use crate::utils::certificates::PrivateKeyAlgorithm;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -11,7 +11,9 @@ pub struct PrivateKeysCreateParams {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{PrivateKeyAlgorithm, PrivateKeySize, PrivateKeysCreateParams};
+    use crate::utils::certificates::{
+        api_ext::PrivateKeysCreateParams, PrivateKeyAlgorithm, PrivateKeySize,
+    };
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {

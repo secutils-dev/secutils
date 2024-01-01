@@ -26,7 +26,7 @@ pub use self::{
     user_id::UserId,
     user_role::UserRole,
     user_settings::{UserSettings, UserSettingsSetter},
-    user_share::{ClientSharedResource, ClientUserShare, SharedResource, UserShare, UserShareId},
+    user_share::{ClientUserShare, SharedResource, UserShare, UserShareId},
 };
 
 pub(crate) use self::api_ext::user_data_setters::DictionaryDataUserDataSetter;

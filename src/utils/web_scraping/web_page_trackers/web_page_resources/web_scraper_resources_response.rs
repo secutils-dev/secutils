@@ -1,4 +1,4 @@
-use crate::utils::{WebPageResource, WebPageResourceContent};
+use crate::utils::web_scraping::{WebPageResource, WebPageResourceContent};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use url::Url;
@@ -39,7 +39,7 @@ impl From<WebScraperResource> for WebPageResource {
 #[cfg(test)]
 mod tests {
     use super::{WebScraperResource, WebScraperResourcesResponse};
-    use crate::utils::{WebPageResourceContent, WebPageResourceContentData};
+    use crate::utils::web_scraping::{WebPageResourceContent, WebPageResourceContentData};
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
     use url::Url;

@@ -1,4 +1,4 @@
-use crate::utils::{Responder, ResponderMethod, ResponderSettings};
+use crate::utils::webhooks::{Responder, ResponderMethod, ResponderSettings};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -75,9 +75,8 @@ impl TryFrom<&Responder> for RawResponder {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{
-        webhooks::database_ext::raw_responder::RawResponder, Responder, ResponderMethod,
-        ResponderSettings,
+    use crate::utils::webhooks::{
+        database_ext::raw_responder::RawResponder, Responder, ResponderMethod, ResponderSettings,
     };
     use time::OffsetDateTime;
     use uuid::uuid;

@@ -1,4 +1,4 @@
-use crate::utils::{ResponderMethod, ResponderSettings};
+use crate::utils::webhooks::{ResponderMethod, ResponderSettings};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -15,7 +15,9 @@ pub struct RespondersUpdateParams {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{ResponderMethod, ResponderSettings, RespondersUpdateParams};
+    use crate::utils::webhooks::{
+        api_ext::RespondersUpdateParams, ResponderMethod, ResponderSettings,
+    };
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {

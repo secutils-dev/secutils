@@ -8,9 +8,9 @@ use crate::{
     database::Database,
     error::Error as SecutilsError,
     users::UserId,
-    utils::{
-        certificates::database_ext::raw_certificate_template::RawCertificateTemplate,
-        CertificateTemplate, PrivateKey,
+    utils::certificates::{
+        database_ext::raw_certificate_template::RawCertificateTemplate, CertificateTemplate,
+        PrivateKey,
     },
 };
 use anyhow::{anyhow, bail};
@@ -366,7 +366,7 @@ mod tests {
     use crate::{
         error::Error as SecutilsError,
         tests::{mock_db, mock_user},
-        utils::{
+        utils::certificates::{
             CertificateAttributes, CertificateTemplate, ExtendedKeyUsage, KeyUsage, PrivateKey,
             PrivateKeyAlgorithm, PrivateKeySize, SignatureAlgorithm, Version,
         },

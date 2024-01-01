@@ -18,8 +18,10 @@ use crate::{
     users::{SharedResource, UserId, UserShare},
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
-        web_security::api_ext::csp_meta_parser::CspMetaParser, ContentSecurityPolicy,
-        ContentSecurityPolicyDirective, ContentSecurityPolicySource,
+        web_security::{
+            api_ext::csp_meta_parser::CspMetaParser, ContentSecurityPolicy,
+            ContentSecurityPolicyDirective, ContentSecurityPolicySource,
+        },
     },
 };
 use anyhow::{anyhow, bail};
@@ -427,9 +429,11 @@ mod tests {
     use crate::{
         error::Error as SecutilsError,
         tests::{mock_api, mock_api_with_network, mock_network_with_records, mock_user},
-        utils::{
-            web_security::api_ext::WebSecurityApiExt, ContentSecurityPoliciesCreateParams,
-            ContentSecurityPoliciesSerializeParams, ContentSecurityPoliciesUpdateParams,
+        utils::web_security::{
+            api_ext::{
+                ContentSecurityPoliciesCreateParams, ContentSecurityPoliciesSerializeParams,
+                ContentSecurityPoliciesUpdateParams, WebSecurityApiExt,
+            },
             ContentSecurityPolicy, ContentSecurityPolicyContent, ContentSecurityPolicyDirective,
             ContentSecurityPolicySandboxDirectiveValue, ContentSecurityPolicySource,
             ContentSecurityPolicyTrustedTypesDirectiveValue,

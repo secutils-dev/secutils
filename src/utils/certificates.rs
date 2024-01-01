@@ -19,10 +19,6 @@ use serde::Deserialize;
 use serde_json::json;
 
 pub use self::{
-    api_ext::{
-        CertificatesApi, PrivateKeysCreateParams, PrivateKeysExportParams, PrivateKeysUpdateParams,
-        TemplatesCreateParams, TemplatesGenerateParams, TemplatesUpdateParams,
-    },
     certificate_templates::{CertificateAttributes, CertificateTemplate},
     export_format::ExportFormat,
     private_keys::{PrivateKey, PrivateKeyAlgorithm, PrivateKeyEllipticCurve, PrivateKeySize},
@@ -161,14 +157,17 @@ pub async fn certificates_handle_action<DR: DnsResolver, ET: EmailTransport>(
 pub mod tests {
     pub use super::certificate_templates::tests::*;
     use super::certificates_handle_action;
+    pub use crate::utils::certificates::api_ext::PrivateKeysCreateParams;
     use crate::{
         tests::{mock_api, mock_user},
         users::{SharedResource, UserShareId},
         utils::{
-            CertificateAttributes, CertificateTemplate, ExtendedKeyUsage, KeyUsage, PrivateKey,
-            PrivateKeyAlgorithm, PrivateKeySize, PrivateKeysCreateParams, SignatureAlgorithm,
-            TemplatesCreateParams, UtilsAction, UtilsActionParams, UtilsResource,
-            UtilsResourceOperation, Version,
+            certificates::{
+                api_ext::TemplatesCreateParams, CertificateAttributes, CertificateTemplate,
+                ExtendedKeyUsage, KeyUsage, PrivateKey, PrivateKeyAlgorithm, PrivateKeySize,
+                SignatureAlgorithm, Version,
+            },
+            UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
         },
     };
     use serde::Deserialize;

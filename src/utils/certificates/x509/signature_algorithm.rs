@@ -13,7 +13,7 @@ pub enum SignatureAlgorithm {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::SignatureAlgorithm;
+    use crate::utils::certificates::SignatureAlgorithm;
     use insta::assert_json_snapshot;
 
     #[test]

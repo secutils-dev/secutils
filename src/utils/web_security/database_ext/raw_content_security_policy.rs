@@ -1,4 +1,4 @@
-use crate::utils::{ContentSecurityPolicy, ContentSecurityPolicyDirective};
+use crate::utils::web_security::{ContentSecurityPolicy, ContentSecurityPolicyDirective};
 use content_security_policy::{Policy, PolicyDisposition, PolicySource};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -61,7 +61,7 @@ impl TryFrom<&ContentSecurityPolicy> for RawContentSecurityPolicy {
 #[cfg(test)]
 mod tests {
     use super::RawContentSecurityPolicy;
-    use crate::utils::{
+    use crate::utils::web_security::{
         ContentSecurityPolicy, ContentSecurityPolicyDirective,
         ContentSecurityPolicyTrustedTypesDirectiveValue,
     };

@@ -1,4 +1,4 @@
-use crate::utils::{
+use crate::utils::certificates::{
     CertificateAttributes, ExtendedKeyUsage, KeyUsage, SignatureAlgorithm, Version,
 };
 use serde::{Deserialize, Serialize};
@@ -109,10 +109,9 @@ impl From<CertificateAttributes> for RawCertificateAttributes {
 #[cfg(test)]
 mod tests {
     use super::RawCertificateAttributes;
-    use crate::utils::{
-        certificates::database_ext::raw_private_key_algorithm::RawPrivateKeyAlgorithm,
-        CertificateAttributes, ExtendedKeyUsage, KeyUsage, PrivateKeyAlgorithm, SignatureAlgorithm,
-        Version,
+    use crate::utils::certificates::{
+        database_ext::raw_private_key_algorithm::RawPrivateKeyAlgorithm, CertificateAttributes,
+        ExtendedKeyUsage, KeyUsage, PrivateKeyAlgorithm, SignatureAlgorithm, Version,
     };
     use time::OffsetDateTime;
 

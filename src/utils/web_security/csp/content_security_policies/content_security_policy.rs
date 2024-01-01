@@ -1,4 +1,4 @@
-use crate::utils::ContentSecurityPolicyDirective;
+use crate::utils::web_security::ContentSecurityPolicyDirective;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -20,7 +20,7 @@ pub struct ContentSecurityPolicy {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{ContentSecurityPolicy, ContentSecurityPolicyDirective};
+    use crate::utils::web_security::{ContentSecurityPolicy, ContentSecurityPolicyDirective};
     use insta::assert_json_snapshot;
     use serde_json::json;
     use std::collections::HashSet;

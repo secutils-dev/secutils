@@ -33,7 +33,7 @@ pub struct ResponderRequest<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::ResponderRequest;
+    use crate::utils::webhooks::ResponderRequest;
     use insta::assert_json_snapshot;
     use std::borrow::Cow;
     use time::OffsetDateTime;

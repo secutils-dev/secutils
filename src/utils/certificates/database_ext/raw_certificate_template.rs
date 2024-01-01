@@ -1,4 +1,4 @@
-use crate::utils::CertificateTemplate;
+use crate::utils::certificates::CertificateTemplate;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -43,7 +43,7 @@ impl TryFrom<&CertificateTemplate> for RawCertificateTemplate {
 #[cfg(test)]
 mod tests {
     use super::RawCertificateTemplate;
-    use crate::utils::{
+    use crate::utils::certificates::{
         CertificateAttributes, CertificateTemplate, ExtendedKeyUsage, KeyUsage,
         PrivateKeyAlgorithm, SignatureAlgorithm, Version,
     };

@@ -1,4 +1,4 @@
-use crate::utils::WebPageTrackerKind;
+use crate::utils::web_scraping::WebPageTrackerKind;
 use serde::{Deserialize, Serialize};
 
 /// Trait that defines kind and utility types of a web page tracker of the specific type.

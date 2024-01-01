@@ -1,4 +1,4 @@
-use crate::utils::WebPageResourceContentData;
+use crate::utils::web_scraping::WebPageResourceContentData;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -11,7 +11,7 @@ pub struct WebPageResourceContent {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{WebPageResourceContent, WebPageResourceContentData};
+    use crate::utils::web_scraping::{WebPageResourceContent, WebPageResourceContentData};
     use insta::assert_json_snapshot;
     use serde_json::json;
 

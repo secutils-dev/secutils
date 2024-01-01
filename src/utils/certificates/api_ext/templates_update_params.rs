@@ -1,4 +1,4 @@
-use crate::utils::CertificateAttributes;
+use crate::utils::certificates::CertificateAttributes;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -10,9 +10,9 @@ pub struct TemplatesUpdateParams {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{
-        CertificateAttributes, ExtendedKeyUsage, KeyUsage, PrivateKeyAlgorithm, SignatureAlgorithm,
-        TemplatesUpdateParams, Version,
+    use crate::utils::certificates::{
+        api_ext::TemplatesUpdateParams, CertificateAttributes, ExtendedKeyUsage, KeyUsage,
+        PrivateKeyAlgorithm, SignatureAlgorithm, Version,
     };
     use time::OffsetDateTime;
 

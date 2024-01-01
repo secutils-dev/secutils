@@ -1,4 +1,4 @@
-use crate::utils::CertificateAttributes;
+use crate::utils::certificates::CertificateAttributes;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -22,7 +22,9 @@ pub struct CertificateTemplate {
 mod tests {
     use crate::{
         tests::MockCertificateAttributes,
-        utils::{CertificateTemplate, PrivateKeyAlgorithm, SignatureAlgorithm, Version},
+        utils::certificates::{
+            CertificateTemplate, PrivateKeyAlgorithm, SignatureAlgorithm, Version,
+        },
     };
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;

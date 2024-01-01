@@ -1,4 +1,4 @@
-use crate::utils::{ContentSecurityPolicyDirective, ContentSecurityPolicySource};
+use crate::utils::web_security::{ContentSecurityPolicyDirective, ContentSecurityPolicySource};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -19,7 +19,7 @@ pub enum ContentSecurityPolicyContent {
 #[cfg(test)]
 mod tests {
     use super::ContentSecurityPolicyContent;
-    use crate::utils::{ContentSecurityPolicyDirective, ContentSecurityPolicySource};
+    use crate::utils::web_security::{ContentSecurityPolicyDirective, ContentSecurityPolicySource};
     use url::Url;
 
     #[test]

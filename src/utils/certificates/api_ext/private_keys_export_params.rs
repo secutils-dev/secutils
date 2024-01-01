@@ -1,4 +1,4 @@
-use crate::utils::ExportFormat;
+use crate::utils::certificates::ExportFormat;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -11,7 +11,7 @@ pub struct PrivateKeysExportParams {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{ExportFormat, PrivateKeysExportParams};
+    use crate::utils::certificates::{api_ext::PrivateKeysExportParams, ExportFormat};
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {

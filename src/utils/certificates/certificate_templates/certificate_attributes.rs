@@ -1,6 +1,5 @@
-use crate::utils::{
-    certificates::{ExtendedKeyUsage, KeyUsage, Version},
-    PrivateKeyAlgorithm, SignatureAlgorithm,
+use crate::utils::certificates::{
+    ExtendedKeyUsage, KeyUsage, PrivateKeyAlgorithm, SignatureAlgorithm, Version,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -40,7 +39,7 @@ pub struct CertificateAttributes {
 #[cfg(test)]
 pub mod tests {
     use super::CertificateAttributes;
-    use crate::utils::{
+    use crate::utils::certificates::{
         ExtendedKeyUsage, KeyUsage, PrivateKeyAlgorithm, SignatureAlgorithm, Version,
     };
     use insta::assert_json_snapshot;

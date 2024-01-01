@@ -6,9 +6,9 @@ use crate::{
     error::Error as SecutilsError,
     scheduler::SchedulerJobMetadata,
     users::UserId,
-    utils::{
-        web_scraping::database_ext::raw_web_page_data_revision::RawWebPageDataRevision,
-        WebPageDataRevision, WebPageTracker, WebPageTrackerTag,
+    utils::web_scraping::{
+        database_ext::raw_web_page_data_revision::RawWebPageDataRevision, WebPageDataRevision,
+        WebPageTracker, WebPageTrackerTag,
     },
 };
 use anyhow::{anyhow, bail};
@@ -483,10 +483,10 @@ mod tests {
             SchedulerJobRetryStrategy,
         },
         tests::{mock_db, mock_user, MockWebPageTrackerBuilder},
-        utils::{
-            web_scraping::WebPageResourcesTrackerTag, WebPageContentTrackerTag,
-            WebPageDataRevision, WebPageResource, WebPageResourceContent,
-            WebPageResourceContentData, WebPageResourcesData, WebPageTracker, WebPageTrackerKind,
+        utils::web_scraping::{
+            WebPageContentTrackerTag, WebPageDataRevision, WebPageResource, WebPageResourceContent,
+            WebPageResourceContentData, WebPageResourcesData, WebPageResourcesTrackerTag,
+            WebPageTracker, WebPageTrackerKind,
         },
     };
     use futures::StreamExt;

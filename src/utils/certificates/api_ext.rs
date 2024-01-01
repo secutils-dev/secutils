@@ -19,8 +19,11 @@ use crate::{
     network::{DnsResolver, EmailTransport},
     users::{SharedResource, UserId, UserShare},
     utils::{
-        utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH, CertificateTemplate, ExportFormat,
-        ExtendedKeyUsage, KeyUsage, PrivateKey, PrivateKeyAlgorithm, SignatureAlgorithm,
+        certificates::{
+            CertificateTemplate, ExportFormat, ExtendedKeyUsage, KeyUsage, PrivateKey,
+            PrivateKeyAlgorithm, SignatureAlgorithm,
+        },
+        utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
     },
 };
 use anyhow::{anyhow, bail};
@@ -47,11 +50,11 @@ use uuid::Uuid;
 use zip::{write::FileOptions, CompressionMethod, ZipWriter};
 
 /// API extension to work with certificates utilities.
-pub struct CertificatesApi<'a, DR: DnsResolver, ET: EmailTransport> {
+pub struct CertificatesApiExt<'a, DR: DnsResolver, ET: EmailTransport> {
     api: &'a Api<DR, ET>,
 }
 
-impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
+impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
     /// Creates Certificates API.
     pub fn new(api: &'a Api<DR, ET>) -> Self {
         Self { api }
@@ -770,20 +773,23 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApi<'a, DR, ET> {
 
 impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
     /// Returns an API to work with certificates utility.
-    pub fn certificates(&self) -> CertificatesApi<DR, ET> {
-        CertificatesApi::new(self)
+    pub fn certificates(&self) -> CertificatesApiExt<DR, ET> {
+        CertificatesApiExt::new(self)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::{CertificatesApiExt, PrivateKeysCreateParams};
     use crate::{
         tests::{mock_api, mock_user, MockResolver},
-        utils::{
-            CertificateAttributes, CertificatesApi, ExportFormat, ExtendedKeyUsage, KeyUsage,
-            PrivateKeyAlgorithm, PrivateKeyEllipticCurve, PrivateKeySize, PrivateKeysCreateParams,
-            PrivateKeysExportParams, PrivateKeysUpdateParams, SignatureAlgorithm,
-            TemplatesCreateParams, TemplatesGenerateParams, TemplatesUpdateParams, Version,
+        utils::certificates::{
+            api_ext::{
+                PrivateKeysExportParams, PrivateKeysUpdateParams, TemplatesCreateParams,
+                TemplatesGenerateParams, TemplatesUpdateParams,
+            },
+            CertificateAttributes, ExportFormat, ExtendedKeyUsage, KeyUsage, PrivateKeyAlgorithm,
+            PrivateKeyEllipticCurve, PrivateKeySize, SignatureAlgorithm, Version,
         },
     };
     use insta::assert_debug_snapshot;
@@ -819,7 +825,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         for pass in [Some("pass"), Some(""), None] {
             for (alg, bits) in [
                 (
@@ -855,7 +861,7 @@ mod tests {
                 assert_eq!(private_key.alg, alg);
 
                 let imported_key =
-                    CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+                    CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                         &private_key.pkcs8,
                         pass,
                     )?;
@@ -873,7 +879,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         assert_debug_snapshot!(
             certificates
                 .create_private_key(
@@ -920,7 +926,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         let private_key = certificates
             .create_private_key(
                 mock_user.id,
@@ -934,7 +940,7 @@ mod tests {
 
         // Decrypting without password should succeed.
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                 &private_key.pkcs8,
                 None,
             )
@@ -960,7 +966,7 @@ mod tests {
             .await?
             .unwrap();
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                 &private_key.pkcs8,
                 None,
             )
@@ -968,7 +974,7 @@ mod tests {
         );
         // Decrypting with passphrase should succeed.
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                 &private_key.pkcs8,
                 Some("pass"),
             )
@@ -994,7 +1000,7 @@ mod tests {
             .await?
             .unwrap();
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                 &private_key.pkcs8,
                 None,
             )
@@ -1007,7 +1013,7 @@ mod tests {
             .await?
             .unwrap();
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                 &private_key.pkcs8,
                 Some("pass"),
             )
@@ -1015,7 +1021,7 @@ mod tests {
         );
         // Decrypting with new passphrase should succeed.
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                 &private_key.pkcs8,
                 Some("pass-1"),
             )
@@ -1041,7 +1047,7 @@ mod tests {
             .await?
             .unwrap();
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                 &private_key.pkcs8,
                 None,
             )
@@ -1054,7 +1060,7 @@ mod tests {
             .await?
             .unwrap();
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                 &private_key.pkcs8,
                 Some("pass"),
             )
@@ -1062,7 +1068,7 @@ mod tests {
         );
         // Decrypting with new passphrase should fail.
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                 &private_key.pkcs8,
                 Some("pass-1"),
             )
@@ -1079,7 +1085,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         let private_key = certificates
             .create_private_key(
                 mock_user.id,
@@ -1115,7 +1121,7 @@ mod tests {
 
         // Decrypting with the old passphrase should succeed.
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                 &private_key.pkcs8,
                 Some("pass"),
             )
@@ -1142,7 +1148,7 @@ mod tests {
             .unwrap();
         assert_eq!(updated_private_key.name, "pk-new-new");
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                 &updated_private_key.pkcs8,
                 Some("pass"),
             )
@@ -1150,7 +1156,7 @@ mod tests {
         );
         // Decrypting with new passphrase should succeed.
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                 &updated_private_key.pkcs8,
                 Some("pass-1"),
             )
@@ -1177,7 +1183,7 @@ mod tests {
             .unwrap();
         assert_eq!(updated_private_key.name, "pk");
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                 &updated_private_key.pkcs8,
                 None,
             )
@@ -1194,7 +1200,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         let private_key = certificates
             .create_private_key(
                 mock_user.id,
@@ -1296,7 +1302,7 @@ mod tests {
         api.db.insert_user(&mock_user).await?;
 
         // Create private key without passphrase.
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         let private_key = certificates
             .create_private_key(
                 mock_user.id,
@@ -1321,7 +1327,7 @@ mod tests {
             )
             .await?;
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                 &pkcs8, None,
             )
             .is_ok()
@@ -1339,7 +1345,7 @@ mod tests {
             )
             .await?;
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                 &pkcs8,
                 Some("pass"),
             )
@@ -1372,7 +1378,7 @@ mod tests {
             )
             .await?;
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                 &pkcs8, None,
             )
             .is_ok()
@@ -1390,7 +1396,7 @@ mod tests {
             )
             .await?;
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::import_private_key_from_pkcs8(
                 &pkcs8,
                 Some("pass"),
             )
@@ -1407,7 +1413,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         let private_key = certificates
             .create_private_key(
                 mock_user.id,
@@ -1445,7 +1451,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         assert!(certificates
             .get_private_keys(mock_user.id)
             .await?
@@ -1511,7 +1517,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         let certificate_template = certificates
             .create_certificate_template(
                 mock_user.id,
@@ -1537,7 +1543,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         assert_debug_snapshot!(certificates
             .create_certificate_template(
                 mock_user.id,
@@ -1580,7 +1586,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         let certificate_template = certificates
             .create_certificate_template(
                 mock_user.id,
@@ -1656,7 +1662,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         let certificate_template = certificates
             .create_certificate_template(
                 mock_user.id,
@@ -1754,7 +1760,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         let certificate_template = certificates
             .create_certificate_template(
                 mock_user.id,
@@ -1830,7 +1836,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         let certificate_template = certificates
             .create_certificate_template(
                 mock_user.id,
@@ -1867,7 +1873,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         assert!(certificates
             .get_certificate_templates(mock_user.id)
             .await?
@@ -1922,7 +1928,7 @@ mod tests {
     #[test]
     fn picks_correct_message_digest() -> anyhow::Result<()> {
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::get_message_digest(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::get_message_digest(
                 PrivateKeyAlgorithm::Rsa {
                     key_size: PrivateKeySize::Size1024,
                 },
@@ -1942,13 +1948,13 @@ mod tests {
             },
         ] {
             assert!(
-                CertificatesApi::<MockResolver, AsyncStubTransport>::get_message_digest(
+                CertificatesApiExt::<MockResolver, AsyncStubTransport>::get_message_digest(
                     pk_algorithm,
                     SignatureAlgorithm::Sha1
                 )? == MessageDigest::sha1()
             );
             assert!(
-                CertificatesApi::<MockResolver, AsyncStubTransport>::get_message_digest(
+                CertificatesApiExt::<MockResolver, AsyncStubTransport>::get_message_digest(
                     pk_algorithm,
                     SignatureAlgorithm::Sha256
                 )? == MessageDigest::sha256()
@@ -1964,13 +1970,13 @@ mod tests {
             },
         ] {
             assert!(
-                CertificatesApi::<MockResolver, AsyncStubTransport>::get_message_digest(
+                CertificatesApiExt::<MockResolver, AsyncStubTransport>::get_message_digest(
                     pk_algorithm,
                     SignatureAlgorithm::Sha384
                 )? == MessageDigest::sha384()
             );
             assert!(
-                CertificatesApi::<MockResolver, AsyncStubTransport>::get_message_digest(
+                CertificatesApiExt::<MockResolver, AsyncStubTransport>::get_message_digest(
                     pk_algorithm,
                     SignatureAlgorithm::Sha512
                 )? == MessageDigest::sha512()
@@ -1978,7 +1984,7 @@ mod tests {
         }
 
         assert!(
-            CertificatesApi::<MockResolver, AsyncStubTransport>::get_message_digest(
+            CertificatesApiExt::<MockResolver, AsyncStubTransport>::get_message_digest(
                 PrivateKeyAlgorithm::Ed25519,
                 SignatureAlgorithm::Ed25519
             )? == MessageDigest::null()
@@ -2042,7 +2048,7 @@ mod tests {
         api.db.insert_user(&mock_user).await?;
 
         // Create and share policy.
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         let certificate_template = certificates
             .create_certificate_template(
                 mock_user.id,
@@ -2082,7 +2088,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         let certificate_template = certificates
             .create_certificate_template(
                 mock_user.id,
@@ -2138,7 +2144,7 @@ mod tests {
         api.db.insert_user(&mock_user).await?;
 
         // Create and share template.
-        let certificates = CertificatesApi::new(&api);
+        let certificates = api.certificates();
         let certificate_template = certificates
             .create_certificate_template(
                 mock_user.id,

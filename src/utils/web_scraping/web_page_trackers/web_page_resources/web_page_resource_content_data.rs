@@ -24,7 +24,7 @@ impl WebPageResourceContentData {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::WebPageResourceContentData;
+    use crate::utils::web_scraping::WebPageResourceContentData;
     use insta::assert_json_snapshot;
     use serde_json::json;
 

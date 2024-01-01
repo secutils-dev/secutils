@@ -1,4 +1,4 @@
-use crate::utils::PrivateKey;
+use crate::utils::certificates::PrivateKey;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -47,7 +47,7 @@ impl TryFrom<&PrivateKey> for RawPrivateKey {
 #[cfg(test)]
 mod tests {
     use super::RawPrivateKey;
-    use crate::utils::{PrivateKey, PrivateKeyAlgorithm, PrivateKeySize};
+    use crate::utils::certificates::{PrivateKey, PrivateKeyAlgorithm, PrivateKeySize};
     use time::OffsetDateTime;
     use uuid::uuid;
 

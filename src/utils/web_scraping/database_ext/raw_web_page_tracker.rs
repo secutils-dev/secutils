@@ -1,6 +1,6 @@
 use crate::{
     scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
-    utils::{WebPageTracker, WebPageTrackerSettings, WebPageTrackerTag},
+    utils::web_scraping::{WebPageTracker, WebPageTrackerSettings, WebPageTrackerTag},
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::Duration};
@@ -182,9 +182,9 @@ mod tests {
     use crate::{
         scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
         tests::mock_user,
-        utils::{
-            WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerSettings,
-            WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
+        utils::web_scraping::{
+            tests::WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME, WebPageResourcesTrackerTag,
+            WebPageTracker, WebPageTrackerSettings,
         },
     };
     use std::time::Duration;

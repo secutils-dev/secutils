@@ -15,7 +15,7 @@ pub enum PrivateKeyEllipticCurve {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::PrivateKeyEllipticCurve;
+    use crate::utils::certificates::PrivateKeyEllipticCurve;
     use insta::assert_json_snapshot;
 
     #[test]

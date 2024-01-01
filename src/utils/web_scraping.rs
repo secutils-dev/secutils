@@ -2,24 +2,16 @@ mod api_ext;
 mod database_ext;
 mod web_page_trackers;
 
-use self::web_page_trackers::{WebPageResourceInternal, WebPageResourcesTrackerInternalTag};
-pub use self::{
-    api_ext::{
-        WebPageContentTrackerGetHistoryParams, WebPageResourcesTrackerGetHistoryParams,
-        WebPageTrackerCreateParams, WebPageTrackerUpdateParams, WebScrapingApiExt,
-        WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
-        WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
-    },
-    web_page_trackers::{
-        web_page_content_revisions_diff, web_page_resources_revisions_diff,
-        WebPageContentTrackerTag, WebPageDataRevision, WebPageResource, WebPageResourceContent,
-        WebPageResourceContentData, WebPageResourceDiffStatus, WebPageResourcesData,
-        WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings,
-        WebPageTrackerTag, WebScraperContentRequest, WebScraperContentRequestScripts,
-        WebScraperContentResponse, WebScraperErrorResponse, WebScraperResource,
-        WebScraperResourcesRequest, WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
-    },
+pub use self::web_page_trackers::{
+    web_page_content_revisions_diff, web_page_resources_revisions_diff, WebPageContentTrackerTag,
+    WebPageDataRevision, WebPageResource, WebPageResourceContent, WebPageResourceContentData,
+    WebPageResourceDiffStatus, WebPageResourcesData, WebPageResourcesTrackerTag, WebPageTracker,
+    WebPageTrackerKind, WebPageTrackerSettings, WebPageTrackerTag, WebScraperContentRequest,
+    WebScraperContentRequestScripts, WebScraperContentResponse, WebScraperErrorResponse,
+    WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesRequestScripts,
+    WebScraperResourcesResponse,
 };
+use self::web_page_trackers::{WebPageResourceInternal, WebPageResourcesTrackerInternalTag};
 use crate::{
     api::Api,
     error::Error as SecutilsError,
@@ -125,16 +117,23 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
 
 #[cfg(test)]
 pub mod tests {
+    pub use crate::utils::web_scraping::api_ext::{
+        WebPageTrackerCreateParams, WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
+        WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
+    };
     use crate::{
         scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
         tests::{mock_api, mock_user},
         utils::{
-            web_scraping::{WebPageResourceInternal, WebPageResourcesTrackerInternalTag},
-            web_scraping_handle_action, UtilsAction, UtilsActionParams, UtilsResource,
-            UtilsResourceOperation, WebPageContentTrackerGetHistoryParams,
-            WebPageContentTrackerTag, WebPageDataRevision, WebPageResourcesData,
-            WebPageResourcesTrackerGetHistoryParams, WebPageTracker, WebPageTrackerCreateParams,
-            WebPageTrackerSettings, WebPageTrackerTag,
+            web_scraping::{
+                api_ext::{
+                    WebPageContentTrackerGetHistoryParams, WebPageResourcesTrackerGetHistoryParams,
+                },
+                web_scraping_handle_action, WebPageContentTrackerTag, WebPageDataRevision,
+                WebPageResourceInternal, WebPageResourcesData, WebPageResourcesTrackerInternalTag,
+                WebPageTracker, WebPageTrackerSettings, WebPageTrackerTag,
+            },
+            UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
         },
     };
     use insta::assert_json_snapshot;

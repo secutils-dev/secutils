@@ -1,4 +1,4 @@
-use crate::utils::{WebPageDataRevision, WebPageTrackerTag};
+use crate::utils::web_scraping::{WebPageDataRevision, WebPageTrackerTag};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -39,7 +39,7 @@ impl<Tag: WebPageTrackerTag> TryFrom<&WebPageDataRevision<Tag>> for RawWebPageDa
 #[cfg(test)]
 mod tests {
     use super::RawWebPageDataRevision;
-    use crate::utils::{
+    use crate::utils::web_scraping::{
         WebPageDataRevision, WebPageResource, WebPageResourceContent, WebPageResourceContentData,
         WebPageResourcesData, WebPageResourcesTrackerTag,
     };

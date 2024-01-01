@@ -174,7 +174,9 @@ mod tests {
     use crate::{
         scheduler::scheduler_job::SchedulerJob,
         tests::{mock_api, mock_user},
-        utils::{WebPageTrackerCreateParams, WebPageTrackerKind, WebPageTrackerSettings},
+        utils::web_scraping::{
+            tests::WebPageTrackerCreateParams, WebPageTrackerKind, WebPageTrackerSettings,
+        },
     };
     use futures::StreamExt;
     use insta::assert_debug_snapshot;

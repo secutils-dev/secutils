@@ -10,7 +10,7 @@ pub enum ContentSecurityPolicyWebrtcDirectiveValue {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::ContentSecurityPolicyWebrtcDirectiveValue;
+    use crate::utils::web_security::ContentSecurityPolicyWebrtcDirectiveValue;
     use insta::assert_json_snapshot;
 
     #[test]

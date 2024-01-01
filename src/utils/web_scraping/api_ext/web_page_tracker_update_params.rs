@@ -1,4 +1,4 @@
-use crate::{scheduler::SchedulerJobConfig, utils::WebPageTrackerSettings};
+use crate::{scheduler::SchedulerJobConfig, utils::web_scraping::WebPageTrackerSettings};
 use serde::{Deserialize, Deserializer};
 use url::Url;
 
@@ -30,9 +30,9 @@ where
 mod tests {
     use crate::{
         scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
-        utils::{
-            WebPageTrackerSettings, WebPageTrackerUpdateParams,
-            WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
+        utils::web_scraping::{
+            api_ext::WebPageTrackerUpdateParams,
+            tests::WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME, WebPageTrackerSettings,
         },
     };
     use std::time::Duration;

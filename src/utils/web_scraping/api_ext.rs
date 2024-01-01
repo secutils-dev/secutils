@@ -19,13 +19,13 @@ use crate::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
         web_scraping::{
             database_ext::WebScrapingDatabaseSystemExt, web_page_content_revisions_diff,
-            web_page_resources_revisions_diff, WebPageResourcesTrackerInternalTag,
-            WebScraperResource,
+            web_page_resources_revisions_diff, WebPageContentTrackerTag, WebPageDataRevision,
+            WebPageResource, WebPageResourcesData, WebPageResourcesTrackerInternalTag,
+            WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerTag,
+            WebScraperContentRequest, WebScraperContentRequestScripts, WebScraperContentResponse,
+            WebScraperErrorResponse, WebScraperResource, WebScraperResourcesRequest,
+            WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
         },
-        WebPageContentTrackerTag, WebPageDataRevision, WebPageResource, WebPageResourcesData,
-        WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerTag, WebScraperContentRequest,
-        WebScraperContentRequestScripts, WebScraperContentResponse, WebScraperErrorResponse,
-        WebScraperResourcesRequest, WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
     },
 };
 use anyhow::{anyhow, bail};
@@ -1004,15 +1004,19 @@ mod tests {
             mock_api, mock_api_with_config, mock_api_with_network, mock_config,
             mock_network_with_records, mock_user,
         },
-        utils::{
-            WebPageContentTrackerGetHistoryParams, WebPageContentTrackerTag, WebPageResource,
-            WebPageResourceDiffStatus, WebPageResourcesTrackerGetHistoryParams,
-            WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerCreateParams,
-            WebPageTrackerKind, WebPageTrackerSettings, WebPageTrackerUpdateParams,
+        utils::web_scraping::{
+            api_ext::{
+                WebPageContentTrackerGetHistoryParams, WebPageResourcesTrackerGetHistoryParams,
+                WebPageTrackerUpdateParams, WebScrapingApiExt,
+            },
+            tests::{
+                WebPageTrackerCreateParams, WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
+                WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
+            },
+            WebPageContentTrackerTag, WebPageResource, WebPageResourceDiffStatus,
+            WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings,
             WebScraperContentRequest, WebScraperContentResponse, WebScraperErrorResponse,
             WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesResponse,
-            WebScrapingApiExt, WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
-            WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
         },
     };
     use actix_web::ResponseError;
@@ -1060,7 +1064,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebScrapingApiExt::new(&api);
+        let api = api.web_scraping();
 
         let tracker = api
             .create_resources_tracker(
@@ -1102,7 +1106,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebScrapingApiExt::new(&api);
+        let api = api.web_scraping();
 
         let tracker = api
             .create_content_tracker(
@@ -1144,7 +1148,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebScrapingApiExt::new(&api);
+        let api = api.web_scraping();
 
         let settings = WebPageTrackerSettings {
             revisions: 3,
@@ -1435,7 +1439,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebScrapingApiExt::new(&api);
+        let api = api.web_scraping();
 
         let settings = WebPageTrackerSettings {
             revisions: 3,
@@ -1726,7 +1730,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebScrapingApiExt::new(&api);
+        let api = api.web_scraping();
         let tracker = api
             .create_resources_tracker(
                 mock_user.id,
@@ -1903,7 +1907,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebScrapingApiExt::new(&api);
+        let api = api.web_scraping();
         let tracker = api
             .create_resources_tracker(
                 mock_user.id,
@@ -2212,7 +2216,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebScrapingApiExt::new(&api);
+        let api = api.web_scraping();
         let tracker = api
             .create_content_tracker(
                 mock_user.id,
@@ -2389,7 +2393,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebScrapingApiExt::new(&api);
+        let api = api.web_scraping();
         let tracker = api
             .create_content_tracker(
                 mock_user.id,
@@ -2698,7 +2702,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebScrapingApiExt::new(&api);
+        let api = api.web_scraping();
         let tracker = api
             .create_resources_tracker(
                 mock_user.id,
@@ -2799,7 +2803,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebScrapingApiExt::new(&api);
+        let api = api.web_scraping();
         let tracker = api
             .create_content_tracker(
                 mock_user.id,
@@ -2900,7 +2904,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebScrapingApiExt::new(&api);
+        let api = api.web_scraping();
         let tracker_one = api
             .create_resources_tracker(
                 mock_user.id,
@@ -2960,7 +2964,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebScrapingApiExt::new(&api);
+        let api = api.web_scraping();
 
         assert!(api
             .get_resources_tracker(mock_user.id, uuid!("00000000-0000-0000-0000-000000000001"))
@@ -3020,7 +3024,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebScrapingApiExt::new(&api);
+        let api = api.web_scraping();
 
         assert!(api
             .get_content_tracker(mock_user.id, uuid!("00000000-0000-0000-0000-000000000001"))
@@ -3080,7 +3084,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebScrapingApiExt::new(&api);
+        let api = api.web_scraping();
 
         assert!(api.get_resources_trackers(mock_user.id).await?.is_empty(),);
 
@@ -3134,7 +3138,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebScrapingApiExt::new(&api);
+        let api = api.web_scraping();
 
         assert!(api.get_content_trackers(mock_user.id).await?.is_empty(),);
 
@@ -5035,7 +5039,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebScrapingApiExt::new(&api);
+        let api = api.web_scraping();
 
         let unscheduled_trackers = api.get_unscheduled_resources_trackers().await?;
         assert!(unscheduled_trackers.is_empty());

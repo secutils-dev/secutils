@@ -16,7 +16,7 @@ pub enum PrivateKeySize {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::PrivateKeySize;
+    use crate::utils::certificates::PrivateKeySize;
     use insta::assert_json_snapshot;
 
     #[test]

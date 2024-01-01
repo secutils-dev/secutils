@@ -16,7 +16,7 @@ pub struct ResponderScriptResult {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::ResponderScriptResult;
+    use crate::utils::webhooks::ResponderScriptResult;
     use bytes::Bytes;
 
     #[test]

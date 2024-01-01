@@ -4,7 +4,7 @@ use crate::{
     network::{DnsResolver, EmailTransport, EmailTransportError},
     notifications::{NotificationContent, NotificationContentTemplate, NotificationDestination},
     scheduler::{job_ext::JobExt, scheduler_job::SchedulerJob},
-    utils::{WebPageTracker, WebPageTrackerTag},
+    utils::web_scraping::{WebPageTracker, WebPageTrackerTag},
 };
 use futures::{pin_mut, StreamExt};
 use std::{sync::Arc, time::Instant};
@@ -393,15 +393,17 @@ mod tests {
             mock_api_with_config, mock_config, mock_schedule_in_sec, mock_schedule_in_secs,
             mock_user,
         },
-        utils::{
+        utils::web_scraping::{
+            tests::{
+                WebPageTrackerCreateParams, WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
+                WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
+            },
             WebPageContentTrackerTag, WebPageDataRevision, WebPageResource, WebPageResourceContent,
             WebPageResourceContentData, WebPageResourcesData, WebPageResourcesTrackerTag,
-            WebPageTracker, WebPageTrackerCreateParams, WebPageTrackerKind, WebPageTrackerSettings,
-            WebScraperContentRequest, WebScraperContentRequestScripts, WebScraperContentResponse,
-            WebScraperErrorResponse, WebScraperResource, WebScraperResourcesRequest,
-            WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
-            WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
-            WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
+            WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings, WebScraperContentRequest,
+            WebScraperContentRequestScripts, WebScraperContentResponse, WebScraperErrorResponse,
+            WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesRequestScripts,
+            WebScraperResourcesResponse,
         },
     };
     use cron::Schedule;

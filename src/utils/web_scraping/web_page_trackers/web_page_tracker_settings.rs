@@ -21,8 +21,8 @@ pub struct WebPageTrackerSettings {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{
-        web_scraping::WebPageTrackerSettings, WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
+    use crate::utils::web_scraping::{
+        api_ext::WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME, WebPageTrackerSettings,
     };
     use insta::assert_json_snapshot;
     use serde_json::json;

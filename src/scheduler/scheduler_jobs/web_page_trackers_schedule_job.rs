@@ -4,7 +4,7 @@ use crate::{
     scheduler::{
         job_ext::JobExt, scheduler_job::SchedulerJob, scheduler_jobs::WebPageTrackersTriggerJob,
     },
-    utils::{WebPageTracker, WebPageTrackerTag},
+    utils::web_scraping::{WebPageTracker, WebPageTrackerTag},
 };
 use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobId, JobScheduler, JobStoredData};
@@ -129,7 +129,9 @@ mod tests {
             SchedulerJobMetadata,
         },
         tests::{mock_api_with_config, mock_config, mock_user},
-        utils::{WebPageTrackerCreateParams, WebPageTrackerKind, WebPageTrackerSettings},
+        utils::web_scraping::{
+            tests::WebPageTrackerCreateParams, WebPageTrackerKind, WebPageTrackerSettings,
+        },
     };
     use cron::Schedule;
     use futures::StreamExt;

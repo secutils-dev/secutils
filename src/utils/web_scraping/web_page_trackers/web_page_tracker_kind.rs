@@ -17,7 +17,7 @@ impl TryFrom<WebPageTrackerKind> for Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::WebPageTrackerKind;
+    use crate::utils::web_scraping::WebPageTrackerKind;
     use insta::assert_debug_snapshot;
 
     #[test]

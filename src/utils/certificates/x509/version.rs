@@ -27,7 +27,7 @@ impl Version {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::Version;
+    use crate::utils::certificates::Version;
     use insta::assert_json_snapshot;
 
     #[test]

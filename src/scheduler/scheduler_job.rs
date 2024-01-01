@@ -1,4 +1,4 @@
-use crate::utils::WebPageTrackerKind;
+use crate::utils::web_scraping::WebPageTrackerKind;
 use serde::{Deserialize, Serialize};
 
 /// Represents a job that can be scheduled.
@@ -25,7 +25,7 @@ impl SchedulerJob {
 #[cfg(test)]
 mod tests {
     use super::SchedulerJob;
-    use crate::utils::WebPageTrackerKind;
+    use crate::utils::web_scraping::WebPageTrackerKind;
 
     #[test]
     fn properly_determines_unique_jobs() -> anyhow::Result<()> {

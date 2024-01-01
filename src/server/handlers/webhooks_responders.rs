@@ -2,7 +2,9 @@ use crate::{
     error::Error as SecutilsError,
     js_runtime::JsRuntime,
     server::app_state::AppState,
-    utils::{ResponderScriptContext, ResponderScriptResult, RespondersRequestCreateParams},
+    utils::webhooks::{
+        ResponderScriptContext, ResponderScriptResult, RespondersRequestCreateParams,
+    },
 };
 use actix_http::{body::MessageBody, StatusCode};
 use actix_web::{
@@ -295,7 +297,7 @@ mod tests {
     use crate::{
         server::handlers::webhooks_responders::PathParams,
         tests::{mock_app_state, mock_user},
-        utils::{ResponderMethod, ResponderSettings, RespondersCreateParams},
+        utils::webhooks::{tests::RespondersCreateParams, ResponderMethod, ResponderSettings},
     };
     use actix_http::{body::MessageBody, Method, Payload};
     use actix_web::{test::TestRequest, web, FromRequest};

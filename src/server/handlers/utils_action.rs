@@ -5,9 +5,9 @@ use crate::{
     server::AppState,
     users::{User, UserShare},
     utils::{
-        certificates_handle_action, web_scraping_handle_action, web_security_handle_action,
-        webhooks_handle_action, UtilsAction, UtilsActionParams, UtilsResource,
-        UtilsResourceOperation,
+        certificates::certificates_handle_action, web_scraping::web_scraping_handle_action,
+        web_security::web_security_handle_action, webhooks::webhooks_handle_action, UtilsAction,
+        UtilsActionParams, UtilsResource, UtilsResourceOperation,
     },
 };
 use actix_http::Method;
@@ -173,8 +173,8 @@ mod tests {
         tests::{mock_api, mock_app_state, mock_user, mock_user_with_id},
         users::{SharedResource, UserShare, UserShareId},
         utils::{
-            PrivateKeyAlgorithm, PrivateKeysCreateParams, UtilsAction, UtilsResource,
-            UtilsResourceOperation,
+            certificates::{tests::PrivateKeysCreateParams, PrivateKeyAlgorithm},
+            UtilsAction, UtilsResource, UtilsResourceOperation,
         },
     };
     use actix_http::body::MessageBody;

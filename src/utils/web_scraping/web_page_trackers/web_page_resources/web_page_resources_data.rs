@@ -1,4 +1,4 @@
-use crate::utils::WebPageResource;
+use crate::utils::web_scraping::WebPageResource;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -25,7 +25,7 @@ impl WebPageResourcesData {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{
+    use crate::utils::web_scraping::{
         WebPageResource, WebPageResourceContent, WebPageResourceContentData,
         WebPageResourceDiffStatus, WebPageResourcesData,
     };

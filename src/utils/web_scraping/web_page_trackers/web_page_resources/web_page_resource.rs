@@ -1,4 +1,4 @@
-use crate::utils::{WebPageResourceContent, WebPageResourceDiffStatus};
+use crate::utils::web_scraping::{WebPageResourceContent, WebPageResourceDiffStatus};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -60,7 +60,7 @@ impl From<WebPageResourceInternal> for WebPageResource {
 mod tests {
     use crate::{
         tests::MockWebPageResourceBuilder,
-        utils::{
+        utils::web_scraping::{
             WebPageResource, WebPageResourceContent, WebPageResourceContentData,
             WebPageResourceDiffStatus,
         },

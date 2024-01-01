@@ -15,7 +15,7 @@ pub enum ExtendedKeyUsage {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::ExtendedKeyUsage;
+    use crate::utils::certificates::ExtendedKeyUsage;
     use insta::assert_json_snapshot;
 
     #[test]

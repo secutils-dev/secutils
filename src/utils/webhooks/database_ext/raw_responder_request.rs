@@ -1,4 +1,4 @@
-use crate::utils::{webhooks::ResponderRequestHeaders, ResponderRequest};
+use crate::utils::webhooks::{ResponderRequest, ResponderRequestHeaders};
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, net::SocketAddr};
 use time::OffsetDateTime;
@@ -63,7 +63,7 @@ impl<'a> TryFrom<&ResponderRequest<'a>> for RawResponderRequest {
 #[cfg(test)]
 mod tests {
     use super::RawResponderRequest;
-    use crate::utils::ResponderRequest;
+    use crate::utils::webhooks::ResponderRequest;
     use std::borrow::Cow;
     use time::OffsetDateTime;
     use uuid::uuid;

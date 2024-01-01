@@ -1,4 +1,4 @@
-use crate::utils::ExportFormat;
+use crate::utils::certificates::ExportFormat;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -10,7 +10,7 @@ pub struct TemplatesGenerateParams {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{ExportFormat, TemplatesGenerateParams};
+    use crate::utils::certificates::{api_ext::TemplatesGenerateParams, ExportFormat};
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {

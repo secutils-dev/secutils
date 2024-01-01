@@ -2,7 +2,7 @@ use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
     scheduler::{job_ext::JobExt, scheduler_job::SchedulerJob},
-    utils::WebPageTrackerKind,
+    utils::web_scraping::WebPageTrackerKind,
 };
 use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobId, JobStoredData};
@@ -116,8 +116,9 @@ mod tests {
             SchedulerJobMetadata,
         },
         tests::{mock_api, mock_user},
-        utils::{
-            WebPageTracker, WebPageTrackerCreateParams, WebPageTrackerKind, WebPageTrackerSettings,
+        utils::web_scraping::{
+            tests::WebPageTrackerCreateParams, WebPageTracker, WebPageTrackerKind,
+            WebPageTrackerSettings,
         },
     };
     use insta::assert_debug_snapshot;

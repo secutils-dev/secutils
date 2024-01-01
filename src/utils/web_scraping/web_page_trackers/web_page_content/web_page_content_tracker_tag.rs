@@ -1,4 +1,4 @@
-use crate::utils::{WebPageTrackerKind, WebPageTrackerTag};
+use crate::utils::web_scraping::{WebPageTrackerKind, WebPageTrackerTag};
 
 /// Struct that represents a tag for the `WebPageTracker` that tracks the content of a web page.
 #[derive(Debug, Clone, PartialEq, Eq)]

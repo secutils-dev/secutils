@@ -22,7 +22,7 @@ pub struct ResponderSettings {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::ResponderSettings;
+    use crate::utils::webhooks::ResponderSettings;
     use insta::assert_json_snapshot;
 
     #[test]

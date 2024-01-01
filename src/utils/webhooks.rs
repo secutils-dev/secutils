@@ -3,10 +3,7 @@ mod database_ext;
 mod responders;
 
 pub use self::{
-    api_ext::{
-        RespondersCreateParams, RespondersRequestCreateParams, RespondersUpdateParams,
-        WebhooksApiExt,
-    },
+    api_ext::RespondersRequestCreateParams,
     responders::{
         Responder, ResponderMethod, ResponderRequest, ResponderRequestHeaders,
         ResponderScriptContext, ResponderScriptResult, ResponderSettings,
@@ -87,12 +84,15 @@ pub async fn webhooks_handle_action<DR: DnsResolver, ET: EmailTransport>(
 
 #[cfg(test)]
 pub mod tests {
+    pub use crate::utils::webhooks::api_ext::RespondersCreateParams;
     use crate::{
         tests::{mock_api, mock_user},
         utils::{
-            webhooks_handle_action, Responder, ResponderMethod, ResponderSettings,
-            RespondersCreateParams, RespondersRequestCreateParams, UtilsAction, UtilsActionParams,
-            UtilsResource, UtilsResourceOperation,
+            webhooks::{
+                webhooks_handle_action, Responder, ResponderMethod, ResponderSettings,
+                RespondersRequestCreateParams,
+            },
+            UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
         },
     };
     use insta::assert_json_snapshot;

@@ -1,6 +1,5 @@
-use crate::utils::{
-    web_scraping::WebPageResourceInternal, WebPageResourcesData, WebPageTrackerKind,
-    WebPageTrackerTag,
+use crate::utils::web_scraping::{
+    WebPageResourceInternal, WebPageResourcesData, WebPageTrackerKind, WebPageTrackerTag,
 };
 
 /// Struct that represents a tag for the `WebPageTracker` that tracks the resources of a web page.

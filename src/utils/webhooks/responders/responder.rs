@@ -1,4 +1,4 @@
-use crate::utils::{ResponderMethod, ResponderSettings};
+use crate::utils::webhooks::{ResponderMethod, ResponderSettings};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -23,7 +23,7 @@ pub struct Responder {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{Responder, ResponderMethod, ResponderSettings};
+    use crate::utils::webhooks::{Responder, ResponderMethod, ResponderSettings};
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
     use uuid::uuid;

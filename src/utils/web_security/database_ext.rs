@@ -4,9 +4,8 @@ use crate::{
     database::Database,
     error::Error as SecutilsError,
     users::UserId,
-    utils::{
-        web_security::database_ext::raw_content_security_policy::RawContentSecurityPolicy,
-        ContentSecurityPolicy,
+    utils::web_security::{
+        database_ext::raw_content_security_policy::RawContentSecurityPolicy, ContentSecurityPolicy,
     },
 };
 use anyhow::{anyhow, bail};
@@ -200,7 +199,7 @@ mod tests {
     use crate::{
         error::Error as SecutilsError,
         tests::{mock_db, mock_user},
-        utils::{
+        utils::web_security::{
             ContentSecurityPolicy, ContentSecurityPolicyDirective,
             ContentSecurityPolicyTrustedTypesDirectiveValue,
         },

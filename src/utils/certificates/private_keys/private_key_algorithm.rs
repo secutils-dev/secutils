@@ -1,4 +1,4 @@
-use crate::utils::{PrivateKeyEllipticCurve, PrivateKeySize};
+use crate::utils::certificates::{PrivateKeyEllipticCurve, PrivateKeySize};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq)]
@@ -21,7 +21,9 @@ pub enum PrivateKeyAlgorithm {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{PrivateKeyAlgorithm, PrivateKeyEllipticCurve, PrivateKeySize};
+    use crate::utils::certificates::{
+        PrivateKeyAlgorithm, PrivateKeyEllipticCurve, PrivateKeySize,
+    };
     use insta::assert_json_snapshot;
 
     #[test]

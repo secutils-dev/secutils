@@ -3,10 +3,7 @@ mod csp;
 mod database_ext;
 
 pub use self::{
-    api_ext::{
-        ContentSecurityPoliciesCreateParams, ContentSecurityPoliciesSerializeParams,
-        ContentSecurityPoliciesUpdateParams, ContentSecurityPolicyContent,
-    },
+    api_ext::ContentSecurityPolicyContent,
     csp::{
         ContentSecurityPolicy, ContentSecurityPolicyDirective,
         ContentSecurityPolicyRequireTrustedTypesForDirectiveValue,
@@ -129,11 +126,13 @@ pub mod tests {
         tests::{mock_api, mock_user},
         users::{SharedResource, UserShareId},
         utils::{
-            web_security_handle_action, ContentSecurityPoliciesCreateParams, ContentSecurityPolicy,
-            ContentSecurityPolicyContent, ContentSecurityPolicyDirective,
-            ContentSecurityPolicySandboxDirectiveValue,
-            ContentSecurityPolicyTrustedTypesDirectiveValue, UtilsAction, UtilsActionParams,
-            UtilsResource, UtilsResourceOperation,
+            web_security::{
+                api_ext::ContentSecurityPoliciesCreateParams, web_security_handle_action,
+                ContentSecurityPolicy, ContentSecurityPolicyContent,
+                ContentSecurityPolicyDirective, ContentSecurityPolicySandboxDirectiveValue,
+                ContentSecurityPolicyTrustedTypesDirectiveValue,
+            },
+            UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
         },
     };
     use serde::Deserialize;

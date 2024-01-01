@@ -1,4 +1,4 @@
-use crate::utils::PrivateKeyAlgorithm;
+use crate::utils::certificates::PrivateKeyAlgorithm;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -24,7 +24,7 @@ pub struct PrivateKey {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{PrivateKey, PrivateKeyAlgorithm, PrivateKeySize};
+    use crate::utils::certificates::{PrivateKey, PrivateKeyAlgorithm, PrivateKeySize};
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
     use uuid::uuid;

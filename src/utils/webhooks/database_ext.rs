@@ -5,7 +5,7 @@ use crate::{
     database::Database,
     error::Error as SecutilsError,
     users::UserId,
-    utils::{Responder, ResponderMethod, ResponderRequest},
+    utils::webhooks::{Responder, ResponderMethod, ResponderRequest},
 };
 use anyhow::{anyhow, bail};
 use raw_responder::RawResponder;
@@ -356,7 +356,7 @@ mod tests {
     use crate::{
         error::Error as SecutilsError,
         tests::{mock_db, mock_user, MockResponderBuilder},
-        utils::{Responder, ResponderMethod, ResponderRequest},
+        utils::webhooks::{Responder, ResponderMethod, ResponderRequest},
     };
     use insta::assert_debug_snapshot;
     use std::borrow::Cow;

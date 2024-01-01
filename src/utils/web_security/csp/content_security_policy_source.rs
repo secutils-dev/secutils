@@ -26,7 +26,7 @@ impl ContentSecurityPolicySource {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::ContentSecurityPolicySource;
+    use crate::utils::web_security::ContentSecurityPolicySource;
     use insta::assert_json_snapshot;
 
     #[test]

@@ -37,7 +37,7 @@ impl TryFrom<&Method> for ResponderMethod {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::ResponderMethod;
+    use crate::utils::webhooks::ResponderMethod;
     use actix_http::Method;
     use insta::assert_json_snapshot;
 

@@ -11,7 +11,7 @@ pub struct WebPageResourcesTrackerGetHistoryParams {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::WebPageResourcesTrackerGetHistoryParams;
+    use crate::utils::web_scraping::api_ext::WebPageResourcesTrackerGetHistoryParams;
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {

@@ -325,7 +325,9 @@ mod tests {
         search::SearchItem,
         security::StoredCredentials,
         users::{User, UserId},
-        utils::{WebPageResource, WebPageResourceContent, WebPageResourceContentData},
+        utils::web_scraping::{
+            WebPageResource, WebPageResourceContent, WebPageResourceContentData,
+        },
     };
     use anyhow::anyhow;
     use cron::Schedule;

@@ -1,4 +1,4 @@
-use crate::utils::WebPageTrackerTag;
+use crate::utils::web_scraping::WebPageTrackerTag;
 use serde::Serialize;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -20,7 +20,7 @@ pub struct WebPageDataRevision<Tag: WebPageTrackerTag> {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{
+    use crate::utils::web_scraping::{
         WebPageDataRevision, WebPageResource, WebPageResourceContent, WebPageResourceContentData,
         WebPageResourcesData, WebPageResourcesTrackerTag,
     };

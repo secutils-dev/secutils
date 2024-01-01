@@ -8,8 +8,8 @@ use crate::{
     network::{DnsResolver, EmailTransport},
     users::UserId,
     utils::{
-        utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH, webhooks::ResponderRequest,
-        Responder, ResponderMethod,
+        utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
+        webhooks::{Responder, ResponderMethod, ResponderRequest},
     },
 };
 use anyhow::bail;
@@ -309,9 +309,9 @@ mod tests {
     use crate::{
         error::Error as SecutilsError,
         tests::{mock_api, mock_user},
-        utils::{
-            Responder, ResponderMethod, ResponderSettings, RespondersCreateParams,
-            RespondersRequestCreateParams, RespondersUpdateParams, WebhooksApiExt,
+        utils::webhooks::{
+            api_ext::{RespondersCreateParams, RespondersUpdateParams},
+            Responder, ResponderMethod, ResponderSettings, RespondersRequestCreateParams,
         },
     };
     use insta::assert_debug_snapshot;
@@ -334,7 +334,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let webhooks = WebhooksApiExt::new(&api);
+        let webhooks = api.webhooks();
         let responder = webhooks
             .create_responder(
                 mock_user.id,
@@ -370,7 +370,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let webhooks = WebhooksApiExt::new(&api);
+        let webhooks = api.webhooks();
         let settings = ResponderSettings {
             requests_to_track: 0,
             status_code: 200,
@@ -514,7 +514,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let webhooks = WebhooksApiExt::new(&api);
+        let webhooks = api.webhooks();
         let responder = webhooks
             .create_responder(
                 mock_user.id,

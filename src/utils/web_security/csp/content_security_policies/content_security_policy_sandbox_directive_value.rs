@@ -21,7 +21,7 @@ pub enum ContentSecurityPolicySandboxDirectiveValue {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::ContentSecurityPolicySandboxDirectiveValue;
+    use crate::utils::web_security::ContentSecurityPolicySandboxDirectiveValue;
     use insta::assert_json_snapshot;
 
     #[test]

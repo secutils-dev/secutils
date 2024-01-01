@@ -10,7 +10,7 @@ pub struct PrivateKeysUpdateParams {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::PrivateKeysUpdateParams;
+    use crate::utils::certificates::api_ext::PrivateKeysUpdateParams;
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {

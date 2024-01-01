@@ -1,4 +1,4 @@
-use crate::utils::ContentSecurityPolicySource;
+use crate::utils::web_security::ContentSecurityPolicySource;
 use anyhow::anyhow;
 use bytes::Bytes;
 use html5ever::{

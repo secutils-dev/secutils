@@ -1,7 +1,7 @@
 use crate::{
     scheduler::SchedulerJobConfig,
     users::UserId,
-    utils::{WebPageTrackerSettings, WebPageTrackerTag},
+    utils::web_scraping::{WebPageTrackerSettings, WebPageTrackerTag},
 };
 use serde::Serialize;
 use time::OffsetDateTime;
@@ -42,7 +42,9 @@ mod tests {
     use crate::{
         scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
         tests::MockWebPageTrackerBuilder,
-        utils::{WebPageResourcesTrackerTag, WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME},
+        utils::web_scraping::{
+            api_ext::WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME, WebPageResourcesTrackerTag,
+        },
     };
     use insta::assert_json_snapshot;
     use std::time::Duration;

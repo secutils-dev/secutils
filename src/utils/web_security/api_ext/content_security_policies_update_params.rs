@@ -1,4 +1,4 @@
-use crate::utils::ContentSecurityPolicyDirective;
+use crate::utils::web_security::ContentSecurityPolicyDirective;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -10,7 +10,9 @@ pub struct ContentSecurityPoliciesUpdateParams {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{ContentSecurityPoliciesUpdateParams, ContentSecurityPolicyDirective};
+    use crate::utils::web_security::{
+        api_ext::ContentSecurityPoliciesUpdateParams, ContentSecurityPolicyDirective,
+    };
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {

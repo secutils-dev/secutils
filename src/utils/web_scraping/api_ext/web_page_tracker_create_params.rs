@@ -1,4 +1,4 @@
-use crate::{scheduler::SchedulerJobConfig, utils::WebPageTrackerSettings};
+use crate::{scheduler::SchedulerJobConfig, utils::web_scraping::WebPageTrackerSettings};
 use serde::Deserialize;
 use url::Url;
 
@@ -19,9 +19,9 @@ pub struct WebPageTrackerCreateParams {
 mod tests {
     use crate::{
         scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
-        utils::{
-            web_scraping::api_ext::WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
-            WebPageTrackerCreateParams, WebPageTrackerSettings,
+        utils::web_scraping::{
+            api_ext::{WebPageTrackerCreateParams, WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME},
+            WebPageTrackerSettings,
         },
     };
     use std::time::Duration;

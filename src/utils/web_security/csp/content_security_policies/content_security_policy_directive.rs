@@ -1,10 +1,7 @@
-use crate::utils::{
-    web_security::{
-        ContentSecurityPolicyRequireTrustedTypesForDirectiveValue,
-        ContentSecurityPolicyTrustedTypesDirectiveValue,
-    },
+use crate::utils::web_security::{
+    ContentSecurityPolicyRequireTrustedTypesForDirectiveValue,
     ContentSecurityPolicySandboxDirectiveValue, ContentSecurityPolicySource,
-    ContentSecurityPolicyWebrtcDirectiveValue,
+    ContentSecurityPolicyTrustedTypesDirectiveValue, ContentSecurityPolicyWebrtcDirectiveValue,
 };
 use anyhow::anyhow;
 use content_security_policy::Directive;
@@ -134,7 +131,7 @@ impl TryFrom<ContentSecurityPolicyDirective> for String {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{
+    use crate::utils::web_security::{
         ContentSecurityPolicyDirective, ContentSecurityPolicyRequireTrustedTypesForDirectiveValue,
         ContentSecurityPolicySandboxDirectiveValue, ContentSecurityPolicySource,
         ContentSecurityPolicyTrustedTypesDirectiveValue, ContentSecurityPolicyWebrtcDirectiveValue,

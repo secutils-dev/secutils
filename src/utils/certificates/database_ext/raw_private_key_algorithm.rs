@@ -1,4 +1,4 @@
-use crate::utils::{PrivateKeyAlgorithm, PrivateKeyEllipticCurve, PrivateKeySize};
+use crate::utils::certificates::{PrivateKeyAlgorithm, PrivateKeyEllipticCurve, PrivateKeySize};
 use serde::{Deserialize, Serialize};
 
 /// Main `KeyAlgorithm` enum has Serde attributes that are needed for JSON serialization, but aren't
@@ -37,7 +37,9 @@ impl From<PrivateKeyAlgorithm> for RawPrivateKeyAlgorithm {
 #[cfg(test)]
 mod tests {
     use super::RawPrivateKeyAlgorithm;
-    use crate::utils::{PrivateKeyAlgorithm, PrivateKeyEllipticCurve, PrivateKeySize};
+    use crate::utils::certificates::{
+        PrivateKeyAlgorithm, PrivateKeyEllipticCurve, PrivateKeySize,
+    };
 
     #[test]
     fn can_convert_to_key_algorithm() -> anyhow::Result<()> {

@@ -14,7 +14,7 @@ pub enum WebPageResourceDiffStatus {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::WebPageResourceDiffStatus;
+    use crate::utils::web_scraping::WebPageResourceDiffStatus;
     use insta::assert_json_snapshot;
 
     #[test]

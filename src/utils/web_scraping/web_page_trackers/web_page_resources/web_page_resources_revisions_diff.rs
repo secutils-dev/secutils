@@ -1,4 +1,4 @@
-use crate::utils::{
+use crate::utils::web_scraping::{
     WebPageDataRevision, WebPageResource, WebPageResourceContentData, WebPageResourceDiffStatus,
     WebPageResourcesData, WebPageResourcesTrackerTag,
 };
@@ -104,7 +104,7 @@ fn web_page_resources_diff(
             // We use similarity search only for inline resources with TLS hash as we don't have any
             // other comparable identifier like URLs for the external resources.
             let hasher_and_size = resources_to
-                .get(0)
+                .first()
                 .and_then(|resource| {
                     if resource.is_external_resource() {
                         return None;
@@ -226,9 +226,9 @@ mod tests {
     use super::{web_page_resources_diff, web_page_resources_to_map};
     use crate::{
         tests::MockWebPageResourceBuilder,
-        utils::{
-            web_scraping::web_page_resources_revisions_diff, WebPageDataRevision,
-            WebPageResourceContentData, WebPageResourcesData,
+        utils::web_scraping::{
+            web_page_resources_revisions_diff, WebPageDataRevision, WebPageResourceContentData,
+            WebPageResourcesData,
         },
     };
     use insta::assert_json_snapshot;

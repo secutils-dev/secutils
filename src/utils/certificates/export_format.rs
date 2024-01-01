@@ -28,7 +28,7 @@ pub enum ExportFormat {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::ExportFormat;
+    use crate::utils::certificates::ExportFormat;
     use insta::assert_json_snapshot;
 
     #[test]
