@@ -198,7 +198,7 @@ pub async fn webhooks_responders(
                 body: &payload,
             };
 
-            let js_code = format!(r#"(async (globalThis) => {{ {script} }})(globalThis);"#);
+            let js_code = format!(r#"(async (globalThis) => {{ return {script}; }})(globalThis);"#);
             let override_result = match JsRuntime::new(&state.config.js_runtime)
                 .execute_script::<Option<ResponderScriptResult>>(js_code, Some(js_script_context))
                 .await
@@ -572,7 +572,7 @@ mod tests {
                         body: Some("body".to_string()),
                         headers: Some(vec![("key".to_string(), "value".to_string())]),
                         script: Some(
-                            "return { statusCode: 300, headers: { one: `two` }, body: Deno.core.encode(JSON.stringify(context)) };".to_string(),
+                            "(() => { return { statusCode: 300, headers: { one: `two` }, body: Deno.core.encode(JSON.stringify(context)) }; })()".to_string(),
                         ),
                     },
                 },
