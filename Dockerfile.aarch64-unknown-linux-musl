@@ -10,7 +10,7 @@ ENV OPENSSL_INCLUDE_DIR=/usr/include/
 ENV PATH="$PATH:/app/aarch64-linux-musl-cross/bin"
 
 WORKDIR /app
-RUN set -x && apk add --no-cache pkgconfig musl-dev openssl-dev perl make curl
+RUN set -x && apk add --no-cache pkgconfig musl-dev openssl-dev perl make curl ca-certificates
 
 # Prepare environment: for cross compilation we download toolchain and `aarch64` OpenSSL libs.
 RUN set -x && \
@@ -42,6 +42,7 @@ ENV APP_USER_UID=1001
 
 WORKDIR /app
 COPY --from=SERVER_BUILDER ["/app/secutils", "./"]
+COPY --from=SERVER_BUILDER ["/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs/"]
 
 # Configure group and user.
 RUN addgroup -S -g $APP_USER_UID $APP_USER && \

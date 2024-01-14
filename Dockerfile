@@ -18,7 +18,7 @@ WORKDIR /app
 RUN set -x && \
     dpkg --add-architecture arm64 && \
     apt-get update && \
-    apt-get install -y pkg-config curl libssl-dev libssl-dev:arm64 g++-aarch64-linux-gnu libc6-dev-arm64-cross && \
+    apt-get install -y pkg-config curl libssl-dev libssl-dev:arm64 g++-aarch64-linux-gnu libc6-dev-arm64-cross ca-certificates && \
     rustup target add aarch64-unknown-linux-gnu
 
 # Copy vendored crates, assets and manifest.
@@ -48,6 +48,7 @@ ENV APP_USER_UID=1001
 
 WORKDIR /app
 COPY --from=SERVER_BUILDER ["/app/secutils", "./"]
+COPY --from=SERVER_BUILDER ["/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs/"]
 
 # Configure group and user.
 RUN addgroup --system --gid $APP_USER_UID $APP_USER \
