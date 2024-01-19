@@ -84,7 +84,8 @@ impl JsRuntime {
         let result =
             serde_v8::from_v8(scope, local).with_context(|| "Error deserializing script result");
 
-        log::info!("Executed user script in {:.2?}.", now.elapsed());
+        let execution_time = now.elapsed();
+        log::info!(execution_time = execution_time.as_nanos(); "Executed user script in {:.2?}.", execution_time);
 
         result
     }
