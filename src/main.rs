@@ -168,7 +168,7 @@ fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Err
 
 fn main() -> Result<(), anyhow::Error> {
     dotenvy::dotenv().ok();
-    env_logger::init();
+    structured_logger::Builder::new().init();
 
     let version = env!("CARGO_PKG_VERSION");
 

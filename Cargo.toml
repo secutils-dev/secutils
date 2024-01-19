@@ -29,7 +29,7 @@ cron = "0.12.0"
 deno_core = "0.247.0"
 directories = "5.0.1"
 dotenvy = "0.15.7"
-env_logger = "0.10.2"
+structured-logger = "1.0.3"
 futures = "0.3.30"
 handlebars = "5.1.1"
 hex = "0.4.3"
@@ -89,6 +89,7 @@ default = [
     "lettre/builder",
     "lettre/smtp-transport",
     "lettre/tokio1-rustls-tls",
+    "log/kv_unstable",
     "postcard/use-std",
     "rand_core/std",
     "reqwest/json",
