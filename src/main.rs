@@ -6,6 +6,7 @@ mod database;
 mod directories;
 mod error;
 mod js_runtime;
+mod logging;
 mod network;
 mod notifications;
 mod scheduler;
@@ -346,7 +347,7 @@ mod tests {
         config::JsRuntimeConfig, search::SearchIndex, server::WebhookUrlType,
         templates::create_templates,
     };
-    pub use crate::{network::tests::*, server::tests::*, utils::tests::*};
+    pub use crate::{logging::tests::*, network::tests::*, server::tests::*, utils::tests::*};
     use ctor::ctor;
 
     pub struct MockUserBuilder {
