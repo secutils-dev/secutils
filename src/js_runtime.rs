@@ -1,8 +1,21 @@
-use crate::config::JsRuntimeConfig;
+mod script_termination_reason;
+
+use crate::{
+    config::JsRuntimeConfig, js_runtime::script_termination_reason::ScriptTerminationReason,
+};
 use anyhow::{bail, Context};
 use deno_core::{serde_v8, v8, PollEventLoopOptions, RuntimeOptions};
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, Instant};
+use std::{
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc,
+    },
+    time::{Duration, Instant},
+};
+
+/// Defines a maximum interval on which script is checked for timeout.
+const SCRIPT_TIMEOUT_CHECK_INTERVAL: Duration = Duration::from_secs(2);
 
 /// An abstraction over the V8/Deno runtime that allows any utilities to execute custom user
 /// JavaScript scripts.
@@ -38,13 +51,30 @@ impl JsRuntime {
     ) -> Result<(R, Duration), anyhow::Error> {
         let now = Instant::now();
 
+        let termination_reason =
+            Arc::new(AtomicUsize::new(ScriptTerminationReason::Unknown as usize));
+        let timeout_token = Arc::new(AtomicBool::new(false));
         let isolate_handle = self.inner_runtime.v8_isolate().thread_safe_handle();
+
+        // Track memory usage and terminate execution if threshold is exceeded.
+        let isolate_handle_clone = isolate_handle.clone();
+        let termination_reason_clone = termination_reason.clone();
+        let timeout_token_clone = timeout_token.clone();
         self.inner_runtime
             .add_near_heap_limit_callback(move |current_value, _| {
                 log::error!(
                     "Approaching the memory limit of ({current_value}), terminating execution."
                 );
-                isolate_handle.terminate_execution();
+
+                // Define termination reason and terminate execution.
+                isolate_handle_clone.terminate_execution();
+
+                timeout_token_clone.swap(true, Ordering::Relaxed);
+                termination_reason_clone.store(
+                    ScriptTerminationReason::MemoryLimit as usize,
+                    Ordering::Relaxed,
+                );
+
                 // Give the runtime enough heap to terminate without crashing the process.
                 5 * current_value
             });
@@ -65,22 +95,77 @@ impl JsRuntime {
                 .set(scope, context_key.into(), context_value);
         }
 
+        // Track the time the script takes to execute, and terminate execution if threshold is exceeded.
+        let termination_timeout = self.max_user_script_execution_time;
+        let termination_reason_clone = termination_reason.clone();
+        let timeout_token_clone = timeout_token.clone();
+        std::thread::spawn(move || {
+            let now = Instant::now();
+            loop {
+                // If task is cancelled, return immediately.
+                if timeout_token_clone.load(Ordering::Relaxed) {
+                    return;
+                }
+
+                // Otherwise, terminate execution if time is out, or sleep for max `SCRIPT_TIMEOUT_CHECK_INTERVAL`.
+                let Some(time_left) = termination_timeout.checked_sub(now.elapsed()) else {
+                    termination_reason_clone.store(
+                        ScriptTerminationReason::TimeLimit as usize,
+                        Ordering::Relaxed,
+                    );
+                    isolate_handle.terminate_execution();
+                    return;
+                };
+
+                std::thread::sleep(std::cmp::min(time_left, SCRIPT_TIMEOUT_CHECK_INTERVAL));
+            }
+        });
+
         // Retrieve the result `Promise`.
-        let promise = self
+        let script_result_promise = self
             .inner_runtime
-            .execute_script("<anon>", js_code.into().into())?;
+            .execute_script("<anon>", js_code.into().into())
+            .map_err(|err| {
+                match ScriptTerminationReason::from(termination_reason.load(Ordering::Relaxed)) {
+                    ScriptTerminationReason::MemoryLimit => {
+                        err.context("Script exceeded memory limit.")
+                    }
+                    ScriptTerminationReason::TimeLimit => {
+                        err.context("Script exceeded time limit.")
+                    }
+                    ScriptTerminationReason::Unknown => err,
+                }
+            })?;
 
         // Wait for the promise to resolve.
-        let resolve = self.inner_runtime.resolve(promise);
-        let out = tokio::time::timeout(
-            self.max_user_script_execution_time,
-            self.inner_runtime
-                .with_event_loop_promise(resolve, PollEventLoopOptions::default()),
-        )
-        .await??;
+        let resolve = self.inner_runtime.resolve(script_result_promise);
+        let script_result = self
+            .inner_runtime
+            .with_event_loop_promise(resolve, PollEventLoopOptions::default())
+            .await
+            .map_err(|err| {
+                timeout_token.swap(true, Ordering::Relaxed);
+                match ScriptTerminationReason::from(termination_reason.load(Ordering::Relaxed)) {
+                    ScriptTerminationReason::MemoryLimit => {
+                        err.context("Script exceeded memory limit.")
+                    }
+                    ScriptTerminationReason::TimeLimit => {
+                        err.context("Script exceeded time limit.")
+                    }
+                    ScriptTerminationReason::Unknown => err,
+                }
+            })?;
+
+        // If execution was terminated due to timeout, but script managed to complete execution nevertheless, cancel
+        // termination.
+        timeout_token.swap(true, Ordering::Relaxed);
+        let isolate = self.inner_runtime.v8_isolate();
+        if isolate.is_execution_terminating() {
+            isolate.cancel_terminate_execution();
+        }
 
         let scope = &mut self.inner_runtime.handle_scope();
-        let local = v8::Local::new(scope, out);
+        let local = v8::Local::new(scope, script_result);
         serde_v8::from_v8(scope, local)
             .map(|result| (result, now.elapsed()))
             .with_context(|| "Error deserializing script result")
@@ -93,7 +178,7 @@ pub mod tests {
     use deno_core::error::JsError;
     use serde::{Deserialize, Serialize};
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn can_execute_scripts() -> anyhow::Result<()> {
         let config = JsRuntimeConfig {
             max_heap_size_bytes: 10 * 1024 * 1024,
@@ -147,46 +232,88 @@ pub mod tests {
             "Uncaught (in promise) Error: Uh oh."
         );
 
-        // Limit execution time.
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn can_limit_execution_time() -> anyhow::Result<()> {
+        let config = JsRuntimeConfig {
+            max_heap_size_bytes: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(5),
+        };
+
+        let mut runtime = JsRuntime::new(&config);
+
+        // Limit execution time (async).
         let result = runtime
             .execute_script::<String>(
                 r#"
-(async () => {{
-    return new Promise((resolve) => {
-        Deno.core.queueTimer(
-            Deno.core.getTimerDepth() + 1,
-            false,
-            10 * 1000,
-            () => resolve("Done")
-        );
-    });
-}})();
-"#,
+        (async () => {{
+            return new Promise((resolve) => {
+                Deno.core.queueTimer(
+                    Deno.core.getTimerDepth() + 1,
+                    false,
+                    10 * 1000,
+                    () => resolve("Done")
+                );
+            });
+        }})();
+        "#,
                 None::<()>,
             )
             .await
-            .unwrap_err()
-            .downcast::<tokio::time::error::Elapsed>()?;
-        assert_eq!(format!("{result}"), "deadline has elapsed".to_string());
+            .unwrap_err();
+        assert_eq!(
+            format!("{result}"),
+            "Script exceeded time limit.".to_string()
+        );
+
+        // Limit execution time (sync).
+        let result = runtime
+            .execute_script::<String>(
+                r#"
+        (() => {{
+            while (true) {}
+        }})();
+        "#,
+                None::<()>,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(
+            format!("{result}"),
+            "Script exceeded time limit.".to_string()
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn can_limit_execution_memory() -> anyhow::Result<()> {
+        let config = JsRuntimeConfig {
+            max_heap_size_bytes: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(5),
+        };
+
+        let mut runtime = JsRuntime::new(&config);
 
         // Limit memory usage.
         let result = runtime
             .execute_script::<String>(
                 r#"
-(async () => {{
-   let s = "";
-   while(true) { s += "Hello"; }
-   return "Done";
-}})();
-"#,
+        (async () => {{
+           let s = "";
+           while(true) { s += "Hello"; }
+           return "Done";
+        }})();
+        "#,
                 None::<()>,
             )
             .await
-            .unwrap_err()
-            .downcast::<JsError>()?;
+            .unwrap_err();
         assert_eq!(
-            result.exception_message,
-            "Uncaught Error: execution terminated"
+            format!("{result}"),
+            "Script exceeded memory limit.".to_string()
         );
 
         Ok(())
