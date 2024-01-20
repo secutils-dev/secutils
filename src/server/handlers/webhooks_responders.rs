@@ -13,6 +13,7 @@ use actix_web::{
 };
 use bytes::Bytes;
 use serde::Deserialize;
+use serde_json::json;
 use std::{borrow::Cow, collections::HashMap};
 
 const X_REPLACED_PATH_HEADER_NAME: &str = "x-replaced-path";
@@ -177,7 +178,7 @@ pub async fn webhooks_responders(
     let responder_id = responder.id;
 
     // Check if body is supposed to be a JavaScript code.
-    let (status_code, headers, body) = match responder.settings.script {
+    let (status_code, headers, body) = match &responder.settings.script {
         Some(script) => {
             let query = web::Query::<HashMap<String, String>>::from_query(request.query_string())
                 .unwrap()
@@ -203,13 +204,20 @@ pub async fn webhooks_responders(
                 .execute_script::<Option<ResponderScriptResult>>(js_code, Some(js_script_context))
                 .await
             {
-                Ok(override_result) => override_result.unwrap_or_default(),
+                Ok((override_result, execution_time)) => {
+                    log::info!(
+                        user = log::as_serde!(user.log_context()),
+                        util = log::as_serde!(responder.log_context()),
+                        metrics = log::as_serde!(json!({ "script_execution_time": execution_time.as_nanos() }));
+                        "Executed responder user script in {execution_time:.2?}.",
+                    );
+                    override_result.unwrap_or_default()
+                }
                 Err(err) => {
                     log::error!(
-                        "Failed to execute user ({}) script for HTTP responder ({}): {:?}",
-                        *user.id,
-                        responder.id,
-                        err
+                        user = log::as_serde!(user.log_context()),
+                        util = log::as_serde!(responder.log_context());
+                        "Failed to execute responder user script: {err:?}"
                     );
                     return Ok(HttpResponse::InternalServerError().body(err.to_string()));
                 }

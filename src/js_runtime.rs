@@ -35,7 +35,7 @@ impl JsRuntime {
         &mut self,
         js_code: impl Into<String>,
         js_script_context: Option<impl Serialize>,
-    ) -> Result<R, anyhow::Error> {
+    ) -> Result<(R, Duration), anyhow::Error> {
         let now = Instant::now();
 
         let isolate_handle = self.inner_runtime.v8_isolate().thread_safe_handle();
@@ -81,13 +81,9 @@ impl JsRuntime {
 
         let scope = &mut self.inner_runtime.handle_scope();
         let local = v8::Local::new(scope, out);
-        let result =
-            serde_v8::from_v8(scope, local).with_context(|| "Error deserializing script result");
-
-        let execution_time = now.elapsed();
-        log::info!(execution_time = execution_time.as_nanos(); "Executed user script in {:.2?}.", execution_time);
-
-        result
+        serde_v8::from_v8(scope, local)
+            .map(|result| (result, now.elapsed()))
+            .with_context(|| "Error deserializing script result")
     }
 }
 #[cfg(test)]
@@ -120,7 +116,7 @@ pub mod tests {
 
         // Can access script context.
         let mut runtime = JsRuntime::new(&config);
-        let result = runtime
+        let (result, _) = runtime
             .execute_script::<ScriptContext>(
                 r#"(async () => {{ return context; }})();"#,
                 Some(script_context.clone()),
@@ -129,7 +125,7 @@ pub mod tests {
         assert_eq!(result, script_context);
 
         // Can do basic math.
-        let result = runtime
+        let (result, _) = runtime
             .execute_script::<usize>(
                 r#"(async () => {{ return context.arg_num * 2; }})();"#,
                 Some(script_context.clone()),

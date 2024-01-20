@@ -8,6 +8,19 @@ pub enum UtilsResource {
     WebSecurityContentSecurityPolicies,
 }
 
+impl From<UtilsResource> for (&str, &str) {
+    fn from(value: UtilsResource) -> Self {
+        match value {
+            UtilsResource::CertificatesTemplates => ("certificates", "templates"),
+            UtilsResource::CertificatesPrivateKeys => ("certificates", "private_keys"),
+            UtilsResource::WebhooksResponders => ("webhooks", "responders"),
+            UtilsResource::WebScrapingResources => ("web_scraping", "resources"),
+            UtilsResource::WebScrapingContent => ("web_scraping", "content"),
+            UtilsResource::WebSecurityContentSecurityPolicies => ("web_security", "csp"),
+        }
+    }
+}
+
 impl TryFrom<(&str, &str)> for UtilsResource {
     type Error = ();
 
@@ -61,5 +74,34 @@ mod tests {
         assert!(UtilsResource::try_from(("web_scraping", "_resources")).is_err());
         assert!(UtilsResource::try_from(("web_scraping", "_content")).is_err());
         assert!(UtilsResource::try_from(("web_security", "_csp")).is_err());
+    }
+
+    #[test]
+    fn correctly_converts_into_resource_tuple() {
+        type ResourceTuple = (&'static str, &'static str);
+        assert_eq!(
+            ResourceTuple::from(UtilsResource::CertificatesTemplates),
+            ("certificates", "templates")
+        );
+        assert_eq!(
+            ResourceTuple::from(UtilsResource::CertificatesPrivateKeys),
+            ("certificates", "private_keys")
+        );
+        assert_eq!(
+            ResourceTuple::from(UtilsResource::WebhooksResponders),
+            ("webhooks", "responders")
+        );
+        assert_eq!(
+            ResourceTuple::from(UtilsResource::WebScrapingResources),
+            ("web_scraping", "resources")
+        );
+        assert_eq!(
+            ResourceTuple::from(UtilsResource::WebScrapingContent),
+            ("web_scraping", "content")
+        );
+        assert_eq!(
+            ResourceTuple::from(UtilsResource::WebSecurityContentSecurityPolicies),
+            ("web_security", "csp")
+        );
     }
 }
