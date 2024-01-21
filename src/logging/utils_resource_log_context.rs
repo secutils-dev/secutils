@@ -4,11 +4,13 @@ use uuid::Uuid;
 
 /// Represents a context for the utility resource used for the structured logging.
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct UtilsResourceLogContext {
+pub struct UtilsResourceLogContext<'n> {
     /// Type of the utility resource.
     pub resource: UtilsResource,
     /// Unique id of the utility resource.
     pub resource_id: Uuid,
+    /// Name of the utility resource.
+    pub resource_name: &'n str,
 }
 
 impl Responder {
@@ -17,18 +19,20 @@ impl Responder {
         UtilsResourceLogContext {
             resource: UtilsResource::WebhooksResponders,
             resource_id: self.id,
+            resource_name: self.name.as_str(),
         }
     }
 }
 
-impl Serialize for UtilsResourceLogContext {
+impl<'n> Serialize for UtilsResourceLogContext<'n> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("UtilsResourceLogContext", 2)?;
+        let mut state = serializer.serialize_struct("UtilsResourceLogContext", 3)?;
         state.serialize_field("resource", &Into::<(&str, &str)>::into(self.resource))?;
         state.serialize_field("resource_id", &self.resource_id.as_hyphenated().to_string())?;
+        state.serialize_field("resource_name", self.resource_name)?;
         state.end()
     }
 }
@@ -47,25 +51,29 @@ mod tests {
         assert_json_snapshot!(UtilsResourceLogContext {
             resource: UtilsResource::CertificatesTemplates,
             resource_id: uuid!("00000000-0000-0000-0000-000000000001"),
+            resource_name: "my-cert-template",
         }, @r###"
         {
           "resource": [
             "certificates",
             "templates"
           ],
-          "resource_id": "00000000-0000-0000-0000-000000000001"
+          "resource_id": "00000000-0000-0000-0000-000000000001",
+          "resource_name": "my-cert-template"
         }
         "###);
         assert_json_snapshot!(UtilsResourceLogContext {
             resource: UtilsResource::WebhooksResponders,
             resource_id: uuid!("00000000-0000-0000-0000-000000000002"),
+            resource_name: "my-responder",
         }, @r###"
         {
           "resource": [
             "webhooks",
             "responders"
           ],
-          "resource_id": "00000000-0000-0000-0000-000000000002"
+          "resource_id": "00000000-0000-0000-0000-000000000002",
+          "resource_name": "my-responder"
         }
         "###);
 
@@ -86,6 +94,7 @@ mod tests {
             UtilsResourceLogContext {
                 resource: UtilsResource::WebhooksResponders,
                 resource_id: uuid!("00000000-0000-0000-0000-000000000001"),
+                resource_name: "some-name"
             }
         );
 
