@@ -1,12 +1,12 @@
 use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
-    notifications::{EmailNotificationAttachment, EmailNotificationContent},
+    notifications::{
+        notification_content_template::SECUTILS_LOGO_BYTES, EmailNotificationAttachment,
+        EmailNotificationContent,
+    },
 };
 use serde_json::json;
-
-pub const NOTIFICATION_LOGO_BYTES: &[u8] =
-    include_bytes!("../../../assets/logo/secutils-logo-with-text.png");
 
 /// Compiles web page tracker resources changes template as an email.
 pub async fn compile_to_email<DR: DnsResolver, ET: EmailTransport>(
@@ -59,7 +59,7 @@ pub async fn compile_to_email<DR: DnsResolver, ET: EmailTransport>(
         vec![EmailNotificationAttachment::inline(
             "secutils-logo",
             "image/png",
-            NOTIFICATION_LOGO_BYTES.to_vec(),
+            SECUTILS_LOGO_BYTES.to_vec(),
         )],
     ))
 }

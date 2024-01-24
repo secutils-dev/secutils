@@ -26,6 +26,7 @@ impl EmailNotificationContent {
     }
 
     /// Create new HTML email with a plain-text fallback.
+    #[allow(dead_code)]
     pub fn html<S: Into<String>, T: Into<String>, H: Into<String>>(
         subject: S,
         text: T,

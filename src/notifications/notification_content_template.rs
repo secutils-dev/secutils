@@ -11,6 +11,9 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
+pub const SECUTILS_LOGO_BYTES: &[u8] =
+    include_bytes!("../../assets/logo/secutils-logo-with-text.png");
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum NotificationContentTemplate {
     AccountActivation {
@@ -88,16 +91,46 @@ mod tests {
             )
             .await?;
 
+        let mut template = NotificationContentTemplate::AccountActivation { user_id: user.id }
+            .compile_to_email(&api)
+            .await?;
+        template
+            .attachments
+            .as_mut()
+            .unwrap()
+            .iter_mut()
+            .for_each(|a| {
+                a.content = a.content.len().to_be_bytes().iter().cloned().collect_vec();
+            });
+
         assert_debug_snapshot!(
-             NotificationContentTemplate::AccountActivation { user_id: user.id }.compile_to_email(&api)
-                .await?, @r###"
+             template, @r###"
         EmailNotificationContent {
-            subject: "Activate you Secutils.dev account",
-            text: "To activate your Secutils.dev account, please click the following link: http://localhost:1234/activate?code=some-code&email=dev-1%40secutils.dev",
+            subject: "Activate your Secutils.dev account",
+            text: "To activate your Secutils.dev account, please use the following link: http://localhost:1234/activate?code=some-code&email=dev-1%40secutils.dev",
             html: Some(
-                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>Activate your Secutils.dev account</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .button-link {\n      color: #fff;\n      background-color: #2196F3;\n      padding: 10px 20px;\n      text-decoration: none;\n      border-radius: 5px;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>Activate your Secutils.dev account</h1>\n  <p>Thanks for signing up! To activate your account, please click the link below:</p>\n  <a class=\"button-link\" href=\"http://localhost:1234/activate?code=some-code&email=dev-1%40secutils.dev\">Activate my account</a>\n  <p>If the button above doesn't work, you can also copy and paste the following URL into your browser:</p>\n  <p>http://localhost:1234/activate?code=some-code&email=dev-1%40secutils.dev</p>\n  <p>If you have any trouble activating your account, please contact us at <a href=\"mailto: contact@secutils.dev\">contact@secutils.dev</a>.</p>\n</div>\n</body>\n</html>\n",
+                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>Activate your Secutils.dev account</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <p>Hi there,</p>\n  <p>Thanks for signing up! To activate your account, please click the button below:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/activate?code=some-code&email=dev-1%40secutils.dev\">Activate my account</a>\n  <p>Alternatively, copy and paste the following URL into your browser:</p>\n  <p>http://localhost:1234/activate?code=some-code&email=dev-1%40secutils.dev</p>\n  <p>If you have any trouble activating your account, please email to <a href=\"mailto: contact@secutils.dev\">contact@secutils.dev</a>\n    or simply reply to this email.</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
             ),
-            attachments: None,
+            attachments: Some(
+                [
+                    EmailNotificationAttachment {
+                        disposition: Inline(
+                            "secutils-logo",
+                        ),
+                        content_type: "image/png",
+                        content: [
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            15,
+                            165,
+                        ],
+                    },
+                ],
+            ),
         }
         "###
         );
@@ -123,16 +156,46 @@ mod tests {
             )
             .await?;
 
+        let mut template = NotificationContentTemplate::PasswordReset { user_id: user.id }
+            .compile_to_email(&api)
+            .await?;
+        template
+            .attachments
+            .as_mut()
+            .unwrap()
+            .iter_mut()
+            .for_each(|a| {
+                a.content = a.content.len().to_be_bytes().iter().cloned().collect_vec();
+            });
+
         assert_debug_snapshot!(
-             NotificationContentTemplate::PasswordReset { user_id: user.id }.compile_to_email(&api)
-                .await?, @r###"
+             template, @r###"
         EmailNotificationContent {
             subject: "Reset password for your Secutils.dev account",
-            text: "To reset your Secutils.dev password, please click the following link: http://localhost:1234/reset_credentials?code=some-code&email=dev-1%40secutils.dev",
+            text: "To reset your Secutils.dev password, please use the following link: http://localhost:1234/reset_credentials?code=some-code&email=dev-1%40secutils.dev",
             html: Some(
-                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>Reset password for your Secutils.dev account</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .button-link {\n      color: #fff;\n      background-color: #2196F3;\n      padding: 10px 20px;\n      text-decoration: none;\n      border-radius: 5px;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>Reset password for your Secutils.dev account</h1>\n  <p>You recently requested to reset your password. To reset your password, please click the link below:</p>\n  <a class=\"button-link\" href=\"http://localhost:1234/reset_credentials?code=some-code&email=dev-1%40secutils.dev\">Reset your password</a>\n  <p>If the button above doesn't work, you can also copy and paste the following URL into your browser:</p>\n  <p>http://localhost:1234/reset_credentials?code=some-code&email=dev-1%40secutils.dev</p>\n  <p>If you did not request to reset your password, please ignore this email and your password will not be changed.</p>\n  <p>If you have any trouble resetting your password, please contact us at <a href=\"mailto: contact@secutils.dev\">contact@secutils.dev</a>.</p>\n</div>\n</body>\n</html>\n",
+                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>Reset password for your Secutils.dev account</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <p>Hi there,</p>\n  <p>You recently requested to reset your password. To reset your password, please click the button below:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/reset_credentials?code=some-code&email=dev-1%40secutils.dev\">Reset my password</a>\n  <p>Alternatively, copy and paste the following URL into your browser:</p>\n  <p>http://localhost:1234/reset_credentials?code=some-code&email=dev-1%40secutils.dev</p>\n  <p>If you did not request to reset your password, please ignore this email and your password will not be changed.</p>\n  <p>If you have any trouble resetting your password, please email to <a href=\"mailto: contact@secutils.dev\">contact@secutils.dev</a>\n    or simply reply to this email.</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
             ),
-            attachments: None,
+            attachments: Some(
+                [
+                    EmailNotificationAttachment {
+                        disposition: Inline(
+                            "secutils-logo",
+                        ),
+                        content_type: "image/png",
+                        content: [
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            15,
+                            165,
+                        ],
+                    },
+                ],
+            ),
         }
         "###
         );
@@ -164,7 +227,7 @@ mod tests {
             subject: "[Secutils.dev] Change detected: \"tracker\"",
             text: "\"tracker\" tracker detected 10 changes in resources. Visit http://localhost:1234/ws/web_scraping__resources to learn more.",
             html: Some(
-                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" tracker detected 10 changes in resources</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .button-link {\n      color: #fff;\n      background-color: #2196F3;\n      padding: 10px 20px;\n      text-decoration: none;\n      border-radius: 5px;\n    }\n  </style>\n  <style>\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" tracker detected 10 changes in resources</h1>\n  <p>To learn more, visit the <b>Resources trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/ws/web_scraping__resources\">Web Scraping → Resources trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>http://localhost:1234/ws/web_scraping__resources</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
+                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" tracker detected 10 changes in resources</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" tracker detected 10 changes in resources</h1>\n  <p>To learn more, visit the <b>Resources trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/ws/web_scraping__resources\">Web Scraping → Resources trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>http://localhost:1234/ws/web_scraping__resources</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
             ),
             attachments: Some(
                 [
@@ -217,7 +280,7 @@ mod tests {
             subject: "[Secutils.dev] Check failed: \"tracker\"",
             text: "\"tracker\" tracker failed to check for changes in resources due to the following error: Something went wrong. Visit http://localhost:1234/ws/web_scraping__resources to learn more.",
             html: Some(
-                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" tracker failed to check for changes in resources</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .button-link {\n      color: #fff;\n      background-color: #2196F3;\n      padding: 10px 20px;\n      text-decoration: none;\n      border-radius: 5px;\n    }\n  </style>\n  <style>\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" tracker failed to check for changes in resources</h1>\n  <p>There was an error while checking resources: <b>Something went wrong</b>.</p>\n  <p>To check the tracker configuration and re-try, visit the <b>Resources trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/ws/web_scraping__resources\">Web Scraping → Resources trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>http://localhost:1234/ws/web_scraping__resources</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
+                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" tracker failed to check for changes in resources</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" tracker failed to check for changes in resources</h1>\n  <p>There was an error while checking resources: <b>Something went wrong</b>.</p>\n  <p>To check the tracker configuration and re-try, visit the <b>Resources trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/ws/web_scraping__resources\">Web Scraping → Resources trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>http://localhost:1234/ws/web_scraping__resources</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
             ),
             attachments: Some(
                 [
@@ -270,7 +333,7 @@ mod tests {
             subject: "[Secutils.dev] Change detected: \"tracker\"",
             text: "\"tracker\" tracker detected content changes. Visit http://localhost:1234/ws/web_scraping__content to learn more.",
             html: Some(
-                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" tracker detected content changes</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .button-link {\n      color: #fff;\n      background-color: #2196F3;\n      padding: 10px 20px;\n      text-decoration: none;\n      border-radius: 5px;\n    }\n  </style>\n  <style>\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" tracker detected content changes</h1>\n  <p>Current content: content</p>\n  <p>To learn more, visit the <b>Content trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/ws/web_scraping__content\">Web Scraping → Content trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>http://localhost:1234/ws/web_scraping__content</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
+                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" tracker detected content changes</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" tracker detected content changes</h1>\n  <p>Current content: content</p>\n  <p>To learn more, visit the <b>Content trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/ws/web_scraping__content\">Web Scraping → Content trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>http://localhost:1234/ws/web_scraping__content</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
             ),
             attachments: Some(
                 [
@@ -323,7 +386,7 @@ mod tests {
             subject: "[Secutils.dev] Check failed: \"tracker\"",
             text: "\"tracker\" tracker failed to check for content changes due to the following error: Something went wrong. Visit http://localhost:1234/ws/web_scraping__content to learn more.",
             html: Some(
-                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" tracker failed to check for content changes</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .button-link {\n      color: #fff;\n      background-color: #2196F3;\n      padding: 10px 20px;\n      text-decoration: none;\n      border-radius: 5px;\n    }\n  </style>\n  <style>\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" tracker failed to check for content changes</h1>\n  <p>There was an error while checking content: <b>Something went wrong</b>.</p>\n  <p>To check the tracker configuration and re-try, visit the <b>Content trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/ws/web_scraping__content\">Web Scraping → Content trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>http://localhost:1234/ws/web_scraping__content</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
+                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" tracker failed to check for content changes</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" tracker failed to check for content changes</h1>\n  <p>There was an error while checking content: <b>Something went wrong</b>.</p>\n  <p>To check the tracker configuration and re-try, visit the <b>Content trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/ws/web_scraping__content\">Web Scraping → Content trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>http://localhost:1234/ws/web_scraping__content</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
             ),
             attachments: Some(
                 [

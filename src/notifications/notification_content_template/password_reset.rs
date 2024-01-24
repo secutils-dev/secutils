@@ -1,7 +1,10 @@
 use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
-    notifications::EmailNotificationContent,
+    notifications::{
+        notification_content_template::SECUTILS_LOGO_BYTES, EmailNotificationAttachment,
+        EmailNotificationContent,
+    },
     users::{InternalUserDataNamespace, UserId},
 };
 use anyhow::Context;
@@ -32,9 +35,17 @@ pub async fn compile_to_email<DR: DnsResolver, ET: EmailTransport>(
         urlencoding::encode(&user.email)
     );
 
-    Ok(EmailNotificationContent::html(
+    Ok(EmailNotificationContent::html_with_attachments(
         "Reset password for your Secutils.dev account",
-        format!("To reset your Secutils.dev password, please click the following link: {encoded_reset_link}"),
-        api.templates.render("password_reset_email", &json!({ "encoded_reset_link": encoded_reset_link }))?,
+        format!("To reset your Secutils.dev password, please use the following link: {encoded_reset_link}"),
+        api.templates.render(
+            "password_reset_email",
+            &json!({ "encoded_reset_link": encoded_reset_link, "home_link": api.config.public_url.as_str() })
+        )?,
+        vec![EmailNotificationAttachment::inline(
+            "secutils-logo",
+            "image/png",
+            SECUTILS_LOGO_BYTES.to_vec(),
+        )]
     ))
 }
