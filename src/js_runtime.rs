@@ -121,20 +121,22 @@ impl JsRuntime {
             }
         });
 
+        let handle_error = |err: anyhow::Error| match ScriptTerminationReason::from(
+            termination_reason.load(Ordering::Relaxed),
+        ) {
+            ScriptTerminationReason::MemoryLimit => err.context("Script exceeded memory limit."),
+            ScriptTerminationReason::TimeLimit => err.context("Script exceeded time limit."),
+            ScriptTerminationReason::Unknown => err,
+        };
+
         // Retrieve the result `Promise`.
         let script_result_promise = self
             .inner_runtime
             .execute_script("<anon>", js_code.into().into())
             .map_err(|err| {
-                match ScriptTerminationReason::from(termination_reason.load(Ordering::Relaxed)) {
-                    ScriptTerminationReason::MemoryLimit => {
-                        err.context("Script exceeded memory limit.")
-                    }
-                    ScriptTerminationReason::TimeLimit => {
-                        err.context("Script exceeded time limit.")
-                    }
-                    ScriptTerminationReason::Unknown => err,
-                }
+                timeout_token.swap(true, Ordering::Relaxed);
+                self.inner_runtime.v8_isolate().cancel_terminate_execution();
+                handle_error(err)
             })?;
 
         // Wait for the promise to resolve.
@@ -145,24 +147,12 @@ impl JsRuntime {
             .await
             .map_err(|err| {
                 timeout_token.swap(true, Ordering::Relaxed);
-                match ScriptTerminationReason::from(termination_reason.load(Ordering::Relaxed)) {
-                    ScriptTerminationReason::MemoryLimit => {
-                        err.context("Script exceeded memory limit.")
-                    }
-                    ScriptTerminationReason::TimeLimit => {
-                        err.context("Script exceeded time limit.")
-                    }
-                    ScriptTerminationReason::Unknown => err,
-                }
+                self.inner_runtime.v8_isolate().cancel_terminate_execution();
+                handle_error(err)
             })?;
 
-        // If execution was terminated due to timeout, but script managed to complete execution nevertheless, cancel
-        // termination.
+        // Abort termination thread, if script managed to complete.
         timeout_token.swap(true, Ordering::Relaxed);
-        let isolate = self.inner_runtime.v8_isolate();
-        if isolate.is_execution_terminating() {
-            isolate.cancel_terminate_execution();
-        }
 
         let scope = &mut self.inner_runtime.handle_scope();
         let local = v8::Local::new(scope, script_result);
