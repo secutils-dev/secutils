@@ -1,6 +1,6 @@
 [package]
 name = "secutils"
-version = "1.0.0-alpha.6"
+version = "1.0.0-beta.1"
 authors = ["Secutils <dev@secutils.dev>"]
 edition = "2021"
 

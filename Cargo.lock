@@ -3962,7 +3962,7 @@ dependencies = [
 
 [[package]]
 name = "secutils"
-version = "1.0.0-alpha.6"
+version = "1.0.0-beta.1"
 dependencies = [
  "actix-cors",
  "actix-http",
