@@ -8,27 +8,29 @@ pub struct UserLogContext {
     pub id: UserId,
 }
 
+impl UserLogContext {
+    /// Returns context used for the structured logging.
+    pub fn new(id: UserId) -> Self {
+        Self { id }
+    }
+}
+
 impl User {
     /// Returns context used for the structured logging.
     pub fn log_context(&self) -> UserLogContext {
-        UserLogContext { id: self.id }
+        UserLogContext::new(self.id)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        security::StoredCredentials,
-        tests::{MockUserBuilder, UserLogContext},
-    };
+    use crate::{logging::UserLogContext, security::StoredCredentials, tests::MockUserBuilder};
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
-        assert_json_snapshot!(UserLogContext {
-            id: 1.try_into()?
-        }, @r###"
+        assert_json_snapshot!(UserLogContext::new(1.try_into()?), @r###"
         {
           "id": 1
         }
@@ -52,7 +54,7 @@ mod tests {
         )
         .build();
 
-        assert_eq!(user.log_context(), UserLogContext { id: 3.try_into()? });
+        assert_eq!(user.log_context(), UserLogContext::new(3.try_into()?));
 
         Ok(())
     }

@@ -1,5 +1,6 @@
 use crate::{
     api::Api,
+    logging::UserLogContext,
     network::{DnsResolver, EmailTransport},
     scheduler::{
         job_ext::JobExt, scheduler_job::SchedulerJob, scheduler_jobs::WebPageTrackersTriggerJob,
@@ -38,10 +39,7 @@ impl WebPageTrackersScheduleJob {
                 let api = api.clone();
                 Box::pin(async move {
                     if let Err(err) = Self::execute(api, scheduler).await {
-                        log::error!(
-                            "Failed to execute resources trackers schedule job: {:?}",
-                            err
-                        );
+                        log::error!("Failed to execute resources trackers schedule job: {err:?}");
                     }
                 })
             },
@@ -91,8 +89,9 @@ impl WebPageTrackersScheduleJob {
         for tracker in unscheduled_trackers {
             if tracker.settings.revisions == 0 {
                 log::error!(
-                    "Found an unscheduled tracker ({}) that doesn't support tracking, skipping…",
-                    tracker.id
+                    user = log::as_serde!(UserLogContext::new(tracker.user_id)),
+                    util = log::as_serde!(tracker.log_context());
+                    "Found an unscheduled tracker that doesn't support tracking, skipping…"
                 );
                 continue;
             }
@@ -101,8 +100,9 @@ impl WebPageTrackersScheduleJob {
                 job_config.schedule
             } else {
                 log::error!(
-                    "Found an unscheduled tracker ({}) that doesn't have tracking schedule, skipping…",
-                    tracker.id
+                    user = log::as_serde!(UserLogContext::new(tracker.user_id)),
+                    util = log::as_serde!(tracker.log_context());
+                    "Found an unscheduled tracker that doesn't have tracking schedule, skipping…"
                 );
                 continue;
             };

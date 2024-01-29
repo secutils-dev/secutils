@@ -1,5 +1,6 @@
 use crate::{
     api::Api,
+    logging::JobLogContext,
     network::{DnsResolver, EmailTransport},
     scheduler::{job_ext::JobExt, scheduler_job::SchedulerJob},
     utils::web_scraping::WebPageTrackerKind,
@@ -34,7 +35,8 @@ impl WebPageTrackersTriggerJob {
                 .map(|tracker| (tracker.id, tracker.settings, tracker.job_config)),
         }) else {
             log::warn!(
-                "Web page tracker job reference doesn't exist, the job ('{job_id}') will be removed."
+                job = log::as_serde!(JobLogContext::new(job_id));
+                "Web page tracker job reference doesn't exist, the job will be removed."
             );
             return Ok(None);
         };
@@ -92,11 +94,14 @@ impl WebPageTrackersTriggerJob {
                 // table for pending jobs.
                 if let Err(err) = db.reset_scheduler_job_state(uuid, true).await {
                     log::error!(
-                        "Error marking web page tracker trigger job as pending: {}",
-                        err
+                        job = log::as_serde!(JobLogContext::new(uuid));
+                        "Error marking web page tracker trigger job as pending: {err:?}"
                     );
                 } else {
-                    log::debug!("Successfully run the job: {}", uuid);
+                    log::debug!(
+                        job = log::as_serde!(JobLogContext::new(uuid));
+                        "Successfully run the job."
+                    );
                 }
             })
         })?;

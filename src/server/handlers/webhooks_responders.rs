@@ -1,6 +1,7 @@
 use crate::{
     error::Error as SecutilsError,
     js_runtime::JsRuntime,
+    logging::MetricsContext,
     server::app_state::AppState,
     utils::webhooks::{
         ResponderScriptContext, ResponderScriptResult, RespondersRequestCreateParams,
@@ -13,7 +14,6 @@ use actix_web::{
 };
 use bytes::Bytes;
 use serde::Deserialize;
-use serde_json::json;
 use std::{borrow::Cow, collections::HashMap};
 
 const X_REPLACED_PATH_HEADER_NAME: &str = "x-replaced-path";
@@ -208,7 +208,7 @@ pub async fn webhooks_responders(
                     log::info!(
                         user = log::as_serde!(user.log_context()),
                         util = log::as_serde!(responder.log_context()),
-                        metrics = log::as_serde!(json!({ "script_execution_time": execution_time.as_nanos() }));
+                        metrics = log::as_serde!(MetricsContext::default().with_script_execution_time(execution_time));
                         "Executed responder user script in {execution_time:.2?}.",
                     );
                     override_result.unwrap_or_default()

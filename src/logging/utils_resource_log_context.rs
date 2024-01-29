@@ -1,4 +1,8 @@
-use crate::utils::{webhooks::Responder, UtilsResource};
+use crate::utils::{
+    web_scraping::{WebPageTracker, WebPageTrackerKind, WebPageTrackerTag},
+    webhooks::Responder,
+    UtilsResource,
+};
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use uuid::Uuid;
 
@@ -24,6 +28,20 @@ impl Responder {
     }
 }
 
+impl<Tag: WebPageTrackerTag> WebPageTracker<Tag> {
+    /// Returns context used for the structured logging.
+    pub fn log_context(&self) -> UtilsResourceLogContext {
+        UtilsResourceLogContext {
+            resource: match Tag::KIND {
+                WebPageTrackerKind::WebPageResources => UtilsResource::WebScrapingResources,
+                WebPageTrackerKind::WebPageContent => UtilsResource::WebScrapingContent,
+            },
+            resource_id: self.id,
+            resource_name: self.name.as_str(),
+        }
+    }
+}
+
 impl<'n> Serialize for UtilsResourceLogContext<'n> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -40,8 +58,11 @@ impl<'n> Serialize for UtilsResourceLogContext<'n> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        tests::{MockResponderBuilder, UtilsResourceLogContext},
-        utils::UtilsResource,
+        tests::{MockResponderBuilder, MockWebPageTrackerBuilder, UtilsResourceLogContext},
+        utils::{
+            web_scraping::{WebPageContentTrackerTag, WebPageResourcesTrackerTag},
+            UtilsResource,
+        },
     };
     use insta::assert_json_snapshot;
     use uuid::uuid;
@@ -77,6 +98,36 @@ mod tests {
         }
         "###);
 
+        assert_json_snapshot!(UtilsResourceLogContext {
+            resource: UtilsResource::WebScrapingResources,
+            resource_id: uuid!("00000000-0000-0000-0000-000000000002"),
+            resource_name: "my-tracker",
+        }, @r###"
+        {
+          "resource": [
+            "web_scraping",
+            "resources"
+          ],
+          "resource_id": "00000000-0000-0000-0000-000000000002",
+          "resource_name": "my-tracker"
+        }
+        "###);
+
+        assert_json_snapshot!(UtilsResourceLogContext {
+            resource: UtilsResource::WebScrapingContent,
+            resource_id: uuid!("00000000-0000-0000-0000-000000000002"),
+            resource_name: "my-tracker",
+        }, @r###"
+        {
+          "resource": [
+            "web_scraping",
+            "content"
+          ],
+          "resource_id": "00000000-0000-0000-0000-000000000002",
+          "resource_name": "my-tracker"
+        }
+        "###);
+
         Ok(())
     }
 
@@ -93,6 +144,38 @@ mod tests {
             responder.log_context(),
             UtilsResourceLogContext {
                 resource: UtilsResource::WebhooksResponders,
+                resource_id: uuid!("00000000-0000-0000-0000-000000000001"),
+                resource_name: "some-name"
+            }
+        );
+
+        let tracker = MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
+        assert_eq!(
+            tracker.log_context(),
+            UtilsResourceLogContext {
+                resource: UtilsResource::WebScrapingResources,
+                resource_id: uuid!("00000000-0000-0000-0000-000000000001"),
+                resource_name: "some-name"
+            }
+        );
+
+        let tracker = MockWebPageTrackerBuilder::<WebPageContentTrackerTag>::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "http://localhost:1234/my/app?q=2",
+            3,
+        )?
+        .build();
+        assert_eq!(
+            tracker.log_context(),
+            UtilsResourceLogContext {
+                resource: UtilsResource::WebScrapingContent,
                 resource_id: uuid!("00000000-0000-0000-0000-000000000001"),
                 resource_name: "some-name"
             }
