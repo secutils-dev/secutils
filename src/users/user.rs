@@ -1,6 +1,8 @@
-use crate::{security::StoredCredentials, users::UserId};
+use crate::{
+    security::StoredCredentials,
+    users::{UserId, UserSubscription},
+};
 use serde::{ser::SerializeStruct, Serialize, Serializer};
-use std::collections::HashSet;
 use time::OffsetDateTime;
 
 /// Serializer that makes sure credentials aren't serialized and exposed to the client. Instead, the
@@ -15,7 +17,7 @@ where
     credentials.end()
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, PartialEq)]
 pub struct User {
     #[serde(skip_serializing)]
     pub id: UserId,
@@ -23,10 +25,10 @@ pub struct User {
     pub handle: String,
     #[serde(serialize_with = "stored_credentials_safe_serialize")]
     pub credentials: StoredCredentials,
-    pub roles: HashSet<String>,
     #[serde(with = "time::serde::timestamp")]
     pub created: OffsetDateTime,
     pub activated: bool,
+    pub subscription: UserSubscription,
 }
 
 impl AsRef<User> for User {
@@ -40,6 +42,7 @@ mod tests {
     use crate::{
         security::StoredCredentials,
         tests::{webauthn::SERIALIZED_PASSKEY, MockUserBuilder},
+        users::{SubscriptionTier, UserSubscription},
     };
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
@@ -57,7 +60,6 @@ mod tests {
             // January 1, 2010 11:00:00
             OffsetDateTime::from_unix_timestamp(1262340000)?,
         )
-        .add_role("ADMIN")
         .build();
 
         let user_with_passkey = MockUserBuilder::new(
@@ -69,6 +71,13 @@ mod tests {
             OffsetDateTime::from_unix_timestamp(1262340000)?,
         )
         .set_activated()
+        .set_subscription(UserSubscription {
+            tier: SubscriptionTier::Professional,
+            started_at: OffsetDateTime::from_unix_timestamp(1262340001)?,
+            ends_at: None,
+            trial_started_at: None,
+            trial_ends_at: None,
+        })
         .build();
 
         let user_with_password_and_passkey = MockUserBuilder::new(
@@ -94,11 +103,11 @@ mod tests {
                 "password": true,
                 "passkey": false
               },
-              "roles": [
-                "admin"
-              ],
               "created": 1262340000,
-              "activated": false
+              "activated": false,
+              "subscription": {
+                "tier": "ultimate"
+              }
             }
             "###);
         });
@@ -112,9 +121,11 @@ mod tests {
                 "password": false,
                 "passkey": true
               },
-              "roles": [],
               "created": 1262340000,
-              "activated": true
+              "activated": true,
+              "subscription": {
+                "tier": "professional"
+              }
             }
             "###);
         });
@@ -128,9 +139,11 @@ mod tests {
                 "password": true,
                 "passkey": true
               },
-              "roles": [],
               "created": 1262340000,
-              "activated": true
+              "activated": true,
+              "subscription": {
+                "tier": "ultimate"
+              }
             }
             "###);
         });

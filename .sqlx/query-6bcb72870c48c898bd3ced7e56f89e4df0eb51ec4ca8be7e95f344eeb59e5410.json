@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\nINSERT INTO user_subscriptions (user_id, tier, started_at, ends_at, trial_started_at, trial_ends_at)\nVALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )\nON CONFLICT(user_id) DO UPDATE SET tier=excluded.tier, started_at=excluded.started_at, ends_at=excluded.ends_at, trial_started_at=excluded.trial_started_at, trial_ends_at=excluded.trial_ends_at\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "6bcb72870c48c898bd3ced7e56f89e4df0eb51ec4ca8be7e95f344eeb59e5410"
+}

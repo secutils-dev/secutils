@@ -13,7 +13,7 @@ use crate::{
     network::{Network, TokioDnsResolver},
     scheduler::Scheduler,
     search::{populate_search_index, SearchIndex},
-    security::{create_webauthn, Security},
+    security::create_webauthn,
     templates::create_templates,
     users::builtin_users_initializer,
 };
@@ -29,7 +29,7 @@ use std::sync::Arc;
 pub use self::app_state::tests;
 
 pub use app_state::AppState;
-pub use ui_state::{License, Status, StatusLevel, UiState, WebhookUrlType};
+pub use ui_state::{Status, StatusLevel, UiState, WebhookUrlType};
 
 #[actix_rt::main]
 pub async fn run(
@@ -62,9 +62,9 @@ pub async fn run(
         database,
         search_index,
         Network::new(TokioDnsResolver::create(), email_transport),
+        create_webauthn(&config)?,
         create_templates()?,
     ));
-    let security = Security::new(api.clone(), create_webauthn(&config)?);
 
     if let Some(ref builtin_users) = builtin_users {
         builtin_users_initializer(&api, builtin_users)
@@ -79,7 +79,7 @@ pub async fn run(
     JsRuntime::init_platform();
 
     let http_server_url = format!("0.0.0.0:{}", config.http_port);
-    let state = web::Data::new(AppState::new(config, security, api.clone()));
+    let state = web::Data::new(AppState::new(config, api.clone()));
     let http_server = HttpServer::new(move || {
         App::new()
             .wrap(middleware::Compat::new(middleware::Compress::default()))
@@ -164,6 +164,10 @@ pub async fn run(
                     .route("/user", web::get().to(handlers::user_get))
                     .route("/user/data", web::post().to(handlers::user_data_set))
                     .route("/user/data", web::get().to(handlers::user_data_get))
+                    .route(
+                        "/user/subscription",
+                        web::post().to(handlers::security_subscription_update),
+                    )
                     .route(
                         "/webhooks/{user_handle}/{responder_path:.*}",
                         web::route().to(handlers::webhooks_responders),

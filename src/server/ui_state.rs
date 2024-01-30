@@ -1,13 +1,10 @@
-mod license;
 mod status;
 mod status_level;
 mod webhook_url_type;
 
-pub use self::{
-    license::License, status::Status, status_level::StatusLevel, webhook_url_type::WebhookUrlType,
-};
+pub use self::{status::Status, status_level::StatusLevel, webhook_url_type::WebhookUrlType};
 use crate::{
-    users::{ClientUserShare, User, UserSettings},
+    users::{ClientUserShare, SubscriptionFeatures, User, UserSettings},
     utils::Util,
 };
 use serde::Serialize;
@@ -16,9 +13,10 @@ use serde::Serialize;
 #[serde(rename_all = "camelCase")]
 pub struct UiState<'a> {
     pub status: &'a Status,
-    pub license: License,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<User>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub features: Option<SubscriptionFeatures>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_share: Option<ClientUserShare>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -30,9 +28,9 @@ pub struct UiState<'a> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        security::StoredCredentials,
-        server::{License, Status, StatusLevel, UiState, WebhookUrlType},
-        users::{ClientUserShare, SharedResource, User, UserId, UserShare, UserShareId},
+        server::{Status, StatusLevel, UiState, WebhookUrlType},
+        tests::{mock_config, mock_user},
+        users::{ClientUserShare, SharedResource, UserId, UserShare, UserShareId},
         utils::Util,
     };
     use insta::assert_json_snapshot;
@@ -43,21 +41,15 @@ mod tests {
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let features = user.subscription.get_features(&mock_config()?);
         let ui_state = UiState {
             status: &Status {
                 version: "1.0.0-alpha.4".to_string(),
                 level: StatusLevel::Available,
             },
-            license: License,
-            user: Some(User {
-                id: UserId::default(),
-                email: "dev@secutils.dev".to_string(),
-                handle: "dev-handle".to_string(),
-                credentials: StoredCredentials::default(),
-                created: OffsetDateTime::from_unix_timestamp(946720800)?,
-                roles: ["ADMIN".to_string()].into_iter().collect(),
-                activated: true,
-            }),
+            user: Some(user),
+            features: Some(features),
             user_share: Some(ClientUserShare::from(UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
                 user_id: UserId::default(),
@@ -86,19 +78,21 @@ mod tests {
             "version": "1.0.0-alpha.4",
             "level": "available"
           },
-          "license": null,
           "user": {
-            "email": "dev@secutils.dev",
-            "handle": "dev-handle",
+            "email": "dev-1@secutils.dev",
+            "handle": "dev-handle-1",
             "credentials": {
-              "password": false,
+              "password": true,
               "passkey": false
             },
-            "roles": [
-              "ADMIN"
-            ],
-            "created": 946720800,
-            "activated": true
+            "created": 1262340000,
+            "activated": false,
+            "subscription": {
+              "tier": "ultimate"
+            }
+          },
+          "features": {
+            "admin": true
           },
           "userShare": {
             "id": "00000000-0000-0000-0000-000000000001",
@@ -131,8 +125,8 @@ mod tests {
                 version: "1.0.0-alpha.4".to_string(),
                 level: StatusLevel::Available,
             },
-            license: License,
             user: None,
+            features: None,
             user_share: None,
             settings: None,
             utils: vec![],
@@ -144,7 +138,6 @@ mod tests {
             "version": "1.0.0-alpha.4",
             "level": "available"
           },
-          "license": null,
           "utils": [],
           "webhookUrlType": "subdomain"
         }

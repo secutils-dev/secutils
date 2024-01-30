@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\nINSERT INTO user_subscriptions (user_id, tier, started_at, ends_at, trial_started_at, trial_ends_at)\nVALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "197358b90210c790bd321013c17b2cd90412d88bdbbb3e4e42a772af37fcb5be"
+}

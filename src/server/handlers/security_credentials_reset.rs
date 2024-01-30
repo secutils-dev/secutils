@@ -32,7 +32,8 @@ pub async fn security_credentials_reset_password(
     }
 
     match state
-        .security
+        .api
+        .security()
         .reset_credentials(
             &body_params.email,
             Credentials::Password(body_params.password),

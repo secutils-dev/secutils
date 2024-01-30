@@ -8,6 +8,7 @@ mod security_credentials_update;
 mod security_signin;
 mod security_signout;
 mod security_signup;
+mod security_subscription_update;
 mod security_users_remove;
 mod security_webauthn_signin;
 mod security_webauthn_signup;
@@ -35,6 +36,7 @@ pub use self::{
     security_signin::security_signin,
     security_signout::security_signout,
     security_signup::security_signup,
+    security_subscription_update::security_subscription_update,
     security_users_remove::security_users_remove,
     security_webauthn_signin::{security_webauthn_signin_finish, security_webauthn_signin_start},
     security_webauthn_signup::{security_webauthn_signup_finish, security_webauthn_signup_start},

@@ -1,6 +1,6 @@
 use crate::{
     error::Error as SecutilsError,
-    server::{AppState, License, UiState},
+    server::{AppState, UiState},
     users::{ClientUserShare, PublicUserDataNamespace, User, UserShare},
 };
 use actix_web::{web, HttpResponse};
@@ -36,10 +36,13 @@ pub async fn ui_state_get(
         SecutilsError::from(anyhow!("Status is not available."))
     })?;
 
+    let features = user
+        .as_ref()
+        .map(|user| user.subscription.get_features(&state.config));
     Ok(HttpResponse::Ok().json(UiState {
         status: status.deref(),
-        license: License,
         user,
+        features,
         user_share: user_share.map(ClientUserShare::from),
         settings,
         utils,

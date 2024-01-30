@@ -19,8 +19,8 @@ impl FromRequest for User {
             let basic_auth = Option::<BasicAuth>::extract(&req).await?;
             if let Some(basic_auth) = basic_auth {
                 if let Some(password) = basic_auth.password() {
-                    return match state
-                        .security
+                    let security_api = state.api.security();
+                    return match security_api
                         .authenticate(
                             basic_auth.user_id(),
                             Credentials::Password(password.to_string()),

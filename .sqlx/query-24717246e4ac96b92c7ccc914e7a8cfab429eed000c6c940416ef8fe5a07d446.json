@@ -1,0 +1,80 @@
+{
+  "db_name": "SQLite",
+  "query": "\nSELECT id, email, handle, credentials, created, activated, s.tier as subscription_tier,\n       s.started_at as subscription_started_at, s.ends_at as subscription_ends_at,\n       s.trial_started_at as subscription_trial_started_at, \n       s.trial_ends_at as subscription_trial_ends_at\nFROM users as u\nINNER JOIN user_subscriptions as s\nON s.user_id = u.id\nWHERE u.email = ?1\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Int64"
+      },
+      {
+        "name": "email",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "handle",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "credentials",
+        "ordinal": 3,
+        "type_info": "Blob"
+      },
+      {
+        "name": "created",
+        "ordinal": 4,
+        "type_info": "Int64"
+      },
+      {
+        "name": "activated",
+        "ordinal": 5,
+        "type_info": "Int64"
+      },
+      {
+        "name": "subscription_tier",
+        "ordinal": 6,
+        "type_info": "Int64"
+      },
+      {
+        "name": "subscription_started_at",
+        "ordinal": 7,
+        "type_info": "Int64"
+      },
+      {
+        "name": "subscription_ends_at",
+        "ordinal": 8,
+        "type_info": "Int64"
+      },
+      {
+        "name": "subscription_trial_started_at",
+        "ordinal": 9,
+        "type_info": "Int64"
+      },
+      {
+        "name": "subscription_trial_ends_at",
+        "ordinal": 10,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "24717246e4ac96b92c7ccc914e7a8cfab429eed000c6c940416ef8fe5a07d446"
+}

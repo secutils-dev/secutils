@@ -4,7 +4,7 @@ use crate::{
     users::{
         BuiltinUser, DictionaryDataUserDataSetter, PublicUserDataNamespace, SharedResource, User,
         UserData, UserDataKey, UserDataNamespace, UserId, UserSettingsSetter, UserShare,
-        UserShareId,
+        UserShareId, UserSubscription,
     },
 };
 use anyhow::{bail, Context};
@@ -56,8 +56,11 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
                 handle: builtin_user.handle,
                 created: user.created,
                 credentials: builtin_user.credentials,
-                roles: builtin_user.roles,
                 activated: true,
+                subscription: UserSubscription {
+                    tier: builtin_user.tier,
+                    ..user.subscription
+                },
             },
             None => User {
                 id: UserId::default(),
@@ -65,8 +68,14 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
                 handle: builtin_user.handle,
                 credentials: builtin_user.credentials,
                 created: OffsetDateTime::now_utc(),
-                roles: builtin_user.roles,
                 activated: true,
+                subscription: UserSubscription {
+                    tier: builtin_user.tier,
+                    started_at: OffsetDateTime::now_utc(),
+                    ends_at: None,
+                    trial_started_at: None,
+                    trial_ends_at: None,
+                },
             },
         };
 
@@ -77,7 +86,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
     pub async fn remove_by_email<E: AsRef<str>>(
         &self,
         user_email: E,
-    ) -> anyhow::Result<Option<User>> {
+    ) -> anyhow::Result<Option<UserId>> {
         self.api.db.remove_user_by_email(user_email).await
     }
 

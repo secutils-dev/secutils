@@ -58,8 +58,8 @@ pub async fn security_webauthn_signin_start(
     session.remove(WEBAUTHN_SESSION_KEY);
 
     // Start handshake and return challenge to the client.
-    let webauthn_challenge_result = state
-        .security
+    let security_api = state.api.security();
+    let webauthn_challenge_result = security_api
         .start_webauthn_handshake(&body_params.email, WebAuthnChallengeType::Authentication)
         .await
         .and_then(|challenge| {
@@ -94,8 +94,8 @@ pub async fn security_webauthn_signin_finish(
         return generic_internal_server_error();
     };
 
-    let user = match state
-        .security
+    let security_api = state.api.security();
+    let user = match security_api
         .authenticate(&email, Credentials::WebAuthnPublicKey(body_params))
         .await
     {

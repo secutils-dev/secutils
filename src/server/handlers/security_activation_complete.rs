@@ -21,7 +21,8 @@ pub async fn security_activation_complete(
     }
 
     match state
-        .security
+        .api
+        .security()
         .activate(&body_params.email, &body_params.activation_code)
         .await
     {

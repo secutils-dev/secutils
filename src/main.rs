@@ -333,19 +333,19 @@ mod tests {
     use anyhow::anyhow;
     use cron::Schedule;
     use lettre::transport::stub::AsyncStubTransport;
-    use std::{
-        collections::{HashMap, HashSet},
-        ops::Add,
-        time::Duration,
-    };
+    use std::{collections::HashMap, ops::Add, time::Duration};
     use tantivy::Index;
     use time::OffsetDateTime;
     use trust_dns_resolver::proto::rr::Record;
     use url::Url;
 
     use crate::{
-        config::JsRuntimeConfig, search::SearchIndex, server::WebhookUrlType,
+        config::JsRuntimeConfig,
+        search::SearchIndex,
+        security::create_webauthn,
+        server::WebhookUrlType,
         templates::create_templates,
+        users::{SubscriptionTier, UserSubscription},
     };
     pub use crate::{logging::tests::*, network::tests::*, server::tests::*, utils::tests::*};
     use ctor::ctor;
@@ -370,7 +370,13 @@ mod tests {
                     handle: handle.into(),
                     credentials,
                     created,
-                    roles: HashSet::new(),
+                    subscription: UserSubscription {
+                        tier: SubscriptionTier::Ultimate,
+                        started_at: created.add(Duration::from_secs(1)),
+                        ends_at: None,
+                        trial_started_at: None,
+                        trial_ends_at: None,
+                    },
                     activated: false,
                 },
             }
@@ -382,8 +388,8 @@ mod tests {
             self
         }
 
-        pub fn add_role<R: AsRef<str>>(mut self, role: R) -> Self {
-            self.user.roles.insert(role.as_ref().to_lowercase());
+        pub fn set_subscription(mut self, subscription: UserSubscription) -> Self {
+            self.user.subscription = subscription;
             self
         }
 
@@ -499,7 +505,8 @@ mod tests {
                 password_hash: Some("hash".to_string()),
                 ..Default::default()
             },
-            OffsetDateTime::now_utc(),
+            // January 1, 2010 11:00:00
+            OffsetDateTime::from_unix_timestamp(1262340000)?,
         )
         .build())
     }
@@ -552,11 +559,13 @@ mod tests {
     pub async fn mock_api_with_config(
         config: Config,
     ) -> anyhow::Result<Api<MockResolver, AsyncStubTransport>> {
+        let webauthn = create_webauthn(&config)?;
         Ok(Api::new(
             config,
             mock_db().await?,
             mock_search_index()?,
             mock_network(),
+            webauthn,
             create_templates()?,
         ))
     }
@@ -564,11 +573,14 @@ mod tests {
     pub async fn mock_api_with_network<DR: DnsResolver>(
         network: Network<DR, AsyncStubTransport>,
     ) -> anyhow::Result<Api<DR, AsyncStubTransport>> {
+        let config = mock_config()?;
+        let webauthn = create_webauthn(&config)?;
         Ok(Api::new(
-            mock_config()?,
+            config,
             mock_db().await?,
             mock_search_index()?,
             network,
+            webauthn,
             create_templates()?,
         ))
     }

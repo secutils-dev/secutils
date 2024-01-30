@@ -63,8 +63,8 @@ pub async fn security_webauthn_signup_start(
     session.remove(WEBAUTHN_SESSION_KEY);
 
     // Start handshake and return challenge to the client.
-    let webauthn_challenge_result = state
-        .security
+    let security_api = state.api.security();
+    let webauthn_challenge_result = security_api
         .start_webauthn_handshake(&body_params.email, WebAuthnChallengeType::Registration)
         .await
         .and_then(|challenge| {
@@ -100,8 +100,8 @@ pub async fn security_webauthn_signup_finish(
     };
 
     // Finally, create user entry in database
-    let user = match state
-        .security
+    let security_api = state.api.security();
+    let user = match security_api
         .signup(&email, Credentials::WebAuthnPublicKey(body_params))
         .await
     {

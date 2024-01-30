@@ -96,6 +96,7 @@ default = [
     "reqwest/rustls",
     "serde/derive",
     "serde_json/arbitrary_precision",
+    "serde_with/time_0_3",
     "sqlx/json",
     "sqlx/macros",
     "sqlx/migrate",

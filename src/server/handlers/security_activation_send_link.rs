@@ -18,7 +18,7 @@ pub async fn security_activation_send_link(
             .json(json!({ "message": "User account is already activated." }));
     }
 
-    match state.security.send_activation_link(&user).await {
+    match state.api.security().send_activation_link(&user).await {
         Ok(_) => {
             log::info!(
                 "Successfully sent user ({}) account activation link.",

@@ -32,8 +32,8 @@ pub async fn security_signin(
         return HttpResponse::BadRequest().json(json!({ "message": "Password cannot be empty." }));
     }
 
-    let user = match state
-        .security
+    let security_api = state.api.security();
+    let user = match security_api
         .authenticate(
             &body_params.email,
             Credentials::Password(body_params.password),

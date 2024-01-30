@@ -35,8 +35,8 @@ pub async fn security_signup(
             .json(json!({ "message": "Password cannot be empty or shorter than 8 characters." }));
     }
 
-    let user = match state
-        .security
+    let security_api = state.api.security();
+    let user = match security_api
         .signup(
             &body_params.email,
             Credentials::Password(body_params.password),

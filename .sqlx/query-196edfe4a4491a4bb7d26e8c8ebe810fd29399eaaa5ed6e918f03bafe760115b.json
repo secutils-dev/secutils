@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\nINSERT INTO users (email, handle, credentials, created, activated)\nVALUES ( ?1, ?2, ?3, ?4, ?5 )\nON CONFLICT(email) DO UPDATE SET handle=excluded.handle, credentials=excluded.credentials, created=excluded.created, activated=excluded.activated \nRETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "196edfe4a4491a4bb7d26e8c8ebe810fd29399eaaa5ed6e918f03bafe760115b"
+}

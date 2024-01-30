@@ -32,7 +32,8 @@ pub async fn security_credentials_send_link(
         }
     };
 
-    match state.security.send_credentials_reset_link(&user).await {
+    let security_api = state.api.security();
+    match security_api.send_credentials_reset_link(&user).await {
         Ok(_) => {
             log::info!("Successfully sent user ({}) password reset link.", *user.id);
             HttpResponse::NoContent().finish()

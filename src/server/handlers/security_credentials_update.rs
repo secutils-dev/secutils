@@ -24,8 +24,8 @@ pub async fn security_credentials_update_password(
             .json(json!({ "message": "Password cannot be empty or shorter than 8 characters." }));
     }
 
-    match state
-        .security
+    let security_api = state.api.security();
+    match security_api
         .update_credentials(
             &user.email,
             Credentials::Password(body_params.into_inner().password),
@@ -53,8 +53,8 @@ pub async fn security_credentials_update_passkey_start(
     user: User,
 ) -> impl Responder {
     // Start handshake and return challenge to the client.
-    match state
-        .security
+    let security_api = state.api.security();
+    match security_api
         .start_webauthn_handshake(&user.email, WebAuthnChallengeType::Registration)
         .await
     {
@@ -72,8 +72,8 @@ pub async fn security_credentials_update_passkey_finish(
     body_params: web::Json<serde_json::Value>,
     user: User,
 ) -> impl Responder {
-    match state
-        .security
+    let security_api = state.api.security();
+    match security_api
         .update_credentials(
             &user.email,
             Credentials::WebAuthnPublicKey(body_params.into_inner()),

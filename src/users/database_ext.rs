@@ -23,9 +23,14 @@ impl Database {
         query_as!(
             RawUser,
             r#"
-SELECT id, email, handle, credentials, created, roles, activated
-FROM users
-WHERE id = ?1
+SELECT id, email, handle, credentials, created, activated, s.tier as subscription_tier,
+       s.started_at as subscription_started_at, s.ends_at as subscription_ends_at,
+       s.trial_started_at as subscription_trial_started_at, 
+       s.trial_ends_at as subscription_trial_ends_at
+FROM users as u
+INNER JOIN user_subscriptions as s
+ON s.user_id = u.id
+WHERE u.id = ?1
                 "#,
             *id
         )
@@ -41,9 +46,14 @@ WHERE id = ?1
         query_as!(
             RawUser,
             r#"
-SELECT id, email, handle, credentials, created, roles, activated
-FROM users
-WHERE email = ?1
+SELECT id, email, handle, credentials, created, activated, s.tier as subscription_tier,
+       s.started_at as subscription_started_at, s.ends_at as subscription_ends_at,
+       s.trial_started_at as subscription_trial_started_at, 
+       s.trial_ends_at as subscription_trial_ends_at
+FROM users as u
+INNER JOIN user_subscriptions as s
+ON s.user_id = u.id
+WHERE u.email = ?1
                 "#,
             email
         )
@@ -62,9 +72,14 @@ WHERE email = ?1
         let mut raw_users = query_as!(
             RawUser,
             r#"
-SELECT id, email, handle, credentials, created, roles, activated
-FROM users
-WHERE handle = ?1
+SELECT id, email, handle, credentials, created, activated, s.tier as subscription_tier,
+       s.started_at as subscription_started_at, s.ends_at as subscription_ends_at,
+       s.trial_started_at as subscription_trial_started_at, 
+       s.trial_ends_at as subscription_trial_ends_at
+FROM users as u
+INNER JOIN user_subscriptions as s
+ON s.user_id = u.id
+WHERE u.handle = ?1
              "#,
             handle
         )
@@ -90,21 +105,41 @@ WHERE handle = ?1
     pub async fn insert_user<U: AsRef<User>>(&self, user: U) -> anyhow::Result<UserId> {
         let raw_user = RawUserToUpsert::try_from(user.as_ref())?;
 
+        let tx = self.pool.begin().await?;
+
+        // Insert user.
         let user_id: i64 = query_scalar!(
             r#"
-INSERT INTO users (email, handle, credentials, created, roles, activated)
-VALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )
+INSERT INTO users (email, handle, credentials, created, activated)
+VALUES ( ?1, ?2, ?3, ?4, ?5 )
 RETURNING id
         "#,
             raw_user.email,
             raw_user.handle,
             raw_user.credentials,
             raw_user.created,
-            raw_user.roles,
             raw_user.activated
         )
         .fetch_one(&self.pool)
         .await?;
+
+        // Insert user subscription.
+        query!(
+            r#"
+INSERT INTO user_subscriptions (user_id, tier, started_at, ends_at, trial_started_at, trial_ends_at)
+VALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )
+        "#,
+            user_id,
+            raw_user.subscription_tier,
+            raw_user.subscription_started_at,
+            raw_user.subscription_ends_at,
+            raw_user.subscription_trial_started_at,
+            raw_user.subscription_trial_ends_at
+        )
+        .execute(&self.pool)
+        .await?;
+
+        tx.commit().await?;
 
         user_id.try_into()
     }
@@ -113,21 +148,42 @@ RETURNING id
     pub async fn upsert_user<U: AsRef<User>>(&self, user: U) -> anyhow::Result<UserId> {
         let raw_user = RawUserToUpsert::try_from(user.as_ref())?;
 
+        let tx = self.pool.begin().await?;
+
+        // Update user
         let user_id: i64 = query_scalar!(r#"
-INSERT INTO users (email, handle, credentials, created, roles, activated)
-VALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )
-ON CONFLICT(email) DO UPDATE SET handle=excluded.handle, credentials=excluded.credentials, created=excluded.created, roles=excluded.roles, activated=excluded.activated
+INSERT INTO users (email, handle, credentials, created, activated)
+VALUES ( ?1, ?2, ?3, ?4, ?5 )
+ON CONFLICT(email) DO UPDATE SET handle=excluded.handle, credentials=excluded.credentials, created=excluded.created, activated=excluded.activated 
 RETURNING id
         "#,
             raw_user.email,
             raw_user.handle,
             raw_user.credentials,
             raw_user.created,
-            raw_user.roles,
             raw_user.activated
         )
             .fetch_one(&self.pool)
             .await?;
+
+        // Update user subscription.
+        query!(
+            r#"
+INSERT INTO user_subscriptions (user_id, tier, started_at, ends_at, trial_started_at, trial_ends_at)
+VALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )
+ON CONFLICT(user_id) DO UPDATE SET tier=excluded.tier, started_at=excluded.started_at, ends_at=excluded.ends_at, trial_started_at=excluded.trial_started_at, trial_ends_at=excluded.trial_ends_at
+        "#,
+            user_id,
+            raw_user.subscription_tier,
+            raw_user.subscription_started_at,
+            raw_user.subscription_ends_at,
+            raw_user.subscription_trial_started_at,
+            raw_user.subscription_trial_ends_at
+        )
+            .execute(&self.pool)
+            .await?;
+
+        tx.commit().await?;
 
         user_id.try_into()
     }
@@ -136,21 +192,20 @@ RETURNING id
     pub async fn remove_user_by_email<T: AsRef<str>>(
         &self,
         email: T,
-    ) -> anyhow::Result<Option<User>> {
+    ) -> anyhow::Result<Option<UserId>> {
         let email = email.as_ref();
-        query_as!(
-            RawUser,
+        query_scalar!(
             r#"
 DELETE FROM users
 WHERE email = ?1
-RETURNING id as "id!", email as "email!", handle as "handle!", credentials as "credentials!", created as "created!", roles, activated
+RETURNING id as "id!"
             "#,
             email
         )
-            .fetch_optional(&self.pool)
-            .await?
-            .map(User::try_from)
-            .transpose()
+        .fetch_optional(&self.pool)
+        .await?
+        .map(UserId::try_from)
+        .transpose()
     }
 
     /// Retrieves user data from the `UserData` table using user id and data key.
@@ -342,8 +397,8 @@ mod tests {
         security::StoredCredentials,
         tests::{mock_db, mock_user_with_id, MockUserBuilder},
         users::{
-            InternalUserDataNamespace, PublicUserDataNamespace, SharedResource, UserData, UserId,
-            UserShare, UserShareId,
+            InternalUserDataNamespace, PublicUserDataNamespace, SharedResource, SubscriptionTier,
+            UserData, UserId, UserShare, UserShareId, UserSubscription,
         },
     };
     use insta::assert_debug_snapshot;
@@ -384,7 +439,13 @@ mod tests {
                 // January 1, 2010 11:00:00
                 OffsetDateTime::from_unix_timestamp(1262340000)?,
             )
-            .add_role("admin")
+            .set_subscription(UserSubscription {
+                tier: SubscriptionTier::Standard,
+                started_at: OffsetDateTime::from_unix_timestamp(1262340000)?,
+                ends_at: None,
+                trial_started_at: None,
+                trial_ends_at: None,
+            })
             .build(),
             MockUserBuilder::new(
                 UserId::default(),
@@ -397,7 +458,13 @@ mod tests {
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             )
-            .add_role("Power-User")
+            .set_subscription(UserSubscription {
+                tier: SubscriptionTier::Professional,
+                started_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                ends_at: Some(OffsetDateTime::from_unix_timestamp(946720801)?),
+                trial_started_at: Some(OffsetDateTime::from_unix_timestamp(946720802)?),
+                trial_ends_at: Some(OffsetDateTime::from_unix_timestamp(946720803)?),
+            })
             .build(),
         ];
         for user in users {
@@ -420,9 +487,15 @@ mod tests {
                 ),
                 passkey: None,
             },
-            roles: {},
             created: 2000-01-01 10:00:00.0 +00:00:00,
             activated: true,
+            subscription: UserSubscription {
+                tier: Ultimate,
+                started_at: 2000-01-01 10:00:01.0 +00:00:00,
+                ends_at: None,
+                trial_started_at: None,
+                trial_ends_at: None,
+            },
         }
         "###);
 
@@ -442,11 +515,15 @@ mod tests {
                 ),
                 passkey: None,
             },
-            roles: {
-                "admin",
-            },
             created: 2010-01-01 10:00:00.0 +00:00:00,
             activated: false,
+            subscription: UserSubscription {
+                tier: Standard,
+                started_at: 2010-01-01 10:00:00.0 +00:00:00,
+                ends_at: None,
+                trial_started_at: None,
+                trial_ends_at: None,
+            },
         }
         "###);
 
@@ -466,11 +543,21 @@ mod tests {
                 ),
                 passkey: None,
             },
-            roles: {
-                "power-user",
-            },
             created: 2000-01-01 10:00:00.0 +00:00:00,
             activated: false,
+            subscription: UserSubscription {
+                tier: Professional,
+                started_at: 2000-01-01 10:00:00.0 +00:00:00,
+                ends_at: Some(
+                    2000-01-01 10:00:01.0 +00:00:00,
+                ),
+                trial_started_at: Some(
+                    2000-01-01 10:00:02.0 +00:00:00,
+                ),
+                trial_ends_at: Some(
+                    2000-01-01 10:00:03.0 +00:00:00,
+                ),
+            },
         }
         "###);
 
@@ -495,7 +582,13 @@ mod tests {
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
-        .add_role("Power-User")
+        .set_subscription(UserSubscription {
+            tier: SubscriptionTier::Professional,
+            started_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            ends_at: None,
+            trial_started_at: None,
+            trial_ends_at: None,
+        })
         .set_activated()
         .build();
         let db = mock_db().await?;
@@ -515,11 +608,15 @@ mod tests {
                     ),
                     passkey: None,
                 },
-                roles: {
-                    "power-user",
-                },
                 created: 2000-01-01 10:00:00.0 +00:00:00,
                 activated: true,
+                subscription: UserSubscription {
+                    tier: Professional,
+                    started_at: 2000-01-01 10:00:00.0 +00:00:00,
+                    ends_at: None,
+                    trial_started_at: None,
+                    trial_ends_at: None,
+                },
             },
         )
         "###);
@@ -549,7 +646,13 @@ mod tests {
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
         .set_activated()
-        .add_role("Power-User")
+        .set_subscription(UserSubscription {
+            tier: SubscriptionTier::Professional,
+            started_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            ends_at: None,
+            trial_started_at: None,
+            trial_ends_at: None,
+        })
         .build();
         let db = mock_db().await?;
         let id = db.upsert_user(&user).await?;
@@ -568,11 +671,15 @@ mod tests {
                     ),
                     passkey: None,
                 },
-                roles: {
-                    "power-user",
-                },
                 created: 2000-01-01 10:00:00.0 +00:00:00,
                 activated: true,
+                subscription: UserSubscription {
+                    tier: Professional,
+                    started_at: 2000-01-01 10:00:00.0 +00:00:00,
+                    ends_at: None,
+                    trial_started_at: None,
+                    trial_ends_at: None,
+                },
             },
         )
         "###);
@@ -617,9 +724,15 @@ mod tests {
                     ),
                     passkey: None,
                 },
-                roles: {},
                 created: 2000-01-01 10:00:00.0 +00:00:00,
                 activated: true,
+                subscription: UserSubscription {
+                    tier: Ultimate,
+                    started_at: 2000-01-01 10:00:01.0 +00:00:00,
+                    ends_at: None,
+                    trial_started_at: None,
+                    trial_ends_at: None,
+                },
             },
         )
         "###);
@@ -637,7 +750,6 @@ mod tests {
                     // January 1, 2000 11:00:00
                     OffsetDateTime::from_unix_timestamp(1262340000)?,
                 )
-                .add_role("admin")
                 .build(),
             )
             .await;
@@ -694,9 +806,15 @@ mod tests {
                     ),
                     passkey: None,
                 },
-                roles: {},
                 created: 2000-01-01 10:00:00.0 +00:00:00,
                 activated: true,
+                subscription: UserSubscription {
+                    tier: Ultimate,
+                    started_at: 2000-01-01 10:00:01.0 +00:00:00,
+                    ends_at: None,
+                    trial_started_at: None,
+                    trial_ends_at: None,
+                },
             },
         )
         "###);
@@ -713,7 +831,13 @@ mod tests {
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(1262340000)?,
             )
-            .add_role("admin")
+            .set_subscription(UserSubscription {
+                tier: SubscriptionTier::Basic,
+                started_at: OffsetDateTime::from_unix_timestamp(1262340000)?,
+                ends_at: None,
+                trial_started_at: None,
+                trial_ends_at: None,
+            })
             .build(),
         )
         .await?;
@@ -731,11 +855,15 @@ mod tests {
                     ),
                     passkey: None,
                 },
-                roles: {
-                    "admin",
-                },
                 created: 2010-01-01 10:00:00.0 +00:00:00,
                 activated: false,
+                subscription: UserSubscription {
+                    tier: Basic,
+                    started_at: 2010-01-01 10:00:00.0 +00:00:00,
+                    ends_at: None,
+                    trial_started_at: None,
+                    trial_ends_at: None,
+                },
             },
         )
         "###);
@@ -793,10 +921,7 @@ mod tests {
         );
 
         assert_eq!(
-            db.remove_user_by_email("dev@secutils.dev")
-                .await?
-                .unwrap()
-                .id,
+            db.remove_user_by_email("dev@secutils.dev").await?.unwrap(),
             dev_user_id
         );
         assert!(db.get_user_by_email("dev@secutils.dev").await?.is_none());
@@ -807,10 +932,7 @@ mod tests {
         );
 
         assert_eq!(
-            db.remove_user_by_email("prod@secutils.dev")
-                .await?
-                .unwrap()
-                .id,
+            db.remove_user_by_email("prod@secutils.dev").await?.unwrap(),
             prod_user_id
         );
         assert!(db.get_user_by_email("prod@secutils.dev").await?.is_none());

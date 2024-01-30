@@ -1,4 +1,4 @@
-use crate::users::User;
+use crate::users::{User, UserSubscription};
 use anyhow::Context;
 use time::OffsetDateTime;
 
@@ -9,8 +9,12 @@ pub(super) struct RawUser {
     pub handle: String,
     pub credentials: Vec<u8>,
     pub created: i64,
-    pub roles: Option<String>,
     pub activated: i64,
+    pub subscription_tier: i64,
+    pub subscription_started_at: i64,
+    pub subscription_ends_at: Option<i64>,
+    pub subscription_trial_started_at: Option<i64>,
+    pub subscription_trial_ends_at: Option<i64>,
 }
 
 impl TryFrom<RawUser> for User {
@@ -23,12 +27,24 @@ impl TryFrom<RawUser> for User {
             handle: raw_user.handle,
             credentials: serde_json::from_slice(raw_user.credentials.as_slice())
                 .with_context(|| "Cannot deserialize user credentials".to_string())?,
-            roles: raw_user
-                .roles
-                .map(|roles_str| roles_str.split(':').map(|part| part.to_string()).collect())
-                .unwrap_or_default(),
             created: OffsetDateTime::from_unix_timestamp(raw_user.created)?,
             activated: raw_user.activated > 0,
+            subscription: UserSubscription {
+                tier: u8::try_from(raw_user.subscription_tier)?.try_into()?,
+                started_at: OffsetDateTime::from_unix_timestamp(raw_user.subscription_started_at)?,
+                ends_at: raw_user
+                    .subscription_ends_at
+                    .map(OffsetDateTime::from_unix_timestamp)
+                    .transpose()?,
+                trial_started_at: raw_user
+                    .subscription_trial_started_at
+                    .map(OffsetDateTime::from_unix_timestamp)
+                    .transpose()?,
+                trial_ends_at: raw_user
+                    .subscription_trial_ends_at
+                    .map(OffsetDateTime::from_unix_timestamp)
+                    .transpose()?,
+            },
         })
     }
 }
@@ -36,11 +52,14 @@ impl TryFrom<RawUser> for User {
 #[cfg(test)]
 mod tests {
     use super::RawUser;
-    use crate::{security::StoredCredentials, users::User};
+    use crate::{
+        security::StoredCredentials,
+        users::{SubscriptionTier, User},
+    };
     use insta::assert_debug_snapshot;
 
     #[test]
-    fn can_convert_into_user_without_optional_fields() -> anyhow::Result<()> {
+    fn can_convert_into_user() -> anyhow::Result<()> {
         assert_debug_snapshot!(User::try_from(RawUser {
             id: 1,
             email: "dev@secutils.dev".to_string(),
@@ -51,8 +70,13 @@ mod tests {
             }).unwrap(),
             // January 1, 2000 11:00:00
             created: 946720800,
-            roles: None,
             activated: 1,
+            subscription_tier: SubscriptionTier::Ultimate as i64,
+            // January 1, 2000 11:00:01
+            subscription_started_at: 946720801,
+            subscription_ends_at: None,
+            subscription_trial_started_at: None,
+            subscription_trial_ends_at: None,
         })?, @r###"
         User {
             id: UserId(
@@ -66,17 +90,18 @@ mod tests {
                 ),
                 passkey: None,
             },
-            roles: {},
             created: 2000-01-01 10:00:00.0 +00:00:00,
             activated: true,
+            subscription: UserSubscription {
+                tier: Ultimate,
+                started_at: 2000-01-01 10:00:01.0 +00:00:00,
+                ends_at: None,
+                trial_started_at: None,
+                trial_ends_at: None,
+            },
         }
         "###);
 
-        Ok(())
-    }
-
-    #[test]
-    fn can_convert_into_user_with_optional_fields() -> anyhow::Result<()> {
         assert_debug_snapshot!(User::try_from(RawUser {
             id: 1,
             email: "dev@secutils.dev".to_string(),
@@ -87,8 +112,13 @@ mod tests {
             }).unwrap(),
             // January 1, 2000 11:00:00
             created: 946720800,
-            roles: Some("admin".to_string()),
-            activated: 0,
+            activated: 1,
+            subscription_tier: SubscriptionTier::Professional as i64,
+            // January 1, 2000 11:00:01
+            subscription_started_at: 946720801,
+            subscription_ends_at: Some(946720802),
+            subscription_trial_started_at: Some(946720803),
+            subscription_trial_ends_at: Some(946720804),
         })?, @r###"
         User {
             id: UserId(
@@ -102,39 +132,23 @@ mod tests {
                 ),
                 passkey: None,
             },
-            roles: {
-                "admin",
-            },
             created: 2000-01-01 10:00:00.0 +00:00:00,
-            activated: false,
+            activated: true,
+            subscription: UserSubscription {
+                tier: Professional,
+                started_at: 2000-01-01 10:00:01.0 +00:00:00,
+                ends_at: Some(
+                    2000-01-01 10:00:02.0 +00:00:00,
+                ),
+                trial_started_at: Some(
+                    2000-01-01 10:00:03.0 +00:00:00,
+                ),
+                trial_ends_at: Some(
+                    2000-01-01 10:00:04.0 +00:00:00,
+                ),
+            },
         }
         "###);
-
-        Ok(())
-    }
-
-    #[test]
-    fn can_convert_into_user_with_multiple_roles() -> anyhow::Result<()> {
-        assert_eq!(
-            User::try_from(RawUser {
-                id: 1,
-                email: "dev@secutils.dev".to_string(),
-                handle: "dev-handle".to_string(),
-                credentials: serde_json::to_vec(&StoredCredentials {
-                    password_hash: Some("password-hash".to_string()),
-                    ..Default::default()
-                })
-                .unwrap(),
-                // January 1, 2000 11:00:00
-                created: 946720800,
-                roles: Some("admin:superuser".to_string()),
-                activated: 1,
-            })?
-            .roles,
-            ["admin".to_string(), "superuser".to_string()]
-                .into_iter()
-                .collect()
-        );
 
         Ok(())
     }
@@ -151,8 +165,12 @@ mod tests {
             })
             .unwrap(),
             created: time::Date::MIN.midnight().assume_utc().unix_timestamp() - 1,
-            roles: None,
             activated: 1,
+            subscription_tier: SubscriptionTier::Ultimate as i64,
+            subscription_started_at: time::Date::MIN.midnight().assume_utc().unix_timestamp() - 2,
+            subscription_ends_at: None,
+            subscription_trial_started_at: None,
+            subscription_trial_ends_at: None,
         })
         .is_err());
 
