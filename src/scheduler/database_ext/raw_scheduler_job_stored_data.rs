@@ -15,6 +15,7 @@ pub(super) struct RawSchedulerJobStoredData {
     pub repeating: Option<i64>,
     pub repeated_every: Option<i64>,
     pub extra: Option<Vec<u8>>,
+    pub time_offset_seconds: Option<i64>,
 }
 
 impl TryFrom<RawSchedulerJobStoredData> for JobStoredData {
@@ -47,6 +48,10 @@ impl TryFrom<RawSchedulerJobStoredData> for JobStoredData {
             ran: raw_data.ran.unwrap_or_default() > 0,
             stopped: raw_data.stopped.unwrap_or_default() > 0,
             job,
+            time_offset_seconds: raw_data
+                .time_offset_seconds
+                .map(|offset| offset as i32)
+                .unwrap_or_default(),
         })
     }
 }
@@ -88,6 +93,11 @@ impl TryFrom<&JobStoredData> for RawSchedulerJobStoredData {
             },
             repeating,
             repeated_every,
+            time_offset_seconds: if data.time_offset_seconds > 0 {
+                Some(data.time_offset_seconds as i64)
+            } else {
+                None
+            },
         })
     }
 }

@@ -1676,6 +1676,7 @@ mod tests {
                 job: Some(JobStored::CronJob(CronJob {
                     schedule: format!("{} 0 0 1 1 * *", n),
                 })),
+                time_offset_seconds: 0,
             };
 
             db.upsert_scheduler_job(&job).await?;
@@ -1700,6 +1701,7 @@ mod tests {
                 job: Some(JobStored::CronJob(CronJob {
                     schedule: format!("{} 0 0 1 1 * *", n),
                 })),
+                time_offset_seconds: 0,
             };
 
             db.upsert_scheduler_job(&job).await?;
@@ -1804,6 +1806,7 @@ mod tests {
                 job: Some(JobStored::CronJob(CronJob {
                     schedule: format!("{} 0 0 1 1 * *", n),
                 })),
+                time_offset_seconds: 0,
             };
 
             db.upsert_scheduler_job(&job).await?;

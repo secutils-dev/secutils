@@ -23,7 +23,7 @@ impl Database {
             RawSchedulerJobStoredData,
             r#"
 SELECT id, last_updated, next_tick, last_tick, job_type as "job_type!", count,
-       ran, stopped, schedule, repeating, repeated_every, extra
+       ran, stopped, schedule, repeating, repeated_every, extra, time_offset_seconds
 FROM scheduler_jobs
 WHERE id = ?1
                 "#,
@@ -157,7 +157,7 @@ WHERE id = ?1
                  let jobs = query_as!(RawSchedulerJobStoredData,
 r#"
 SELECT id, last_updated, next_tick, last_tick, job_type as "job_type!", count,
-       ran, stopped, schedule, repeating, repeated_every, extra
+       ran, stopped, schedule, repeating, repeated_every, extra, time_offset_seconds
 FROM scheduler_jobs
 WHERE id > ?1
 ORDER BY id
@@ -502,6 +502,7 @@ mod tests {
                 job: Some(JobStored::CronJob(CronJob {
                     schedule: "0 0 0 1 1 * *".to_string(),
                 })),
+                time_offset_seconds: 0,
             },
             JobStoredData {
                 id: Some(uuid!("00e55044-10b1-426f-9247-bb680e5fe0c8").into()),
@@ -517,6 +518,7 @@ mod tests {
                     repeating: false,
                     repeated_every: 0,
                 })),
+                time_offset_seconds: 0,
             },
         ];
 
@@ -556,6 +558,7 @@ mod tests {
                         },
                     ),
                 ),
+                time_offset_seconds: 0,
             },
         )
         "###);
@@ -593,6 +596,7 @@ mod tests {
                         },
                     ),
                 ),
+                time_offset_seconds: 0,
             },
         )
         "###);
@@ -620,6 +624,7 @@ mod tests {
                 job: Some(JobStored::CronJob(CronJob {
                     schedule: "0 0 0 1 1 * *".to_string(),
                 })),
+                time_offset_seconds: 0,
             },
             JobStoredData {
                 id: Some(uuid!("00e55044-10b1-426f-9247-bb680e5fe0c8").into()),
@@ -635,6 +640,7 @@ mod tests {
                     repeating: false,
                     repeated_every: 0,
                 })),
+                time_offset_seconds: 0,
             },
         ];
 
@@ -674,6 +680,7 @@ mod tests {
                         },
                     ),
                 ),
+                time_offset_seconds: 0,
             },
         )
         "###);
@@ -710,6 +717,7 @@ mod tests {
                         },
                     ),
                 ),
+                time_offset_seconds: 0,
             },
         )
         "###);
@@ -727,6 +735,7 @@ mod tests {
             job: Some(JobStored::CronJob(CronJob {
                 schedule: "0 0 0 1 1 * *".to_string(),
             })),
+            time_offset_seconds: 0,
         })
         .await?;
 
@@ -764,6 +773,7 @@ mod tests {
                         },
                     ),
                 ),
+                time_offset_seconds: 0,
             },
         )
         "###);
@@ -801,6 +811,7 @@ mod tests {
                         },
                     ),
                 ),
+                time_offset_seconds: 0,
             },
         )
         "###);
@@ -836,6 +847,7 @@ mod tests {
                 job: Some(JobStored::CronJob(CronJob {
                     schedule: "0 0 0 1 1 * *".to_string(),
                 })),
+                time_offset_seconds: 0,
             },
             JobStoredData {
                 id: Some(job_two_id.into()),
@@ -855,6 +867,7 @@ mod tests {
                     repeating: false,
                     repeated_every: 0,
                 })),
+                time_offset_seconds: 0,
             },
         ];
 
@@ -1045,6 +1058,7 @@ mod tests {
                 job: Some(JobStored::CronJob(CronJob {
                     schedule: "0 0 0 1 1 * *".to_string(),
                 })),
+                time_offset_seconds: 0,
             },
             JobStoredData {
                 id: Some(uuid!("00e55044-10b1-426f-9247-bb680e5fe0c8").into()),
@@ -1066,6 +1080,7 @@ mod tests {
                     repeating: false,
                     repeated_every: 0,
                 })),
+                time_offset_seconds: 0,
             },
         ];
 
@@ -1149,6 +1164,7 @@ mod tests {
                 job: Some(JobStored::CronJob(CronJob {
                     schedule: "0 0 0 1 1 * *".to_string(),
                 })),
+                time_offset_seconds: 0,
             },
             JobStoredData {
                 id: Some(uuid!("00e55044-10b1-426f-9247-bb680e5fe0c8").into()),
@@ -1164,6 +1180,7 @@ mod tests {
                     repeating: false,
                     repeated_every: 0,
                 })),
+                time_offset_seconds: 0,
             },
         ];
 
@@ -1232,6 +1249,7 @@ mod tests {
                 job: Some(JobStored::CronJob(CronJob {
                     schedule: "0 0 0 1 1 * *".to_string(),
                 })),
+                time_offset_seconds: 0,
             },
             JobStoredData {
                 id: Some(uuid!("00e55044-10b1-426f-9247-bb680e5fe0c8").into()),
@@ -1247,6 +1265,7 @@ mod tests {
                     repeating: false,
                     repeated_every: 0,
                 })),
+                time_offset_seconds: 0,
             },
         ];
 
@@ -1306,6 +1325,7 @@ mod tests {
                 job: Some(JobStored::CronJob(CronJob {
                     schedule: "0 0 0 1 1 * *".to_string(),
                 })),
+                time_offset_seconds: 0,
             },
             JobStoredData {
                 id: Some(uuid!("00e55044-10b1-426f-9247-bb680e5fe0c8").into()),
@@ -1321,6 +1341,7 @@ mod tests {
                     repeating: false,
                     repeated_every: 0,
                 })),
+                time_offset_seconds: 0,
             },
         ];
 
@@ -1423,6 +1444,7 @@ mod tests {
                 job: Some(JobStored::CronJob(CronJob {
                     schedule: "0 0 0 1 1 * *".to_string(),
                 })),
+                time_offset_seconds: 0,
             },
             JobStoredData {
                 id: Some(uuid!("00e55044-10b1-426f-9247-bb680e5fe0c8").into()),
@@ -1438,6 +1460,7 @@ mod tests {
                     repeating: false,
                     repeated_every: 0,
                 })),
+                time_offset_seconds: 0,
             },
         ];
 
@@ -1505,6 +1528,7 @@ mod tests {
                 job: Some(JobStored::CronJob(CronJob {
                     schedule: format!("{} 0 0 1 1 * *", n),
                 })),
+                time_offset_seconds: 0,
             };
 
             db.upsert_scheduler_job(&job).await?;

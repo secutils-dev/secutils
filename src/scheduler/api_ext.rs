@@ -105,6 +105,7 @@ mod tests {
             job: Some(JobStored::CronJob(CronJob {
                 schedule: "0 0 0 1 1 * *".to_string(),
             })),
+            time_offset_seconds: 0,
         };
 
         api.db.upsert_scheduler_job(&job).await?;

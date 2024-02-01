@@ -202,6 +202,7 @@ mod tests {
             job: Some(JobStored::CronJob(CronJob {
                 schedule: schedule.into(),
             })),
+            time_offset_seconds: 0,
         }
     }
 

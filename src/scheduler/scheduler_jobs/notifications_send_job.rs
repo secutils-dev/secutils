@@ -132,6 +132,7 @@ mod tests {
             job: Some(JobStored::CronJob(CronJob {
                 schedule: "0 0 * * * *".to_string(),
             })),
+            time_offset_seconds: 0,
         }
     }
 

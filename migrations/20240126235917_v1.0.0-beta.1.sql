@@ -1,6 +1,9 @@
 -- Update `users` table to delete `roles` column (replaced by subscription).
 ALTER TABLE users DROP COLUMN roles;
 
+-- Upgrade scheduler table to add `time_offset_seconds` column (`tokio-cron-scheduler 0.10.0`).
+ALTER TABLE main.scheduler_jobs ADD time_offset_seconds INTEGER;
+
 -- Create table to store user subscriptions.
 CREATE TABLE IF NOT EXISTS user_subscriptions
 (

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\nSELECT id, last_updated, next_tick, last_tick, job_type as \"job_type!\", count,\n       ran, stopped, schedule, repeating, repeated_every, extra\nFROM scheduler_jobs\nWHERE id = ?1\n                ",
+  "query": "\nSELECT id, last_updated, next_tick, last_tick, job_type as \"job_type!\", count,\n       ran, stopped, schedule, repeating, repeated_every, extra, time_offset_seconds\nFROM scheduler_jobs\nWHERE id > ?1\nORDER BY id\nLIMIT ?2;\n",
   "describe": {
     "columns": [
       {
@@ -62,10 +62,15 @@
         "name": "extra",
         "ordinal": 11,
         "type_info": "Blob"
+      },
+      {
+        "name": "time_offset_seconds",
+        "ordinal": 12,
+        "type_info": "Int64"
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 2
     },
     "nullable": [
       false,
@@ -79,8 +84,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "59b46a640924169da087fcbde4c0d86390707a7574f932a419f0736c8523f8a9"
+  "hash": "329f69ca63ae4b796ad3b0fda32ece64005cad39d63556277ba1a3e861ec61fc"
 }
