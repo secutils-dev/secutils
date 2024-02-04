@@ -52,7 +52,7 @@ tantivy = "0.21.1"
 thiserror = "1.0.56"
 time = "0.3.34"
 tlsh2 = "0.3.0"
-tokio = { version = "1.36.0", features = ["full"] }
+tokio = "1.36.0"
 tokio-cron-scheduler = "0.10.0"
 trust-dns-resolver = "0.23.2"
 url = "2.5.0"
