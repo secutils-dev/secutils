@@ -2,9 +2,8 @@ use crate::{
     security::Credentials,
     server::{app_state::AppState, http_errors::generic_internal_server_error},
 };
-use actix_http::HttpMessage;
 use actix_identity::Identity;
-use actix_web::{web, HttpRequest, HttpResponse, Responder};
+use actix_web::{web, HttpMessage, HttpRequest, HttpResponse, Responder};
 use serde::Deserialize;
 use serde_json::json;
 

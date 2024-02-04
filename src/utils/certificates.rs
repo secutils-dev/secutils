@@ -196,7 +196,7 @@ pub mod tests {
         })
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_list_private_keys() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -242,7 +242,7 @@ pub mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_retrieve_private_key() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -292,7 +292,7 @@ pub mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_create_private_key() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -325,7 +325,7 @@ pub mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_update_private_key() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -368,7 +368,7 @@ pub mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_delete_private_key() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -408,7 +408,7 @@ pub mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_export_private_key() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -447,7 +447,7 @@ pub mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_list_templates() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -491,7 +491,7 @@ pub mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_retrieve_template() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -573,7 +573,7 @@ pub mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_create_template() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -607,7 +607,7 @@ pub mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_update_template() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -649,7 +649,7 @@ pub mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_delete_template() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -688,7 +688,7 @@ pub mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_generate_key_pair() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -727,7 +727,7 @@ pub mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_share_and_unshare_template() -> anyhow::Result<()> {
         let api = mock_api().await?;
 

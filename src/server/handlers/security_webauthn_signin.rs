@@ -27,10 +27,9 @@ use crate::{
     security::{Credentials, WebAuthnChallengeType, WEBAUTHN_SESSION_KEY},
     server::{app_state::AppState, http_errors::generic_internal_server_error},
 };
-use actix_http::HttpMessage;
 use actix_identity::Identity;
 use actix_session::Session;
-use actix_web::{web, HttpRequest, HttpResponse, Responder};
+use actix_web::{web, HttpMessage, HttpRequest, HttpResponse, Responder};
 use anyhow::Context;
 use serde::Deserialize;
 use serde_json::json;

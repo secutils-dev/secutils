@@ -108,7 +108,7 @@ mod tests {
     use insta::assert_debug_snapshot;
     use time::OffsetDateTime;
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_add_and_retrieve_notifications() -> anyhow::Result<()> {
         let db = mock_db().await?;
         assert!(db.get_notification(1.try_into()?).await?.is_none());
@@ -171,7 +171,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_remove_notifications() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
@@ -210,7 +210,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_get_notification_ids() -> anyhow::Result<()> {
         let db = mock_db().await?;
 

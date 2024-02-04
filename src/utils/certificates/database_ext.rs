@@ -395,7 +395,7 @@ mod tests {
         })
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_add_and_retrieve_private_keys() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
@@ -453,7 +453,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn correctly_handles_duplicated_private_keys_on_insert() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
@@ -500,7 +500,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_update_private_key_content() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
@@ -560,7 +560,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn correctly_handles_duplicated_private_keys_on_update() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
@@ -632,7 +632,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn correctly_handles_non_existent_private_keys_on_update() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
@@ -666,7 +666,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_remove_private_keys() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
@@ -751,7 +751,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_retrieve_all_private_keys() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
@@ -800,7 +800,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_add_and_retrieve_certificate_templates() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
@@ -850,7 +850,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn correctly_handles_duplicated_certificate_templates_on_insert() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
@@ -893,7 +893,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_update_certificate_template_content() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
@@ -975,7 +975,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn correctly_handles_duplicated_certificate_templates_on_update() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
@@ -1035,7 +1035,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn correctly_handles_non_existent_certificate_templates_on_update() -> anyhow::Result<()>
     {
         let user = mock_user()?;
@@ -1066,7 +1066,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_remove_certificate_templates() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;
@@ -1143,7 +1143,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_retrieve_all_certificate_templates() -> anyhow::Result<()> {
         let user = mock_user()?;
         let db = mock_db().await?;

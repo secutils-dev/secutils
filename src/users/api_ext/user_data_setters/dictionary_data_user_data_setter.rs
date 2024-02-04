@@ -63,7 +63,7 @@ mod tests {
         db.upsert_user(user).await.map(|_| db)
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_merge_data() -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let mock_db = initialize_mock_db(&mock_user).await?;

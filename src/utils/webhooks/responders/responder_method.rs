@@ -1,4 +1,4 @@
-use actix_http::Method;
+use actix_web::http::Method;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -38,7 +38,7 @@ impl TryFrom<&Method> for ResponderMethod {
 #[cfg(test)]
 mod tests {
     use crate::utils::webhooks::ResponderMethod;
-    use actix_http::Method;
+    use actix_web::http::Method;
     use insta::assert_json_snapshot;
 
     #[test]

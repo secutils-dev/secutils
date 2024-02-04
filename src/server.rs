@@ -31,7 +31,7 @@ pub use self::app_state::tests;
 pub use app_state::AppState;
 pub use ui_state::{Status, StatusLevel, UiState, WebhookUrlType};
 
-#[actix_rt::main]
+#[tokio::main]
 pub async fn run(
     config: Config,
     session_key: [u8; 64],

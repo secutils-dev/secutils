@@ -106,7 +106,7 @@ mod tests {
     };
     use time::OffsetDateTime;
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_add_and_retrieve_webauthn_sessions() -> anyhow::Result<()> {
         let db = mock_db().await?;
         assert!(db
@@ -284,7 +284,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn ignores_email_case_for_webauthn_sessions() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
@@ -316,7 +316,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_update_webauthn_sessions() -> anyhow::Result<()> {
         let db = mock_db().await?;
 
@@ -371,7 +371,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_remove_webauthn_session() -> anyhow::Result<()> {
         let db = mock_db().await?;
         assert!(db
@@ -429,7 +429,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_remove_old_webauthn_session() -> anyhow::Result<()> {
         let db = mock_db().await?;
         let sessions = vec![

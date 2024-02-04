@@ -136,7 +136,7 @@ mod tests {
         }
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_create_job_with_correct_parameters() -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.jobs.notifications_send = Schedule::try_from("1/5 * * * * *")?;
@@ -167,7 +167,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_resume_job() -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.jobs.notifications_send = Schedule::try_from("0 0 * * * *")?;

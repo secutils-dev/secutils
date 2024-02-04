@@ -8,9 +8,12 @@ use crate::{
         ResponderScriptContext, ResponderScriptResult, RespondersRequestCreateParams,
     },
 };
-use actix_http::{body::MessageBody, StatusCode};
 use actix_web::{
-    http::header::{HeaderName, HeaderValue},
+    body::MessageBody,
+    http::{
+        header::{HeaderName, HeaderValue},
+        StatusCode,
+    },
     web, HttpRequest, HttpResponse,
 };
 use bytes::Bytes;
@@ -315,8 +318,9 @@ mod tests {
         tests::{mock_app_state, mock_user},
         utils::webhooks::{tests::RespondersCreateParams, ResponderMethod, ResponderSettings},
     };
-    use actix_http::{body::MessageBody, Method, Payload};
-    use actix_web::{test::TestRequest, web, FromRequest};
+    use actix_web::{
+        body::MessageBody, dev::Payload, http::Method, test::TestRequest, web, FromRequest,
+    };
     use bytes::Bytes;
     use insta::assert_debug_snapshot;
     use serde_json::json;

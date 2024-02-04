@@ -2,9 +2,10 @@ use crate::{
     server::AppState,
     users::{UserShare, UserShareId},
 };
-use actix_http::{header::HeaderName, Payload};
 use actix_web::{
+    dev::Payload,
     error::{ErrorBadRequest, ErrorInternalServerError, ErrorUnauthorized},
+    http::header::HeaderName,
     web, Error, FromRequest, HttpRequest,
 };
 use anyhow::anyhow;
@@ -74,13 +75,12 @@ mod tests {
         tests::{mock_app_state, mock_user},
         users::{SharedResource, UserShare, UserShareId},
     };
-    use actix_http::Payload;
-    use actix_web::{test::TestRequest, FromRequest};
+    use actix_web::{dev::Payload, test::TestRequest, FromRequest};
     use insta::assert_debug_snapshot;
     use time::OffsetDateTime;
     use uuid::uuid;
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn fails_if_header_is_not_provided() -> anyhow::Result<()> {
         let request = TestRequest::default().to_http_request();
         assert_debug_snapshot!(UserShare::from_request(&request, &mut Payload::None).await, @r###"
@@ -91,7 +91,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn fails_if_header_is_not_valid() -> anyhow::Result<()> {
         let request = TestRequest::default()
             .insert_header((USER_SHARE_ID_HEADER_NAME.clone(), "xxx"))
@@ -104,7 +104,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn fails_if_user_share_is_not_available() -> anyhow::Result<()> {
         let user = mock_user()?;
         let mock_user_share = UserShare {
@@ -135,7 +135,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_extract_user_share() -> anyhow::Result<()> {
         let user = mock_user()?;
         let mock_user_share = UserShare {

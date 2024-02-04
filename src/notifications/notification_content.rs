@@ -74,7 +74,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn convert_text_content_to_email() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -93,7 +93,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn convert_email_content_to_email() -> anyhow::Result<()> {
         let api = mock_api().await?;
 
@@ -149,7 +149,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn convert_template_content_to_email() -> anyhow::Result<()> {
         let api = mock_api().await?;
         let user = mock_user()?;

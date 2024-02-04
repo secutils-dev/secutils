@@ -213,7 +213,7 @@ mod tests {
     use insta::assert_debug_snapshot;
     use time::OffsetDateTime;
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn properly_schedules_notification() -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let api = mock_api().await?;
@@ -285,7 +285,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn properly_sends_all_pending_notifications() -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let api = mock_api().await?;
@@ -389,7 +389,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn properly_sends_email_notifications_with_attachments() -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let api = mock_api().await?;
@@ -470,7 +470,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn properly_sends_pending_notifications_in_batches() -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let api = mock_api().await?;
@@ -531,7 +531,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn sends_email_notifications_respecting_catch_all_filter() -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let mut config = mock_config()?;
@@ -670,7 +670,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn sends_email_notifications_respecting_wide_open_catch_all_filter() -> anyhow::Result<()>
     {
         let mock_user = mock_user()?;

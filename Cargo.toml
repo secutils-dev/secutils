@@ -10,13 +10,9 @@ path = "src/main.rs"
 
 [dependencies]
 actix-cors = "0.7.0"
-actix-http = "3.5.1"
 actix-identity = "0.7.0"
-actix-rt = "2.9.0"
-actix-server = "2.3.0"
 actix-session = "0.9.0"
-actix-utils = "3.0.1"
-actix-web = "4.4.1"
+actix-web = "4.5.1"
 actix-web-httpauth = "0.8.1"
 anyhow = "1.0.79"
 argon2 = "0.5.3"
@@ -26,12 +22,12 @@ chrono = { version = "0.4.33", default-features = false }
 clap = "4.4.18"
 content-security-policy = "0.5.1"
 cron = "0.12.0"
-deno_core = "0.256.0"
+deno_core = "0.258.0"
 directories = "5.0.1"
 dotenvy = "0.15.7"
 structured-logger = "1.0.3"
 futures = "0.3.30"
-handlebars = "5.1.1"
+handlebars = "5.1.0"
 hex = "0.4.3"
 html5ever = "0.26.0"
 humantime = "2.1.0"
@@ -54,9 +50,9 @@ similar = "2.4.0"
 sqlx = { version = "0.7.3", default-features = false }
 tantivy = "0.21.1"
 thiserror = "1.0.56"
-time = "0.3.31"
+time = "0.3.34"
 tlsh2 = "0.3.0"
-tokio = { version = "1.35.1", features = ["full"] }
+tokio = { version = "1.36.0", features = ["full"] }
 tokio-cron-scheduler = "0.10.0"
 trust-dns-resolver = "0.23.2"
 url = "2.5.0"
@@ -77,7 +73,6 @@ tokio-cron-scheduler = { path = "./vendor/tokio-cron-scheduler" }
 default = [
     "actix-session/cookie-session",
     "actix-web/cookies",
-    "actix-web/rustls",
     "actix-web/secure-cookies",
     "bytes/serde",
     "clap/env",

@@ -10,8 +10,7 @@ use crate::{
         UtilsActionParams, UtilsResource, UtilsResourceOperation,
     },
 };
-use actix_http::Method;
-use actix_web::{web, HttpRequest, HttpResponse};
+use actix_web::{http::Method, web, HttpRequest, HttpResponse};
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
@@ -177,8 +176,7 @@ mod tests {
             UtilsAction, UtilsResource, UtilsResourceOperation,
         },
     };
-    use actix_http::body::MessageBody;
-    use actix_web::{http::Method, test::TestRequest, web};
+    use actix_web::{body::MessageBody, http::Method, test::TestRequest, web};
     use insta::assert_debug_snapshot;
     use serde_json::json;
     use time::OffsetDateTime;
@@ -547,7 +545,7 @@ mod tests {
         );
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_extract_user() -> anyhow::Result<()> {
         let resource_id = uuid!("00000000-0000-0000-0000-000000000001");
         let resource = UtilsResource::CertificatesTemplates;
@@ -667,7 +665,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn fail_if_resource_is_not_valid() -> anyhow::Result<()> {
         let app_state = mock_app_state().await?;
 
@@ -699,7 +697,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn fail_if_action_is_not_valid() -> anyhow::Result<()> {
         let app_state = mock_app_state().await?;
 
@@ -731,7 +729,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn fail_if_action_requires_body_but_not_provided() -> anyhow::Result<()> {
         let app_state = mock_app_state().await?;
 
@@ -763,7 +761,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn fail_if_user_is_not_authenticated() -> anyhow::Result<()> {
         let app_state = mock_app_state().await?;
 
@@ -784,7 +782,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn fail_if_action_parameters_are_invalid() -> anyhow::Result<()> {
         let app_state = mock_app_state().await?;
 
@@ -813,7 +811,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_return_json_value() -> anyhow::Result<()> {
         let app_state = mock_app_state().await?;
 
@@ -853,7 +851,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_return_no_value() -> anyhow::Result<()> {
         let app_state = mock_app_state().await?;
 
@@ -906,7 +904,7 @@ mod tests {
         Ok(())
     }
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_return_not_found() -> anyhow::Result<()> {
         let app_state = mock_app_state().await?;
 

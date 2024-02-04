@@ -37,7 +37,7 @@ mod tests {
     use crate::tests::mock_db;
     use insta::assert_debug_snapshot;
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn can_get_all_utils() -> anyhow::Result<()> {
         let mock_db = mock_db().await?;
         let api = UtilsApiExt::new(&mock_db);

@@ -89,8 +89,7 @@ impl From<anyhow::Error> for Error {
 #[cfg(test)]
 mod tests {
     use super::{Error, ErrorKind};
-    use actix_http::body::MessageBody;
-    use actix_web::ResponseError;
+    use actix_web::{body::MessageBody, ResponseError};
     use anyhow::anyhow;
     use bytes::Bytes;
     use insta::assert_debug_snapshot;
