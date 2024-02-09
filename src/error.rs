@@ -76,13 +76,10 @@ impl ResponseError for Error {
 
 impl From<anyhow::Error> for Error {
     fn from(err: anyhow::Error) -> Error {
-        match err.downcast::<Error>() {
-            Ok(err) => err,
-            Err(root_cause) => Error {
-                root_cause,
-                kind: ErrorKind::Unknown,
-            },
-        }
+        err.downcast::<Error>().unwrap_or_else(|root_cause| Error {
+            root_cause,
+            kind: ErrorKind::Unknown,
+        })
     }
 }
 

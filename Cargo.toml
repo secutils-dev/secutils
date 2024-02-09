@@ -39,7 +39,7 @@ openssl = "0.10.63"
 postcard = { version = "1.0.8", default-features = false  }
 rand_core = "0.6.4"
 regex = "1.10.3"
-reqwest = "0.11.24"
+reqwest = { version = "0.11.24", default-features = false }
 rust-embed = "8.2.0"
 serde = "1.0.196"
 serde_bytes = "0.11.14"
@@ -88,7 +88,7 @@ default = [
     "postcard/use-std",
     "rand_core/std",
     "reqwest/json",
-    "reqwest/rustls",
+    "reqwest/rustls-native-certs",
     "serde/derive",
     "serde_json/arbitrary_precision",
     "serde_with/time_0_3",
