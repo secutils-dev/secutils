@@ -88,7 +88,8 @@ mod tests {
             "created": 1262340000,
             "activated": false,
             "subscription": {
-              "tier": "ultimate"
+              "tier": "ultimate",
+              "startedAt": 1262340001
             }
           },
           "features": {

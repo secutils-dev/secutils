@@ -15,13 +15,12 @@ pub use self::{subscription_features::SubscriptionFeatures, subscription_tier::S
 pub struct UserSubscription {
     pub tier: SubscriptionTier,
     #[serde_as(as = "TimestampSeconds<i64>")]
-    #[serde(skip_serializing)]
     pub started_at: OffsetDateTime,
     #[serde_as(as = "Option<TimestampSeconds<i64>>")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ends_at: Option<OffsetDateTime>,
     #[serde_as(as = "Option<TimestampSeconds<i64>>")]
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub trial_started_at: Option<OffsetDateTime>,
     #[serde_as(as = "Option<TimestampSeconds<i64>>")]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -171,7 +170,9 @@ mod test {
         assert_json_snapshot!(subscription, @r###"
         {
           "tier": "basic",
+          "startedAt": 1262340000,
           "endsAt": 1262340001,
+          "trialStartedAt": 1262340002,
           "trialEndsAt": 1262340003
         }
         "###);
@@ -185,7 +186,8 @@ mod test {
         };
         assert_json_snapshot!(subscription, @r###"
         {
-          "tier": "ultimate"
+          "tier": "ultimate",
+          "startedAt": 1262340000
         }
         "###);
 

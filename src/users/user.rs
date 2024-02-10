@@ -106,7 +106,8 @@ mod tests {
               "created": 1262340000,
               "activated": false,
               "subscription": {
-                "tier": "ultimate"
+                "tier": "ultimate",
+                "startedAt": 1262340001
               }
             }
             "###);
@@ -124,7 +125,8 @@ mod tests {
               "created": 1262340000,
               "activated": true,
               "subscription": {
-                "tier": "professional"
+                "tier": "professional",
+                "startedAt": 1262340001
               }
             }
             "###);
@@ -142,7 +144,8 @@ mod tests {
               "created": 1262340000,
               "activated": true,
               "subscription": {
-                "tier": "ultimate"
+                "tier": "ultimate",
+                "startedAt": 1262340001
               }
             }
             "###);
