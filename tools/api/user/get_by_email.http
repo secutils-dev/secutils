@@ -1,4 +1,4 @@
 ### Get user information
-GET {{host}}/api/users/1
+GET {{host}}/api/users?email=su@secutils.dev
 Accept: application/json
 Authorization: {{api-credentials}}

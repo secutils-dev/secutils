@@ -161,7 +161,6 @@ pub async fn run(
                                 web::post().to(handlers::security_webauthn_signin_finish),
                             ),
                     )
-                    .route("/user", web::get().to(handlers::user_get))
                     .route("/user/data", web::post().to(handlers::user_data_set))
                     .route("/user/data", web::get().to(handlers::user_data_get))
                     .route(
@@ -173,9 +172,14 @@ pub async fn run(
                         web::route().to(handlers::webhooks_responders),
                     )
                     .route("/webhooks", web::route().to(handlers::webhooks_responders))
+                    .route(
+                        "/users",
+                        web::get().to(handlers::security_users_get_by_email),
+                    )
                     .service(
                         web::scope("/users")
-                            .route("/remove", web::post().to(handlers::security_users_remove)),
+                            .route("/remove", web::post().to(handlers::security_users_remove))
+                            .route("/{user_id}", web::get().to(handlers::security_users_get)),
                     )
                     .service(
                         web::scope("/utils")
