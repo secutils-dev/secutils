@@ -43,6 +43,7 @@ reqwest = { version = "0.11.24", default-features = false }
 rust-embed = "8.2.0"
 serde = "1.0.197"
 serde_bytes = "0.11.14"
+serde_derive = "1.0.197"
 serde_json = "1.0.114"
 serde_repr = "0.1.18"
 serde_with = "3.6.1"
@@ -89,7 +90,6 @@ default = [
     "rand_core/std",
     "reqwest/json",
     "reqwest/rustls-native-certs",
-    "serde/derive",
     "serde_json/arbitrary_precision",
     "serde_with/time_0_3",
     "sqlx/json",
