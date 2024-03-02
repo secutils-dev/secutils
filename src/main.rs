@@ -20,7 +20,7 @@ mod utils;
 use crate::{
     config::{
         ComponentsConfig, Config, JsRuntimeConfig, SchedulerJobsConfig, SmtpCatchAllConfig,
-        SmtpConfig,
+        SmtpConfig, SubscriptionsConfig,
     },
     server::WebhookUrlType,
 };
@@ -139,6 +139,18 @@ fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Err
                 .ok_or_else(|| {
                     anyhow!("<JS_RUNTIME_MAX_USER_SCRIPT_EXECUTION_TIME> argument is not provided.")
                 })?,
+        },
+        subscriptions: SubscriptionsConfig {
+            manage_url: matches
+                .get_one::<String>("SUBSCRIPTIONS_MANAGE_URL")
+                .map(|value| Url::parse(value.as_str()))
+                .transpose()
+                .with_context(|| "Cannot parse subscription management URL.")?,
+            feature_overview_url: matches
+                .get_one::<String>("SUBSCRIPTIONS_FEATURE_OVERVIEW_URL")
+                .map(|value| Url::parse(value.as_str()))
+                .transpose()
+                .with_context(|| "Cannot parse subscription feature overview URL.")?,
         },
     };
 
@@ -311,6 +323,20 @@ fn main() -> Result<(), anyhow::Error> {
                 .default_value("30")
                 .help("Defines the maximum duration for a single JS script execution in seconds."),
         )
+        .arg(
+            Arg::new("SUBSCRIPTIONS_MANAGE_URL")
+                .long("subscriptions-manage-url")
+                .global(true)
+                .env("SECUTILS_SUBSCRIPTIONS_MANAGE_URL")
+                .help("Defines the URL to access the subscription management page."),
+        )
+        .arg(
+            Arg::new("SUBSCRIPTIONS_FEATURE_OVERVIEW_URL")
+                .long("subscriptions-feature-overview-url")
+                .global(true)
+                .env("SECUTILS_SUBSCRIPTIONS_FEATURE_OVERVIEW_URL")
+                .help("Defines the URL to access the feature overview page."),
+        )
         .get_matches();
 
     process_command(version, matches)
@@ -320,7 +346,7 @@ fn main() -> Result<(), anyhow::Error> {
 mod tests {
     use crate::{
         api::Api,
-        config::{ComponentsConfig, Config, SchedulerJobsConfig, SmtpConfig},
+        config::{ComponentsConfig, Config, SchedulerJobsConfig, SmtpConfig, SubscriptionsConfig},
         database::Database,
         network::{DnsResolver, Network},
         search::SearchItem,
@@ -535,6 +561,10 @@ mod tests {
             js_runtime: JsRuntimeConfig {
                 max_heap_size_bytes: 10485760,
                 max_user_script_execution_time: Duration::from_secs(30),
+            },
+            subscriptions: SubscriptionsConfig {
+                manage_url: Some(Url::parse("http://localhost:1234/subscription")?),
+                feature_overview_url: Some(Url::parse("http://localhost:1234/features")?),
             },
         })
     }

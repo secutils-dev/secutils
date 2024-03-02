@@ -1,6 +1,6 @@
 use crate::{
     error::Error as SecutilsError,
-    server::{AppState, UiState},
+    server::{AppState, SubscriptionState, UiState},
     users::{ClientUserShare, PublicUserDataNamespace, User, UserShare},
 };
 use actix_web::{web, HttpResponse};
@@ -42,7 +42,11 @@ pub async fn ui_state_get(
     Ok(HttpResponse::Ok().json(UiState {
         status: status.deref(),
         user,
-        features,
+        subscription: SubscriptionState {
+            features,
+            manage_url: state.config.subscriptions.manage_url.as_ref(),
+            feature_overview_url: state.config.subscriptions.feature_overview_url.as_ref(),
+        },
         user_share: user_share.map(ClientUserShare::from),
         settings,
         utils,

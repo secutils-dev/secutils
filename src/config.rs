@@ -3,6 +3,7 @@ mod js_runtime_config;
 mod scheduler_jobs_config;
 mod smtp_catch_all_config;
 mod smtp_config;
+mod subscriptions_config;
 
 use crate::server::WebhookUrlType;
 use url::Url;
@@ -10,7 +11,7 @@ use url::Url;
 pub use self::{
     components_config::ComponentsConfig, js_runtime_config::JsRuntimeConfig,
     scheduler_jobs_config::SchedulerJobsConfig, smtp_catch_all_config::SmtpCatchAllConfig,
-    smtp_config::SmtpConfig,
+    smtp_config::SmtpConfig, subscriptions_config::SubscriptionsConfig,
 };
 
 /// Secutils.dev user agent name used for all HTTP requests.
@@ -36,6 +37,8 @@ pub struct Config {
     pub jobs: SchedulerJobsConfig,
     /// Configuration for the JS runtime.
     pub js_runtime: JsRuntimeConfig,
+    /// Configuration related to the Secutils.dev subscriptions.
+    pub subscriptions: SubscriptionsConfig,
 }
 
 impl AsRef<Config> for Config {

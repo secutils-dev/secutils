@@ -29,7 +29,7 @@ use std::sync::Arc;
 pub use self::app_state::tests;
 
 pub use app_state::AppState;
-pub use ui_state::{Status, StatusLevel, UiState, WebhookUrlType};
+pub use ui_state::{Status, StatusLevel, SubscriptionState, UiState, WebhookUrlType};
 
 #[tokio::main]
 pub async fn run(

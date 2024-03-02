@@ -2,9 +2,14 @@ mod status;
 mod status_level;
 mod webhook_url_type;
 
-pub use self::{status::Status, status_level::StatusLevel, webhook_url_type::WebhookUrlType};
+mod subscription_state;
+
+pub use self::{
+    status::Status, status_level::StatusLevel, subscription_state::SubscriptionState,
+    webhook_url_type::WebhookUrlType,
+};
 use crate::{
-    users::{ClientUserShare, SubscriptionFeatures, User, UserSettings},
+    users::{ClientUserShare, User, UserSettings},
     utils::Util,
 };
 use serde::Serialize;
@@ -15,8 +20,8 @@ pub struct UiState<'a> {
     pub status: &'a Status,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<User>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub features: Option<SubscriptionFeatures>,
+    #[serde(skip_serializing_if = "default")]
+    pub subscription: SubscriptionState<'a>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_share: Option<ClientUserShare>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -25,31 +30,47 @@ pub struct UiState<'a> {
     pub webhook_url_type: WebhookUrlType,
 }
 
+fn default<T: Default + PartialEq>(t: &T) -> bool {
+    *t == Default::default()
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
+    use insta::assert_json_snapshot;
+    use serde_json::json;
+    use time::OffsetDateTime;
+    use url::Url;
+    use uuid::uuid;
+
     use crate::{
-        server::{Status, StatusLevel, UiState, WebhookUrlType},
+        server::{
+            ui_state::subscription_state::SubscriptionState, Status, StatusLevel, UiState,
+            WebhookUrlType,
+        },
         tests::{mock_config, mock_user},
         users::{ClientUserShare, SharedResource, UserId, UserShare, UserShareId},
         utils::Util,
     };
-    use insta::assert_json_snapshot;
-    use serde_json::json;
-    use std::collections::BTreeMap;
-    use time::OffsetDateTime;
-    use uuid::uuid;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
         let user = mock_user()?;
         let features = user.subscription.get_features(&mock_config()?);
+        let manage_url = Url::parse("http://localhost:1234/subscription")?;
+        let feature_overview_url = Url::parse("http://localhost:1234/features")?;
         let ui_state = UiState {
             status: &Status {
                 version: "1.0.0-alpha.4".to_string(),
                 level: StatusLevel::Available,
             },
             user: Some(user),
-            features: Some(features),
+            subscription: SubscriptionState {
+                features: Some(features),
+                manage_url: Some(&manage_url),
+                feature_overview_url: Some(&feature_overview_url),
+            },
             user_share: Some(ClientUserShare::from(UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
                 user_id: UserId::default(),
@@ -92,8 +113,12 @@ mod tests {
               "startedAt": 1262340001
             }
           },
-          "features": {
-            "admin": true
+          "subscription": {
+            "features": {
+              "admin": true
+            },
+            "manageUrl": "http://localhost:1234/subscription",
+            "featureOverviewUrl": "http://localhost:1234/features"
           },
           "userShare": {
             "id": "00000000-0000-0000-0000-000000000001",
@@ -127,7 +152,7 @@ mod tests {
                 level: StatusLevel::Available,
             },
             user: None,
-            features: None,
+            subscription: Default::default(),
             user_share: None,
             settings: None,
             utils: vec![],
