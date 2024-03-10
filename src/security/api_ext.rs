@@ -73,7 +73,7 @@ where
             .await
             .with_context(|| "Failed to check if user already exists.")?
         {
-            log::error!(user = log::as_serde!(user.log_context()); "User is already registered.");
+            log::error!(user:serde = user.log_context(); "User is already registered.");
             return Err(UserSignupError::EmailAlreadyRegistered.into());
         }
 

@@ -89,8 +89,8 @@ impl WebPageTrackersScheduleJob {
         for tracker in unscheduled_trackers {
             if tracker.settings.revisions == 0 {
                 log::error!(
-                    user = log::as_serde!(UserLogContext::new(tracker.user_id)),
-                    util = log::as_serde!(tracker.log_context());
+                    user:serde = UserLogContext::new(tracker.user_id),
+                    util:serde = tracker.log_context();
                     "Found an unscheduled tracker that doesn't support tracking, skipping…"
                 );
                 continue;
@@ -100,8 +100,8 @@ impl WebPageTrackersScheduleJob {
                 job_config.schedule
             } else {
                 log::error!(
-                    user = log::as_serde!(UserLogContext::new(tracker.user_id)),
-                    util = log::as_serde!(tracker.log_context());
+                    user:serde = UserLogContext::new(tracker.user_id),
+                    util:serde = tracker.log_context();
                     "Found an unscheduled tracker that doesn't have tracking schedule, skipping…"
                 );
                 continue;

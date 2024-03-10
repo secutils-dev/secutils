@@ -217,17 +217,17 @@ pub async fn webhooks_responders(
             {
                 Ok((override_result, execution_time)) => {
                     log::info!(
-                        user = log::as_serde!(user.log_context()),
-                        util = log::as_serde!(responder.log_context()),
-                        metrics = log::as_serde!(MetricsContext::default().with_script_execution_time(execution_time));
+                        user:serde = user.log_context(),
+                        util:serde = responder.log_context(),
+                        metrics:serde = MetricsContext::default().with_script_execution_time(execution_time);
                         "Executed responder user script in {execution_time:.2?}.",
                     );
                     override_result.unwrap_or_default()
                 }
                 Err(err) => {
                     log::error!(
-                        user = log::as_serde!(user.log_context()),
-                        util = log::as_serde!(responder.log_context());
+                        user:serde = user.log_context(),
+                        util:serde = responder.log_context();
                         "Failed to execute responder user script: {err:?}"
                     );
                     return Ok(HttpResponse::InternalServerError().body(err.to_string()));

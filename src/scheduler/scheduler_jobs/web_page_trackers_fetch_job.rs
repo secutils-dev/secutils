@@ -106,9 +106,9 @@ impl WebPageTrackersFetchJob {
                 Err(err) => {
                     let execution_time = fetch_start.elapsed();
                     log::error!(
-                        user = log::as_serde!(UserLogContext::new(tracker.user_id)),
-                        util = log::as_serde!(tracker.log_context()),
-                        metrics = log::as_serde!(MetricsContext::default().with_job_execution_time(execution_time));
+                        user:serde = UserLogContext::new(tracker.user_id),
+                        util:serde = tracker.log_context(),
+                        metrics:serde = MetricsContext::default().with_job_execution_time(execution_time);
                         "Failed to create web page tracker history revision: {err:?}"
                     );
 
@@ -127,9 +127,9 @@ impl WebPageTrackersFetchJob {
 
                     if let Some(retry) = retry_state {
                         log::warn!(
-                            user = log::as_serde!(UserLogContext::new(tracker.user_id)),
-                            util = log::as_serde!(tracker.log_context()),
-                            metrics = log::as_serde!(MetricsContext::default().with_job_retries(retry.attempts));
+                            user:serde = UserLogContext::new(tracker.user_id),
+                            util:serde = tracker.log_context(),
+                            metrics:serde = MetricsContext::default().with_job_retries(retry.attempts);
                             "Scheduled a retry to create web page resources tracker history revision at {}.",
                             retry.next_at,
                         );
@@ -157,9 +157,9 @@ impl WebPageTrackersFetchJob {
 
             let execution_time = fetch_start.elapsed();
             log::info!(
-                user = log::as_serde!(UserLogContext::new(tracker.user_id)),
-                util = log::as_serde!(tracker.log_context()),
-                metrics = log::as_serde!(MetricsContext::default().with_job_execution_time(execution_time));
+                user:serde = UserLogContext::new(tracker.user_id),
+                util:serde = tracker.log_context(),
+                metrics:serde = MetricsContext::default().with_job_execution_time(execution_time);
                 "Successfully created web page tracker history revision in {}.",
                 humantime::format_duration(execution_time)
             );
@@ -233,9 +233,9 @@ impl WebPageTrackersFetchJob {
                 Err(err) => {
                     let execution_time = fetch_start.elapsed();
                     log::error!(
-                        user = log::as_serde!(UserLogContext::new(tracker.user_id)),
-                        util = log::as_serde!(tracker.log_context()),
-                        metrics = log::as_serde!(log::as_serde!(MetricsContext::default().with_job_execution_time(execution_time)));
+                        user:serde = UserLogContext::new(tracker.user_id),
+                        util:serde = tracker.log_context(),
+                        metrics:serde = MetricsContext::default().with_job_execution_time(execution_time);
                         "Failed to create web page tracker history revision: {err:?}"
                     );
 
@@ -254,9 +254,9 @@ impl WebPageTrackersFetchJob {
 
                     if let Some(retry) = retry_state {
                         log::warn!(
-                            user = log::as_serde!(UserLogContext::new(tracker.user_id)),
-                            util = log::as_serde!(tracker.log_context()),
-                            metrics = log::as_serde!(MetricsContext::default().with_job_retries(retry.attempts));
+                            user:serde = UserLogContext::new(tracker.user_id),
+                            util:serde = tracker.log_context(),
+                            metrics:serde = MetricsContext::default().with_job_retries(retry.attempts);
                             "Scheduled a retry to create web page content tracker history revision at {}.",
                             retry.next_at,
                         );
@@ -284,9 +284,9 @@ impl WebPageTrackersFetchJob {
 
             let execution_time = fetch_start.elapsed();
             log::info!(
-                user = log::as_serde!(UserLogContext::new(tracker.user_id)),
-                util = log::as_serde!(tracker.log_context()),
-                metrics = log::as_serde!(MetricsContext::default().with_job_execution_time(execution_time));
+                user:serde = UserLogContext::new(tracker.user_id),
+                util:serde = tracker.log_context(),
+                metrics:serde = MetricsContext::default().with_job_execution_time(execution_time);
                 "Successfully created web page tracker history revision in {}.",
                 humantime::format_duration(execution_time)
             );
@@ -320,8 +320,8 @@ impl WebPageTrackersFetchJob {
     {
         let Some(job_id) = tracker.job_id else {
             log::error!(
-                user = log::as_serde!(UserLogContext::new(tracker.user_id)),
-                util = log::as_serde!(tracker.log_context());
+                user:serde = UserLogContext::new(tracker.user_id),
+                util:serde = tracker.log_context();
                 "Could not find a job for a pending web page tracker, skipping."
             );
             return Ok(None);
@@ -329,9 +329,9 @@ impl WebPageTrackersFetchJob {
 
         if tracker.settings.revisions == 0 || tracker.job_config.is_none() {
             log::warn!(
-                user = log::as_serde!(UserLogContext::new(tracker.user_id)),
-                util = log::as_serde!(tracker.log_context()),
-                job = log::as_serde!(JobLogContext::new(job_id));
+                user:serde = UserLogContext::new(tracker.user_id),
+                util:serde = tracker.log_context(),
+                job:serde = JobLogContext::new(job_id);
                 "Found a pending web page tracker that doesn't support tracking, the job will be removed."
             );
 
@@ -371,8 +371,8 @@ impl WebPageTrackersFetchJob {
             .await;
         if let Err(err) = notification_schedule_result {
             log::error!(
-                user = log::as_serde!(UserLogContext::new(tracker.user_id)),
-                util = log::as_serde!(tracker.log_context());
+                user:serde = UserLogContext::new(tracker.user_id),
+                util:serde = tracker.log_context();
                 "Failed to schedule a notification for web page tracker: {err:?}."
             );
         }

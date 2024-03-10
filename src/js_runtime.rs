@@ -132,7 +132,7 @@ impl JsRuntime {
         // Retrieve the result `Promise`.
         let script_result_promise = self
             .inner_runtime
-            .execute_script("<anon>", js_code.into().into())
+            .execute_script("<anon>", js_code.into())
             .map_err(|err| {
                 timeout_token.swap(true, Ordering::Relaxed);
                 self.inner_runtime.v8_isolate().cancel_terminate_execution();
@@ -240,7 +240,7 @@ pub mod tests {
                 r#"
         (async () => {{
             return new Promise((resolve) => {
-                Deno.core.queueTimer(
+                Deno.core.queueUserTimer(
                     Deno.core.getTimerDepth() + 1,
                     false,
                     10 * 1000,

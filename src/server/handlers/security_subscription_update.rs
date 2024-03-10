@@ -30,7 +30,7 @@ pub async fn security_subscription_update(
         .await
     {
         Ok(Some(updated_user)) => {
-            log::info!(user = log::as_serde!(updated_user.log_context()); "Successfully updated user subscription.");
+            log::info!(user:serde = updated_user.log_context(); "Successfully updated user subscription.");
             Ok::<HttpResponse, Error>(HttpResponse::NoContent().finish())
         }
         Ok(None) => {

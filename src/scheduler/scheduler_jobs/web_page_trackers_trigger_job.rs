@@ -35,7 +35,7 @@ impl WebPageTrackersTriggerJob {
                 .map(|tracker| (tracker.id, tracker.settings, tracker.job_config)),
         }) else {
             log::warn!(
-                job = log::as_serde!(JobLogContext::new(job_id));
+                job:serde = JobLogContext::new(job_id);
                 "Web page tracker job reference doesn't exist, the job will be removed."
             );
             return Ok(None);
@@ -94,12 +94,12 @@ impl WebPageTrackersTriggerJob {
                 // table for pending jobs.
                 if let Err(err) = db.reset_scheduler_job_state(uuid, true).await {
                     log::error!(
-                        job = log::as_serde!(JobLogContext::new(uuid));
+                        job:serde = JobLogContext::new(uuid);
                         "Error marking web page tracker trigger job as pending: {err:?}"
                     );
                 } else {
                     log::debug!(
-                        job = log::as_serde!(JobLogContext::new(uuid));
+                        job:serde = JobLogContext::new(uuid);
                         "Successfully run the job."
                     );
                 }

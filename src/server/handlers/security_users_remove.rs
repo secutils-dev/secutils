@@ -30,7 +30,7 @@ pub async fn security_users_remove(
     match users_api.remove_by_email(&body_params.email).await {
         Ok(Some(user_id)) => {
             log::info!(
-                user = log::as_serde!(UserLogContext::new(user_id));
+                user:serde = UserLogContext::new(user_id);
                 "Successfully removed user.",
             );
         }

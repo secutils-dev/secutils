@@ -16,7 +16,7 @@ pub async fn security_users_get(
         Ok(Some(user_to_retrieve)) => HttpResponse::Ok().json(user_to_retrieve),
         Ok(None) => HttpResponse::NotFound().finish(),
         Err(err) => {
-            log::error!(user = log::as_serde!(UserLogContext::new(*user_id)); "Failed to retrieve user by ID: {err:?}");
+            log::error!(user:serde = UserLogContext::new(*user_id); "Failed to retrieve user by ID: {err:?}");
             generic_internal_server_error()
         }
     })

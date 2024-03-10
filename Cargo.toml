@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 actix-cors = "0.7.0"
-actix-identity = "0.7.0"
+actix-identity = "0.7.1"
 actix-session = "0.9.0"
 actix-web = "4.5.1"
 actix-web-httpauth = "0.8.1"
@@ -18,11 +18,11 @@ anyhow = "1.0.80"
 argon2 = "0.5.3"
 async-stream = "0.3.5"
 bytes = "1.5.0"
-chrono = { version = "0.4.34", default-features = false }
-clap = "4.5.1"
+chrono = { version = "0.4.35", default-features = false }
+clap = "4.5.2"
 content-security-policy = "0.5.1"
-cron = "0.12.0"
-deno_core = "0.263.0"
+cron = "0.12.1"
+deno_core = "0.270.0"
 directories = "5.0.1"
 dotenvy = "0.15.7"
 structured-logger = "1.0.3"
@@ -32,15 +32,15 @@ hex = "0.4.3"
 html5ever = "0.26.0"
 humantime = "2.1.0"
 itertools = "0.12.1"
-lettre = { version = "0.11.4", default-features = false  }
-log = "0.4.20"
+lettre = { version = "0.11.4", default-features = false }
+log = "0.4.21"
 mailchecker = "6.0.1"
 openssl = "0.10.64"
-postcard = { version = "1.0.8", default-features = false  }
+postcard = { version = "1.0.8", default-features = false }
 rand_core = "0.6.4"
 regex = "1.10.3"
-reqwest = { version = "0.11.24", default-features = false }
-rust-embed = "8.2.0"
+reqwest = { version = "0.11.25", default-features = false }
+rust-embed = "8.3.0"
 serde = "1.0.197"
 serde_bytes = "0.11.14"
 serde_derive = "1.0.197"
@@ -63,9 +63,9 @@ webauthn-rs = "0.4.8"
 zip = "0.6.6"
 
 [dev-dependencies]
-ctor = "0.2.6"
+ctor = "0.2.7"
 httpmock = "0.7.0"
-insta = "1.35.1"
+insta = "1.36.1"
 
 [patch.crates-io]
 tokio-cron-scheduler = { path = "./vendor/tokio-cron-scheduler" }
@@ -85,11 +85,11 @@ default = [
     "lettre/builder",
     "lettre/smtp-transport",
     "lettre/tokio1-rustls-tls",
-    "log/kv_unstable",
+    "log/kv_serde",
     "postcard/use-std",
     "rand_core/std",
     "reqwest/json",
-    "reqwest/rustls-native-certs",
+    "reqwest/rustls-tls-native-roots",
     "serde_json/arbitrary_precision",
     "serde_with/time_0_3",
     "sqlx/json",
