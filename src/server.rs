@@ -179,6 +179,7 @@ pub async fn run(
                     .service(
                         web::scope("/users")
                             .route("/remove", web::post().to(handlers::security_users_remove))
+                            .route("/self", web::get().to(handlers::security_users_get_self))
                             .route("/{user_id}", web::get().to(handlers::security_users_get)),
                     )
                     .service(

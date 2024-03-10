@@ -11,6 +11,7 @@ mod security_signup;
 mod security_subscription_update;
 mod security_users_get;
 mod security_users_get_by_email;
+mod security_users_get_self;
 mod security_users_remove;
 mod security_webauthn_signin;
 mod security_webauthn_signup;
@@ -40,6 +41,7 @@ pub use self::{
     security_subscription_update::security_subscription_update,
     security_users_get::security_users_get,
     security_users_get_by_email::security_users_get_by_email,
+    security_users_get_self::security_users_get_self,
     security_users_remove::security_users_remove,
     security_webauthn_signin::{security_webauthn_signin_finish, security_webauthn_signin_start},
     security_webauthn_signup::{security_webauthn_signup_finish, security_webauthn_signup_start},
