@@ -17,7 +17,7 @@ impl WebhooksRespondersFeature {
     /// Returns webhook responders feature properties for the specified user.
     pub fn new(config: &Config, subscription: UserSubscription) -> Self {
         let (max_script_memory, max_script_time) = match subscription.effective_tier() {
-            SubscriptionTier::Basic => (1024 * 1024, Duration::from_secs(5)),
+            SubscriptionTier::Basic => (5 * 1024 * 1024, Duration::from_secs(5)),
             SubscriptionTier::Standard
             | SubscriptionTier::Professional
             | SubscriptionTier::Ultimate => (
@@ -59,7 +59,7 @@ mod test {
             trial_ends_at: None,
         };
         let features = WebhooksRespondersFeature::new(&config, subscription);
-        assert_eq!(features.max_script_memory, 1024 * 1024);
+        assert_eq!(features.max_script_memory, 5 * 1024 * 1024);
         assert_eq!(features.max_script_time, Duration::from_secs(5));
 
         let subscriptions = [
