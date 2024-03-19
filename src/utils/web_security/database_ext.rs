@@ -28,7 +28,7 @@ impl<'pool> WebSecurityDatabaseExt<'pool> {
         user_id: UserId,
         id: Uuid,
     ) -> anyhow::Result<Option<ContentSecurityPolicy>> {
-        let id = id.as_ref();
+        let id: &[u8] = id.as_ref();
         query_as!(
             RawContentSecurityPolicy,
             r#"
@@ -145,7 +145,7 @@ WHERE user_id = ?1 AND id = ?2
         user_id: UserId,
         id: Uuid,
     ) -> anyhow::Result<()> {
-        let id = id.as_ref();
+        let id: &[u8] = id.as_ref();
         query!(
             r#"
     DELETE FROM user_data_web_security_csp

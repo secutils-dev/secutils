@@ -52,7 +52,7 @@ ORDER BY created_at
         user_id: UserId,
         id: Uuid,
     ) -> anyhow::Result<Option<Responder>> {
-        let id = id.as_ref();
+        let id: &[u8] = id.as_ref();
         query_as!(
             RawResponder,
             r#"
@@ -226,7 +226,7 @@ ORDER BY created_at
 
     /// Removes responder for the specified user with the specified ID.
     pub async fn remove_responder(&self, user_id: UserId, id: Uuid) -> anyhow::Result<()> {
-        let id = id.as_ref();
+        let id: &[u8] = id.as_ref();
         query!(
             r#"
         DELETE FROM user_data_webhooks_responders
@@ -275,7 +275,7 @@ ORDER BY created_at
         user_id: UserId,
         responder_id: Uuid,
     ) -> anyhow::Result<()> {
-        let id = responder_id.as_ref();
+        let id: &[u8] = responder_id.as_ref();
         query!(
             r#"
         DELETE FROM user_data_webhooks_responders_history

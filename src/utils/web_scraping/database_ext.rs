@@ -63,7 +63,7 @@ ORDER BY created_at
         id: Uuid,
     ) -> anyhow::Result<Option<WebPageTracker<Tag>>> {
         let kind = Vec::try_from(Tag::KIND)?;
-        let id = id.as_ref();
+        let id: &[u8] = id.as_ref();
         query_as!(
             RawWebPageTracker,
             r#"
@@ -184,7 +184,7 @@ WHERE user_id = ?1 AND id = ?2 AND kind = ?3
 
     /// Removes web page tracker for the specified user with the specified ID.
     pub async fn remove_web_page_tracker(&self, id: Uuid) -> anyhow::Result<()> {
-        let id = id.as_ref();
+        let id: &[u8] = id.as_ref();
         query!(
             r#"
     DELETE FROM user_data_web_scraping_trackers
@@ -232,7 +232,7 @@ ORDER BY history.created_at
 
     /// Removes web page tracker history.
     pub async fn clear_web_page_tracker_history(&self, tracker_id: Uuid) -> anyhow::Result<()> {
-        let id = tracker_id.as_ref();
+        let id: &[u8] = tracker_id.as_ref();
         query!(
             r#"
     DELETE FROM user_data_web_scraping_trackers_history

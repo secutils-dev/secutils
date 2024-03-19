@@ -33,7 +33,7 @@ impl<'pool> CertificatesDatabaseExt<'pool> {
         user_id: UserId,
         id: Uuid,
     ) -> anyhow::Result<Option<PrivateKey>> {
-        let id = id.as_ref();
+        let id: &[u8] = id.as_ref();
         query_as!(
             RawPrivateKey,
             r#"
@@ -149,7 +149,7 @@ WHERE user_id = ?1 AND id = ?2
 
     /// Removes private key for the specified user with the specified ID.
     pub async fn remove_private_key(&self, user_id: UserId, id: Uuid) -> anyhow::Result<()> {
-        let id = id.as_ref();
+        let id: &[u8] = id.as_ref();
         query!(
             r#"
 DELETE FROM user_data_certificates_private_keys
@@ -195,7 +195,7 @@ ORDER BY created_at
         user_id: UserId,
         id: Uuid,
     ) -> anyhow::Result<Option<CertificateTemplate>> {
-        let id = id.as_ref();
+        let id: &[u8] = id.as_ref();
         query_as!(
             RawCertificateTemplate,
             r#"
@@ -312,7 +312,7 @@ WHERE user_id = ?1 AND id = ?2
         user_id: UserId,
         id: Uuid,
     ) -> anyhow::Result<()> {
-        let id = id.as_ref();
+        let id: &[u8] = id.as_ref();
         query!(
             r#"
 DELETE FROM user_data_certificates_certificate_templates
