@@ -31,6 +31,8 @@ Secutils.dev adheres to [open security principles](https://en.wikipedia.org/wiki
 
 ![Secutils.dev Digital Certificates](https://github.com/secutils-dev/.github/blob/main/profile/digital_certificates.png?raw=true)
 
+![Secutils.dev Web Security](https://github.com/secutils-dev/.github/blob/main/profile/web_security.png?raw=true)
+
 ## Getting started
 
 Before running the Secutils.dev server locally, you need to provide several required parameters. The easiest way is to
