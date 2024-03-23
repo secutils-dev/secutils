@@ -23,7 +23,7 @@ impl CspMetaParser {
             .try_reinterpret::<fmt::UTF8>()
             .map_err(|_| anyhow!("HTML content isn't a valid UTF-8 text."))?;
 
-        let mut input = BufferQueue::new();
+        let mut input = BufferQueue::default();
         input.push_back(utf8_chunk);
 
         // Start tokenizing and collect CSP `<meta>` tags.

@@ -1221,7 +1221,7 @@ mod tests {
 
     #[tokio::test]
     async fn can_retrieve_user_shares_by_resource() -> anyhow::Result<()> {
-        let user_shares = vec![
+        let user_shares = [
             UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
                 user_id: 1.try_into()?,

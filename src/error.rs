@@ -86,11 +86,10 @@ impl From<anyhow::Error> for Error {
 #[cfg(test)]
 mod tests {
     use super::{Error, ErrorKind};
-    use actix_web::{body::MessageBody, ResponseError};
+    use actix_web::{body::MessageBody, http::StatusCode, ResponseError};
     use anyhow::anyhow;
     use bytes::Bytes;
     use insta::assert_debug_snapshot;
-    use reqwest::StatusCode;
 
     #[test]
     fn can_create_client_errors() -> anyhow::Result<()> {
