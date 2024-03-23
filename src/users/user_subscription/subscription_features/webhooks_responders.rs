@@ -21,7 +21,7 @@ impl WebhooksRespondersFeature {
             SubscriptionTier::Standard
             | SubscriptionTier::Professional
             | SubscriptionTier::Ultimate => (
-                config.js_runtime.max_heap_size_bytes,
+                config.js_runtime.max_heap_size,
                 config.js_runtime.max_user_script_execution_time,
             ),
         };
@@ -79,10 +79,7 @@ mod test {
 
         for subscription in subscriptions {
             let features = WebhooksRespondersFeature::new(&config, subscription);
-            assert_eq!(
-                features.max_script_memory,
-                config.js_runtime.max_heap_size_bytes
-            );
+            assert_eq!(features.max_script_memory, config.js_runtime.max_heap_size);
             assert_eq!(
                 features.max_script_time,
                 config.js_runtime.max_user_script_execution_time
@@ -121,10 +118,7 @@ mod test {
 
         for subscription in subscriptions {
             let features = WebhooksRespondersFeature::new(&config, subscription);
-            assert_eq!(
-                features.max_script_memory,
-                config.js_runtime.max_heap_size_bytes
-            );
+            assert_eq!(features.max_script_memory, config.js_runtime.max_heap_size);
             assert_eq!(
                 features.max_script_time,
                 config.js_runtime.max_user_script_execution_time

@@ -50,6 +50,6 @@ pub async fn ui_state_get(
         user_share: user_share.map(ClientUserShare::from),
         settings,
         utils,
-        webhook_url_type: state.config.webhook_url_type,
+        webhook_url_type: state.config.utils.webhook_url_type,
     }))
 }

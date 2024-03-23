@@ -39,7 +39,7 @@ impl NotificationsSendJob {
         ET::Error: EmailTransportError,
     {
         let mut job = Job::new_async(
-            api.config.jobs.notifications_send.clone(),
+            api.config.scheduler.notifications_send.clone(),
             move |_, scheduler| {
                 let api = api.clone();
                 Box::pin(async move {
@@ -139,7 +139,7 @@ mod tests {
     #[tokio::test]
     async fn can_create_job_with_correct_parameters() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.notifications_send = Schedule::try_from("1/5 * * * * *")?;
+        config.scheduler.notifications_send = Schedule::try_from("1/5 * * * * *")?;
 
         let api = mock_api_with_config(config).await?;
 
@@ -170,7 +170,7 @@ mod tests {
     #[tokio::test]
     async fn can_resume_job() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.notifications_send = Schedule::try_from("0 0 * * * *")?;
+        config.scheduler.notifications_send = Schedule::try_from("0 0 * * * *")?;
 
         let api = mock_api_with_config(config).await?;
 
@@ -206,7 +206,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn can_send_pending_notifications() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.notifications_send = Schedule::try_from(mock_schedule_in_sec(2).as_str())?;
+        config.scheduler.notifications_send = Schedule::try_from(mock_schedule_in_sec(2).as_str())?;
 
         let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(config).await?);

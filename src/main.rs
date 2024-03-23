@@ -17,329 +17,50 @@ mod templates;
 mod users;
 mod utils;
 
-use crate::{
-    config::{
-        ComponentsConfig, Config, JsRuntimeConfig, SchedulerJobsConfig, SmtpCatchAllConfig,
-        SmtpConfig, SubscriptionsConfig,
-    },
-    server::WebhookUrlType,
-};
-use anyhow::{anyhow, Context};
-use bytes::Buf;
-use clap::{value_parser, Arg, ArgMatches, Command};
-use cron::Schedule;
-use lettre::message::Mailbox;
-use std::{str::FromStr, time::Duration};
-use url::Url;
-
-fn process_command(version: &str, matches: ArgMatches) -> Result<(), anyhow::Error> {
-    let smtp_catch_all_config = match (
-        matches.get_one::<String>("SMTP_CATCH_ALL_RECIPIENT"),
-        matches.get_one::<String>("SMTP_CATCH_ALL_TEXT_MATCHER"),
-    ) {
-        (Some(recipient), Some(text_matcher)) => {
-            let text_matcher = regex::Regex::new(text_matcher.as_str())
-                .with_context(|| "Cannot parse SMTP catch-all text matcher.")?;
-            Mailbox::from_str(recipient.as_str())
-                .with_context(|| "Cannot parse SMTP catch-all recipient.")?;
-            Some(SmtpCatchAllConfig {
-                recipient: recipient.to_string(),
-                text_matcher,
-            })
-        }
-        (None, None) => None,
-        (recipient, text_matcher) => {
-            log::warn!(
-                "SMTP catch-all config is not invalid: recipient ({:?}) and text_matcher ({:?}).",
-                recipient,
-                text_matcher
-            );
-            None
-        }
-    };
-    let smtp_config = match (
-        matches.get_one::<String>("SMTP_USERNAME"),
-        matches.get_one::<String>("SMTP_PASSWORD"),
-        matches.get_one::<String>("SMTP_ADDRESS"),
-    ) {
-        (Some(username), Some(password), Some(address)) => Some(SmtpConfig {
-            username: username.to_string(),
-            password: password.to_string(),
-            address: address.to_string(),
-            catch_all: smtp_catch_all_config,
-        }),
-        (username, password, address) => {
-            log::warn!("SMTP config is not provided or invalid: username ({:?}), password ({:?}), address ({:?}).", username, password, address);
-            None
-        }
-    };
-
-    let config = Config {
-        version: version.to_owned(),
-        smtp: smtp_config,
-        http_port: *matches
-            .get_one("HTTP_PORT")
-            .ok_or_else(|| anyhow!("<HTTP_PORT> argument is not provided."))?,
-        public_url: matches
-            .get_one::<String>("PUBLIC_URL")
-            .ok_or_else(|| anyhow!("<PUBLIC_URL> argument is not provided."))
-            .and_then(|public_url| {
-                Url::parse(public_url)
-                    .with_context(|| "Cannot parse public URL parameter.".to_string())
-            })?,
-        webhook_url_type: matches
-            .get_one::<String>("WEBHOOK_URL_TYPE")
-            .ok_or_else(|| anyhow!("<WEBHOOK_URL_TYPE> argument is not provided."))
-            .and_then(|webhook_url_type| {
-                WebhookUrlType::from_str(webhook_url_type)
-                    .with_context(|| "Cannot parse webhook URL type parameter.".to_string())
-            })?,
-        components: ComponentsConfig {
-            web_scraper_url: matches
-                .get_one::<String>("COMPONENT_WEB_SCRAPER_URL")
-                .ok_or_else(|| anyhow!("<COMPONENT_WEB_SCRAPER_URL> argument is not provided."))
-                .and_then(|url| {
-                    Url::parse(url)
-                        .with_context(|| "Cannot parse Web Scraper URL parameter.".to_string())
-                })?,
-            search_index_version: 3,
-        },
-        jobs: SchedulerJobsConfig {
-            web_page_trackers_schedule: matches
-                .get_one::<String>("JOBS_WEB_PAGE_TRACKERS_SCHEDULE")
-                .ok_or_else(|| {
-                    anyhow!("<JOBS_WEB_PAGE_TRACKERS_SCHEDULE> argument is not provided.")
-                })
-                .and_then(|schedule| {
-                    Schedule::try_from(schedule.as_str())
-                        .with_context(|| "Cannot parse web page trackers schedule job schedule.")
-                })?,
-            web_page_trackers_fetch: matches
-                .get_one::<String>("JOBS_WEB_PAGE_TRACKERS_FETCH")
-                .ok_or_else(|| anyhow!("<JOBS_WEB_PAGE_TRACKERS_FETCH> argument is not provided."))
-                .and_then(|schedule| {
-                    Schedule::try_from(schedule.as_str())
-                        .with_context(|| "Cannot parse web page trackers fetch job schedule.")
-                })?,
-            notifications_send: matches
-                .get_one::<String>("JOBS_NOTIFICATIONS_SEND")
-                .ok_or_else(|| anyhow!("<JOBS_NOTIFICATIONS_SEND> argument is not provided."))
-                .and_then(|schedule| {
-                    Schedule::try_from(schedule.as_str())
-                        .with_context(|| "Cannot parse notifications send job schedule.")
-                })?,
-        },
-        js_runtime: JsRuntimeConfig {
-            max_heap_size_bytes: *matches
-                .get_one("JS_RUNTIME_MAX_HEAP_SIZE")
-                .ok_or_else(|| anyhow!("<JS_RUNTIME_MAX_HEAP_SIZE> argument is not provided."))?,
-            max_user_script_execution_time: matches
-                .get_one::<u64>("JS_RUNTIME_MAX_USER_SCRIPT_EXECUTION_TIME")
-                .map(|value| Duration::from_secs(*value))
-                .ok_or_else(|| {
-                    anyhow!("<JS_RUNTIME_MAX_USER_SCRIPT_EXECUTION_TIME> argument is not provided.")
-                })?,
-        },
-        subscriptions: SubscriptionsConfig {
-            manage_url: matches
-                .get_one::<String>("SUBSCRIPTIONS_MANAGE_URL")
-                .map(|value| Url::parse(value.as_str()))
-                .transpose()
-                .with_context(|| "Cannot parse subscription management URL.")?,
-            feature_overview_url: matches
-                .get_one::<String>("SUBSCRIPTIONS_FEATURE_OVERVIEW_URL")
-                .map(|value| Url::parse(value.as_str()))
-                .transpose()
-                .with_context(|| "Cannot parse subscription feature overview URL.")?,
-        },
-    };
-
-    let session_key = matches
-        .get_one::<String>("SESSION_KEY")
-        .ok_or_else(|| anyhow!("<SESSION_KEY> argument is not provided."))
-        .and_then(|value| {
-            let mut session_key = [0; 64];
-            if value.as_bytes().len() != session_key.len() {
-                Err(anyhow!(format!(
-                    "<SESSION_KEY> argument should be {} bytes long.",
-                    session_key.len()
-                )))
-            } else {
-                value.as_bytes().copy_to_slice(&mut session_key);
-                Ok(session_key)
-            }
-        })?;
-
-    let secure_cookies = !matches.get_flag("SESSION_USE_INSECURE_COOKIES");
-
-    let builtin_users = matches
-        .get_one::<String>("BUILTIN_USERS")
-        .map(|value| value.to_string());
-
-    server::run(config, session_key, secure_cookies, builtin_users)
-}
+use crate::config::{Config, RawConfig};
+use anyhow::anyhow;
+use clap::{crate_authors, crate_description, crate_version, value_parser, Arg, Command};
 
 fn main() -> Result<(), anyhow::Error> {
     dotenvy::dotenv().ok();
     structured_logger::Builder::new().init();
 
-    let version = env!("CARGO_PKG_VERSION");
-
     let matches = Command::new("Secutils.dev API server")
-        .version(version)
-        .author("Secutils <dev@secutils.dev")
-        .about("Secutils.dev API server")
+        .version(crate_version!())
+        .author(crate_authors!())
+        .about(crate_description!())
         .arg(
-            Arg::new("SESSION_KEY")
-                .long("session-key")
-                .global(true)
-                .env("SECUTILS_SESSION_KEY")
-                .help("Session encryption key."),
+            Arg::new("CONFIG")
+                .env("SECUTILS_CONFIG")
+                .short('c')
+                .long("config")
+                .default_value("secutils.toml")
+                .help("Path to the application configuration file."),
         )
         .arg(
-            Arg::new("SESSION_USE_INSECURE_COOKIES")
-                .long("use-insecure-cookies")
-                .action(clap::ArgAction::SetTrue)
-                .global(true)
-                .env("SECUTILS_SESSION_USE_INSECURE_COOKIES")
-                .help("Indicates that server shouldn't set `Secure` flag on the session cookie (do not use in production)."),
-        )
-        .arg(
-            Arg::new("SMTP_USERNAME")
-                .long("smtp-username")
-                .global(true)
-                .env("SECUTILS_SMTP_USERNAME")
-                .help("Username to use to authenticate to the SMTP server."),
-        )
-        .arg(
-            Arg::new("SMTP_PASSWORD")
-                .long("smtp-password")
-                .global(true)
-                .env("SECUTILS_SMTP_PASSWORD")
-                .help("Password to use to authenticate to the SMTP server."),
-        )
-        .arg(
-            Arg::new("SMTP_ADDRESS")
-                .long("smtp-address")
-                .global(true)
-                .env("SECUTILS_SMTP_ADDRESS")
-                .help("Address of the SMTP server."),
-        )
-        .arg(
-            Arg::new("SMTP_CATCH_ALL_RECIPIENT")
-                .long("smtp-catch-all-recipient")
-                .global(true)
-                .env("SECUTILS_SMTP_CATCH_ALL_RECIPIENT")
-                .requires("SMTP_CATCH_ALL_TEXT_MATCHER")
-                .help("Address of the catch-all email recipient (used for troubleshooting only)."),
-        )
-        .arg(
-            Arg::new("SMTP_CATCH_ALL_TEXT_MATCHER")
-                .long("smtp-catch-all-text-matcher")
-                .global(true)
-                .env("SECUTILS_SMTP_CATCH_ALL_TEXT_MATCHER")
-                .requires("SMTP_CATCH_ALL_RECIPIENT")
-                .help("Email text should match specified regular expression to be sent to catch-all recipient (used for troubleshooting only)."),
-        )
-        .arg(
-            Arg::new("BUILTIN_USERS")
-                .long("builtin-users")
-                .global(true)
-                .env("SECUTILS_BUILTIN_USERS")
-                .help("List of the builtin users in a single string format."),
-        )
-        .arg(
-            Arg::new("HTTP_PORT")
-                .value_parser(value_parser!(u16))
+            Arg::new("PORT")
+                .env("SECUTILS_PORT")
                 .short('p')
-                .long("http-port")
-                .default_value("7070")
+                .long("port")
+                .value_parser(value_parser!(u16))
                 .help("Defines a TCP port to listen on."),
-        )
-        .arg(
-            Arg::new("PUBLIC_URL")
-                .long("public-url")
-                .global(true)
-                .env("SECUTILS_PUBLIC_URL")
-                .default_value("http://localhost:7070")
-                .help("External/public URL through which service is being accessed."),
-        )
-        .arg(
-            Arg::new("WEBHOOK_URL_TYPE")
-                .long("webhook-url-type")
-                .global(true)
-                .env("SECUTILS_WEBHOOK_URL_TYPE")
-                .default_value("path")
-                .value_names(["path", "subdomain"])
-                .help("Describes how Secutils.dev WebUI should construct webhook URLs. The server supports all types of URL simultaneously."),
-        )
-        .arg(
-            Arg::new("COMPONENT_WEB_SCRAPER_URL")
-                .long("component-web-scraper-url")
-                .global(true)
-                .env("SECUTILS_COMPONENT_WEB_SCRAPER_URL")
-                .default_value("http://localhost:7272")
-                .help("The URL to access the Web Scraper component."),
-        )
-        .arg(
-            Arg::new("JOBS_WEB_PAGE_TRACKERS_SCHEDULE")
-                .long("jobs-web-page-trackers-schedule")
-                .global(true)
-                .env("SECUTILS_JOBS_WEB_PAGE_TRACKERS_SCHEDULE")
-                .default_value("0 * * * * * *")
-                .help("The cron schedule to use for the web page trackers schedule job."),
-        )
-        .arg(
-            Arg::new("JOBS_WEB_PAGE_TRACKERS_FETCH")
-                .long("jobs-web-page-trackers-fetch")
-                .global(true)
-                .env("SECUTILS_JOBS_WEB_PAGE_TRACKERS_FETCH")
-                .default_value("0 * * * * * *")
-                .help("The cron schedule to use for the web page trackers fetch job."),
-        ).arg(
-        Arg::new("JOBS_NOTIFICATIONS_SEND")
-            .long("jobs-notifications-send")
-            .global(true)
-            .env("SECUTILS_JOBS_NOTIFICATIONS_SEND")
-            .default_value("0/30 * * * * * *")
-            .help("The cron schedule to use for the notifications send job."),
-        )
-        .arg(
-            Arg::new("JS_RUNTIME_MAX_HEAP_SIZE")
-                .value_parser(value_parser!(usize))
-                .long("js-runtime-max-heap-size")
-                .global(true)
-                .env("SECUTILS_JS_RUNTIME_MAX_HEAP_SIZE")
-                // 10485760 bytes is 10 MB.
-                .default_value("10485760")
-                .help("Defines the maximum heap size for the JS runtime in bytes."),
-        )
-        .arg(
-            Arg::new("JS_RUNTIME_MAX_USER_SCRIPT_EXECUTION_TIME")
-                .value_parser(value_parser!(u64))
-                .long("js-runtime-max-user-script-execution-time")
-                .global(true)
-                .env("SECUTILS_JS_RUNTIME_MAX_USER_SCRIPT_EXECUTION_TIME")
-                .default_value("30")
-                .help("Defines the maximum duration for a single JS script execution in seconds."),
-        )
-        .arg(
-            Arg::new("SUBSCRIPTIONS_MANAGE_URL")
-                .long("subscriptions-manage-url")
-                .global(true)
-                .env("SECUTILS_SUBSCRIPTIONS_MANAGE_URL")
-                .help("Defines the URL to access the subscription management page."),
-        )
-        .arg(
-            Arg::new("SUBSCRIPTIONS_FEATURE_OVERVIEW_URL")
-                .long("subscriptions-feature-overview-url")
-                .global(true)
-                .env("SECUTILS_SUBSCRIPTIONS_FEATURE_OVERVIEW_URL")
-                .help("Defines the URL to access the feature overview page."),
         )
         .get_matches();
 
-    process_command(version, matches)
+    let mut raw_config = RawConfig::read_from_file(
+        matches
+            .get_one::<String>("CONFIG")
+            .ok_or_else(|| anyhow!("<CONFIG> argument is not provided."))?,
+    )?;
+
+    // CLI argument takes precedence.
+    if let Some(port) = matches.get_one::<u16>("PORT") {
+        raw_config.port = *port;
+    }
+
+    log::info!("Secutils.dev raw configuration: {raw_config:?}.");
+
+    server::run(raw_config)
 }
 
 #[cfg(test)]
@@ -366,10 +87,9 @@ mod tests {
     use url::Url;
 
     use crate::{
-        config::JsRuntimeConfig,
+        config::{JsRuntimeConfig, UtilsConfig},
         search::SearchIndex,
         security::create_webauthn,
-        server::WebhookUrlType,
         templates::create_templates,
         users::{SubscriptionTier, UserSubscription},
     };
@@ -539,29 +259,21 @@ mod tests {
 
     pub fn mock_config() -> anyhow::Result<Config> {
         Ok(Config {
-            version: "1.0.0".to_string(),
-            http_port: 1234,
             public_url: Url::parse("http://localhost:1234")?,
-            webhook_url_type: WebhookUrlType::Subdomain,
+            utils: UtilsConfig::default(),
             smtp: Some(SmtpConfig {
                 username: "dev@secutils.dev".to_string(),
                 password: "password".to_string(),
                 address: "localhost".to_string(),
                 catch_all: None,
             }),
-            components: ComponentsConfig {
-                web_scraper_url: Url::parse("http://localhost:7272")?,
-                search_index_version: 3,
-            },
-            jobs: SchedulerJobsConfig {
+            components: ComponentsConfig::default(),
+            scheduler: SchedulerJobsConfig {
                 web_page_trackers_schedule: Schedule::try_from("0 * 0 * * * *")?,
                 web_page_trackers_fetch: Schedule::try_from("0 * 1 * * * *")?,
                 notifications_send: Schedule::try_from("0 * 2 * * * *")?,
             },
-            js_runtime: JsRuntimeConfig {
-                max_heap_size_bytes: 10485760,
-                max_user_script_execution_time: Duration::from_secs(30),
-            },
+            js_runtime: JsRuntimeConfig::default(),
             subscriptions: SubscriptionsConfig {
                 manage_url: Some(Url::parse("http://localhost:1234/subscription")?),
                 feature_overview_url: Some(Url::parse("http://localhost:1234/features")?),

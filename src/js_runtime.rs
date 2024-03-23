@@ -30,7 +30,7 @@ impl JsRuntime {
         Self {
             inner_runtime: deno_core::JsRuntime::new(RuntimeOptions {
                 create_params: Some(
-                    v8::Isolate::create_params().heap_limits(0, config.max_heap_size_bytes),
+                    v8::Isolate::create_params().heap_limits(0, config.max_heap_size),
                 ),
                 ..Default::default()
             }),
@@ -164,14 +164,14 @@ impl JsRuntime {
 #[cfg(test)]
 pub mod tests {
     use super::JsRuntime;
-    use crate::JsRuntimeConfig;
+    use crate::config::JsRuntimeConfig;
     use deno_core::error::JsError;
     use serde::{Deserialize, Serialize};
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn can_execute_scripts() -> anyhow::Result<()> {
         let config = JsRuntimeConfig {
-            max_heap_size_bytes: 10 * 1024 * 1024,
+            max_heap_size: 10 * 1024 * 1024,
             max_user_script_execution_time: std::time::Duration::from_secs(5),
         };
 
@@ -228,7 +228,7 @@ pub mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn can_limit_execution_time() -> anyhow::Result<()> {
         let config = JsRuntimeConfig {
-            max_heap_size_bytes: 10 * 1024 * 1024,
+            max_heap_size: 10 * 1024 * 1024,
             max_user_script_execution_time: std::time::Duration::from_secs(5),
         };
 
@@ -281,7 +281,7 @@ pub mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn can_limit_execution_memory() -> anyhow::Result<()> {
         let config = JsRuntimeConfig {
-            max_heap_size_bytes: 10 * 1024 * 1024,
+            max_heap_size: 10 * 1024 * 1024,
             max_user_script_execution_time: std::time::Duration::from_secs(5),
         };
 

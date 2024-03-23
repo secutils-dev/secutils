@@ -21,11 +21,10 @@ pub struct AppState<
 
 impl<DR: DnsResolver, ET: EmailTransport> AppState<DR, ET> {
     pub fn new(config: Config, api: Arc<Api<DR, ET>>) -> Self {
-        let version = config.version.to_string();
         Self {
             config,
             status: RwLock::new(Status {
-                version,
+                version: env!("CARGO_PKG_VERSION").to_string(),
                 level: StatusLevel::Available,
             }),
             api,

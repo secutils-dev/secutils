@@ -43,7 +43,7 @@ impl WebPageTrackersFetchJob {
         ET::Error: EmailTransportError,
     {
         let mut job = Job::new_async(
-            api.config.jobs.web_page_trackers_fetch.clone(),
+            api.config.scheduler.web_page_trackers_fetch.clone(),
             move |_, scheduler| {
                 let api = api.clone();
                 Box::pin(async move {
@@ -441,7 +441,7 @@ mod tests {
     #[tokio::test]
     async fn can_create_job_with_correct_parameters() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_fetch = Schedule::try_from("1/5 * * * * *")?;
+        config.scheduler.web_page_trackers_fetch = Schedule::try_from("1/5 * * * * *")?;
 
         let api = mock_api_with_config(config).await?;
 
@@ -472,7 +472,7 @@ mod tests {
     #[tokio::test]
     async fn can_resume_job() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_fetch = Schedule::try_from("0 0 * * * *")?;
+        config.scheduler.web_page_trackers_fetch = Schedule::try_from("0 0 * * * *")?;
 
         let api = mock_api_with_config(config).await?;
 
@@ -508,7 +508,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn remove_pending_trackers_jobs_if_zero_revisions() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_fetch = Schedule::try_from(mock_schedule_in_sec(2).as_str())?;
+        config.scheduler.web_page_trackers_fetch =
+            Schedule::try_from(mock_schedule_in_sec(2).as_str())?;
 
         let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(config).await?);
@@ -621,7 +622,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn can_fetch_resources() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_fetch = Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
+        config.scheduler.web_page_trackers_fetch =
+            Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
 
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
@@ -802,7 +804,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn can_fetch_content() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_fetch = Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
+        config.scheduler.web_page_trackers_fetch =
+            Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
 
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
@@ -961,7 +964,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn schedules_notification_when_resources_change() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_fetch = Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
+        config.scheduler.web_page_trackers_fetch =
+            Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
 
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
@@ -1147,7 +1151,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn schedules_notification_when_resources_change_check_fails() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_fetch = Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
+        config.scheduler.web_page_trackers_fetch =
+            Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
 
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
@@ -1316,7 +1321,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn retries_when_resources_change_check_fails() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_fetch =
+        config.scheduler.web_page_trackers_fetch =
             Schedule::try_from(mock_schedule_in_secs(&[3, 6]).as_str())?;
 
         let server = MockServer::start();
@@ -1524,7 +1529,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn retries_when_resources_change_check_fails_until_succeeds() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_fetch =
+        config.scheduler.web_page_trackers_fetch =
             Schedule::try_from(mock_schedule_in_secs(&[3, 6]).as_str())?;
 
         let server = MockServer::start();
@@ -1769,7 +1774,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn schedules_notification_when_content_change() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_fetch = Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
+        config.scheduler.web_page_trackers_fetch =
+            Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
 
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
@@ -1939,7 +1945,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn schedules_notification_when_content_change_check_fails() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_fetch = Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
+        config.scheduler.web_page_trackers_fetch =
+            Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
 
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
@@ -2106,7 +2113,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn retries_when_content_change_check_fails() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_fetch =
+        config.scheduler.web_page_trackers_fetch =
             Schedule::try_from(mock_schedule_in_secs(&[3, 6]).as_str())?;
 
         let server = MockServer::start();
@@ -2312,7 +2319,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn retries_when_content_change_check_fails_until_succeeds() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_fetch =
+        config.scheduler.web_page_trackers_fetch =
             Schedule::try_from(mock_schedule_in_secs(&[3, 6]).as_str())?;
 
         let server = MockServer::start();

@@ -34,7 +34,7 @@ impl WebPageTrackersScheduleJob {
         api: Arc<Api<DR, ET>>,
     ) -> anyhow::Result<Job> {
         let mut job = Job::new_async(
-            api.config.jobs.web_page_trackers_schedule.clone(),
+            api.config.scheduler.web_page_trackers_schedule.clone(),
             move |_, scheduler| {
                 let api = api.clone();
                 Box::pin(async move {
@@ -167,7 +167,7 @@ mod tests {
     #[tokio::test]
     async fn can_create_job_with_correct_parameters() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_schedule = Schedule::try_from("1/5 * * * * *")?;
+        config.scheduler.web_page_trackers_schedule = Schedule::try_from("1/5 * * * * *")?;
 
         let api = mock_api_with_config(config).await?;
 
@@ -198,7 +198,7 @@ mod tests {
     #[tokio::test]
     async fn can_resume_job() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_schedule = Schedule::try_from("0 0 * * * *")?;
+        config.scheduler.web_page_trackers_schedule = Schedule::try_from("0 0 * * * *")?;
 
         let api = mock_api_with_config(config).await?;
 
@@ -249,7 +249,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn can_schedule_trackers_jobs() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
+        config.scheduler.web_page_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
 
         let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(config).await?);
@@ -436,7 +436,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn does_not_schedule_trackers_without_schedule() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
+        config.scheduler.web_page_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
 
         let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(config).await?);
@@ -533,7 +533,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn does_not_schedule_trackers_if_revisions_is_zero() -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.jobs.web_page_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
+        config.scheduler.web_page_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
 
         let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(config).await?);

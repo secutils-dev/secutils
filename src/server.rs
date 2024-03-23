@@ -6,7 +6,6 @@ mod ui_state;
 
 use crate::{
     api::Api,
-    config::Config,
     database::Database,
     directories::Directories,
     js_runtime::JsRuntime,
@@ -15,38 +14,45 @@ use crate::{
     search::{populate_search_index, SearchIndex},
     security::create_webauthn,
     templates::create_templates,
-    users::builtin_users_initializer,
 };
 use actix_cors::Cors;
 use actix_identity::IdentityMiddleware;
 use actix_session::{storage::CookieSessionStore, SessionMiddleware};
 use actix_web::{cookie::Key, middleware, web, App, HttpServer, Result};
-use anyhow::Context;
-use lettre::{transport::smtp::authentication::Credentials, AsyncSmtpTransport, Tokio1Executor};
-use std::sync::Arc;
+use anyhow::{bail, Context};
+use bytes::Buf;
+use lettre::{
+    message::Mailbox, transport::smtp::authentication::Credentials, AsyncSmtpTransport,
+    Tokio1Executor,
+};
+use std::{str::FromStr, sync::Arc};
 
 #[cfg(test)]
 pub use self::app_state::tests;
 
+use crate::{
+    config::{Config, RawConfig, SESSION_KEY_LENGTH_BYTES},
+    users::BuiltinUser,
+};
 pub use app_state::AppState;
 pub use ui_state::{Status, StatusLevel, SubscriptionState, UiState, WebhookUrlType};
 
 #[tokio::main]
-pub async fn run(
-    config: Config,
-    session_key: [u8; 64],
-    secure_cookies: bool,
-    builtin_users: Option<String>,
-) -> Result<(), anyhow::Error> {
+pub async fn run(raw_config: RawConfig) -> Result<(), anyhow::Error> {
     let datastore_dir = Directories::ensure_data_dir_exists()?;
     log::info!("Data is available at {}", datastore_dir.as_path().display());
     let search_index = SearchIndex::open_path(datastore_dir.join(format!(
         "search_index_v{}",
-        config.components.search_index_version
+        raw_config.components.search_index_version
     )))?;
     let database = Database::open_path(datastore_dir).await?;
 
-    let email_transport = if let Some(ref smtp_config) = config.as_ref().smtp {
+    let email_transport = if let Some(ref smtp_config) = raw_config.smtp {
+        if let Some(ref catch_all_config) = smtp_config.catch_all {
+            Mailbox::from_str(catch_all_config.recipient.as_str())
+                .with_context(|| "Cannot parse SMTP catch-all recipient.")?;
+        }
+
         AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp_config.address)?
             .credentials(Credentials::new(
                 smtp_config.username.clone(),
@@ -57,6 +63,40 @@ pub async fn run(
         AsyncSmtpTransport::<Tokio1Executor>::unencrypted_localhost()
     };
 
+    let http_secure_cookies = !raw_config.security.use_insecure_session_cookie;
+    let http_port = raw_config.port;
+
+    if raw_config.security.session_key.len() < SESSION_KEY_LENGTH_BYTES {
+        bail!("Session key should be at least {SESSION_KEY_LENGTH_BYTES} characters long.");
+    }
+
+    let mut http_session_key = [0; SESSION_KEY_LENGTH_BYTES];
+    raw_config
+        .security
+        .session_key
+        .as_bytes()
+        .copy_to_slice(&mut http_session_key);
+
+    // Extract and parse builtin users from the configuration.
+    let builtin_users = raw_config
+        .security
+        .builtin_users
+        .as_ref()
+        .and_then(|users| {
+            if users.is_empty() {
+                None
+            } else {
+                Some(
+                    users
+                        .iter()
+                        .map(BuiltinUser::try_from)
+                        .collect::<anyhow::Result<Vec<_>>>(),
+                )
+            }
+        })
+        .transpose()?;
+
+    let config = Config::from(raw_config);
     let api = Arc::new(Api::new(
         config.clone(),
         database,
@@ -66,10 +106,18 @@ pub async fn run(
         create_templates()?,
     ));
 
-    if let Some(ref builtin_users) = builtin_users {
-        builtin_users_initializer(&api, builtin_users)
-            .await
-            .with_context(|| "Cannot initialize builtin users")?;
+    if let Some(builtin_users) = builtin_users {
+        let builtin_users_count = builtin_users.len();
+
+        let users = api.users();
+        for builtin_user in builtin_users {
+            users
+                .upsert_builtin(builtin_user)
+                .await
+                .with_context(|| "Cannot initialize builtin user")?;
+        }
+
+        log::info!("Initialized {builtin_users_count} builtin users.");
     }
 
     populate_search_index(&api).await?;
@@ -78,7 +126,6 @@ pub async fn run(
 
     JsRuntime::init_platform();
 
-    let http_server_url = format!("0.0.0.0:{}", config.http_port);
     let state = web::Data::new(AppState::new(config, api.clone()));
     let http_server = HttpServer::new(move || {
         App::new()
@@ -89,9 +136,12 @@ pub async fn run(
             // invokes middleware in the OPPOSITE order of registration when it receives an incoming
             // request.
             .wrap(
-                SessionMiddleware::builder(CookieSessionStore::default(), Key::from(&session_key))
-                    .cookie_secure(secure_cookies)
-                    .build(),
+                SessionMiddleware::builder(
+                    CookieSessionStore::default(),
+                    Key::from(&http_session_key),
+                )
+                .cookie_secure(http_secure_cookies)
+                .build(),
             )
             .app_data(state.clone())
             .service(
@@ -200,6 +250,7 @@ pub async fn run(
             )
     });
 
+    let http_server_url = format!("0.0.0.0:{}", http_port);
     let http_server = http_server
         .bind(&http_server_url)
         .with_context(|| format!("Failed to bind to {}.", &http_server_url))?;

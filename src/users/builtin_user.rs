@@ -1,48 +1,51 @@
-use crate::{security::StoredCredentials, users::SubscriptionTier};
+use crate::{config::BuiltinUserConfig, security::StoredCredentials, users::SubscriptionTier};
 use anyhow::bail;
 
 #[derive(Debug, Clone)]
 pub struct BuiltinUser {
+    /// Builtin user email.
     pub email: String,
+    /// Builtin user handle (used to construct unique user sub-domain).
     pub handle: String,
+    /// Builtin user credentials.
     pub credentials: StoredCredentials,
+    /// Builtin user subscription tier.
     pub tier: SubscriptionTier,
 }
 
-impl TryFrom<&str> for BuiltinUser {
+impl TryFrom<&BuiltinUserConfig> for BuiltinUser {
     type Error = anyhow::Error;
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let user_properties = value.split(':').collect::<Vec<_>>();
-        if user_properties.len() < 4 || user_properties.len() > 5 {
-            bail!("Builtin user is malformed.");
-        }
-
-        let user_email = user_properties[0].trim();
-        let user_password = user_properties[1].trim();
-        let user_handle = user_properties[2].trim();
-        if user_password.is_empty() || user_email.is_empty() || user_handle.is_empty() {
-            bail!(
-                "Builtin user cannot have empty password, username, handle, or subscription tier."
-            );
+    fn try_from(value: &BuiltinUserConfig) -> Result<Self, Self::Error> {
+        if value.password.is_empty() || value.email.is_empty() || value.handle.is_empty() {
+            bail!("Builtin user cannot have empty password, username, or handle.");
         }
 
         Ok(BuiltinUser {
-            email: user_email.to_string(),
-            handle: user_handle.to_string(),
-            credentials: StoredCredentials::try_from_password(user_password)?,
-            tier: user_properties[3].parse::<u8>()?.try_into()?,
+            email: value.email.to_owned(),
+            handle: value.handle.to_owned(),
+            credentials: StoredCredentials::try_from_password(&value.password)?,
+            tier: value.tier,
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::users::{builtin_user::BuiltinUser, SubscriptionTier};
+    use crate::users::{
+        builtin_user::{BuiltinUser, BuiltinUserConfig},
+        SubscriptionTier,
+    };
 
     #[test]
     fn can_parse_builtin_user() -> anyhow::Result<()> {
-        let parsed_user = BuiltinUser::try_from("su@secutils.dev:password:su_handle:100")?;
+        let user_config = BuiltinUserConfig {
+            email: "su@secutils.dev".to_string(),
+            handle: "su_handle".to_string(),
+            password: "password".to_string(),
+            tier: SubscriptionTier::Ultimate,
+        };
+        let parsed_user = BuiltinUser::try_from(&user_config)?;
         assert_eq!(parsed_user.email, "su@secutils.dev");
         assert_eq!(parsed_user.handle, "su_handle");
         assert_eq!(parsed_user.tier, SubscriptionTier::Ultimate);
@@ -52,7 +55,13 @@ mod tests {
             .unwrap()
             .starts_with("$argon2id$v=19$m=19456,t=2,p=1$"));
 
-        let parsed_user = BuiltinUser::try_from("su@secutils.dev:password:su_handle:10")?;
+        let user_config = BuiltinUserConfig {
+            email: "su@secutils.dev".to_string(),
+            handle: "su_handle".to_string(),
+            password: "password".to_string(),
+            tier: SubscriptionTier::Basic,
+        };
+        let parsed_user = BuiltinUser::try_from(&user_config)?;
         assert_eq!(parsed_user.email, "su@secutils.dev");
         assert_eq!(parsed_user.handle, "su_handle");
         assert_eq!(parsed_user.tier, SubscriptionTier::Basic);
@@ -67,10 +76,29 @@ mod tests {
 
     #[test]
     fn fails_if_malformed() -> anyhow::Result<()> {
-        assert!(BuiltinUser::try_from("su@secutils.dev:").is_err());
-        assert!(BuiltinUser::try_from("su@secutils.dev").is_err());
-        assert!(BuiltinUser::try_from("su@secutils.dev:handle").is_err());
-        assert!(BuiltinUser::try_from("su@secutils.dev:handle:").is_err());
+        let user_config = BuiltinUserConfig {
+            email: "su@secutils.dev".to_string(),
+            handle: "su_handle".to_string(),
+            password: "".to_string(),
+            tier: SubscriptionTier::Basic,
+        };
+        assert!(BuiltinUser::try_from(&user_config).is_err());
+
+        let user_config = BuiltinUserConfig {
+            email: "".to_string(),
+            handle: "su_handle".to_string(),
+            password: "password".to_string(),
+            tier: SubscriptionTier::Basic,
+        };
+        assert!(BuiltinUser::try_from(&user_config).is_err());
+
+        let user_config = BuiltinUserConfig {
+            email: "su@secutils.dev".to_string(),
+            handle: "".to_string(),
+            password: "password".to_string(),
+            tier: SubscriptionTier::Basic,
+        };
+        assert!(BuiltinUser::try_from(&user_config).is_err());
 
         Ok(())
     }

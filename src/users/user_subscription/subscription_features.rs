@@ -73,7 +73,7 @@ mod test {
             assert!(!features.admin);
             assert_eq!(
                 features.webhooks_responders.max_script_memory,
-                config.js_runtime.max_heap_size_bytes
+                config.js_runtime.max_heap_size
             );
             assert_eq!(
                 features.webhooks_responders.max_script_time,
@@ -90,7 +90,7 @@ mod test {
         assert!(features.admin);
         assert_eq!(
             features.webhooks_responders.max_script_memory,
-            config.js_runtime.max_heap_size_bytes
+            config.js_runtime.max_heap_size
         );
         assert_eq!(
             features.webhooks_responders.max_script_time,

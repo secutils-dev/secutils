@@ -4,3 +4,4 @@ target/
 .env
 
 *.private.env.json
+secutils.toml

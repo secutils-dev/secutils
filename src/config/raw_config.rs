@@ -1,94 +1,150 @@
-mod components_config;
-mod js_runtime_config;
-mod raw_config;
-mod scheduler_jobs_config;
-mod security_config;
-mod smtp_catch_all_config;
-mod smtp_config;
-mod subscriptions_config;
-mod utils_config;
-
+use crate::config::{
+    utils_config::UtilsConfig, ComponentsConfig, JsRuntimeConfig, SchedulerJobsConfig,
+    SecurityConfig, SmtpConfig, SubscriptionsConfig,
+};
+use figment::{providers, providers::Format, value, Figment, Metadata, Profile, Provider};
+use serde_derive::{Deserialize, Serialize};
 use url::Url;
 
-pub use self::{
-    components_config::ComponentsConfig,
-    js_runtime_config::JsRuntimeConfig,
-    raw_config::RawConfig,
-    scheduler_jobs_config::SchedulerJobsConfig,
-    security_config::{BuiltinUserConfig, SecurityConfig, SESSION_KEY_LENGTH_BYTES},
-    smtp_catch_all_config::SmtpCatchAllConfig,
-    smtp_config::SmtpConfig,
-    subscriptions_config::SubscriptionsConfig,
-    utils_config::UtilsConfig,
-};
-
-/// Secutils.dev user agent name used for all HTTP requests.
-pub static SECUTILS_USER_AGENT: &str =
-    concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
-
-/// Main server config.
-#[derive(Clone, Debug)]
-pub struct Config {
+/// Raw configuration structure that is used to read the configuration from the file.
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(rename_all = "kebab-case")]
+pub struct RawConfig {
+    /// Defines a TCP port to listen on.
+    pub port: u16,
     /// External/public URL through which service is being accessed.
     pub public_url: Url,
-    /// Configuration for the utility functions.
+    /// Security configuration (session, built-in users etc.).
+    pub security: SecurityConfig,
+    /// Configuration for the components that are deployed separately.
+    pub components: ComponentsConfig,
+    /// Configuration for the JS runtime.
+    pub js_runtime: JsRuntimeConfig,
+    /// Configuration for the scheduler jobs.
+    pub scheduler: SchedulerJobsConfig,
+    /// Configuration related to the Secutils.dev subscriptions.
+    pub subscriptions: SubscriptionsConfig,
+    /// Configuration for the utilities.
     pub utils: UtilsConfig,
     /// Configuration for the SMTP functionality.
     pub smtp: Option<SmtpConfig>,
-    /// Configuration for the components that are deployed separately.
-    pub components: ComponentsConfig,
-    /// Configuration for the scheduler jobs.
-    pub scheduler: SchedulerJobsConfig,
-    /// Configuration for the JS runtime.
-    pub js_runtime: JsRuntimeConfig,
-    /// Configuration related to the Secutils.dev subscriptions.
-    pub subscriptions: SubscriptionsConfig,
 }
 
-impl AsRef<Config> for Config {
-    fn as_ref(&self) -> &Config {
-        self
+impl RawConfig {
+    /// Reads the configuration from the file (TOML) and merges it with the default values.
+    pub fn read_from_file(path: &str) -> anyhow::Result<Self> {
+        Ok(Figment::from(RawConfig::default())
+            .merge(providers::Toml::file(path))
+            .extract()?)
     }
 }
 
-impl From<RawConfig> for Config {
-    fn from(raw_config: RawConfig) -> Self {
+impl Default for RawConfig {
+    fn default() -> Self {
+        let port = 7070;
         Self {
-            public_url: raw_config.public_url,
-            smtp: raw_config.smtp,
-            components: raw_config.components,
-            subscriptions: raw_config.subscriptions,
-            utils: raw_config.utils,
-            js_runtime: raw_config.js_runtime,
-            scheduler: raw_config.scheduler,
+            port,
+            public_url: Url::parse(&format!("http://localhost:{port}"))
+                .expect("Cannot parse public URL parameter."),
+            security: SecurityConfig::default(),
+            components: ComponentsConfig::default(),
+            js_runtime: JsRuntimeConfig::default(),
+            scheduler: SchedulerJobsConfig::default(),
+            subscriptions: SubscriptionsConfig::default(),
+            utils: UtilsConfig::default(),
+            smtp: None,
         }
+    }
+}
+
+impl Provider for RawConfig {
+    fn metadata(&self) -> Metadata {
+        Metadata::named("Secutils.dev main configuration")
+    }
+
+    fn data(&self) -> Result<value::Map<Profile, value::Dict>, figment::Error> {
+        providers::Serialized::defaults(Self::default()).data()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::config::{Config, RawConfig, SmtpCatchAllConfig, SmtpConfig};
-    use insta::assert_debug_snapshot;
-    use regex::Regex;
+    use crate::config::{RawConfig, SESSION_KEY_LENGTH_BYTES};
+    use insta::{assert_debug_snapshot, assert_toml_snapshot};
     use url::Url;
 
     #[test]
-    fn conversion_from_raw_config() {
-        let mut raw_config = RawConfig::default();
-        raw_config.subscriptions.feature_overview_url =
+    fn serialization_and_default() {
+        let mut default_config = RawConfig::default();
+        default_config.security.session_key = "a".repeat(SESSION_KEY_LENGTH_BYTES);
+        default_config.subscriptions.feature_overview_url =
             Some(Url::parse("http://localhost:7272").unwrap());
-        raw_config.smtp = Some(SmtpConfig {
-            username: "test@secutils.dev".to_string(),
-            password: "password".to_string(),
-            address: "smtp.secutils.dev".to_string(),
-            catch_all: Some(SmtpCatchAllConfig {
-                recipient: "test@secutils.dev".to_string(),
-                text_matcher: Regex::new(r"test").unwrap(),
-            }),
-        });
 
-        assert_debug_snapshot!(Config::from(raw_config), @r###"
-        Config {
+        assert_toml_snapshot!(default_config, @r###"
+        port = 7070
+        public-url = 'http://localhost:7070/'
+
+        [security]
+        session-key = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        use-insecure-session-cookie = false
+
+        [components]
+        web-scraper-url = 'http://localhost:7272/'
+        search-index-version = 3
+
+        [js-runtime]
+        max-heap-size = 10485760
+        max-user-script-execution-time = 30000
+
+        [scheduler]
+        web-page-trackers-schedule = '0 * * * * * *'
+        web-page-trackers-fetch = '0 * * * * * *'
+        notifications-send = '0/30 * * * * * *'
+
+        [subscriptions]
+        feature-overview-url = 'http://localhost:7272/'
+
+        [utils]
+        webhook-url-type = 'subdomain'
+        "###);
+    }
+
+    #[test]
+    fn deserialization() {
+        let config: RawConfig = toml::from_str(
+            r#"
+        port = 7070
+        public-url = 'http://localhost:7070/'
+
+        [security]
+        session-key = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        use-insecure-session-cookie = false
+
+        [components]
+        web-scraper-url = 'http://localhost:7272/'
+        search-index-version = 3
+
+        [js-runtime]
+        max-heap-size = 10485760
+        max-user-script-execution-time = 30000
+
+        [scheduler]
+        web-page-trackers-schedule = '0 * * * * * *'
+        web-page-trackers-fetch = '0 * * * * * *'
+        notifications-send = '0/30 * * * * * *'
+
+        [subscriptions]
+        feature-overview-url = 'http://localhost:7272/'
+
+        [utils]
+        webhook-url-type = 'subdomain'
+    "#,
+        )
+        .unwrap();
+
+        assert_debug_snapshot!(config, @r###"
+        RawConfig {
+            port: 7070,
             public_url: Url {
                 scheme: "http",
                 cannot_be_a_base: false,
@@ -106,24 +162,11 @@ mod tests {
                 query: None,
                 fragment: None,
             },
-            utils: UtilsConfig {
-                webhook_url_type: Subdomain,
+            security: SecurityConfig {
+                session_key: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                use_insecure_session_cookie: false,
+                builtin_users: None,
             },
-            smtp: Some(
-                SmtpConfig {
-                    username: "test@secutils.dev",
-                    password: "password",
-                    address: "smtp.secutils.dev",
-                    catch_all: Some(
-                        SmtpCatchAllConfig {
-                            recipient: "test@secutils.dev",
-                            text_matcher: Regex(
-                                "test",
-                            ),
-                        },
-                    ),
-                },
-            ),
             components: ComponentsConfig {
                 web_scraper_url: Url {
                     scheme: "http",
@@ -143,6 +186,10 @@ mod tests {
                     fragment: None,
                 },
                 search_index_version: 3,
+            },
+            js_runtime: JsRuntimeConfig {
+                max_heap_size: 10485760,
+                max_user_script_execution_time: 30s,
             },
             scheduler: SchedulerJobsConfig {
                 web_page_trackers_schedule: Schedule {
@@ -237,10 +284,6 @@ mod tests {
                     },
                 },
             },
-            js_runtime: JsRuntimeConfig {
-                max_heap_size: 10485760,
-                max_user_script_execution_time: 30s,
-            },
             subscriptions: SubscriptionsConfig {
                 manage_url: None,
                 feature_overview_url: Some(
@@ -263,6 +306,10 @@ mod tests {
                     },
                 ),
             },
+            utils: UtilsConfig {
+                webhook_url_type: Subdomain,
+            },
+            smtp: None,
         }
         "###);
     }

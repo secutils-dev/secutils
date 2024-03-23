@@ -1,7 +1,8 @@
 [package]
 name = "secutils"
 version = "1.0.0-beta.1"
-authors = ["Secutils <dev@secutils.dev>"]
+authors = ["Aleh Zasypkin <dev@secutils.dev>"]
+description = "An open-source, versatile, yet simple security toolbox for engineers and researchers."
 edition = "2021"
 
 [[bin]]
@@ -26,6 +27,7 @@ deno_core = "0.272.0"
 directories = "5.0.1"
 dotenvy = "0.15.7"
 structured-logger = "1.0.3"
+figment = "0.10.15"
 futures = "0.3.30"
 handlebars = "5.1.0"
 hex = "0.4.3"
@@ -66,6 +68,7 @@ zip = "0.6.6"
 ctor = "0.2.7"
 httpmock = "0.7.0"
 insta = "1.36.1"
+toml = "0.8.12"
 
 [patch.crates-io]
 tokio-cron-scheduler = { path = "./vendor/tokio-cron-scheduler" }
@@ -76,12 +79,15 @@ default = [
     "actix-web/cookies",
     "actix-web/secure-cookies",
     "bytes/serde",
+    "clap/cargo",
     "clap/env",
     "content-security-policy/serde",
+    "figment/toml",
     "handlebars/rust-embed",
     "insta/filters",
     "insta/json",
     "insta/redactions",
+    "insta/toml",
     "lettre/builder",
     "lettre/smtp-transport",
     "lettre/tokio1-rustls-tls",

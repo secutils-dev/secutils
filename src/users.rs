@@ -1,6 +1,5 @@
 pub mod api_ext;
 mod builtin_user;
-mod builtin_users_initializer;
 mod database_ext;
 mod internal_user_data_namespace;
 mod public_user_data_namespace;
@@ -16,7 +15,6 @@ mod user_subscription;
 pub use self::{
     api_ext::errors::UserSignupError,
     builtin_user::BuiltinUser,
-    builtin_users_initializer::builtin_users_initializer,
     internal_user_data_namespace::InternalUserDataNamespace,
     public_user_data_namespace::PublicUserDataNamespace,
     user::User,

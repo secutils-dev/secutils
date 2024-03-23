@@ -35,27 +35,61 @@ Secutils.dev adheres to [open security principles](https://en.wikipedia.org/wiki
 
 ## Getting started
 
-Before running the Secutils.dev server locally, you need to provide several required parameters. The easiest way is to
-specify them through a local `.env` file:
+You can start the Secutils.dev server with `cargo run`. By default, the server will be accessible
+via http://localhost:7070. Use `curl` to verify that the server is up and running:
 
-```dotenv
-# An authenticated session key. For example, can be generated with `openssl rand -hex 32`
-SECUTILS_SESSION_KEY=a1a95f90e375d24ee4abb567c96ec3b053ceb083a4df726c76f8570230311c58
-
-# Defines a pipe-separated (`|`) list of predefined users in the following format: `email:password:role`.
-SECUTILS_BUILTIN_USERS=user@domain.xyz:3efab73129f3d36e:admin
-
-# Path to a local SQLite database file. Refer to https://github.com/launchbadge/sqlx for more details.
-DATABASE_URL=sqlite:///home/user/.local/share/secutils/data.db
-```
-
-Once the .env file is created, you can start the Secutils.dev server with `cargo run`. By default, the server will be
-accessible via http://localhost:7070. Use `curl` to verify that the server is up and running:
-
-```shellThis command 
+```shell
 curl -XGET http://localhost:7070/api/status
 ---
 {"version":"1.0.0-alpha.1","level":"available"}
+```
+
+The server can be configured with a TOML configuration file. See the example below for a basic configuration:
+
+```toml
+port = 7070
+
+# A session key used to encrypt session cookie. Should be at least 64 characters long. 
+# For example, can be generated with `openssl rand -hex 32`
+[security]
+session-key = "a1a95f90e375d24ee4abb567c96ec3b053ceb083a4df726c76f8570230311c58"
+
+# The configuration of the Deno runtime used to run responder scripts.
+[js-runtime]
+max-heap-size = 10_485_760 # 10 MB
+max-user-script-execution-time = 30_000 # 30 seconds
+
+# SMTP server configuration used to send emails (signup emails, notifications etc.).
+[smtp]
+address = "xxx"
+username = "xxx"
+password = "xxx"
+
+# Defines a list of predefined Secutils.dev users.
+[[security.builtin-users]]
+email = "user@domain.xyz"
+handle = "local"
+password = "3efab73129f3d36e"
+tier = "ultimate"
+
+[utils]
+webhook-url-type = "path"
+```
+
+If you saved your configuration to a file named `secutils.toml`, you can start the server with the following command:
+
+```shell
+cargo run -- -c secutils.toml
+```
+
+You can also use `.env` file to specify the location of the configuration file and the main database:
+
+```dotenv
+# Path to the configuration file.
+SECUTILS_CONFIG=${PWD}/secutils.toml
+
+# Path to a local SQLite database file. Refer to https://github.com/launchbadge/sqlx for more details.
+DATABASE_URL=sqlite:///home/user/.local/share/secutils/data.db
 ```
 
 ### Usage
