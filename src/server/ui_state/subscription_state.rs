@@ -5,10 +5,10 @@ use url::Url;
 /// Defines subscription related properties returned as a part of the UI state.
 #[derive(Clone, Serialize, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct SubscriptionState<'u> {
+pub struct SubscriptionState<'u, 'c> {
     /// The subscription-dependent features available to the user.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub features: Option<SubscriptionFeatures>,
+    pub features: Option<SubscriptionFeatures<'c>>,
     /// The URL to the subscription management page.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub manage_url: Option<&'u Url>,
@@ -31,7 +31,8 @@ mod tests {
         assert_json_snapshot!(SubscriptionState::default(), @"{}");
 
         let user = mock_user()?;
-        let features = user.subscription.get_features(&mock_config()?);
+        let config = mock_config()?;
+        let features = user.subscription.get_features(&config);
         let manage_url = Url::parse("http://localhost:1234/subscription")?;
         let feature_overview_url = Url::parse("http://localhost:1234/features")?;
 

@@ -1,6 +1,6 @@
 use crate::config::{
-    utils_config::UtilsConfig, ComponentsConfig, JsRuntimeConfig, SchedulerJobsConfig,
-    SecurityConfig, SmtpConfig, SubscriptionsConfig,
+    utils_config::UtilsConfig, ComponentsConfig, SchedulerJobsConfig, SecurityConfig, SmtpConfig,
+    SubscriptionsConfig,
 };
 use figment::{providers, providers::Format, value, Figment, Metadata, Profile, Provider};
 use serde_derive::{Deserialize, Serialize};
@@ -18,8 +18,6 @@ pub struct RawConfig {
     pub security: SecurityConfig,
     /// Configuration for the components that are deployed separately.
     pub components: ComponentsConfig,
-    /// Configuration for the JS runtime.
-    pub js_runtime: JsRuntimeConfig,
     /// Configuration for the scheduler jobs.
     pub scheduler: SchedulerJobsConfig,
     /// Configuration related to the Secutils.dev subscriptions.
@@ -48,7 +46,6 @@ impl Default for RawConfig {
                 .expect("Cannot parse public URL parameter."),
             security: SecurityConfig::default(),
             components: ComponentsConfig::default(),
-            js_runtime: JsRuntimeConfig::default(),
             scheduler: SchedulerJobsConfig::default(),
             subscriptions: SubscriptionsConfig::default(),
             utils: UtilsConfig::default(),
@@ -92,10 +89,6 @@ mod tests {
         web-scraper-url = 'http://localhost:7272/'
         search-index-version = 3
 
-        [js-runtime]
-        max-heap-size = 10485760
-        max-user-script-execution-time = 30000
-
         [scheduler]
         web-page-trackers-schedule = '0 * * * * * *'
         web-page-trackers-fetch = '0 * * * * * *'
@@ -103,6 +96,74 @@ mod tests {
 
         [subscriptions]
         feature-overview-url = 'http://localhost:7272/'
+        [subscriptions.basic.webhooks]
+        responders = 100
+        responder-requests = 100
+        js-runtime-heap-size = 10485760
+        js-runtime-script-execution-time = 30000
+
+        [subscriptions.basic.web-scraping]
+        trackers = 100
+        tracker-revisions = 100
+
+        [subscriptions.basic.certificates]
+        private-keys = 100
+        templates = 1000
+
+        [subscriptions.basic.web-security]
+        policies = 1000
+        import-policy-from-url = true
+        [subscriptions.standard.webhooks]
+        responders = 100
+        responder-requests = 100
+        js-runtime-heap-size = 10485760
+        js-runtime-script-execution-time = 30000
+
+        [subscriptions.standard.web-scraping]
+        trackers = 100
+        tracker-revisions = 100
+
+        [subscriptions.standard.certificates]
+        private-keys = 100
+        templates = 1000
+
+        [subscriptions.standard.web-security]
+        policies = 1000
+        import-policy-from-url = true
+        [subscriptions.professional.webhooks]
+        responders = 100
+        responder-requests = 100
+        js-runtime-heap-size = 10485760
+        js-runtime-script-execution-time = 30000
+
+        [subscriptions.professional.web-scraping]
+        trackers = 100
+        tracker-revisions = 100
+
+        [subscriptions.professional.certificates]
+        private-keys = 100
+        templates = 1000
+
+        [subscriptions.professional.web-security]
+        policies = 1000
+        import-policy-from-url = true
+        [subscriptions.ultimate.webhooks]
+        responders = 100
+        responder-requests = 100
+        js-runtime-heap-size = 10485760
+        js-runtime-script-execution-time = 30000
+
+        [subscriptions.ultimate.web-scraping]
+        trackers = 100
+        tracker-revisions = 100
+
+        [subscriptions.ultimate.certificates]
+        private-keys = 100
+        templates = 1000
+
+        [subscriptions.ultimate.web-security]
+        policies = 1000
+        import-policy-from-url = true
 
         [utils]
         webhook-url-type = 'subdomain'
@@ -124,10 +185,6 @@ mod tests {
         web-scraper-url = 'http://localhost:7272/'
         search-index-version = 3
 
-        [js-runtime]
-        max-heap-size = 10485760
-        max-user-script-execution-time = 30000
-
         [scheduler]
         web-page-trackers-schedule = '0 * * * * * *'
         web-page-trackers-fetch = '0 * * * * * *'
@@ -135,6 +192,81 @@ mod tests {
 
         [subscriptions]
         feature-overview-url = 'http://localhost:7272/'
+
+        [subscriptions.basic.webhooks]
+        responders = 1
+        responder-requests = 11
+        js-runtime-heap-size = 10
+        js-runtime-script-execution-time = 20
+
+        [subscriptions.basic.web-scraping]
+        trackers = 1
+        tracker-revisions = 11
+
+        [subscriptions.basic.web-security]
+        policies = 10
+        import-policy-from-url = false
+
+        [subscriptions.basic.certificates]
+        private-keys = 1
+        templates = 11
+        private-key-algorithms = ['RSA-1024']
+
+        [subscriptions.standard.webhooks]
+        responders = 2
+        responder-requests = 22
+        js-runtime-heap-size = 30
+        js-runtime-script-execution-time = 40
+
+        [subscriptions.standard.web-scraping]
+        trackers = 2
+        tracker-revisions = 22
+
+        [subscriptions.standard.web-security]
+        policies = 1000
+        import-policy-from-url = true
+
+        [subscriptions.standard.certificates]
+        private-keys = 2
+        templates = 22
+        private-key-algorithms = ['RSA-2048']
+
+        [subscriptions.professional.webhooks]
+        responders = 3
+        responder-requests = 33
+        js-runtime-heap-size = 50
+        js-runtime-script-execution-time = 60
+
+        [subscriptions.professional.web-scraping]
+        trackers = 3
+        tracker-revisions = 33
+
+        [subscriptions.professional.web-security]
+        policies = 1000
+        import-policy-from-url = true
+
+        [subscriptions.professional.certificates]
+        private-keys = 3
+        templates = 33
+        private-key-algorithms = ['RSA-4096']
+
+        [subscriptions.ultimate.webhooks]
+        responders = 4
+        responder-requests = 44
+        js-runtime-heap-size = 70
+        js-runtime-script-execution-time = 80
+
+        [subscriptions.ultimate.web-scraping]
+        trackers = 4
+        tracker-revisions = 44
+
+        [subscriptions.ultimate.web-security]
+        policies = 1000
+        import-policy-from-url = true
+
+        [subscriptions.ultimate.certificates]
+        private-keys = 4
+        templates = 44
 
         [utils]
         webhook-url-type = 'subdomain'
@@ -186,10 +318,6 @@ mod tests {
                     fragment: None,
                 },
                 search_index_version: 3,
-            },
-            js_runtime: JsRuntimeConfig {
-                max_heap_size: 10485760,
-                max_user_script_execution_time: 30s,
             },
             scheduler: SchedulerJobsConfig {
                 web_page_trackers_schedule: Schedule {
@@ -305,6 +433,106 @@ mod tests {
                         fragment: None,
                     },
                 ),
+                basic: SubscriptionConfig {
+                    webhooks: SubscriptionWebhooksConfig {
+                        responders: 1,
+                        responder_requests: 11,
+                        js_runtime_heap_size: 10,
+                        js_runtime_script_execution_time: 20ms,
+                    },
+                    web_scraping: SubscriptionWebScrapingConfig {
+                        trackers: 1,
+                        tracker_revisions: 11,
+                        tracker_schedules: None,
+                    },
+                    certificates: SubscriptionCertificatesConfig {
+                        private_keys: 1,
+                        templates: 11,
+                        private_key_algorithms: Some(
+                            {
+                                "RSA-1024",
+                            },
+                        ),
+                    },
+                    web_security: SubscriptionWebSecurityConfig {
+                        policies: 10,
+                        import_policy_from_url: false,
+                    },
+                },
+                standard: SubscriptionConfig {
+                    webhooks: SubscriptionWebhooksConfig {
+                        responders: 2,
+                        responder_requests: 22,
+                        js_runtime_heap_size: 30,
+                        js_runtime_script_execution_time: 40ms,
+                    },
+                    web_scraping: SubscriptionWebScrapingConfig {
+                        trackers: 2,
+                        tracker_revisions: 22,
+                        tracker_schedules: None,
+                    },
+                    certificates: SubscriptionCertificatesConfig {
+                        private_keys: 2,
+                        templates: 22,
+                        private_key_algorithms: Some(
+                            {
+                                "RSA-2048",
+                            },
+                        ),
+                    },
+                    web_security: SubscriptionWebSecurityConfig {
+                        policies: 1000,
+                        import_policy_from_url: true,
+                    },
+                },
+                professional: SubscriptionConfig {
+                    webhooks: SubscriptionWebhooksConfig {
+                        responders: 3,
+                        responder_requests: 33,
+                        js_runtime_heap_size: 50,
+                        js_runtime_script_execution_time: 60ms,
+                    },
+                    web_scraping: SubscriptionWebScrapingConfig {
+                        trackers: 3,
+                        tracker_revisions: 33,
+                        tracker_schedules: None,
+                    },
+                    certificates: SubscriptionCertificatesConfig {
+                        private_keys: 3,
+                        templates: 33,
+                        private_key_algorithms: Some(
+                            {
+                                "RSA-4096",
+                            },
+                        ),
+                    },
+                    web_security: SubscriptionWebSecurityConfig {
+                        policies: 1000,
+                        import_policy_from_url: true,
+                    },
+                },
+                ultimate: SubscriptionConfig {
+                    webhooks: SubscriptionWebhooksConfig {
+                        responders: 4,
+                        responder_requests: 44,
+                        js_runtime_heap_size: 70,
+                        js_runtime_script_execution_time: 80ms,
+                    },
+                    web_scraping: SubscriptionWebScrapingConfig {
+                        trackers: 4,
+                        tracker_revisions: 44,
+                        tracker_schedules: None,
+                    },
+                    certificates: SubscriptionCertificatesConfig {
+                        private_keys: 4,
+                        templates: 44,
+                        private_key_algorithms: None,
+                    },
+                    web_security: SubscriptionWebSecurityConfig {
+                        policies: 1000,
+                        import_policy_from_url: true,
+                    },
+                },
             },
             utils: UtilsConfig {
                 webhook_url_type: Subdomain,

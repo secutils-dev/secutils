@@ -45,7 +45,7 @@ impl UserSubscription {
     }
 
     /// Returns all features available for the specified subscription with the specified config.
-    pub fn get_features(&self, config: &Config) -> SubscriptionFeatures {
+    pub fn get_features<'c>(&self, config: &'c Config) -> SubscriptionFeatures<'c> {
         SubscriptionFeatures::new(config, *self)
     }
 }

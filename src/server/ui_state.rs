@@ -16,12 +16,12 @@ use serde::Serialize;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UiState<'a> {
+pub struct UiState<'a, 'c> {
     pub status: &'a Status,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<User>,
     #[serde(skip_serializing_if = "default")]
-    pub subscription: SubscriptionState<'a>,
+    pub subscription: SubscriptionState<'a, 'c>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_share: Option<ClientUserShare>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -57,7 +57,8 @@ mod tests {
     #[test]
     fn serialization() -> anyhow::Result<()> {
         let user = mock_user()?;
-        let features = user.subscription.get_features(&mock_config()?);
+        let config = mock_config()?;
+        let features = user.subscription.get_features(&config);
         let manage_url = Url::parse("http://localhost:1234/subscription")?;
         let feature_overview_url = Url::parse("http://localhost:1234/features")?;
         let ui_state = UiState {

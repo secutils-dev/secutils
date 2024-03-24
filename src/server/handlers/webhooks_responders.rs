@@ -1,7 +1,6 @@
 use crate::{
-    config::JsRuntimeConfig,
     error::Error as SecutilsError,
-    js_runtime::JsRuntime,
+    js_runtime::{JsRuntime, JsRuntimeConfig},
     logging::MetricsContext,
     server::app_state::AppState,
     utils::webhooks::{
@@ -206,8 +205,11 @@ pub async fn webhooks_responders(
             // Configure JavaScript runtime based on user's subscription level/overrides.
             let features = user.subscription.get_features(&state.config);
             let js_runtime_config = JsRuntimeConfig {
-                max_heap_size: features.webhooks_responders.max_script_memory,
-                max_user_script_execution_time: features.webhooks_responders.max_script_time,
+                max_heap_size: features.config.webhooks.js_runtime_heap_size,
+                max_user_script_execution_time: features
+                    .config
+                    .webhooks
+                    .js_runtime_script_execution_time,
             };
 
             let js_code = format!(r#"(async (globalThis) => {{ return {script}; }})(globalThis);"#);

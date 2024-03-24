@@ -1,9 +1,7 @@
 use crate::server::WebhookUrlType;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::serde_as;
 
 /// Configuration for the JS runtime (Deno).
-#[serde_as]
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub struct UtilsConfig {

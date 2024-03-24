@@ -1,5 +1,4 @@
 mod components_config;
-mod js_runtime_config;
 mod raw_config;
 mod scheduler_jobs_config;
 mod security_config;
@@ -12,13 +11,15 @@ use url::Url;
 
 pub use self::{
     components_config::ComponentsConfig,
-    js_runtime_config::JsRuntimeConfig,
     raw_config::RawConfig,
     scheduler_jobs_config::SchedulerJobsConfig,
     security_config::{BuiltinUserConfig, SecurityConfig, SESSION_KEY_LENGTH_BYTES},
     smtp_catch_all_config::SmtpCatchAllConfig,
     smtp_config::SmtpConfig,
-    subscriptions_config::SubscriptionsConfig,
+    subscriptions_config::{
+        SubscriptionCertificatesConfig, SubscriptionConfig, SubscriptionWebScrapingConfig,
+        SubscriptionWebSecurityConfig, SubscriptionWebhooksConfig, SubscriptionsConfig,
+    },
     utils_config::UtilsConfig,
 };
 
@@ -39,8 +40,6 @@ pub struct Config {
     pub components: ComponentsConfig,
     /// Configuration for the scheduler jobs.
     pub scheduler: SchedulerJobsConfig,
-    /// Configuration for the JS runtime.
-    pub js_runtime: JsRuntimeConfig,
     /// Configuration related to the Secutils.dev subscriptions.
     pub subscriptions: SubscriptionsConfig,
 }
@@ -59,7 +58,6 @@ impl From<RawConfig> for Config {
             components: raw_config.components,
             subscriptions: raw_config.subscriptions,
             utils: raw_config.utils,
-            js_runtime: raw_config.js_runtime,
             scheduler: raw_config.scheduler,
         }
     }
@@ -237,10 +235,6 @@ mod tests {
                     },
                 },
             },
-            js_runtime: JsRuntimeConfig {
-                max_heap_size: 10485760,
-                max_user_script_execution_time: 30s,
-            },
             subscriptions: SubscriptionsConfig {
                 manage_url: None,
                 feature_overview_url: Some(
@@ -262,6 +256,94 @@ mod tests {
                         fragment: None,
                     },
                 ),
+                basic: SubscriptionConfig {
+                    webhooks: SubscriptionWebhooksConfig {
+                        responders: 100,
+                        responder_requests: 100,
+                        js_runtime_heap_size: 10485760,
+                        js_runtime_script_execution_time: 30s,
+                    },
+                    web_scraping: SubscriptionWebScrapingConfig {
+                        trackers: 100,
+                        tracker_revisions: 100,
+                        tracker_schedules: None,
+                    },
+                    certificates: SubscriptionCertificatesConfig {
+                        private_keys: 100,
+                        templates: 1000,
+                        private_key_algorithms: None,
+                    },
+                    web_security: SubscriptionWebSecurityConfig {
+                        policies: 1000,
+                        import_policy_from_url: true,
+                    },
+                },
+                standard: SubscriptionConfig {
+                    webhooks: SubscriptionWebhooksConfig {
+                        responders: 100,
+                        responder_requests: 100,
+                        js_runtime_heap_size: 10485760,
+                        js_runtime_script_execution_time: 30s,
+                    },
+                    web_scraping: SubscriptionWebScrapingConfig {
+                        trackers: 100,
+                        tracker_revisions: 100,
+                        tracker_schedules: None,
+                    },
+                    certificates: SubscriptionCertificatesConfig {
+                        private_keys: 100,
+                        templates: 1000,
+                        private_key_algorithms: None,
+                    },
+                    web_security: SubscriptionWebSecurityConfig {
+                        policies: 1000,
+                        import_policy_from_url: true,
+                    },
+                },
+                professional: SubscriptionConfig {
+                    webhooks: SubscriptionWebhooksConfig {
+                        responders: 100,
+                        responder_requests: 100,
+                        js_runtime_heap_size: 10485760,
+                        js_runtime_script_execution_time: 30s,
+                    },
+                    web_scraping: SubscriptionWebScrapingConfig {
+                        trackers: 100,
+                        tracker_revisions: 100,
+                        tracker_schedules: None,
+                    },
+                    certificates: SubscriptionCertificatesConfig {
+                        private_keys: 100,
+                        templates: 1000,
+                        private_key_algorithms: None,
+                    },
+                    web_security: SubscriptionWebSecurityConfig {
+                        policies: 1000,
+                        import_policy_from_url: true,
+                    },
+                },
+                ultimate: SubscriptionConfig {
+                    webhooks: SubscriptionWebhooksConfig {
+                        responders: 100,
+                        responder_requests: 100,
+                        js_runtime_heap_size: 10485760,
+                        js_runtime_script_execution_time: 30s,
+                    },
+                    web_scraping: SubscriptionWebScrapingConfig {
+                        trackers: 100,
+                        tracker_revisions: 100,
+                        tracker_schedules: None,
+                    },
+                    certificates: SubscriptionCertificatesConfig {
+                        private_keys: 100,
+                        templates: 1000,
+                        private_key_algorithms: None,
+                    },
+                    web_security: SubscriptionWebSecurityConfig {
+                        policies: 1000,
+                        import_policy_from_url: true,
+                    },
+                },
             },
         }
         "###);

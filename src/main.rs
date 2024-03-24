@@ -87,7 +87,7 @@ mod tests {
     use url::Url;
 
     use crate::{
-        config::{JsRuntimeConfig, UtilsConfig},
+        config::{SubscriptionConfig, UtilsConfig},
         search::SearchIndex,
         security::create_webauthn,
         templates::create_templates,
@@ -273,10 +273,13 @@ mod tests {
                 web_page_trackers_fetch: Schedule::try_from("0 * 1 * * * *")?,
                 notifications_send: Schedule::try_from("0 * 2 * * * *")?,
             },
-            js_runtime: JsRuntimeConfig::default(),
             subscriptions: SubscriptionsConfig {
                 manage_url: Some(Url::parse("http://localhost:1234/subscription")?),
                 feature_overview_url: Some(Url::parse("http://localhost:1234/features")?),
+                basic: SubscriptionConfig::default(),
+                standard: SubscriptionConfig::default(),
+                professional: SubscriptionConfig::default(),
+                ultimate: SubscriptionConfig::default(),
             },
         })
     }

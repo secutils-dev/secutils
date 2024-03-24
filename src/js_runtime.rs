@@ -1,8 +1,7 @@
+mod js_runtime_config;
 mod script_termination_reason;
 
-use crate::{
-    config::JsRuntimeConfig, js_runtime::script_termination_reason::ScriptTerminationReason,
-};
+use crate::js_runtime::script_termination_reason::ScriptTerminationReason;
 use anyhow::{bail, Context};
 use deno_core::{serde_v8, v8, PollEventLoopOptions, RuntimeOptions};
 use serde::{Deserialize, Serialize};
@@ -13,6 +12,8 @@ use std::{
     },
     time::{Duration, Instant},
 };
+
+pub use self::js_runtime_config::JsRuntimeConfig;
 
 /// Defines a maximum interval on which script is checked for timeout.
 const SCRIPT_TIMEOUT_CHECK_INTERVAL: Duration = Duration::from_secs(2);
@@ -163,8 +164,7 @@ impl JsRuntime {
 }
 #[cfg(test)]
 pub mod tests {
-    use super::JsRuntime;
-    use crate::config::JsRuntimeConfig;
+    use super::{JsRuntime, JsRuntimeConfig};
     use deno_core::error::JsError;
     use serde::{Deserialize, Serialize};
 
