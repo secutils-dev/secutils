@@ -16,7 +16,7 @@ impl Default for SubscriptionWebScrapingConfig {
     fn default() -> Self {
         Self {
             trackers: 100,
-            tracker_revisions: 100,
+            tracker_revisions: 30,
             // Default to None to allow all schedules.
             tracker_schedules: None,
         }
@@ -33,7 +33,7 @@ mod tests {
         let config = SubscriptionWebScrapingConfig::default();
         assert_toml_snapshot!(config, @r###"
         trackers = 100
-        tracker-revisions = 100
+        tracker-revisions = 30
         "###);
     }
 
@@ -42,7 +42,7 @@ mod tests {
         let config: SubscriptionWebScrapingConfig = toml::from_str(
             r#"
         trackers = 100
-        tracker-revisions = 100
+        tracker-revisions = 30
     "#,
         )
         .unwrap();

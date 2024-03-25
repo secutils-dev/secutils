@@ -259,13 +259,13 @@ mod tests {
                 basic: SubscriptionConfig {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 100,
-                        responder_requests: 100,
+                        responder_requests: 30,
                         js_runtime_heap_size: 10485760,
                         js_runtime_script_execution_time: 30s,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 100,
-                        tracker_revisions: 100,
+                        tracker_revisions: 30,
                         tracker_schedules: None,
                     },
                     certificates: SubscriptionCertificatesConfig {
@@ -281,13 +281,13 @@ mod tests {
                 standard: SubscriptionConfig {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 100,
-                        responder_requests: 100,
+                        responder_requests: 30,
                         js_runtime_heap_size: 10485760,
                         js_runtime_script_execution_time: 30s,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 100,
-                        tracker_revisions: 100,
+                        tracker_revisions: 30,
                         tracker_schedules: None,
                     },
                     certificates: SubscriptionCertificatesConfig {
@@ -303,13 +303,13 @@ mod tests {
                 professional: SubscriptionConfig {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 100,
-                        responder_requests: 100,
+                        responder_requests: 30,
                         js_runtime_heap_size: 10485760,
                         js_runtime_script_execution_time: 30s,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 100,
-                        tracker_revisions: 100,
+                        tracker_revisions: 30,
                         tracker_schedules: None,
                     },
                     certificates: SubscriptionCertificatesConfig {
@@ -325,13 +325,13 @@ mod tests {
                 ultimate: SubscriptionConfig {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 100,
-                        responder_requests: 100,
+                        responder_requests: 30,
                         js_runtime_heap_size: 10485760,
                         js_runtime_script_execution_time: 30s,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 100,
-                        tracker_revisions: 100,
+                        tracker_revisions: 30,
                         tracker_schedules: None,
                     },
                     certificates: SubscriptionCertificatesConfig {

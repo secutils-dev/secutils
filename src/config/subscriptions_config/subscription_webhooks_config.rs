@@ -21,7 +21,7 @@ impl Default for SubscriptionWebhooksConfig {
     fn default() -> Self {
         Self {
             responders: 100,
-            responder_requests: 100,
+            responder_requests: 30,
             js_runtime_heap_size: 10_485_760,
             js_runtime_script_execution_time: Duration::from_secs(30),
         }
@@ -38,7 +38,7 @@ mod tests {
         let config = SubscriptionWebhooksConfig::default();
         assert_toml_snapshot!(config, @r###"
         responders = 100
-        responder-requests = 100
+        responder-requests = 30
         js-runtime-heap-size = 10485760
         js-runtime-script-execution-time = 30000
         "###);
@@ -49,7 +49,7 @@ mod tests {
         let config: SubscriptionWebhooksConfig = toml::from_str(
             r#"
         responders = 100
-        responder-requests = 100
+        responder-requests = 30
         js-runtime-heap-size = 10485760
         js-runtime-script-execution-time = 30000
     "#,

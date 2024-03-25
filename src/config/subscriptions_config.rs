@@ -65,13 +65,13 @@ mod tests {
         assert_toml_snapshot!(SubscriptionsConfig::default(), @r###"
         [basic.webhooks]
         responders = 100
-        responder-requests = 100
+        responder-requests = 30
         js-runtime-heap-size = 10485760
         js-runtime-script-execution-time = 30000
 
         [basic.web-scraping]
         trackers = 100
-        tracker-revisions = 100
+        tracker-revisions = 30
 
         [basic.certificates]
         private-keys = 100
@@ -82,13 +82,13 @@ mod tests {
         import-policy-from-url = true
         [standard.webhooks]
         responders = 100
-        responder-requests = 100
+        responder-requests = 30
         js-runtime-heap-size = 10485760
         js-runtime-script-execution-time = 30000
 
         [standard.web-scraping]
         trackers = 100
-        tracker-revisions = 100
+        tracker-revisions = 30
 
         [standard.certificates]
         private-keys = 100
@@ -99,13 +99,13 @@ mod tests {
         import-policy-from-url = true
         [professional.webhooks]
         responders = 100
-        responder-requests = 100
+        responder-requests = 30
         js-runtime-heap-size = 10485760
         js-runtime-script-execution-time = 30000
 
         [professional.web-scraping]
         trackers = 100
-        tracker-revisions = 100
+        tracker-revisions = 30
 
         [professional.certificates]
         private-keys = 100
@@ -116,13 +116,13 @@ mod tests {
         import-policy-from-url = true
         [ultimate.webhooks]
         responders = 100
-        responder-requests = 100
+        responder-requests = 30
         js-runtime-heap-size = 10485760
         js-runtime-script-execution-time = 30000
 
         [ultimate.web-scraping]
         trackers = 100
-        tracker-revisions = 100
+        tracker-revisions = 30
 
         [ultimate.certificates]
         private-keys = 100
@@ -146,13 +146,13 @@ mod tests {
         feature-overview-url = 'http://localhost:7272/'
         [basic.webhooks]
         responders = 100
-        responder-requests = 100
+        responder-requests = 30
         js-runtime-heap-size = 10485760
         js-runtime-script-execution-time = 30000
 
         [basic.web-scraping]
         trackers = 100
-        tracker-revisions = 100
+        tracker-revisions = 30
 
         [basic.certificates]
         private-keys = 100
@@ -163,13 +163,13 @@ mod tests {
         import-policy-from-url = true
         [standard.webhooks]
         responders = 100
-        responder-requests = 100
+        responder-requests = 30
         js-runtime-heap-size = 10485760
         js-runtime-script-execution-time = 30000
 
         [standard.web-scraping]
         trackers = 100
-        tracker-revisions = 100
+        tracker-revisions = 30
 
         [standard.certificates]
         private-keys = 100
@@ -180,13 +180,13 @@ mod tests {
         import-policy-from-url = true
         [professional.webhooks]
         responders = 100
-        responder-requests = 100
+        responder-requests = 30
         js-runtime-heap-size = 10485760
         js-runtime-script-execution-time = 30000
 
         [professional.web-scraping]
         trackers = 100
-        tracker-revisions = 100
+        tracker-revisions = 30
 
         [professional.certificates]
         private-keys = 100
@@ -197,13 +197,13 @@ mod tests {
         import-policy-from-url = true
         [ultimate.webhooks]
         responders = 100
-        responder-requests = 100
+        responder-requests = 30
         js-runtime-heap-size = 10485760
         js-runtime-script-execution-time = 30000
 
         [ultimate.web-scraping]
         trackers = 100
-        tracker-revisions = 100
+        tracker-revisions = 30
 
         [ultimate.certificates]
         private-keys = 100

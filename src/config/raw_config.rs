@@ -98,13 +98,13 @@ mod tests {
         feature-overview-url = 'http://localhost:7272/'
         [subscriptions.basic.webhooks]
         responders = 100
-        responder-requests = 100
+        responder-requests = 30
         js-runtime-heap-size = 10485760
         js-runtime-script-execution-time = 30000
 
         [subscriptions.basic.web-scraping]
         trackers = 100
-        tracker-revisions = 100
+        tracker-revisions = 30
 
         [subscriptions.basic.certificates]
         private-keys = 100
@@ -115,13 +115,13 @@ mod tests {
         import-policy-from-url = true
         [subscriptions.standard.webhooks]
         responders = 100
-        responder-requests = 100
+        responder-requests = 30
         js-runtime-heap-size = 10485760
         js-runtime-script-execution-time = 30000
 
         [subscriptions.standard.web-scraping]
         trackers = 100
-        tracker-revisions = 100
+        tracker-revisions = 30
 
         [subscriptions.standard.certificates]
         private-keys = 100
@@ -132,13 +132,13 @@ mod tests {
         import-policy-from-url = true
         [subscriptions.professional.webhooks]
         responders = 100
-        responder-requests = 100
+        responder-requests = 30
         js-runtime-heap-size = 10485760
         js-runtime-script-execution-time = 30000
 
         [subscriptions.professional.web-scraping]
         trackers = 100
-        tracker-revisions = 100
+        tracker-revisions = 30
 
         [subscriptions.professional.certificates]
         private-keys = 100
@@ -149,13 +149,13 @@ mod tests {
         import-policy-from-url = true
         [subscriptions.ultimate.webhooks]
         responders = 100
-        responder-requests = 100
+        responder-requests = 30
         js-runtime-heap-size = 10485760
         js-runtime-script-execution-time = 30000
 
         [subscriptions.ultimate.web-scraping]
         trackers = 100
-        tracker-revisions = 100
+        tracker-revisions = 30
 
         [subscriptions.ultimate.certificates]
         private-keys = 100
