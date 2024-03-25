@@ -144,15 +144,15 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
         responder_id: Uuid,
         params: RespondersRequestCreateParams<'r>,
     ) -> anyhow::Result<Option<ResponderRequest<'r>>> {
+        if params.requests_to_track == 0 {
+            return Ok(None);
+        }
+
         let Some(responder) = self.get_responder(user_id, responder_id).await? else {
             bail!(SecutilsError::client(format!(
                 "Responder ('{responder_id}') is not found."
             )));
         };
-
-        if responder.settings.requests_to_track == 0 {
-            return Ok(None);
-        }
 
         let webhooks = self.api.db.webhooks();
         let requests = webhooks
@@ -179,8 +179,8 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
         webhooks.insert_responder_request(user_id, &request).await?;
 
         // Enforce requests limit and displace old ones.
-        if requests.len() >= responder.settings.requests_to_track {
-            let requests_to_remove = requests.len() - responder.settings.requests_to_track + 1;
+        if requests.len() >= params.requests_to_track {
+            let requests_to_remove = requests.len() - params.requests_to_track + 1;
             for request_to_remove in requests.iter().take(requests_to_remove) {
                 webhooks
                     .remove_responder_request(user_id, responder.id, request_to_remove.id)
@@ -325,6 +325,7 @@ mod tests {
             headers: None,
             url: Cow::Borrowed(url),
             body: None,
+            requests_to_track: 3,
         }
     }
 

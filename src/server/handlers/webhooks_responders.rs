@@ -139,8 +139,18 @@ pub async fn webhooks_responders(
         }
     };
 
-    // Record request
-    if responder.settings.requests_to_track > 0 {
+    let subscription_config = user
+        .subscription
+        .get_features(&state.config)
+        .config
+        .webhooks;
+
+    //  Record request, but don't track more requests than allowed by the subscription.
+    let requests_to_track = std::cmp::min(
+        responder.settings.requests_to_track,
+        subscription_config.responder_requests,
+    );
+    if requests_to_track > 0 {
         let headers = request
             .headers()
             .iter()
@@ -173,6 +183,7 @@ pub async fn webhooks_responders(
                     } else {
                         Some(Cow::Borrowed(&payload))
                     },
+                    requests_to_track,
                 },
             )
             .await?;
@@ -203,12 +214,9 @@ pub async fn webhooks_responders(
             };
 
             // Configure JavaScript runtime based on user's subscription level/overrides.
-            let features = user.subscription.get_features(&state.config);
             let js_runtime_config = JsRuntimeConfig {
-                max_heap_size: features.config.webhooks.js_runtime_heap_size,
-                max_user_script_execution_time: features
-                    .config
-                    .webhooks
+                max_heap_size: subscription_config.js_runtime_heap_size,
+                max_user_script_execution_time: subscription_config
                     .js_runtime_script_execution_time,
             };
 
