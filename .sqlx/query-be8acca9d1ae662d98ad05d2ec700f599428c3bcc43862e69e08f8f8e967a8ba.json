@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n    UPDATE user_data_webhooks_responders\n    SET name = ?3, path = ?4, method = ?5, enabled = ?6, settings = ?7\n    WHERE user_id = ?1 AND id = ?2 AND NOT EXISTS(\n        SELECT id FROM user_data_webhooks_responders \n        WHERE user_id = ?1 AND id != ?2 AND path = ?4 AND (method = ?8 OR method = ?5 OR ?5 = ?8)\n    )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "be8acca9d1ae662d98ad05d2ec700f599428c3bcc43862e69e08f8f8e967a8ba"
+}

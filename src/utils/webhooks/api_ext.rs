@@ -72,6 +72,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
             name: params.name,
             path: params.path,
             method: params.method,
+            enabled: params.enabled,
             settings: params.settings,
             // Preserve timestamp only up to seconds.
             created_at: OffsetDateTime::from_unix_timestamp(
@@ -100,10 +101,11 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
         if params.name.is_none()
             && params.path.is_none()
             && params.method.is_none()
+            && params.enabled.is_none()
             && params.settings.is_none()
         {
             bail!(SecutilsError::client(format!(
-                "Either new name, path, method or settings should be provided ({id})."
+                "Either new name, path, method, enabled or settings should be provided ({id})."
             )));
         }
 
@@ -117,6 +119,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
             name: params.name.unwrap_or(existing_responder.name),
             path: params.path.unwrap_or(existing_responder.path),
             method: params.method.unwrap_or(existing_responder.method),
+            enabled: params.enabled.unwrap_or(existing_responder.enabled),
             settings: params.settings.unwrap_or(existing_responder.settings),
             ..existing_responder
         };
@@ -343,6 +346,7 @@ mod tests {
                     name: "name_one".to_string(),
                     path: "/".to_string(),
                     method: ResponderMethod::Any,
+                    enabled: true,
                     settings: ResponderSettings {
                         requests_to_track: 3,
                         status_code: 302,
@@ -390,6 +394,7 @@ mod tests {
                 name: "".to_string(),
                 path: "/".to_string(),
                 method: ResponderMethod::Get,
+                enabled: true,
                 settings: settings.clone()
             }).await),
             @r###""Responder name cannot be empty.""###
@@ -401,6 +406,7 @@ mod tests {
                 name: "a".repeat(101),
                 path: "/".to_string(),
                 method: ResponderMethod::Get,
+                enabled: true,
                 settings: settings.clone()
             }).await),
             @r###""Responder name cannot be longer than 100 characters.""###
@@ -412,6 +418,7 @@ mod tests {
                 name: "some-name".to_string(),
                 path: "".to_string(),
                 method: ResponderMethod::Get,
+                enabled: true,
                 settings: settings.clone()
             }).await),
             @r###""Responder paths must begin with '/' and should not end with '/'.""###
@@ -423,6 +430,7 @@ mod tests {
                 name: "some-name".to_string(),
                 path: "/a".repeat(51),
                 method: ResponderMethod::Get,
+                enabled: true,
                 settings: settings.clone()
             }).await),
             @r###""Responder path cannot be longer than 100 characters.""###
@@ -434,6 +442,7 @@ mod tests {
                 name: "some-name".to_string(),
                 path: "path".to_string(),
                 method: ResponderMethod::Get,
+                enabled: true,
                 settings: settings.clone()
             }).await),
             @r###""Responder paths must begin with '/' and should not end with '/'.""###
@@ -445,6 +454,7 @@ mod tests {
                 name: "some-name".to_string(),
                 path: "/path/".to_string(),
                 method: ResponderMethod::Get,
+                enabled: true,
                 settings: settings.clone()
             }).await),
             @r###""Responder paths must begin with '/' and should not end with '/'.""###
@@ -456,6 +466,7 @@ mod tests {
                 name: "some-name".to_string(),
                 path: "/path".to_string(),
                 method: ResponderMethod::Get,
+                enabled: true,
                 settings: ResponderSettings {
                     status_code: 99,
                     ..settings.clone()
@@ -470,6 +481,7 @@ mod tests {
                 name: "some-name".to_string(),
                 path: "/path".to_string(),
                 method: ResponderMethod::Get,
+                enabled: true,
                 settings: ResponderSettings {
                     status_code: 1000,
                     ..settings.clone()
@@ -484,6 +496,7 @@ mod tests {
                 name: "some-name".to_string(),
                 path: "/path".to_string(),
                 method: ResponderMethod::Get,
+                enabled: true,
                 settings: ResponderSettings {
                    requests_to_track: 101,
                     ..settings.clone()
@@ -498,6 +511,7 @@ mod tests {
                 name: "some-name".to_string(),
                 path: "/path".to_string(),
                 method: ResponderMethod::Get,
+                enabled: true,
                 settings: ResponderSettings {
                    script: Some("".to_string()),
                     ..settings.clone()
@@ -510,7 +524,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn properly_updates_content_security_policy() -> anyhow::Result<()> {
+    async fn properly_updates_responder() -> anyhow::Result<()> {
         let api = mock_api().await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -523,6 +537,7 @@ mod tests {
                     name: "name_one".to_string(),
                     path: "/".to_string(),
                     method: ResponderMethod::Any,
+                    enabled: true,
                     settings: ResponderSettings {
                         requests_to_track: 0,
                         status_code: 200,
@@ -534,6 +549,33 @@ mod tests {
             )
             .await?;
 
+        // Update enabled.
+        let updated_responder = webhooks
+            .update_responder(
+                mock_user.id,
+                responder.id,
+                RespondersUpdateParams {
+                    name: None,
+                    path: None,
+                    method: None,
+                    enabled: Some(false),
+                    settings: None,
+                },
+            )
+            .await?;
+        let expected_responder = Responder {
+            enabled: false,
+            ..responder.clone()
+        };
+        assert_eq!(expected_responder, updated_responder);
+        assert_eq!(
+            expected_responder,
+            webhooks
+                .get_responder(mock_user.id, responder.id)
+                .await?
+                .unwrap()
+        );
+
         // Update name.
         let updated_responder = webhooks
             .update_responder(
@@ -543,12 +585,14 @@ mod tests {
                     name: Some("name_two".to_string()),
                     path: None,
                     method: None,
+                    enabled: None,
                     settings: None,
                 },
             )
             .await?;
         let expected_responder = Responder {
             name: "name_two".to_string(),
+            enabled: false,
             ..responder.clone()
         };
         assert_eq!(expected_responder, updated_responder);
@@ -569,6 +613,7 @@ mod tests {
                     name: None,
                     path: Some("/path".to_string()),
                     method: None,
+                    enabled: None,
                     settings: None,
                 },
             )
@@ -576,6 +621,7 @@ mod tests {
         let expected_responder = Responder {
             name: "name_two".to_string(),
             path: "/path".to_string(),
+            enabled: false,
             ..responder.clone()
         };
         assert_eq!(expected_responder, updated_responder);
@@ -596,6 +642,7 @@ mod tests {
                     name: None,
                     path: None,
                     method: Some(ResponderMethod::Post),
+                    enabled: None,
                     settings: None,
                 },
             )
@@ -604,6 +651,7 @@ mod tests {
             name: "name_two".to_string(),
             path: "/path".to_string(),
             method: ResponderMethod::Post,
+            enabled: false,
             ..responder.clone()
         };
         assert_eq!(expected_responder, updated_responder);
@@ -624,6 +672,7 @@ mod tests {
                     name: None,
                     path: None,
                     method: None,
+                    enabled: None,
                     settings: Some(ResponderSettings {
                         requests_to_track: 13,
                         status_code: 789,
@@ -638,6 +687,7 @@ mod tests {
             name: "name_two".to_string(),
             path: "/path".to_string(),
             method: ResponderMethod::Post,
+            enabled: false,
             settings: ResponderSettings {
                 requests_to_track: 13,
                 status_code: 789,
@@ -680,6 +730,7 @@ mod tests {
                     name: "name_one".to_string(),
                     path: "/".to_string(),
                     method: ResponderMethod::Any,
+                    enabled: true,
                     settings: settings.clone(),
                 },
             )
@@ -699,6 +750,7 @@ mod tests {
                         name: None,
                         path: None,
                         method: None,
+                        enabled: None,
                         settings: None,
                     },
                 )
@@ -707,7 +759,7 @@ mod tests {
         assert_eq!(
             update_result.to_string(),
             format!(
-                "Either new name, path, method or settings should be provided ({}).",
+                "Either new name, path, method, enabled or settings should be provided ({}).",
                 responder.id
             )
         );
@@ -722,6 +774,7 @@ mod tests {
                         name: Some("some-new-name".to_string()),
                         path: None,
                         method: None,
+                        enabled: None,
                         settings: None,
                     },
                 )
@@ -738,6 +791,7 @@ mod tests {
                 name: Some("".to_string()),
                 path: None,
                 method: None,
+                enabled: None,
                 settings: None
             }).await),
             @r###""Responder name cannot be empty.""###
@@ -749,6 +803,7 @@ mod tests {
                 name: Some("a".repeat(101)),
                 path: None,
                 method: None,
+                enabled: None,
                 settings: None
             }).await),
             @r###""Responder name cannot be longer than 100 characters.""###
@@ -760,6 +815,7 @@ mod tests {
                 name: None,
                 path: Some("".to_string()),
                 method: None,
+                enabled: None,
                 settings: None
             }).await),
             @r###""Responder paths must begin with '/' and should not end with '/'.""###
@@ -771,6 +827,7 @@ mod tests {
                 name: None,
                 path: Some("/a".repeat(51)),
                 method: None,
+                enabled: None,
                 settings: None
             }).await),
             @r###""Responder path cannot be longer than 100 characters.""###
@@ -782,6 +839,7 @@ mod tests {
                 name: None,
                 path: Some("path".to_string()),
                 method: None,
+                enabled: None,
                 settings: None
             }).await),
             @r###""Responder paths must begin with '/' and should not end with '/'.""###
@@ -793,6 +851,7 @@ mod tests {
                 name: None,
                 path: Some("/path/".to_string()),
                 method: None,
+                enabled: None,
                 settings: None
             }).await),
             @r###""Responder paths must begin with '/' and should not end with '/'.""###
@@ -804,6 +863,7 @@ mod tests {
                 name: None,
                 path: None,
                 method: None,
+                enabled: None,
                 settings: Some(ResponderSettings {
                     status_code: 99,
                     ..settings.clone()
@@ -818,6 +878,7 @@ mod tests {
                 name: None,
                 path: None,
                 method: None,
+                enabled: None,
                 settings: Some(ResponderSettings {
                     status_code: 1000,
                     ..settings.clone()
@@ -832,6 +893,7 @@ mod tests {
                 name: None,
                 path: None,
                 method: None,
+                enabled: None,
                 settings: Some(ResponderSettings {
                     requests_to_track: 101,
                     ..settings.clone()
@@ -846,6 +908,7 @@ mod tests {
                 name: None,
                 path: None,
                 method: None,
+                enabled: None,
                 settings: Some(ResponderSettings {
                     script: Some("".to_string()),
                     ..settings.clone()
@@ -880,6 +943,7 @@ mod tests {
                         name: "name_one".to_string(),
                         path: "/".to_string(),
                         method: ResponderMethod::Any,
+                        enabled: true,
                         settings: settings.clone(),
                     },
                 )
@@ -891,6 +955,7 @@ mod tests {
                         name: "name_two".to_string(),
                         path: "/path".to_string(),
                         method: ResponderMethod::Post,
+                        enabled: true,
                         settings: settings.clone(),
                     },
                 )
@@ -956,6 +1021,7 @@ mod tests {
                     name: "name_one".to_string(),
                     path: "/".to_string(),
                     method: ResponderMethod::Any,
+                    enabled: true,
                     settings: settings.clone(),
                 },
             )
@@ -967,6 +1033,7 @@ mod tests {
                     name: "name_two".to_string(),
                     path: "/path".to_string(),
                     method: ResponderMethod::Get,
+                    enabled: true,
                     settings: settings.clone(),
                 },
             )
@@ -1016,6 +1083,7 @@ mod tests {
                     name: "name_one".to_string(),
                     path: "/".to_string(),
                     method: ResponderMethod::Any,
+                    enabled: true,
                     settings: settings.clone(),
                 },
             )
@@ -1031,6 +1099,7 @@ mod tests {
                     name: "name_two".to_string(),
                     path: "/path".to_string(),
                     method: ResponderMethod::Any,
+                    enabled: false,
                     settings: settings.clone(),
                 },
             )
@@ -1065,6 +1134,7 @@ mod tests {
                     name: "name_one".to_string(),
                     path: "/".to_string(),
                     method: ResponderMethod::Any,
+                    enabled: true,
                     settings: settings.clone(),
                 },
             )
@@ -1076,6 +1146,7 @@ mod tests {
                     name: "name_two".to_string(),
                     path: "/two".to_string(),
                     method: ResponderMethod::Any,
+                    enabled: false,
                     settings: settings.clone(),
                 },
             )
@@ -1167,6 +1238,7 @@ mod tests {
                     name: "name_one".to_string(),
                     path: "/path".to_string(),
                     method: ResponderMethod::Any,
+                    enabled: true,
                     settings: settings.clone(),
                 },
             )
@@ -1234,6 +1306,7 @@ mod tests {
                     name: "name_one".to_string(),
                     path: "/".to_string(),
                     method: ResponderMethod::Any,
+                    enabled: true,
                     settings: settings.clone(),
                 },
             )
@@ -1245,6 +1318,7 @@ mod tests {
                     name: "name_two".to_string(),
                     path: "/two".to_string(),
                     method: ResponderMethod::Any,
+                    enabled: true,
                     settings: settings.clone(),
                 },
             )
@@ -1340,6 +1414,7 @@ mod tests {
                     name: "name_one".to_string(),
                     path: "/".to_string(),
                     method: ResponderMethod::Any,
+                    enabled: true,
                     settings: settings.clone(),
                 },
             )
@@ -1351,6 +1426,7 @@ mod tests {
                     name: "name_two".to_string(),
                     path: "/two".to_string(),
                     method: ResponderMethod::Any,
+                    enabled: false,
                     settings: settings.clone(),
                 },
             )

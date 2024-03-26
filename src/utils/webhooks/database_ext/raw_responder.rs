@@ -9,6 +9,7 @@ pub(super) struct RawResponder {
     pub name: String,
     pub path: String,
     pub method: Vec<u8>,
+    pub enabled: i64,
     pub settings: Vec<u8>,
     pub created_at: i64,
 }
@@ -38,6 +39,7 @@ impl TryFrom<RawResponder> for Responder {
             name: raw.name,
             path: raw.path,
             method: postcard::from_bytes::<ResponderMethod>(&raw.method)?,
+            enabled: raw.enabled > 0,
             settings: ResponderSettings {
                 requests_to_track: raw_settings.requests_to_track,
                 status_code: raw_settings.status_code,
@@ -67,6 +69,7 @@ impl TryFrom<&Responder> for RawResponder {
             name: item.name.clone(),
             path: item.path.to_string(),
             method: postcard::to_stdvec(&item.method)?,
+            enabled: item.enabled as i64,
             settings: postcard::to_stdvec(&raw_settings)?,
             created_at: item.created_at.unix_timestamp(),
         })
@@ -89,6 +92,7 @@ mod tests {
                 name: "res".to_string(),
                 path: "/".to_string(),
                 method: ResponderMethod::Any,
+                enabled: true,
                 settings: ResponderSettings {
                     requests_to_track: 0,
                     status_code: 200,
@@ -105,6 +109,7 @@ mod tests {
                 name: "res".to_string(),
                 path: "/".to_string(),
                 method: vec![0],
+                enabled: 1,
                 settings: vec![0, 200, 1, 0, 0, 0],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
@@ -117,6 +122,7 @@ mod tests {
                 name: "res".to_string(),
                 path: "/path".to_string(),
                 method: ResponderMethod::Connect,
+                enabled: false,
                 settings: ResponderSettings {
                     requests_to_track: 3,
                     status_code: 200,
@@ -133,6 +139,7 @@ mod tests {
                 name: "res".to_string(),
                 path: "/path".to_string(),
                 method: vec![7],
+                enabled: 0,
                 settings: vec![
                     3, 200, 1, 1, 4, 98, 111, 100, 121, 1, 1, 3, 107, 101, 121, 5, 118, 97, 108,
                     117, 101, 1, 31, 114, 101, 116, 117, 114, 110, 32, 123, 32, 98, 111, 100, 121,
@@ -157,6 +164,7 @@ mod tests {
                 name: "res".to_string(),
                 path: "/".to_string(),
                 method: vec![0],
+                enabled: 1,
                 settings: vec![0, 200, 1, 0, 0, 0],
                 // January 1, 2000 10:00:00
                 created_at: 946720800,
@@ -166,6 +174,7 @@ mod tests {
                 name: "res".to_string(),
                 path: "/".to_string(),
                 method: ResponderMethod::Any,
+                enabled: true,
                 settings: ResponderSettings {
                     requests_to_track: 0,
                     status_code: 200,
@@ -185,6 +194,7 @@ mod tests {
                 name: "res".to_string(),
                 path: "/path".to_string(),
                 method: vec![7],
+                enabled: 0,
                 settings: vec![
                     3, 200, 1, 1, 4, 98, 111, 100, 121, 1, 1, 3, 107, 101, 121, 5, 118, 97, 108,
                     117, 101, 1, 31, 114, 101, 116, 117, 114, 110, 32, 123, 32, 98, 111, 100, 121,
@@ -199,6 +209,7 @@ mod tests {
                 name: "res".to_string(),
                 path: "/path".to_string(),
                 method: ResponderMethod::Connect,
+                enabled: false,
                 settings: ResponderSettings {
                     requests_to_track: 3,
                     status_code: 200,

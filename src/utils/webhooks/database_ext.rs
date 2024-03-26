@@ -28,7 +28,7 @@ impl<'pool> WebhooksDatabaseExt<'pool> {
         let raw_responders = query_as!(
             RawResponder,
             r#"
-SELECT id, name, path, method, settings, created_at
+SELECT id, name, path, method, enabled, settings, created_at
 FROM user_data_webhooks_responders
 WHERE user_id = ?1
 ORDER BY created_at
@@ -56,7 +56,7 @@ ORDER BY created_at
         query_as!(
             RawResponder,
             r#"
-        SELECT id, name, path, method, settings, created_at
+        SELECT id, name, path, method, enabled, settings, created_at
         FROM user_data_webhooks_responders
         WHERE user_id = ?1 AND id = ?2
                         "#,
@@ -81,7 +81,7 @@ ORDER BY created_at
         query_as!(
             RawResponder,
             r#"
-        SELECT id, name, path, method, settings, created_at
+        SELECT id, name, path, method, enabled, settings, created_at
         FROM user_data_webhooks_responders
         WHERE user_id = ?1 AND path = ?2 AND (method = ?3 OR method = ?4)
                         "#,
@@ -108,14 +108,14 @@ ORDER BY created_at
         // responder that already covers the same path and method.
         let result = query!(
                 r#"
-        WITH new_responder(user_id, id, name, path, method, settings, created_at) AS (
-            VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7 )
+        WITH new_responder(user_id, id, name, path, method, enabled, settings, created_at) AS (
+            VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8 )
         )
-        INSERT INTO user_data_webhooks_responders (user_id, id, name, path, method, settings, created_at)
+        INSERT INTO user_data_webhooks_responders (user_id, id, name, path, method, enabled, settings, created_at)
         SELECT * FROM new_responder
         WHERE NOT EXISTS(
             SELECT id FROM user_data_webhooks_responders 
-            WHERE user_id = ?1 AND path = ?4 AND (method = ?8 OR ?5 = ?8)
+            WHERE user_id = ?1 AND path = ?4 AND (method = ?9 OR ?5 = ?9)
         )
                 "#,
                 *user_id,
@@ -123,6 +123,7 @@ ORDER BY created_at
                 raw_responder.name,
                 raw_responder.path,
                 raw_responder.method,
+                raw_responder.enabled,
                 raw_responder.settings,
                 raw_responder.created_at,
                 raw_any_method
@@ -175,10 +176,10 @@ ORDER BY created_at
         let result = query!(
             r#"
     UPDATE user_data_webhooks_responders
-    SET name = ?3, path = ?4, method = ?5, settings = ?6
+    SET name = ?3, path = ?4, method = ?5, enabled = ?6, settings = ?7
     WHERE user_id = ?1 AND id = ?2 AND NOT EXISTS(
         SELECT id FROM user_data_webhooks_responders 
-        WHERE user_id = ?1 AND id != ?2 AND path = ?4 AND (method = ?7 OR method = ?5 OR ?5 = ?7)
+        WHERE user_id = ?1 AND id != ?2 AND path = ?4 AND (method = ?8 OR method = ?5 OR ?5 = ?8)
     )
             "#,
             *user_id,
@@ -186,6 +187,7 @@ ORDER BY created_at
             raw_responder.name,
             raw_responder.path,
             raw_responder.method,
+            raw_responder.enabled,
             raw_responder.settings,
             raw_any_method
         )

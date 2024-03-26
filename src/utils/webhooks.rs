@@ -84,7 +84,7 @@ pub async fn webhooks_handle_action<DR: DnsResolver, ET: EmailTransport>(
 
 #[cfg(test)]
 pub mod tests {
-    pub use crate::utils::webhooks::api_ext::RespondersCreateParams;
+    pub use crate::utils::webhooks::api_ext::{RespondersCreateParams, RespondersUpdateParams};
     use crate::{
         tests::{mock_api, mock_user},
         utils::{
@@ -113,6 +113,7 @@ pub mod tests {
                     name: name.to_string(),
                     path: path.to_string(),
                     method: ResponderMethod::Any,
+                    enabled: true,
                     settings: ResponderSettings {
                         requests_to_track: 0,
                         status_code: 200,
@@ -163,6 +164,7 @@ pub mod tests {
                     name: "name_one".to_string(),
                     path: "/".to_string(),
                     method: ResponderMethod::Get,
+                    enabled: true,
                     settings: ResponderSettings {
                         requests_to_track: 3,
                         script: None,
@@ -180,6 +182,7 @@ pub mod tests {
                     name: "name_two".to_string(),
                     path: "/path".to_string(),
                     method: ResponderMethod::Get,
+                    enabled: false,
                     settings: responder_one.settings.clone(),
                 },
             )
@@ -203,7 +206,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"path\":\"/\",\"method\":\"GET\",\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]},{\"id\":\"[UUID]\",\"name\":\"name_two\",\"path\":\"/path\",\"method\":\"GET\",\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]}]""###
+                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"path\":\"/\",\"method\":\"GET\",\"enabled\":true,\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]},{\"id\":\"[UUID]\",\"name\":\"name_two\",\"path\":\"/path\",\"method\":\"GET\",\"enabled\":false,\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]}]""###
             );
         });
 
@@ -225,6 +228,7 @@ pub mod tests {
                 "name": "name_one",
                 "path": "/",
                 "method": "GET",
+                "enabled": true,
                 "settings": ResponderSettings {
                     requests_to_track: 3,
                     script: None,
@@ -249,7 +253,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"path\":\"/\",\"method\":\"GET\",\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]}""###
+                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"path\":\"/\",\"method\":\"GET\",\"enabled\":true,\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]}""###
             );
         });
 
@@ -270,6 +274,7 @@ pub mod tests {
                     name: "name_one".to_string(),
                     path: "/".to_string(),
                     method: ResponderMethod::Get,
+                    enabled: true,
                     settings: ResponderSettings {
                         requests_to_track: 3,
                         script: None,
@@ -292,6 +297,7 @@ pub mod tests {
                 "name": "name_one_updated",
                 "path": "/",
                 "method": "GET",
+                "enabled": false,
                 "settings": ResponderSettings {
                     requests_to_track: 10,
                     script: None,
@@ -316,6 +322,7 @@ pub mod tests {
                 name: "name_one_updated".to_string(),
                 path: "/".to_string(),
                 method: ResponderMethod::Get,
+                enabled: false,
                 settings: ResponderSettings {
                     requests_to_track: 10,
                     script: None,
@@ -344,6 +351,7 @@ pub mod tests {
                     name: "name_one".to_string(),
                     path: "/".to_string(),
                     method: ResponderMethod::Get,
+                    enabled: true,
                     settings: ResponderSettings {
                         requests_to_track: 3,
                         script: None,
@@ -389,6 +397,7 @@ pub mod tests {
                     name: "name_one".to_string(),
                     path: "/".to_string(),
                     method: ResponderMethod::Get,
+                    enabled: true,
                     settings: ResponderSettings {
                         requests_to_track: 3,
                         script: None,
@@ -479,6 +488,7 @@ pub mod tests {
                     name: "name_one".to_string(),
                     path: "/".to_string(),
                     method: ResponderMethod::Get,
+                    enabled: true,
                     settings: ResponderSettings {
                         requests_to_track: 3,
                         script: None,

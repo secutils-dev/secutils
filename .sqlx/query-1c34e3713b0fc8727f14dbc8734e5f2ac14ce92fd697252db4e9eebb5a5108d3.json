@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n        SELECT id, name, path, method, settings, created_at\n        FROM user_data_webhooks_responders\n        WHERE user_id = ?1 AND id = ?2\n                        ",
+  "query": "\n        SELECT id, name, path, method, enabled, settings, created_at\n        FROM user_data_webhooks_responders\n        WHERE user_id = ?1 AND id = ?2\n                        ",
   "describe": {
     "columns": [
       {
@@ -24,13 +24,18 @@
         "type_info": "Blob"
       },
       {
-        "name": "settings",
+        "name": "enabled",
         "ordinal": 4,
+        "type_info": "Int64"
+      },
+      {
+        "name": "settings",
+        "ordinal": 5,
         "type_info": "Blob"
       },
       {
         "name": "created_at",
-        "ordinal": 5,
+        "ordinal": 6,
         "type_info": "Int64"
       }
     ],
@@ -43,8 +48,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "a929b811992264cfc8d457279b8dc392c78a4a90801660877349cb85c07320d8"
+  "hash": "1c34e3713b0fc8727f14dbc8734e5f2ac14ce92fd697252db4e9eebb5a5108d3"
 }

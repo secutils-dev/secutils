@@ -1,7 +1,7 @@
 use crate::utils::webhooks::{ResponderMethod, ResponderSettings};
 use serde::Deserialize;
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RespondersUpdateParams {
     pub name: Option<String>,
@@ -9,6 +9,8 @@ pub struct RespondersUpdateParams {
     pub path: Option<String>,
     /// HTTP method of the responder.
     pub method: Option<ResponderMethod>,
+    /// Whether the responder is enabled.
+    pub enabled: Option<bool>,
     // Miscellaneous responder settings.
     pub settings: Option<ResponderSettings>,
 }
@@ -21,6 +23,42 @@ mod tests {
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
+        assert_eq!(
+            serde_json::from_str::<RespondersUpdateParams>(
+                r#"
+{
+    "name": "res",
+    "path": "/",
+    "method": "GET",
+    "enabled": true,
+    "settings": {
+        "requestsToTrack": 10,
+        "statusCode": 302,
+        "body": "some-body",
+        "headers": [["key", "value"], ["key2", "value2"]],
+        "script": "return { body: `custom body` };"
+    }
+}
+          "#
+            )?,
+            RespondersUpdateParams {
+                name: Some("res".to_string()),
+                path: Some("/".to_string()),
+                method: Some(ResponderMethod::Get),
+                enabled: Some(true),
+                settings: Some(ResponderSettings {
+                    requests_to_track: 10,
+                    status_code: 302,
+                    body: Some("some-body".to_string()),
+                    headers: Some(vec![
+                        ("key".to_string(), "value".to_string()),
+                        ("key2".to_string(), "value2".to_string())
+                    ]),
+                    script: Some("return { body: `custom body` };".to_string()),
+                })
+            }
+        );
+
         assert_eq!(
             serde_json::from_str::<RespondersUpdateParams>(
                 r#"
@@ -42,6 +80,7 @@ mod tests {
                 name: Some("res".to_string()),
                 path: Some("/".to_string()),
                 method: Some(ResponderMethod::Get),
+                enabled: None,
                 settings: Some(ResponderSettings {
                     requests_to_track: 10,
                     status_code: 302,
@@ -75,6 +114,7 @@ mod tests {
                 name: None,
                 path: Some("/".to_string()),
                 method: Some(ResponderMethod::Post),
+                enabled: None,
                 settings: Some(ResponderSettings {
                     requests_to_track: 10,
                     status_code: 302,
@@ -107,6 +147,7 @@ mod tests {
                 name: None,
                 path: None,
                 method: Some(ResponderMethod::Get),
+                enabled: None,
                 settings: Some(ResponderSettings {
                     requests_to_track: 10,
                     status_code: 302,
@@ -138,6 +179,7 @@ mod tests {
                 name: None,
                 path: None,
                 method: None,
+                enabled: None,
                 settings: Some(ResponderSettings {
                     requests_to_track: 10,
                     status_code: 302,
@@ -165,6 +207,7 @@ mod tests {
                 name: None,
                 path: None,
                 method: None,
+                enabled: None,
                 settings: Some(ResponderSettings {
                     requests_to_track: 0,
                     status_code: 302,
@@ -181,6 +224,7 @@ mod tests {
                 name: None,
                 path: None,
                 method: None,
+                enabled: None,
                 settings: None
             }
         );

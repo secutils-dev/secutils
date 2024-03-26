@@ -14,6 +14,8 @@ pub struct Responder {
     pub path: String,
     /// HTTP method of the responder.
     pub method: ResponderMethod,
+    /// Indicates whether the responder is enabled.
+    pub enabled: bool,
     /// Miscellaneous responder settings.
     pub settings: ResponderSettings,
     /// Date and time when the web page tracker was created.
@@ -35,6 +37,7 @@ mod tests {
             name: "some-name".to_string(),
             path: "/path".to_string(),
             method: ResponderMethod::Post,
+            enabled: true,
             settings: ResponderSettings {
                 requests_to_track: 10,
                 status_code: 123,
@@ -49,6 +52,7 @@ mod tests {
           "name": "some-name",
           "path": "/path",
           "method": "POST",
+          "enabled": true,
           "settings": {
             "requestsToTrack": 10,
             "statusCode": 123,
@@ -78,6 +82,7 @@ mod tests {
           "name": "some-name",
           "path": "/path",
           "method": "POST",
+          "enabled": true,
           "settings": {
             "requestsToTrack": 10,
             "statusCode": 123,
@@ -99,6 +104,7 @@ mod tests {
                 name: "some-name".to_string(),
                 path: "/path".to_string(),
                 method: ResponderMethod::Post,
+                enabled: true,
                 settings: ResponderSettings {
                     requests_to_track: 10,
                     status_code: 123,

@@ -9,6 +9,8 @@ pub struct RespondersCreateParams {
     pub path: String,
     /// HTTP method of the responder.
     pub method: ResponderMethod,
+    /// Indicates whether the responder is enabled.
+    pub enabled: bool,
     // Miscellaneous responder settings.
     pub settings: ResponderSettings,
 }
@@ -28,6 +30,7 @@ mod tests {
     "name": "res",
     "path": "/",
     "method": "GET",
+    "enabled": true,
     "settings": {
         "requestsToTrack": 10,
         "statusCode": 302,
@@ -42,6 +45,7 @@ mod tests {
                 name: "res".to_string(),
                 path: "/".to_string(),
                 method: ResponderMethod::Get,
+                enabled: true,
                 settings: ResponderSettings {
                     requests_to_track: 10,
                     status_code: 302,
@@ -62,6 +66,7 @@ mod tests {
     "name": "res",
     "path": "/",
     "method": "GET",
+    "enabled": false,
     "settings": {
         "statusCode": 302
     }
@@ -72,6 +77,7 @@ mod tests {
                 name: "res".to_string(),
                 path: "/".to_string(),
                 method: ResponderMethod::Get,
+                enabled: false,
                 settings: ResponderSettings {
                     requests_to_track: 0,
                     status_code: 302,

@@ -1,10 +1,11 @@
 use crate::{
     error::Error as SecutilsError,
     js_runtime::{JsRuntime, JsRuntimeConfig},
-    logging::MetricsContext,
+    logging::{MetricsContext, UtilsResourceLogContext},
     server::app_state::AppState,
-    utils::webhooks::{
-        ResponderScriptContext, ResponderScriptResult, RespondersRequestCreateParams,
+    utils::{
+        webhooks::{ResponderScriptContext, ResponderScriptResult, RespondersRequestCreateParams},
+        UtilsResource,
     },
 };
 use actix_web::{
@@ -71,7 +72,7 @@ pub async fn webhooks_responders(
                 return Ok(HttpResponse::NotFound().finish());
             }
             Err(err) => {
-                log::error!("Failed to parse responder path from headers: {:?}", err);
+                log::error!("Failed to parse responder path from headers: {err:?}");
                 return Ok(HttpResponse::InternalServerError().finish());
             }
         }
@@ -81,14 +82,12 @@ pub async fn webhooks_responders(
     let user = match state.api.users().get_by_handle(&user_handle).await {
         Ok(Some(user)) => user,
         Ok(None) => {
-            log::error!("Failed to find user by the handle ({}).", user_handle);
+            log::error!("Failed to find user by the handle ({user_handle}).");
             return Ok(HttpResponse::NotFound().finish());
         }
         Err(err) => {
             log::error!(
-                "Failed to retrieve user by handle ({}) due to unexpected error: {:?}",
-                user_handle,
-                err
+                "Failed to retrieve user by handle ({user_handle}) due to unexpected error: {err:?}"
             );
             return Ok(HttpResponse::InternalServerError().finish());
         }
@@ -103,9 +102,9 @@ pub async fn webhooks_responders(
         Ok(responder_method) => responder_method,
         Err(err) => {
             log::error!(
-                "Failed to parse HTTP method ({}) into responder method: {:?}",
-                request.method(),
-                err
+                user:serde = user.log_context();
+                "Failed to parse HTTP method ({}) into responder method: {err:?}",
+                request.method()
             );
             return Ok(HttpResponse::NotFound().finish());
         }
@@ -120,24 +119,31 @@ pub async fn webhooks_responders(
         Ok(Some(responder)) => responder,
         Ok(None) => {
             log::error!(
-                "User ('{}') doesn't have an HTTP responder ({} {}) configured.",
-                *user.id,
-                request.method().as_str(),
-                responder_path,
+                user:serde = user.log_context();
+               "User doesn't have an HTTP responder ({} {responder_path}) configured.",
+                request.method().as_str()
             );
             return Ok(HttpResponse::NotFound().finish());
         }
         Err(err) => {
             log::error!(
-                "Failed to retrieve user ({}) HTTP responder ({} {}): {:?}.",
-                *user.id,
-                request.method().as_str(),
-                responder_path,
-                err
+                user:serde = user.log_context();
+                "Failed to retrieve HTTP responder ({} {responder_path}): {err:?}.",
+                request.method().as_str()
             );
             return Ok(HttpResponse::NotFound().finish());
         }
     };
+
+    if !responder.enabled {
+        log::error!(
+            user:serde = user.log_context(),
+            util:serde = responder.log_context();
+             "User has an HTTP responder ({} {responder_path}) configured, but it is disabled.",
+            request.method().as_str(),
+        );
+        return Ok(HttpResponse::NotFound().finish());
+    }
 
     let subscription_config = user
         .subscription
@@ -189,7 +195,13 @@ pub async fn webhooks_responders(
             .await?;
     }
 
-    let responder_id = responder.id;
+    // Extract logging context before consuming responder to enrich logs.
+    let responder_name = responder.name;
+    let responder_log_context = UtilsResourceLogContext {
+        resource: UtilsResource::WebhooksResponders,
+        resource_id: responder.id,
+        resource_name: responder_name.as_str(),
+    };
 
     // Check if body is supposed to be a JavaScript code.
     let (status_code, headers, body) = match &responder.settings.script {
@@ -228,7 +240,7 @@ pub async fn webhooks_responders(
                 Ok((override_result, execution_time)) => {
                     log::info!(
                         user:serde = user.log_context(),
-                        util:serde = responder.log_context(),
+                        util:serde = responder_log_context,
                         metrics:serde = MetricsContext::default().with_script_execution_time(execution_time);
                         "Executed responder user script in {execution_time:.2?}.",
                     );
@@ -237,7 +249,7 @@ pub async fn webhooks_responders(
                 Err(err) => {
                     log::error!(
                         user:serde = user.log_context(),
-                        util:serde = responder.log_context();
+                        util:serde = responder_log_context;
                         "Failed to execute responder user script: {err:?}"
                     );
                     return Ok(HttpResponse::InternalServerError().body(err.to_string()));
@@ -270,10 +282,9 @@ pub async fn webhooks_responders(
         Ok(status_code) => status_code,
         Err(err) => {
             log::error!(
-                "Failed to parse status code for the user ({}) HTTP responder ({}): {:?}",
-                *user.id,
-                responder_id,
-                err
+                user:serde = user.log_context(),
+                util:serde = responder_log_context;
+                "Failed to parse status code for the HTTP responder: {err:?}",
             );
             return Ok(HttpResponse::InternalServerError().finish());
         }
@@ -291,21 +302,17 @@ pub async fn webhooks_responders(
             }
             (Err(err), _) => {
                 log::error!(
-                    "Failed to parse header name {} for the user ({}) HTTP responder ({}): {:?}",
-                    header_name,
-                    *user.id,
-                    responder_id,
-                    err
+                    user:serde = user.log_context(),
+                    util:serde = responder_log_context;
+                    "Failed to parse header name `{header_name}` for the HTTP responder: {err:?}"
                 );
                 return Ok(HttpResponse::InternalServerError().finish());
             }
             (_, Err(err)) => {
                 log::error!(
-                    "Failed to parse header value {} for the user ({}) HTTP responder ({}): {:?}",
-                    header_value,
-                    *user.id,
-                    responder_id,
-                    err
+                    user:serde = user.log_context(),
+                    util:serde = responder_log_context;
+                    "Failed to parse header value `{header_value}` for the HTTP responder: {err:?}"
                 );
                 return Ok(HttpResponse::InternalServerError().finish());
             }
@@ -326,7 +333,10 @@ mod tests {
     use crate::{
         server::handlers::webhooks_responders::PathParams,
         tests::{mock_app_state, mock_user},
-        utils::webhooks::{tests::RespondersCreateParams, ResponderMethod, ResponderSettings},
+        utils::webhooks::{
+            tests::{RespondersCreateParams, RespondersUpdateParams},
+            ResponderMethod, ResponderSettings,
+        },
     };
     use actix_web::{
         body::MessageBody, dev::Payload, http::Method, test::TestRequest, web, FromRequest,
@@ -334,7 +344,7 @@ mod tests {
     use bytes::Bytes;
     use insta::assert_debug_snapshot;
     use serde_json::json;
-    use std::borrow::Cow;
+    use std::{borrow::Cow, default::Default};
 
     #[tokio::test]
     async fn can_handle_request_with_path_url_type() -> anyhow::Result<()> {
@@ -355,6 +365,7 @@ mod tests {
                     name: "name_one".to_string(),
                     path: "/one/two".to_string(),
                     method: ResponderMethod::Any,
+                    enabled: true,
                     settings: ResponderSettings {
                         requests_to_track: 3,
                         status_code: 200,
@@ -459,6 +470,7 @@ mod tests {
                     name: "name_one".to_string(),
                     path: "/one/two".to_string(),
                     method: ResponderMethod::Any,
+                    enabled: true,
                     settings: ResponderSettings {
                         requests_to_track: 3,
                         status_code: 200,
@@ -530,6 +542,7 @@ mod tests {
                     name: "name_one".to_string(),
                     path: "/".to_string(),
                     method: ResponderMethod::Any,
+                    enabled: true,
                     settings: ResponderSettings {
                         requests_to_track: 3,
                         status_code: 200,
@@ -596,6 +609,7 @@ mod tests {
                     name: "name_one".to_string(),
                     path: "/one/two".to_string(),
                     method: ResponderMethod::Any,
+                    enabled: true,
                     settings: ResponderSettings {
                         requests_to_track: 3,
                         status_code: 200,
@@ -663,6 +677,167 @@ mod tests {
             .get_responder_requests(user.id, responder.id)
             .await?;
         assert_eq!(responder_requests.len(), 1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn properly_handles_non_existent_or_inactive_responders() -> anyhow::Result<()> {
+        let request =
+            TestRequest::with_uri("https://dev-handle-1.webhooks.secutils.dev/one/two?query=value")
+                .insert_header(("x-replaced-path", "/one/two"))
+                .insert_header(("x-forwarded-host", "dev-handle-1.webhooks.secutils.dev"))
+                .to_http_request();
+        let app_state = mock_app_state().await?;
+        let app_state = web::Data::new(app_state);
+
+        // 1. Non-existent user handle.
+        let response = webhooks_responders(
+            app_state.clone(),
+            request.clone(),
+            Bytes::new(),
+            web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_debug_snapshot!(response, @r###"
+        HttpResponse {
+            error: None,
+            res: 
+            Response HTTP/1.1 404 Not Found
+              headers:
+              body: Sized(0)
+            ,
+        }
+        "###);
+
+        let user = mock_user()?;
+        let users = app_state.api.users();
+        users.upsert(&user).await?;
+
+        // 2. Non-existent responder.
+        let response = webhooks_responders(
+            app_state.clone(),
+            request.clone(),
+            Bytes::new(),
+            web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_debug_snapshot!(response, @r###"
+        HttpResponse {
+            error: None,
+            res: 
+            Response HTTP/1.1 404 Not Found
+              headers:
+              body: Sized(0)
+            ,
+        }
+        "###);
+
+        // Insert responders data.
+        let responder = app_state
+            .api
+            .webhooks()
+            .create_responder(
+                user.id,
+                RespondersCreateParams {
+                    name: "name_one".to_string(),
+                    path: "/one/two".to_string(),
+                    method: ResponderMethod::Any,
+                    enabled: false,
+                    settings: ResponderSettings {
+                        requests_to_track: 3,
+                        status_code: 200,
+                        body: Some("body".to_string()),
+                        headers: Some(vec![("key".to_string(), "value".to_string())]),
+                        script: None,
+                    },
+                },
+            )
+            .await?;
+
+        // 3. Inactive responder.
+        let response = webhooks_responders(
+            app_state.clone(),
+            request.clone(),
+            Bytes::new(),
+            web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_debug_snapshot!(response, @r###"
+        HttpResponse {
+            error: None,
+            res: 
+            Response HTTP/1.1 404 Not Found
+              headers:
+              body: Sized(0)
+            ,
+        }
+        "###);
+        let responder_requests = app_state
+            .api
+            .webhooks()
+            .get_responder_requests(user.id, responder.id)
+            .await?;
+        assert!(responder_requests.is_empty());
+
+        app_state
+            .api
+            .webhooks()
+            .update_responder(
+                user.id,
+                responder.id,
+                RespondersUpdateParams {
+                    enabled: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await?;
+
+        // 4. Active responder.
+        let response = webhooks_responders(
+            app_state.clone(),
+            request.clone(),
+            Bytes::new(),
+            web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+                .await
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_debug_snapshot!(response, @r###"
+        HttpResponse {
+            error: None,
+            res: 
+            Response HTTP/1.1 200 OK
+              headers:
+                "key": "value"
+              body: Sized(4)
+            ,
+        }
+        "###);
+
+        let body = response.into_body().try_into_bytes().unwrap();
+        assert_eq!(body, Bytes::from_static(b"body"));
+
+        let responder_requests = app_state
+            .api
+            .webhooks()
+            .get_responder_requests(user.id, responder.id)
+            .await?;
+        assert_eq!(responder_requests.len(), 1);
+        assert_eq!(
+            responder_requests[0].url,
+            Cow::Borrowed("/one/two?query=value")
+        );
 
         Ok(())
     }
