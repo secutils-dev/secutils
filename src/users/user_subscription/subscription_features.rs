@@ -2,17 +2,13 @@ use crate::{
     config::{Config, SubscriptionConfig},
     users::{SubscriptionTier, UserSubscription},
 };
-use serde::Serialize;
 
 /// The subscription-dependent features available to the user.
-#[derive(Debug, Copy, Clone, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct SubscriptionFeatures<'c> {
     /// Indicates whether the user has access to the administrative functionality..
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub admin: bool,
     /// The subscription-dependent config.
-    #[serde(skip_serializing)]
     pub config: &'c SubscriptionConfig,
 }
 
@@ -42,7 +38,6 @@ mod test {
         },
         utils::certificates::{PrivateKeyAlgorithm, PrivateKeySize},
     };
-    use insta::assert_json_snapshot;
     use std::{
         ops::{Add, Sub},
         time::Duration,
@@ -213,36 +208,6 @@ mod test {
         let features = SubscriptionFeatures::new(&config, ultimate_subscription);
         assert!(features.admin);
         assert_eq!(features.config, &config.subscriptions.ultimate);
-
-        Ok(())
-    }
-
-    #[test]
-    fn serialization() -> anyhow::Result<()> {
-        let config = mock_config()?;
-        let subscription = UserSubscription {
-            tier: SubscriptionTier::Basic,
-            started_at: OffsetDateTime::from_unix_timestamp(1262340000)?,
-            ends_at: None,
-            trial_started_at: Some(OffsetDateTime::now_utc().sub(Duration::from_secs(60 * 60))),
-            trial_ends_at: Some(OffsetDateTime::now_utc().add(Duration::from_secs(60 * 60))),
-        };
-
-        let features = SubscriptionFeatures::new(&config, subscription);
-        assert_json_snapshot!(features, @"{}");
-
-        let features = SubscriptionFeatures::new(
-            &config,
-            UserSubscription {
-                tier: SubscriptionTier::Ultimate,
-                ..subscription
-            },
-        );
-        assert_json_snapshot!(features, @r###"
-        {
-          "admin": true
-        }
-        "###);
 
         Ok(())
     }

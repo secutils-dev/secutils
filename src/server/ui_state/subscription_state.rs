@@ -1,14 +1,13 @@
-use crate::users::SubscriptionFeatures;
+use crate::users::ClientSubscriptionFeatures;
 use serde_derive::Serialize;
 use url::Url;
 
 /// Defines subscription related properties returned as a part of the UI state.
-#[derive(Clone, Serialize, Default, PartialEq)]
+#[derive(Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct SubscriptionState<'u, 'c> {
-    /// The subscription-dependent features available to the user.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub features: Option<SubscriptionFeatures<'c>>,
+pub struct SubscriptionState<'u> {
+    /// The features available for the subscription.
+    pub features: ClientSubscriptionFeatures<'u>,
     /// The URL to the subscription management page.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub manage_url: Option<&'u Url>,
@@ -28,8 +27,6 @@ mod tests {
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
-        assert_json_snapshot!(SubscriptionState::default(), @"{}");
-
         let user = mock_user()?;
         let config = mock_config()?;
         let features = user.subscription.get_features(&config);
@@ -37,13 +34,23 @@ mod tests {
         let feature_overview_url = Url::parse("http://localhost:1234/features")?;
 
         assert_json_snapshot!(SubscriptionState {
-            features: Some(features),
+            features: features.into(),
             manage_url: Some(&manage_url),
             feature_overview_url: Some(&feature_overview_url),
         }, @r###"
         {
           "features": {
-            "admin": true
+            "admin": true,
+            "certificates": {},
+            "webhooks": {
+              "responderRequests": 30
+            },
+            "webScraping": {
+              "trackerRevisions": 30
+            },
+            "webSecurity": {
+              "importPolicyFromUrl": true
+            }
           },
           "manageUrl": "http://localhost:1234/subscription",
           "featureOverviewUrl": "http://localhost:1234/features"

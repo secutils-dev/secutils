@@ -36,17 +36,16 @@ pub async fn ui_state_get(
         SecutilsError::from(anyhow!("Status is not available."))
     })?;
 
-    let features = user
-        .as_ref()
-        .map(|user| user.subscription.get_features(&state.config));
+    let subscription = user.as_ref().map(|user| SubscriptionState {
+        features: user.subscription.get_features(&state.config).into(),
+        manage_url: state.config.subscriptions.manage_url.as_ref(),
+        feature_overview_url: state.config.subscriptions.feature_overview_url.as_ref(),
+    });
+
     Ok(HttpResponse::Ok().json(UiState {
         status: status.deref(),
         user,
-        subscription: SubscriptionState {
-            features,
-            manage_url: state.config.subscriptions.manage_url.as_ref(),
-            feature_overview_url: state.config.subscriptions.feature_overview_url.as_ref(),
-        },
+        subscription,
         user_share: user_share.map(ClientUserShare::from),
         settings,
         utils,

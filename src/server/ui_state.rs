@@ -16,22 +16,18 @@ use serde::Serialize;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct UiState<'a, 'c> {
+pub struct UiState<'a> {
     pub status: &'a Status,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<User>,
-    #[serde(skip_serializing_if = "default")]
-    pub subscription: SubscriptionState<'a, 'c>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subscription: Option<SubscriptionState<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_share: Option<ClientUserShare>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub settings: Option<UserSettings>,
     pub utils: Vec<Util>,
     pub webhook_url_type: WebhookUrlType,
-}
-
-fn default<T: Default + PartialEq>(t: &T) -> bool {
-    *t == Default::default()
 }
 
 #[cfg(test)]
@@ -67,11 +63,11 @@ mod tests {
                 level: StatusLevel::Available,
             },
             user: Some(user),
-            subscription: SubscriptionState {
-                features: Some(features),
+            subscription: Some(SubscriptionState {
+                features: features.into(),
                 manage_url: Some(&manage_url),
                 feature_overview_url: Some(&feature_overview_url),
-            },
+            }),
             user_share: Some(ClientUserShare::from(UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
                 user_id: UserId::default(),
@@ -116,7 +112,17 @@ mod tests {
           },
           "subscription": {
             "features": {
-              "admin": true
+              "admin": true,
+              "certificates": {},
+              "webhooks": {
+                "responderRequests": 30
+              },
+              "webScraping": {
+                "trackerRevisions": 30
+              },
+              "webSecurity": {
+                "importPolicyFromUrl": true
+              }
             },
             "manageUrl": "http://localhost:1234/subscription",
             "featureOverviewUrl": "http://localhost:1234/features"

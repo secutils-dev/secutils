@@ -3,10 +3,14 @@ use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, TimestampSeconds};
 use time::{Duration, OffsetDateTime};
 
+mod client_subscription_features;
 mod subscription_features;
 mod subscription_tier;
 
-pub use self::{subscription_features::SubscriptionFeatures, subscription_tier::SubscriptionTier};
+pub use self::{
+    client_subscription_features::ClientSubscriptionFeatures,
+    subscription_features::SubscriptionFeatures, subscription_tier::SubscriptionTier,
+};
 
 /// The subscription status of a user.
 #[serde_as]
