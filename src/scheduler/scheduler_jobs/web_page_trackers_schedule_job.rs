@@ -55,18 +55,22 @@ impl WebPageTrackersScheduleJob {
         api: Arc<Api<DR, ET>>,
         scheduler: JobScheduler,
     ) -> anyhow::Result<()> {
-        let web_scraping = api.web_scraping();
+        let web_scraping_system = api.web_scraping_system();
         Self::schedule_trackers(
             api.clone(),
             &scheduler,
-            web_scraping.get_unscheduled_resources_trackers().await?,
+            web_scraping_system
+                .get_unscheduled_resources_trackers()
+                .await?,
         )
         .await?;
 
         Self::schedule_trackers(
             api.clone(),
             &scheduler,
-            web_scraping.get_unscheduled_content_trackers().await?,
+            web_scraping_system
+                .get_unscheduled_content_trackers()
+                .await?,
         )
         .await?;
 
@@ -111,7 +115,7 @@ impl WebPageTrackersScheduleJob {
             let job_id = scheduler
                 .add(WebPageTrackersTriggerJob::create(api.clone(), schedule, Tag::KIND).await?)
                 .await?;
-            api.web_scraping()
+            api.web_scraping_system()
                 .update_web_page_tracker_job(tracker.id, Some(job_id))
                 .await?;
         }
@@ -322,7 +326,7 @@ mod tests {
             .await?;
 
         let unscheduled_trackers = api
-            .web_scraping()
+            .web_scraping_system()
             .get_unscheduled_resources_trackers()
             .await?;
         assert_eq!(unscheduled_trackers.len(), 2);
@@ -330,7 +334,7 @@ mod tests {
         assert_eq!(unscheduled_trackers[1].id, tracker_two.id);
 
         let unscheduled_trackers = api
-            .web_scraping()
+            .web_scraping_system()
             .get_unscheduled_content_trackers()
             .await?;
         assert_eq!(unscheduled_trackers.len(), 1);
@@ -350,12 +354,12 @@ mod tests {
         // Start scheduler and wait for a few seconds, then stop it.
         scheduler.start().await?;
         while !(api
-            .web_scraping()
+            .web_scraping_system()
             .get_unscheduled_resources_trackers()
             .await?
             .is_empty()
             && api
-                .web_scraping()
+                .web_scraping_system()
                 .get_unscheduled_content_trackers()
                 .await?
                 .is_empty())
@@ -366,13 +370,13 @@ mod tests {
 
         // All pending jobs should be scheduled now.
         let unscheduled_trackers = api
-            .web_scraping()
+            .web_scraping_system()
             .get_unscheduled_resources_trackers()
             .await?;
         assert!(unscheduled_trackers.is_empty());
 
         let unscheduled_trackers = api
-            .web_scraping()
+            .web_scraping_system()
             .get_unscheduled_content_trackers()
             .await?;
         assert!(unscheduled_trackers.is_empty());
@@ -386,6 +390,7 @@ mod tests {
             .collect::<anyhow::Result<Vec<_>>>()?;
         assert_eq!(jobs.len(), 4);
 
+        let web_scraping_system = api.web_scraping_system();
         let resources_jobs = jobs
             .iter()
             .filter_map(|job_data| {
@@ -404,7 +409,9 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(resources_jobs.len(), 2);
         for job_id in resources_jobs {
-            let scheduled_tracker = web_scraping.get_resources_tracker_by_job_id(job_id).await?;
+            let scheduled_tracker = web_scraping_system
+                .get_resources_tracker_by_job_id(job_id)
+                .await?;
             assert!(scheduled_tracker.is_some());
         }
 
@@ -426,7 +433,9 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(content_jobs.len(), 1);
         for job_id in content_jobs {
-            let scheduled_tracker = web_scraping.get_content_tracker_by_job_id(job_id).await?;
+            let scheduled_tracker = web_scraping_system
+                .get_content_tracker_by_job_id(job_id)
+                .await?;
             assert!(scheduled_tracker.is_some());
         }
 
@@ -481,12 +490,12 @@ mod tests {
             .await?;
 
         assert!(api
-            .web_scraping()
+            .web_scraping_system()
             .get_unscheduled_resources_trackers()
             .await?
             .is_empty());
         assert!(api
-            .web_scraping()
+            .web_scraping_system()
             .get_unscheduled_content_trackers()
             .await?
             .is_empty());
@@ -585,12 +594,12 @@ mod tests {
             .await?;
 
         assert!(api
-            .web_scraping()
+            .web_scraping_system()
             .get_unscheduled_resources_trackers()
             .await?
             .is_empty());
         assert!(api
-            .web_scraping()
+            .web_scraping_system()
             .get_unscheduled_content_trackers()
             .await?
             .is_empty());

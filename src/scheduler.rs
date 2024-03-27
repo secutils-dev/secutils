@@ -260,10 +260,10 @@ mod tests {
                 },
             )
             .await?;
-        api.web_scraping()
+        api.web_scraping_system()
             .update_web_page_tracker_job(resources_tracker.id, Some(resources_trigger_job_id))
             .await?;
-        api.web_scraping()
+        api.web_scraping_system()
             .update_web_page_tracker_job(content_tracker.id, Some(content_trigger_job_id))
             .await?;
 

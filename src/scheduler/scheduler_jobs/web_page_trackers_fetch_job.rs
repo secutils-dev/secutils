@@ -81,10 +81,11 @@ impl WebPageTrackersFetchJob {
         ET::Error: EmailTransportError,
     {
         // Fetch all resources trackers jobs that are pending processing.
-        let web_scraping = api.web_scraping();
-        let pending_trackers = web_scraping.get_pending_resources_trackers();
+        let web_scraping_system = api.web_scraping_system();
+        let pending_trackers = web_scraping_system.get_pending_resources_trackers();
         pin_mut!(pending_trackers);
 
+        let web_scraping = api.web_scraping();
         while let Some(tracker) = pending_trackers.next().await {
             let Some((tracker, job_id)) =
                 Self::validate_tracker(&api, &scheduler, tracker?).await?
@@ -211,10 +212,11 @@ impl WebPageTrackersFetchJob {
         ET::Error: EmailTransportError,
     {
         // Fetch all content trackers jobs that are pending processing.
-        let web_scraping = api.web_scraping();
-        let pending_trackers = web_scraping.get_pending_content_trackers();
+        let web_scraping_system = api.web_scraping_system();
+        let pending_trackers = web_scraping_system.get_pending_content_trackers();
         pin_mut!(pending_trackers);
 
+        let web_scraping = api.web_scraping();
         while let Some(tracker) = pending_trackers.next().await {
             let Some((tracker, job_id)) =
                 Self::validate_tracker(&api, &scheduler, tracker?).await?
@@ -336,7 +338,7 @@ impl WebPageTrackersFetchJob {
             );
 
             scheduler.remove(&job_id).await?;
-            api.web_scraping()
+            api.web_scraping_system()
                 .update_web_page_tracker_job(tracker.id, None)
                 .await?;
             return Ok(None);
@@ -554,7 +556,7 @@ mod tests {
                 },
             )
             .await?;
-        api.web_scraping()
+        api.web_scraping_system()
             .update_web_page_tracker_job(resources_tracker.id, Some(resources_tracker_job_id))
             .await?;
 
@@ -589,7 +591,7 @@ mod tests {
                 },
             )
             .await?;
-        api.web_scraping()
+        api.web_scraping_system()
             .update_web_page_tracker_job(content_tracker.id, Some(content_tracker_job_id))
             .await?;
 
@@ -601,12 +603,12 @@ mod tests {
         // Start scheduler and wait for a few seconds, then stop it.
         scheduler.start().await?;
 
-        let web_scraping = api.web_scraping();
-        while web_scraping
+        let web_scraping_system = api.web_scraping_system();
+        while web_scraping_system
             .get_resources_tracker_by_job_id(resources_tracker_job_id)
             .await?
             .is_some()
-            || web_scraping
+            || web_scraping_system
                 .get_content_tracker_by_job_id(content_tracker_job_id)
                 .await?
                 .is_some()

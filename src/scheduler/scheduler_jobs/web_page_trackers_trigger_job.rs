@@ -23,13 +23,13 @@ impl WebPageTrackersTriggerJob {
         tracker_kind: WebPageTrackerKind,
     ) -> anyhow::Result<Option<Job>> {
         // First, check if the tracker job exists.
-        let web_scraping = api.web_scraping();
+        let web_scraping_system = api.web_scraping_system();
         let Some((tracker_id, tracker_settings, tracker_job_config)) = (match tracker_kind {
-            WebPageTrackerKind::WebPageResources => web_scraping
+            WebPageTrackerKind::WebPageResources => web_scraping_system
                 .get_resources_tracker_by_job_id(job_id)
                 .await?
                 .map(|tracker| (tracker.id, tracker.settings, tracker.job_config)),
-            WebPageTrackerKind::WebPageContent => web_scraping
+            WebPageTrackerKind::WebPageContent => web_scraping_system
                 .get_content_tracker_by_job_id(job_id)
                 .await?
                 .map(|tracker| (tracker.id, tracker.settings, tracker.job_config)),
@@ -47,7 +47,7 @@ impl WebPageTrackersTriggerJob {
                 "Web page tracker ('{}') no cannot store revisions, the job ('{job_id}') will be removed.",
                 tracker_id
             );
-            web_scraping
+            web_scraping_system
                 .update_web_page_tracker_job(tracker_id, None)
                 .await?;
             return Ok(None);
@@ -59,7 +59,7 @@ impl WebPageTrackersTriggerJob {
                 "Web page tracker ('{}') no longer has a job config, the job ('{job_id}') will be removed.",
                 tracker_id
             );
-            web_scraping
+            web_scraping_system
                 .update_web_page_tracker_job(tracker_id, None)
                 .await?;
             return Ok(None);
@@ -71,7 +71,7 @@ impl WebPageTrackersTriggerJob {
             new_job.set_job_data(existing_job_data)?;
             Some(new_job)
         } else {
-            web_scraping
+            web_scraping_system
                 .update_web_page_tracker_job(tracker_id, None)
                 .await?;
             None
@@ -243,7 +243,7 @@ mod tests {
                 },
             )
             .await?;
-        api.web_scraping()
+        api.web_scraping_system()
             .update_web_page_tracker_job(tracker.id, Some(job_id))
             .await?;
 
@@ -283,13 +283,13 @@ mod tests {
         "###);
 
         let unscheduled_trackers = api
-            .web_scraping()
+            .web_scraping_system()
             .get_unscheduled_resources_trackers()
             .await?;
         assert!(unscheduled_trackers.is_empty());
 
         assert_eq!(
-            api.web_scraping()
+            api.web_scraping_system()
                 .get_resources_tracker_by_job_id(job_id)
                 .await?
                 .unwrap()
@@ -330,7 +330,7 @@ mod tests {
                 },
             )
             .await?;
-        api.web_scraping()
+        api.web_scraping_system()
             .update_web_page_tracker_job(tracker.id, Some(job_id))
             .await?;
 
@@ -370,13 +370,13 @@ mod tests {
         "###);
 
         let unscheduled_trackers = api
-            .web_scraping()
+            .web_scraping_system()
             .get_unscheduled_content_trackers()
             .await?;
         assert!(unscheduled_trackers.is_empty());
 
         assert_eq!(
-            api.web_scraping()
+            api.web_scraping_system()
                 .get_content_tracker_by_job_id(job_id)
                 .await?
                 .unwrap()
@@ -417,7 +417,7 @@ mod tests {
                 },
             )
             .await?;
-        api.web_scraping()
+        api.web_scraping_system()
             .update_web_page_tracker_job(tracker.id, Some(job_id))
             .await?;
 
@@ -436,7 +436,7 @@ mod tests {
         assert!(job.is_none());
 
         let unscheduled_trackers = api
-            .web_scraping()
+            .web_scraping_system()
             .get_unscheduled_resources_trackers()
             .await?;
         assert_eq!(
@@ -448,7 +448,7 @@ mod tests {
         );
 
         assert!(api
-            .web_scraping()
+            .web_scraping_system()
             .get_resources_tracker_by_job_id(job_id)
             .await?
             .is_none());
@@ -482,7 +482,7 @@ mod tests {
                 },
             )
             .await?;
-        api.web_scraping()
+        api.web_scraping_system()
             .update_web_page_tracker_job(tracker.id, Some(job_id))
             .await?;
 
@@ -501,7 +501,7 @@ mod tests {
         assert!(job.is_none());
 
         let unscheduled_trackers = api
-            .web_scraping()
+            .web_scraping_system()
             .get_unscheduled_resources_trackers()
             .await?;
         assert!(unscheduled_trackers.is_empty());
@@ -547,7 +547,7 @@ mod tests {
                 },
             )
             .await?;
-        api.web_scraping()
+        api.web_scraping_system()
             .update_web_page_tracker_job(tracker.id, Some(job_id))
             .await?;
 
@@ -566,7 +566,7 @@ mod tests {
         assert!(job.is_none());
 
         let unscheduled_trackers = api
-            .web_scraping()
+            .web_scraping_system()
             .get_unscheduled_resources_trackers()
             .await?;
         assert!(unscheduled_trackers.is_empty());
@@ -621,24 +621,24 @@ mod tests {
         assert!(job.is_none());
 
         let unscheduled_trackers = api
-            .web_scraping()
+            .web_scraping_system()
             .get_unscheduled_resources_trackers()
             .await?;
         assert!(unscheduled_trackers.is_empty());
 
         let unscheduled_trackers = api
-            .web_scraping()
+            .web_scraping_system()
             .get_unscheduled_content_trackers()
             .await?;
         assert!(unscheduled_trackers.is_empty());
 
         assert!(api
-            .web_scraping()
+            .web_scraping_system()
             .get_resources_tracker_by_job_id(job_id)
             .await?
             .is_none());
         assert!(api
-            .web_scraping()
+            .web_scraping_system()
             .get_content_tracker_by_job_id(job_id)
             .await?
             .is_none());

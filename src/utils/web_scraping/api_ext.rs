@@ -61,16 +61,12 @@ const MAX_WEB_PAGE_TRACKER_RETRY_INTERVAL: Duration = Duration::from_secs(12 * 3
 
 pub struct WebScrapingApiExt<'a, DR: DnsResolver, ET: EmailTransport> {
     api: &'a Api<DR, ET>,
-    web_scraping_system: WebScrapingDatabaseSystemExt<'a>,
 }
 
 impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
     /// Creates WebScraping API.
     pub fn new(api: &'a Api<DR, ET>) -> Self {
-        Self {
-            api,
-            web_scraping_system: api.db.web_scraping_system(),
-        }
+        Self { api }
     }
 
     /// Returns all web page resources trackers.
@@ -87,36 +83,6 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
         user_id: UserId,
     ) -> anyhow::Result<Vec<WebPageTracker<WebPageContentTrackerTag>>> {
         self.get_web_page_trackers(user_id).await
-    }
-
-    /// Returns all web page resources tracker job references that have jobs that need to be scheduled.
-    pub async fn get_unscheduled_resources_trackers(
-        &self,
-    ) -> anyhow::Result<Vec<WebPageTracker<WebPageResourcesTrackerTag>>> {
-        self.get_unscheduled_web_page_trackers().await
-    }
-
-    /// Returns all web page content tracker job references that have jobs that need to be scheduled.
-    pub async fn get_unscheduled_content_trackers(
-        &self,
-    ) -> anyhow::Result<Vec<WebPageTracker<WebPageContentTrackerTag>>> {
-        self.get_unscheduled_web_page_trackers().await
-    }
-
-    /// Returns all web page resources trackers that have pending jobs.
-    pub fn get_pending_resources_trackers(
-        &self,
-    ) -> impl Stream<Item = anyhow::Result<WebPageTracker<WebPageResourcesTrackerTag>>> + '_ {
-        self.web_scraping_system
-            .get_pending_web_page_trackers(MAX_JOBS_PAGE_SIZE)
-    }
-
-    /// Returns all web page resources trackers that have pending jobs.
-    pub fn get_pending_content_trackers(
-        &self,
-    ) -> impl Stream<Item = anyhow::Result<WebPageTracker<WebPageContentTrackerTag>>> + '_ {
-        self.web_scraping_system
-            .get_pending_web_page_trackers(MAX_JOBS_PAGE_SIZE)
     }
 
     /// Returns web page resources tracker by its ID.
@@ -136,22 +102,6 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
         id: Uuid,
     ) -> anyhow::Result<Option<WebPageTracker<WebPageContentTrackerTag>>> {
         self.get_web_page_tracker(user_id, id).await
-    }
-
-    /// Returns web page resources tracker by the corresponding job ID.
-    pub async fn get_resources_tracker_by_job_id(
-        &self,
-        job_id: Uuid,
-    ) -> anyhow::Result<Option<WebPageTracker<WebPageResourcesTrackerTag>>> {
-        self.get_web_page_tracker_by_job_id(job_id).await
-    }
-
-    /// Returns web page content tracker by the corresponding job ID.
-    pub async fn get_content_tracker_by_job_id(
-        &self,
-        job_id: Uuid,
-    ) -> anyhow::Result<Option<WebPageTracker<WebPageContentTrackerTag>>> {
-        self.get_web_page_tracker_by_job_id(job_id).await
     }
 
     /// Creates a new web page resources tracker.
@@ -220,19 +170,6 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             }),
         )
         .await
-    }
-
-    /// Update resources tracker job ID reference (link or unlink).
-    pub async fn update_web_page_tracker_job(
-        &self,
-        id: Uuid,
-        job_id: Option<Uuid>,
-    ) -> anyhow::Result<()> {
-        self.api
-            .db
-            .web_scraping_system()
-            .update_web_page_tracker_job(id, job_id)
-            .await
     }
 
     /// Removes existing web page resources tracker and all history.
@@ -660,17 +597,6 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             .await
     }
 
-    /// Returns all web page tracker job references that have jobs that need to be scheduled.
-    async fn get_unscheduled_web_page_trackers<Tag: WebPageTrackerTag>(
-        &self,
-    ) -> anyhow::Result<Vec<WebPageTracker<Tag>>> {
-        self.api
-            .db
-            .web_scraping_system()
-            .get_unscheduled_web_page_trackers()
-            .await
-    }
-
     /// Returns web page tracker by its ID.
     async fn get_web_page_tracker<Tag: WebPageTrackerTag>(
         &self,
@@ -681,18 +607,6 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, DR, ET> {
             .db
             .web_scraping(user_id)
             .get_web_page_tracker(id)
-            .await
-    }
-
-    /// Returns web page tracker by the corresponding job ID.
-    async fn get_web_page_tracker_by_job_id<Tag: WebPageTrackerTag>(
-        &self,
-        job_id: Uuid,
-    ) -> anyhow::Result<Option<WebPageTracker<Tag>>> {
-        self.api
-            .db
-            .web_scraping_system()
-            .get_web_page_tracker_by_job_id(job_id)
             .await
     }
 
@@ -990,6 +904,102 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
     /// Returns an API to work with web scraping data.
     pub fn web_scraping(&self) -> WebScrapingApiExt<DR, ET> {
         WebScrapingApiExt::new(self)
+    }
+}
+
+pub struct WebScrapingSystemApiExt<'a> {
+    web_scraping_system: WebScrapingDatabaseSystemExt<'a>,
+}
+
+impl<'a> WebScrapingSystemApiExt<'a> {
+    /// Creates WebScraping System API.
+    pub fn new<DR: DnsResolver, ET: EmailTransport>(api: &'a Api<DR, ET>) -> Self {
+        Self {
+            web_scraping_system: api.db.web_scraping_system(),
+        }
+    }
+
+    /// Returns all web page resources tracker job references that have jobs that need to be scheduled.
+    pub async fn get_unscheduled_resources_trackers(
+        &self,
+    ) -> anyhow::Result<Vec<WebPageTracker<WebPageResourcesTrackerTag>>> {
+        self.get_unscheduled_web_page_trackers().await
+    }
+
+    /// Returns all web page content tracker job references that have jobs that need to be scheduled.
+    pub async fn get_unscheduled_content_trackers(
+        &self,
+    ) -> anyhow::Result<Vec<WebPageTracker<WebPageContentTrackerTag>>> {
+        self.get_unscheduled_web_page_trackers().await
+    }
+
+    /// Returns all web page resources trackers that have pending jobs.
+    pub fn get_pending_resources_trackers(
+        &self,
+    ) -> impl Stream<Item = anyhow::Result<WebPageTracker<WebPageResourcesTrackerTag>>> + '_ {
+        self.web_scraping_system
+            .get_pending_web_page_trackers(MAX_JOBS_PAGE_SIZE)
+    }
+
+    /// Returns all web page resources trackers that have pending jobs.
+    pub fn get_pending_content_trackers(
+        &self,
+    ) -> impl Stream<Item = anyhow::Result<WebPageTracker<WebPageContentTrackerTag>>> + '_ {
+        self.web_scraping_system
+            .get_pending_web_page_trackers(MAX_JOBS_PAGE_SIZE)
+    }
+
+    /// Returns web page resources tracker by the corresponding job ID.
+    pub async fn get_resources_tracker_by_job_id(
+        &self,
+        job_id: Uuid,
+    ) -> anyhow::Result<Option<WebPageTracker<WebPageResourcesTrackerTag>>> {
+        self.get_web_page_tracker_by_job_id(job_id).await
+    }
+
+    /// Returns web page content tracker by the corresponding job ID.
+    pub async fn get_content_tracker_by_job_id(
+        &self,
+        job_id: Uuid,
+    ) -> anyhow::Result<Option<WebPageTracker<WebPageContentTrackerTag>>> {
+        self.get_web_page_tracker_by_job_id(job_id).await
+    }
+
+    /// Update resources tracker job ID reference (link or unlink).
+    pub async fn update_web_page_tracker_job(
+        &self,
+        id: Uuid,
+        job_id: Option<Uuid>,
+    ) -> anyhow::Result<()> {
+        self.web_scraping_system
+            .update_web_page_tracker_job(id, job_id)
+            .await
+    }
+
+    /// Returns all web page tracker job references that have jobs that need to be scheduled.
+    async fn get_unscheduled_web_page_trackers<Tag: WebPageTrackerTag>(
+        &self,
+    ) -> anyhow::Result<Vec<WebPageTracker<Tag>>> {
+        self.web_scraping_system
+            .get_unscheduled_web_page_trackers()
+            .await
+    }
+
+    /// Returns web page tracker by the corresponding job ID.
+    async fn get_web_page_tracker_by_job_id<Tag: WebPageTrackerTag>(
+        &self,
+        job_id: Uuid,
+    ) -> anyhow::Result<Option<WebPageTracker<Tag>>> {
+        self.web_scraping_system
+            .get_web_page_tracker_by_job_id(job_id)
+            .await
+    }
+}
+
+impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
+    /// Returns an API to work with web scraping data (as system user).
+    pub fn web_scraping_system(&self) -> WebScrapingSystemApiExt {
+        WebScrapingSystemApiExt::new(self)
     }
 }
 
@@ -2702,8 +2712,8 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = api.web_scraping();
-        let tracker = api
+        let web_scraping = api.web_scraping();
+        let tracker = web_scraping
             .create_resources_tracker(
                 mock_user.id,
                 WebPageTrackerCreateParams {
@@ -2725,20 +2735,22 @@ mod tests {
             .await?;
 
         // Set job ID.
-        api.update_web_page_tracker_job(
-            tracker.id,
-            Some(uuid!("00000000-0000-0000-0000-000000000001")),
-        )
-        .await?;
+        api.web_scraping_system()
+            .update_web_page_tracker_job(
+                tracker.id,
+                Some(uuid!("00000000-0000-0000-0000-000000000001")),
+            )
+            .await?;
         assert_eq!(
             Some(uuid!("00000000-0000-0000-0000-000000000001")),
-            api.get_resources_tracker(mock_user.id, tracker.id)
+            web_scraping
+                .get_resources_tracker(mock_user.id, tracker.id)
                 .await?
                 .unwrap()
                 .job_id
         );
 
-        let updated_tracker = api
+        let updated_tracker = web_scraping
             .update_resources_tracker(
                 mock_user.id,
                 tracker.id,
@@ -2756,13 +2768,14 @@ mod tests {
         assert_eq!(expected_tracker, updated_tracker);
         assert_eq!(
             expected_tracker,
-            api.get_resources_tracker(mock_user.id, tracker.id)
+            web_scraping
+                .get_resources_tracker(mock_user.id, tracker.id)
                 .await?
                 .unwrap()
         );
 
         // Change in schedule will reset job ID.
-        let updated_tracker = api
+        let updated_tracker = web_scraping
             .update_resources_tracker(
                 mock_user.id,
                 tracker.id,
@@ -2789,7 +2802,8 @@ mod tests {
         assert_eq!(expected_tracker, updated_tracker);
         assert_eq!(
             expected_tracker,
-            api.get_resources_tracker(mock_user.id, tracker.id)
+            web_scraping
+                .get_resources_tracker(mock_user.id, tracker.id)
                 .await?
                 .unwrap()
         );
@@ -2803,8 +2817,8 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = api.web_scraping();
-        let tracker = api
+        let web_scraping = api.web_scraping();
+        let tracker = web_scraping
             .create_content_tracker(
                 mock_user.id,
                 WebPageTrackerCreateParams {
@@ -2826,20 +2840,22 @@ mod tests {
             .await?;
 
         // Set job ID.
-        api.update_web_page_tracker_job(
-            tracker.id,
-            Some(uuid!("00000000-0000-0000-0000-000000000001")),
-        )
-        .await?;
+        api.web_scraping_system()
+            .update_web_page_tracker_job(
+                tracker.id,
+                Some(uuid!("00000000-0000-0000-0000-000000000001")),
+            )
+            .await?;
         assert_eq!(
             Some(uuid!("00000000-0000-0000-0000-000000000001")),
-            api.get_content_tracker(mock_user.id, tracker.id)
+            web_scraping
+                .get_content_tracker(mock_user.id, tracker.id)
                 .await?
                 .unwrap()
                 .job_id
         );
 
-        let updated_tracker = api
+        let updated_tracker = web_scraping
             .update_content_tracker(
                 mock_user.id,
                 tracker.id,
@@ -2857,13 +2873,14 @@ mod tests {
         assert_eq!(expected_tracker, updated_tracker);
         assert_eq!(
             expected_tracker,
-            api.get_content_tracker(mock_user.id, tracker.id)
+            web_scraping
+                .get_content_tracker(mock_user.id, tracker.id)
                 .await?
                 .unwrap()
         );
 
         // Change in schedule will reset job ID.
-        let updated_tracker = api
+        let updated_tracker = web_scraping
             .update_content_tracker(
                 mock_user.id,
                 tracker.id,
@@ -2890,7 +2907,8 @@ mod tests {
         assert_eq!(expected_tracker, updated_tracker);
         assert_eq!(
             expected_tracker,
-            api.get_content_tracker(mock_user.id, tracker.id)
+            web_scraping
+                .get_content_tracker(mock_user.id, tracker.id)
                 .await?
                 .unwrap()
         );
@@ -2904,8 +2922,8 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = api.web_scraping();
-        let tracker_one = api
+        let web_scraping = api.web_scraping();
+        let tracker_one = web_scraping
             .create_resources_tracker(
                 mock_user.id,
                 WebPageTrackerCreateParams {
@@ -2925,7 +2943,7 @@ mod tests {
                 },
             )
             .await?;
-        let tracker_two = api
+        let tracker_two = web_scraping
             .create_resources_tracker(
                 mock_user.id,
                 WebPageTrackerCreateParams {
@@ -2938,22 +2956,27 @@ mod tests {
             .await?;
 
         assert_eq!(
-            api.get_resources_trackers(mock_user.id).await?,
+            web_scraping.get_resources_trackers(mock_user.id).await?,
             vec![tracker_one.clone(), tracker_two.clone()],
         );
 
-        api.remove_web_page_tracker(mock_user.id, tracker_one.id)
+        web_scraping
+            .remove_web_page_tracker(mock_user.id, tracker_one.id)
             .await?;
 
         assert_eq!(
-            api.get_resources_trackers(mock_user.id).await?,
+            web_scraping.get_resources_trackers(mock_user.id).await?,
             vec![tracker_two.clone()],
         );
 
-        api.remove_web_page_tracker(mock_user.id, tracker_two.id)
+        web_scraping
+            .remove_web_page_tracker(mock_user.id, tracker_two.id)
             .await?;
 
-        assert!(api.get_resources_trackers(mock_user.id).await?.is_empty());
+        assert!(web_scraping
+            .get_resources_trackers(mock_user.id)
+            .await?
+            .is_empty());
 
         Ok(())
     }
@@ -2964,14 +2987,13 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = api.web_scraping();
-
-        assert!(api
+        let web_scraping = api.web_scraping();
+        assert!(web_scraping
             .get_resources_tracker(mock_user.id, uuid!("00000000-0000-0000-0000-000000000001"))
             .await?
             .is_none());
 
-        let tracker_one = api
+        let tracker_one = web_scraping
             .create_resources_tracker(
                 mock_user.id,
                 WebPageTrackerCreateParams {
@@ -2992,12 +3014,13 @@ mod tests {
             )
             .await?;
         assert_eq!(
-            api.get_resources_tracker(mock_user.id, tracker_one.id)
+            web_scraping
+                .get_resources_tracker(mock_user.id, tracker_one.id)
                 .await?,
             Some(tracker_one.clone()),
         );
 
-        let tracker_two = api
+        let tracker_two = web_scraping
             .create_resources_tracker(
                 mock_user.id,
                 WebPageTrackerCreateParams {
@@ -3010,7 +3033,8 @@ mod tests {
             .await?;
 
         assert_eq!(
-            api.get_resources_tracker(mock_user.id, tracker_two.id)
+            web_scraping
+                .get_resources_tracker(mock_user.id, tracker_two.id)
                 .await?,
             Some(tracker_two.clone()),
         );
@@ -3024,14 +3048,13 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = api.web_scraping();
-
-        assert!(api
+        let web_scraping = api.web_scraping();
+        assert!(web_scraping
             .get_content_tracker(mock_user.id, uuid!("00000000-0000-0000-0000-000000000001"))
             .await?
             .is_none());
 
-        let tracker_one = api
+        let tracker_one = web_scraping
             .create_content_tracker(
                 mock_user.id,
                 WebPageTrackerCreateParams {
@@ -3052,12 +3075,13 @@ mod tests {
             )
             .await?;
         assert_eq!(
-            api.get_content_tracker(mock_user.id, tracker_one.id)
+            web_scraping
+                .get_content_tracker(mock_user.id, tracker_one.id)
                 .await?,
             Some(tracker_one.clone()),
         );
 
-        let tracker_two = api
+        let tracker_two = web_scraping
             .create_content_tracker(
                 mock_user.id,
                 WebPageTrackerCreateParams {
@@ -3070,7 +3094,8 @@ mod tests {
             .await?;
 
         assert_eq!(
-            api.get_content_tracker(mock_user.id, tracker_two.id)
+            web_scraping
+                .get_content_tracker(mock_user.id, tracker_two.id)
                 .await?,
             Some(tracker_two.clone()),
         );
@@ -3084,11 +3109,13 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = api.web_scraping();
+        let web_scraping = api.web_scraping();
+        assert!(web_scraping
+            .get_resources_trackers(mock_user.id)
+            .await?
+            .is_empty(),);
 
-        assert!(api.get_resources_trackers(mock_user.id).await?.is_empty(),);
-
-        let tracker_one = api
+        let tracker_one = web_scraping
             .create_resources_tracker(
                 mock_user.id,
                 WebPageTrackerCreateParams {
@@ -3109,10 +3136,10 @@ mod tests {
             )
             .await?;
         assert_eq!(
-            api.get_resources_trackers(mock_user.id).await?,
+            web_scraping.get_resources_trackers(mock_user.id).await?,
             vec![tracker_one.clone()],
         );
-        let tracker_two = api
+        let tracker_two = web_scraping
             .create_resources_tracker(
                 mock_user.id,
                 WebPageTrackerCreateParams {
@@ -3125,7 +3152,7 @@ mod tests {
             .await?;
 
         assert_eq!(
-            api.get_resources_trackers(mock_user.id).await?,
+            web_scraping.get_resources_trackers(mock_user.id).await?,
             vec![tracker_one.clone(), tracker_two.clone()],
         );
 
@@ -3138,11 +3165,13 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = api.web_scraping();
+        let web_scraping = api.web_scraping();
+        assert!(web_scraping
+            .get_content_trackers(mock_user.id)
+            .await?
+            .is_empty(),);
 
-        assert!(api.get_content_trackers(mock_user.id).await?.is_empty(),);
-
-        let tracker_one = api
+        let tracker_one = web_scraping
             .create_content_tracker(
                 mock_user.id,
                 WebPageTrackerCreateParams {
@@ -3163,10 +3192,10 @@ mod tests {
             )
             .await?;
         assert_eq!(
-            api.get_content_trackers(mock_user.id).await?,
+            web_scraping.get_content_trackers(mock_user.id).await?,
             vec![tracker_one.clone()],
         );
-        let tracker_two = api
+        let tracker_two = web_scraping
             .create_content_tracker(
                 mock_user.id,
                 WebPageTrackerCreateParams {
@@ -3179,7 +3208,7 @@ mod tests {
             .await?;
 
         assert_eq!(
-            api.get_content_trackers(mock_user.id).await?,
+            web_scraping.get_content_trackers(mock_user.id).await?,
             vec![tracker_one.clone(), tracker_two.clone()],
         );
 
@@ -4605,7 +4634,7 @@ mod tests {
                 },
             )
             .await?;
-        web_scraping
+        api.web_scraping_system()
             .update_web_page_tracker_job(
                 tracker.id,
                 Some(uuid!("00000000-0000-0000-0000-000000000001")),
@@ -4721,7 +4750,7 @@ mod tests {
                 },
             )
             .await?;
-        web_scraping
+        api.web_scraping_system()
             .update_web_page_tracker_job(
                 tracker.id,
                 Some(uuid!("00000000-0000-0000-0000-000000000001")),
@@ -4837,7 +4866,7 @@ mod tests {
                 },
             )
             .await?;
-        web_scraping
+        api.web_scraping_system()
             .update_web_page_tracker_job(
                 tracker.id,
                 Some(uuid!("00000000-0000-0000-0000-000000000001")),
@@ -4949,7 +4978,7 @@ mod tests {
                 },
             )
             .await?;
-        web_scraping
+        api.web_scraping_system()
             .update_web_page_tracker_job(
                 tracker.id,
                 Some(uuid!("00000000-0000-0000-0000-000000000001")),
@@ -5039,14 +5068,20 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = api.web_scraping();
+        let web_scraping = api.web_scraping();
 
-        let unscheduled_trackers = api.get_unscheduled_resources_trackers().await?;
+        let unscheduled_trackers = api
+            .web_scraping_system()
+            .get_unscheduled_resources_trackers()
+            .await?;
         assert!(unscheduled_trackers.is_empty());
-        let unscheduled_trackers = api.get_unscheduled_content_trackers().await?;
+        let unscheduled_trackers = api
+            .web_scraping_system()
+            .get_unscheduled_content_trackers()
+            .await?;
         assert!(unscheduled_trackers.is_empty());
 
-        let resources_tracker = api
+        let resources_tracker = web_scraping
             .create_resources_tracker(
                 mock_user.id,
                 WebPageTrackerCreateParams {
@@ -5066,7 +5101,7 @@ mod tests {
                 },
             )
             .await?;
-        let content_tracker = api
+        let content_tracker = web_scraping
             .create_content_tracker(
                 mock_user.id,
                 WebPageTrackerCreateParams {
@@ -5087,28 +5122,43 @@ mod tests {
             )
             .await?;
 
-        let unscheduled_trackers = api.get_unscheduled_resources_trackers().await?;
+        let unscheduled_trackers = api
+            .web_scraping_system()
+            .get_unscheduled_resources_trackers()
+            .await?;
         assert_eq!(unscheduled_trackers, vec![resources_tracker.clone()]);
-        let unscheduled_trackers = api.get_unscheduled_content_trackers().await?;
+        let unscheduled_trackers = api
+            .web_scraping_system()
+            .get_unscheduled_content_trackers()
+            .await?;
         assert_eq!(unscheduled_trackers, vec![content_tracker.clone()]);
 
-        api.update_web_page_tracker_job(
-            resources_tracker.id,
-            Some(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c8")),
-        )
-        .await?;
-        api.update_web_page_tracker_job(
-            content_tracker.id,
-            Some(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c9")),
-        )
-        .await?;
+        api.web_scraping_system()
+            .update_web_page_tracker_job(
+                resources_tracker.id,
+                Some(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c8")),
+            )
+            .await?;
+        api.web_scraping_system()
+            .update_web_page_tracker_job(
+                content_tracker.id,
+                Some(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c9")),
+            )
+            .await?;
 
-        let unscheduled_trackers = api.get_unscheduled_resources_trackers().await?;
+        let unscheduled_trackers = api
+            .web_scraping_system()
+            .get_unscheduled_resources_trackers()
+            .await?;
         assert!(unscheduled_trackers.is_empty());
-        let unscheduled_trackers = api.get_unscheduled_content_trackers().await?;
+        let unscheduled_trackers = api
+            .web_scraping_system()
+            .get_unscheduled_content_trackers()
+            .await?;
         assert!(unscheduled_trackers.is_empty());
 
         let scheduled_tracker = api
+            .web_scraping_system()
             .get_resources_tracker_by_job_id(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c8"))
             .await?;
         assert_eq!(
@@ -5120,6 +5170,7 @@ mod tests {
         );
 
         let scheduled_tracker = api
+            .web_scraping_system()
             .get_content_tracker_by_job_id(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c9"))
             .await?;
         assert_eq!(
@@ -5131,36 +5182,46 @@ mod tests {
         );
 
         // Remove schedule to make sure that job is removed.
-        api.update_resources_tracker(
-            mock_user.id,
-            resources_tracker.id,
-            WebPageTrackerUpdateParams {
-                job_config: Some(None),
-                ..Default::default()
-            },
-        )
-        .await?;
-        api.update_content_tracker(
-            mock_user.id,
-            content_tracker.id,
-            WebPageTrackerUpdateParams {
-                job_config: Some(None),
-                ..Default::default()
-            },
-        )
-        .await?;
+        web_scraping
+            .update_resources_tracker(
+                mock_user.id,
+                resources_tracker.id,
+                WebPageTrackerUpdateParams {
+                    job_config: Some(None),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        web_scraping
+            .update_content_tracker(
+                mock_user.id,
+                content_tracker.id,
+                WebPageTrackerUpdateParams {
+                    job_config: Some(None),
+                    ..Default::default()
+                },
+            )
+            .await?;
 
-        let unscheduled_trackers = api.get_unscheduled_resources_trackers().await?;
+        let unscheduled_trackers = api
+            .web_scraping_system()
+            .get_unscheduled_resources_trackers()
+            .await?;
         assert!(unscheduled_trackers.is_empty());
-        let unscheduled_trackers = api.get_unscheduled_content_trackers().await?;
+        let unscheduled_trackers = api
+            .web_scraping_system()
+            .get_unscheduled_content_trackers()
+            .await?;
         assert!(unscheduled_trackers.is_empty());
 
         let scheduled_tracker = api
+            .web_scraping_system()
             .get_resources_tracker_by_job_id(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c8"))
             .await?;
         assert!(scheduled_tracker.is_none());
 
         let scheduled_tracker = api
+            .web_scraping_system()
             .get_content_tracker_by_job_id(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c9"))
             .await?;
         assert!(scheduled_tracker.is_none());
@@ -5176,7 +5237,8 @@ mod tests {
 
         let web_scraping = WebScrapingApiExt::new(&api);
 
-        let pending_trackers = web_scraping
+        let pending_trackers = api
+            .web_scraping_system()
             .get_pending_resources_trackers()
             .collect::<Vec<_>>()
             .await;
@@ -5231,7 +5293,8 @@ mod tests {
                 .await?;
         }
 
-        let pending_trackers = web_scraping
+        let pending_trackers = api
+            .web_scraping_system()
             .get_pending_resources_trackers()
             .collect::<Vec<_>>()
             .await;
@@ -5240,7 +5303,7 @@ mod tests {
         // Assign job IDs to trackers.
         let all_trackers = web_scraping.get_resources_trackers(mock_user.id).await?;
         for (n, tracker) in all_trackers.iter().enumerate() {
-            web_scraping
+            api.web_scraping_system()
                 .update_web_page_tracker_job(
                     tracker.id,
                     Some(uuid::Uuid::parse_str(&format!(
@@ -5251,7 +5314,8 @@ mod tests {
                 .await?;
         }
 
-        let pending_trackers = web_scraping
+        let pending_trackers = api
+            .web_scraping_system()
             .get_pending_resources_trackers()
             .collect::<Vec<_>>()
             .await
@@ -5279,7 +5343,8 @@ mod tests {
 
         let web_scraping = WebScrapingApiExt::new(&api);
 
-        let pending_trackers = web_scraping
+        let pending_trackers = api
+            .web_scraping_system()
             .get_pending_content_trackers()
             .collect::<Vec<_>>()
             .await;
@@ -5334,7 +5399,8 @@ mod tests {
                 .await?;
         }
 
-        let pending_trackers = web_scraping
+        let pending_trackers = api
+            .web_scraping_system()
             .get_pending_content_trackers()
             .collect::<Vec<_>>()
             .await;
@@ -5343,7 +5409,7 @@ mod tests {
         // Assign job IDs to trackers.
         let all_trackers = web_scraping.get_content_trackers(mock_user.id).await?;
         for (n, tracker) in all_trackers.iter().enumerate() {
-            web_scraping
+            api.web_scraping_system()
                 .update_web_page_tracker_job(
                     tracker.id,
                     Some(uuid::Uuid::parse_str(&format!(
@@ -5354,7 +5420,8 @@ mod tests {
                 .await?;
         }
 
-        let pending_trackers = web_scraping
+        let pending_trackers = api
+            .web_scraping_system()
             .get_pending_content_trackers()
             .collect::<Vec<_>>()
             .await
