@@ -172,7 +172,7 @@ mod test {
 
         let features =
             ClientSubscriptionFeatures::from(SubscriptionFeatures::new(&config, subscription));
-        assert_json_snapshot!(features, @r###"
+        assert_json_snapshot!(features, { ".webScraping.trackerSchedules" => insta::sorted_redaction() }, @r###"
         {
           "certificates": {
             "privateKeyAlgorithms": [
@@ -185,10 +185,10 @@ mod test {
           "webScraping": {
             "trackerRevisions": 11,
             "trackerSchedules": [
-              "@weekly",
-              "@monthly",
               "@",
-              "@daily"
+              "@daily",
+              "@monthly",
+              "@weekly"
             ]
           },
           "webSecurity": {

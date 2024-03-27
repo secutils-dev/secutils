@@ -6,7 +6,7 @@ use crate::{
     api::Api,
     error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
-    users::UserId,
+    users::User,
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
         webhooks::{Responder, ResponderMethod, ResponderRequest},
@@ -23,48 +23,43 @@ pub use self::{
     responders_update_params::RespondersUpdateParams,
 };
 
-pub struct WebhooksApiExt<'a, DR: DnsResolver, ET: EmailTransport> {
+pub struct WebhooksApiExt<'a, 'u, DR: DnsResolver, ET: EmailTransport> {
     api: &'a Api<DR, ET>,
+    user: &'u User,
 }
 
-impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
+impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET> {
     /// Creates Webhooks API.
-    pub fn new(api: &'a Api<DR, ET>) -> Self {
-        Self { api }
+    pub fn new(api: &'a Api<DR, ET>, user: &'u User) -> Self {
+        Self { api, user }
     }
 
     /// Retrieves all responders that belong to the specified user.
-    pub async fn get_responders(&self, user_id: UserId) -> anyhow::Result<Vec<Responder>> {
-        self.api.db.webhooks().get_responders(user_id).await
+    pub async fn get_responders(&self) -> anyhow::Result<Vec<Responder>> {
+        self.api.db.webhooks().get_responders(self.user.id).await
     }
 
     /// Returns responder by its ID.
-    pub async fn get_responder(
-        &self,
-        user_id: UserId,
-        id: Uuid,
-    ) -> anyhow::Result<Option<Responder>> {
-        self.api.db.webhooks().get_responder(user_id, id).await
+    pub async fn get_responder(&self, id: Uuid) -> anyhow::Result<Option<Responder>> {
+        self.api.db.webhooks().get_responder(self.user.id, id).await
     }
 
     /// Returns responder for specified path and method, if any.
     pub async fn find_responder(
         &self,
-        user_id: UserId,
         path: &str,
         method: ResponderMethod,
     ) -> anyhow::Result<Option<Responder>> {
         self.api
             .db
             .webhooks()
-            .find_responder(user_id, path, method)
+            .find_responder(self.user.id, path, method)
             .await
     }
 
     /// Creates responder with the specified parameters and stores it in the database.
     pub async fn create_responder(
         &self,
-        user_id: UserId,
         params: RespondersCreateParams,
     ) -> anyhow::Result<Responder> {
         let responder = Responder {
@@ -80,12 +75,12 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
             )?,
         };
 
-        Self::validate_responder(&responder)?;
+        self.validate_responder(&responder)?;
 
         self.api
             .db
             .webhooks()
-            .insert_responder(user_id, &responder)
+            .insert_responder(self.user.id, &responder)
             .await?;
 
         Ok(responder)
@@ -94,7 +89,6 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
     /// Updates responder.
     pub async fn update_responder(
         &self,
-        user_id: UserId,
         id: Uuid,
         params: RespondersUpdateParams,
     ) -> anyhow::Result<Responder> {
@@ -109,7 +103,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
             )));
         }
 
-        let Some(existing_responder) = self.get_responder(user_id, id).await? else {
+        let Some(existing_responder) = self.get_responder(id).await? else {
             bail!(SecutilsError::client(format!(
                 "Responder ('{id}') is not found."
             )));
@@ -124,26 +118,29 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
             ..existing_responder
         };
 
-        Self::validate_responder(&responder)?;
+        self.validate_responder(&responder)?;
 
         self.api
             .db
             .webhooks()
-            .update_responder(user_id, &responder)
+            .update_responder(self.user.id, &responder)
             .await?;
 
         Ok(responder)
     }
 
     /// Removes responder by its ID.
-    pub async fn remove_responder(&self, user_id: UserId, id: Uuid) -> anyhow::Result<()> {
-        self.api.db.webhooks().remove_responder(user_id, id).await
+    pub async fn remove_responder(&self, id: Uuid) -> anyhow::Result<()> {
+        self.api
+            .db
+            .webhooks()
+            .remove_responder(self.user.id, id)
+            .await
     }
 
     // Persists request for the specified responder.
     pub async fn create_responder_request<'r>(
         &self,
-        user_id: UserId,
         responder_id: Uuid,
         params: RespondersRequestCreateParams<'r>,
     ) -> anyhow::Result<Option<ResponderRequest<'r>>> {
@@ -151,7 +148,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
             return Ok(None);
         }
 
-        let Some(responder) = self.get_responder(user_id, responder_id).await? else {
+        let Some(responder) = self.get_responder(responder_id).await? else {
             bail!(SecutilsError::client(format!(
                 "Responder ('{responder_id}') is not found."
             )));
@@ -159,7 +156,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
 
         let webhooks = self.api.db.webhooks();
         let requests = webhooks
-            .get_responder_requests(user_id, responder.id)
+            .get_responder_requests(self.user.id, responder.id)
             .await?;
 
         let request = ResponderRequest {
@@ -179,14 +176,16 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
         Self::validate_responder_request(&responder, &request)?;
 
         // Insert new revision.
-        webhooks.insert_responder_request(user_id, &request).await?;
+        webhooks
+            .insert_responder_request(self.user.id, &request)
+            .await?;
 
         // Enforce requests limit and displace old ones.
         if requests.len() >= params.requests_to_track {
             let requests_to_remove = requests.len() - params.requests_to_track + 1;
             for request_to_remove in requests.iter().take(requests_to_remove) {
                 webhooks
-                    .remove_responder_request(user_id, responder.id, request_to_remove.id)
+                    .remove_responder_request(self.user.id, responder.id, request_to_remove.id)
                     .await?;
             }
         }
@@ -197,10 +196,9 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
     /// Returns all stored webpage resources tracker history.
     pub async fn get_responder_requests(
         &self,
-        user_id: UserId,
         responder_id: Uuid,
     ) -> anyhow::Result<Vec<ResponderRequest<'static>>> {
-        if self.get_responder(user_id, responder_id).await?.is_none() {
+        if self.get_responder(responder_id).await?.is_none() {
             bail!(SecutilsError::client(format!(
                 "Responder ('{responder_id}') is not found."
             )));
@@ -209,24 +207,20 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
         self.api
             .db
             .webhooks()
-            .get_responder_requests(user_id, responder_id)
+            .get_responder_requests(self.user.id, responder_id)
             .await
     }
 
     /// Removes all persisted requests for the specified responder.
-    pub async fn clear_responder_requests(
-        &self,
-        user_id: UserId,
-        responder_id: Uuid,
-    ) -> anyhow::Result<()> {
+    pub async fn clear_responder_requests(&self, responder_id: Uuid) -> anyhow::Result<()> {
         self.api
             .db
             .webhooks()
-            .clear_responder_requests(user_id, responder_id)
+            .clear_responder_requests(self.user.id, responder_id)
             .await
     }
 
-    fn validate_responder(responder: &Responder) -> anyhow::Result<()> {
+    fn validate_responder(&self, responder: &Responder) -> anyhow::Result<()> {
         if responder.name.is_empty() {
             bail!(SecutilsError::client("Responder name cannot be empty.",));
         }
@@ -260,10 +254,13 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
             )));
         }
 
-        if !(0..=100).contains(&responder.settings.requests_to_track) {
+        let features = self.user.subscription.get_features(&self.api.config);
+        if !(0..=features.config.webhooks.responder_requests)
+            .contains(&responder.settings.requests_to_track)
+        {
             bail!(SecutilsError::client(format!(
-                "Responder can track only up to 100 requests, but received {}.",
-                responder.settings.requests_to_track
+                "Responder can track only up to {} requests, but received {}.",
+                features.config.webhooks.responder_requests, responder.settings.requests_to_track
             )));
         }
 
@@ -300,10 +297,10 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, DR, ET> {
     }
 }
 
-impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
+impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
     /// Returns an API to work with responders.
-    pub fn webhooks(&self) -> WebhooksApiExt<DR, ET> {
-        WebhooksApiExt::new(self)
+    pub fn webhooks(&'a self, user: &'u User) -> WebhooksApiExt<'a, 'u, DR, ET> {
+        WebhooksApiExt::new(self, user)
     }
 }
 
@@ -338,32 +335,26 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let webhooks = api.webhooks();
+        let webhooks = api.webhooks(&mock_user);
         let responder = webhooks
-            .create_responder(
-                mock_user.id,
-                RespondersCreateParams {
-                    name: "name_one".to_string(),
-                    path: "/".to_string(),
-                    method: ResponderMethod::Any,
-                    enabled: true,
-                    settings: ResponderSettings {
-                        requests_to_track: 3,
-                        status_code: 302,
-                        body: Some("body".to_string()),
-                        headers: Some(vec![("key".to_string(), "value".to_string())]),
-                        script: Some("return { body: `custom body` };".to_string()),
-                    },
+            .create_responder(RespondersCreateParams {
+                name: "name_one".to_string(),
+                path: "/".to_string(),
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 3,
+                    status_code: 302,
+                    body: Some("body".to_string()),
+                    headers: Some(vec![("key".to_string(), "value".to_string())]),
+                    script: Some("return { body: `custom body` };".to_string()),
                 },
-            )
+            })
             .await?;
 
         assert_eq!(
             responder,
-            webhooks
-                .get_responder(mock_user.id, responder.id)
-                .await?
-                .unwrap()
+            webhooks.get_responder(responder.id).await?.unwrap()
         );
 
         Ok(())
@@ -375,7 +366,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let webhooks = api.webhooks();
+        let webhooks = api.webhooks(&mock_user);
         let settings = ResponderSettings {
             requests_to_track: 0,
             status_code: 200,
@@ -390,7 +381,7 @@ mod tests {
 
         // Empty name.
         assert_debug_snapshot!(
-            create_and_fail(webhooks.create_responder(mock_user.id, RespondersCreateParams {
+            create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "".to_string(),
                 path: "/".to_string(),
                 method: ResponderMethod::Get,
@@ -402,7 +393,7 @@ mod tests {
 
         // Very long name.
         assert_debug_snapshot!(
-            create_and_fail(webhooks.create_responder(mock_user.id, RespondersCreateParams {
+            create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "a".repeat(101),
                 path: "/".to_string(),
                 method: ResponderMethod::Get,
@@ -414,7 +405,7 @@ mod tests {
 
         // Empty path.
         assert_debug_snapshot!(
-            create_and_fail(webhooks.create_responder(mock_user.id, RespondersCreateParams {
+            create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
                 path: "".to_string(),
                 method: ResponderMethod::Get,
@@ -426,7 +417,7 @@ mod tests {
 
         // Very long path.
         assert_debug_snapshot!(
-            create_and_fail(webhooks.create_responder(mock_user.id, RespondersCreateParams {
+            create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
                 path: "/a".repeat(51),
                 method: ResponderMethod::Get,
@@ -438,7 +429,7 @@ mod tests {
 
         // Invalid path start
         assert_debug_snapshot!(
-            create_and_fail(webhooks.create_responder(mock_user.id, RespondersCreateParams {
+            create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
                 path: "path".to_string(),
                 method: ResponderMethod::Get,
@@ -450,7 +441,7 @@ mod tests {
 
         // Invalid path end
         assert_debug_snapshot!(
-            create_and_fail(webhooks.create_responder(mock_user.id, RespondersCreateParams {
+            create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
                 path: "/path/".to_string(),
                 method: ResponderMethod::Get,
@@ -462,7 +453,7 @@ mod tests {
 
         // Invalid status code
         assert_debug_snapshot!(
-            create_and_fail(webhooks.create_responder(mock_user.id, RespondersCreateParams {
+            create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
                 path: "/path".to_string(),
                 method: ResponderMethod::Get,
@@ -477,7 +468,7 @@ mod tests {
 
         // Invalid status code
         assert_debug_snapshot!(
-            create_and_fail(webhooks.create_responder(mock_user.id, RespondersCreateParams {
+            create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
                 path: "/path".to_string(),
                 method: ResponderMethod::Get,
@@ -492,7 +483,7 @@ mod tests {
 
         // Too many requests to track.
         assert_debug_snapshot!(
-            create_and_fail(webhooks.create_responder(mock_user.id, RespondersCreateParams {
+            create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
                 path: "/path".to_string(),
                 method: ResponderMethod::Get,
@@ -502,12 +493,12 @@ mod tests {
                     ..settings.clone()
                 }
             }).await),
-            @r###""Responder can track only up to 100 requests, but received 101.""###
+            @r###""Responder can track only up to 30 requests, but received 101.""###
         );
 
         // Invalid script.
         assert_debug_snapshot!(
-            create_and_fail(webhooks.create_responder(mock_user.id, RespondersCreateParams {
+            create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
                 path: "/path".to_string(),
                 method: ResponderMethod::Get,
@@ -529,30 +520,26 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let webhooks = api.webhooks();
+        let webhooks = api.webhooks(&mock_user);
         let responder = webhooks
-            .create_responder(
-                mock_user.id,
-                RespondersCreateParams {
-                    name: "name_one".to_string(),
-                    path: "/".to_string(),
-                    method: ResponderMethod::Any,
-                    enabled: true,
-                    settings: ResponderSettings {
-                        requests_to_track: 0,
-                        status_code: 200,
-                        body: None,
-                        headers: None,
-                        script: None,
-                    },
+            .create_responder(RespondersCreateParams {
+                name: "name_one".to_string(),
+                path: "/".to_string(),
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 0,
+                    status_code: 200,
+                    body: None,
+                    headers: None,
+                    script: None,
                 },
-            )
+            })
             .await?;
 
         // Update enabled.
         let updated_responder = webhooks
             .update_responder(
-                mock_user.id,
                 responder.id,
                 RespondersUpdateParams {
                     name: None,
@@ -570,16 +557,12 @@ mod tests {
         assert_eq!(expected_responder, updated_responder);
         assert_eq!(
             expected_responder,
-            webhooks
-                .get_responder(mock_user.id, responder.id)
-                .await?
-                .unwrap()
+            webhooks.get_responder(responder.id).await?.unwrap()
         );
 
         // Update name.
         let updated_responder = webhooks
             .update_responder(
-                mock_user.id,
                 responder.id,
                 RespondersUpdateParams {
                     name: Some("name_two".to_string()),
@@ -598,16 +581,12 @@ mod tests {
         assert_eq!(expected_responder, updated_responder);
         assert_eq!(
             expected_responder,
-            webhooks
-                .get_responder(mock_user.id, responder.id)
-                .await?
-                .unwrap()
+            webhooks.get_responder(responder.id).await?.unwrap()
         );
 
         // Update path.
         let updated_responder = webhooks
             .update_responder(
-                mock_user.id,
                 responder.id,
                 RespondersUpdateParams {
                     name: None,
@@ -627,16 +606,12 @@ mod tests {
         assert_eq!(expected_responder, updated_responder);
         assert_eq!(
             expected_responder,
-            webhooks
-                .get_responder(mock_user.id, responder.id)
-                .await?
-                .unwrap()
+            webhooks.get_responder(responder.id).await?.unwrap()
         );
 
         // Update method.
         let updated_responder = webhooks
             .update_responder(
-                mock_user.id,
                 responder.id,
                 RespondersUpdateParams {
                     name: None,
@@ -657,16 +632,12 @@ mod tests {
         assert_eq!(expected_responder, updated_responder);
         assert_eq!(
             expected_responder,
-            webhooks
-                .get_responder(mock_user.id, responder.id)
-                .await?
-                .unwrap()
+            webhooks.get_responder(responder.id).await?.unwrap()
         );
 
         // Update setting.
         let updated_responder = webhooks
             .update_responder(
-                mock_user.id,
                 responder.id,
                 RespondersUpdateParams {
                     name: None,
@@ -700,10 +671,7 @@ mod tests {
         assert_eq!(expected_responder, updated_responder);
         assert_eq!(
             expected_responder,
-            webhooks
-                .get_responder(mock_user.id, responder.id)
-                .await?
-                .unwrap()
+            webhooks.get_responder(responder.id).await?.unwrap()
         );
 
         Ok(())
@@ -715,7 +683,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let webhooks = api.webhooks();
+        let webhooks = api.webhooks(&mock_user);
         let settings = ResponderSettings {
             requests_to_track: 0,
             status_code: 200,
@@ -724,16 +692,13 @@ mod tests {
             script: None,
         };
         let responder = webhooks
-            .create_responder(
-                mock_user.id,
-                RespondersCreateParams {
-                    name: "name_one".to_string(),
-                    path: "/".to_string(),
-                    method: ResponderMethod::Any,
-                    enabled: true,
-                    settings: settings.clone(),
-                },
-            )
+            .create_responder(RespondersCreateParams {
+                name: "name_one".to_string(),
+                path: "/".to_string(),
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: settings.clone(),
+            })
             .await?;
 
         let update_and_fail = |result: anyhow::Result<_>| -> SecutilsError {
@@ -744,7 +709,6 @@ mod tests {
         let update_result = update_and_fail(
             webhooks
                 .update_responder(
-                    mock_user.id,
                     responder.id,
                     RespondersUpdateParams {
                         name: None,
@@ -768,7 +732,6 @@ mod tests {
         let update_result = update_and_fail(
             webhooks
                 .update_responder(
-                    mock_user.id,
                     uuid!("00000000-0000-0000-0000-000000000002"),
                     RespondersUpdateParams {
                         name: Some("some-new-name".to_string()),
@@ -787,7 +750,7 @@ mod tests {
 
         // Empty name.
         assert_debug_snapshot!(
-            update_and_fail(webhooks.update_responder(mock_user.id, responder.id, RespondersUpdateParams {
+            update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: Some("".to_string()),
                 path: None,
                 method: None,
@@ -799,7 +762,7 @@ mod tests {
 
         // Very long name.
         assert_debug_snapshot!(
-            update_and_fail(webhooks.update_responder(mock_user.id, responder.id, RespondersUpdateParams {
+            update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: Some("a".repeat(101)),
                 path: None,
                 method: None,
@@ -811,7 +774,7 @@ mod tests {
 
         // Empty path.
         assert_debug_snapshot!(
-            update_and_fail(webhooks.update_responder(mock_user.id, responder.id, RespondersUpdateParams {
+            update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
                 path: Some("".to_string()),
                 method: None,
@@ -823,7 +786,7 @@ mod tests {
 
         // Very long path.
         assert_debug_snapshot!(
-            update_and_fail(webhooks.update_responder(mock_user.id, responder.id, RespondersUpdateParams {
+            update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
                 path: Some("/a".repeat(51)),
                 method: None,
@@ -835,7 +798,7 @@ mod tests {
 
         // Invalid path start
         assert_debug_snapshot!(
-            update_and_fail(webhooks.update_responder(mock_user.id, responder.id, RespondersUpdateParams {
+            update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
                 path: Some("path".to_string()),
                 method: None,
@@ -847,7 +810,7 @@ mod tests {
 
         // Invalid path end
         assert_debug_snapshot!(
-            update_and_fail(webhooks.update_responder(mock_user.id, responder.id, RespondersUpdateParams {
+            update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
                 path: Some("/path/".to_string()),
                 method: None,
@@ -859,7 +822,7 @@ mod tests {
 
         // Invalid status code
         assert_debug_snapshot!(
-            update_and_fail(webhooks.update_responder(mock_user.id, responder.id, RespondersUpdateParams {
+            update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
                 path: None,
                 method: None,
@@ -874,7 +837,7 @@ mod tests {
 
         // Invalid status code
         assert_debug_snapshot!(
-            update_and_fail(webhooks.update_responder(mock_user.id, responder.id, RespondersUpdateParams {
+            update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
                 path: None,
                 method: None,
@@ -889,7 +852,7 @@ mod tests {
 
         // Too many requests to track.
         assert_debug_snapshot!(
-            update_and_fail(webhooks.update_responder(mock_user.id, responder.id, RespondersUpdateParams {
+            update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
                 path: None,
                 method: None,
@@ -899,12 +862,12 @@ mod tests {
                     ..settings.clone()
                 })
             }).await),
-            @r###""Responder can track only up to 100 requests, but received 101.""###
+            @r###""Responder can track only up to 30 requests, but received 101.""###
         );
 
         // Invalid script.
         assert_debug_snapshot!(
-            update_and_fail(webhooks.update_responder(mock_user.id, responder.id, RespondersUpdateParams {
+            update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
                 path: None,
                 method: None,
@@ -926,7 +889,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let webhooks = api.webhooks();
+        let webhooks = api.webhooks(&mock_user);
         let settings = ResponderSettings {
             requests_to_track: 3,
             status_code: 200,
@@ -937,28 +900,22 @@ mod tests {
 
         let responders = [
             webhooks
-                .create_responder(
-                    mock_user.id,
-                    RespondersCreateParams {
-                        name: "name_one".to_string(),
-                        path: "/".to_string(),
-                        method: ResponderMethod::Any,
-                        enabled: true,
-                        settings: settings.clone(),
-                    },
-                )
+                .create_responder(RespondersCreateParams {
+                    name: "name_one".to_string(),
+                    path: "/".to_string(),
+                    method: ResponderMethod::Any,
+                    enabled: true,
+                    settings: settings.clone(),
+                })
                 .await?,
             webhooks
-                .create_responder(
-                    mock_user.id,
-                    RespondersCreateParams {
-                        name: "name_two".to_string(),
-                        path: "/path".to_string(),
-                        method: ResponderMethod::Post,
-                        enabled: true,
-                        settings: settings.clone(),
-                    },
-                )
+                .create_responder(RespondersCreateParams {
+                    name: "name_two".to_string(),
+                    path: "/path".to_string(),
+                    method: ResponderMethod::Post,
+                    enabled: true,
+                    settings: settings.clone(),
+                })
                 .await?,
         ];
 
@@ -975,24 +932,17 @@ mod tests {
             ResponderMethod::Trace,
         ] {
             assert_eq!(
-                webhooks.find_responder(mock_user.id, "/", method).await?,
+                webhooks.find_responder("/", method).await?,
                 Some(responders[0].clone())
             );
 
             if matches!(method, ResponderMethod::Post) {
                 assert_eq!(
-                    webhooks
-                        .find_responder(mock_user.id, "/path", method)
-                        .await?,
+                    webhooks.find_responder("/path", method).await?,
                     Some(responders[1].clone())
                 );
             } else {
-                assert_eq!(
-                    webhooks
-                        .find_responder(mock_user.id, "/path", method)
-                        .await?,
-                    None
-                );
+                assert_eq!(webhooks.find_responder("/path", method).await?, None);
             }
         }
 
@@ -1006,7 +956,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let webhooks = api.webhooks();
+        let webhooks = api.webhooks(&mock_user);
         let settings = ResponderSettings {
             requests_to_track: 0,
             status_code: 200,
@@ -1015,47 +965,34 @@ mod tests {
             script: None,
         };
         let responder_one = webhooks
-            .create_responder(
-                mock_user.id,
-                RespondersCreateParams {
-                    name: "name_one".to_string(),
-                    path: "/".to_string(),
-                    method: ResponderMethod::Any,
-                    enabled: true,
-                    settings: settings.clone(),
-                },
-            )
+            .create_responder(RespondersCreateParams {
+                name: "name_one".to_string(),
+                path: "/".to_string(),
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: settings.clone(),
+            })
             .await?;
         let responder_two = webhooks
-            .create_responder(
-                mock_user.id,
-                RespondersCreateParams {
-                    name: "name_two".to_string(),
-                    path: "/path".to_string(),
-                    method: ResponderMethod::Get,
-                    enabled: true,
-                    settings: settings.clone(),
-                },
-            )
+            .create_responder(RespondersCreateParams {
+                name: "name_two".to_string(),
+                path: "/path".to_string(),
+                method: ResponderMethod::Get,
+                enabled: true,
+                settings: settings.clone(),
+            })
             .await?;
 
         assert_eq!(
-            webhooks.get_responders(mock_user.id).await?,
+            webhooks.get_responders().await?,
             [responder_one.clone(), responder_two.clone()]
         );
 
-        webhooks
-            .remove_responder(mock_user.id, responder_one.id)
-            .await?;
-        assert_eq!(
-            webhooks.get_responders(mock_user.id).await?,
-            [responder_two.clone()]
-        );
+        webhooks.remove_responder(responder_one.id).await?;
+        assert_eq!(webhooks.get_responders().await?, [responder_two.clone()]);
 
-        webhooks
-            .remove_responder(mock_user.id, responder_two.id)
-            .await?;
-        assert!(webhooks.get_responders(mock_user.id).await?.is_empty());
+        webhooks.remove_responder(responder_two.id).await?;
+        assert!(webhooks.get_responders().await?.is_empty());
 
         Ok(())
     }
@@ -1066,8 +1003,8 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let webhooks = api.webhooks();
-        assert!(webhooks.get_responders(mock_user.id).await?.is_empty());
+        let webhooks = api.webhooks(&mock_user);
+        assert!(webhooks.get_responders().await?.is_empty());
 
         let settings = ResponderSettings {
             requests_to_track: 0,
@@ -1077,36 +1014,30 @@ mod tests {
             script: None,
         };
         let responder_one = webhooks
-            .create_responder(
-                mock_user.id,
-                RespondersCreateParams {
-                    name: "name_one".to_string(),
-                    path: "/".to_string(),
-                    method: ResponderMethod::Any,
-                    enabled: true,
-                    settings: settings.clone(),
-                },
-            )
+            .create_responder(RespondersCreateParams {
+                name: "name_one".to_string(),
+                path: "/".to_string(),
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: settings.clone(),
+            })
             .await?;
         assert_eq!(
-            webhooks.get_responders(mock_user.id).await?,
+            webhooks.get_responders().await?,
             vec![responder_one.clone()],
         );
         let responder_two = webhooks
-            .create_responder(
-                mock_user.id,
-                RespondersCreateParams {
-                    name: "name_two".to_string(),
-                    path: "/path".to_string(),
-                    method: ResponderMethod::Any,
-                    enabled: false,
-                    settings: settings.clone(),
-                },
-            )
+            .create_responder(RespondersCreateParams {
+                name: "name_two".to_string(),
+                path: "/path".to_string(),
+                method: ResponderMethod::Any,
+                enabled: false,
+                settings: settings.clone(),
+            })
             .await?;
 
         assert_eq!(
-            webhooks.get_responders(mock_user.id).await?,
+            webhooks.get_responders().await?,
             vec![responder_one.clone(), responder_two.clone()],
         );
 
@@ -1119,7 +1050,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let webhooks = api.webhooks();
+        let webhooks = api.webhooks(&mock_user);
         let settings = ResponderSettings {
             requests_to_track: 3,
             status_code: 200,
@@ -1128,89 +1059,58 @@ mod tests {
             script: None,
         };
         let responder_one = webhooks
-            .create_responder(
-                mock_user.id,
-                RespondersCreateParams {
-                    name: "name_one".to_string(),
-                    path: "/".to_string(),
-                    method: ResponderMethod::Any,
-                    enabled: true,
-                    settings: settings.clone(),
-                },
-            )
+            .create_responder(RespondersCreateParams {
+                name: "name_one".to_string(),
+                path: "/".to_string(),
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: settings.clone(),
+            })
             .await?;
         let responder_two = webhooks
-            .create_responder(
-                mock_user.id,
-                RespondersCreateParams {
-                    name: "name_two".to_string(),
-                    path: "/two".to_string(),
-                    method: ResponderMethod::Any,
-                    enabled: false,
-                    settings: settings.clone(),
-                },
-            )
+            .create_responder(RespondersCreateParams {
+                name: "name_two".to_string(),
+                path: "/two".to_string(),
+                method: ResponderMethod::Any,
+                enabled: false,
+                settings: settings.clone(),
+            })
             .await?;
 
-        let responder_one_requests = webhooks
-            .get_responder_requests(mock_user.id, responder_one.id)
-            .await?;
-        let responder_two_requests = webhooks
-            .get_responder_requests(mock_user.id, responder_two.id)
-            .await?;
+        let responder_one_requests = webhooks.get_responder_requests(responder_one.id).await?;
+        let responder_two_requests = webhooks.get_responder_requests(responder_two.id).await?;
         assert!(responder_one_requests.is_empty());
         assert!(responder_two_requests.is_empty());
 
         webhooks
-            .create_responder_request(
-                mock_user.id,
-                responder_one.id,
-                get_request_create_params("/?query=value"),
-            )
+            .create_responder_request(responder_one.id, get_request_create_params("/?query=value"))
             .await?;
 
-        let responder_one_requests = webhooks
-            .get_responder_requests(mock_user.id, responder_one.id)
-            .await?;
-        let responder_two_requests = webhooks
-            .get_responder_requests(mock_user.id, responder_two.id)
-            .await?;
+        let responder_one_requests = webhooks.get_responder_requests(responder_one.id).await?;
+        let responder_two_requests = webhooks.get_responder_requests(responder_two.id).await?;
         assert_eq!(responder_one_requests.len(), 1);
         assert_eq!(responder_one_requests[0].responder_id, responder_one.id);
         assert_eq!(responder_one_requests[0].method, Cow::Borrowed("POST"));
         assert!(responder_two_requests.is_empty());
 
         webhooks
-            .create_responder_request(
-                mock_user.id,
-                responder_one.id,
-                get_request_create_params("/"),
-            )
+            .create_responder_request(responder_one.id, get_request_create_params("/"))
             .await?;
 
-        let responder_one_requests = webhooks
-            .get_responder_requests(mock_user.id, responder_one.id)
-            .await?;
-        let responder_two_requests = webhooks
-            .get_responder_requests(mock_user.id, responder_two.id)
-            .await?;
+        let responder_one_requests = webhooks.get_responder_requests(responder_one.id).await?;
+        let responder_two_requests = webhooks.get_responder_requests(responder_two.id).await?;
         assert_eq!(responder_one_requests.len(), 2);
         assert!(responder_two_requests.is_empty());
 
         webhooks
             .create_responder_request(
-                mock_user.id,
                 responder_two.id,
                 get_request_create_params("/two?query=value"),
             )
             .await?;
 
-        let responder_one_requests = webhooks
-            .get_responder_requests(mock_user.id, responder_one.id)
-            .await?;
-        let responder_two_requests = webhooks
-            .get_responder_requests(mock_user.id, responder_two.id)
-            .await?;
+        let responder_one_requests = webhooks.get_responder_requests(responder_one.id).await?;
+        let responder_two_requests = webhooks.get_responder_requests(responder_two.id).await?;
         assert_eq!(responder_one_requests.len(), 2);
         assert_eq!(responder_two_requests.len(), 1);
 
@@ -1223,7 +1123,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let webhooks = api.webhooks();
+        let webhooks = api.webhooks(&mock_user);
         let settings = ResponderSettings {
             requests_to_track: 3,
             status_code: 200,
@@ -1232,16 +1132,13 @@ mod tests {
             script: None,
         };
         let responder = webhooks
-            .create_responder(
-                mock_user.id,
-                RespondersCreateParams {
-                    name: "name_one".to_string(),
-                    path: "/path".to_string(),
-                    method: ResponderMethod::Any,
-                    enabled: true,
-                    settings: settings.clone(),
-                },
-            )
+            .create_responder(RespondersCreateParams {
+                name: "name_one".to_string(),
+                path: "/path".to_string(),
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: settings.clone(),
+            })
             .await?;
 
         let create_and_fail = |result: anyhow::Result<_>| -> SecutilsError {
@@ -1251,7 +1148,6 @@ mod tests {
         // Paths do not match.
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder_request(
-                mock_user.id,
                 responder.id,
                 get_request_create_params("/"),
             ).await),
@@ -1259,7 +1155,6 @@ mod tests {
         );
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder_request(
-                mock_user.id,
                 responder.id,
                 get_request_create_params("/?query=value"),
             ).await),
@@ -1267,7 +1162,6 @@ mod tests {
         );
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder_request(
-                mock_user.id,
                 responder.id,
                 get_request_create_params("/other-path"),
             ).await),
@@ -1275,7 +1169,6 @@ mod tests {
         );
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder_request(
-                mock_user.id,
                 responder.id,
                 get_request_create_params("/other-path?query=value"),
             ).await),
@@ -1291,7 +1184,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let webhooks = api.webhooks();
+        let webhooks = api.webhooks(&mock_user);
         let settings = ResponderSettings {
             requests_to_track: 3,
             status_code: 200,
@@ -1300,67 +1193,46 @@ mod tests {
             script: None,
         };
         let responder_one = webhooks
-            .create_responder(
-                mock_user.id,
-                RespondersCreateParams {
-                    name: "name_one".to_string(),
-                    path: "/".to_string(),
-                    method: ResponderMethod::Any,
-                    enabled: true,
-                    settings: settings.clone(),
-                },
-            )
+            .create_responder(RespondersCreateParams {
+                name: "name_one".to_string(),
+                path: "/".to_string(),
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: settings.clone(),
+            })
             .await?;
         let responder_two = webhooks
-            .create_responder(
-                mock_user.id,
-                RespondersCreateParams {
-                    name: "name_two".to_string(),
-                    path: "/two".to_string(),
-                    method: ResponderMethod::Any,
-                    enabled: true,
-                    settings: settings.clone(),
-                },
-            )
+            .create_responder(RespondersCreateParams {
+                name: "name_two".to_string(),
+                path: "/two".to_string(),
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: settings.clone(),
+            })
             .await?;
 
         webhooks
-            .create_responder_request(
-                mock_user.id,
-                responder_one.id,
-                get_request_create_params("/?query=value"),
-            )
+            .create_responder_request(responder_one.id, get_request_create_params("/?query=value"))
+            .await?;
+        webhooks
+            .create_responder_request(responder_one.id, get_request_create_params("/"))
             .await?;
         webhooks
             .create_responder_request(
-                mock_user.id,
-                responder_one.id,
-                get_request_create_params("/"),
-            )
-            .await?;
-        webhooks
-            .create_responder_request(
-                mock_user.id,
                 responder_two.id,
                 get_request_create_params("/two?query=value"),
             )
             .await?;
 
-        let responder_one_requests = webhooks
-            .get_responder_requests(mock_user.id, responder_one.id)
-            .await?;
-        let responder_two_requests = webhooks
-            .get_responder_requests(mock_user.id, responder_two.id)
-            .await?;
+        let responder_one_requests = webhooks.get_responder_requests(responder_one.id).await?;
+        let responder_two_requests = webhooks.get_responder_requests(responder_two.id).await?;
         assert_eq!(responder_one_requests.len(), 2);
         assert_eq!(responder_two_requests.len(), 1);
 
-        webhooks
-            .remove_responder(mock_user.id, responder_one.id)
-            .await?;
+        webhooks.remove_responder(responder_one.id).await?;
 
         assert!(webhooks
-            .get_responder_requests(mock_user.id, responder_one.id)
+            .get_responder_requests(responder_one.id)
             .await
             .is_err());
         assert!(api
@@ -1370,17 +1242,13 @@ mod tests {
             .await?
             .is_empty());
 
-        let responder_two_requests = webhooks
-            .get_responder_requests(mock_user.id, responder_two.id)
-            .await?;
+        let responder_two_requests = webhooks.get_responder_requests(responder_two.id).await?;
         assert_eq!(responder_two_requests.len(), 1);
 
-        webhooks
-            .remove_responder(mock_user.id, responder_two.id)
-            .await?;
+        webhooks.remove_responder(responder_two.id).await?;
 
         assert!(webhooks
-            .get_responder_requests(mock_user.id, responder_two.id)
+            .get_responder_requests(responder_two.id)
             .await
             .is_err());
         assert!(api
@@ -1399,7 +1267,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let webhooks = api.webhooks();
+        let webhooks = api.webhooks(&mock_user);
         let settings = ResponderSettings {
             requests_to_track: 3,
             status_code: 200,
@@ -1408,84 +1276,53 @@ mod tests {
             script: None,
         };
         let responder_one = webhooks
-            .create_responder(
-                mock_user.id,
-                RespondersCreateParams {
-                    name: "name_one".to_string(),
-                    path: "/".to_string(),
-                    method: ResponderMethod::Any,
-                    enabled: true,
-                    settings: settings.clone(),
-                },
-            )
+            .create_responder(RespondersCreateParams {
+                name: "name_one".to_string(),
+                path: "/".to_string(),
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: settings.clone(),
+            })
             .await?;
         let responder_two = webhooks
-            .create_responder(
-                mock_user.id,
-                RespondersCreateParams {
-                    name: "name_two".to_string(),
-                    path: "/two".to_string(),
-                    method: ResponderMethod::Any,
-                    enabled: false,
-                    settings: settings.clone(),
-                },
-            )
+            .create_responder(RespondersCreateParams {
+                name: "name_two".to_string(),
+                path: "/two".to_string(),
+                method: ResponderMethod::Any,
+                enabled: false,
+                settings: settings.clone(),
+            })
             .await?;
 
         webhooks
-            .create_responder_request(
-                mock_user.id,
-                responder_one.id,
-                get_request_create_params("/?query=value"),
-            )
+            .create_responder_request(responder_one.id, get_request_create_params("/?query=value"))
+            .await?;
+        webhooks
+            .create_responder_request(responder_one.id, get_request_create_params("/"))
             .await?;
         webhooks
             .create_responder_request(
-                mock_user.id,
-                responder_one.id,
-                get_request_create_params("/"),
-            )
-            .await?;
-        webhooks
-            .create_responder_request(
-                mock_user.id,
                 responder_two.id,
                 get_request_create_params("/two?query=value"),
             )
             .await?;
 
-        let responder_one_requests = webhooks
-            .get_responder_requests(mock_user.id, responder_one.id)
-            .await?;
-        let responder_two_requests = webhooks
-            .get_responder_requests(mock_user.id, responder_two.id)
-            .await?;
+        let responder_one_requests = webhooks.get_responder_requests(responder_one.id).await?;
+        let responder_two_requests = webhooks.get_responder_requests(responder_two.id).await?;
         assert_eq!(responder_one_requests.len(), 2);
         assert_eq!(responder_two_requests.len(), 1);
 
-        webhooks
-            .clear_responder_requests(mock_user.id, responder_one.id)
-            .await?;
+        webhooks.clear_responder_requests(responder_one.id).await?;
 
-        let responder_one_requests = webhooks
-            .get_responder_requests(mock_user.id, responder_one.id)
-            .await?;
-        let responder_two_requests = webhooks
-            .get_responder_requests(mock_user.id, responder_two.id)
-            .await?;
+        let responder_one_requests = webhooks.get_responder_requests(responder_one.id).await?;
+        let responder_two_requests = webhooks.get_responder_requests(responder_two.id).await?;
         assert!(responder_one_requests.is_empty());
         assert_eq!(responder_two_requests.len(), 1);
 
-        webhooks
-            .clear_responder_requests(mock_user.id, responder_two.id)
-            .await?;
+        webhooks.clear_responder_requests(responder_two.id).await?;
 
-        let responder_one_requests = webhooks
-            .get_responder_requests(mock_user.id, responder_one.id)
-            .await?;
-        let responder_two_requests = webhooks
-            .get_responder_requests(mock_user.id, responder_two.id)
-            .await?;
+        let responder_one_requests = webhooks.get_responder_requests(responder_one.id).await?;
+        let responder_two_requests = webhooks.get_responder_requests(responder_two.id).await?;
         assert!(responder_one_requests.is_empty());
         assert!(responder_two_requests.is_empty());
 

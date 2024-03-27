@@ -111,9 +111,9 @@ pub async fn webhooks_responders(
     };
 
     // Try to retrieve responder by the name.
-    let webhooks = state.api.webhooks();
+    let webhooks = state.api.webhooks(&user);
     let responder = match webhooks
-        .find_responder(user.id, &responder_path, responder_method)
+        .find_responder(&responder_path, responder_method)
         .await
     {
         Ok(Some(responder)) => responder,
@@ -169,7 +169,6 @@ pub async fn webhooks_responders(
             .collect::<Vec<_>>();
         webhooks
             .create_responder_request(
-                user.id,
                 responder.id,
                 RespondersRequestCreateParams {
                     client_address: request.peer_addr(),
@@ -358,23 +357,20 @@ mod tests {
         // Insert responders data.
         let responder = app_state
             .api
-            .webhooks()
-            .create_responder(
-                user.id,
-                RespondersCreateParams {
-                    name: "name_one".to_string(),
-                    path: "/one/two".to_string(),
-                    method: ResponderMethod::Any,
-                    enabled: true,
-                    settings: ResponderSettings {
-                        requests_to_track: 3,
-                        status_code: 200,
-                        body: Some("body".to_string()),
-                        headers: Some(vec![("key".to_string(), "value".to_string())]),
-                        script: None,
-                    },
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "name_one".to_string(),
+                path: "/one/two".to_string(),
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 3,
+                    status_code: 200,
+                    body: Some("body".to_string()),
+                    headers: Some(vec![("key".to_string(), "value".to_string())]),
+                    script: None,
                 },
-            )
+            })
             .await?;
 
         let request = TestRequest::with_uri(
@@ -415,8 +411,8 @@ mod tests {
 
         let mut responder_requests = app_state
             .api
-            .webhooks()
-            .get_responder_requests(user.id, responder.id)
+            .webhooks(&user)
+            .get_responder_requests(responder.id)
             .await?;
         assert_eq!(responder_requests.len(), 1);
         assert_eq!(responder_requests[0].method, "PUT");
@@ -463,23 +459,20 @@ mod tests {
         // Insert responders data.
         let responder = app_state
             .api
-            .webhooks()
-            .create_responder(
-                user.id,
-                RespondersCreateParams {
-                    name: "name_one".to_string(),
-                    path: "/one/two".to_string(),
-                    method: ResponderMethod::Any,
-                    enabled: true,
-                    settings: ResponderSettings {
-                        requests_to_track: 3,
-                        status_code: 200,
-                        body: Some("body".to_string()),
-                        headers: Some(vec![("key".to_string(), "value".to_string())]),
-                        script: None,
-                    },
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "name_one".to_string(),
+                path: "/one/two".to_string(),
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 3,
+                    status_code: 200,
+                    body: Some("body".to_string()),
+                    headers: Some(vec![("key".to_string(), "value".to_string())]),
+                    script: None,
                 },
-            )
+            })
             .await?;
 
         let request =
@@ -511,8 +504,8 @@ mod tests {
 
         let responder_requests = app_state
             .api
-            .webhooks()
-            .get_responder_requests(user.id, responder.id)
+            .webhooks(&user)
+            .get_responder_requests(responder.id)
             .await?;
         assert_eq!(responder_requests.len(), 1);
         assert_eq!(
@@ -535,23 +528,20 @@ mod tests {
         // Insert responders data.
         let responder = app_state
             .api
-            .webhooks()
-            .create_responder(
-                user.id,
-                RespondersCreateParams {
-                    name: "name_one".to_string(),
-                    path: "/".to_string(),
-                    method: ResponderMethod::Any,
-                    enabled: true,
-                    settings: ResponderSettings {
-                        requests_to_track: 3,
-                        status_code: 200,
-                        body: Some("body".to_string()),
-                        headers: Some(vec![("key".to_string(), "value".to_string())]),
-                        script: None,
-                    },
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "name_one".to_string(),
+                path: "/".to_string(),
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 3,
+                    status_code: 200,
+                    body: Some("body".to_string()),
+                    headers: Some(vec![("key".to_string(), "value".to_string())]),
+                    script: None,
                 },
-            )
+            })
             .await?;
 
         let request = TestRequest::with_uri("https://dev-handle-1.webhooks.secutils.dev")
@@ -582,8 +572,8 @@ mod tests {
 
         let responder_requests = app_state
             .api
-            .webhooks()
-            .get_responder_requests(user.id, responder.id)
+            .webhooks(&user)
+            .get_responder_requests(responder.id)
             .await?;
         assert_eq!(responder_requests.len(), 1);
 
@@ -602,9 +592,8 @@ mod tests {
         // Insert responders data.
         let responder = app_state
             .api
-            .webhooks()
+            .webhooks(&user)
             .create_responder(
-                user.id,
                 RespondersCreateParams {
                     name: "name_one".to_string(),
                     path: "/one/two".to_string(),
@@ -673,8 +662,8 @@ mod tests {
 
         let responder_requests = app_state
             .api
-            .webhooks()
-            .get_responder_requests(user.id, responder.id)
+            .webhooks(&user)
+            .get_responder_requests(responder.id)
             .await?;
         assert_eq!(responder_requests.len(), 1);
 
@@ -742,23 +731,20 @@ mod tests {
         // Insert responders data.
         let responder = app_state
             .api
-            .webhooks()
-            .create_responder(
-                user.id,
-                RespondersCreateParams {
-                    name: "name_one".to_string(),
-                    path: "/one/two".to_string(),
-                    method: ResponderMethod::Any,
-                    enabled: false,
-                    settings: ResponderSettings {
-                        requests_to_track: 3,
-                        status_code: 200,
-                        body: Some("body".to_string()),
-                        headers: Some(vec![("key".to_string(), "value".to_string())]),
-                        script: None,
-                    },
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "name_one".to_string(),
+                path: "/one/two".to_string(),
+                method: ResponderMethod::Any,
+                enabled: false,
+                settings: ResponderSettings {
+                    requests_to_track: 3,
+                    status_code: 200,
+                    body: Some("body".to_string()),
+                    headers: Some(vec![("key".to_string(), "value".to_string())]),
+                    script: None,
                 },
-            )
+            })
             .await?;
 
         // 3. Inactive responder.
@@ -784,16 +770,15 @@ mod tests {
         "###);
         let responder_requests = app_state
             .api
-            .webhooks()
-            .get_responder_requests(user.id, responder.id)
+            .webhooks(&user)
+            .get_responder_requests(responder.id)
             .await?;
         assert!(responder_requests.is_empty());
 
         app_state
             .api
-            .webhooks()
+            .webhooks(&user)
             .update_responder(
-                user.id,
                 responder.id,
                 RespondersUpdateParams {
                     enabled: Some(true),
@@ -830,8 +815,8 @@ mod tests {
 
         let responder_requests = app_state
             .api
-            .webhooks()
-            .get_responder_requests(user.id, responder.id)
+            .webhooks(&user)
+            .get_responder_requests(responder.id)
             .await?;
         assert_eq!(responder_requests.len(), 1);
         assert_eq!(
