@@ -145,54 +145,40 @@ pub async fn webhooks_responders(
         return Ok(HttpResponse::NotFound().finish());
     }
 
-    let subscription_config = user
-        .subscription
-        .get_features(&state.config)
-        .config
-        .webhooks;
-
-    //  Record request, but don't track more requests than allowed by the subscription.
-    let requests_to_track = std::cmp::min(
-        responder.settings.requests_to_track,
-        subscription_config.responder_requests,
-    );
-    if requests_to_track > 0 {
-        let headers = request
-            .headers()
-            .iter()
-            .map(|(header_name, header_value)| {
-                (
-                    Cow::Borrowed(header_name.as_str()),
-                    Cow::Borrowed(header_value.as_bytes()),
-                )
-            })
-            .collect::<Vec<_>>();
-        webhooks
-            .create_responder_request(
-                responder.id,
-                RespondersRequestCreateParams {
-                    client_address: request.peer_addr(),
-                    method: Cow::Borrowed(request.method().as_str()),
-                    headers: if headers.is_empty() {
-                        None
-                    } else {
-                        Some(headers)
-                    },
-                    url: Cow::Owned(if let Some(query) = request.uri().query() {
-                        format!("{}?{}", responder_path, query)
-                    } else {
-                        responder_path
-                    }),
-                    body: if payload.is_empty() {
-                        None
-                    } else {
-                        Some(Cow::Borrowed(&payload))
-                    },
-                    requests_to_track,
-                },
+    let headers = request
+        .headers()
+        .iter()
+        .map(|(header_name, header_value)| {
+            (
+                Cow::Borrowed(header_name.as_str()),
+                Cow::Borrowed(header_value.as_bytes()),
             )
-            .await?;
-    }
+        })
+        .collect::<Vec<_>>();
+    webhooks
+        .create_responder_request(
+            responder.id,
+            RespondersRequestCreateParams {
+                client_address: request.peer_addr(),
+                method: Cow::Borrowed(request.method().as_str()),
+                headers: if headers.is_empty() {
+                    None
+                } else {
+                    Some(headers)
+                },
+                url: Cow::Owned(if let Some(query) = request.uri().query() {
+                    format!("{responder_path}?{query}")
+                } else {
+                    responder_path
+                }),
+                body: if payload.is_empty() {
+                    None
+                } else {
+                    Some(Cow::Borrowed(&payload))
+                },
+            },
+        )
+        .await?;
 
     // Extract logging context before consuming responder to enrich logs.
     let responder_name = responder.name;
@@ -225,6 +211,11 @@ pub async fn webhooks_responders(
             };
 
             // Configure JavaScript runtime based on user's subscription level/overrides.
+            let subscription_config = user
+                .subscription
+                .get_features(&state.config)
+                .config
+                .webhooks;
             let js_runtime_config = JsRuntimeConfig {
                 max_heap_size: subscription_config.js_runtime_heap_size,
                 max_user_script_execution_time: subscription_config

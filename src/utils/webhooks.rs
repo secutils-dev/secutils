@@ -391,7 +391,6 @@ pub mod tests {
                     headers: None,
                     url: Cow::Borrowed("/?query=value"),
                     body: None,
-                    requests_to_track: 3,
                 },
             )
             .await?
@@ -405,7 +404,6 @@ pub mod tests {
                     headers: None,
                     url: Cow::Borrowed("/?query=other-value"),
                     body: None,
-                    requests_to_track: 3,
                 },
             )
             .await?
@@ -477,7 +475,6 @@ pub mod tests {
                     headers: None,
                     url: Cow::Borrowed("/?query=value"),
                     body: None,
-                    requests_to_track: 3,
                 },
             )
             .await?;
@@ -490,7 +487,6 @@ pub mod tests {
                     headers: None,
                     url: Cow::Borrowed("/?query=other-value"),
                     body: None,
-                    requests_to_track: 3,
                 },
             )
             .await?;

@@ -223,25 +223,22 @@ mod tests {
         // Create user, tracker and tracker job.
         api.users().upsert(user.clone()).await?;
         let tracker = api
-            .web_scraping()
-            .create_resources_tracker(
-                user.id,
-                WebPageTrackerCreateParams {
-                    name: "tracker".to_string(),
-                    url: "https://localhost:1234/my/app?q=2".parse()?,
-                    settings: WebPageTrackerSettings {
-                        revisions: 4,
-                        delay: Default::default(),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
-                    job_config: Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: None,
-                        notifications: true,
-                    }),
+            .web_scraping(&user)
+            .create_resources_tracker(WebPageTrackerCreateParams {
+                name: "tracker".to_string(),
+                url: "https://localhost:1234/my/app?q=2".parse()?,
+                settings: WebPageTrackerSettings {
+                    revisions: 4,
+                    delay: Default::default(),
+                    scripts: Default::default(),
+                    headers: Default::default(),
                 },
-            )
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 0 * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: true,
+                }),
+            })
             .await?;
         api.web_scraping_system()
             .update_web_page_tracker_job(tracker.id, Some(job_id))
@@ -310,25 +307,22 @@ mod tests {
         // Create user, tracker and tracker job.
         api.users().upsert(user.clone()).await?;
         let tracker = api
-            .web_scraping()
-            .create_content_tracker(
-                user.id,
-                WebPageTrackerCreateParams {
-                    name: "tracker".to_string(),
-                    url: "https://localhost:1234/my/app?q=2".parse()?,
-                    settings: WebPageTrackerSettings {
-                        revisions: 4,
-                        delay: Default::default(),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
-                    job_config: Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: None,
-                        notifications: true,
-                    }),
+            .web_scraping(&user)
+            .create_content_tracker(WebPageTrackerCreateParams {
+                name: "tracker".to_string(),
+                url: "https://localhost:1234/my/app?q=2".parse()?,
+                settings: WebPageTrackerSettings {
+                    revisions: 4,
+                    delay: Default::default(),
+                    scripts: Default::default(),
+                    headers: Default::default(),
                 },
-            )
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 0 * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: true,
+                }),
+            })
             .await?;
         api.web_scraping_system()
             .update_web_page_tracker_job(tracker.id, Some(job_id))
@@ -397,25 +391,22 @@ mod tests {
         // Create user, tracker and tracker job.
         api.users().upsert(user.clone()).await?;
         let tracker = api
-            .web_scraping()
-            .create_resources_tracker(
-                user.id,
-                WebPageTrackerCreateParams {
-                    name: "tracker".to_string(),
-                    url: "https://localhost:1234/my/app?q=2".parse()?,
-                    settings: WebPageTrackerSettings {
-                        revisions: 4,
-                        delay: Default::default(),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
-                    job_config: Some(SchedulerJobConfig {
-                        schedule: "1 0 * * * *".to_string(),
-                        retry_strategy: None,
-                        notifications: true,
-                    }),
+            .web_scraping(&user)
+            .create_resources_tracker(WebPageTrackerCreateParams {
+                name: "tracker".to_string(),
+                url: "https://localhost:1234/my/app?q=2".parse()?,
+                settings: WebPageTrackerSettings {
+                    revisions: 4,
+                    delay: Default::default(),
+                    scripts: Default::default(),
+                    headers: Default::default(),
                 },
-            )
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "1 0 * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: true,
+                }),
+            })
             .await?;
         api.web_scraping_system()
             .update_web_page_tracker_job(tracker.id, Some(job_id))
@@ -466,21 +457,18 @@ mod tests {
         // Create user, tracker and tracker job.
         api.users().upsert(user.clone()).await?;
         let tracker = api
-            .web_scraping()
-            .create_resources_tracker(
-                user.id,
-                WebPageTrackerCreateParams {
-                    name: "tracker".to_string(),
-                    url: "https://localhost:1234/my/app?q=2".parse()?,
-                    settings: WebPageTrackerSettings {
-                        revisions: 4,
-                        delay: Default::default(),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
-                    job_config: None,
+            .web_scraping(&user)
+            .create_resources_tracker(WebPageTrackerCreateParams {
+                name: "tracker".to_string(),
+                url: "https://localhost:1234/my/app?q=2".parse()?,
+                settings: WebPageTrackerSettings {
+                    revisions: 4,
+                    delay: Default::default(),
+                    scripts: Default::default(),
+                    headers: Default::default(),
                 },
-            )
+                job_config: None,
+            })
             .await?;
         api.web_scraping_system()
             .update_web_page_tracker_job(tracker.id, Some(job_id))
@@ -507,8 +495,8 @@ mod tests {
         assert!(unscheduled_trackers.is_empty());
 
         assert!(api
-            .web_scraping()
-            .get_resources_tracker(user.id, tracker.id)
+            .web_scraping(&user)
+            .get_resources_tracker(tracker.id)
             .await?
             .unwrap()
             .job_id
@@ -527,25 +515,22 @@ mod tests {
         // Create user, tracker and tracker job.
         api.users().upsert(user.clone()).await?;
         let tracker = api
-            .web_scraping()
-            .create_resources_tracker(
-                user.id,
-                WebPageTrackerCreateParams {
-                    name: "tracker".to_string(),
-                    url: "https://localhost:1234/my/app?q=2".parse()?,
-                    settings: WebPageTrackerSettings {
-                        revisions: 0,
-                        delay: Default::default(),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
-                    job_config: Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: None,
-                        notifications: true,
-                    }),
+            .web_scraping(&user)
+            .create_resources_tracker(WebPageTrackerCreateParams {
+                name: "tracker".to_string(),
+                url: "https://localhost:1234/my/app?q=2".parse()?,
+                settings: WebPageTrackerSettings {
+                    revisions: 0,
+                    delay: Default::default(),
+                    scripts: Default::default(),
+                    headers: Default::default(),
                 },
-            )
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 0 * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: true,
+                }),
+            })
             .await?;
         api.web_scraping_system()
             .update_web_page_tracker_job(tracker.id, Some(job_id))
@@ -572,8 +557,8 @@ mod tests {
         assert!(unscheduled_trackers.is_empty());
 
         assert!(api
-            .web_scraping()
-            .get_resources_tracker(user.id, tracker.id)
+            .web_scraping(&user)
+            .get_resources_tracker(tracker.id)
             .await?
             .unwrap()
             .job_id

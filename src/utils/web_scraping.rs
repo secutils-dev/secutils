@@ -38,33 +38,33 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
     resource: UtilsResource,
     params: Option<UtilsActionParams>,
 ) -> anyhow::Result<UtilsActionResult> {
-    let web_scraping = api.web_scraping();
+    let web_scraping = api.web_scraping(&user);
     match (resource, action) {
         (UtilsResource::WebScrapingResources, UtilsAction::List) => {
-            UtilsActionResult::json(web_scraping.get_resources_trackers(user.id).await?)
+            UtilsActionResult::json(web_scraping.get_resources_trackers().await?)
         }
         (UtilsResource::WebScrapingContent, UtilsAction::List) => {
-            UtilsActionResult::json(web_scraping.get_content_trackers(user.id).await?)
+            UtilsActionResult::json(web_scraping.get_content_trackers().await?)
         }
         (UtilsResource::WebScrapingResources, UtilsAction::Create) => UtilsActionResult::json(
             web_scraping
-                .create_resources_tracker(user.id, extract_params(params)?)
+                .create_resources_tracker(extract_params(params)?)
                 .await?,
         ),
         (UtilsResource::WebScrapingContent, UtilsAction::Create) => UtilsActionResult::json(
             web_scraping
-                .create_content_tracker(user.id, extract_params(params)?)
+                .create_content_tracker(extract_params(params)?)
                 .await?,
         ),
         (UtilsResource::WebScrapingResources, UtilsAction::Update { resource_id }) => {
             web_scraping
-                .update_resources_tracker(user.id, resource_id, extract_params(params)?)
+                .update_resources_tracker(resource_id, extract_params(params)?)
                 .await?;
             Ok(UtilsActionResult::empty())
         }
         (UtilsResource::WebScrapingContent, UtilsAction::Update { resource_id }) => {
             web_scraping
-                .update_content_tracker(user.id, resource_id, extract_params(params)?)
+                .update_content_tracker(resource_id, extract_params(params)?)
                 .await?;
             Ok(UtilsActionResult::empty())
         }
@@ -72,9 +72,7 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
             UtilsResource::WebScrapingResources | UtilsResource::WebScrapingContent,
             UtilsAction::Delete { resource_id },
         ) => {
-            web_scraping
-                .remove_web_page_tracker(user.id, resource_id)
-                .await?;
+            web_scraping.remove_web_page_tracker(resource_id).await?;
             Ok(UtilsActionResult::empty())
         }
         (
@@ -85,7 +83,7 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
             },
         ) => UtilsActionResult::json(
             web_scraping
-                .get_resources_tracker_history(user.id, resource_id, extract_params(params)?)
+                .get_resources_tracker_history(resource_id, extract_params(params)?)
                 .await?,
         ),
         (
@@ -96,7 +94,7 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
             },
         ) => UtilsActionResult::json(
             web_scraping
-                .get_content_tracker_history(user.id, resource_id, extract_params(params)?)
+                .get_content_tracker_history(resource_id, extract_params(params)?)
                 .await?,
         ),
         (
@@ -107,7 +105,7 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
             },
         ) => {
             web_scraping
-                .clear_web_page_tracker_history(user.id, resource_id)
+                .clear_web_page_tracker_history(resource_id)
                 .await?;
             Ok(UtilsActionResult::empty())
         }
@@ -225,37 +223,31 @@ pub mod tests {
         assert_json_snapshot!(action_result.into_inner().unwrap(), @"[]");
 
         let tracker_one = api
-            .web_scraping()
-            .create_resources_tracker(
-                mock_user.id,
-                WebPageTrackerCreateParams {
-                    name: "name_one".to_string(),
-                    url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageTrackerSettings {
-                        revisions: 3,
-                        delay: Duration::from_millis(2000),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
-                    job_config: Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: None,
-                        notifications: true,
-                    }),
+            .web_scraping(&mock_user)
+            .create_resources_tracker(WebPageTrackerCreateParams {
+                name: "name_one".to_string(),
+                url: Url::parse("https://secutils.dev")?,
+                settings: WebPageTrackerSettings {
+                    revisions: 3,
+                    delay: Duration::from_millis(2000),
+                    scripts: Default::default(),
+                    headers: Default::default(),
                 },
-            )
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 0 * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: true,
+                }),
+            })
             .await?;
         let tracker_two = api
-            .web_scraping()
-            .create_resources_tracker(
-                mock_user.id,
-                WebPageTrackerCreateParams {
-                    name: "name_two".to_string(),
-                    url: Url::parse("https://secutils.dev")?,
-                    settings: tracker_one.settings.clone(),
-                    job_config: tracker_one.job_config.clone(),
-                },
-            )
+            .web_scraping(&mock_user)
+            .create_resources_tracker(WebPageTrackerCreateParams {
+                name: "name_two".to_string(),
+                url: Url::parse("https://secutils.dev")?,
+                settings: tracker_one.settings.clone(),
+                job_config: tracker_one.job_config.clone(),
+            })
             .await?;
         let action_result = web_scraping_handle_action(
             mock_user.clone(),
@@ -300,40 +292,34 @@ pub mod tests {
         assert_json_snapshot!(action_result.into_inner().unwrap(), @"[]");
 
         let tracker_one = api
-            .web_scraping()
-            .create_content_tracker(
-                mock_user.id,
-                WebPageTrackerCreateParams {
-                    name: "name_one".to_string(),
-                    url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageTrackerSettings {
-                        revisions: 3,
-                        delay: Duration::from_millis(2000),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
-                    job_config: Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                            interval: Duration::from_secs(1000),
-                            max_attempts: 5,
-                        }),
-                        notifications: true,
-                    }),
+            .web_scraping(&mock_user)
+            .create_content_tracker(WebPageTrackerCreateParams {
+                name: "name_one".to_string(),
+                url: Url::parse("https://secutils.dev")?,
+                settings: WebPageTrackerSettings {
+                    revisions: 3,
+                    delay: Duration::from_millis(2000),
+                    scripts: Default::default(),
+                    headers: Default::default(),
                 },
-            )
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 0 * * * *".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                        interval: Duration::from_secs(1000),
+                        max_attempts: 5,
+                    }),
+                    notifications: true,
+                }),
+            })
             .await?;
         let tracker_two = api
-            .web_scraping()
-            .create_content_tracker(
-                mock_user.id,
-                WebPageTrackerCreateParams {
-                    name: "name_two".to_string(),
-                    url: Url::parse("https://secutils.dev")?,
-                    settings: tracker_one.settings.clone(),
-                    job_config: tracker_one.job_config.clone(),
-                },
-            )
+            .web_scraping(&mock_user)
+            .create_content_tracker(WebPageTrackerCreateParams {
+                name: "name_two".to_string(),
+                url: Url::parse("https://secutils.dev")?,
+                settings: tracker_one.settings.clone(),
+                job_config: tracker_one.job_config.clone(),
+            })
             .await?;
         let action_result = web_scraping_handle_action(
             mock_user.clone(),
@@ -397,8 +383,8 @@ pub mod tests {
 
         // Extract tracker to make sure it has been saved.
         let tracker = api
-            .web_scraping()
-            .get_resources_trackers(mock_user.id)
+            .web_scraping(&mock_user)
+            .get_resources_trackers()
             .await?
             .pop()
             .unwrap();
@@ -455,8 +441,8 @@ pub mod tests {
 
         // Extract tracker to make sure it has been saved.
         let tracker = api
-            .web_scraping()
-            .get_content_trackers(mock_user.id)
+            .web_scraping(&mock_user)
+            .get_content_trackers()
             .await?
             .pop()
             .unwrap();
@@ -484,25 +470,22 @@ pub mod tests {
         api.db.insert_user(&mock_user).await?;
 
         let tracker = api
-            .web_scraping()
-            .create_resources_tracker(
-                mock_user.id,
-                WebPageTrackerCreateParams {
-                    name: "name_one".to_string(),
-                    url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageTrackerSettings {
-                        revisions: 3,
-                        delay: Duration::from_millis(2000),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
-                    job_config: Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: None,
-                        notifications: true,
-                    }),
+            .web_scraping(&mock_user)
+            .create_resources_tracker(WebPageTrackerCreateParams {
+                name: "name_one".to_string(),
+                url: Url::parse("https://secutils.dev")?,
+                settings: WebPageTrackerSettings {
+                    revisions: 3,
+                    delay: Duration::from_millis(2000),
+                    scripts: Default::default(),
+                    headers: Default::default(),
                 },
-            )
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 0 * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: true,
+                }),
+            })
             .await?;
 
         let action_result = web_scraping_handle_action(
@@ -533,8 +516,8 @@ pub mod tests {
 
         // Extract tracker to make sure it has been updated.
         let updated_tracker = api
-            .web_scraping()
-            .get_resources_tracker(mock_user.id, tracker.id)
+            .web_scraping(&mock_user)
+            .get_resources_tracker(tracker.id)
             .await?
             .unwrap();
         assert_eq!(
@@ -571,25 +554,22 @@ pub mod tests {
         api.db.insert_user(&mock_user).await?;
 
         let tracker = api
-            .web_scraping()
-            .create_content_tracker(
-                mock_user.id,
-                WebPageTrackerCreateParams {
-                    name: "name_one".to_string(),
-                    url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageTrackerSettings {
-                        revisions: 3,
-                        delay: Duration::from_millis(2000),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
-                    job_config: Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: None,
-                        notifications: true,
-                    }),
+            .web_scraping(&mock_user)
+            .create_content_tracker(WebPageTrackerCreateParams {
+                name: "name_one".to_string(),
+                url: Url::parse("https://secutils.dev")?,
+                settings: WebPageTrackerSettings {
+                    revisions: 3,
+                    delay: Duration::from_millis(2000),
+                    scripts: Default::default(),
+                    headers: Default::default(),
                 },
-            )
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 0 * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: true,
+                }),
+            })
             .await?;
 
         let action_result = web_scraping_handle_action(
@@ -620,8 +600,8 @@ pub mod tests {
 
         // Extract tracker to make sure it has been updated.
         let updated_tracker = api
-            .web_scraping()
-            .get_content_tracker(mock_user.id, tracker.id)
+            .web_scraping(&mock_user)
+            .get_content_tracker(tracker.id)
             .await?
             .unwrap();
         assert_eq!(
@@ -658,25 +638,22 @@ pub mod tests {
         api.db.insert_user(&mock_user).await?;
 
         let tracker = api
-            .web_scraping()
-            .create_resources_tracker(
-                mock_user.id,
-                WebPageTrackerCreateParams {
-                    name: "name_one".to_string(),
-                    url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageTrackerSettings {
-                        revisions: 3,
-                        delay: Duration::from_millis(2000),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
-                    job_config: Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: None,
-                        notifications: true,
-                    }),
+            .web_scraping(&mock_user)
+            .create_resources_tracker(WebPageTrackerCreateParams {
+                name: "name_one".to_string(),
+                url: Url::parse("https://secutils.dev")?,
+                settings: WebPageTrackerSettings {
+                    revisions: 3,
+                    delay: Duration::from_millis(2000),
+                    scripts: Default::default(),
+                    headers: Default::default(),
                 },
-            )
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 0 * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: true,
+                }),
+            })
             .await?;
 
         let action_result = web_scraping_handle_action(
@@ -693,8 +670,8 @@ pub mod tests {
 
         // Extract tracker to make sure it has been updated.
         let deleted_tracker = api
-            .web_scraping()
-            .get_resources_tracker(mock_user.id, tracker.id)
+            .web_scraping(&mock_user)
+            .get_resources_tracker(tracker.id)
             .await?;
         assert!(deleted_tracker.is_none());
 
@@ -708,25 +685,22 @@ pub mod tests {
         api.db.insert_user(&mock_user).await?;
 
         let tracker = api
-            .web_scraping()
-            .create_content_tracker(
-                mock_user.id,
-                WebPageTrackerCreateParams {
-                    name: "name_one".to_string(),
-                    url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageTrackerSettings {
-                        revisions: 3,
-                        delay: Duration::from_millis(2000),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
-                    job_config: Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: None,
-                        notifications: true,
-                    }),
+            .web_scraping(&mock_user)
+            .create_content_tracker(WebPageTrackerCreateParams {
+                name: "name_one".to_string(),
+                url: Url::parse("https://secutils.dev")?,
+                settings: WebPageTrackerSettings {
+                    revisions: 3,
+                    delay: Duration::from_millis(2000),
+                    scripts: Default::default(),
+                    headers: Default::default(),
                 },
-            )
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 0 * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: true,
+                }),
+            })
             .await?;
 
         let action_result = web_scraping_handle_action(
@@ -743,8 +717,8 @@ pub mod tests {
 
         // Extract tracker to make sure it has been updated.
         let deleted_tracker = api
-            .web_scraping()
-            .get_content_tracker(mock_user.id, tracker.id)
+            .web_scraping(&mock_user)
+            .get_content_tracker(tracker.id)
             .await?;
         assert!(deleted_tracker.is_none());
 
@@ -759,46 +733,40 @@ pub mod tests {
 
         // Insert trackers and history.
         let resources_tracker = api
-            .web_scraping()
-            .create_resources_tracker(
-                mock_user.id,
-                WebPageTrackerCreateParams {
-                    name: "name_one".to_string(),
-                    url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageTrackerSettings {
-                        revisions: 3,
-                        delay: Duration::from_millis(2000),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
-                    job_config: Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: None,
-                        notifications: true,
-                    }),
+            .web_scraping(&mock_user)
+            .create_resources_tracker(WebPageTrackerCreateParams {
+                name: "name_one".to_string(),
+                url: Url::parse("https://secutils.dev")?,
+                settings: WebPageTrackerSettings {
+                    revisions: 3,
+                    delay: Duration::from_millis(2000),
+                    scripts: Default::default(),
+                    headers: Default::default(),
                 },
-            )
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 0 * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: true,
+                }),
+            })
             .await?;
         let content_tracker = api
-            .web_scraping()
-            .create_content_tracker(
-                mock_user.id,
-                WebPageTrackerCreateParams {
-                    name: "name_one".to_string(),
-                    url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageTrackerSettings {
-                        revisions: 3,
-                        delay: Duration::from_millis(2000),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
-                    job_config: Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: None,
-                        notifications: true,
-                    }),
+            .web_scraping(&mock_user)
+            .create_content_tracker(WebPageTrackerCreateParams {
+                name: "name_one".to_string(),
+                url: Url::parse("https://secutils.dev")?,
+                settings: WebPageTrackerSettings {
+                    revisions: 3,
+                    delay: Duration::from_millis(2000),
+                    scripts: Default::default(),
+                    headers: Default::default(),
                 },
-            )
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 0 * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: true,
+                }),
+            })
             .await?;
         api.db
             .web_scraping(mock_user.id)
@@ -912,46 +880,40 @@ pub mod tests {
         api.db.insert_user(&mock_user).await?;
 
         // Insert tracker and history.
-        let web_scraping = api.web_scraping();
+        let web_scraping = api.web_scraping(&mock_user);
         let resources_tracker = web_scraping
-            .create_resources_tracker(
-                mock_user.id,
-                WebPageTrackerCreateParams {
-                    name: "name_one".to_string(),
-                    url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageTrackerSettings {
-                        revisions: 3,
-                        delay: Duration::from_millis(2000),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
-                    job_config: Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: None,
-                        notifications: true,
-                    }),
+            .create_resources_tracker(WebPageTrackerCreateParams {
+                name: "name_one".to_string(),
+                url: Url::parse("https://secutils.dev")?,
+                settings: WebPageTrackerSettings {
+                    revisions: 3,
+                    delay: Duration::from_millis(2000),
+                    scripts: Default::default(),
+                    headers: Default::default(),
                 },
-            )
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 0 * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: true,
+                }),
+            })
             .await?;
         let content_tracker = web_scraping
-            .create_content_tracker(
-                mock_user.id,
-                WebPageTrackerCreateParams {
-                    name: "name_one".to_string(),
-                    url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageTrackerSettings {
-                        revisions: 3,
-                        delay: Duration::from_millis(2000),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
-                    job_config: Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: None,
-                        notifications: true,
-                    }),
+            .create_content_tracker(WebPageTrackerCreateParams {
+                name: "name_one".to_string(),
+                url: Url::parse("https://secutils.dev")?,
+                settings: WebPageTrackerSettings {
+                    revisions: 3,
+                    delay: Duration::from_millis(2000),
+                    scripts: Default::default(),
+                    headers: Default::default(),
                 },
-            )
+                job_config: Some(SchedulerJobConfig {
+                    schedule: "0 0 * * * *".to_string(),
+                    retry_strategy: None,
+                    notifications: true,
+                }),
+            })
             .await?;
         api.db
             .web_scraping(mock_user.id)
@@ -1017,9 +979,8 @@ pub mod tests {
             .await?;
 
         assert_eq!(
-            api.web_scraping()
+            api.web_scraping(&mock_user)
                 .get_resources_tracker_history(
-                    mock_user.id,
                     resources_tracker.id,
                     WebPageResourcesTrackerGetHistoryParams {
                         refresh: false,
@@ -1031,9 +992,8 @@ pub mod tests {
             2
         );
         assert_eq!(
-            api.web_scraping()
+            api.web_scraping(&mock_user)
                 .get_content_tracker_history(
-                    mock_user.id,
                     content_tracker.id,
                     WebPageContentTrackerGetHistoryParams {
                         refresh: false,
@@ -1072,9 +1032,8 @@ pub mod tests {
         assert!(action_result.into_inner().is_none());
 
         assert!(api
-            .web_scraping()
+            .web_scraping(&mock_user)
             .get_resources_tracker_history(
-                mock_user.id,
                 resources_tracker.id,
                 WebPageResourcesTrackerGetHistoryParams {
                     refresh: false,
@@ -1084,9 +1043,8 @@ pub mod tests {
             .await?
             .is_empty());
         assert!(api
-            .web_scraping()
+            .web_scraping(&mock_user)
             .get_content_tracker_history(
-                mock_user.id,
                 content_tracker.id,
                 WebPageContentTrackerGetHistoryParams {
                     refresh: false,

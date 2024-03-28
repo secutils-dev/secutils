@@ -13,6 +13,4 @@ pub struct RespondersRequestCreateParams<'a> {
     pub url: Cow<'a, str>,
     /// HTTP body of the request.
     pub body: Option<Cow<'a, [u8]>>,
-    /// Number of requests to track.
-    pub requests_to_track: usize,
 }
