@@ -211,12 +211,13 @@ mod tests {
         tests::{mock_api, mock_api_with_config, mock_config, mock_user},
     };
     use insta::assert_debug_snapshot;
+    use sqlx::PgPool;
     use time::OffsetDateTime;
 
-    #[tokio::test]
-    async fn properly_schedules_notification() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_schedules_notification(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
-        let api = mock_api().await?;
+        let api = mock_api(pool).await?;
         api.db.upsert_user(&mock_user).await?;
 
         assert!(api.db.get_notification(1.try_into()?).await?.is_none());
@@ -285,10 +286,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_sends_all_pending_notifications() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_sends_all_pending_notifications(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
-        let api = mock_api().await?;
+        let api = mock_api(pool).await?;
         api.db.upsert_user(&mock_user).await?;
 
         let notifications = vec![
@@ -327,7 +328,7 @@ mod tests {
         let messages = api.network.email_transport.messages().await;
         assert_eq!(messages.len(), 2);
 
-        let boundary_regex = regex::Regex::new(r#"boundary=\"(.+)\""#)?;
+        let boundary_regex = regex::Regex::new(r#"boundary="(.+)""#)?;
         let messages = messages
             .into_iter()
             .map(|(envelope, content)| {
@@ -389,10 +390,12 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_sends_email_notifications_with_attachments() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_sends_email_notifications_with_attachments(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
-        let api = mock_api().await?;
+        let api = mock_api(pool).await?;
         api.db.upsert_user(&mock_user).await?;
 
         let notifications = vec![Notification::new(
@@ -426,7 +429,7 @@ mod tests {
         let messages = api.network.email_transport.messages().await;
         assert_eq!(messages.len(), 1);
 
-        let boundary_regex = regex::Regex::new(r#"boundary=\"(.+)\""#)?;
+        let boundary_regex = regex::Regex::new(r#"boundary="(.+)""#)?;
         let messages = messages
             .into_iter()
             .map(|(envelope, content)| {
@@ -470,10 +473,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_sends_pending_notifications_in_batches() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_sends_pending_notifications_in_batches(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
-        let api = mock_api().await?;
+        let api = mock_api(pool).await?;
         api.db.upsert_user(&mock_user).await?;
 
         for n in 0..=9 {
@@ -531,8 +534,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn sends_email_notifications_respecting_catch_all_filter() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn sends_email_notifications_respecting_catch_all_filter(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let mut config = mock_config()?;
         let text_matcher = regex::Regex::new("(one text)|(two text)")?;
@@ -543,7 +548,7 @@ mod tests {
             }),
             ..smtp
         });
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
         api.db.upsert_user(&mock_user).await?;
 
         let notifications = vec![
@@ -591,7 +596,7 @@ mod tests {
         let messages = api.network.email_transport.messages().await;
         assert_eq!(messages.len(), 3);
 
-        let boundary_regex = regex::Regex::new(r#"boundary=\"(.+)\""#)?;
+        let boundary_regex = regex::Regex::new(r#"boundary="(.+)""#)?;
         let messages = messages
             .into_iter()
             .map(|(envelope, content)| {
@@ -670,9 +675,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn sends_email_notifications_respecting_wide_open_catch_all_filter() -> anyhow::Result<()>
-    {
+    #[sqlx::test]
+    async fn sends_email_notifications_respecting_wide_open_catch_all_filter(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
         let mut config = mock_config()?;
         let text_matcher = regex::Regex::new(".*")?;
@@ -683,7 +689,7 @@ mod tests {
             }),
             ..smtp
         });
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
         api.db.upsert_user(&mock_user).await?;
 
         let notifications = vec![
@@ -731,7 +737,7 @@ mod tests {
         let messages = api.network.email_transport.messages().await;
         assert_eq!(messages.len(), 3);
 
-        let boundary_regex = regex::Regex::new(r#"boundary=\"(.+)\""#)?;
+        let boundary_regex = regex::Regex::new(r#"boundary="(.+)""#)?;
         let messages = messages
             .into_iter()
             .map(|(envelope, content)| {

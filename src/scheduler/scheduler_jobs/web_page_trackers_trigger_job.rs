@@ -2,11 +2,13 @@ use crate::{
     api::Api,
     logging::JobLogContext,
     network::{DnsResolver, EmailTransport},
-    scheduler::{job_ext::JobExt, scheduler_job::SchedulerJob},
+    scheduler::{
+        database_ext::RawSchedulerJobStoredData, job_ext::JobExt, scheduler_job::SchedulerJob,
+    },
     utils::web_scraping::WebPageTrackerKind,
 };
 use std::sync::Arc;
-use tokio_cron_scheduler::{Job, JobId, JobStoredData};
+use tokio_cron_scheduler::Job;
 
 /// The job that is executed for every web page tracker with automatic tracking enabled. The
 /// job doesn't do anything except logging, and updating its internal state. This job is supposed to
@@ -18,24 +20,23 @@ impl WebPageTrackersTriggerJob {
     /// Tries to resume existing `ResourcesTrackersTrigger` job.
     pub async fn try_resume<DR: DnsResolver, ET: EmailTransport>(
         api: Arc<Api<DR, ET>>,
-        job_id: JobId,
-        existing_job_data: JobStoredData,
+        existing_job_data: RawSchedulerJobStoredData,
         tracker_kind: WebPageTrackerKind,
     ) -> anyhow::Result<Option<Job>> {
         // First, check if the tracker job exists.
         let web_scraping_system = api.web_scraping_system();
         let Some((tracker_id, tracker_settings, tracker_job_config)) = (match tracker_kind {
             WebPageTrackerKind::WebPageResources => web_scraping_system
-                .get_resources_tracker_by_job_id(job_id)
+                .get_resources_tracker_by_job_id(existing_job_data.id)
                 .await?
                 .map(|tracker| (tracker.id, tracker.settings, tracker.job_config)),
             WebPageTrackerKind::WebPageContent => web_scraping_system
-                .get_content_tracker_by_job_id(job_id)
+                .get_content_tracker_by_job_id(existing_job_data.id)
                 .await?
                 .map(|tracker| (tracker.id, tracker.settings, tracker.job_config)),
         }) else {
             log::warn!(
-                job:serde = JobLogContext::new(job_id);
+                job:serde = JobLogContext::new(existing_job_data.id);
                 "Web page tracker job reference doesn't exist, the job will be removed."
             );
             return Ok(None);
@@ -44,8 +45,9 @@ impl WebPageTrackersTriggerJob {
         // Then, check if the tracker can support revisions.
         if tracker_settings.revisions == 0 {
             log::warn!(
-                "Web page tracker ('{}') no cannot store revisions, the job ('{job_id}') will be removed.",
-                tracker_id
+                "Web page tracker ('{}') no cannot store revisions, the job ('{}') will be removed.",
+                tracker_id,
+                existing_job_data.id
             );
             web_scraping_system
                 .update_web_page_tracker_job(tracker_id, None)
@@ -56,8 +58,9 @@ impl WebPageTrackersTriggerJob {
         // Then, check if the tracker still has a schedule.
         let Some(job_config) = tracker_job_config else {
             log::warn!(
-                "Web page tracker ('{}') no longer has a job config, the job ('{job_id}') will be removed.",
-                tracker_id
+                "Web page tracker ('{}') no longer has a job config, the job ('{}') will be removed.",
+                tracker_id,
+                existing_job_data.id
             );
             web_scraping_system
                 .update_web_page_tracker_job(tracker_id, None)
@@ -67,8 +70,8 @@ impl WebPageTrackersTriggerJob {
 
         // If we changed the job parameters, we need to remove the old job and create a new one.
         let mut new_job = Self::create(api.clone(), job_config.schedule, tracker_kind).await?;
-        Ok(if new_job.job_data()?.job == existing_job_data.job {
-            new_job.set_job_data(existing_job_data)?;
+        Ok(if new_job.are_schedules_equal(&existing_job_data)? {
+            new_job.set_raw_job_data(existing_job_data)?;
             Some(new_job)
         } else {
             web_scraping_system
@@ -116,45 +119,21 @@ impl WebPageTrackersTriggerJob {
 mod tests {
     use super::WebPageTrackersTriggerJob;
     use crate::{
-        scheduler::{
-            scheduler_job::SchedulerJob, scheduler_store::SchedulerStore, SchedulerJobConfig,
-            SchedulerJobMetadata,
-        },
-        tests::{mock_api, mock_user},
+        scheduler::{scheduler_job::SchedulerJob, SchedulerJobConfig},
+        tests::{mock_api, mock_get_scheduler_job, mock_scheduler, mock_scheduler_job, mock_user},
         utils::web_scraping::{
             tests::WebPageTrackerCreateParams, WebPageTracker, WebPageTrackerKind,
             WebPageTrackerSettings,
         },
     };
     use insta::assert_debug_snapshot;
+    use sqlx::PgPool;
     use std::sync::Arc;
-    use tokio_cron_scheduler::{
-        CronJob, JobId, JobScheduler, JobStored, JobStoredData, JobType, SimpleJobCode,
-        SimpleNotificationCode, SimpleNotificationStore,
-    };
     use uuid::uuid;
 
-    fn mock_job_data(job_id: JobId, job_type: SchedulerJob) -> JobStoredData {
-        JobStoredData {
-            id: Some(job_id.into()),
-            job_type: JobType::Cron as i32,
-            count: 0,
-            last_tick: None,
-            next_tick: 100500,
-            ran: false,
-            stopped: false,
-            last_updated: None,
-            extra: SchedulerJobMetadata::new(job_type).try_into().unwrap(),
-            job: Some(JobStored::CronJob(CronJob {
-                schedule: "0 0 * * * *".to_string(),
-            })),
-            time_offset_seconds: 0,
-        }
-    }
-
-    #[tokio::test]
-    async fn can_create_job_with_correct_parameters() -> anyhow::Result<()> {
-        let api = Arc::new(mock_api().await?);
+    #[sqlx::test]
+    async fn can_create_job_with_correct_parameters(pool: PgPool) -> anyhow::Result<()> {
+        let api = Arc::new(mock_api(pool).await?);
 
         let mut job_data = vec![];
         for tracker_kind in [
@@ -213,10 +192,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_resume_resources_job() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_resume_resources_job(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let api = Arc::new(mock_api().await?);
+        let api = Arc::new(mock_api(pool).await?);
 
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
 
@@ -246,12 +225,12 @@ mod tests {
 
         let mut job = WebPageTrackersTriggerJob::try_resume(
             api.clone(),
-            job_id,
-            mock_job_data(
+            mock_scheduler_job(
                 job_id,
                 SchedulerJob::WebPageTrackersTrigger {
                     kind: WebPageTrackerKind::WebPageResources,
                 },
+                "0 0 * * * *",
             ),
             WebPageTrackerKind::WebPageResources,
         )
@@ -263,7 +242,7 @@ mod tests {
             .map(|job_data| (job_data.job_type, job_data.extra, job_data.job))?;
         assert_debug_snapshot!(job_data, @r###"
         (
-            0,
+            3,
             [
                 0,
                 0,
@@ -297,10 +276,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_resume_content_job() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_resume_content_job(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let api = Arc::new(mock_api().await?);
+        let api = Arc::new(mock_api(pool).await?);
 
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
 
@@ -330,12 +309,12 @@ mod tests {
 
         let mut job = WebPageTrackersTriggerJob::try_resume(
             api.clone(),
-            job_id,
-            mock_job_data(
+            mock_scheduler_job(
                 job_id,
                 SchedulerJob::WebPageTrackersTrigger {
                     kind: WebPageTrackerKind::WebPageContent,
                 },
+                "0 0 * * * *",
             ),
             WebPageTrackerKind::WebPageContent,
         )
@@ -347,7 +326,7 @@ mod tests {
             .map(|job_data| (job_data.job_type, job_data.extra, job_data.job))?;
         assert_debug_snapshot!(job_data, @r###"
         (
-            0,
+            3,
             [
                 0,
                 1,
@@ -381,10 +360,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn resets_job_if_schedule_changes() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn resets_job_if_schedule_changes(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let api = Arc::new(mock_api().await?);
+        let api = Arc::new(mock_api(pool).await?);
 
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
 
@@ -414,12 +393,12 @@ mod tests {
 
         let job = WebPageTrackersTriggerJob::try_resume(
             api.clone(),
-            job_id,
-            mock_job_data(
+            mock_scheduler_job(
                 job_id,
                 SchedulerJob::WebPageTrackersTrigger {
                     kind: WebPageTrackerKind::WebPageResources,
                 },
+                "0 0 * * * *",
             ),
             WebPageTrackerKind::WebPageResources,
         )
@@ -447,10 +426,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn removes_job_if_tracker_no_longer_has_schedule() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn removes_job_if_tracker_no_longer_has_schedule(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let api = Arc::new(mock_api().await?);
+        let api = Arc::new(mock_api(pool).await?);
 
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
 
@@ -476,12 +455,12 @@ mod tests {
 
         let job = WebPageTrackersTriggerJob::try_resume(
             api.clone(),
-            job_id,
-            mock_job_data(
+            mock_scheduler_job(
                 job_id,
                 SchedulerJob::WebPageTrackersTrigger {
                     kind: WebPageTrackerKind::WebPageResources,
                 },
+                "0 0 * * * *",
             ),
             WebPageTrackerKind::WebPageResources,
         )
@@ -505,10 +484,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn removes_job_if_tracker_no_longer_has_revisions() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn removes_job_if_tracker_no_longer_has_revisions(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let api = Arc::new(mock_api().await?);
+        let api = Arc::new(mock_api(pool).await?);
 
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
 
@@ -538,12 +517,12 @@ mod tests {
 
         let job = WebPageTrackersTriggerJob::try_resume(
             api.clone(),
-            job_id,
-            mock_job_data(
+            mock_scheduler_job(
                 job_id,
                 SchedulerJob::WebPageTrackersTrigger {
                     kind: WebPageTrackerKind::WebPageResources,
                 },
+                "0 0 * * * *",
             ),
             WebPageTrackerKind::WebPageResources,
         )
@@ -567,10 +546,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn removes_job_if_tracker_no_longer_exists() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn removes_job_if_tracker_no_longer_exists(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let api = Arc::new(mock_api().await?);
+        let api = Arc::new(mock_api(pool).await?);
 
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
 
@@ -579,12 +558,12 @@ mod tests {
 
         let job = WebPageTrackersTriggerJob::try_resume(
             api.clone(),
-            job_id,
-            mock_job_data(
+            mock_scheduler_job(
                 job_id,
                 SchedulerJob::WebPageTrackersTrigger {
                     kind: WebPageTrackerKind::WebPageResources,
                 },
+                "0 0 * * * *",
             ),
             WebPageTrackerKind::WebPageResources,
         )
@@ -593,12 +572,12 @@ mod tests {
 
         let job = WebPageTrackersTriggerJob::try_resume(
             api.clone(),
-            job_id,
-            mock_job_data(
+            mock_scheduler_job(
                 job_id,
                 SchedulerJob::WebPageTrackersTrigger {
                     kind: WebPageTrackerKind::WebPageContent,
                 },
+                "0 0 * * * *",
             ),
             WebPageTrackerKind::WebPageContent,
         )
@@ -631,17 +610,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn marks_resources_job_as_stopped_when_run() -> anyhow::Result<()> {
-        let api = Arc::new(mock_api().await?);
-
-        let mut scheduler = JobScheduler::new_with_storage_and_code(
-            Box::new(SchedulerStore::new(api.db.clone())),
-            Box::<SimpleNotificationStore>::default(),
-            Box::<SimpleJobCode>::default(),
-            Box::<SimpleNotificationCode>::default(),
-        )
-        .await?;
+    #[sqlx::test]
+    async fn marks_resources_job_as_stopped_when_run(pool: PgPool) -> anyhow::Result<()> {
+        let mut scheduler = mock_scheduler(&pool).await?;
+        let api = Arc::new(mock_api(pool).await?);
 
         let trigger_job_id = scheduler
             .add(
@@ -657,11 +629,9 @@ mod tests {
         // Start scheduler and wait for a few seconds, then stop it.
         scheduler.start().await?;
 
-        while !api
-            .db
-            .get_scheduler_job(trigger_job_id)
+        while !mock_get_scheduler_job(&api.db, trigger_job_id)
             .await?
-            .map(|job| job.stopped)
+            .and_then(|job| job.stopped)
             .unwrap_or_default()
         {}
 
@@ -670,17 +640,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn marks_content_job_as_stopped_when_run() -> anyhow::Result<()> {
-        let api = Arc::new(mock_api().await?);
-
-        let mut scheduler = JobScheduler::new_with_storage_and_code(
-            Box::new(SchedulerStore::new(api.db.clone())),
-            Box::<SimpleNotificationStore>::default(),
-            Box::<SimpleJobCode>::default(),
-            Box::<SimpleNotificationCode>::default(),
-        )
-        .await?;
+    #[sqlx::test]
+    async fn marks_content_job_as_stopped_when_run(pool: PgPool) -> anyhow::Result<()> {
+        let mut scheduler = mock_scheduler(&pool).await?;
+        let api = Arc::new(mock_api(pool).await?);
 
         let trigger_job_id = scheduler
             .add(
@@ -696,11 +659,9 @@ mod tests {
         // Start scheduler and wait for a few seconds, then stop it.
         scheduler.start().await?;
 
-        while !api
-            .db
-            .get_scheduler_job(trigger_job_id)
+        while !mock_get_scheduler_job(&api.db, trigger_job_id)
             .await?
-            .map(|job| job.stopped)
+            .and_then(|job| job.stopped)
             .unwrap_or_default()
         {}
 

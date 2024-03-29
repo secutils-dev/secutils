@@ -77,6 +77,7 @@ mod tests {
     };
     use actix_web::{dev::Payload, test::TestRequest, FromRequest};
     use insta::assert_debug_snapshot;
+    use sqlx::PgPool;
     use time::OffsetDateTime;
     use uuid::uuid;
 
@@ -104,8 +105,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn fails_if_user_share_is_not_available() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn fails_if_user_share_is_not_available(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let mock_user_share = UserShare {
             id: UserShareId::new(),
@@ -116,7 +117,7 @@ mod tests {
             created_at: OffsetDateTime::now_utc(),
         };
 
-        let app_state = mock_app_state().await?;
+        let app_state = mock_app_state(pool).await?;
         let users = app_state.api.users();
         users.upsert(&user).await?;
 
@@ -135,8 +136,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_extract_user_share() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_extract_user_share(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
         let mock_user_share = UserShare {
             id: UserShareId::new(),
@@ -147,7 +148,7 @@ mod tests {
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
         };
 
-        let app_state = mock_app_state().await?;
+        let app_state = mock_app_state(pool).await?;
         let users = app_state.api.users();
         users.upsert(&user).await?;
         users.insert_user_share(&mock_user_share).await?;

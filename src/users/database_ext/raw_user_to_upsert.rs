@@ -1,18 +1,19 @@
 use crate::users::User;
 use anyhow::Context;
+use time::OffsetDateTime;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct RawUserToUpsert<'a> {
     pub email: &'a str,
     pub handle: &'a str,
     pub credentials: Vec<u8>,
-    pub created: i64,
-    pub activated: i64,
-    pub subscription_tier: i64,
-    pub subscription_started_at: i64,
-    pub subscription_ends_at: Option<i64>,
-    pub subscription_trial_started_at: Option<i64>,
-    pub subscription_trial_ends_at: Option<i64>,
+    pub created: OffsetDateTime,
+    pub activated: bool,
+    pub subscription_tier: i32,
+    pub subscription_started_at: OffsetDateTime,
+    pub subscription_ends_at: Option<OffsetDateTime>,
+    pub subscription_trial_started_at: Option<OffsetDateTime>,
+    pub subscription_trial_ends_at: Option<OffsetDateTime>,
 }
 
 impl<'a> TryFrom<&'a User> for RawUserToUpsert<'a> {
@@ -25,19 +26,13 @@ impl<'a> TryFrom<&'a User> for RawUserToUpsert<'a> {
             credentials: serde_json::ser::to_vec(&user.credentials).with_context(|| {
                 format!("Failed to serialize user credentials ({}).", user.handle)
             })?,
-            created: user.created.unix_timestamp(),
-            activated: if user.activated { 1 } else { 0 },
-            subscription_tier: user.subscription.tier as i64,
-            subscription_started_at: user.subscription.started_at.unix_timestamp(),
-            subscription_ends_at: user.subscription.ends_at.map(|ts| ts.unix_timestamp()),
-            subscription_trial_started_at: user
-                .subscription
-                .trial_started_at
-                .map(|ts| ts.unix_timestamp()),
-            subscription_trial_ends_at: user
-                .subscription
-                .trial_ends_at
-                .map(|ts| ts.unix_timestamp()),
+            created: user.created,
+            activated: user.activated,
+            subscription_tier: user.subscription.tier as i32,
+            subscription_started_at: user.subscription.started_at,
+            subscription_ends_at: user.subscription.ends_at,
+            subscription_trial_started_at: user.subscription.trial_started_at,
+            subscription_trial_ends_at: user.subscription.trial_ends_at,
         })
     }
 }
@@ -77,14 +72,14 @@ mod tests {
                 })
                 .unwrap(),
                 // January 1, 2000 11:00:00
-                created: 946720800,
+                created: OffsetDateTime::from_unix_timestamp(946720800)?,
                 subscription_tier: 100,
                 // January 1, 2000 11:00:01
-                subscription_started_at: 946720801,
+                subscription_started_at: OffsetDateTime::from_unix_timestamp(946720801)?,
                 subscription_ends_at: None,
                 subscription_trial_started_at: None,
                 subscription_trial_ends_at: None,
-                activated: 0,
+                activated: false,
             }
         );
 
@@ -123,14 +118,16 @@ mod tests {
                 })
                 .unwrap(),
                 // January 1, 2000 11:00:00
-                created: 946720800,
-                activated: 0,
+                created: OffsetDateTime::from_unix_timestamp(946720800)?,
+                activated: false,
                 subscription_tier: 20,
                 // January 1, 2000 11:00:01
-                subscription_started_at: 946720801,
-                subscription_ends_at: Some(946720802),
-                subscription_trial_started_at: Some(946720803),
-                subscription_trial_ends_at: Some(946720804),
+                subscription_started_at: OffsetDateTime::from_unix_timestamp(946720801)?,
+                subscription_ends_at: Some(OffsetDateTime::from_unix_timestamp(946720802)?),
+                subscription_trial_started_at: Some(OffsetDateTime::from_unix_timestamp(
+                    946720803
+                )?),
+                subscription_trial_ends_at: Some(OffsetDateTime::from_unix_timestamp(946720804)?),
             }
         );
 

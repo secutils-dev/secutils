@@ -2,12 +2,12 @@ use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
 #[derive(Serialize, Deserialize, Default, Debug, Eq, PartialEq, Clone, Copy, Hash)]
-pub struct UserId(i64);
+pub struct UserId(i32);
 
-impl TryFrom<i64> for UserId {
+impl TryFrom<i32> for UserId {
     type Error = anyhow::Error;
 
-    fn try_from(value: i64) -> Result<Self, Self::Error> {
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
         if value > 0 {
             Ok(Self(value))
         } else {
@@ -17,7 +17,7 @@ impl TryFrom<i64> for UserId {
 }
 
 impl Deref for UserId {
-    type Target = i64;
+    type Target = i32;
 
     fn deref(&self) -> &Self::Target {
         &self.0

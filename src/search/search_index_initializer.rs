@@ -10,7 +10,7 @@ use time::OffsetDateTime;
 const UTIL_SEARCH_CATEGORY: &str = "Utils";
 
 /// Flattens a vector of util nodes into a `util-id <-> util` map.
-fn flatten_utils_tree(utils: Vec<Util>, utils_map: &mut HashMap<i64, Util>) {
+fn flatten_utils_tree(utils: Vec<Util>, utils_map: &mut HashMap<i32, Util>) {
     for mut util in utils {
         if let Some(child_utils) = util.utils.take() {
             flatten_utils_tree(child_utils, utils_map);
@@ -82,7 +82,7 @@ pub async fn populate_search_index<DR: DnsResolver, ET: EmailTransport>(
         let util = match searchable_util
             .meta
             .as_ref()
-            .and_then(|meta| Some(meta.get("id")?.parse::<i64>()))
+            .and_then(|meta| Some(meta.get("id")?.parse::<i32>()))
         {
             Some(Ok(util_id)) => utils.remove(&util_id),
             None | Some(_) => {

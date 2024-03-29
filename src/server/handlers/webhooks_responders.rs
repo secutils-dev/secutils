@@ -334,11 +334,12 @@ mod tests {
     use bytes::Bytes;
     use insta::assert_debug_snapshot;
     use serde_json::json;
+    use sqlx::PgPool;
     use std::{borrow::Cow, default::Default};
 
-    #[tokio::test]
-    async fn can_handle_request_with_path_url_type() -> anyhow::Result<()> {
-        let app_state = mock_app_state().await?;
+    #[sqlx::test]
+    async fn can_handle_request_with_path_url_type(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
 
         // Insert user into the database.
         let user = mock_user()?;
@@ -438,9 +439,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_handle_request_with_subdomain_url_type() -> anyhow::Result<()> {
-        let app_state = mock_app_state().await?;
+    #[sqlx::test]
+    async fn can_handle_request_with_subdomain_url_type(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
 
         // Insert user into the database.
         let user = mock_user()?;
@@ -507,9 +508,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_handle_request_with_subdomain_url_type_for_root_path() -> anyhow::Result<()> {
-        let app_state = mock_app_state().await?;
+    #[sqlx::test]
+    async fn can_handle_request_with_subdomain_url_type_for_root_path(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
 
         // Insert user into the database.
         let user = mock_user()?;
@@ -571,9 +574,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_handle_responders_with_script() -> anyhow::Result<()> {
-        let app_state = mock_app_state().await?;
+    #[sqlx::test]
+    async fn can_handle_responders_with_script(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
 
         // Insert user into the database.
         let user = mock_user()?;
@@ -661,14 +664,16 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_handles_non_existent_or_inactive_responders() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_handles_non_existent_or_inactive_responders(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let request =
             TestRequest::with_uri("https://dev-handle-1.webhooks.secutils.dev/one/two?query=value")
                 .insert_header(("x-replaced-path", "/one/two"))
                 .insert_header(("x-forwarded-host", "dev-handle-1.webhooks.secutils.dev"))
                 .to_http_request();
-        let app_state = mock_app_state().await?;
+        let app_state = mock_app_state(pool).await?;
         let app_state = web::Data::new(app_state);
 
         // 1. Non-existent user handle.

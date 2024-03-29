@@ -3,7 +3,7 @@ use serde::Serialize;
 #[derive(Serialize, Debug, Clone)]
 pub struct Util {
     #[serde(skip_serializing)]
-    pub id: i64,
+    pub id: i32,
     pub handle: String,
     pub name: String,
     #[serde(skip_serializing)]

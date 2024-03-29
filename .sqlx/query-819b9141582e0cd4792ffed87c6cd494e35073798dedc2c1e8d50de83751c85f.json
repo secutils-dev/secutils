@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nDELETE FROM user_webauthn_sessions\nWHERE timestamp <= $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "819b9141582e0cd4792ffed87c6cd494e35073798dedc2c1e8d50de83751c85f"
+}

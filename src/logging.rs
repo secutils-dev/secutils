@@ -7,8 +7,3 @@ pub use self::{
     job_log_context::JobLogContext, metrics_context::MetricsContext,
     user_log_context::UserLogContext, utils_resource_log_context::UtilsResourceLogContext,
 };
-
-#[cfg(test)]
-pub mod tests {
-    pub use super::utils_resource_log_context::UtilsResourceLogContext;
-}

@@ -5,10 +5,10 @@ use time::OffsetDateTime;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct RawUserData {
-    pub user_id: i64,
+    pub user_id: i32,
     pub key: Option<String>,
     pub value: Vec<u8>,
-    pub timestamp: i64,
+    pub timestamp: OffsetDateTime,
 }
 
 impl<V: for<'de> Deserialize<'de>> TryFrom<RawUserData> for UserData<V> {
@@ -22,7 +22,7 @@ impl<V: for<'de> Deserialize<'de>> TryFrom<RawUserData> for UserData<V> {
                 .and_then(|key| if key.is_empty() { None } else { Some(key) }),
             value: serde_json::from_slice(raw_user_data.value.as_slice())
                 .with_context(|| "Cannot deserialize user data value")?,
-            timestamp: OffsetDateTime::from_unix_timestamp(raw_user_data.timestamp)?,
+            timestamp: raw_user_data.timestamp,
         })
     }
 }
@@ -36,7 +36,7 @@ impl<'u, V: Serialize> TryFrom<&'u UserData<V>> for RawUserData {
             key: user_data.key.clone(),
             value: serde_json::ser::to_vec(&user_data.value)
                 .with_context(|| "Cannot serialize user data value")?,
-            timestamp: user_data.timestamp.unix_timestamp(),
+            timestamp: user_data.timestamp,
         })
     }
 }
@@ -55,7 +55,7 @@ mod tests {
             key: None,
             value: serde_json::to_vec("hello")?,
              // January 1, 2000 11:00:00
-            timestamp: 946720800,
+            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
         })?, @r###"
         UserData {
             user_id: UserId(
@@ -72,7 +72,7 @@ mod tests {
             key: Some("some-key".to_string()),
             value: serde_json::to_vec("hello")?,
              // January 1, 2000 11:00:00
-            timestamp: 946720800,
+            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
         })?, @r###"
         UserData {
             user_id: UserId(
@@ -91,7 +91,7 @@ mod tests {
             key: Some("".to_string()),
             value: serde_json::to_vec("hello")?,
              // January 1, 2000 11:00:00
-            timestamp: 946720800,
+            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
         })?, @r###"
         UserData {
             user_id: UserId(
@@ -119,7 +119,7 @@ mod tests {
                 key: None,
                 value: serde_json::to_vec("data")?,
                 // January 1, 2000 11:00:00
-                timestamp: 946720800,
+                timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
             }
         );
 

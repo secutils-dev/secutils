@@ -9,7 +9,7 @@ use crate::{
 use anyhow::bail;
 use async_stream::try_stream;
 use futures::Stream;
-use sqlx::{query, query_as};
+use sqlx::{query, query_as, query_scalar};
 use time::OffsetDateTime;
 
 /// Extends primary database with the notification-related methods.
@@ -22,7 +22,7 @@ impl Database {
         let id = *id;
         query_as!(
             RawNotification,
-            r#"SELECT * FROM notifications WHERE id = ?1"#,
+            r#"SELECT * FROM notifications WHERE id = $1"#,
             id
         )
         .fetch_optional(&self.pool)
@@ -41,16 +41,15 @@ impl Database {
         }
 
         let raw_notification = RawNotification::try_from(notification)?;
-        query!(
-            r#"INSERT INTO notifications (destination, content, scheduled_at) VALUES (?1, ?2, ?3)"#,
+        let id = query_scalar!(
+            r#"INSERT INTO notifications (destination, content, scheduled_at) VALUES ($1, $2, $3) RETURNING id"#,
             raw_notification.destination,
             raw_notification.content,
             raw_notification.scheduled_at
-        )
-        .execute(&self.pool)
-        .await?
-        .last_insert_rowid()
-        .try_into()
+        ).fetch_one(&self.pool)
+        .await?;
+
+        NotificationId::try_from(id)
     }
 
     /// Removes notification from the database using notification ID.
@@ -59,7 +58,7 @@ impl Database {
             bail!("Notification ID must not be empty for removal.");
         }
 
-        query!(r#"DELETE FROM notifications WHERE id = ?1"#, *id)
+        query!(r#"DELETE FROM notifications WHERE id = $1"#, *id)
             .execute(&self.pool)
             .await?;
 
@@ -73,12 +72,11 @@ impl Database {
         page_size: usize,
     ) -> impl Stream<Item = anyhow::Result<NotificationId>> + '_ {
         let page_limit = page_size as i64;
-        let scheduled_before_or_at = scheduled_before_or_at.unix_timestamp();
         try_stream! {
             let mut last_id = 0;
             loop {
                  let raw_notification_ids = query!(
-                    r#"SELECT id FROM notifications WHERE scheduled_at <= ?1 AND id > ?2 ORDER BY scheduled_at, id LIMIT ?3;"#,
+                    r#"SELECT id FROM notifications WHERE scheduled_at <= $1 AND id > $2 ORDER BY scheduled_at, id LIMIT $3;"#,
                     scheduled_before_or_at,
                     last_id,
                     page_limit
@@ -101,16 +99,17 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use crate::{
+        database::Database,
         notifications::{Notification, NotificationContent, NotificationDestination},
-        tests::mock_db,
     };
     use futures::StreamExt;
     use insta::assert_debug_snapshot;
+    use sqlx::PgPool;
     use time::OffsetDateTime;
 
-    #[tokio::test]
-    async fn can_add_and_retrieve_notifications() -> anyhow::Result<()> {
-        let db = mock_db().await?;
+    #[sqlx::test]
+    async fn can_add_and_retrieve_notifications(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
         assert!(db.get_notification(1.try_into()?).await?.is_none());
 
         let notifications = vec![
@@ -171,9 +170,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_remove_notifications() -> anyhow::Result<()> {
-        let db = mock_db().await?;
+    #[sqlx::test]
+    async fn can_remove_notifications(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
 
         let notifications = vec![
             Notification::new(
@@ -210,9 +209,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_get_notification_ids() -> anyhow::Result<()> {
-        let db = mock_db().await?;
+    #[sqlx::test]
+    async fn can_get_notification_ids(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
 
         let scheduled_before_or_at = OffsetDateTime::from_unix_timestamp(946720710)?;
 

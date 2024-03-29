@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT * FROM notifications WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "destination",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 2,
+        "name": "content",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 3,
+        "name": "scheduled_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "47b3211344c71c951ab4bb8e71bacd47fc54001e7d3a60796039454404011fa1"
+}

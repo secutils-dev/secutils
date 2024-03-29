@@ -1,9 +1,14 @@
-.github
 target
 tools/api
+
+.data
+.env
+.github
+.gitignore
+
 LICENSE
 *.md
-.env
-.gitignore
+
 *.json
+
 secutils.toml

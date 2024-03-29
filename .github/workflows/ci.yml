@@ -6,6 +6,7 @@ on:
     paths-ignore:
       - 'tools/**'
       - 'Dockerfile'
+      - 'Dockerfile.aarch64-unknown-linux-musl'
       - 'LICENSE'
       - '*.md'
       - '.husky/**'
@@ -13,7 +14,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  DATABASE_URL: sqlite://${{ github.workspace }}/ci-sqlx.db
+  DATABASE_URL: postgres://postgres:password@localhost:5432/secutils
 
 jobs:
   ci:
@@ -21,12 +22,17 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        rust: [stable]
+        rust: [ stable ]
+    services:
+      postgres:
+        image: postgres:latest
+        env:
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
     steps:
       - uses: actions/checkout@v3
         name: Checkout
-        with:
-          submodules: recursive
 
       # Always install nightly toolchain for `Rustfmt`.
       - name: Install toolchain ${{ matrix.rust }}
@@ -40,7 +46,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Check format
-        run:  cargo +nightly fmt --all -- --check
+        run: cargo +nightly fmt --all -- --check
 
       - name: Check database schema
         run: |
@@ -50,7 +56,7 @@ jobs:
           cargo sqlx prepare --check
 
       - name: Test (default features)
-        run:  cargo test
+        run: cargo test
 
       - name: Build (default features)
         run: cargo build --release

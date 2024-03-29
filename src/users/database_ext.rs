@@ -30,7 +30,7 @@ SELECT id, email, handle, credentials, created, activated, s.tier as subscriptio
 FROM users as u
 INNER JOIN user_subscriptions as s
 ON s.user_id = u.id
-WHERE u.id = ?1
+WHERE u.id = $1
                 "#,
             *id
         )
@@ -53,7 +53,7 @@ SELECT id, email, handle, credentials, created, activated, s.tier as subscriptio
 FROM users as u
 INNER JOIN user_subscriptions as s
 ON s.user_id = u.id
-WHERE u.email = ?1
+WHERE u.email = $1
                 "#,
             email
         )
@@ -79,7 +79,7 @@ SELECT id, email, handle, credentials, created, activated, s.tier as subscriptio
 FROM users as u
 INNER JOIN user_subscriptions as s
 ON s.user_id = u.id
-WHERE u.handle = ?1
+WHERE u.handle = $1
              "#,
             handle
         )
@@ -108,10 +108,10 @@ WHERE u.handle = ?1
         let tx = self.pool.begin().await?;
 
         // Insert user.
-        let user_id: i64 = query_scalar!(
+        let user_id = query_scalar!(
             r#"
 INSERT INTO users (email, handle, credentials, created, activated)
-VALUES ( ?1, ?2, ?3, ?4, ?5 )
+VALUES ( $1, $2, $3, $4, $5 )
 RETURNING id
         "#,
             raw_user.email,
@@ -127,7 +127,7 @@ RETURNING id
         query!(
             r#"
 INSERT INTO user_subscriptions (user_id, tier, started_at, ends_at, trial_started_at, trial_ends_at)
-VALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )
+VALUES ( $1, $2, $3, $4, $5, $6 )
         "#,
             user_id,
             raw_user.subscription_tier,
@@ -151,9 +151,9 @@ VALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )
         let tx = self.pool.begin().await?;
 
         // Update user
-        let user_id: i64 = query_scalar!(r#"
+        let user_id = query_scalar!(r#"
 INSERT INTO users (email, handle, credentials, created, activated)
-VALUES ( ?1, ?2, ?3, ?4, ?5 )
+VALUES ( $1, $2, $3, $4, $5 )
 ON CONFLICT(email) DO UPDATE SET handle=excluded.handle, credentials=excluded.credentials, created=excluded.created, activated=excluded.activated 
 RETURNING id
         "#,
@@ -170,7 +170,7 @@ RETURNING id
         query!(
             r#"
 INSERT INTO user_subscriptions (user_id, tier, started_at, ends_at, trial_started_at, trial_ends_at)
-VALUES ( ?1, ?2, ?3, ?4, ?5, ?6 )
+VALUES ( $1, $2, $3, $4, $5, $6 )
 ON CONFLICT(user_id) DO UPDATE SET tier=excluded.tier, started_at=excluded.started_at, ends_at=excluded.ends_at, trial_started_at=excluded.trial_started_at, trial_ends_at=excluded.trial_ends_at
         "#,
             user_id,
@@ -197,7 +197,7 @@ ON CONFLICT(user_id) DO UPDATE SET tier=excluded.tier, started_at=excluded.start
         query_scalar!(
             r#"
 DELETE FROM users
-WHERE email = ?1
+WHERE email = $1
 RETURNING id as "id!"
             "#,
             email
@@ -222,7 +222,7 @@ RETURNING id as "id!"
             r#"
 SELECT user_id, key, value, timestamp
 FROM user_data
-WHERE user_id = ?1 AND namespace = ?2 AND key = ?3
+WHERE user_id = $1 AND namespace = $2 AND key = $3
                 "#,
             *user_id,
             namespace,
@@ -247,7 +247,7 @@ WHERE user_id = ?1 AND namespace = ?2 AND key = ?3
         query!(
             r#"
 INSERT INTO user_data (user_id, namespace, key, value, timestamp)
-VALUES ( ?1, ?2, ?3, ?4, ?5 )
+VALUES ( $1, $2, $3, $4, $5 )
 ON CONFLICT(user_id, namespace, key) DO UPDATE SET value=excluded.value, timestamp=excluded.timestamp
         "#,
             raw_user_data.user_id,
@@ -274,7 +274,7 @@ ON CONFLICT(user_id, namespace, key) DO UPDATE SET value=excluded.value, timesta
         query!(
             r#"
 DELETE FROM user_data
-WHERE user_id = ?1 AND namespace = ?2 AND key = ?3
+WHERE user_id = $1 AND namespace = $2 AND key = $3
             "#,
             *user_id,
             namespace,
@@ -296,11 +296,10 @@ WHERE user_id = ?1 AND namespace = ?2 AND key = ?3
         let user_data_key = user_data_key.into();
         let namespace = user_data_key.namespace.as_ref();
         let key = user_data_key.key.unwrap_or_default();
-        let since = since.unix_timestamp();
         query!(
             r#"
 DELETE FROM user_data
-WHERE namespace = ?1 AND key = ?2 AND timestamp <= ?3
+WHERE namespace = $1 AND key = $2 AND timestamp <= $3
             "#,
             namespace,
             key,
@@ -319,7 +318,7 @@ WHERE namespace = ?1 AND key = ?2 AND timestamp <= ?3
             r#"
 SELECT id, user_id, resource, created_at
 FROM user_shares
-WHERE id = ?1
+WHERE id = $1
                 "#,
             *id
         )
@@ -341,7 +340,7 @@ WHERE id = ?1
             r#"
 SELECT id, user_id, resource, created_at
 FROM user_shares
-WHERE user_id = ?1 AND resource = ?2
+WHERE user_id = $1 AND resource = $2
                 "#,
             *user_id,
             resource
@@ -359,7 +358,7 @@ WHERE user_id = ?1 AND resource = ?2
         query!(
             r#"
 INSERT INTO user_shares (id, user_id, resource, created_at)
-VALUES (?1, ?2, ?3, ?4)
+VALUES ($1, $2, $3, $4)
         "#,
             raw_user_share.id,
             raw_user_share.user_id,
@@ -379,7 +378,7 @@ VALUES (?1, ?2, ?3, ?4)
             RawUserShare,
             r#"
 DELETE FROM user_shares
-WHERE id = ?1
+WHERE id = $1
 RETURNING id as "id!", user_id as "user_id!", resource as "resource!", created_at as "created_at!"
             "#,
             *id
@@ -394,14 +393,16 @@ RETURNING id as "id!", user_id as "user_id!", resource as "resource!", created_a
 #[cfg(test)]
 mod tests {
     use crate::{
+        database::Database,
         security::StoredCredentials,
-        tests::{mock_db, mock_user_with_id, MockUserBuilder},
+        tests::{mock_user_with_id, to_database_error, MockUserBuilder},
         users::{
             InternalUserDataNamespace, PublicUserDataNamespace, SharedResource, SubscriptionTier,
             UserData, UserId, UserShare, UserShareId, UserSubscription,
         },
     };
     use insta::assert_debug_snapshot;
+    use sqlx::PgPool;
     use std::{
         ops::{Add, Sub},
         time::Duration,
@@ -409,9 +410,9 @@ mod tests {
     use time::OffsetDateTime;
     use uuid::uuid;
 
-    #[tokio::test]
-    async fn can_add_and_retrieve_users() -> anyhow::Result<()> {
-        let db = mock_db().await?;
+    #[sqlx::test]
+    async fn can_add_and_retrieve_users(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
         assert!(db.get_user_by_email("some-id").await?.is_none());
 
         let users = vec![
@@ -569,8 +570,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn ignores_email_case() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn ignores_email_case(pool: PgPool) -> anyhow::Result<()> {
         let user = MockUserBuilder::new(
             UserId::default(),
             "DeV@secutils.dev",
@@ -591,7 +592,7 @@ mod tests {
         })
         .set_activated()
         .build();
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         let id = db.upsert_user(&user).await?;
 
         assert_debug_snapshot!(db.get_user_by_email("dev@secutils.dev").await?,  @r###"
@@ -632,8 +633,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn ignores_handle_case() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn ignores_handle_case(pool: PgPool) -> anyhow::Result<()> {
         let user = MockUserBuilder::new(
             UserId::default(),
             "DeV@secutils.dev",
@@ -654,7 +655,7 @@ mod tests {
             trial_ends_at: None,
         })
         .build();
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         let id = db.upsert_user(&user).await?;
 
         assert_debug_snapshot!(db.get_user_by_handle("dev-handle").await?,  @r###"
@@ -689,9 +690,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_insert_user() -> anyhow::Result<()> {
-        let db = mock_db().await?;
+    #[sqlx::test]
+    async fn can_insert_user(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
 
         let user_id = db
             .insert_user(
@@ -737,8 +738,8 @@ mod tests {
         )
         "###);
 
-        let conflict_error = db
-            .insert_user(
+        let conflict_error = to_database_error(
+            db.insert_user(
                 &MockUserBuilder::new(
                     100.try_into()?,
                     "DEV@secutils.dev",
@@ -752,17 +753,10 @@ mod tests {
                 )
                 .build(),
             )
-            .await;
-        assert_debug_snapshot!(conflict_error, @r###"
-        Err(
-            Database(
-                SqliteError {
-                    code: 2067,
-                    message: "UNIQUE constraint failed: users.handle",
-                },
-            ),
-        )
-        "###);
+            .await
+            .unwrap_err(),
+        )?;
+        assert_debug_snapshot!(conflict_error.message(), @r###""duplicate key value violates unique constraint \"users_email_key\"""###);
 
         assert_eq!(
             db.get_user_by_email("dev@secutils.dev").await?.unwrap().id,
@@ -772,9 +766,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_update_user() -> anyhow::Result<()> {
-        let db = mock_db().await?;
+    #[sqlx::test]
+    async fn can_update_user(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
 
         db.upsert_user(
             &MockUserBuilder::new(
@@ -876,9 +870,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_remove_user() -> anyhow::Result<()> {
-        let db = mock_db().await?;
+    #[sqlx::test]
+    async fn can_remove_user(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
         assert!(db.get_user_by_email("dev@secutils.dev").await?.is_none());
         assert!(db.get_user_by_email("prod@secutils.dev").await?.is_none());
 
@@ -944,9 +938,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_manipulate_user_data() -> anyhow::Result<()> {
-        let db = mock_db().await?;
+    #[sqlx::test]
+    async fn can_manipulate_user_data(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
         let user = MockUserBuilder::new(
             1.try_into()?,
             "dev@secutils.dev",
@@ -1028,9 +1022,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_remove_old_user_data() -> anyhow::Result<()> {
-        let db = mock_db().await?;
+    #[sqlx::test]
+    async fn can_remove_old_user_data(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
 
         // Create test users
         let users = vec![
@@ -1174,8 +1168,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_add_and_retrieve_user_shares() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_add_and_retrieve_user_shares(pool: PgPool) -> anyhow::Result<()> {
         let user_shares = vec![
             UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
@@ -1195,7 +1189,7 @@ mod tests {
             },
         ];
 
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(mock_user_with_id(1)?).await?;
         db.insert_user(mock_user_with_id(2)?).await?;
 
@@ -1219,8 +1213,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_retrieve_user_shares_by_resource() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_retrieve_user_shares_by_resource(pool: PgPool) -> anyhow::Result<()> {
         let user_shares = [
             UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
@@ -1240,7 +1234,7 @@ mod tests {
             },
         ];
 
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(mock_user_with_id(1)?).await?;
         db.insert_user(mock_user_with_id(2)?).await?;
 
@@ -1277,8 +1271,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_remove_user_shares() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_remove_user_shares(pool: PgPool) -> anyhow::Result<()> {
         let user_shares = vec![
             UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
@@ -1298,7 +1292,7 @@ mod tests {
             },
         ];
 
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(mock_user_with_id(1)?).await?;
         db.insert_user(mock_user_with_id(2)?).await?;
 

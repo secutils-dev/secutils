@@ -58,7 +58,8 @@ impl<'n> Serialize for UtilsResourceLogContext<'n> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        tests::{MockResponderBuilder, MockWebPageTrackerBuilder, UtilsResourceLogContext},
+        logging::UtilsResourceLogContext,
+        tests::{MockResponderBuilder, MockWebPageTrackerBuilder},
         utils::{
             web_scraping::{WebPageContentTrackerTag, WebPageResourcesTrackerTag},
             UtilsResource,

@@ -25,6 +25,7 @@ use lettre::{
     message::Mailbox, transport::smtp::authentication::Credentials, AsyncSmtpTransport,
     Tokio1Executor,
 };
+use sqlx::postgres::PgPoolOptions;
 use std::{str::FromStr, sync::Arc};
 
 #[cfg(test)]
@@ -45,7 +46,25 @@ pub async fn run(raw_config: RawConfig) -> Result<(), anyhow::Error> {
         "search_index_v{}",
         raw_config.components.search_index_version
     )))?;
-    let database = Database::open_path(datastore_dir).await?;
+
+    let db_url = format!(
+        "postgres://{}@{}:{}/{}",
+        if let Some(ref password) = raw_config.db.password {
+            format!("{}:{password}", raw_config.db.username)
+        } else {
+            raw_config.db.username.clone()
+        },
+        raw_config.db.host,
+        raw_config.db.port,
+        raw_config.db.name
+    );
+    let database = Database::create(
+        PgPoolOptions::new()
+            .max_connections(100)
+            .connect(&db_url)
+            .await?,
+    )
+    .await?;
 
     let email_transport = if let Some(ref smtp_config) = raw_config.smtp {
         if let Some(ref catch_all_config) = smtp_config.catch_all {

@@ -89,6 +89,7 @@ pub mod tests {
     };
     use insta::assert_json_snapshot;
     use serde_json::json;
+    use sqlx::PgPool;
     use std::borrow::Cow;
     use time::OffsetDateTime;
     use uuid::Uuid;
@@ -127,14 +128,15 @@ pub mod tests {
             self.responder.settings.body = Some(body.to_string());
             self
         }
+
         pub fn build(self) -> Responder {
             self.responder
         }
     }
 
-    #[tokio::test]
-    async fn properly_handles_responders_list_operation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_handles_responders_list_operation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -199,9 +201,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_handles_responders_create_operation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_handles_responders_create_operation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -246,9 +248,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_handles_responders_update_operation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_handles_responders_update_operation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -317,9 +319,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_handles_responder_delete_operation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_handles_responder_delete_operation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -359,9 +361,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_handles_get_history_operation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_handles_get_history_operation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -443,9 +445,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_handles_clear_history_operation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_handles_clear_history_operation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 

@@ -645,12 +645,13 @@ mod tests {
         users::{SubscriptionTier, UserSubscription},
     };
     use insta::assert_debug_snapshot;
+    use sqlx::PgPool;
     use std::ops::Add;
     use time::OffsetDateTime;
 
-    #[tokio::test]
-    async fn properly_signs_user_up() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_signs_user_up(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let security_api = api.security();
 
         let user = security_api
@@ -689,9 +690,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn cannot_signup_user_twice() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn cannot_signup_user_twice(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let security_api = api.security();
 
         let user = security_api
@@ -716,9 +717,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_update_subscription() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_update_subscription(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let security_api = api.security();
 
         let user = security_api
@@ -761,9 +762,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn doesnt_throw_if_user_does_not_exist_for_subscription_update() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn doesnt_throw_if_user_does_not_exist_for_subscription_update(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let security_api = api.security();
 
         let updated_user = security_api

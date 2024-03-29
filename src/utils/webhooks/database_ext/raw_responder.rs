@@ -5,13 +5,13 @@ use uuid::Uuid;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct RawResponder {
-    pub id: Vec<u8>,
+    pub id: Uuid,
     pub name: String,
     pub path: String,
     pub method: Vec<u8>,
-    pub enabled: i64,
+    pub enabled: bool,
     pub settings: Vec<u8>,
-    pub created_at: i64,
+    pub created_at: OffsetDateTime,
 }
 
 impl RawResponder {
@@ -35,11 +35,11 @@ impl TryFrom<RawResponder> for Responder {
     fn try_from(raw: RawResponder) -> Result<Self, Self::Error> {
         let raw_settings = postcard::from_bytes::<RawResponderSettings>(&raw.settings)?;
         Ok(Responder {
-            id: Uuid::from_slice(raw.id.as_slice())?,
+            id: raw.id,
             name: raw.name,
             path: raw.path,
             method: postcard::from_bytes::<ResponderMethod>(&raw.method)?,
-            enabled: raw.enabled > 0,
+            enabled: raw.enabled,
             settings: ResponderSettings {
                 requests_to_track: raw_settings.requests_to_track,
                 status_code: raw_settings.status_code,
@@ -47,7 +47,7 @@ impl TryFrom<RawResponder> for Responder {
                 headers: raw_settings.headers,
                 script: raw_settings.script,
             },
-            created_at: OffsetDateTime::from_unix_timestamp(raw.created_at)?,
+            created_at: raw.created_at,
         })
     }
 }
@@ -65,13 +65,13 @@ impl TryFrom<&Responder> for RawResponder {
         };
 
         Ok(RawResponder {
-            id: item.id.into(),
+            id: item.id,
             name: item.name.clone(),
             path: item.path.to_string(),
             method: postcard::to_stdvec(&item.method)?,
-            enabled: item.enabled as i64,
+            enabled: item.enabled,
             settings: postcard::to_stdvec(&raw_settings)?,
-            created_at: item.created_at.unix_timestamp(),
+            created_at: item.created_at,
         })
     }
 }
@@ -103,16 +103,14 @@ mod tests {
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?
             })?,
             RawResponder {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "res".to_string(),
                 path: "/".to_string(),
                 method: vec![0],
-                enabled: 1,
+                enabled: true,
                 settings: vec![0, 200, 1, 0, 0, 0],
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             }
         );
 
@@ -133,13 +131,11 @@ mod tests {
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?
             })?,
             RawResponder {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "res".to_string(),
                 path: "/path".to_string(),
                 method: vec![7],
-                enabled: 0,
+                enabled: false,
                 settings: vec![
                     3, 200, 1, 1, 4, 98, 111, 100, 121, 1, 1, 3, 107, 101, 121, 5, 118, 97, 108,
                     117, 101, 1, 31, 114, 101, 116, 117, 114, 110, 32, 123, 32, 98, 111, 100, 121,
@@ -147,7 +143,7 @@ mod tests {
                     59
                 ],
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             }
         );
 
@@ -158,16 +154,14 @@ mod tests {
     fn can_convert_into_responder() -> anyhow::Result<()> {
         assert_eq!(
             Responder::try_from(RawResponder {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "res".to_string(),
                 path: "/".to_string(),
                 method: vec![0],
-                enabled: 1,
+                enabled: true,
                 settings: vec![0, 200, 1, 0, 0, 0],
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             Responder {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -188,13 +182,11 @@ mod tests {
 
         assert_eq!(
             Responder::try_from(RawResponder {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "res".to_string(),
                 path: "/path".to_string(),
                 method: vec![7],
-                enabled: 0,
+                enabled: false,
                 settings: vec![
                     3, 200, 1, 1, 4, 98, 111, 100, 121, 1, 1, 3, 107, 101, 121, 5, 118, 97, 108,
                     117, 101, 1, 31, 114, 101, 116, 117, 114, 110, 32, 123, 32, 98, 111, 100, 121,
@@ -202,7 +194,7 @@ mod tests {
                     59
                 ],
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             Responder {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),

@@ -441,6 +441,7 @@ mod tests {
     };
     use httpmock::MockServer;
     use insta::assert_debug_snapshot;
+    use sqlx::PgPool;
     use std::net::Ipv4Addr;
     use trust_dns_resolver::{
         proto::rr::{rdata::A, RData, Record},
@@ -478,9 +479,9 @@ mod tests {
         ])
     }
 
-    #[tokio::test]
-    async fn properly_creates_new_content_security_policy() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_creates_new_content_security_policy(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -506,9 +507,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_validates_content_security_policy_at_creation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_validates_content_security_policy_at_creation(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool.clone()).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -559,13 +562,15 @@ mod tests {
             @r###""Remote URL must be either `http` or `https` and have a valid public reachable domain name, but received ftp://secutils.dev/.""###
         );
 
-        let api_with_local_network =
-            mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
+        let api_with_local_network = mock_api_with_network(
+            pool,
+            mock_network_with_records::<1>(vec![Record::from_rdata(
                 Name::new(),
                 300,
                 RData::A(A(Ipv4Addr::new(127, 0, 0, 1))),
-            )]))
-            .await?;
+            )]),
+        )
+        .await?;
 
         // Non-public URL.
         assert_debug_snapshot!(
@@ -583,9 +588,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_updates_content_security_policy() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_updates_content_security_policy(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -654,9 +659,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_validates_content_security_policy_at_update() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_validates_content_security_policy_at_update(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -742,9 +749,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_imports_new_policy_via_text() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_imports_new_policy_via_text(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -811,15 +818,19 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_imports_new_policy_from_enforcing_header_via_url() -> anyhow::Result<()> {
-        let api_with_public_network =
-            mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
+    #[sqlx::test]
+    async fn properly_imports_new_policy_from_enforcing_header_via_url(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api_with_public_network = mock_api_with_network(
+            pool,
+            mock_network_with_records::<1>(vec![Record::from_rdata(
                 Name::new(),
                 300,
                 RData::A(A(Ipv4Addr::new(172, 32, 0, 2))),
-            )]))
-            .await?;
+            )]),
+        )
+        .await?;
 
         let mock_user = mock_user()?;
         api_with_public_network.db.insert_user(&mock_user).await?;
@@ -869,15 +880,19 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_imports_new_policy_from_report_only_header_via_url() -> anyhow::Result<()> {
-        let api_with_public_network =
-            mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
+    #[sqlx::test]
+    async fn properly_imports_new_policy_from_report_only_header_via_url(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api_with_public_network = mock_api_with_network(
+            pool,
+            mock_network_with_records::<1>(vec![Record::from_rdata(
                 Name::new(),
                 300,
                 RData::A(A(Ipv4Addr::new(172, 32, 0, 2))),
-            )]))
-            .await?;
+            )]),
+        )
+        .await?;
 
         let mock_user = mock_user()?;
         api_with_public_network.db.insert_user(&mock_user).await?;
@@ -927,15 +942,19 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_imports_new_policy_from_html_meta_via_url() -> anyhow::Result<()> {
-        let api_with_public_network =
-            mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
+    #[sqlx::test]
+    async fn properly_imports_new_policy_from_html_meta_via_url(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api_with_public_network = mock_api_with_network(
+            pool,
+            mock_network_with_records::<1>(vec![Record::from_rdata(
                 Name::new(),
                 300,
                 RData::A(A(Ipv4Addr::new(172, 32, 0, 2))),
-            )]))
-            .await?;
+            )]),
+        )
+        .await?;
 
         let mock_user = mock_user()?;
         api_with_public_network.db.insert_user(&mock_user).await?;
@@ -995,15 +1014,19 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_imports_new_policy_following_redirect_via_url() -> anyhow::Result<()> {
-        let api_with_public_network =
-            mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
+    #[sqlx::test]
+    async fn properly_imports_new_policy_following_redirect_via_url(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api_with_public_network = mock_api_with_network(
+            pool,
+            mock_network_with_records::<1>(vec![Record::from_rdata(
                 Name::new(),
                 300,
                 RData::A(A(Ipv4Addr::new(172, 32, 0, 2))),
-            )]))
-            .await?;
+            )]),
+        )
+        .await?;
 
         let mock_user = mock_user()?;
         api_with_public_network.db.insert_user(&mock_user).await?;
@@ -1062,15 +1085,17 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_imports_last_policy_if_multiple_found() -> anyhow::Result<()> {
-        let api_with_public_network =
-            mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
+    #[sqlx::test]
+    async fn properly_imports_last_policy_if_multiple_found(pool: PgPool) -> anyhow::Result<()> {
+        let api_with_public_network = mock_api_with_network(
+            pool,
+            mock_network_with_records::<1>(vec![Record::from_rdata(
                 Name::new(),
                 300,
                 RData::A(A(Ipv4Addr::new(172, 32, 0, 2))),
-            )]))
-            .await?;
+            )]),
+        )
+        .await?;
 
         let mock_user = mock_user()?;
         api_with_public_network.db.insert_user(&mock_user).await?;
@@ -1173,15 +1198,17 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_imports_ignoring_unknown_directives() -> anyhow::Result<()> {
-        let api_with_public_network =
-            mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
+    #[sqlx::test]
+    async fn properly_imports_ignoring_unknown_directives(pool: PgPool) -> anyhow::Result<()> {
+        let api_with_public_network = mock_api_with_network(
+            pool,
+            mock_network_with_records::<1>(vec![Record::from_rdata(
                 Name::new(),
                 300,
                 RData::A(A(Ipv4Addr::new(172, 32, 0, 2))),
-            )]))
-            .await?;
+            )]),
+        )
+        .await?;
 
         let mock_user = mock_user()?;
         api_with_public_network.db.insert_user(&mock_user).await?;
@@ -1293,15 +1320,19 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn fails_import_if_redirect_required_but_not_permitted() -> anyhow::Result<()> {
-        let api_with_public_network =
-            mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
+    #[sqlx::test]
+    async fn fails_import_if_redirect_required_but_not_permitted(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api_with_public_network = mock_api_with_network(
+            pool,
+            mock_network_with_records::<1>(vec![Record::from_rdata(
                 Name::new(),
                 300,
                 RData::A(A(Ipv4Addr::new(172, 32, 0, 2))),
-            )]))
-            .await?;
+            )]),
+        )
+        .await?;
 
         let mock_user = mock_user()?;
         api_with_public_network.db.insert_user(&mock_user).await?;
@@ -1351,15 +1382,19 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn fails_import_if_header_or_html_meta_tag_is_not_found() -> anyhow::Result<()> {
-        let api_with_public_network =
-            mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
+    #[sqlx::test]
+    async fn fails_import_if_header_or_html_meta_tag_is_not_found(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api_with_public_network = mock_api_with_network(
+            pool,
+            mock_network_with_records::<1>(vec![Record::from_rdata(
                 Name::new(),
                 300,
                 RData::A(A(Ipv4Addr::new(172, 32, 0, 2))),
-            )]))
-            .await?;
+            )]),
+        )
+        .await?;
 
         let mock_user = mock_user()?;
         api_with_public_network.db.insert_user(&mock_user).await?;
@@ -1458,15 +1493,17 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn fails_import_if_request_fails() -> anyhow::Result<()> {
-        let api_with_public_network =
-            mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
+    #[sqlx::test]
+    async fn fails_import_if_request_fails(pool: PgPool) -> anyhow::Result<()> {
+        let api_with_public_network = mock_api_with_network(
+            pool,
+            mock_network_with_records::<1>(vec![Record::from_rdata(
                 Name::new(),
                 300,
                 RData::A(A(Ipv4Addr::new(172, 32, 0, 2))),
-            )]))
-            .await?;
+            )]),
+        )
+        .await?;
 
         let mock_user = mock_user()?;
         api_with_public_network.db.insert_user(&mock_user).await?;
@@ -1548,9 +1585,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_removes_policies() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_removes_policies(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -1611,9 +1648,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_shares_policy() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_shares_policy(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -1651,9 +1688,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_unshares_policy() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_unshares_policy(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -1706,9 +1743,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_unshares_policy_when_policy_is_removed() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_unshares_policy_when_policy_is_removed(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -1745,9 +1782,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_serializes_content_security_policy() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_serializes_content_security_policy(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 

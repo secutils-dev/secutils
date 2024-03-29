@@ -1,0 +1,82 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT id, email, handle, credentials, created, activated, s.tier as subscription_tier,\n       s.started_at as subscription_started_at, s.ends_at as subscription_ends_at,\n       s.trial_started_at as subscription_trial_started_at, \n       s.trial_ends_at as subscription_trial_ends_at\nFROM users as u\nINNER JOIN user_subscriptions as s\nON s.user_id = u.id\nWHERE u.handle = $1\n             ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "email",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "handle",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "credentials",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 4,
+        "name": "created",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "activated",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "subscription_tier",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "subscription_started_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "subscription_ends_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "subscription_trial_started_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "subscription_trial_ends_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "37716056ba8b0f23f73c102fe3a3af805fd53be5f1506e4e35aba8831581602e"
+}

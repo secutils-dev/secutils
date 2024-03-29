@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    UPDATE user_data_web_scraping_trackers\n    SET job_id = $2\n    WHERE id = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "06b024f294f9626f281b064c118b4a192a510610f08d997d3f2a756491446158"
+}

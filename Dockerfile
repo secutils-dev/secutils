@@ -21,8 +21,7 @@ RUN set -x && \
     apt-get install -y pkg-config curl libssl-dev libssl-dev:arm64 g++-aarch64-linux-gnu libc6-dev-arm64-cross ca-certificates && \
     rustup target add aarch64-unknown-linux-gnu
 
-# Copy vendored crates, assets and manifest.
-COPY ["./vendor", "./vendor"]
+# Copy assets and manifest.
 COPY ["./assets", "./assets"]
 COPY ["./Cargo.lock", "./Cargo.toml", "./"]
 

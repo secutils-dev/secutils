@@ -5,10 +5,10 @@ use uuid::Uuid;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct RawContentSecurityPolicy {
-    pub id: Vec<u8>,
+    pub id: Uuid,
     pub name: String,
     pub directives: Vec<u8>,
-    pub created_at: i64,
+    pub created_at: OffsetDateTime,
 }
 
 impl TryFrom<RawContentSecurityPolicy> for ContentSecurityPolicy {
@@ -30,10 +30,10 @@ impl TryFrom<RawContentSecurityPolicy> for ContentSecurityPolicy {
             })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(ContentSecurityPolicy {
-            id: Uuid::from_slice(raw.id.as_slice())?,
+            id: raw.id,
             name: raw.name,
             directives,
-            created_at: OffsetDateTime::from_unix_timestamp(raw.created_at)?,
+            created_at: raw.created_at,
         })
     }
 }
@@ -50,10 +50,10 @@ impl TryFrom<&ContentSecurityPolicy> for RawContentSecurityPolicy {
                 .collect::<Result<Vec<_>, _>>()?,
         )?;
         Ok(RawContentSecurityPolicy {
-            id: item.id.into(),
+            id: item.id,
             name: item.name.clone(),
             directives,
-            created_at: item.created_at.unix_timestamp(),
+            created_at: item.created_at,
         })
     }
 }
@@ -72,9 +72,7 @@ mod tests {
     fn can_convert_into_content_security_policy() -> anyhow::Result<()> {
         assert_eq!(
             ContentSecurityPolicy::try_from(RawContentSecurityPolicy {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "csp-name".to_string(),
                 directives: vec![
                     3, 25, 117, 112, 103, 114, 97, 100, 101, 45, 105, 110, 115, 101, 99, 117, 114,
@@ -85,7 +83,7 @@ mod tests {
                     108, 108, 111, 119, 45, 100, 117, 112, 108, 105, 99, 97, 116, 101, 115, 39
                 ],
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             ContentSecurityPolicy {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -132,9 +130,7 @@ mod tests {
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             RawContentSecurityPolicy {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "csp-name".to_string(),
                 directives: vec![
                     3, 25, 117, 112, 103, 114, 97, 100, 101, 45, 105, 110, 115, 101, 99, 117, 114,
@@ -145,7 +141,7 @@ mod tests {
                     108, 108, 111, 119, 45, 100, 117, 112, 108, 105, 99, 97, 116, 101, 115, 39
                 ],
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             }
         );
 

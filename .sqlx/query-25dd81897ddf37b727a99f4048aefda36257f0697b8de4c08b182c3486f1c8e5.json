@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nDELETE FROM user_shares\nWHERE id = $1\nRETURNING id as \"id!\", user_id as \"user_id!\", resource as \"resource!\", created_at as \"created_at!\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "resource!",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "25dd81897ddf37b727a99f4048aefda36257f0697b8de4c08b182c3486f1c8e5"
+}

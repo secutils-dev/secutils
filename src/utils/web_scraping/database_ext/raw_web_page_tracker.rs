@@ -9,15 +9,15 @@ use uuid::Uuid;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct RawWebPageTracker {
-    pub id: Vec<u8>,
+    pub id: Uuid,
     pub name: String,
     pub url: String,
     pub kind: Vec<u8>,
-    pub user_id: i64,
-    pub job_id: Option<Vec<u8>>,
+    pub user_id: i32,
+    pub job_id: Option<Uuid>,
     pub job_config: Option<Vec<u8>>,
     pub data: Vec<u8>,
-    pub created_at: i64,
+    pub created_at: OffsetDateTime,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
@@ -87,14 +87,11 @@ impl<Tag: WebPageTrackerTag> TryFrom<RawWebPageTracker> for WebPageTracker<Tag> 
         };
 
         Ok(WebPageTracker {
-            id: Uuid::from_slice(raw.id.as_slice())?,
+            id: raw.id,
             name: raw.name,
             url: raw.url.parse()?,
             user_id: raw.user_id.try_into()?,
-            job_id: raw
-                .job_id
-                .map(|job_id| Uuid::from_slice(job_id.as_slice()))
-                .transpose()?,
+            job_id: raw.job_id,
             job_config,
             settings: WebPageTrackerSettings {
                 revisions: raw_data.revisions,
@@ -102,7 +99,7 @@ impl<Tag: WebPageTrackerTag> TryFrom<RawWebPageTracker> for WebPageTracker<Tag> 
                 scripts: raw_data.scripts,
                 headers: raw_data.headers,
             },
-            created_at: OffsetDateTime::from_unix_timestamp(raw.created_at)?,
+            created_at: raw.created_at,
             meta: raw_data.meta,
         })
     }
@@ -163,15 +160,15 @@ impl<Tag: WebPageTrackerTag> TryFrom<&WebPageTracker<Tag>> for RawWebPageTracker
         };
 
         Ok(RawWebPageTracker {
-            id: item.id.into(),
+            id: item.id,
             name: item.name.clone(),
             url: item.url.to_string(),
             kind: Tag::KIND.try_into()?,
             user_id: *item.user_id,
-            job_id: item.job_id.as_ref().map(|job_id| (*job_id).into()),
+            job_id: item.job_id,
             job_config,
             data: postcard::to_stdvec(&raw_data)?,
-            created_at: item.created_at.unix_timestamp(),
+            created_at: item.created_at,
         })
     }
 }
@@ -183,7 +180,7 @@ mod tests {
         scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
         tests::mock_user,
         utils::web_scraping::{
-            tests::WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME, WebPageResourcesTrackerTag,
+            api_ext::WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME, WebPageResourcesTrackerTag,
             WebPageTracker, WebPageTrackerSettings,
         },
     };
@@ -196,9 +193,7 @@ mod tests {
     fn can_convert_into_web_page_tracker() -> anyhow::Result<()> {
         assert_eq!(
             WebPageTracker::<WebPageResourcesTrackerTag>::try_from(RawWebPageTracker {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "tk".to_string(),
                 url: "https://secutils.dev".to_string(),
                 kind: vec![0],
@@ -207,7 +202,7 @@ mod tests {
                 job_config: None,
                 data: vec![1, 0, 0, 0, 0],
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             WebPageTracker {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -229,18 +224,12 @@ mod tests {
 
         assert_eq!(
             WebPageTracker::<WebPageResourcesTrackerTag>::try_from(RawWebPageTracker {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "tk".to_string(),
                 url: "https://secutils.dev".to_string(),
                 kind: vec![0],
                 user_id: *mock_user()?.id,
-                job_id: Some(
-                    uuid!("00000000-0000-0000-0000-000000000002")
-                        .as_bytes()
-                        .to_vec()
-                ),
+                job_id: Some(uuid!("00000000-0000-0000-0000-000000000002")),
                 job_config: Some(vec![
                     9, 48, 32, 48, 32, 42, 32, 42, 32, 42, 1, 1, 1, 128, 157, 202, 111, 2, 120, 0,
                     5, 1
@@ -252,7 +241,7 @@ mod tests {
                     45, 99, 111, 111, 107, 105, 101, 0
                 ],
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             WebPageTracker {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -315,9 +304,7 @@ mod tests {
                 meta: None
             })?,
             RawWebPageTracker {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "tk".to_string(),
                 url: "https://secutils.dev/".to_string(),
                 kind: vec![0],
@@ -326,7 +313,7 @@ mod tests {
                 job_config: None,
                 data: vec![1, 0, 0, 0, 0],
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             }
         );
 
@@ -368,18 +355,12 @@ mod tests {
                 meta: None
             })?,
             RawWebPageTracker {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "tk".to_string(),
                 url: "https://secutils.dev/".to_string(),
                 kind: vec![0],
                 user_id: *mock_user()?.id,
-                job_id: Some(
-                    uuid!("00000000-0000-0000-0000-000000000002")
-                        .as_bytes()
-                        .to_vec()
-                ),
+                job_id: Some(uuid!("00000000-0000-0000-0000-000000000002")),
                 job_config: Some(vec![
                     9, 48, 32, 48, 32, 42, 32, 42, 32, 42, 1, 1, 1, 128, 157, 202, 111, 2, 120, 0,
                     5, 1
@@ -391,7 +372,7 @@ mod tests {
                     45, 99, 111, 111, 107, 105, 101, 0
                 ],
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             }
         );
 

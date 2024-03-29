@@ -51,22 +51,23 @@ impl DictionaryDataUserDataSetter {
 mod tests {
     use crate::{
         database::Database,
-        tests::{mock_db, mock_user},
+        tests::mock_user,
         users::{DictionaryDataUserDataSetter, PublicUserDataNamespace, User, UserData},
     };
     use serde_json::json;
+    use sqlx::PgPool;
     use std::collections::BTreeMap;
     use time::OffsetDateTime;
 
-    async fn initialize_mock_db(user: &User) -> anyhow::Result<Database> {
-        let db = mock_db().await?;
+    async fn initialize_mock_db(user: &User, pool: PgPool) -> anyhow::Result<Database> {
+        let db = Database::create(pool).await?;
         db.upsert_user(user).await.map(|_| db)
     }
 
-    #[tokio::test]
-    async fn can_merge_data() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_merge_data(pool: PgPool) -> anyhow::Result<()> {
         let mock_user = mock_user()?;
-        let mock_db = initialize_mock_db(&mock_user).await?;
+        let mock_db = initialize_mock_db(&mock_user, pool).await?;
 
         let item_one = json!({ "name": "one" });
         let item_two = json!({ "name": "two" });

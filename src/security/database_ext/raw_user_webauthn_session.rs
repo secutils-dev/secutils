@@ -6,7 +6,7 @@ use time::OffsetDateTime;
 pub(super) struct RawUserWebAuthnSession {
     pub email: String,
     pub session_value: Vec<u8>,
-    pub timestamp: i64,
+    pub timestamp: OffsetDateTime,
 }
 
 impl TryFrom<RawUserWebAuthnSession> for WebAuthnSession {
@@ -24,7 +24,7 @@ impl TryFrom<RawUserWebAuthnSession> for WebAuthnSession {
         Ok(WebAuthnSession {
             email: raw_user_webauthn_session.email,
             value,
-            timestamp: OffsetDateTime::from_unix_timestamp(raw_user_webauthn_session.timestamp)?,
+            timestamp: raw_user_webauthn_session.timestamp,
         })
     }
 }
@@ -37,6 +37,7 @@ mod tests {
         tests::webauthn::{SERIALIZED_AUTHENTICATION_STATE, SERIALIZED_REGISTRATION_STATE},
     };
     use insta::assert_debug_snapshot;
+    use time::OffsetDateTime;
 
     #[test]
     fn can_convert_from_raw_session() -> anyhow::Result<()> {
@@ -47,7 +48,7 @@ mod tests {
             email: "test@secutils.dev".to_string(),
             session_value: serde_json::to_vec(&registration_state_value)?,
             // January 1, 2000 11:00:00
-            timestamp: 946720800,
+            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
         };
         assert_debug_snapshot!(WebAuthnSession::try_from(raw_session)?,  @r###"
         WebAuthnSession {
@@ -125,7 +126,7 @@ mod tests {
             email: "test@secutils.dev".to_string(),
             session_value: serde_json::to_vec(&authentication_state_value)?,
             // January 1, 2000 11:00:00
-            timestamp: 946720800,
+            timestamp: OffsetDateTime::from_unix_timestamp(946720800)?,
         };
         assert_debug_snapshot!(WebAuthnSession::try_from(raw_session)?,  @r###"
         WebAuthnSession {

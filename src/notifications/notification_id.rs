@@ -3,7 +3,7 @@ use std::ops::Deref;
 
 /// Defines a type for the ID of the notification.
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Copy, Hash)]
-pub struct NotificationId(i64);
+pub struct NotificationId(i32);
 impl NotificationId {
     /// Creates a new notification ID. Use this only to create a new notification.
     pub const fn empty() -> Self {
@@ -16,10 +16,10 @@ impl NotificationId {
     }
 }
 
-impl TryFrom<i64> for NotificationId {
+impl TryFrom<i32> for NotificationId {
     type Error = anyhow::Error;
 
-    fn try_from(value: i64) -> Result<Self, Self::Error> {
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
         if value > 0 {
             Ok(Self(value))
         } else {
@@ -29,7 +29,7 @@ impl TryFrom<i64> for NotificationId {
 }
 
 impl Deref for NotificationId {
-    type Target = i64;
+    type Target = i32;
 
     fn deref(&self) -> &Self::Target {
         &self.0

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    INSERT INTO user_data_web_scraping_trackers (user_id, id, name, url, kind, job_id, job_config, data, created_at)\n    VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9 )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Uuid",
+        "Text",
+        "Text",
+        "Bytea",
+        "Uuid",
+        "Bytea",
+        "Bytea",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d1835baa01c8592491555437d447b25a52e3bb5b990ae01b5b76325253147ceb"
+}

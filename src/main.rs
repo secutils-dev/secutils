@@ -87,14 +87,15 @@ mod tests {
     use url::Url;
 
     use crate::{
-        config::{SubscriptionConfig, UtilsConfig},
+        config::{DatabaseConfig, SubscriptionConfig, UtilsConfig},
         search::SearchIndex,
         security::create_webauthn,
         templates::create_templates,
         users::{SubscriptionTier, UserSubscription},
     };
-    pub use crate::{logging::tests::*, network::tests::*, server::tests::*, utils::tests::*};
+    pub use crate::{network::tests::*, scheduler::tests::*, server::tests::*, utils::tests::*};
     use ctor::ctor;
+    use sqlx::{postgres::PgDatabaseError, PgPool};
 
     pub struct MockUserBuilder {
         user: User,
@@ -229,8 +230,12 @@ mod tests {
         }
     }
 
-    pub async fn mock_db() -> anyhow::Result<Database> {
-        Database::open(|| Ok("sqlite::memory:".to_string())).await
+    pub fn to_database_error(err: anyhow::Error) -> anyhow::Result<Box<PgDatabaseError>> {
+        Ok(err
+            .downcast::<sqlx::Error>()?
+            .into_database_error()
+            .unwrap()
+            .downcast::<PgDatabaseError>())
     }
 
     pub fn mock_search_index() -> anyhow::Result<SearchIndex> {
@@ -260,6 +265,7 @@ mod tests {
     pub fn mock_config() -> anyhow::Result<Config> {
         Ok(Config {
             public_url: Url::parse("http://localhost:1234")?,
+            db: DatabaseConfig::default(),
             utils: UtilsConfig::default(),
             smtp: Some(SmtpConfig {
                 username: "dev@secutils.dev".to_string(),
@@ -297,17 +303,18 @@ mod tests {
         )
     }
 
-    pub async fn mock_api() -> anyhow::Result<Api<MockResolver, AsyncStubTransport>> {
-        mock_api_with_config(mock_config()?).await
+    pub async fn mock_api(pool: PgPool) -> anyhow::Result<Api<MockResolver, AsyncStubTransport>> {
+        mock_api_with_config(pool, mock_config()?).await
     }
 
     pub async fn mock_api_with_config(
+        pool: PgPool,
         config: Config,
     ) -> anyhow::Result<Api<MockResolver, AsyncStubTransport>> {
         let webauthn = create_webauthn(&config)?;
         Ok(Api::new(
             config,
-            mock_db().await?,
+            Database::create(pool).await?,
             mock_search_index()?,
             mock_network(),
             webauthn,
@@ -316,13 +323,14 @@ mod tests {
     }
 
     pub async fn mock_api_with_network<DR: DnsResolver>(
+        pool: PgPool,
         network: Network<DR, AsyncStubTransport>,
     ) -> anyhow::Result<Api<DR, AsyncStubTransport>> {
         let config = mock_config()?;
         let webauthn = create_webauthn(&config)?;
         Ok(Api::new(
             config,
-            mock_db().await?,
+            Database::create(pool).await?,
             mock_search_index()?,
             network,
             webauthn,

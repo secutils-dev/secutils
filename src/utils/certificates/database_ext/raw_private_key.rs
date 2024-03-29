@@ -6,12 +6,12 @@ use super::raw_private_key_algorithm::RawPrivateKeyAlgorithm;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct RawPrivateKey {
-    pub id: Vec<u8>,
+    pub id: Uuid,
     pub name: String,
     pub alg: Vec<u8>,
     pub pkcs8: Vec<u8>,
-    pub encrypted: i64,
-    pub created_at: i64,
+    pub encrypted: bool,
+    pub created_at: OffsetDateTime,
 }
 
 impl TryFrom<RawPrivateKey> for PrivateKey {
@@ -19,12 +19,12 @@ impl TryFrom<RawPrivateKey> for PrivateKey {
 
     fn try_from(raw: RawPrivateKey) -> Result<Self, Self::Error> {
         Ok(PrivateKey {
-            id: Uuid::from_slice(raw.id.as_slice())?,
+            id: raw.id,
             name: raw.name,
             alg: postcard::from_bytes::<RawPrivateKeyAlgorithm>(&raw.alg)?.into(),
             pkcs8: raw.pkcs8,
-            encrypted: raw.encrypted > 0,
-            created_at: OffsetDateTime::from_unix_timestamp(raw.created_at)?,
+            encrypted: raw.encrypted,
+            created_at: raw.created_at,
         })
     }
 }
@@ -34,12 +34,12 @@ impl TryFrom<&PrivateKey> for RawPrivateKey {
 
     fn try_from(item: &PrivateKey) -> Result<Self, Self::Error> {
         Ok(RawPrivateKey {
-            id: item.id.into(),
+            id: item.id,
             name: item.name.clone(),
             alg: postcard::to_stdvec(&RawPrivateKeyAlgorithm::from(item.alg))?,
             pkcs8: item.pkcs8.clone(),
-            encrypted: item.encrypted as i64,
-            created_at: item.created_at.unix_timestamp(),
+            encrypted: item.encrypted,
+            created_at: item.created_at,
         })
     }
 }
@@ -55,15 +55,13 @@ mod tests {
     fn can_convert_into_private_key() -> anyhow::Result<()> {
         assert_eq!(
             PrivateKey::try_from(RawPrivateKey {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "pk-name".to_string(),
                 alg: vec![0, 1],
                 pkcs8: vec![1, 2, 3],
-                encrypted: 1,
+                encrypted: true,
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             PrivateKey {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -79,15 +77,13 @@ mod tests {
 
         assert_eq!(
             PrivateKey::try_from(RawPrivateKey {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "pk-name".to_string(),
                 alg: vec![0, 1],
                 pkcs8: vec![1, 2, 3],
-                encrypted: 0,
+                encrypted: false,
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             PrivateKey {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -118,15 +114,13 @@ mod tests {
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             RawPrivateKey {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "pk-name".to_string(),
                 alg: vec![0, 1],
                 pkcs8: vec![1, 2, 3],
-                encrypted: 1,
+                encrypted: true,
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             }
         );
 
@@ -142,15 +136,13 @@ mod tests {
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             RawPrivateKey {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "pk-name".to_string(),
                 alg: vec![0, 1],
                 pkcs8: vec![1, 2, 3],
-                encrypted: 0,
+                encrypted: false,
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             }
         );
 

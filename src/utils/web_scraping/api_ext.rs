@@ -983,12 +983,11 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 mod tests {
     use crate::{
         error::Error as SecutilsError,
-        scheduler::{
-            SchedulerJob, SchedulerJobConfig, SchedulerJobMetadata, SchedulerJobRetryStrategy,
-        },
+        scheduler::{SchedulerJob, SchedulerJobConfig, SchedulerJobRetryStrategy},
         tests::{
             mock_api, mock_api_with_config, mock_api_with_network, mock_config,
-            mock_network_with_records, mock_user,
+            mock_network_with_records, mock_scheduler_job, mock_upsert_scheduler_job, mock_user,
+            RawSchedulerJobStoredData,
         },
         utils::web_scraping::{
             api_ext::{
@@ -1009,15 +1008,15 @@ mod tests {
     use futures::StreamExt;
     use httpmock::MockServer;
     use insta::assert_debug_snapshot;
+    use sqlx::PgPool;
     use std::{net::Ipv4Addr, time::Duration};
     use time::OffsetDateTime;
-    use tokio_cron_scheduler::{CronJob, JobStored, JobStoredData, JobType};
     use trust_dns_resolver::{
         proto::rr::{rdata::A, RData, Record},
         Name,
     };
     use url::Url;
-    use uuid::uuid;
+    use uuid::{uuid, Uuid};
 
     fn get_resources(timestamp: i64, label: &str) -> anyhow::Result<WebScraperResourcesResponse> {
         Ok(WebScraperResourcesResponse {
@@ -1044,9 +1043,9 @@ mod tests {
         })
     }
 
-    #[tokio::test]
-    async fn properly_creates_new_web_page_resources_tracker() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_creates_new_web_page_resources_tracker(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -1084,9 +1083,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_creates_new_web_page_content_tracker() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_creates_new_web_page_content_tracker(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -1118,9 +1117,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_validates_web_page_resources_tracker_at_creation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_validates_web_page_resources_tracker_at_creation(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool.clone()).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -1387,13 +1388,15 @@ mod tests {
             @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received ftp://secutils.dev/.""###
         );
 
-        let api_with_local_network =
-            mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
+        let api_with_local_network = mock_api_with_network(
+            pool,
+            mock_network_with_records::<1>(vec![Record::from_rdata(
                 Name::new(),
                 300,
                 RData::A(A(Ipv4Addr::new(127, 0, 0, 1))),
-            )]))
-            .await?;
+            )]),
+        )
+        .await?;
 
         // Non-public URL.
         assert_debug_snapshot!(
@@ -1409,9 +1412,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_validates_web_page_content_tracker_at_creation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_validates_web_page_content_tracker_at_creation(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool.clone()).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -1678,13 +1683,15 @@ mod tests {
             @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received ftp://secutils.dev/.""###
         );
 
-        let api_with_local_network =
-            mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
+        let api_with_local_network = mock_api_with_network(
+            pool,
+            mock_network_with_records::<1>(vec![Record::from_rdata(
                 Name::new(),
                 300,
                 RData::A(A(Ipv4Addr::new(127, 0, 0, 1))),
-            )]))
-            .await?;
+            )]),
+        )
+        .await?;
 
         // Non-public URL.
         assert_debug_snapshot!(
@@ -1700,9 +1707,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_updates_web_page_resources_tracker() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_updates_web_page_resources_tracker(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -1874,9 +1881,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_validates_web_page_resources_tracker_at_update() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_validates_web_page_resources_tracker_at_update(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool.clone()).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -2152,19 +2161,15 @@ mod tests {
             @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received ftp://secutils.dev/.""###
         );
 
-        let api_with_local_network =
-            mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
+        let api_with_local_network = mock_api_with_network(
+            pool,
+            mock_network_with_records::<1>(vec![Record::from_rdata(
                 Name::new(),
                 300,
                 RData::A(A(Ipv4Addr::new(127, 0, 0, 1))),
-            )]))
-            .await?;
-        api_with_local_network.db.insert_user(&mock_user).await?;
-        api_with_local_network
-            .db
-            .web_scraping(mock_user.id)
-            .insert_web_page_tracker(&tracker)
-            .await?;
+            )]),
+        )
+        .await?;
 
         // Non-public URL.
         let web_scraping = api_with_local_network.web_scraping(&mock_user);
@@ -2179,9 +2184,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_updates_web_page_content_tracker() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_updates_web_page_content_tracker(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -2338,9 +2343,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_validates_web_page_content_tracker_at_update() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_validates_web_page_content_tracker_at_update(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool.clone()).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -2618,19 +2625,15 @@ mod tests {
             @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received ftp://secutils.dev/.""###
         );
 
-        let api_with_local_network =
-            mock_api_with_network(mock_network_with_records::<1>(vec![Record::from_rdata(
+        let api_with_local_network = mock_api_with_network(
+            pool,
+            mock_network_with_records::<1>(vec![Record::from_rdata(
                 Name::new(),
                 300,
                 RData::A(A(Ipv4Addr::new(127, 0, 0, 1))),
-            )]))
-            .await?;
-        api_with_local_network.db.insert_user(&mock_user).await?;
-        api_with_local_network
-            .db
-            .web_scraping(mock_user.id)
-            .insert_web_page_tracker(&tracker)
-            .await?;
+            )]),
+        )
+        .await?;
 
         // Non-public URL.
         let web_scraping = api_with_local_network.web_scraping(&mock_user);
@@ -2645,9 +2648,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_updates_web_page_resources_job_id_at_update() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_updates_web_page_resources_job_id_at_update(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -2745,9 +2750,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_updates_web_page_content_job_id_at_update() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_updates_web_page_content_job_id_at_update(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -2839,9 +2846,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_removes_web_page_trackers() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_removes_web_page_trackers(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -2891,9 +2898,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_returns_resources_trackers_by_id() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_returns_resources_trackers_by_id(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -2942,9 +2949,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_returns_content_trackers_by_id() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_returns_content_trackers_by_id(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -2993,9 +3000,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_returns_all_resources_trackers() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_returns_all_resources_trackers(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -3040,9 +3047,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_returns_all_content_trackers() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_returns_all_content_trackers(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -3087,13 +3094,13 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_saves_web_page_resources() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_saves_web_page_resources(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
         let mut config = mock_config()?;
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -3265,14 +3272,15 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_forwards_error_if_web_page_resources_extraction_fails() -> anyhow::Result<()>
-    {
+    #[sqlx::test]
+    async fn properly_forwards_error_if_web_page_resources_extraction_fails(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let server = MockServer::start();
         let mut config = mock_config()?;
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -3339,13 +3347,13 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_saves_web_page_content() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_saves_web_page_content(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
         let mut config = mock_config()?;
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -3534,13 +3542,15 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_forwards_error_if_web_page_content_extraction_fails() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_forwards_error_if_web_page_content_extraction_fails(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let server = MockServer::start();
         let mut config = mock_config()?;
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -3607,13 +3617,15 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_ignores_web_page_resources_with_the_same_timestamp() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_ignores_web_page_resources_with_the_same_timestamp(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let server = MockServer::start();
         let mut config = mock_config()?;
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -3677,13 +3689,15 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_ignores_web_page_content_with_the_same_timestamp() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_ignores_web_page_content_with_the_same_timestamp(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let server = MockServer::start();
         let mut config = mock_config()?;
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -3764,13 +3778,13 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_ignores_web_page_resources_with_no_diff() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_ignores_web_page_resources_with_no_diff(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
         let mut config = mock_config()?;
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -3851,13 +3865,13 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_ignores_web_page_content_with_no_diff() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_ignores_web_page_content_with_no_diff(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
         let mut config = mock_config()?;
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -3939,13 +3953,13 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_removes_web_page_resources() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_removes_web_page_resources(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
         let mut config = mock_config()?;
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -4011,13 +4025,13 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_removes_web_page_content() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_removes_web_page_content(pool: PgPool) -> anyhow::Result<()> {
         let server = MockServer::start();
         let mut config = mock_config()?;
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -4083,13 +4097,15 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_removes_web_page_resources_when_tracker_is_removed() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_removes_web_page_resources_when_tracker_is_removed(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let server = MockServer::start();
         let mut config = mock_config()?;
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -4155,13 +4171,15 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_removes_web_page_content_when_tracker_is_removed() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_removes_web_page_content_when_tracker_is_removed(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let server = MockServer::start();
         let mut config = mock_config()?;
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -4227,13 +4245,15 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_removes_web_page_resources_when_tracker_url_changed() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_removes_web_page_resources_when_tracker_url_changed(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let server = MockServer::start();
         let mut config = mock_config()?;
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -4322,13 +4342,15 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_removes_web_page_content_when_tracker_url_changed() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn properly_removes_web_page_content_when_tracker_url_changed(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let server = MockServer::start();
         let mut config = mock_config()?;
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -4417,10 +4439,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
+    #[sqlx::test]
     async fn properly_resets_web_page_resources_job_id_when_tracker_schedule_changed(
+        pool: PgPool,
     ) -> anyhow::Result<()> {
-        let api = mock_api().await?;
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -4528,10 +4551,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
+    #[sqlx::test]
     async fn properly_resets_web_page_content_job_id_when_tracker_schedule_changed(
+        pool: PgPool,
     ) -> anyhow::Result<()> {
-        let api = mock_api().await?;
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -4639,10 +4663,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
+    #[sqlx::test]
     async fn properly_removes_web_page_resources_job_id_when_tracker_revisions_disabled(
+        pool: PgPool,
     ) -> anyhow::Result<()> {
-        let api = mock_api().await?;
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -4746,10 +4771,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
+    #[sqlx::test]
     async fn properly_removes_web_page_content_job_id_when_tracker_revisions_disabled(
+        pool: PgPool,
     ) -> anyhow::Result<()> {
-        let api = mock_api().await?;
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -4853,9 +4879,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_manipulate_tracker_jobs() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_manipulate_tracker_jobs(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -5012,9 +5038,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_return_pending_resources_tracker_jobs() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_return_pending_resources_tracker_jobs(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -5028,29 +5054,22 @@ mod tests {
         assert!(pending_trackers.is_empty());
 
         for n in 0..=2 {
-            let job = JobStoredData {
-                id: Some(
-                    uuid::Uuid::parse_str(&format!("67e55044-10b1-426f-9247-bb680e5fe0c{}", n))?
-                        .into(),
-                ),
-                last_updated: Some(946720800u64 + n),
-                last_tick: Some(946720700u64),
-                next_tick: 946720900u64,
-                count: n as u32,
-                job_type: JobType::Cron as i32,
-                extra: (SchedulerJobMetadata::new(SchedulerJob::WebPageTrackersTrigger {
-                    kind: WebPageTrackerKind::WebPageResources,
-                }))
-                .try_into()?,
-                ran: true,
-                stopped: n != 1,
-                job: Some(JobStored::CronJob(CronJob {
-                    schedule: format!("{} 0 0 1 1 * *", n),
-                })),
-                time_offset_seconds: 0,
+            let job = RawSchedulerJobStoredData {
+                last_updated: Some(946720800 + n),
+                last_tick: Some(946720700),
+                next_tick: Some(946720900),
+                ran: Some(true),
+                stopped: Some(n != 1),
+                ..mock_scheduler_job(
+                    Uuid::parse_str(&format!("67e55044-10b1-426f-9247-bb680e5fe0c{}", n))?,
+                    SchedulerJob::WebPageTrackersTrigger {
+                        kind: WebPageTrackerKind::WebPageResources,
+                    },
+                    format!("{} 0 0 1 1 * *", n),
+                )
             };
 
-            api.db.upsert_scheduler_job(&job).await?;
+            mock_upsert_scheduler_job(&api.db, &job).await?;
         }
 
         for n in 0..=2 {
@@ -5115,9 +5134,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_return_pending_content_tracker_jobs() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_return_pending_content_tracker_jobs(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -5131,29 +5150,22 @@ mod tests {
         assert!(pending_trackers.is_empty());
 
         for n in 0..=2 {
-            let job = JobStoredData {
-                id: Some(
-                    uuid::Uuid::parse_str(&format!("67e55044-10b1-426f-9247-bb680e5fe0c{}", n))?
-                        .into(),
-                ),
-                last_updated: Some(946720800u64 + n),
-                last_tick: Some(946720700u64),
-                next_tick: 946720900u64,
-                count: n as u32,
-                job_type: JobType::Cron as i32,
-                extra: (SchedulerJobMetadata::new(SchedulerJob::WebPageTrackersTrigger {
-                    kind: WebPageTrackerKind::WebPageContent,
-                }))
-                .try_into()?,
-                ran: true,
-                stopped: n != 1,
-                job: Some(JobStored::CronJob(CronJob {
-                    schedule: format!("{} 0 0 1 1 * *", n),
-                })),
-                time_offset_seconds: 0,
+            let job = RawSchedulerJobStoredData {
+                last_updated: Some(946720800 + n),
+                last_tick: Some(946720700),
+                next_tick: Some(946720900),
+                ran: Some(true),
+                stopped: Some(n != 1),
+                ..mock_scheduler_job(
+                    Uuid::parse_str(&format!("67e55044-10b1-426f-9247-bb680e5fe0c{}", n))?,
+                    SchedulerJob::WebPageTrackersTrigger {
+                        kind: WebPageTrackerKind::WebPageContent,
+                    },
+                    format!("{} 0 0 1 1 * *", n),
+                )
             };
 
-            api.db.upsert_scheduler_job(&job).await?;
+            mock_upsert_scheduler_job(&api.db, &job).await?;
         }
 
         for n in 0..=2 {

@@ -137,6 +137,7 @@ pub mod tests {
     };
     use serde::Deserialize;
     use serde_json::json;
+    use sqlx::PgPool;
     use uuid::uuid;
 
     fn get_mock_directives() -> anyhow::Result<Vec<ContentSecurityPolicyDirective>> {
@@ -168,9 +169,9 @@ pub mod tests {
         ])
     }
 
-    #[tokio::test]
-    async fn can_list_content_security_policies() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_list_content_security_policies(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -212,9 +213,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_retrieve_content_security_policy() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_retrieve_content_security_policy(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -296,9 +297,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_create_content_security_policy() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_create_content_security_policy(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -330,9 +331,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_update_content_security_policy() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_update_content_security_policy(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -372,9 +373,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_delete_content_security_policy() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_delete_content_security_policy(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -411,9 +412,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_serialize_content_security_policy() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_serialize_content_security_policy(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -450,9 +451,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_share_and_unshare_content_security_policy() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_share_and_unshare_content_security_policy(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;

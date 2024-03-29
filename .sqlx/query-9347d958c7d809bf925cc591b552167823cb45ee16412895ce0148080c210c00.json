@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO user_data_webhooks_responders_history (user_id, id, responder_id, data, created_at)\n        VALUES ( $1, $2, $3, $4, $5 )\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Uuid",
+        "Uuid",
+        "Bytea",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9347d958c7d809bf925cc591b552167823cb45ee16412895ce0148080c210c00"
+}

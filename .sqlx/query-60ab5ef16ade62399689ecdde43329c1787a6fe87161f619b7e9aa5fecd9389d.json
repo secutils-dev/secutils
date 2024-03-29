@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT id, name, alg, pkcs8, encrypted, created_at\nFROM user_data_certificates_private_keys\nWHERE user_id = $1 AND id = $2\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "alg",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 3,
+        "name": "pkcs8",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 4,
+        "name": "encrypted",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "60ab5ef16ade62399689ecdde43329c1787a6fe87161f619b7e9aa5fecd9389d"
+}

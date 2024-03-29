@@ -71,11 +71,12 @@ mod tests {
     };
     use insta::assert_debug_snapshot;
     use itertools::Itertools;
+    use sqlx::PgPool;
     use time::OffsetDateTime;
 
-    #[tokio::test]
-    async fn can_compile_account_activation_template_to_email() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_compile_account_activation_template_to_email(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let user = mock_user()?;
         let activation_code = "some-code";
 
@@ -138,9 +139,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_compile_password_reset_template_to_email() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_compile_password_reset_template_to_email(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let user = mock_user()?;
         let reset_code = "some-code";
 
@@ -203,9 +204,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_compile_resources_tracker_changes_template_to_email() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_compile_resources_tracker_changes_template_to_email(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mut template = NotificationContentTemplate::WebPageResourcesTrackerChanges {
             tracker_name: "tracker".to_string(),
@@ -256,9 +259,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_compile_resources_tracker_changes_error_template_to_email() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_compile_resources_tracker_changes_error_template_to_email(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mut template = NotificationContentTemplate::WebPageResourcesTrackerChanges {
             tracker_name: "tracker".to_string(),
@@ -309,9 +314,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_compile_content_tracker_changes_template_to_email() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_compile_content_tracker_changes_template_to_email(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mut template = NotificationContentTemplate::WebPageContentTrackerChanges {
             tracker_name: "tracker".to_string(),
@@ -362,9 +369,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_compile_content_tracker_changes_error_template_to_email() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_compile_content_tracker_changes_error_template_to_email(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mut template = NotificationContentTemplate::WebPageContentTrackerChanges {
             tracker_name: "tracker".to_string(),

@@ -1,4 +1,5 @@
 mod components_config;
+mod database_config;
 mod raw_config;
 mod scheduler_jobs_config;
 mod security_config;
@@ -11,6 +12,7 @@ use url::Url;
 
 pub use self::{
     components_config::ComponentsConfig,
+    database_config::DatabaseConfig,
     raw_config::RawConfig,
     scheduler_jobs_config::SchedulerJobsConfig,
     security_config::{BuiltinUserConfig, SecurityConfig, SESSION_KEY_LENGTH_BYTES},
@@ -32,6 +34,8 @@ pub static SECUTILS_USER_AGENT: &str =
 pub struct Config {
     /// External/public URL through which service is being accessed.
     pub public_url: Url,
+    /// Database configuration.
+    pub db: DatabaseConfig,
     /// Configuration for the utility functions.
     pub utils: UtilsConfig,
     /// Configuration for the SMTP functionality.
@@ -54,6 +58,7 @@ impl From<RawConfig> for Config {
     fn from(raw_config: RawConfig) -> Self {
         Self {
             public_url: raw_config.public_url,
+            db: raw_config.db,
             smtp: raw_config.smtp,
             components: raw_config.components,
             subscriptions: raw_config.subscriptions,
@@ -103,6 +108,13 @@ mod tests {
                 path: "/",
                 query: None,
                 fragment: None,
+            },
+            db: DatabaseConfig {
+                name: "secutils",
+                host: "localhost",
+                port: 5432,
+                username: "postgres",
+                password: None,
             },
             utils: UtilsConfig {
                 webhook_url_type: Subdomain,

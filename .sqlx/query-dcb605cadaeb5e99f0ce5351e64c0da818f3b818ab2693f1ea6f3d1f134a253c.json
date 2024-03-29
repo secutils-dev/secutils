@@ -1,0 +1,42 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT user_id, key, value, timestamp\nFROM user_data\nWHERE user_id = $1 AND namespace = $2 AND key = $3\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "key",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "value",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 3,
+        "name": "timestamp",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "dcb605cadaeb5e99f0ce5351e64c0da818f3b818ab2693f1ea6f3d1f134a253c"
+}

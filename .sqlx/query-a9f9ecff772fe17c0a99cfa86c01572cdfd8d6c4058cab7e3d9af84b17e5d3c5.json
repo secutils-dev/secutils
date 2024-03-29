@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nINSERT INTO user_subscriptions (user_id, tier, started_at, ends_at, trial_started_at, trial_ends_at)\nVALUES ( $1, $2, $3, $4, $5, $6 )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a9f9ecff772fe17c0a99cfa86c01572cdfd8d6c4058cab7e3d9af84b17e5d3c5"
+}

@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nDELETE FROM users\nWHERE email = $1\nRETURNING id as \"id!\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "1b65ca2a3c3ce2c521fe0b1a691b897113cf30f46542052e26fdcb5415a77b9b"
+}

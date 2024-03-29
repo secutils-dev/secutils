@@ -5,7 +5,7 @@ use crate::{
 };
 use std::ops::Add;
 use time::OffsetDateTime;
-use tokio_cron_scheduler::JobId;
+use uuid::Uuid;
 
 pub struct SchedulerApiExt<'a, DR: DnsResolver, ET: EmailTransport> {
     api: &'a Api<DR, ET>,
@@ -20,7 +20,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> SchedulerApiExt<'a, DR, ET> {
     /// Tries to schedule a retry for a specified job. If retry is not possible, returns `None`.
     pub async fn schedule_retry(
         &self,
-        job_id: JobId,
+        job_id: Uuid,
         retry_strategy: &SchedulerJobRetryStrategy,
     ) -> anyhow::Result<Option<SchedulerJobRetryState>> {
         let db = &self.api.db;
@@ -78,37 +78,40 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        scheduler::{SchedulerJob, SchedulerJobMetadata, SchedulerJobRetryStrategy},
-        tests::mock_api,
+        scheduler::{
+            database_ext::RawSchedulerJobStoredData, SchedulerJob, SchedulerJobMetadata,
+            SchedulerJobRetryStrategy,
+        },
+        tests::{mock_api, mock_upsert_scheduler_job},
     };
+    use sqlx::PgPool;
     use std::{ops::Add, time::Duration};
     use time::OffsetDateTime;
-    use tokio_cron_scheduler::{CronJob, JobStored, JobStoredData, JobType};
     use uuid::uuid;
 
-    #[tokio::test]
-    async fn properly_schedules_retry() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_schedules_retry(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let scheduler = api.scheduler();
 
         let job_id = uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8");
-        let job = JobStoredData {
-            id: Some(job_id.into()),
-            last_updated: Some(946720800u64),
-            last_tick: Some(946720700u64),
-            next_tick: 946720900u64,
-            count: 3,
-            job_type: JobType::Cron as i32,
-            extra: SchedulerJobMetadata::new(SchedulerJob::NotificationsSend).try_into()?,
-            ran: true,
-            stopped: false,
-            job: Some(JobStored::CronJob(CronJob {
-                schedule: "0 0 0 1 1 * *".to_string(),
-            })),
-            time_offset_seconds: 0,
+        let job = RawSchedulerJobStoredData {
+            id: job_id,
+            last_updated: Some(946720800),
+            last_tick: Some(946720700),
+            next_tick: Some(946720900),
+            count: Some(3),
+            job_type: 3,
+            extra: Some(SchedulerJobMetadata::new(SchedulerJob::NotificationsSend).try_into()?),
+            ran: Some(true),
+            stopped: Some(false),
+            schedule: None,
+            repeating: None,
+            time_offset_seconds: Some(0),
+            repeated_every: None,
         };
 
-        api.db.upsert_scheduler_job(&job).await?;
+        mock_upsert_scheduler_job(&api.db, &job).await?;
 
         let now = OffsetDateTime::now_utc();
         let retry_state = scheduler

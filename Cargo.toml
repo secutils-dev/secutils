@@ -70,9 +70,6 @@ httpmock = "0.7.0"
 insta = "1.36.1"
 toml = "0.8.12"
 
-[patch.crates-io]
-tokio-cron-scheduler = { path = "./vendor/tokio-cron-scheduler" }
-
 [features]
 default = [
     "actix-session/cookie-session",
@@ -102,13 +99,15 @@ default = [
     "sqlx/macros",
     "sqlx/migrate",
     "sqlx/runtime-tokio-rustls",
-    "sqlx/sqlite",
+    "sqlx/postgres",
+    "sqlx/time",
     "sqlx/uuid",
     "time/formatting",
     "time/macros",
     "tlsh2/diff",
     "tokio/rt-multi-thread",
     "tokio/macros",
+    "tokio-cron-scheduler/postgres_storage",
     "url/serde",
     "uuid/v7",
     "webauthn-rs/danger-allow-state-serialisation"

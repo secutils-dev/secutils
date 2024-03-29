@@ -4,17 +4,17 @@ use time::OffsetDateTime;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct RawUser {
-    pub id: i64,
+    pub id: i32,
     pub email: String,
     pub handle: String,
     pub credentials: Vec<u8>,
-    pub created: i64,
-    pub activated: i64,
+    pub created: OffsetDateTime,
+    pub activated: bool,
     pub subscription_tier: i64,
-    pub subscription_started_at: i64,
-    pub subscription_ends_at: Option<i64>,
-    pub subscription_trial_started_at: Option<i64>,
-    pub subscription_trial_ends_at: Option<i64>,
+    pub subscription_started_at: OffsetDateTime,
+    pub subscription_ends_at: Option<OffsetDateTime>,
+    pub subscription_trial_started_at: Option<OffsetDateTime>,
+    pub subscription_trial_ends_at: Option<OffsetDateTime>,
 }
 
 impl TryFrom<RawUser> for User {
@@ -27,23 +27,14 @@ impl TryFrom<RawUser> for User {
             handle: raw_user.handle,
             credentials: serde_json::from_slice(raw_user.credentials.as_slice())
                 .with_context(|| "Cannot deserialize user credentials".to_string())?,
-            created: OffsetDateTime::from_unix_timestamp(raw_user.created)?,
-            activated: raw_user.activated > 0,
+            created: raw_user.created,
+            activated: raw_user.activated,
             subscription: UserSubscription {
                 tier: u8::try_from(raw_user.subscription_tier)?.try_into()?,
-                started_at: OffsetDateTime::from_unix_timestamp(raw_user.subscription_started_at)?,
-                ends_at: raw_user
-                    .subscription_ends_at
-                    .map(OffsetDateTime::from_unix_timestamp)
-                    .transpose()?,
-                trial_started_at: raw_user
-                    .subscription_trial_started_at
-                    .map(OffsetDateTime::from_unix_timestamp)
-                    .transpose()?,
-                trial_ends_at: raw_user
-                    .subscription_trial_ends_at
-                    .map(OffsetDateTime::from_unix_timestamp)
-                    .transpose()?,
+                started_at: raw_user.subscription_started_at,
+                ends_at: raw_user.subscription_ends_at,
+                trial_started_at: raw_user.subscription_trial_started_at,
+                trial_ends_at: raw_user.subscription_trial_ends_at,
             },
         })
     }
@@ -57,6 +48,7 @@ mod tests {
         users::{SubscriptionTier, User},
     };
     use insta::assert_debug_snapshot;
+    use time::OffsetDateTime;
 
     #[test]
     fn can_convert_into_user() -> anyhow::Result<()> {
@@ -69,11 +61,11 @@ mod tests {
                 ..Default::default()
             }).unwrap(),
             // January 1, 2000 11:00:00
-            created: 946720800,
-            activated: 1,
+            created: OffsetDateTime::from_unix_timestamp(946720800)?,
+            activated: true,
             subscription_tier: SubscriptionTier::Ultimate as i64,
             // January 1, 2000 11:00:01
-            subscription_started_at: 946720801,
+            subscription_started_at: OffsetDateTime::from_unix_timestamp(946720801)?,
             subscription_ends_at: None,
             subscription_trial_started_at: None,
             subscription_trial_ends_at: None,
@@ -111,14 +103,14 @@ mod tests {
                 ..Default::default()
             }).unwrap(),
             // January 1, 2000 11:00:00
-            created: 946720800,
-            activated: 1,
+            created: OffsetDateTime::from_unix_timestamp(946720800)?,
+            activated: true,
             subscription_tier: SubscriptionTier::Professional as i64,
             // January 1, 2000 11:00:01
-            subscription_started_at: 946720801,
-            subscription_ends_at: Some(946720802),
-            subscription_trial_started_at: Some(946720803),
-            subscription_trial_ends_at: Some(946720804),
+            subscription_started_at: OffsetDateTime::from_unix_timestamp(946720801)?,
+            subscription_ends_at: Some(OffsetDateTime::from_unix_timestamp(946720802)?),
+            subscription_trial_started_at: Some(OffsetDateTime::from_unix_timestamp(946720803)?),
+            subscription_trial_ends_at: Some(OffsetDateTime::from_unix_timestamp(946720804)?),
         })?, @r###"
         User {
             id: UserId(
@@ -159,15 +151,11 @@ mod tests {
             id: 1,
             email: "dev@secutils.dev".to_string(),
             handle: "dev-handle".to_string(),
-            credentials: serde_json::to_vec(&StoredCredentials {
-                password_hash: Some("password-hash".to_string()),
-                ..Default::default()
-            })
-            .unwrap(),
-            created: time::Date::MIN.midnight().assume_utc().unix_timestamp() - 1,
-            activated: 1,
+            credentials: vec![1, 2, 3],
+            created: time::Date::MIN.midnight().assume_utc(),
+            activated: true,
             subscription_tier: SubscriptionTier::Ultimate as i64,
-            subscription_started_at: time::Date::MIN.midnight().assume_utc().unix_timestamp() - 2,
+            subscription_started_at: time::Date::MIN.midnight().assume_utc(),
             subscription_ends_at: None,
             subscription_trial_started_at: None,
             subscription_trial_ends_at: None,

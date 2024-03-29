@@ -10,7 +10,7 @@ pub use error_kind::ErrorKind;
 /// Secutils.dev native error type.
 #[derive(thiserror::Error)]
 pub struct Error {
-    root_cause: anyhow::Error,
+    pub root_cause: anyhow::Error,
     kind: ErrorKind,
 }
 

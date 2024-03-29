@@ -10,16 +10,16 @@ use crate::{
 use anyhow::{anyhow, bail};
 use raw_responder::RawResponder;
 use raw_responder_request::RawResponderRequest;
-use sqlx::{query, query_as, Pool, Sqlite};
+use sqlx::{query, query_as, Pool, Postgres};
 use uuid::Uuid;
 
 /// A database extension for the webhooks utility-related operations.
 pub struct WebhooksDatabaseExt<'pool> {
-    pool: &'pool Pool<Sqlite>,
+    pool: &'pool Pool<Postgres>,
 }
 
 impl<'pool> WebhooksDatabaseExt<'pool> {
-    pub fn new(pool: &'pool Pool<Sqlite>) -> Self {
+    pub fn new(pool: &'pool Pool<Postgres>) -> Self {
         Self { pool }
     }
 
@@ -30,7 +30,7 @@ impl<'pool> WebhooksDatabaseExt<'pool> {
             r#"
 SELECT id, name, path, method, enabled, settings, created_at
 FROM user_data_webhooks_responders
-WHERE user_id = ?1
+WHERE user_id = $1
 ORDER BY created_at
                 "#,
             *user_id
@@ -52,13 +52,12 @@ ORDER BY created_at
         user_id: UserId,
         id: Uuid,
     ) -> anyhow::Result<Option<Responder>> {
-        let id: &[u8] = id.as_ref();
         query_as!(
             RawResponder,
             r#"
         SELECT id, name, path, method, enabled, settings, created_at
         FROM user_data_webhooks_responders
-        WHERE user_id = ?1 AND id = ?2
+        WHERE user_id = $1 AND id = $2
                         "#,
             *user_id,
             id
@@ -83,7 +82,7 @@ ORDER BY created_at
             r#"
         SELECT id, name, path, method, enabled, settings, created_at
         FROM user_data_webhooks_responders
-        WHERE user_id = ?1 AND path = ?2 AND (method = ?3 OR method = ?4)
+        WHERE user_id = $1 AND path = $2 AND (method = $3 OR method = $4)
                         "#,
             *user_id,
             path,
@@ -103,22 +102,23 @@ ORDER BY created_at
         responder: &Responder,
     ) -> anyhow::Result<()> {
         let raw_responder = RawResponder::try_from(responder)?;
+        let id = *user_id;
         let raw_any_method = RawResponder::get_raw_method(ResponderMethod::Any)?;
         // Construct a query that inserts a new responder only if there is no other existing
         // responder that already covers the same path and method.
         let result = query!(
                 r#"
         WITH new_responder(user_id, id, name, path, method, enabled, settings, created_at) AS (
-            VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8 )
+            VALUES ( $1::integer, $2::uuid, $3, $4, $5::bytea, $6::bool, $7::bytea, $8::timestamptz )
         )
         INSERT INTO user_data_webhooks_responders (user_id, id, name, path, method, enabled, settings, created_at)
         SELECT * FROM new_responder
         WHERE NOT EXISTS(
             SELECT id FROM user_data_webhooks_responders 
-            WHERE user_id = ?1 AND path = ?4 AND (method = ?9 OR ?5 = ?9)
+            WHERE user_id = $1 AND path = $4 AND (method = $9 OR $5 = $9)
         )
                 "#,
-                *user_id,
+                id,
                 raw_responder.id,
                 raw_responder.name,
                 raw_responder.path,
@@ -176,10 +176,10 @@ ORDER BY created_at
         let result = query!(
             r#"
     UPDATE user_data_webhooks_responders
-    SET name = ?3, path = ?4, method = ?5, enabled = ?6, settings = ?7
-    WHERE user_id = ?1 AND id = ?2 AND NOT EXISTS(
+    SET name = $3, path = $4, method = $5, enabled = $6, settings = $7
+    WHERE user_id = $1 AND id = $2 AND NOT EXISTS(
         SELECT id FROM user_data_webhooks_responders 
-        WHERE user_id = ?1 AND id != ?2 AND path = ?4 AND (method = ?8 OR method = ?5 OR ?5 = ?8)
+        WHERE user_id = $1 AND id != $2 AND path = $4 AND (method = $8 OR method = $5 OR $5 = $8)
     )
             "#,
             *user_id,
@@ -228,11 +228,10 @@ ORDER BY created_at
 
     /// Removes responder for the specified user with the specified ID.
     pub async fn remove_responder(&self, user_id: UserId, id: Uuid) -> anyhow::Result<()> {
-        let id: &[u8] = id.as_ref();
         query!(
             r#"
         DELETE FROM user_data_webhooks_responders
-        WHERE user_id = ?1 AND id = ?2
+        WHERE user_id = $1 AND id = $2
                         "#,
             *user_id,
             id
@@ -254,7 +253,7 @@ ORDER BY created_at
             r#"
     SELECT id, responder_id, data, created_at
     FROM user_data_webhooks_responders_history
-    WHERE user_id = ?1 AND responder_id = ?2
+    WHERE user_id = $1 AND responder_id = $2
     ORDER BY created_at
                     "#,
             *user_id,
@@ -277,14 +276,13 @@ ORDER BY created_at
         user_id: UserId,
         responder_id: Uuid,
     ) -> anyhow::Result<()> {
-        let id: &[u8] = responder_id.as_ref();
         query!(
             r#"
         DELETE FROM user_data_webhooks_responders_history
-        WHERE user_id = ?1 AND responder_id = ?2
+        WHERE user_id = $1 AND responder_id = $2
                         "#,
             *user_id,
-            id
+            responder_id
         )
         .execute(self.pool)
         .await?;
@@ -302,7 +300,7 @@ ORDER BY created_at
         let result = query!(
                 r#"
         INSERT INTO user_data_webhooks_responders_history (user_id, id, responder_id, data, created_at)
-        VALUES ( ?1, ?2, ?3, ?4, ?5 )
+        VALUES ( $1, $2, $3, $4, $5 )
                 "#,
                 *user_id,
                 raw_request.id,
@@ -333,7 +331,7 @@ ORDER BY created_at
         query!(
             r#"
         DELETE FROM user_data_webhooks_responders_history
-        WHERE user_id = ?1 AND responder_id = ?2 AND id = ?3
+        WHERE user_id = $1 AND responder_id = $2 AND id = $3
                         "#,
             *user_id,
             responder_id,
@@ -356,11 +354,13 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use crate::{
+        database::Database,
         error::Error as SecutilsError,
-        tests::{mock_db, mock_user, MockResponderBuilder},
+        tests::{mock_user, to_database_error, MockResponderBuilder},
         utils::webhooks::{Responder, ResponderMethod, ResponderRequest},
     };
     use insta::assert_debug_snapshot;
+    use sqlx::PgPool;
     use std::borrow::Cow;
     use time::OffsetDateTime;
     use uuid::{uuid, Uuid};
@@ -381,10 +381,10 @@ mod tests {
         })
     }
 
-    #[tokio::test]
-    async fn can_add_and_retrieve_responders() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_add_and_retrieve_responders(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let mut responders: Vec<Responder> = vec![
@@ -427,10 +427,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn correctly_handles_duplicated_responders_on_insert() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn correctly_handles_duplicated_responders_on_insert(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let responder = MockResponderBuilder::create(
@@ -461,18 +461,12 @@ mod tests {
             .downcast::<SecutilsError>()
             .unwrap();
         assert_debug_snapshot!(
-            insert_error,
-            @r###"
-        Error {
-            context: "Responder with such name (\'some-name\') already exists.",
-            source: Database(
-                SqliteError {
-                    code: 2067,
-                    message: "UNIQUE constraint failed: user_data_webhooks_responders.name, user_data_webhooks_responders.user_id",
-                },
-            ),
-        }
-        "###
+            insert_error.root_cause.to_string(),
+            @r###""Responder with such name ('some-name') already exists.""###
+        );
+        assert_debug_snapshot!(
+            to_database_error(insert_error.root_cause)?.message(),
+            @r###""duplicate key value violates unique constraint \"user_data_webhooks_responders_name_user_id_key\"""###
         );
 
         // Same path and method.
@@ -492,18 +486,12 @@ mod tests {
             .downcast::<SecutilsError>()
             .unwrap();
         assert_debug_snapshot!(
-            insert_error,
-            @r###"
-        Error {
-            context: "Responder with such path (\'/\') and method (\'Post\') already exists.",
-            source: Database(
-                SqliteError {
-                    code: 2067,
-                    message: "UNIQUE constraint failed: user_data_webhooks_responders.path, user_data_webhooks_responders.method, user_data_webhooks_responders.user_id",
-                },
-            ),
-        }
-        "###
+            insert_error.root_cause.to_string(),
+            @r###""Responder with such name ('some-name-2') already exists.""###
+        );
+        assert_debug_snapshot!(
+            to_database_error(insert_error.root_cause)?.message(),
+            @r###""duplicate key value violates unique constraint \"user_data_webhooks_responders_path_method_user_id_key\"""###
         );
 
         // Same path and ANY method.
@@ -563,10 +551,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_update_responder() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_update_responder(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let webhooks = db.webhooks();
@@ -613,10 +601,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn correctly_handles_duplicated_responders_on_update() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn correctly_handles_duplicated_responders_on_update(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let webhooks = db.webhooks();
@@ -653,18 +641,12 @@ mod tests {
             .downcast::<SecutilsError>()
             .unwrap();
         assert_debug_snapshot!(
-            update_error,
-            @r###"
-            Error {
-                context: "Responder with such name (\'some-name\') already exists.",
-                source: Database(
-                    SqliteError {
-                        code: 2067,
-                        message: "UNIQUE constraint failed: user_data_webhooks_responders.name, user_data_webhooks_responders.user_id",
-                    },
-                ),
-            }
-            "###
+            update_error.root_cause.to_string(),
+            @r###""Responder with such name ('some-name') already exists.""###
+        );
+        assert_debug_snapshot!(
+            to_database_error(update_error.root_cause)?.message(),
+            @r###""duplicate key value violates unique constraint \"user_data_webhooks_responders_name_user_id_key\"""###
         );
 
         // Same path and method.
@@ -752,10 +734,12 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn correctly_handles_non_existent_responders_on_update() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn correctly_handles_non_existent_responders_on_update(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let update_error = db
@@ -781,10 +765,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_remove_responders() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_remove_responders(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let mut responders = vec![
@@ -851,10 +835,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_retrieve_responders_for_path_and_method() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_retrieve_responders_for_path_and_method(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let responders = vec![
@@ -911,10 +895,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_retrieve_all_responders() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_retrieve_all_responders(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let responders = vec![
@@ -942,10 +926,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_add_and_retrieve_history_revisions() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_add_and_retrieve_history_revisions(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let responders = vec![
@@ -1012,10 +996,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_remove_responder_requests() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_remove_responder_requests(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let responders = vec![
@@ -1101,10 +1085,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_clear_all_responder_requests_at_once() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_clear_all_responder_requests_at_once(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let responders = vec![

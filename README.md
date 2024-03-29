@@ -35,19 +35,44 @@ Secutils.dev adheres to [open security principles](https://en.wikipedia.org/wiki
 
 ## Getting started
 
-You can start the Secutils.dev server with `cargo run`. By default, the server will be accessible
-via http://localhost:7070. Use `curl` to verify that the server is up and running:
+Before running the Secutils.dev server, you need to configure the database connection. If you don't have a PostgreSQL
+server running, you can run a local one with Docker:
+
+```shell
+docker run --rm -d \
+  -v "$(pwd)"/.data:/var/lib/postgresql/data \
+  -p 5432:5432 \
+  --network secutils \
+  --name secutils_db \
+  -e POSTGRES_DB=secutils \
+  -e POSTGRES_HOST_AUTH_METHOD=trust \
+  postgres
+```
+
+Make sure to replace `POSTGRES_HOST_AUTH_METHOD=trust` with a more secure authentication method if you're planning to
+use a local database for an extended period. For the existing database, you'll need to provide connection details in the
+TOML configuration file as explained below.
+
+Once the database connection is configured, you can start the Secutils.dev server with `cargo run`. By default, the
+server will be accessible via http://localhost:7070. Use `curl` to verify that the server is up and running:
 
 ```shell
 curl -XGET http://localhost:7070/api/status
 ---
-{"version":"1.0.0-alpha.1","level":"available"}
+{"version":"1.0.0-beta.1","level":"available"}
 ```
 
 The server can be configured with a TOML configuration file. See the example below for a basic configuration:
 
 ```toml
 port = 7070
+
+[db]
+name = 'secutils'
+host = 'localhost'
+port = 5432
+username = 'postgres'
+password = 'password'
 
 # A session key used to encrypt session cookie. Should be at least 64 characters long. 
 # For example, can be generated with `openssl rand -hex 32`
@@ -82,14 +107,15 @@ If you saved your configuration to a file named `secutils.toml`, you can start t
 cargo run -- -c secutils.toml
 ```
 
-You can also use `.env` file to specify the location of the configuration file and the main database:
+You can also use `.env` file to specify the location of the configuration file and database connection details required
+for development and testing:
 
 ```dotenv
 # Path to the configuration file.
 SECUTILS_CONFIG=${PWD}/secutils.toml
 
-# Path to a local SQLite database file. Refer to https://github.com/launchbadge/sqlx for more details.
-DATABASE_URL=sqlite:///home/user/.local/share/secutils/data.db
+# Refer to https://github.com/launchbadge/sqlx for more details.
+DATABASE_URL=postgres://postgres@localhost/secutils
 ```
 
 ### Usage
@@ -99,14 +125,14 @@ the [Web UI](https://github.com/secutils-dev/secutils-webui).
 
 ### Re-initialize local database
 
-To manage the local SQLite database, you need to install
+To manage **development** database, you need to install
 the [SQLx's command-line utility](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli):
 
 ```shell
 cargo install --force sqlx-cli
 
-# Drops, creates, and migrates the SQLite database
-# referenced in the `DATABASE_URL` from the `.env` file.
+# Drops, creates, and migrates the database referenced
+# in the `DATABASE_URL` from the `.env` file.
 sqlx database drop
 sqlx database create
 sqlx migrate run

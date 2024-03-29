@@ -172,6 +172,7 @@ pub mod tests {
     };
     use serde::Deserialize;
     use serde_json::json;
+    use sqlx::PgPool;
     use time::OffsetDateTime;
     use uuid::uuid;
 
@@ -196,9 +197,9 @@ pub mod tests {
         })
     }
 
-    #[tokio::test]
-    async fn can_list_private_keys() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_list_private_keys(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -242,9 +243,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_retrieve_private_key() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_retrieve_private_key(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -292,9 +293,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_create_private_key() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_create_private_key(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -325,9 +326,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_update_private_key() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_update_private_key(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -368,9 +369,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_delete_private_key() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_delete_private_key(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -408,9 +409,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_export_private_key() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_export_private_key(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -447,9 +448,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_list_templates() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_list_templates(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -491,9 +492,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_retrieve_template() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_retrieve_template(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -573,9 +574,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_create_template() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_create_template(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -607,9 +608,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_update_template() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_update_template(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -649,9 +650,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_delete_template() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_delete_template(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -688,9 +689,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_generate_key_pair() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_generate_key_pair(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -727,9 +728,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_share_and_unshare_template() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_share_and_unshare_template(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;

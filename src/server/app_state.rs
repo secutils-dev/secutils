@@ -45,26 +45,26 @@ impl<DR: DnsResolver, ET: EmailTransport> AppState<DR, ET> {
 pub mod tests {
     use crate::{
         api::Api,
+        database::Database,
         network::{Network, TokioDnsResolver},
         security::{create_webauthn, StoredCredentials},
         server::AppState,
         templates::create_templates,
-        tests::{
-            mock_config, mock_db, mock_network, mock_search_index, mock_user, MockUserBuilder,
-        },
+        tests::{mock_config, mock_network, mock_search_index, mock_user, MockUserBuilder},
         users::{SubscriptionTier, UserSubscription},
     };
     use insta::assert_debug_snapshot;
     use lettre::{AsyncSmtpTransport, Tokio1Executor};
+    use sqlx::PgPool;
     use std::sync::Arc;
     use time::OffsetDateTime;
 
-    pub async fn mock_app_state() -> anyhow::Result<AppState> {
+    pub async fn mock_app_state(pool: PgPool) -> anyhow::Result<AppState> {
         let config = mock_config()?;
         let webauthn = create_webauthn(&config)?;
         let api = Arc::new(Api::new(
             config,
-            mock_db().await?,
+            Database::create(pool).await?,
             mock_search_index()?,
             // We should use a real network implementation in tests that rely on `AppState` being
             // extracted from `HttpRequest`, as types should match for the extraction to work.
@@ -79,13 +79,13 @@ pub mod tests {
         Ok(AppState::new(api.config.clone(), api))
     }
 
-    #[tokio::test]
-    async fn can_detect_admin() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_detect_admin(pool: PgPool) -> anyhow::Result<()> {
         let config = mock_config()?;
         let webauthn = create_webauthn(&config)?;
         let api = Arc::new(Api::new(
             config,
-            mock_db().await?,
+            Database::create(pool).await?,
             mock_search_index()?,
             mock_network(),
             webauthn,

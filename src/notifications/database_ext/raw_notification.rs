@@ -3,10 +3,10 @@ use time::OffsetDateTime;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct RawNotification {
-    pub id: i64,
+    pub id: i32,
     pub destination: Vec<u8>,
     pub content: Vec<u8>,
-    pub scheduled_at: i64,
+    pub scheduled_at: OffsetDateTime,
 }
 
 impl TryFrom<RawNotification> for Notification {
@@ -17,7 +17,7 @@ impl TryFrom<RawNotification> for Notification {
             id: raw_notification.id.try_into()?,
             destination: postcard::from_bytes(&raw_notification.destination)?,
             content: postcard::from_bytes(&raw_notification.content)?,
-            scheduled_at: OffsetDateTime::from_unix_timestamp(raw_notification.scheduled_at)?,
+            scheduled_at: raw_notification.scheduled_at,
         })
     }
 }
@@ -30,7 +30,7 @@ impl TryFrom<&Notification> for RawNotification {
             id: *notification.id,
             destination: postcard::to_stdvec(&notification.destination)?,
             content: postcard::to_stdvec(&notification.content)?,
-            scheduled_at: notification.scheduled_at.unix_timestamp(),
+            scheduled_at: notification.scheduled_at,
         })
     }
 }
@@ -48,7 +48,7 @@ mod tests {
                 id: 1,
                 destination: vec![0, 246, 1],
                 content: vec![0, 3, 97, 98, 99],
-                scheduled_at: 946720800,
+                scheduled_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             Notification {
                 id: 1.try_into()?,
@@ -74,7 +74,7 @@ mod tests {
                 id: 1,
                 destination: vec![0, 246, 1],
                 content: vec![0, 3, 97, 98, 99],
-                scheduled_at: 946720800,
+                scheduled_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             }
         );
 

@@ -40,6 +40,7 @@ mod tests {
     };
     use insta::assert_debug_snapshot;
     use itertools::Itertools;
+    use sqlx::PgPool;
     use time::OffsetDateTime;
 
     #[test]
@@ -74,9 +75,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn convert_text_content_to_email() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn convert_text_content_to_email(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         assert_eq!(
             NotificationContent::Text("text".to_string())
@@ -93,9 +94,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn convert_email_content_to_email() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn convert_email_content_to_email(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         assert_eq!(
             NotificationContent::Email(EmailNotificationContent::text("subject", "text"))
@@ -149,9 +150,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn convert_template_content_to_email() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn convert_template_content_to_email(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let user = mock_user()?;
         let activation_code = "some-code";
 

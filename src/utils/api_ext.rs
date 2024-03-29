@@ -34,12 +34,13 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 #[cfg(test)]
 mod tests {
     use super::UtilsApiExt;
-    use crate::tests::mock_db;
+    use crate::database::Database;
     use insta::assert_debug_snapshot;
+    use sqlx::PgPool;
 
-    #[tokio::test]
-    async fn can_get_all_utils() -> anyhow::Result<()> {
-        let mock_db = mock_db().await?;
+    #[sqlx::test]
+    async fn can_get_all_utils(pool: PgPool) -> anyhow::Result<()> {
+        let mock_db = Database::create(pool).await?;
         let api = UtilsApiExt::new(&mock_db);
 
         assert_debug_snapshot!(api.get_all().await?, @r###"
@@ -81,15 +82,6 @@ mod tests {
                     [
                         Util {
                             id: 5,
-                            handle: "certificates__private_keys",
-                            name: "Private keys",
-                            keywords: Some(
-                                "private keys openssl encryption pki rsa dsa ec ecdsa curve ed25519 pkcs8 pkcs12 pem",
-                            ),
-                            utils: None,
-                        },
-                        Util {
-                            id: 11,
                             handle: "certificates__certificate_templates",
                             name: "Certificate templates",
                             keywords: Some(
@@ -97,25 +89,34 @@ mod tests {
                             ),
                             utils: None,
                         },
+                        Util {
+                            id: 6,
+                            handle: "certificates__private_keys",
+                            name: "Private keys",
+                            keywords: Some(
+                                "private keys openssl encryption pki rsa dsa ec ecdsa curve ed25519 pkcs8 pkcs12 pem",
+                            ),
+                            utils: None,
+                        },
                     ],
                 ),
             },
             Util {
-                id: 6,
+                id: 7,
                 handle: "web_security",
                 name: "Web Security",
                 keywords: None,
                 utils: Some(
                     [
                         Util {
-                            id: 7,
+                            id: 8,
                             handle: "web_security__csp",
                             name: "CSP",
                             keywords: None,
                             utils: Some(
                                 [
                                     Util {
-                                        id: 8,
+                                        id: 9,
                                         handle: "web_security__csp__policies",
                                         name: "Policies",
                                         keywords: Some(
@@ -130,14 +131,14 @@ mod tests {
                 ),
             },
             Util {
-                id: 9,
+                id: 10,
                 handle: "web_scraping",
                 name: "Web Scraping",
                 keywords: None,
                 utils: Some(
                     [
                         Util {
-                            id: 10,
+                            id: 11,
                             handle: "web_scraping__content",
                             name: "Content trackers",
                             keywords: Some(

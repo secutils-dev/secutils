@@ -4,10 +4,10 @@ use uuid::Uuid;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct RawUserShare {
-    pub id: Vec<u8>,
-    pub user_id: i64,
+    pub id: Uuid,
+    pub user_id: i32,
     pub resource: Vec<u8>,
-    pub created_at: i64,
+    pub created_at: OffsetDateTime,
 }
 
 impl TryFrom<RawUserShare> for UserShare {
@@ -15,10 +15,10 @@ impl TryFrom<RawUserShare> for UserShare {
 
     fn try_from(raw_user_share: RawUserShare) -> Result<Self, Self::Error> {
         Ok(UserShare {
-            id: Uuid::from_slice(raw_user_share.id.as_slice())?.into(),
+            id: raw_user_share.id.into(),
             user_id: raw_user_share.user_id.try_into()?,
             resource: postcard::from_bytes(&raw_user_share.resource)?,
-            created_at: OffsetDateTime::from_unix_timestamp(raw_user_share.created_at)?,
+            created_at: raw_user_share.created_at,
         })
     }
 }
@@ -28,10 +28,10 @@ impl TryFrom<&UserShare> for RawUserShare {
 
     fn try_from(user_share: &UserShare) -> Result<Self, Self::Error> {
         Ok(RawUserShare {
-            id: (*user_share.id).into(),
+            id: (&user_share.id).into(),
             user_id: *user_share.user_id,
             resource: postcard::to_stdvec(&user_share.resource)?,
-            created_at: user_share.created_at.unix_timestamp(),
+            created_at: user_share.created_at,
         })
     }
 }
@@ -47,11 +47,11 @@ mod tests {
     #[test]
     fn can_convert_into_user_share() -> anyhow::Result<()> {
         assert_debug_snapshot!(UserShare::try_from(RawUserShare {
-            id: uuid!("00000000-0000-0000-0000-000000000001").into(),
+            id: uuid!("00000000-0000-0000-0000-000000000001"),
             user_id: 1,
             resource: vec![0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
             // January 1, 2000 10:00:00
-            created_at: 946720800,
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
         })?, @r###"
         UserShare {
             id: UserShareId(
@@ -80,24 +80,7 @@ mod tests {
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
         })?, @r###"
         RawUserShare {
-            id: [
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                1,
-            ],
+            id: 00000000-0000-0000-0000-000000000001,
             user_id: 1,
             resource: [
                 0,
@@ -119,7 +102,7 @@ mod tests {
                 0,
                 1,
             ],
-            created_at: 946720800,
+            created_at: 2000-01-01 10:00:00.0 +00:00:00,
         }
         "###);
 
@@ -129,13 +112,13 @@ mod tests {
     #[test]
     fn fails_if_malformed() -> anyhow::Result<()> {
         assert!(UserShare::try_from(RawUserShare {
-            id: uuid!("00000000-0000-0000-0000-000000000001").into(),
+            id: uuid!("00000000-0000-0000-0000-000000000001"),
             user_id: -1,
             resource: postcard::to_stdvec(&SharedResource::content_security_policy(uuid!(
                 "00000000-0000-0000-0000-000000000001"
             )))?,
             // January 1, 2000 10:00:00
-            created_at: 946720800,
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
         })
         .is_err());
 

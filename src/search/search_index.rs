@@ -24,7 +24,10 @@ fn entity_to_document(
     let mut doc = Document::default();
 
     doc.add_u64(schema_fields.id, entity.id);
-    doc.add_i64(schema_fields.user_id, *entity.user_id.unwrap_or_default());
+    doc.add_i64(
+        schema_fields.user_id,
+        *entity.user_id.unwrap_or_default() as i64,
+    );
 
     doc.add_text(schema_fields.label, &entity.label);
     doc.add_text(schema_fields.label_ngram, &entity.label.to_lowercase());
@@ -167,7 +170,7 @@ impl SearchIndex {
         search_filter: SearchFilter,
     ) -> anyhow::Result<Box<dyn Query>> {
         let public_query = Box::new(TermQuery::new(
-            Term::from_field_i64(self.schema_fields.user_id, *UserId::default()),
+            Term::from_field_i64(self.schema_fields.user_id, *UserId::default() as i64),
             IndexRecordOption::Basic,
         )) as Box<dyn Query>;
 
@@ -177,7 +180,7 @@ impl SearchIndex {
                 (
                     Occur::Should,
                     Box::new(TermQuery::new(
-                        Term::from_field_i64(self.schema_fields.user_id, *user_id),
+                        Term::from_field_i64(self.schema_fields.user_id, *user_id as i64),
                         IndexRecordOption::Basic,
                     )) as Box<dyn Query>,
                 ),
@@ -275,8 +278,8 @@ impl SearchIndex {
                     }
                 } else if field_value.field == self.schema_fields.user_id {
                     if let Value::I64(field_value_content) = field_value.value {
-                        if field_value_content != *UserId::default() {
-                            user_id.replace(field_value_content.try_into()?);
+                        if field_value_content != *UserId::default() as i64 {
+                            user_id.replace((field_value_content as i32).try_into()?);
                         }
                     }
                 } else if field_value.field == self.schema_fields.label {

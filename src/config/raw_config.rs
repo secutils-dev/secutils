@@ -1,6 +1,6 @@
 use crate::config::{
-    utils_config::UtilsConfig, ComponentsConfig, SchedulerJobsConfig, SecurityConfig, SmtpConfig,
-    SubscriptionsConfig,
+    database_config::DatabaseConfig, utils_config::UtilsConfig, ComponentsConfig,
+    SchedulerJobsConfig, SecurityConfig, SmtpConfig, SubscriptionsConfig,
 };
 use figment::{providers, providers::Format, value, Figment, Metadata, Profile, Provider};
 use serde_derive::{Deserialize, Serialize};
@@ -14,6 +14,8 @@ pub struct RawConfig {
     pub port: u16,
     /// External/public URL through which service is being accessed.
     pub public_url: Url,
+    /// Database configuration.
+    pub db: DatabaseConfig,
     /// Security configuration (session, built-in users etc.).
     pub security: SecurityConfig,
     /// Configuration for the components that are deployed separately.
@@ -42,6 +44,7 @@ impl Default for RawConfig {
         let port = 7070;
         Self {
             port,
+            db: DatabaseConfig::default(),
             public_url: Url::parse(&format!("http://localhost:{port}"))
                 .expect("Cannot parse public URL parameter."),
             security: SecurityConfig::default(),
@@ -80,6 +83,12 @@ mod tests {
         assert_toml_snapshot!(default_config, @r###"
         port = 7070
         public-url = 'http://localhost:7070/'
+
+        [db]
+        name = 'secutils'
+        host = 'localhost'
+        port = 5432
+        username = 'postgres'
 
         [security]
         session-key = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -176,6 +185,13 @@ mod tests {
             r#"
         port = 7070
         public-url = 'http://localhost:7070/'
+
+        [db]
+        name = 'secutils'
+        username = 'postgres'
+        password = 'password'
+        host = 'localhost'
+        port = 5432
 
         [security]
         session-key = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -293,6 +309,15 @@ mod tests {
                 path: "/",
                 query: None,
                 fragment: None,
+            },
+            db: DatabaseConfig {
+                name: "secutils",
+                host: "localhost",
+                port: 5432,
+                username: "postgres",
+                password: Some(
+                    "password",
+                ),
             },
             security: SecurityConfig {
                 session_key: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

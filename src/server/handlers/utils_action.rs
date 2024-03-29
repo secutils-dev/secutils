@@ -179,6 +179,7 @@ mod tests {
     use actix_web::{body::MessageBody, http::Method, test::TestRequest, web};
     use insta::assert_debug_snapshot;
     use serde_json::json;
+    use sqlx::PgPool;
     use time::OffsetDateTime;
     use uuid::uuid;
 
@@ -545,13 +546,13 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn can_extract_user() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_extract_user(pool: PgPool) -> anyhow::Result<()> {
         let resource_id = uuid!("00000000-0000-0000-0000-000000000001");
         let resource = UtilsResource::CertificatesTemplates;
         let action = UtilsAction::Get { resource_id };
 
-        let api = mock_api().await?;
+        let api = mock_api(pool).await?;
 
         // Insert user into the database.
         let user = mock_user_with_id(1)?;
@@ -665,9 +666,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn fail_if_resource_is_not_valid() -> anyhow::Result<()> {
-        let app_state = mock_app_state().await?;
+    #[sqlx::test]
+    async fn fail_if_resource_is_not_valid(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
 
         let user = mock_user()?;
         let users = app_state.api.users();
@@ -697,9 +698,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn fail_if_action_is_not_valid() -> anyhow::Result<()> {
-        let app_state = mock_app_state().await?;
+    #[sqlx::test]
+    async fn fail_if_action_is_not_valid(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
 
         let user = mock_user()?;
         let users = app_state.api.users();
@@ -729,9 +730,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn fail_if_action_requires_body_but_not_provided() -> anyhow::Result<()> {
-        let app_state = mock_app_state().await?;
+    #[sqlx::test]
+    async fn fail_if_action_requires_body_but_not_provided(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
 
         let user = mock_user()?;
         let users = app_state.api.users();
@@ -761,9 +762,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn fail_if_user_is_not_authenticated() -> anyhow::Result<()> {
-        let app_state = mock_app_state().await?;
+    #[sqlx::test]
+    async fn fail_if_user_is_not_authenticated(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
 
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")
             .method(Method::GET)
@@ -782,9 +783,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn fail_if_action_parameters_are_invalid() -> anyhow::Result<()> {
-        let app_state = mock_app_state().await?;
+    #[sqlx::test]
+    async fn fail_if_action_parameters_are_invalid(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
 
         let user = mock_user()?;
         let users = app_state.api.users();
@@ -811,9 +812,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_return_json_value() -> anyhow::Result<()> {
-        let app_state = mock_app_state().await?;
+    #[sqlx::test]
+    async fn can_return_json_value(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
 
         let user = mock_user()?;
         let users = app_state.api.users();
@@ -851,9 +852,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_return_no_value() -> anyhow::Result<()> {
-        let app_state = mock_app_state().await?;
+    #[sqlx::test]
+    async fn can_return_no_value(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
 
         let user = mock_user()?;
         let users = app_state.api.users();
@@ -904,9 +905,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_return_not_found() -> anyhow::Result<()> {
-        let app_state = mock_app_state().await?;
+    #[sqlx::test]
+    async fn can_return_not_found(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
 
         let user = mock_user()?;
         let users = app_state.api.users();

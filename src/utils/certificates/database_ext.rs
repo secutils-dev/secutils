@@ -14,16 +14,16 @@ use crate::{
     },
 };
 use anyhow::{anyhow, bail};
-use sqlx::{error::ErrorKind as SqlxErrorKind, query, query_as, Pool, Sqlite};
+use sqlx::{error::ErrorKind as SqlxErrorKind, query, query_as, Pool, Postgres};
 use uuid::Uuid;
 
 /// A database extension for the certificate utility-related operations.
 pub struct CertificatesDatabaseExt<'pool> {
-    pool: &'pool Pool<Sqlite>,
+    pool: &'pool Pool<Postgres>,
 }
 
 impl<'pool> CertificatesDatabaseExt<'pool> {
-    pub fn new(pool: &'pool Pool<Sqlite>) -> Self {
+    pub fn new(pool: &'pool Pool<Postgres>) -> Self {
         Self { pool }
     }
 
@@ -33,13 +33,12 @@ impl<'pool> CertificatesDatabaseExt<'pool> {
         user_id: UserId,
         id: Uuid,
     ) -> anyhow::Result<Option<PrivateKey>> {
-        let id: &[u8] = id.as_ref();
         query_as!(
             RawPrivateKey,
             r#"
 SELECT id, name, alg, pkcs8, encrypted, created_at
 FROM user_data_certificates_private_keys
-WHERE user_id = ?1 AND id = ?2
+WHERE user_id = $1 AND id = $2
                 "#,
             *user_id,
             id
@@ -60,7 +59,7 @@ WHERE user_id = ?1 AND id = ?2
         let result = query!(
             r#"
 INSERT INTO user_data_certificates_private_keys (user_id, id, name, alg, pkcs8, encrypted, created_at)
-VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7 )
+VALUES ( $1, $2, $3, $4, $5, $6, $7 )
         "#,
             *user_id,
             raw_private_key.id,
@@ -104,8 +103,8 @@ VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7 )
         let result = query!(
             r#"
 UPDATE user_data_certificates_private_keys
-SET name = ?3, pkcs8 = ?4, encrypted = ?5
-WHERE user_id = ?1 AND id = ?2
+SET name = $3, pkcs8 = $4, encrypted = $5
+WHERE user_id = $1 AND id = $2
         "#,
             *user_id,
             raw_private_key.id,
@@ -149,11 +148,10 @@ WHERE user_id = ?1 AND id = ?2
 
     /// Removes private key for the specified user with the specified ID.
     pub async fn remove_private_key(&self, user_id: UserId, id: Uuid) -> anyhow::Result<()> {
-        let id: &[u8] = id.as_ref();
         query!(
             r#"
 DELETE FROM user_data_certificates_private_keys
-WHERE user_id = ?1 AND id = ?2
+WHERE user_id = $1 AND id = $2
                 "#,
             *user_id,
             id
@@ -171,9 +169,9 @@ WHERE user_id = ?1 AND id = ?2
         let raw_private_keys = query_as!(
             RawPrivateKey,
             r#"
-SELECT id, name, alg, x'' as "pkcs8!", encrypted, created_at
+SELECT id, name, alg, ''::bytea as "pkcs8!", encrypted, created_at
 FROM user_data_certificates_private_keys
-WHERE user_id = ?1
+WHERE user_id = $1
 ORDER BY created_at
                 "#,
             *user_id
@@ -195,13 +193,12 @@ ORDER BY created_at
         user_id: UserId,
         id: Uuid,
     ) -> anyhow::Result<Option<CertificateTemplate>> {
-        let id: &[u8] = id.as_ref();
         query_as!(
             RawCertificateTemplate,
             r#"
 SELECT id, name, attributes, created_at
 FROM user_data_certificates_certificate_templates
-WHERE user_id = ?1 AND id = ?2
+WHERE user_id = $1 AND id = $2
                 "#,
             *user_id,
             id
@@ -222,7 +219,7 @@ WHERE user_id = ?1 AND id = ?2
         let result = query!(
             r#"
 INSERT INTO user_data_certificates_certificate_templates (user_id, id, name, attributes, created_at)
-VALUES ( ?1, ?2, ?3, ?4, ?5 )
+VALUES ( $1, $2, $3, $4, $5 )
         "#,
             *user_id,
             raw_certificate_template.id,
@@ -264,8 +261,8 @@ VALUES ( ?1, ?2, ?3, ?4, ?5 )
         let result = query!(
             r#"
 UPDATE user_data_certificates_certificate_templates
-SET name = ?3, attributes = ?4
-WHERE user_id = ?1 AND id = ?2
+SET name = $3, attributes = $4
+WHERE user_id = $1 AND id = $2
         "#,
             *user_id,
             raw_certificate_template.id,
@@ -312,11 +309,10 @@ WHERE user_id = ?1 AND id = ?2
         user_id: UserId,
         id: Uuid,
     ) -> anyhow::Result<()> {
-        let id: &[u8] = id.as_ref();
         query!(
             r#"
 DELETE FROM user_data_certificates_certificate_templates
-WHERE user_id = ?1 AND id = ?2
+WHERE user_id = $1 AND id = $2
                 "#,
             *user_id,
             id
@@ -337,7 +333,7 @@ WHERE user_id = ?1 AND id = ?2
             r#"
 SELECT id, name, attributes, created_at
 FROM user_data_certificates_certificate_templates
-WHERE user_id = ?1
+WHERE user_id = $1
 ORDER BY created_at
                 "#,
             *user_id
@@ -364,8 +360,9 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use crate::{
+        database::Database,
         error::Error as SecutilsError,
-        tests::{mock_db, mock_user},
+        tests::{mock_user, to_database_error},
         utils::certificates::{
             CertificateAttributes, CertificateTemplate, ExtendedKeyUsage, KeyUsage, PrivateKey,
             PrivateKeyAlgorithm, PrivateKeySize, SignatureAlgorithm, Version,
@@ -373,6 +370,7 @@ mod tests {
     };
     use actix_web::ResponseError;
     use insta::assert_debug_snapshot;
+    use sqlx::PgPool;
     use time::OffsetDateTime;
     use uuid::uuid;
 
@@ -395,10 +393,10 @@ mod tests {
         })
     }
 
-    #[tokio::test]
-    async fn can_add_and_retrieve_private_keys() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_add_and_retrieve_private_keys(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let mut private_keys = vec![
@@ -453,10 +451,12 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn correctly_handles_duplicated_private_keys_on_insert() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn correctly_handles_duplicated_private_keys_on_insert(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let private_key = PrivateKey {
@@ -483,27 +483,21 @@ mod tests {
             .unwrap();
         assert_eq!(insert_error.status_code(), 400);
         assert_debug_snapshot!(
-            insert_error,
-            @r###"
-        Error {
-            context: "Private key (\'pk-name\') already exists.",
-            source: Database(
-                SqliteError {
-                    code: 2067,
-                    message: "UNIQUE constraint failed: user_data_certificates_private_keys.name, user_data_certificates_private_keys.user_id",
-                },
-            ),
-        }
-        "###
+            insert_error.root_cause.to_string(),
+            @r###""Private key ('pk-name') already exists.""###
+        );
+        assert_debug_snapshot!(
+            to_database_error(insert_error.root_cause)?.message(),
+            @r###""duplicate key value violates unique constraint \"user_data_certificates_private_keys_pkey\"""###
         );
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_update_private_key_content() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_update_private_key_content(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         db.certificates()
@@ -560,10 +554,12 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn correctly_handles_duplicated_private_keys_on_update() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn correctly_handles_duplicated_private_keys_on_update(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let private_key_a = PrivateKey {
@@ -615,27 +611,23 @@ mod tests {
             .unwrap();
         assert_eq!(update_error.status_code(), 400);
         assert_debug_snapshot!(
-            update_error,
-            @r###"
-        Error {
-            context: "Private key (\'pk-name-a\') already exists.",
-            source: Database(
-                SqliteError {
-                    code: 2067,
-                    message: "UNIQUE constraint failed: user_data_certificates_private_keys.name, user_data_certificates_private_keys.user_id",
-                },
-            ),
-        }
-        "###
+            update_error.root_cause.to_string(),
+            @r###""Private key ('pk-name-a') already exists.""###
+        );
+        assert_debug_snapshot!(
+            to_database_error(update_error.root_cause)?.message(),
+            @r###""duplicate key value violates unique constraint \"user_data_certificates_private_keys_name_user_id_key\"""###
         );
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn correctly_handles_non_existent_private_keys_on_update() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn correctly_handles_non_existent_private_keys_on_update(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let update_error = db
@@ -666,10 +658,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_remove_private_keys() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_remove_private_keys(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let mut private_keys = vec![
@@ -751,10 +743,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_retrieve_all_private_keys() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_retrieve_all_private_keys(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let private_keys = vec![
@@ -800,10 +792,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_add_and_retrieve_certificate_templates() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_add_and_retrieve_certificate_templates(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let mut certificate_templates = vec![
@@ -850,10 +842,12 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn correctly_handles_duplicated_certificate_templates_on_insert() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn correctly_handles_duplicated_certificate_templates_on_insert(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let certificate_template = CertificateTemplate {
@@ -876,27 +870,21 @@ mod tests {
             .unwrap();
         assert_eq!(insert_error.status_code(), 400);
         assert_debug_snapshot!(
-            insert_error,
-            @r###"
-        Error {
-            context: "Certificate template (\'ct-name\') already exists.",
-            source: Database(
-                SqliteError {
-                    code: 2067,
-                    message: "UNIQUE constraint failed: user_data_certificates_certificate_templates.name, user_data_certificates_certificate_templates.user_id",
-                },
-            ),
-        }
-        "###
+            insert_error.root_cause.to_string(),
+            @r###""Certificate template ('ct-name') already exists.""###
+        );
+        assert_debug_snapshot!(
+            to_database_error(insert_error.root_cause)?.message(),
+            @r###""duplicate key value violates unique constraint \"user_data_certificates_certificate_templates_pkey\"""###
         );
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_update_certificate_template_content() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_update_certificate_template_content(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         db.certificates()
@@ -975,10 +963,12 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn correctly_handles_duplicated_certificate_templates_on_update() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn correctly_handles_duplicated_certificate_templates_on_update(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let certificate_template_a = CertificateTemplate {
@@ -1018,28 +1008,23 @@ mod tests {
             .unwrap();
         assert_eq!(update_error.status_code(), 400);
         assert_debug_snapshot!(
-            update_error,
-            @r###"
-        Error {
-            context: "Certificate template (\'ct-name-a\') already exists.",
-            source: Database(
-                SqliteError {
-                    code: 2067,
-                    message: "UNIQUE constraint failed: user_data_certificates_certificate_templates.name, user_data_certificates_certificate_templates.user_id",
-                },
-            ),
-        }
-        "###
+            update_error.root_cause.to_string(),
+            @r###""Certificate template ('ct-name-a') already exists.""###
+        );
+        assert_debug_snapshot!(
+            to_database_error(update_error.root_cause)?.message(),
+            @r###""duplicate key value violates unique constraint \"user_data_certificates_certificate_templates_name_user_id_key\"""###
         );
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn correctly_handles_non_existent_certificate_templates_on_update() -> anyhow::Result<()>
-    {
+    #[sqlx::test]
+    async fn correctly_handles_non_existent_certificate_templates_on_update(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let update_error = db
@@ -1066,10 +1051,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_remove_certificate_templates() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_remove_certificate_templates(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let mut certificate_templates = vec![
@@ -1143,10 +1128,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_retrieve_all_certificate_templates() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_retrieve_all_certificate_templates(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let certificate_templates = vec![

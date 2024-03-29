@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nDELETE FROM user_data\nWHERE user_id = $1 AND namespace = $2 AND key = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d76c9d4c1ec5d3d058cfc60977a8a91878a878d716da8e6052a464689705d6c4"
+}

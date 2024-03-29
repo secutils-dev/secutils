@@ -6,10 +6,10 @@ use super::raw_certificate_attributes::RawCertificateAttributes;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct RawCertificateTemplate {
-    pub id: Vec<u8>,
+    pub id: Uuid,
     pub name: String,
     pub attributes: Vec<u8>,
-    pub created_at: i64,
+    pub created_at: OffsetDateTime,
 }
 
 impl TryFrom<RawCertificateTemplate> for CertificateTemplate {
@@ -17,10 +17,10 @@ impl TryFrom<RawCertificateTemplate> for CertificateTemplate {
 
     fn try_from(raw: RawCertificateTemplate) -> Result<Self, Self::Error> {
         Ok(CertificateTemplate {
-            id: Uuid::from_slice(raw.id.as_slice())?,
+            id: raw.id,
             name: raw.name,
             attributes: postcard::from_bytes::<RawCertificateAttributes>(&raw.attributes)?.into(),
-            created_at: OffsetDateTime::from_unix_timestamp(raw.created_at)?,
+            created_at: raw.created_at,
         })
     }
 }
@@ -30,12 +30,12 @@ impl TryFrom<&CertificateTemplate> for RawCertificateTemplate {
 
     fn try_from(item: &CertificateTemplate) -> Result<Self, Self::Error> {
         Ok(RawCertificateTemplate {
-            id: item.id.into(),
+            id: item.id,
             name: item.name.clone(),
             attributes: postcard::to_stdvec(&RawCertificateAttributes::from(
                 item.attributes.clone(),
             ))?,
-            created_at: item.created_at.unix_timestamp(),
+            created_at: item.created_at,
         })
     }
 }
@@ -54,16 +54,14 @@ mod tests {
     fn can_convert_into_certificate_template() -> anyhow::Result<()> {
         assert_eq!(
             CertificateTemplate::try_from(RawCertificateTemplate {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "pk-name".to_string(),
                 attributes: vec![
                     1, 2, 99, 110, 1, 1, 99, 1, 1, 115, 0, 0, 0, 3, 0, 160, 31, 1, 10, 0, 0, 0, 0,
                     0, 0, 180, 31, 1, 10, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 5, 1, 1, 1
                 ],
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             CertificateTemplate {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -120,16 +118,14 @@ mod tests {
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             RawCertificateTemplate {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "pk-name".to_string(),
                 attributes: vec![
                     1, 2, 99, 110, 1, 1, 99, 1, 1, 115, 0, 0, 0, 3, 0, 160, 31, 1, 10, 0, 0, 0, 0,
                     0, 0, 180, 31, 1, 10, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 5, 1, 1, 1
                 ],
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             }
         );
 

@@ -1,0 +1,44 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT id, handle, name, keywords, parent_id\nFROM utils\nORDER BY parent_id NULLS FIRST, id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "handle",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "keywords",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "parent_id",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "2184c690e1b380b7f8b8aa237c495b09b23b7286e5753183015be3cdb021826e"
+}

@@ -1,0 +1,78 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT trackers.id, trackers.name, trackers.url, trackers.kind, trackers.job_id,\n       trackers.job_config, trackers.user_id, trackers.data, trackers.created_at, jobs.extra\nFROM user_data_web_scraping_trackers as trackers\nINNER JOIN scheduler_jobs as jobs\nON trackers.job_id = jobs.id\nWHERE trackers.kind = $1 AND jobs.stopped = true AND trackers.created_at > $2\nORDER BY trackers.created_at\nLIMIT $3;\n",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "kind",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 4,
+        "name": "job_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "job_config",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 6,
+        "name": "user_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "data",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "extra",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "68d09a3d5c91bbbb31be733bd52e105dfd3ba903fca0260a4d47546e143f201a"
+}

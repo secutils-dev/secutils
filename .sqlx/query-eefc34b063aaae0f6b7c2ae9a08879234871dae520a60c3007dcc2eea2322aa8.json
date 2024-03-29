@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nINSERT INTO user_shares (id, user_id, resource, created_at)\nVALUES ($1, $2, $3, $4)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4",
+        "Bytea",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "eefc34b063aaae0f6b7c2ae9a08879234871dae520a60c3007dcc2eea2322aa8"
+}

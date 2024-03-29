@@ -19,7 +19,7 @@ impl Database {
             r#"
 SELECT email, session_value, timestamp
 FROM user_webauthn_sessions
-WHERE email = ?1
+WHERE email = $1
                 "#,
             email
         )
@@ -40,17 +40,16 @@ WHERE email = ?1
                 session.email
             )
         })?;
-        let raw_session_timestamp = session.timestamp.unix_timestamp();
 
         query!(
             r#"
 INSERT INTO user_webauthn_sessions (email, session_value, timestamp)
-VALUES (?1, ?2, ?3)
+VALUES ($1, $2, $3)
 ON CONFLICT(email) DO UPDATE SET session_value=excluded.session_value, timestamp=excluded.timestamp
         "#,
             session.email,
             raw_session_value,
-            raw_session_timestamp
+            session.timestamp
         )
         .execute(&self.pool)
         .await?;
@@ -63,7 +62,7 @@ ON CONFLICT(email) DO UPDATE SET session_value=excluded.session_value, timestamp
         query!(
             r#"
 DELETE FROM user_webauthn_sessions
-WHERE email = ?1
+WHERE email = $1
             "#,
             email
         )
@@ -75,11 +74,10 @@ WHERE email = ?1
 
     /// Deletes WebAuthn sessions that are older than specified timestamp.
     pub async fn remove_user_webauthn_sessions(&self, since: OffsetDateTime) -> anyhow::Result<()> {
-        let since = since.unix_timestamp();
         query!(
             r#"
 DELETE FROM user_webauthn_sessions
-WHERE timestamp <= ?1
+WHERE timestamp <= $1
             "#,
             since
         )
@@ -93,22 +91,21 @@ WHERE timestamp <= ?1
 #[cfg(test)]
 mod tests {
     use crate::{
+        database::Database,
         security::{WebAuthnSession, WebAuthnSessionValue},
-        tests::{
-            mock_db,
-            webauthn::{SERIALIZED_AUTHENTICATION_STATE, SERIALIZED_REGISTRATION_STATE},
-        },
+        tests::webauthn::{SERIALIZED_AUTHENTICATION_STATE, SERIALIZED_REGISTRATION_STATE},
     };
     use insta::assert_debug_snapshot;
+    use sqlx::PgPool;
     use std::{
         ops::{Add, Sub},
         time::Duration,
     };
     use time::OffsetDateTime;
 
-    #[tokio::test]
-    async fn can_add_and_retrieve_webauthn_sessions() -> anyhow::Result<()> {
-        let db = mock_db().await?;
+    #[sqlx::test]
+    async fn can_add_and_retrieve_webauthn_sessions(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
         assert!(db
             .get_user_webauthn_session_by_email("some-id")
             .await?
@@ -284,9 +281,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn ignores_email_case_for_webauthn_sessions() -> anyhow::Result<()> {
-        let db = mock_db().await?;
+    #[sqlx::test]
+    async fn ignores_email_case_for_webauthn_sessions(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
 
         db.upsert_user_webauthn_session(&WebAuthnSession {
             email: "dev@secutils.dev".to_string(),
@@ -316,9 +313,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_update_webauthn_sessions() -> anyhow::Result<()> {
-        let db = mock_db().await?;
+    #[sqlx::test]
+    async fn can_update_webauthn_sessions(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
 
         db.upsert_user_webauthn_session(&WebAuthnSession {
             email: "dev@secutils.dev".to_string(),
@@ -371,9 +368,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_remove_webauthn_session() -> anyhow::Result<()> {
-        let db = mock_db().await?;
+    #[sqlx::test]
+    async fn can_remove_webauthn_session(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
         assert!(db
             .get_user_webauthn_session_by_email("dev@secutils.dev")
             .await?
@@ -429,9 +426,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_remove_old_webauthn_session() -> anyhow::Result<()> {
-        let db = mock_db().await?;
+    #[sqlx::test]
+    async fn can_remove_old_webauthn_session(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
         let sessions = vec![
             WebAuthnSession {
                 email: "dev@secutils.dev".to_string(),

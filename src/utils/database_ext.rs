@@ -15,7 +15,7 @@ impl Database {
             r#"
 SELECT id, handle, name, keywords, parent_id
 FROM utils
-ORDER BY parent_id, id
+ORDER BY parent_id NULLS FIRST, id
             "#
         )
         .fetch_all(&self.pool)
@@ -48,7 +48,7 @@ ORDER BY parent_id, id
 
     fn build_util_tree(
         raw_util: RawUtil,
-        parent_children_map: &mut HashMap<i64, Vec<RawUtil>>,
+        parent_children_map: &mut HashMap<i32, Vec<RawUtil>>,
     ) -> anyhow::Result<Util> {
         let utils = if let Some(mut children) = parent_children_map.remove(&raw_util.id) {
             Some(

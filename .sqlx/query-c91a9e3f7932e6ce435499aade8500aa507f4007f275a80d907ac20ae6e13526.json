@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nINSERT INTO user_data (user_id, namespace, key, value, timestamp)\nVALUES ( $1, $2, $3, $4, $5 )\nON CONFLICT(user_id, namespace, key) DO UPDATE SET value=excluded.value, timestamp=excluded.timestamp\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Text",
+        "Text",
+        "Bytea",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c91a9e3f7932e6ce435499aade8500aa507f4007f275a80d907ac20ae6e13526"
+}

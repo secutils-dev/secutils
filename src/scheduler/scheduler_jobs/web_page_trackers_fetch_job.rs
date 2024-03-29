@@ -4,13 +4,15 @@ use crate::{
     logging::{JobLogContext, MetricsContext, UserLogContext},
     network::{DnsResolver, EmailTransport, EmailTransportError},
     notifications::{NotificationContent, NotificationContentTemplate, NotificationDestination},
-    scheduler::{job_ext::JobExt, scheduler_job::SchedulerJob},
+    scheduler::{
+        database_ext::RawSchedulerJobStoredData, job_ext::JobExt, scheduler_job::SchedulerJob,
+    },
     utils::web_scraping::{WebPageTracker, WebPageTrackerTag},
 };
 use futures::{pin_mut, StreamExt};
 use std::{sync::Arc, time::Instant};
 use time::OffsetDateTime;
-use tokio_cron_scheduler::{Job, JobId, JobScheduler, JobStoredData};
+use tokio_cron_scheduler::{Job, JobScheduler};
 use uuid::Uuid;
 
 /// The job executes every minute by default to check if there are any trackers to fetch resources for.
@@ -19,16 +21,15 @@ impl WebPageTrackersFetchJob {
     /// Tries to resume existing `WebPageTrackersFetch` job.
     pub async fn try_resume<DR: DnsResolver, ET: EmailTransport>(
         api: Arc<Api<DR, ET>>,
-        _: JobId,
-        existing_job_data: JobStoredData,
+        existing_job_data: RawSchedulerJobStoredData,
     ) -> anyhow::Result<Option<Job>>
     where
         ET::Error: EmailTransportError,
     {
-        // If we changed the job parameters, we need to remove the old job and create a new one.
+        // If the schedule has changed, remove existing job and create a new one.
         let mut new_job = Self::create(api).await?;
-        Ok(if new_job.job_data()?.job == existing_job_data.job {
-            new_job.set_job_data(existing_job_data)?;
+        Ok(if new_job.are_schedules_equal(&existing_job_data)? {
+            new_job.set_raw_job_data(existing_job_data)?;
             Some(new_job)
         } else {
             None
@@ -404,12 +405,11 @@ mod tests {
     use crate::{
         scheduler::{
             scheduler_job::SchedulerJob, scheduler_jobs::WebPageTrackersTriggerJob,
-            scheduler_store::SchedulerStore, SchedulerJobConfig, SchedulerJobMetadata,
-            SchedulerJobRetryStrategy,
+            SchedulerJobConfig, SchedulerJobRetryStrategy,
         },
         tests::{
-            mock_api_with_config, mock_config, mock_schedule_in_sec, mock_schedule_in_secs,
-            mock_user,
+            mock_api_with_config, mock_config, mock_get_scheduler_job, mock_schedule_in_sec,
+            mock_schedule_in_secs, mock_scheduler, mock_scheduler_job, mock_user,
         },
         utils::web_scraping::{
             tests::{
@@ -428,41 +428,18 @@ mod tests {
     use futures::StreamExt;
     use httpmock::MockServer;
     use insta::assert_debug_snapshot;
-    use std::{default::Default, ops::Add, sync::Arc, thread, time::Duration};
+    use sqlx::PgPool;
+    use std::{default::Default, ops::Add, sync::Arc, time::Duration};
     use time::OffsetDateTime;
-    use tokio_cron_scheduler::{
-        CronJob, JobId, JobScheduler, JobStored, JobStoredData, JobType, SimpleJobCode,
-        SimpleNotificationCode, SimpleNotificationStore,
-    };
     use url::Url;
     use uuid::{uuid, Uuid};
 
-    fn mock_job_data(job_id: JobId) -> JobStoredData {
-        JobStoredData {
-            id: Some(job_id.into()),
-            job_type: JobType::Cron as i32,
-            count: 0,
-            last_tick: None,
-            next_tick: 100500,
-            ran: false,
-            stopped: false,
-            last_updated: None,
-            extra: SchedulerJobMetadata::new(SchedulerJob::WebPageTrackersFetch)
-                .try_into()
-                .unwrap(),
-            job: Some(JobStored::CronJob(CronJob {
-                schedule: "0 0 * * * *".to_string(),
-            })),
-            time_offset_seconds: 0,
-        }
-    }
-
-    #[tokio::test]
-    async fn can_create_job_with_correct_parameters() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_create_job_with_correct_parameters(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.scheduler.web_page_trackers_fetch = Schedule::try_from("1/5 * * * * *")?;
 
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
 
         let mut job = WebPageTrackersFetchJob::create(Arc::new(api)).await?;
         let job_data = job
@@ -488,24 +465,27 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_resume_job() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_resume_job(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.scheduler.web_page_trackers_fetch = Schedule::try_from("0 0 * * * *")?;
 
-        let api = mock_api_with_config(config).await?;
+        let api = mock_api_with_config(pool, config).await?;
 
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
 
-        let job = WebPageTrackersFetchJob::try_resume(Arc::new(api), job_id, mock_job_data(job_id))
-            .await?;
+        let job = WebPageTrackersFetchJob::try_resume(
+            Arc::new(api),
+            mock_scheduler_job(job_id, SchedulerJob::WebPageTrackersFetch, "0 0 * * * *"),
+        )
+        .await?;
         let job_data = job
             .and_then(|mut job| job.job_data().ok())
             .map(|job_data| (job_data.job_type, job_data.extra, job_data.job));
         assert_debug_snapshot!(job_data, @r###"
         Some(
             (
-                0,
+                3,
                 [
                     2,
                     0,
@@ -524,21 +504,16 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn remove_pending_trackers_jobs_if_zero_revisions() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn remove_pending_trackers_jobs_if_zero_revisions(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.scheduler.web_page_trackers_fetch =
             Schedule::try_from(mock_schedule_in_sec(2).as_str())?;
 
+        let mut scheduler = mock_scheduler(&pool).await?;
+
         let user = mock_user()?;
-        let api = Arc::new(mock_api_with_config(config).await?);
-        let mut scheduler = JobScheduler::new_with_storage_and_code(
-            Box::new(SchedulerStore::new(api.db.clone())),
-            Box::<SimpleNotificationStore>::default(),
-            Box::<SimpleJobCode>::default(),
-            Box::<SimpleNotificationCode>::default(),
-        )
-        .await?;
+        let api = Arc::new(mock_api_with_config(pool, config).await?);
 
         // Create user and trackers.
         api.users().upsert(user.clone()).await?;
@@ -624,7 +599,7 @@ mod tests {
                 .await?
                 .is_some()
         {
-            thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         scheduler.shutdown().await?;
@@ -632,8 +607,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn can_fetch_resources() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_fetch_resources(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.scheduler.web_page_trackers_fetch =
             Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
@@ -641,15 +616,10 @@ mod tests {
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
+        let mut scheduler = mock_scheduler(&pool).await?;
+
         let user = mock_user()?;
-        let api = Arc::new(mock_api_with_config(config).await?);
-        let mut scheduler = JobScheduler::new_with_storage_and_code(
-            Box::new(SchedulerStore::new(api.db.clone())),
-            Box::<SimpleNotificationStore>::default(),
-            Box::<SimpleJobCode>::default(),
-            Box::<SimpleNotificationCode>::default(),
-        )
-        .await?;
+        let api = Arc::new(mock_api_with_config(pool, config).await?);
 
         // Create user, tracker and tracker job.
         api.users().upsert(user.clone()).await?;
@@ -764,7 +734,7 @@ mod tests {
             .await?
             .is_empty()
         {
-            thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         scheduler.shutdown().await?;
@@ -795,10 +765,10 @@ mod tests {
         );
 
         // Check that the tracker job was marked as NOT stopped.
-        let trigger_job = api.db.get_scheduler_job(trigger_job_id).await?;
+        let trigger_job = mock_get_scheduler_job(&api.db, trigger_job_id).await?;
         assert_eq!(
             trigger_job.map(|job| (job.id, job.stopped)),
-            Some((Some(trigger_job_id.into()), false))
+            Some((trigger_job_id, Some(false)))
         );
 
         assert!(api
@@ -814,8 +784,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn can_fetch_content() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_fetch_content(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.scheduler.web_page_trackers_fetch =
             Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
@@ -823,15 +793,10 @@ mod tests {
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
+        let mut scheduler = mock_scheduler(&pool).await?;
+
         let user = mock_user()?;
-        let api = Arc::new(mock_api_with_config(config).await?);
-        let mut scheduler = JobScheduler::new_with_storage_and_code(
-            Box::new(SchedulerStore::new(api.db.clone())),
-            Box::<SimpleNotificationStore>::default(),
-            Box::<SimpleJobCode>::default(),
-            Box::<SimpleNotificationCode>::default(),
-        )
-        .await?;
+        let api = Arc::new(mock_api_with_config(pool, config).await?);
 
         // Create user, tracker and tracker job.
         api.users().upsert(user.clone()).await?;
@@ -933,7 +898,7 @@ mod tests {
             .await?
             .is_empty()
         {
-            thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         scheduler.shutdown().await?;
@@ -955,10 +920,10 @@ mod tests {
         );
 
         // Check that the tracker job was marked as NOT stopped.
-        let trigger_job = api.db.get_scheduler_job(trigger_job_id).await?;
+        let trigger_job = mock_get_scheduler_job(&api.db, trigger_job_id).await?;
         assert_eq!(
             trigger_job.map(|job| (job.id, job.stopped)),
-            Some((Some(trigger_job_id.into()), false))
+            Some((trigger_job_id, Some(false)))
         );
 
         assert!(api
@@ -974,8 +939,8 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn schedules_notification_when_resources_change() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn schedules_notification_when_resources_change(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.scheduler.web_page_trackers_fetch =
             Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
@@ -983,15 +948,10 @@ mod tests {
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
+        let mut scheduler = mock_scheduler(&pool).await?;
+
         let user = mock_user()?;
-        let api = Arc::new(mock_api_with_config(config).await?);
-        let mut scheduler = JobScheduler::new_with_storage_and_code(
-            Box::new(SchedulerStore::new(api.db.clone())),
-            Box::<SimpleNotificationStore>::default(),
-            Box::<SimpleJobCode>::default(),
-            Box::<SimpleNotificationCode>::default(),
-        )
-        .await?;
+        let api = Arc::new(mock_api_with_config(pool, config).await?);
 
         // Make sure that the tracker is only run once during a single minute (2 seconds after the
         // current second).
@@ -1106,7 +1066,7 @@ mod tests {
             .await
             .is_empty()
         {
-            thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         scheduler.shutdown().await?;
@@ -1151,18 +1111,18 @@ mod tests {
                 .len(),
             2
         );
-        assert!(!api
-            .db
-            .get_scheduler_job(trigger_job_id)
+        assert!(!mock_get_scheduler_job(&api.db, trigger_job_id)
             .await?
-            .map(|job| job.stopped)
+            .and_then(|job| job.stopped)
             .unwrap_or_default());
 
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn schedules_notification_when_resources_change_check_fails() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn schedules_notification_when_resources_change_check_fails(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.scheduler.web_page_trackers_fetch =
             Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
@@ -1170,15 +1130,10 @@ mod tests {
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
+        let mut scheduler = mock_scheduler(&pool).await?;
+
         let user = mock_user()?;
-        let api = Arc::new(mock_api_with_config(config).await?);
-        let mut scheduler = JobScheduler::new_with_storage_and_code(
-            Box::new(SchedulerStore::new(api.db.clone())),
-            Box::<SimpleNotificationStore>::default(),
-            Box::<SimpleJobCode>::default(),
-            Box::<SimpleNotificationCode>::default(),
-        )
-        .await?;
+        let api = Arc::new(mock_api_with_config(pool, config).await?);
 
         // Make sure that the tracker is only run once during a single minute (2 seconds after the
         // current second).
@@ -1276,7 +1231,7 @@ mod tests {
             .await
             .is_empty()
         {
-            thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         scheduler.shutdown().await?;
@@ -1321,18 +1276,16 @@ mod tests {
                 .len(),
             1
         );
-        assert!(!api
-            .db
-            .get_scheduler_job(trigger_job_id)
+        assert!(!mock_get_scheduler_job(&api.db, trigger_job_id)
             .await?
-            .map(|job| job.stopped)
+            .and_then(|job| job.stopped)
             .unwrap_or_default());
 
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn retries_when_resources_change_check_fails() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn retries_when_resources_change_check_fails(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.scheduler.web_page_trackers_fetch =
             Schedule::try_from(mock_schedule_in_secs(&[3, 6]).as_str())?;
@@ -1340,15 +1293,10 @@ mod tests {
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
+        let mut scheduler = mock_scheduler(&pool).await?;
+
         let user = mock_user()?;
-        let api = Arc::new(mock_api_with_config(config).await?);
-        let mut scheduler = JobScheduler::new_with_storage_and_code(
-            Box::new(SchedulerStore::new(api.db.clone())),
-            Box::<SimpleNotificationStore>::default(),
-            Box::<SimpleJobCode>::default(),
-            Box::<SimpleNotificationCode>::default(),
-        )
-        .await?;
+        let api = Arc::new(mock_api_with_config(pool, config).await?);
 
         // Make sure that the tracker is only run once during a single minute (2 seconds after the
         // current second).
@@ -1447,7 +1395,7 @@ mod tests {
             .retry
             .is_none()
         {
-            thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         resources_mock.assert();
@@ -1469,11 +1417,9 @@ mod tests {
                 .len(),
             1
         );
-        assert!(api
-            .db
-            .get_scheduler_job(trigger_job_id)
+        assert!(mock_get_scheduler_job(&api.db, trigger_job_id)
             .await?
-            .map(|job| job.stopped)
+            .and_then(|job| job.stopped)
             .unwrap_or_default());
 
         while api
@@ -1486,7 +1432,7 @@ mod tests {
             .await
             .is_empty()
         {
-            thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         scheduler.shutdown().await?;
@@ -1529,18 +1475,18 @@ mod tests {
                 .len(),
             1
         );
-        assert!(!api
-            .db
-            .get_scheduler_job(trigger_job_id)
+        assert!(!mock_get_scheduler_job(&api.db, trigger_job_id)
             .await?
-            .map(|job| job.stopped)
+            .and_then(|job| job.stopped)
             .unwrap_or_default());
 
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn retries_when_resources_change_check_fails_until_succeeds() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn retries_when_resources_change_check_fails_until_succeeds(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.scheduler.web_page_trackers_fetch =
             Schedule::try_from(mock_schedule_in_secs(&[3, 6]).as_str())?;
@@ -1548,15 +1494,10 @@ mod tests {
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
+        let mut scheduler = mock_scheduler(&pool).await?;
+
         let user = mock_user()?;
-        let api = Arc::new(mock_api_with_config(config).await?);
-        let mut scheduler = JobScheduler::new_with_storage_and_code(
-            Box::new(SchedulerStore::new(api.db.clone())),
-            Box::<SimpleNotificationStore>::default(),
-            Box::<SimpleJobCode>::default(),
-            Box::<SimpleNotificationCode>::default(),
-        )
-        .await?;
+        let api = Arc::new(mock_api_with_config(pool, config).await?);
 
         // Make sure that the tracker is only run once during a single minute (2 seconds after the
         // current second).
@@ -1655,7 +1596,7 @@ mod tests {
             .retry
             .is_none()
         {
-            thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         resources_mock.assert();
@@ -1678,11 +1619,9 @@ mod tests {
                 .len(),
             1
         );
-        assert!(api
-            .db
-            .get_scheduler_job(trigger_job_id)
+        assert!(mock_get_scheduler_job(&api.db, trigger_job_id)
             .await?
-            .map(|job| job.stopped)
+            .and_then(|job| job.stopped)
             .unwrap_or_default());
 
         // Create a mock
@@ -1729,7 +1668,7 @@ mod tests {
             .await
             .is_empty()
         {
-            thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         scheduler.shutdown().await?;
@@ -1774,18 +1713,16 @@ mod tests {
                 .len(),
             2
         );
-        assert!(!api
-            .db
-            .get_scheduler_job(trigger_job_id)
+        assert!(!mock_get_scheduler_job(&api.db, trigger_job_id)
             .await?
-            .map(|job| job.stopped)
+            .and_then(|job| job.stopped)
             .unwrap_or_default());
 
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn schedules_notification_when_content_change() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn schedules_notification_when_content_change(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.scheduler.web_page_trackers_fetch =
             Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
@@ -1793,15 +1730,10 @@ mod tests {
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
+        let mut scheduler = mock_scheduler(&pool).await?;
+
         let user = mock_user()?;
-        let api = Arc::new(mock_api_with_config(config).await?);
-        let mut scheduler = JobScheduler::new_with_storage_and_code(
-            Box::new(SchedulerStore::new(api.db.clone())),
-            Box::<SimpleNotificationStore>::default(),
-            Box::<SimpleJobCode>::default(),
-            Box::<SimpleNotificationCode>::default(),
-        )
-        .await?;
+        let api = Arc::new(mock_api_with_config(pool, config).await?);
 
         // Make sure that the tracker is only run once during a single minute (2 seconds after the
         // current second).
@@ -1900,7 +1832,7 @@ mod tests {
             .await
             .is_empty()
         {
-            thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         scheduler.shutdown().await?;
@@ -1945,18 +1877,18 @@ mod tests {
                 .len(),
             2
         );
-        assert!(!api
-            .db
-            .get_scheduler_job(trigger_job_id)
+        assert!(!mock_get_scheduler_job(&api.db, trigger_job_id)
             .await?
-            .map(|job| job.stopped)
+            .and_then(|job| job.stopped)
             .unwrap_or_default());
 
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn schedules_notification_when_content_change_check_fails() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn schedules_notification_when_content_change_check_fails(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.scheduler.web_page_trackers_fetch =
             Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
@@ -1964,15 +1896,10 @@ mod tests {
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
+        let mut scheduler = mock_scheduler(&pool).await?;
+
         let user = mock_user()?;
-        let api = Arc::new(mock_api_with_config(config).await?);
-        let mut scheduler = JobScheduler::new_with_storage_and_code(
-            Box::new(SchedulerStore::new(api.db.clone())),
-            Box::<SimpleNotificationStore>::default(),
-            Box::<SimpleJobCode>::default(),
-            Box::<SimpleNotificationCode>::default(),
-        )
-        .await?;
+        let api = Arc::new(mock_api_with_config(pool, config).await?);
 
         // Make sure that the tracker is only run once during a single minute (2 seconds after the
         // current second).
@@ -2068,7 +1995,7 @@ mod tests {
             .await
             .is_empty()
         {
-            thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         scheduler.shutdown().await?;
@@ -2113,18 +2040,16 @@ mod tests {
                 .len(),
             1
         );
-        assert!(!api
-            .db
-            .get_scheduler_job(trigger_job_id)
+        assert!(!mock_get_scheduler_job(&api.db, trigger_job_id)
             .await?
-            .map(|job| job.stopped)
+            .and_then(|job| job.stopped)
             .unwrap_or_default());
 
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn retries_when_content_change_check_fails() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn retries_when_content_change_check_fails(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.scheduler.web_page_trackers_fetch =
             Schedule::try_from(mock_schedule_in_secs(&[3, 6]).as_str())?;
@@ -2132,15 +2057,10 @@ mod tests {
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
+        let mut scheduler = mock_scheduler(&pool).await?;
+
         let user = mock_user()?;
-        let api = Arc::new(mock_api_with_config(config).await?);
-        let mut scheduler = JobScheduler::new_with_storage_and_code(
-            Box::new(SchedulerStore::new(api.db.clone())),
-            Box::<SimpleNotificationStore>::default(),
-            Box::<SimpleJobCode>::default(),
-            Box::<SimpleNotificationCode>::default(),
-        )
-        .await?;
+        let api = Arc::new(mock_api_with_config(pool, config).await?);
 
         // Make sure that the tracker is only run once during a single minute (2 seconds after the
         // current second).
@@ -2237,7 +2157,7 @@ mod tests {
             .retry
             .is_none()
         {
-            thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         content_mock.assert();
@@ -2259,11 +2179,9 @@ mod tests {
                 .len(),
             1
         );
-        assert!(api
-            .db
-            .get_scheduler_job(trigger_job_id)
+        assert!(mock_get_scheduler_job(&api.db, trigger_job_id)
             .await?
-            .map(|job| job.stopped)
+            .and_then(|job| job.stopped)
             .unwrap_or_default());
 
         while api
@@ -2276,7 +2194,7 @@ mod tests {
             .await
             .is_empty()
         {
-            thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         scheduler.shutdown().await?;
@@ -2319,18 +2237,18 @@ mod tests {
                 .len(),
             1
         );
-        assert!(!api
-            .db
-            .get_scheduler_job(trigger_job_id)
+        assert!(!mock_get_scheduler_job(&api.db, trigger_job_id)
             .await?
-            .map(|job| job.stopped)
+            .and_then(|job| job.stopped)
             .unwrap_or_default());
 
         Ok(())
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn retries_when_content_change_check_fails_until_succeeds() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn retries_when_content_change_check_fails_until_succeeds(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         config.scheduler.web_page_trackers_fetch =
             Schedule::try_from(mock_schedule_in_secs(&[3, 6]).as_str())?;
@@ -2338,15 +2256,10 @@ mod tests {
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
 
+        let mut scheduler = mock_scheduler(&pool).await?;
+
         let user = mock_user()?;
-        let api = Arc::new(mock_api_with_config(config).await?);
-        let mut scheduler = JobScheduler::new_with_storage_and_code(
-            Box::new(SchedulerStore::new(api.db.clone())),
-            Box::<SimpleNotificationStore>::default(),
-            Box::<SimpleJobCode>::default(),
-            Box::<SimpleNotificationCode>::default(),
-        )
-        .await?;
+        let api = Arc::new(mock_api_with_config(pool, config).await?);
 
         // Make sure that the tracker is only run once during a single minute (2 seconds after the
         // current second).
@@ -2443,7 +2356,7 @@ mod tests {
             .retry
             .is_none()
         {
-            thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         content_mock.assert();
@@ -2466,11 +2379,9 @@ mod tests {
                 .len(),
             1
         );
-        assert!(api
-            .db
-            .get_scheduler_job(trigger_job_id)
+        assert!(mock_get_scheduler_job(&api.db, trigger_job_id)
             .await?
-            .map(|job| job.stopped)
+            .and_then(|job| job.stopped)
             .unwrap_or_default());
 
         // Create a mock
@@ -2504,7 +2415,7 @@ mod tests {
             .await
             .is_empty()
         {
-            thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         scheduler.shutdown().await?;
@@ -2549,11 +2460,9 @@ mod tests {
                 .len(),
             2
         );
-        assert!(!api
-            .db
-            .get_scheduler_job(trigger_job_id)
+        assert!(!mock_get_scheduler_job(&api.db, trigger_job_id)
             .await?
-            .map(|job| job.stopped)
+            .and_then(|job| job.stopped)
             .unwrap_or_default());
 
         Ok(())

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM user_data_webhooks_responders_history\n        WHERE user_id = $1 AND responder_id = $2\n                        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "98523a4ee01682cdc05ddeb9a624b4a3c14ff1b80e59f6ae9e759af2de97fd6c"
+}

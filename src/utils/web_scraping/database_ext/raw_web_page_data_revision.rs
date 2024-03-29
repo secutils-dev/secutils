@@ -4,10 +4,10 @@ use uuid::Uuid;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct RawWebPageDataRevision {
-    pub id: Vec<u8>,
-    pub tracker_id: Vec<u8>,
+    pub id: Uuid,
+    pub tracker_id: Uuid,
     pub data: Vec<u8>,
-    pub created_at: i64,
+    pub created_at: OffsetDateTime,
 }
 
 impl<Tag: WebPageTrackerTag> TryFrom<RawWebPageDataRevision> for WebPageDataRevision<Tag> {
@@ -15,10 +15,10 @@ impl<Tag: WebPageTrackerTag> TryFrom<RawWebPageDataRevision> for WebPageDataRevi
 
     fn try_from(raw: RawWebPageDataRevision) -> Result<Self, Self::Error> {
         Ok(Self {
-            id: Uuid::from_slice(raw.id.as_slice())?,
-            tracker_id: Uuid::from_slice(raw.tracker_id.as_slice())?,
+            id: raw.id,
+            tracker_id: raw.tracker_id,
             data: postcard::from_bytes::<Tag::TrackerData>(&raw.data)?,
-            created_at: OffsetDateTime::from_unix_timestamp(raw.created_at)?,
+            created_at: raw.created_at,
         })
     }
 }
@@ -28,10 +28,10 @@ impl<Tag: WebPageTrackerTag> TryFrom<&WebPageDataRevision<Tag>> for RawWebPageDa
 
     fn try_from(item: &WebPageDataRevision<Tag>) -> Result<Self, Self::Error> {
         Ok(Self {
-            id: item.id.into(),
-            tracker_id: item.tracker_id.into(),
+            id: item.id,
+            tracker_id: item.tracker_id,
             data: postcard::to_stdvec(&item.data)?,
-            created_at: item.created_at.unix_timestamp(),
+            created_at: item.created_at,
         })
     }
 }
@@ -50,12 +50,8 @@ mod tests {
     fn can_convert_into_web_page_data_revision() -> anyhow::Result<()> {
         assert_eq!(
             WebPageDataRevision::<WebPageResourcesTrackerTag>::try_from(RawWebPageDataRevision {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
-                tracker_id: uuid!("00000000-0000-0000-0000-000000000002")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
+                tracker_id: uuid!("00000000-0000-0000-0000-000000000002"),
                 data: vec![
                     1, 0, 1, 2, 11, 115, 111, 109, 101, 45, 100, 105, 103, 101, 115, 116, 217, 2,
                     2, 0, 0, 1, 30, 104, 116, 116, 112, 115, 58, 47, 47, 115, 101, 99, 117, 116,
@@ -63,7 +59,7 @@ mod tests {
                     115, 1, 1, 11, 115, 111, 109, 101, 45, 100, 105, 103, 101, 115, 116, 123
                 ],
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             WebPageDataRevision {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -134,12 +130,8 @@ mod tests {
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             RawWebPageDataRevision {
-                id: uuid!("00000000-0000-0000-0000-000000000001")
-                    .as_bytes()
-                    .to_vec(),
-                tracker_id: uuid!("00000000-0000-0000-0000-000000000002")
-                    .as_bytes()
-                    .to_vec(),
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
+                tracker_id: uuid!("00000000-0000-0000-0000-000000000002"),
                 data: vec![
                     1, 1, 2, 11, 115, 111, 109, 101, 45, 100, 105, 103, 101, 115, 116, 217, 2, 2,
                     1, 30, 104, 116, 116, 112, 115, 58, 47, 47, 115, 101, 99, 117, 116, 105, 108,
@@ -147,7 +139,7 @@ mod tests {
                     11, 115, 111, 109, 101, 45, 100, 105, 103, 101, 115, 116, 123
                 ],
                 // January 1, 2000 10:00:00
-                created_at: 946720800,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             }
         );
 

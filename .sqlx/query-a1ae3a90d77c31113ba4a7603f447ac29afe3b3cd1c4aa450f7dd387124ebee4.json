@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nDELETE FROM user_data\nWHERE namespace = $1 AND key = $2 AND timestamp <= $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a1ae3a90d77c31113ba4a7603f447ac29afe3b3cd1c4aa450f7dd387124ebee4"
+}

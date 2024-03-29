@@ -15,18 +15,18 @@ use anyhow::{anyhow, bail};
 use async_stream::try_stream;
 use futures::Stream;
 use raw_web_page_tracker::RawWebPageTracker;
-use sqlx::{error::ErrorKind as SqlxErrorKind, query, query_as, Pool, Sqlite};
+use sqlx::{error::ErrorKind as SqlxErrorKind, query, query_as, Pool, Postgres};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 /// A database extension for the web scraping utility-related operations.
 pub struct WebScrapingDatabaseExt<'pool> {
-    pool: &'pool Pool<Sqlite>,
+    pool: &'pool Pool<Postgres>,
     user_id: UserId,
 }
 
 impl<'pool> WebScrapingDatabaseExt<'pool> {
-    pub fn new(pool: &'pool Pool<Sqlite>, user_id: UserId) -> Self {
+    pub fn new(pool: &'pool Pool<Postgres>, user_id: UserId) -> Self {
         Self { pool, user_id }
     }
 
@@ -40,7 +40,7 @@ impl<'pool> WebScrapingDatabaseExt<'pool> {
             r#"
 SELECT id, name, url, kind, job_id, job_config, user_id, data, created_at
 FROM user_data_web_scraping_trackers
-WHERE user_id = ?1 AND kind = ?2
+WHERE user_id = $1 AND kind = $2
 ORDER BY created_at
                 "#,
             *self.user_id,
@@ -63,13 +63,12 @@ ORDER BY created_at
         id: Uuid,
     ) -> anyhow::Result<Option<WebPageTracker<Tag>>> {
         let kind = Vec::try_from(Tag::KIND)?;
-        let id: &[u8] = id.as_ref();
         query_as!(
             RawWebPageTracker,
             r#"
     SELECT id, name, url, kind, user_id, job_id, job_config, data, created_at
     FROM user_data_web_scraping_trackers
-    WHERE user_id = ?1 AND id = ?2 AND kind = ?3
+    WHERE user_id = $1 AND id = $2 AND kind = $3
                     "#,
             *self.user_id,
             id,
@@ -90,7 +89,7 @@ ORDER BY created_at
         let result = query!(
             r#"
     INSERT INTO user_data_web_scraping_trackers (user_id, id, name, url, kind, job_id, job_config, data, created_at)
-    VALUES ( ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9 )
+    VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9 )
             "#,
             *self.user_id,
             raw_tracker.id,
@@ -136,8 +135,8 @@ ORDER BY created_at
         let result = query!(
             r#"
 UPDATE user_data_web_scraping_trackers
-SET name = ?4, url = ?5, job_config = ?6, data = ?7, job_id = ?8
-WHERE user_id = ?1 AND id = ?2 AND kind = ?3
+SET name = $4, url = $5, job_config = $6, data = $7, job_id = $8
+WHERE user_id = $1 AND id = $2 AND kind = $3
         "#,
             *self.user_id,
             raw_tracker.id,
@@ -184,11 +183,10 @@ WHERE user_id = ?1 AND id = ?2 AND kind = ?3
 
     /// Removes web page tracker for the specified user with the specified ID.
     pub async fn remove_web_page_tracker(&self, id: Uuid) -> anyhow::Result<()> {
-        let id: &[u8] = id.as_ref();
         query!(
             r#"
     DELETE FROM user_data_web_scraping_trackers
-    WHERE user_id = ?1 AND id = ?2
+    WHERE user_id = $1 AND id = $2
                     "#,
             *self.user_id,
             id
@@ -212,7 +210,7 @@ SELECT history.id, history.tracker_id, history.data, history.created_at
 FROM user_data_web_scraping_trackers_history as history
 INNER JOIN user_data_web_scraping_trackers as trackers
 ON history.tracker_id = trackers.id
-WHERE history.user_id = ?1 AND history.tracker_id = ?2 AND trackers.kind = ?3
+WHERE history.user_id = $1 AND history.tracker_id = $2 AND trackers.kind = $3
 ORDER BY history.created_at
                 "#,
             *self.user_id,
@@ -232,14 +230,13 @@ ORDER BY history.created_at
 
     /// Removes web page tracker history.
     pub async fn clear_web_page_tracker_history(&self, tracker_id: Uuid) -> anyhow::Result<()> {
-        let id: &[u8] = tracker_id.as_ref();
         query!(
             r#"
     DELETE FROM user_data_web_scraping_trackers_history
-    WHERE user_id = ?1 AND tracker_id = ?2
+    WHERE user_id = $1 AND tracker_id = $2
                     "#,
             *self.user_id,
-            id
+            tracker_id
         )
         .execute(self.pool)
         .await?;
@@ -256,7 +253,7 @@ ORDER BY history.created_at
         let result = query!(
             r#"
     INSERT INTO user_data_web_scraping_trackers_history (user_id, id, tracker_id, data, created_at)
-    VALUES ( ?1, ?2, ?3, ?4, ?5 )
+    VALUES ( $1, $2, $3, $4, $5 )
             "#,
             *self.user_id,
             raw_revision.id,
@@ -297,7 +294,7 @@ ORDER BY history.created_at
         query!(
             r#"
     DELETE FROM user_data_web_scraping_trackers_history
-    WHERE user_id = ?1 AND tracker_id = ?2 AND id = ?3
+    WHERE user_id = $1 AND tracker_id = $2 AND id = $3
                     "#,
             *self.user_id,
             tracker_id,
@@ -313,11 +310,11 @@ ORDER BY history.created_at
 /// A database extension for the web scraping utility-related operations performed on behalf of the
 /// system/background jobs.
 pub struct WebScrapingDatabaseSystemExt<'pool> {
-    pool: &'pool Pool<Sqlite>,
+    pool: &'pool Pool<Postgres>,
 }
 
 impl<'pool> WebScrapingDatabaseSystemExt<'pool> {
-    pub fn new(pool: &'pool Pool<Sqlite>) -> Self {
+    pub fn new(pool: &'pool Pool<Postgres>) -> Self {
         Self { pool }
     }
 
@@ -331,7 +328,7 @@ impl<'pool> WebScrapingDatabaseSystemExt<'pool> {
             r#"
 SELECT id, name, url, kind, user_id, job_id, job_config, data, created_at
 FROM user_data_web_scraping_trackers
-WHERE job_config IS NOT NULL AND job_id IS NULL AND kind = ?1
+WHERE job_config IS NOT NULL AND job_id IS NULL AND kind = $1
 ORDER BY created_at
                 "#,
             kind
@@ -358,19 +355,19 @@ ORDER BY created_at
     ) -> impl Stream<Item = anyhow::Result<WebPageTracker<Tag>>> + '_ {
         let page_limit = page_size as i64;
         try_stream! {
-            let mut last_created_at = 0;
+            let mut last_created_at = OffsetDateTime::UNIX_EPOCH;
             let kind = Vec::try_from(Tag::KIND)?;
             loop {
                  let records = query!(
 r#"
-SELECT trackers.id, trackers.name, trackers.url, trackers.kind, trackers.job_id, 
+SELECT trackers.id, trackers.name, trackers.url, trackers.kind, trackers.job_id,
        trackers.job_config, trackers.user_id, trackers.data, trackers.created_at, jobs.extra
 FROM user_data_web_scraping_trackers as trackers
 INNER JOIN scheduler_jobs as jobs
 ON trackers.job_id = jobs.id
-WHERE trackers.kind = ?1 AND jobs.stopped = 1 AND trackers.created_at > ?2
+WHERE trackers.kind = $1 AND jobs.stopped = true AND trackers.created_at > $2
 ORDER BY trackers.created_at
-LIMIT ?3;
+LIMIT $3;
 "#,
              kind, last_created_at, page_limit
         )
@@ -421,7 +418,7 @@ LIMIT ?3;
             r#"
     SELECT id, name, url, kind, user_id, job_id, job_config, data, created_at
     FROM user_data_web_scraping_trackers
-    WHERE job_id = ?1 AND kind = ?2
+    WHERE job_id = $1 AND kind = $2
                     "#,
             job_id,
             kind
@@ -441,8 +438,8 @@ LIMIT ?3;
         let result = query!(
             r#"
     UPDATE user_data_web_scraping_trackers
-    SET job_id = ?2
-    WHERE id = ?1
+    SET job_id = $2
+    WHERE id = $1
             "#,
             id,
             job_id
@@ -477,12 +474,16 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use crate::{
+        database::Database,
         error::Error as SecutilsError,
         scheduler::{
             SchedulerJob, SchedulerJobConfig, SchedulerJobMetadata, SchedulerJobRetryState,
             SchedulerJobRetryStrategy,
         },
-        tests::{mock_db, mock_user, MockWebPageTrackerBuilder},
+        tests::{
+            mock_scheduler_job, mock_upsert_scheduler_job, mock_user, to_database_error,
+            MockWebPageTrackerBuilder, RawSchedulerJobStoredData,
+        },
         utils::web_scraping::{
             WebPageContentTrackerTag, WebPageDataRevision, WebPageResource, WebPageResourceContent,
             WebPageResourceContentData, WebPageResourcesData, WebPageResourcesTrackerTag,
@@ -491,12 +492,12 @@ mod tests {
     };
     use futures::StreamExt;
     use insta::assert_debug_snapshot;
+    use sqlx::PgPool;
     use std::{
         ops::{Add, Sub},
         time::Duration,
     };
     use time::OffsetDateTime;
-    use tokio_cron_scheduler::{CronJob, JobStored, JobStoredData, JobType};
     use url::Url;
     use uuid::{uuid, Uuid};
 
@@ -530,10 +531,10 @@ mod tests {
         })
     }
 
-    #[tokio::test]
-    async fn can_add_and_retrieve_web_page_trackers() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_add_and_retrieve_web_page_trackers(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let mut resources_trackers: Vec<WebPageTracker<WebPageResourcesTrackerTag>> = vec![
@@ -620,10 +621,12 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn correctly_handles_duplicated_web_page_trackers_on_insert() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn correctly_handles_duplicated_web_page_trackers_on_insert(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let tracker = MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
@@ -652,18 +655,12 @@ mod tests {
             .downcast::<SecutilsError>()
             .unwrap();
         assert_debug_snapshot!(
-            insert_error,
-            @r###"
-        Error {
-            context: "Web page tracker (\'some-name\') already exists.",
-            source: Database(
-                SqliteError {
-                    code: 2067,
-                    message: "UNIQUE constraint failed: user_data_web_scraping_trackers.name, user_data_web_scraping_trackers.kind, user_data_web_scraping_trackers.user_id",
-                },
-            ),
-        }
-        "###
+            insert_error.root_cause.to_string(),
+            @r###""Web page tracker ('some-name') already exists.""###
+        );
+        assert_debug_snapshot!(
+            to_database_error(insert_error.root_cause)?.message(),
+            @r###""duplicate key value violates unique constraint \"user_data_web_scraping_trackers_name_kind_user_id_key\"""###
         );
 
         // Tracker with the same name, but different kind should be allowed.
@@ -683,10 +680,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_update_web_page_tracker() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_update_web_page_tracker(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let web_scraping = db.web_scraping(user.id);
@@ -769,10 +766,12 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn correctly_handles_duplicated_resources_trackers_on_update() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn correctly_handles_duplicated_resources_trackers_on_update(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let web_scraping = db.web_scraping(user.id);
@@ -835,18 +834,12 @@ mod tests {
             .downcast::<SecutilsError>()
             .unwrap();
         assert_debug_snapshot!(
-            update_error,
-            @r###"
-        Error {
-            context: "Web page tracker (\'some-name\') already exists.",
-            source: Database(
-                SqliteError {
-                    code: 2067,
-                    message: "UNIQUE constraint failed: user_data_web_scraping_trackers.name, user_data_web_scraping_trackers.kind, user_data_web_scraping_trackers.user_id",
-                },
-            ),
-        }
-        "###
+            update_error.root_cause.to_string(),
+            @r###""Web page tracker ('some-name') already exists.""###
+        );
+        assert_debug_snapshot!(
+            to_database_error(update_error.root_cause)?.message(),
+            @r###""duplicate key value violates unique constraint \"user_data_web_scraping_trackers_name_kind_user_id_key\"""###
         );
 
         let update_error = web_scraping
@@ -864,27 +857,23 @@ mod tests {
             .downcast::<SecutilsError>()
             .unwrap();
         assert_debug_snapshot!(
-            update_error,
-            @r###"
-        Error {
-            context: "Web page tracker (\'some-name\') already exists.",
-            source: Database(
-                SqliteError {
-                    code: 2067,
-                    message: "UNIQUE constraint failed: user_data_web_scraping_trackers.name, user_data_web_scraping_trackers.kind, user_data_web_scraping_trackers.user_id",
-                },
-            ),
-        }
-        "###
+            update_error.root_cause.to_string(),
+            @r###""Web page tracker ('some-name') already exists.""###
+        );
+        assert_debug_snapshot!(
+            to_database_error(update_error.root_cause)?.message(),
+            @r###""duplicate key value violates unique constraint \"user_data_web_scraping_trackers_name_kind_user_id_key\"""###
         );
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn correctly_handles_non_existent_web_page_trackers_on_update() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn correctly_handles_non_existent_web_page_trackers_on_update(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let update_error = db
@@ -910,10 +899,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_remove_web_page_trackers() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_remove_web_page_trackers(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let mut trackers = vec![
@@ -990,10 +979,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_retrieve_all_web_page_trackers() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_retrieve_all_web_page_trackers(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let resources_trackers = vec![
@@ -1051,10 +1040,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_add_and_retrieve_history_revisions() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_add_and_retrieve_history_revisions(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let trackers = vec![
@@ -1130,10 +1119,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_remove_history_revisions() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_remove_history_revisions(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let trackers = vec![
@@ -1226,10 +1215,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_clear_all_history_revisions_at_once() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_clear_all_history_revisions_at_once(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let trackers = vec![
@@ -1307,13 +1296,13 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_retrieve_all_unscheduled_web_page_trackers() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_retrieve_all_unscheduled_web_page_trackers(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
-        let resources_trackers: Vec<WebPageTracker<WebPageResourcesTrackerTag>> = vec![
+        let mut resources_trackers: Vec<WebPageTracker<WebPageResourcesTrackerTag>> = vec![
             MockWebPageTrackerBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",
@@ -1355,7 +1344,7 @@ mod tests {
             .build(),
         ];
 
-        let content_trackers: Vec<WebPageTracker<WebPageContentTrackerTag>> = vec![
+        let mut content_trackers: Vec<WebPageTracker<WebPageContentTrackerTag>> = vec![
             MockWebPageTrackerBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000006"),
                 "some-name",
@@ -1398,10 +1387,18 @@ mod tests {
         ];
 
         let web_scraping = db.web_scraping(user.id);
-        for tracker in resources_trackers.iter() {
+        for (index, tracker) in resources_trackers.iter_mut().enumerate() {
+            tracker.created_at = tracker
+                .created_at
+                .checked_add(Duration::from_secs(index as u64).try_into()?)
+                .unwrap();
             web_scraping.insert_web_page_tracker(tracker).await?;
         }
-        for tracker in content_trackers.iter() {
+        for (index, tracker) in content_trackers.iter_mut().enumerate() {
+            tracker.created_at = tracker
+                .created_at
+                .checked_add(Duration::from_secs(index as u64).try_into()?)
+                .unwrap();
             web_scraping.insert_web_page_tracker(tracker).await?;
         }
 
@@ -1484,10 +1481,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_retrieve_web_page_tracker_by_job_id() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_retrieve_web_page_tracker_by_job_id(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let trackers: Vec<WebPageTracker<WebPageResourcesTrackerTag>> = vec![
@@ -1541,10 +1538,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_update_web_page_trackers_job_id() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_update_web_page_trackers_job_id(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let tracker = MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
@@ -1602,10 +1599,12 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn fails_to_update_web_page_trackers_job_id_if_needed() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn fails_to_update_web_page_trackers_job_id_if_needed(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let tracker = MockWebPageTrackerBuilder::<WebPageResourcesTrackerTag>::create(
@@ -1637,10 +1636,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_return_tracker_with_pending_jobs() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_return_tracker_with_pending_jobs(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let pending_trackers = db
@@ -1658,53 +1657,43 @@ mod tests {
         assert!(pending_trackers.is_empty());
 
         for n in 0..=2 {
-            let job = JobStoredData {
-                id: Some(
-                    Uuid::parse_str(&format!("67e55044-10b1-426f-9247-bb680e5fe0c{}", n))?.into(),
-                ),
-                last_updated: Some(946720800u64 + n),
-                last_tick: Some(946720700u64),
-                next_tick: 946720900u64,
-                count: n as u32,
-                job_type: JobType::Cron as i32,
-                extra: SchedulerJobMetadata::new(SchedulerJob::WebPageTrackersTrigger {
-                    kind: WebPageTrackerKind::WebPageContent,
-                })
-                .try_into()?,
-                ran: true,
-                stopped: n != 1,
-                job: Some(JobStored::CronJob(CronJob {
-                    schedule: format!("{} 0 0 1 1 * *", n),
-                })),
-                time_offset_seconds: 0,
+            let job = RawSchedulerJobStoredData {
+                last_updated: Some(946720800 + n),
+                last_tick: Some(946720700),
+                next_tick: Some(946720900),
+                ran: Some(true),
+                count: Some(n as i32),
+                stopped: Some(n != 1),
+                ..mock_scheduler_job(
+                    Uuid::parse_str(&format!("67e55044-10b1-426f-9247-bb680e5fe0c{}", n))?,
+                    SchedulerJob::WebPageTrackersTrigger {
+                        kind: WebPageTrackerKind::WebPageContent,
+                    },
+                    format!("{} 0 0 1 1 * *", n),
+                )
             };
 
-            db.upsert_scheduler_job(&job).await?;
+            mock_upsert_scheduler_job(&db, &job).await?;
         }
 
         for n in 0..=2 {
-            let job = JobStoredData {
-                id: Some(
-                    Uuid::parse_str(&format!("68e55044-10b1-426f-9247-bb680e5fe0c{}", n))?.into(),
-                ),
-                last_updated: Some(946720800u64 + n),
-                last_tick: Some(946720700u64),
-                next_tick: 946720900u64,
-                count: n as u32,
-                job_type: JobType::Cron as i32,
-                extra: SchedulerJobMetadata::new(SchedulerJob::WebPageTrackersTrigger {
-                    kind: WebPageTrackerKind::WebPageResources,
-                })
-                .try_into()?,
-                ran: true,
-                stopped: n != 1,
-                job: Some(JobStored::CronJob(CronJob {
-                    schedule: format!("{} 0 0 1 1 * *", n),
-                })),
-                time_offset_seconds: 0,
+            let job = RawSchedulerJobStoredData {
+                last_updated: Some(946720800 + n),
+                last_tick: Some(946720700),
+                next_tick: Some(946720900),
+                ran: Some(true),
+                count: Some(n as i32),
+                stopped: Some(n != 1),
+                ..mock_scheduler_job(
+                    Uuid::parse_str(&format!("68e55044-10b1-426f-9247-bb680e5fe0c{}", n))?,
+                    SchedulerJob::WebPageTrackersTrigger {
+                        kind: WebPageTrackerKind::WebPageResources,
+                    },
+                    format!("{} 0 0 1 1 * *", n),
+                )
             };
 
-            db.upsert_scheduler_job(&job).await?;
+            mock_upsert_scheduler_job(&db, &job).await?;
         }
 
         for n in 0..=2 {
@@ -1762,10 +1751,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_return_tracker_with_pending_jobs_with_retry() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_return_tracker_with_pending_jobs_with_retry(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let pending_trackers = db
@@ -1776,40 +1765,41 @@ mod tests {
         assert!(pending_trackers.is_empty());
 
         for n in 0..=2 {
-            let job = JobStoredData {
-                id: Some(
-                    Uuid::parse_str(&format!("67e55044-10b1-426f-9247-bb680e5fe0c{}", n))?.into(),
-                ),
-                last_updated: Some(946720800u64 + n),
-                last_tick: Some(946720700u64),
-                next_tick: 946720900u64,
-                count: n as u32,
-                job_type: JobType::Cron as i32,
-                extra: (if n == 2 {
-                    SchedulerJobMetadata {
-                        job_type: SchedulerJob::WebPageTrackersTrigger {
+            let job = RawSchedulerJobStoredData {
+                last_updated: Some(946720800 + n),
+                last_tick: Some(946720700),
+                next_tick: Some(946720900),
+                ran: Some(true),
+                count: Some(n as i32),
+                stopped: Some(n != 1),
+                extra: Some(
+                    if n == 2 {
+                        SchedulerJobMetadata {
+                            job_type: SchedulerJob::WebPageTrackersTrigger {
+                                kind: WebPageTrackerKind::WebPageContent,
+                            },
+                            retry: Some(SchedulerJobRetryState {
+                                attempts: 1,
+                                next_at: OffsetDateTime::now_utc().add(Duration::from_secs(3600)),
+                            }),
+                        }
+                    } else {
+                        SchedulerJobMetadata::new(SchedulerJob::WebPageTrackersTrigger {
                             kind: WebPageTrackerKind::WebPageContent,
-                        },
-                        retry: Some(SchedulerJobRetryState {
-                            attempts: 1,
-                            next_at: OffsetDateTime::now_utc().add(Duration::from_secs(3600)),
-                        }),
+                        })
                     }
-                } else {
-                    SchedulerJobMetadata::new(SchedulerJob::WebPageTrackersTrigger {
+                    .try_into()?,
+                ),
+                ..mock_scheduler_job(
+                    Uuid::parse_str(&format!("67e55044-10b1-426f-9247-bb680e5fe0c{}", n))?,
+                    SchedulerJob::WebPageTrackersTrigger {
                         kind: WebPageTrackerKind::WebPageContent,
-                    })
-                })
-                .try_into()?,
-                ran: true,
-                stopped: n != 1,
-                job: Some(JobStored::CronJob(CronJob {
-                    schedule: format!("{} 0 0 1 1 * *", n),
-                })),
-                time_offset_seconds: 0,
+                    },
+                    format!("{} 0 0 1 1 * *", n),
+                )
             };
 
-            db.upsert_scheduler_job(&job).await?;
+            mock_upsert_scheduler_job(&db, &job).await?;
         }
 
         for n in 0..=2 {

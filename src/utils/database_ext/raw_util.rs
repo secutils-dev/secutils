@@ -3,11 +3,11 @@ use anyhow::bail;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct RawUtil {
-    pub id: i64,
+    pub id: i32,
     pub handle: String,
     pub name: String,
     pub keywords: Option<String>,
-    pub parent_id: Option<i64>,
+    pub parent_id: Option<i32>,
 }
 
 impl TryFrom<RawUtil> for Util {

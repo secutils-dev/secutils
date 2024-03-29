@@ -320,6 +320,7 @@ mod tests {
         },
     };
     use insta::assert_debug_snapshot;
+    use sqlx::PgPool;
     use std::borrow::Cow;
     use uuid::uuid;
 
@@ -333,9 +334,9 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn properly_creates_new_responder() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_creates_new_responder(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -364,9 +365,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_validates_responder_at_creation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_validates_responder_at_creation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -518,9 +519,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_updates_responder() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_updates_responder(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -681,9 +682,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_validates_responder_at_update() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_validates_responder_at_update(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -887,9 +888,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_find_responders() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn can_find_responders(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -953,9 +954,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_removes_responders() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_removes_responders(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
 
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
@@ -1001,9 +1002,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_returns_all_responders() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_returns_all_responders(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -1048,9 +1049,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_creates_responder_requests() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_creates_responder_requests(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -1121,9 +1122,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_validates_responder_request_at_creation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_validates_responder_request_at_creation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -1182,9 +1183,11 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_removes_requests_when_responder_is_removed() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_removes_requests_when_responder_is_removed(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -1265,9 +1268,9 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_clears_requests() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_clears_requests(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 

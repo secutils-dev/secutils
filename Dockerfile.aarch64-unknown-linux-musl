@@ -19,9 +19,6 @@ RUN set -x && \
     tar xzf ./aarch64-linux-musl-cross.tgz && \
     rustup target add aarch64-unknown-linux-musl
 
-# Copy vendored crates.
-COPY ["./vendor", "./vendor"]
-
 # Copy assets.
 COPY ["./assets", "./assets"]
 

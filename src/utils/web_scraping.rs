@@ -136,6 +136,7 @@ pub mod tests {
     };
     use insta::assert_json_snapshot;
     use serde_json::json;
+    use sqlx::PgPool;
     use std::{collections::HashMap, time::Duration};
     use time::OffsetDateTime;
     use url::Url;
@@ -206,9 +207,9 @@ pub mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn properly_handles_resources_list_operation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_handles_resources_list_operation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -275,9 +276,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_handles_content_list_operation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_handles_content_list_operation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -347,9 +348,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_handles_resources_create_operation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_handles_resources_create_operation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -405,9 +406,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_handles_content_create_operation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_handles_content_create_operation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -463,9 +464,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_handles_resources_update_operation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_handles_resources_update_operation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -547,9 +548,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_handles_content_update_operation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_handles_content_update_operation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -631,9 +632,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_handles_resources_delete_operation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_handles_resources_delete_operation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -678,9 +679,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_handles_content_delete_operation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_handles_content_delete_operation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -725,9 +726,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_handles_get_history_operation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_handles_get_history_operation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
@@ -873,9 +874,9 @@ pub mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn properly_handles_clear_history_operation() -> anyhow::Result<()> {
-        let api = mock_api().await?;
+    #[sqlx::test]
+    async fn properly_handles_clear_history_operation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 

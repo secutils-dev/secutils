@@ -9,16 +9,16 @@ use crate::{
     },
 };
 use anyhow::{anyhow, bail};
-use sqlx::{error::ErrorKind as SqlxErrorKind, query, query_as, Pool, Sqlite};
+use sqlx::{error::ErrorKind as SqlxErrorKind, query, query_as, Pool, Postgres};
 use uuid::Uuid;
 
 /// A database extension for the web security utility-related operations.
 pub struct WebSecurityDatabaseExt<'pool> {
-    pool: &'pool Pool<Sqlite>,
+    pool: &'pool Pool<Postgres>,
 }
 
 impl<'pool> WebSecurityDatabaseExt<'pool> {
-    pub fn new(pool: &'pool Pool<Sqlite>) -> Self {
+    pub fn new(pool: &'pool Pool<Postgres>) -> Self {
         Self { pool }
     }
 
@@ -28,13 +28,12 @@ impl<'pool> WebSecurityDatabaseExt<'pool> {
         user_id: UserId,
         id: Uuid,
     ) -> anyhow::Result<Option<ContentSecurityPolicy>> {
-        let id: &[u8] = id.as_ref();
         query_as!(
             RawContentSecurityPolicy,
             r#"
 SELECT id, name, directives, created_at
 FROM user_data_web_security_csp
-WHERE user_id = ?1 AND id = ?2
+WHERE user_id = $1 AND id = $2
                 "#,
             *user_id,
             id
@@ -55,7 +54,7 @@ WHERE user_id = ?1 AND id = ?2
         let result = query!(
             r#"
     INSERT INTO user_data_web_security_csp (user_id, id, name, directives, created_at)
-    VALUES ( ?1, ?2, ?3, ?4, ?5 )
+    VALUES ( $1, $2, $3, $4, $5 )
             "#,
             *user_id,
             raw_policy.id,
@@ -97,8 +96,8 @@ WHERE user_id = ?1 AND id = ?2
         let result = query!(
             r#"
     UPDATE user_data_web_security_csp
-    SET name = ?3, directives = ?4
-    WHERE user_id = ?1 AND id = ?2
+    SET name = $3, directives = $4
+    WHERE user_id = $1 AND id = $2
             "#,
             *user_id,
             raw_policy.id,
@@ -145,11 +144,10 @@ WHERE user_id = ?1 AND id = ?2
         user_id: UserId,
         id: Uuid,
     ) -> anyhow::Result<()> {
-        let id: &[u8] = id.as_ref();
         query!(
             r#"
     DELETE FROM user_data_web_security_csp
-    WHERE user_id = ?1 AND id = ?2
+    WHERE user_id = $1 AND id = $2
                     "#,
             *user_id,
             id
@@ -170,7 +168,7 @@ WHERE user_id = ?1 AND id = ?2
             r#"
     SELECT id, name, directives, created_at
     FROM user_data_web_security_csp
-    WHERE user_id = ?1
+    WHERE user_id = $1
     ORDER BY created_at
                     "#,
             *user_id
@@ -197,8 +195,9 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use crate::{
+        database::Database,
         error::Error as SecutilsError,
-        tests::{mock_db, mock_user},
+        tests::{mock_user, to_database_error},
         utils::web_security::{
             ContentSecurityPolicy, ContentSecurityPolicyDirective,
             ContentSecurityPolicyTrustedTypesDirectiveValue,
@@ -206,6 +205,7 @@ mod tests {
     };
     use actix_web::ResponseError;
     use insta::assert_debug_snapshot;
+    use sqlx::PgPool;
     use time::OffsetDateTime;
     use uuid::uuid;
 
@@ -225,10 +225,10 @@ mod tests {
         ])
     }
 
-    #[tokio::test]
-    async fn can_add_and_retrieve_content_security_policies() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_add_and_retrieve_content_security_policies(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let mut content_security_policies = vec![
@@ -275,11 +275,12 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn correctly_handles_duplicated_content_security_policies_on_insert() -> anyhow::Result<()>
-    {
+    #[sqlx::test]
+    async fn correctly_handles_duplicated_content_security_policies_on_insert(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let content_security_policy = ContentSecurityPolicy {
@@ -302,27 +303,21 @@ mod tests {
             .unwrap();
         assert_eq!(insert_error.status_code(), 400);
         assert_debug_snapshot!(
-            insert_error,
-            @r###"
-        Error {
-            context: "Content security policy (\'csp-name\') already exists.",
-            source: Database(
-                SqliteError {
-                    code: 2067,
-                    message: "UNIQUE constraint failed: user_data_web_security_csp.name, user_data_web_security_csp.user_id",
-                },
-            ),
-        }
-        "###
+            insert_error.root_cause.to_string(),
+            @r###""Content security policy ('csp-name') already exists.""###
+        );
+        assert_debug_snapshot!(
+            to_database_error(insert_error.root_cause)?.message(),
+            @r###""duplicate key value violates unique constraint \"user_data_web_security_csp_pkey\"""###
         );
 
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_update_content_security_policy_content() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_update_content_security_policy_content(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         db.web_security()
@@ -371,11 +366,12 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn correctly_handles_duplicated_content_security_policies_on_update() -> anyhow::Result<()>
-    {
+    #[sqlx::test]
+    async fn correctly_handles_duplicated_content_security_policies_on_update(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let content_security_policy_a = ContentSecurityPolicy {
@@ -415,28 +411,23 @@ mod tests {
             .unwrap();
         assert_eq!(update_error.status_code(), 400);
         assert_debug_snapshot!(
-            update_error,
-            @r###"
-        Error {
-            context: "Content security policy (\'csp-name-a\') already exists.",
-            source: Database(
-                SqliteError {
-                    code: 2067,
-                    message: "UNIQUE constraint failed: user_data_web_security_csp.name, user_data_web_security_csp.user_id",
-                },
-            ),
-        }
-        "###
+            update_error.root_cause.to_string(),
+            @r###""Content security policy ('csp-name-a') already exists.""###
+        );
+        assert_debug_snapshot!(
+            to_database_error(update_error.root_cause)?.message(),
+            @r###""duplicate key value violates unique constraint \"user_data_web_security_csp_name_user_id_key\"""###
         );
 
         Ok(())
     }
 
-    #[tokio::test]
+    #[sqlx::test]
     async fn correctly_handles_non_existent_content_security_policies_on_update(
+        pool: PgPool,
     ) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let update_error = db
@@ -463,10 +454,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_remove_content_security_policies() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_remove_content_security_policies(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let mut content_security_policies = vec![
@@ -543,10 +534,10 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
-    async fn can_retrieve_all_content_security_policies() -> anyhow::Result<()> {
+    #[sqlx::test]
+    async fn can_retrieve_all_content_security_policies(pool: PgPool) -> anyhow::Result<()> {
         let user = mock_user()?;
-        let db = mock_db().await?;
+        let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
         let content_security_policies = vec![
