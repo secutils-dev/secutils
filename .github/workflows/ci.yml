@@ -14,7 +14,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  DATABASE_URL: postgres://postgres:password@localhost:5432/secutils
+  DATABASE_URL: postgres://postgres@localhost:5432/secutils
 
 jobs:
   ci:
@@ -27,7 +27,7 @@ jobs:
       postgres:
         image: postgres:latest
         env:
-          POSTGRES_PASSWORD: password
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
     steps:
