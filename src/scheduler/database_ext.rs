@@ -79,12 +79,13 @@ WHERE id = $1
         let page_limit = page_size as i64;
         try_stream! {
             let mut last_id = Uuid::nil();
+            let mut conn = self.pool.acquire().await?;
             loop {
                 let jobs = query_as!(RawSchedulerJobStoredData,
                     r#"SELECT * FROM scheduler_jobs WHERE id > $1 ORDER BY id LIMIT $2;"#,
                     last_id, page_limit
                 )
-                .fetch_all(&self.pool)
+                .fetch_all(&mut *conn)
                 .await?;
 
                 let is_last_page = jobs.len() < page_size;

@@ -74,13 +74,14 @@ impl Database {
         let page_limit = page_size as i64;
         try_stream! {
             let mut last_id = 0;
+            let mut conn = self.pool.acquire().await?;
             loop {
                  let raw_notification_ids = query!(
                     r#"SELECT id FROM notifications WHERE scheduled_at <= $1 AND id > $2 ORDER BY scheduled_at, id LIMIT $3;"#,
                     scheduled_before_or_at,
                     last_id,
                     page_limit
-                ).fetch_all(&self.pool).await?;
+                ).fetch_all(&mut *conn).await?;
 
                 let is_last_page = raw_notification_ids.len() < page_size;
                 for raw_notification_id in raw_notification_ids {

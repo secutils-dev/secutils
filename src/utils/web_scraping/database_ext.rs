@@ -357,6 +357,7 @@ ORDER BY created_at
         try_stream! {
             let mut last_created_at = OffsetDateTime::UNIX_EPOCH;
             let kind = Vec::try_from(Tag::KIND)?;
+            let mut conn = self.pool.acquire().await?;
             loop {
                  let records = query!(
 r#"
@@ -371,7 +372,7 @@ LIMIT $3;
 "#,
              kind, last_created_at, page_limit
         )
-            .fetch_all(self.pool)
+            .fetch_all(&mut *conn)
             .await?;
 
                 let is_last_page = records.len() < page_size;
