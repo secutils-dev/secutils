@@ -24,10 +24,12 @@ fn entity_to_document(
     let mut doc = Document::default();
 
     doc.add_u64(schema_fields.id, entity.id);
-    doc.add_i64(
-        schema_fields.user_id,
-        *entity.user_id.unwrap_or_default() as i64,
-    );
+
+    if let Some(id) = entity.user_id {
+        doc.add_text(schema_fields.user_id, id.to_string());
+    } else {
+        doc.add_text(schema_fields.user_id, "");
+    }
 
     doc.add_text(schema_fields.label, &entity.label);
     doc.add_text(schema_fields.label_ngram, &entity.label.to_lowercase());
@@ -170,7 +172,7 @@ impl SearchIndex {
         search_filter: SearchFilter,
     ) -> anyhow::Result<Box<dyn Query>> {
         let public_query = Box::new(TermQuery::new(
-            Term::from_field_i64(self.schema_fields.user_id, *UserId::default() as i64),
+            Term::from_field_text(self.schema_fields.user_id, ""),
             IndexRecordOption::Basic,
         )) as Box<dyn Query>;
 
@@ -180,7 +182,7 @@ impl SearchIndex {
                 (
                     Occur::Should,
                     Box::new(TermQuery::new(
-                        Term::from_field_i64(self.schema_fields.user_id, *user_id as i64),
+                        Term::from_field_text(self.schema_fields.user_id, &user_id.to_string()),
                         IndexRecordOption::Basic,
                     )) as Box<dyn Query>,
                 ),
@@ -277,9 +279,9 @@ impl SearchIndex {
                         id.replace(field_value_content);
                     }
                 } else if field_value.field == self.schema_fields.user_id {
-                    if let Value::I64(field_value_content) = field_value.value {
-                        if field_value_content != *UserId::default() as i64 {
-                            user_id.replace((field_value_content as i32).try_into()?);
+                    if let Value::Str(field_value_content) = field_value.value {
+                        if !field_value_content.is_empty() {
+                            user_id.replace(field_value_content.parse()?);
                         }
                     }
                 } else if field_value.field == self.schema_fields.label {
@@ -354,6 +356,7 @@ mod tests {
     use insta::assert_debug_snapshot;
     use tantivy::Index;
     use time::OffsetDateTime;
+    use uuid::uuid;
 
     #[test]
     fn can_index_and_retrieve_items() -> anyhow::Result<()> {
@@ -377,7 +380,7 @@ mod tests {
                 OffsetDateTime::from_unix_timestamp(1262340000)?,
             )
             .set_keywords("some keywords")
-            .set_user_id(3.try_into()?)
+            .set_user_id(uuid!("00000000-0000-0000-0000-000000000003").into())
             .set_sub_category("some-handle")
             .set_meta([("one".to_string(), "two".to_string())])
             .build(),
@@ -414,7 +417,7 @@ mod tests {
                 ),
                 user_id: Some(
                     UserId(
-                        3,
+                        00000000-0000-0000-0000-000000000003,
                     ),
                 ),
                 meta: Some(
@@ -501,7 +504,7 @@ mod tests {
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
-        .set_user_id(3.try_into()?)
+        .set_user_id(uuid!("00000000-0000-0000-0000-000000000003").into())
         .build();
         let item_user_4 = MockSearchItemBuilder::new(
             2,
@@ -510,7 +513,7 @@ mod tests {
             // January 1, 2010 11:00:00
             OffsetDateTime::from_unix_timestamp(1262340000)?,
         )
-        .set_user_id(4.try_into()?)
+        .set_user_id(uuid!("00000000-0000-0000-0000-000000000004").into())
         .build();
 
         let public_item = MockSearchItemBuilder::new(
@@ -530,16 +533,20 @@ mod tests {
         public_items.sort_by(|item_a, item_b| item_a.id.cmp(&item_b.id));
         assert_eq!(public_items, vec![public_item.clone()]);
 
-        let mut public_and_user_items =
-            index.search(SearchFilter::default().with_user_id(3.try_into()?))?;
+        let mut public_and_user_items = index.search(
+            SearchFilter::default()
+                .with_user_id(uuid!("00000000-0000-0000-0000-000000000003").into()),
+        )?;
         public_and_user_items.sort_by(|item_a, item_b| item_a.id.cmp(&item_b.id));
         assert_eq!(
             public_and_user_items,
             vec![item_user_3, public_item.clone()]
         );
 
-        let mut public_and_user_items =
-            index.search(SearchFilter::default().with_user_id(4.try_into()?))?;
+        let mut public_and_user_items = index.search(
+            SearchFilter::default()
+                .with_user_id(uuid!("00000000-0000-0000-0000-000000000004").into()),
+        )?;
         public_and_user_items.sort_by(|item_a, item_b| item_a.id.cmp(&item_b.id));
         assert_eq!(
             public_and_user_items,
@@ -547,7 +554,10 @@ mod tests {
         );
 
         assert_eq!(
-            index.search(SearchFilter::default().with_user_id(5.try_into()?))?,
+            index.search(
+                SearchFilter::default()
+                    .with_user_id(uuid!("00000000-0000-0000-0000-000000000005").into())
+            )?,
             vec![public_item]
         );
 
@@ -605,7 +615,7 @@ mod tests {
         let index = SearchIndex::open(|schema| Ok(Index::create_in_ram(schema)))?;
         assert_debug_snapshot!(
             index.search_filter_into_query(default_filter)?,
-            @"TermQuery(Term(field=1, type=I64, 0))"
+            @r###"TermQuery(Term(field=1, type=Str, ""))"###
         );
 
         Ok(())
@@ -613,11 +623,12 @@ mod tests {
 
     #[test]
     fn filter_with_user_id() -> anyhow::Result<()> {
-        let filter = SearchFilter::default().with_user_id(1.try_into()?);
+        let filter = SearchFilter::default()
+            .with_user_id(uuid!("00000000-0000-0000-0000-000000000001").into());
         assert_eq!(
             filter,
             SearchFilter {
-                user_id: Some(1.try_into()?),
+                user_id: Some(uuid!("00000000-0000-0000-0000-000000000001").into()),
                 query: None,
                 category: None
             }
@@ -631,11 +642,11 @@ mod tests {
             subqueries: [
                 (
                     Should,
-                    TermQuery(Term(field=1, type=I64, 0)),
+                    TermQuery(Term(field=1, type=Str, "")),
                 ),
                 (
                     Should,
-                    TermQuery(Term(field=1, type=I64, 1)),
+                    TermQuery(Term(field=1, type=Str, "00000000-0000-0000-0000-000000000001")),
                 ),
             ],
         }
@@ -665,7 +676,7 @@ mod tests {
             subqueries: [
                 (
                     Must,
-                    TermQuery(Term(field=1, type=I64, 0)),
+                    TermQuery(Term(field=1, type=Str, "")),
                 ),
                 (
                     Must,
@@ -796,7 +807,7 @@ mod tests {
             subqueries: [
                 (
                     Must,
-                    TermQuery(Term(field=1, type=I64, 0)),
+                    TermQuery(Term(field=1, type=Str, "")),
                 ),
                 (
                     Must,
@@ -813,12 +824,12 @@ mod tests {
     #[test]
     fn filter_with_user_id_and_query() -> anyhow::Result<()> {
         let filter = SearchFilter::default()
-            .with_user_id(1.try_into()?)
+            .with_user_id(uuid!("00000000-0000-0000-0000-000000000001").into())
             .with_query("Some-Query");
         assert_eq!(
             filter,
             SearchFilter {
-                user_id: Some(1.try_into()?),
+                user_id: Some(uuid!("00000000-0000-0000-0000-000000000001").into()),
                 query: Some("Some-Query"),
                 category: None
             }
@@ -836,11 +847,11 @@ mod tests {
                         subqueries: [
                             (
                                 Should,
-                                TermQuery(Term(field=1, type=I64, 0)),
+                                TermQuery(Term(field=1, type=Str, "")),
                             ),
                             (
                                 Should,
-                                TermQuery(Term(field=1, type=I64, 1)),
+                                TermQuery(Term(field=1, type=Str, "00000000-0000-0000-0000-000000000001")),
                             ),
                         ],
                     },
@@ -976,7 +987,7 @@ mod tests {
             subqueries: [
                 (
                     Must,
-                    TermQuery(Term(field=1, type=I64, 0)),
+                    TermQuery(Term(field=1, type=Str, "")),
                 ),
                 (
                     Must,

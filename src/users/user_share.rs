@@ -57,7 +57,7 @@ mod tests {
         assert_eq!(
             ClientUserShare::from(UserShare {
                 id: user_share_id,
-                user_id: UserId::default(),
+                user_id: UserId::new(),
                 resource: resource.clone(),
                 created_at,
             }),

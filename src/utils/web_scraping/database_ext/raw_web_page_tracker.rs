@@ -13,7 +13,7 @@ pub(super) struct RawWebPageTracker {
     pub name: String,
     pub url: String,
     pub kind: Vec<u8>,
-    pub user_id: i32,
+    pub user_id: Uuid,
     pub job_id: Option<Uuid>,
     pub job_config: Option<Vec<u8>>,
     pub data: Vec<u8>,
@@ -90,7 +90,7 @@ impl<Tag: WebPageTrackerTag> TryFrom<RawWebPageTracker> for WebPageTracker<Tag> 
             id: raw.id,
             name: raw.name,
             url: raw.url.parse()?,
-            user_id: raw.user_id.try_into()?,
+            user_id: raw.user_id.into(),
             job_id: raw.job_id,
             job_config,
             settings: WebPageTrackerSettings {

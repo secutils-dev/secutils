@@ -36,7 +36,7 @@
       {
         "ordinal": 6,
         "name": "user_id",
-        "type_info": "Int4"
+        "type_info": "Uuid"
       },
       {
         "ordinal": 7,
@@ -51,7 +51,7 @@
     ],
     "parameters": {
       "Left": [
-        "Int4",
+        "Uuid",
         "Bytea"
       ]
     },

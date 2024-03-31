@@ -17,7 +17,7 @@ impl Default for ComponentsConfig {
         Self {
             web_scraper_url: Url::parse("http://localhost:7272")
                 .expect("Cannot parse Web Scraper URL parameter."),
-            search_index_version: 3,
+            search_index_version: 4,
         }
     }
 }
@@ -31,7 +31,7 @@ mod tests {
     fn serialization_and_default() {
         assert_toml_snapshot!(ComponentsConfig::default(), @r###"
         web-scraper-url = 'http://localhost:7272/'
-        search-index-version = 3
+        search-index-version = 4
         "###);
     }
 
@@ -40,7 +40,7 @@ mod tests {
         let config: ComponentsConfig = toml::from_str(
             r#"
         web-scraper-url = 'http://localhost:7272/'
-        search-index-version = 3
+        search-index-version = 4
     "#,
         )
         .unwrap();

@@ -96,7 +96,7 @@ mod tests {
 
         [components]
         web-scraper-url = 'http://localhost:7272/'
-        search-index-version = 3
+        search-index-version = 4
 
         [scheduler]
         web-page-trackers-schedule = '0 * * * * * *'

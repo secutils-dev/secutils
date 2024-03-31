@@ -2,10 +2,11 @@ use crate::users::UserData;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use uuid::Uuid;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub(super) struct RawUserData {
-    pub user_id: i32,
+    pub user_id: Uuid,
     pub key: Option<String>,
     pub value: Vec<u8>,
     pub timestamp: OffsetDateTime,
@@ -16,7 +17,7 @@ impl<V: for<'de> Deserialize<'de>> TryFrom<RawUserData> for UserData<V> {
 
     fn try_from(raw_user_data: RawUserData) -> Result<Self, Self::Error> {
         Ok(UserData {
-            user_id: raw_user_data.user_id.try_into()?,
+            user_id: raw_user_data.user_id.into(),
             key: raw_user_data
                 .key
                 .and_then(|key| if key.is_empty() { None } else { Some(key) }),
@@ -44,14 +45,15 @@ impl<'u, V: Serialize> TryFrom<&'u UserData<V>> for RawUserData {
 #[cfg(test)]
 mod tests {
     use super::RawUserData;
-    use crate::users::{UserData, UserId};
+    use crate::users::UserData;
     use insta::assert_debug_snapshot;
     use time::OffsetDateTime;
+    use uuid::uuid;
 
     #[test]
     fn can_convert_into_user_data() -> anyhow::Result<()> {
         assert_debug_snapshot!(UserData::<String>::try_from(RawUserData {
-            user_id: 1,
+            user_id: uuid!("00000000-0000-0000-0000-000000000001"),
             key: None,
             value: serde_json::to_vec("hello")?,
              // January 1, 2000 11:00:00
@@ -59,7 +61,7 @@ mod tests {
         })?, @r###"
         UserData {
             user_id: UserId(
-                1,
+                00000000-0000-0000-0000-000000000001,
             ),
             key: None,
             value: "hello",
@@ -68,7 +70,7 @@ mod tests {
         "###);
 
         assert_debug_snapshot!(UserData::<String>::try_from(RawUserData {
-            user_id: 1,
+            user_id: uuid!("00000000-0000-0000-0000-000000000001"),
             key: Some("some-key".to_string()),
             value: serde_json::to_vec("hello")?,
              // January 1, 2000 11:00:00
@@ -76,7 +78,7 @@ mod tests {
         })?, @r###"
         UserData {
             user_id: UserId(
-                1,
+                00000000-0000-0000-0000-000000000001,
             ),
             key: Some(
                 "some-key",
@@ -87,7 +89,7 @@ mod tests {
         "###);
 
         assert_debug_snapshot!(UserData::<String>::try_from(RawUserData {
-            user_id: 1,
+            user_id: uuid!("00000000-0000-0000-0000-000000000001"),
             key: Some("".to_string()),
             value: serde_json::to_vec("hello")?,
              // January 1, 2000 11:00:00
@@ -95,7 +97,7 @@ mod tests {
         })?, @r###"
         UserData {
             user_id: UserId(
-                1,
+                00000000-0000-0000-0000-000000000001,
             ),
             key: None,
             value: "hello",
@@ -110,12 +112,12 @@ mod tests {
     fn can_convert_into_raw_user_data() -> anyhow::Result<()> {
         assert_eq!(
             RawUserData::try_from(&UserData::new(
-                UserId::default(),
+                uuid!("00000000-0000-0000-0000-000000000001").into(),
                 "data",
                 OffsetDateTime::from_unix_timestamp(946720800)?
             ))?,
             RawUserData {
-                user_id: *UserId::default(),
+                user_id: uuid!("00000000-0000-0000-0000-000000000001"),
                 key: None,
                 value: serde_json::to_vec("data")?,
                 // January 1, 2000 11:00:00

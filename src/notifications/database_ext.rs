@@ -106,6 +106,7 @@ mod tests {
     use insta::assert_debug_snapshot;
     use sqlx::PgPool;
     use time::OffsetDateTime;
+    use uuid::uuid;
 
     #[sqlx::test]
     async fn can_add_and_retrieve_notifications(pool: PgPool) -> anyhow::Result<()> {
@@ -114,12 +115,12 @@ mod tests {
 
         let notifications = vec![
             Notification::new(
-                NotificationDestination::User(123.try_into()?),
+                NotificationDestination::User(uuid!("00000000-0000-0000-0000-000000000001").into()),
                 NotificationContent::Text("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
             Notification::new(
-                NotificationDestination::User(123.try_into()?),
+                NotificationDestination::User(uuid!("00000000-0000-0000-0000-000000000001").into()),
                 NotificationContent::Text("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
@@ -137,7 +138,7 @@ mod tests {
                 ),
                 destination: User(
                     UserId(
-                        123,
+                        00000000-0000-0000-0000-000000000001,
                     ),
                 ),
                 content: Text(
@@ -155,7 +156,7 @@ mod tests {
                 ),
                 destination: User(
                     UserId(
-                        123,
+                        00000000-0000-0000-0000-000000000001,
                     ),
                 ),
                 content: Text(
@@ -176,12 +177,12 @@ mod tests {
 
         let notifications = vec![
             Notification::new(
-                NotificationDestination::User(123.try_into()?),
+                NotificationDestination::User(uuid!("00000000-0000-0000-0000-000000000001").into()),
                 NotificationContent::Text("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
             Notification::new(
-                NotificationDestination::User(123.try_into()?),
+                NotificationDestination::User(uuid!("00000000-0000-0000-0000-000000000001").into()),
                 NotificationContent::Text("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
@@ -220,7 +221,7 @@ mod tests {
 
         for n in 0..=19 {
             db.insert_notification(&Notification::new(
-                NotificationDestination::User(123.try_into()?),
+                NotificationDestination::User(uuid!("00000000-0000-0000-0000-000000000001").into()),
                 NotificationContent::Text(format!("abc{}", n)),
                 OffsetDateTime::from_unix_timestamp(946720700 + n)?,
             ))

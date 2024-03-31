@@ -46,11 +46,12 @@ mod tests {
     };
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
+    use uuid::uuid;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
         let user_with_password = MockUserBuilder::new(
-            1.try_into()?,
+            uuid!("00000000-0000-0000-0000-000000000001").into(),
             "my-email",
             "my-handle",
             StoredCredentials {
@@ -63,7 +64,7 @@ mod tests {
         .build();
 
         let user_with_passkey = MockUserBuilder::new(
-            1.try_into()?,
+            uuid!("00000000-0000-0000-0000-000000000001").into(),
             "my-email",
             "my-handle",
             StoredCredentials::from_passkey(serde_json::from_str(SERIALIZED_PASSKEY)?),
@@ -81,7 +82,7 @@ mod tests {
         .build();
 
         let user_with_password_and_passkey = MockUserBuilder::new(
-            1.try_into()?,
+            uuid!("00000000-0000-0000-0000-000000000001").into(),
             "my-email",
             "my-handle",
             StoredCredentials {

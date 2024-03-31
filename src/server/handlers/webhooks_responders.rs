@@ -366,12 +366,12 @@ mod tests {
             .await?;
 
         let request = TestRequest::with_uri(
-            "https://secutils.dev/api/webhooks/dev-handle-1/one/two?query=value",
+            "https://secutils.dev/api/webhooks/dev-handle-00000000-0000-0000-0000-000000000001/one/two?query=value",
         )
         .method(Method::PUT)
         .insert_header(("x-key", "x-value"))
         .insert_header(("x-key-2", "x-value-2"))
-        .param("user_handle", "dev-handle-1")
+        .param("user_handle", "dev-handle-00000000-0000-0000-0000-000000000001")
         .param("responder_path", "one/two")
         .to_http_request();
         let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
@@ -468,9 +468,9 @@ mod tests {
             .await?;
 
         let request =
-            TestRequest::with_uri("https://dev-handle-1.webhooks.secutils.dev/one/two?query=value")
+            TestRequest::with_uri("https://dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev/one/two?query=value")
                 .insert_header(("x-replaced-path", "/one/two"))
-                .insert_header(("x-forwarded-host", "dev-handle-1.webhooks.secutils.dev"))
+                .insert_header(("x-forwarded-host", "dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev"))
                 .to_http_request();
         let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
             .await
@@ -538,10 +538,15 @@ mod tests {
             })
             .await?;
 
-        let request = TestRequest::with_uri("https://dev-handle-1.webhooks.secutils.dev")
-            .insert_header(("x-replaced-path", "/"))
-            .insert_header(("x-forwarded-host", "dev-handle-1.webhooks.secutils.dev"))
-            .to_http_request();
+        let request = TestRequest::with_uri(
+            "https://dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev",
+        )
+        .insert_header(("x-replaced-path", "/"))
+        .insert_header((
+            "x-forwarded-host",
+            "dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev",
+        ))
+        .to_http_request();
         let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
             .await
             .unwrap();
@@ -607,9 +612,9 @@ mod tests {
             .await?;
 
         let request =
-            TestRequest::with_uri("https://dev-handle-1.webhooks.secutils.dev/one/two?query=some")
+            TestRequest::with_uri("https://dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev/one/two?query=some")
                 .insert_header(("x-replaced-path", "/one/two"))
-                .insert_header(("x-forwarded-host", "dev-handle-1.webhooks.secutils.dev"))
+                .insert_header(("x-forwarded-host", "dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev"))
                 .peer_addr("127.0.0.1:8080".parse()?)
                 .to_http_request();
         let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
@@ -631,7 +636,7 @@ mod tests {
             Response HTTP/1.1 300 Multiple Choices
               headers:
                 "one": "two"
-              body: Sized(247)
+              body: Sized(282)
             ,
         }
         "###);
@@ -644,7 +649,7 @@ mod tests {
                 "method": "GET",
                 "headers": {
                     "x-replaced-path": "/one/two",
-                    "x-forwarded-host": "dev-handle-1.webhooks.secutils.dev",
+                    "x-forwarded-host": "dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev",
                 },
                 "path": "/one/two",
                 "query": {
@@ -669,9 +674,9 @@ mod tests {
         pool: PgPool,
     ) -> anyhow::Result<()> {
         let request =
-            TestRequest::with_uri("https://dev-handle-1.webhooks.secutils.dev/one/two?query=value")
+            TestRequest::with_uri("https://dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev/one/two?query=value")
                 .insert_header(("x-replaced-path", "/one/two"))
-                .insert_header(("x-forwarded-host", "dev-handle-1.webhooks.secutils.dev"))
+                .insert_header(("x-forwarded-host", "dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev"))
                 .to_http_request();
         let app_state = mock_app_state(pool).await?;
         let app_state = web::Data::new(app_state);

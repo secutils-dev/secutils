@@ -213,6 +213,7 @@ mod tests {
     use insta::assert_debug_snapshot;
     use sqlx::PgPool;
     use time::OffsetDateTime;
+    use uuid::uuid;
 
     #[sqlx::test]
     async fn properly_schedules_notification(pool: PgPool) -> anyhow::Result<()> {
@@ -224,12 +225,12 @@ mod tests {
 
         let notifications = vec![
             Notification::new(
-                NotificationDestination::User(123.try_into()?),
+                NotificationDestination::User(uuid!("00000000-0000-0000-0000-000000000001").into()),
                 NotificationContent::Text("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
             Notification::new(
-                NotificationDestination::User(123.try_into()?),
+                NotificationDestination::User(uuid!("00000000-0000-0000-0000-000000000001").into()),
                 NotificationContent::Text("abc".to_string()),
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
@@ -253,7 +254,7 @@ mod tests {
                 ),
                 destination: User(
                     UserId(
-                        123,
+                        00000000-0000-0000-0000-000000000001,
                     ),
                 ),
                 content: Text(
@@ -271,7 +272,7 @@ mod tests {
                 ),
                 destination: User(
                     UserId(
-                        123,
+                        00000000-0000-0000-0000-000000000001,
                     ),
                 ),
                 content: Text(
@@ -354,8 +355,8 @@ mod tests {
                 Envelope {
                     forward_path: [
                         Address {
-                            serialized: "dev-1@secutils.dev",
-                            at_start: 5,
+                            serialized: "dev-00000000-0000-0000-0000-000000000001@secutils.dev",
+                            at_start: 40,
                         },
                     ],
                     reverse_path: Some(
@@ -365,7 +366,7 @@ mod tests {
                         },
                     ),
                 },
-                "From: dev@secutils.dev\r\nReply-To: dev@secutils.dev\r\nTo: dev-1@secutils.dev\r\nSubject: [NO SUBJECT]\r\nDate: Sat, 01 Jan 2000 09:58:20 +0000\r\nContent-Transfer-Encoding: 7bit\r\n\r\nabc",
+                "From: dev@secutils.dev\r\nReply-To: dev@secutils.dev\r\nTo: dev-00000000-0000-0000-0000-000000000001@secutils.dev\r\nSubject: [NO SUBJECT]\r\nDate: Sat, 01 Jan 2000 09:58:20 +0000\r\nContent-Transfer-Encoding: 7bit\r\n\r\nabc",
             ),
             (
                 Envelope {

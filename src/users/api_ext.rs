@@ -43,7 +43,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
     }
 
     /// Inserts or updates user in the `Users` store.
-    pub async fn upsert<U: AsRef<User>>(&self, user: U) -> anyhow::Result<UserId> {
+    pub async fn upsert<U: AsRef<User>>(&self, user: U) -> anyhow::Result<()> {
         self.api.db.upsert_user(user).await
     }
 
@@ -63,7 +63,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
                 },
             },
             None => User {
-                id: UserId::default(),
+                id: UserId::new(),
                 email: builtin_user.email,
                 handle: builtin_user.handle,
                 credentials: builtin_user.credentials,
@@ -79,7 +79,9 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
             },
         };
 
-        self.upsert(&user).await
+        self.upsert(&user).await?;
+
+        Ok(user.id)
     }
 
     /// Removes the user with the specified email.

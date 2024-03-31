@@ -555,7 +555,7 @@ mod tests {
         let api = mock_api(pool).await?;
 
         // Insert user into the database.
-        let user = mock_user_with_id(1)?;
+        let user = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000001"))?;
         let users = api.users();
         users.upsert(&user).await?;
 
@@ -588,7 +588,7 @@ mod tests {
         assert_eq!(extracted_user.unwrap().id, user.id);
 
         // Both current user and user share that doesn't belong to that user were provided.
-        let another_user = mock_user_with_id(2)?;
+        let another_user = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
         users.upsert(&another_user).await?;
         let extracted_user = extract_user(
             &api,
@@ -626,7 +626,7 @@ mod tests {
         assert_eq!(extracted_user.unwrap().id, another_user.id);
 
         // Current user isn't authorized.
-        let another_user = mock_user_with_id(2)?;
+        let another_user = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
         users.upsert(&another_user).await?;
         let extracted_user = extract_user(
             &api,

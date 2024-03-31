@@ -46,7 +46,7 @@ mod tests {
             WebhookUrlType,
         },
         tests::{mock_config, mock_user},
-        users::{ClientUserShare, SharedResource, UserId, UserShare, UserShareId},
+        users::{ClientUserShare, SharedResource, UserShare, UserShareId},
         utils::Util,
     };
 
@@ -70,7 +70,7 @@ mod tests {
             }),
             user_share: Some(ClientUserShare::from(UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
-                user_id: UserId::default(),
+                user_id: uuid!("00000000-0000-0000-0000-000000000002").into(),
                 resource: SharedResource::content_security_policy(uuid!(
                     "00000000-0000-0000-0000-000000000001"
                 )),
@@ -97,8 +97,8 @@ mod tests {
             "level": "available"
           },
           "user": {
-            "email": "dev-1@secutils.dev",
-            "handle": "dev-handle-1",
+            "email": "dev-00000000-0000-0000-0000-000000000001@secutils.dev",
+            "handle": "dev-handle-00000000-0000-0000-0000-000000000001",
             "credentials": {
               "password": true,
               "passkey": false

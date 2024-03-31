@@ -152,7 +152,7 @@ mod tests {
                     query: None,
                     fragment: None,
                 },
-                search_index_version: 3,
+                search_index_version: 4,
             },
             scheduler: SchedulerJobsConfig {
                 web_page_trackers_schedule: Schedule {

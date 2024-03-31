@@ -1,12 +1,8 @@
 mod raw_user;
 mod raw_user_data;
 mod raw_user_share;
-mod raw_user_to_upsert;
 
-use self::{
-    raw_user::RawUser, raw_user_data::RawUserData, raw_user_share::RawUserShare,
-    raw_user_to_upsert::RawUserToUpsert,
-};
+use self::{raw_user::RawUser, raw_user_data::RawUserData, raw_user_share::RawUserShare};
 use crate::{
     database::Database,
     users::{SharedResource, User, UserData, UserDataKey, UserId, UserShare, UserShareId},
@@ -102,25 +98,25 @@ WHERE u.handle = $1
     }
 
     /// Inserts user to the `Users` tables, fails if user already exists.
-    pub async fn insert_user<U: AsRef<User>>(&self, user: U) -> anyhow::Result<UserId> {
-        let raw_user = RawUserToUpsert::try_from(user.as_ref())?;
+    pub async fn insert_user<U: AsRef<User>>(&self, user: U) -> anyhow::Result<()> {
+        let raw_user = RawUser::try_from(user.as_ref())?;
 
         let tx = self.pool.begin().await?;
 
         // Insert user.
-        let user_id = query_scalar!(
+        query!(
             r#"
-INSERT INTO users (email, handle, credentials, created, activated)
-VALUES ( $1, $2, $3, $4, $5 )
-RETURNING id
+INSERT INTO users (id, email, handle, credentials, created, activated)
+VALUES ( $1, $2, $3, $4, $5, $6 )
         "#,
-            raw_user.email,
-            raw_user.handle,
+            raw_user.id,
+            &raw_user.email,
+            &raw_user.handle,
             raw_user.credentials,
             raw_user.created,
             raw_user.activated
         )
-        .fetch_one(&self.pool)
+        .execute(&self.pool)
         .await?;
 
         // Insert user subscription.
@@ -129,7 +125,7 @@ RETURNING id
 INSERT INTO user_subscriptions (user_id, tier, started_at, ends_at, trial_started_at, trial_ends_at)
 VALUES ( $1, $2, $3, $4, $5, $6 )
         "#,
-            user_id,
+            raw_user.id,
             raw_user.subscription_tier,
             raw_user.subscription_started_at,
             raw_user.subscription_ends_at,
@@ -139,31 +135,29 @@ VALUES ( $1, $2, $3, $4, $5, $6 )
         .execute(&self.pool)
         .await?;
 
-        tx.commit().await?;
-
-        user_id.try_into()
+        Ok(tx.commit().await?)
     }
 
     /// Inserts or updates user in the `Users` table.
-    pub async fn upsert_user<U: AsRef<User>>(&self, user: U) -> anyhow::Result<UserId> {
-        let raw_user = RawUserToUpsert::try_from(user.as_ref())?;
+    pub async fn upsert_user<U: AsRef<User>>(&self, user: U) -> anyhow::Result<()> {
+        let raw_user = RawUser::try_from(user.as_ref())?;
 
         let tx = self.pool.begin().await?;
 
         // Update user
-        let user_id = query_scalar!(r#"
-INSERT INTO users (email, handle, credentials, created, activated)
-VALUES ( $1, $2, $3, $4, $5 )
-ON CONFLICT(email) DO UPDATE SET handle=excluded.handle, credentials=excluded.credentials, created=excluded.created, activated=excluded.activated 
-RETURNING id
+        query!(r#"
+INSERT INTO users (id, email, handle, credentials, created, activated)
+VALUES ( $1, $2, $3, $4, $5, $6 )
+ON CONFLICT(id) DO UPDATE SET email=excluded.email, handle=excluded.handle, credentials=excluded.credentials, created=excluded.created, activated=excluded.activated
         "#,
-            raw_user.email,
-            raw_user.handle,
+            raw_user.id,
+            &raw_user.email,
+            &raw_user.handle,
             raw_user.credentials,
             raw_user.created,
             raw_user.activated
         )
-            .fetch_one(&self.pool)
+            .execute(&self.pool)
             .await?;
 
         // Update user subscription.
@@ -173,7 +167,7 @@ INSERT INTO user_subscriptions (user_id, tier, started_at, ends_at, trial_starte
 VALUES ( $1, $2, $3, $4, $5, $6 )
 ON CONFLICT(user_id) DO UPDATE SET tier=excluded.tier, started_at=excluded.started_at, ends_at=excluded.ends_at, trial_started_at=excluded.trial_started_at, trial_ends_at=excluded.trial_ends_at
         "#,
-            user_id,
+            raw_user.id,
             raw_user.subscription_tier,
             raw_user.subscription_started_at,
             raw_user.subscription_ends_at,
@@ -183,9 +177,7 @@ ON CONFLICT(user_id) DO UPDATE SET tier=excluded.tier, started_at=excluded.start
             .execute(&self.pool)
             .await?;
 
-        tx.commit().await?;
-
-        user_id.try_into()
+        Ok(tx.commit().await?)
     }
 
     /// Removes user with the specified email from the `Users` table.
@@ -194,18 +186,17 @@ ON CONFLICT(user_id) DO UPDATE SET tier=excluded.tier, started_at=excluded.start
         email: T,
     ) -> anyhow::Result<Option<UserId>> {
         let email = email.as_ref();
-        query_scalar!(
+        Ok(query_scalar!(
             r#"
 DELETE FROM users
 WHERE email = $1
-RETURNING id as "id!"
+RETURNING id
             "#,
             email
         )
         .fetch_optional(&self.pool)
         .await?
-        .map(UserId::try_from)
-        .transpose()
+        .map(UserId::from))
     }
 
     /// Retrieves user data from the `UserData` table using user id and data key.
@@ -417,7 +408,7 @@ mod tests {
 
         let users = vec![
             MockUserBuilder::new(
-                UserId::default(),
+                uuid!("00000000-0000-0000-0000-000000000001").into(),
                 "dev@secutils.dev",
                 "dev-handle",
                 StoredCredentials {
@@ -430,7 +421,7 @@ mod tests {
             .set_activated()
             .build(),
             MockUserBuilder::new(
-                UserId::default(),
+                uuid!("00000000-0000-0000-0000-000000000002").into(),
                 "prod@secutils.dev",
                 "prod-handle",
                 StoredCredentials {
@@ -449,7 +440,7 @@ mod tests {
             })
             .build(),
             MockUserBuilder::new(
-                UserId::default(),
+                uuid!("00000000-0000-0000-0000-000000000003").into(),
                 "user@secutils.dev",
                 "handle",
                 StoredCredentials {
@@ -472,13 +463,16 @@ mod tests {
             db.upsert_user(&user).await?;
         }
 
-        let user_by_id = db.get_user(1.try_into()?).await?.unwrap();
+        let user_by_id = db
+            .get_user(uuid!("00000000-0000-0000-0000-000000000001").into())
+            .await?
+            .unwrap();
         let user_by_email = db.get_user_by_email("dev@secutils.dev").await?.unwrap();
         assert_eq!(user_by_id.id, user_by_email.id);
         assert_debug_snapshot!(user_by_email, @r###"
         User {
             id: UserId(
-                1,
+                00000000-0000-0000-0000-000000000001,
             ),
             email: "dev@secutils.dev",
             handle: "dev-handle",
@@ -500,13 +494,16 @@ mod tests {
         }
         "###);
 
-        let user_by_id = db.get_user(2.try_into()?).await?.unwrap();
+        let user_by_id = db
+            .get_user(uuid!("00000000-0000-0000-0000-000000000002").into())
+            .await?
+            .unwrap();
         let user_by_email = db.get_user_by_email("prod@secutils.dev").await?.unwrap();
         assert_eq!(user_by_id.id, user_by_email.id);
         assert_debug_snapshot!(user_by_email, @r###"
         User {
             id: UserId(
-                2,
+                00000000-0000-0000-0000-000000000002,
             ),
             email: "prod@secutils.dev",
             handle: "prod-handle",
@@ -528,13 +525,16 @@ mod tests {
         }
         "###);
 
-        let user_by_id = db.get_user(3.try_into()?).await?.unwrap();
+        let user_by_id = db
+            .get_user(uuid!("00000000-0000-0000-0000-000000000003").into())
+            .await?
+            .unwrap();
         let user_by_email = db.get_user_by_email("user@secutils.dev").await?.unwrap();
         assert_eq!(user_by_id.id, user_by_email.id);
         assert_debug_snapshot!(user_by_email, @r###"
         User {
             id: UserId(
-                3,
+                00000000-0000-0000-0000-000000000003,
             ),
             email: "user@secutils.dev",
             handle: "handle",
@@ -573,7 +573,7 @@ mod tests {
     #[sqlx::test]
     async fn ignores_email_case(pool: PgPool) -> anyhow::Result<()> {
         let user = MockUserBuilder::new(
-            UserId::default(),
+            uuid!("00000000-0000-0000-0000-000000000001").into(),
             "DeV@secutils.dev",
             "DeV-handle",
             StoredCredentials {
@@ -593,13 +593,13 @@ mod tests {
         .set_activated()
         .build();
         let db = Database::create(pool).await?;
-        let id = db.upsert_user(&user).await?;
+        db.upsert_user(&user).await?;
 
         assert_debug_snapshot!(db.get_user_by_email("dev@secutils.dev").await?,  @r###"
         Some(
             User {
                 id: UserId(
-                    1,
+                    00000000-0000-0000-0000-000000000001,
                 ),
                 email: "DeV@secutils.dev",
                 handle: "DeV-handle",
@@ -623,11 +623,11 @@ mod tests {
         "###);
         assert_eq!(
             db.get_user_by_email("DEV@secutils.dev").await?.unwrap().id,
-            id
+            user.id
         );
         assert_eq!(
             db.get_user_by_email("DeV@secutils.dev").await?.unwrap().id,
-            id
+            user.id
         );
 
         Ok(())
@@ -636,7 +636,7 @@ mod tests {
     #[sqlx::test]
     async fn ignores_handle_case(pool: PgPool) -> anyhow::Result<()> {
         let user = MockUserBuilder::new(
-            UserId::default(),
+            uuid!("00000000-0000-0000-0000-000000000001").into(),
             "DeV@secutils.dev",
             "DeV-handle",
             StoredCredentials {
@@ -656,13 +656,13 @@ mod tests {
         })
         .build();
         let db = Database::create(pool).await?;
-        let id = db.upsert_user(&user).await?;
+        db.upsert_user(&user).await?;
 
         assert_debug_snapshot!(db.get_user_by_handle("dev-handle").await?,  @r###"
         Some(
             User {
                 id: UserId(
-                    1,
+                    00000000-0000-0000-0000-000000000001,
                 ),
                 email: "DeV@secutils.dev",
                 handle: "DeV-handle",
@@ -684,8 +684,14 @@ mod tests {
             },
         )
         "###);
-        assert_eq!(db.get_user_by_handle("DEV-handle").await?.unwrap().id, id);
-        assert_eq!(db.get_user_by_handle("DeV-handle").await?.unwrap().id, id);
+        assert_eq!(
+            db.get_user_by_handle("DEV-handle").await?.unwrap().id,
+            user.id
+        );
+        assert_eq!(
+            db.get_user_by_handle("DeV-handle").await?.unwrap().id,
+            user.id
+        );
 
         Ok(())
     }
@@ -694,28 +700,25 @@ mod tests {
     async fn can_insert_user(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
 
-        let user_id = db
-            .insert_user(
-                &MockUserBuilder::new(
-                    UserId::default(),
-                    "dev@secutils.dev",
-                    "dev-handle",
-                    StoredCredentials {
-                        password_hash: Some("hash".to_string()),
-                        ..Default::default()
-                    },
-                    // January 1, 2000 11:00:00
-                    OffsetDateTime::from_unix_timestamp(946720800)?,
-                )
-                .set_activated()
-                .build(),
-            )
-            .await?;
+        let user = MockUserBuilder::new(
+            uuid!("00000000-0000-0000-0000-000000000001").into(),
+            "dev@secutils.dev",
+            "dev-handle",
+            StoredCredentials {
+                password_hash: Some("hash".to_string()),
+                ..Default::default()
+            },
+            // January 1, 2000 11:00:00
+            OffsetDateTime::from_unix_timestamp(946720800)?,
+        )
+        .set_activated()
+        .build();
+        db.insert_user(&user).await?;
         assert_debug_snapshot!(db.get_user_by_email("dev@secutils.dev").await?, @r###"
         Some(
             User {
                 id: UserId(
-                    1,
+                    00000000-0000-0000-0000-000000000001,
                 ),
                 email: "dev@secutils.dev",
                 handle: "dev-handle",
@@ -741,7 +744,7 @@ mod tests {
         let conflict_error = to_database_error(
             db.insert_user(
                 &MockUserBuilder::new(
-                    100.try_into()?,
+                    uuid!("00000000-0000-0000-0000-000000000100").into(),
                     "DEV@secutils.dev",
                     "DEV-handle",
                     StoredCredentials {
@@ -760,7 +763,7 @@ mod tests {
 
         assert_eq!(
             db.get_user_by_email("dev@secutils.dev").await?.unwrap().id,
-            user_id
+            user.id
         );
 
         Ok(())
@@ -772,7 +775,7 @@ mod tests {
 
         db.upsert_user(
             &MockUserBuilder::new(
-                UserId::default(),
+                uuid!("00000000-0000-0000-0000-000000000001").into(),
                 "dev@secutils.dev",
                 "dev-handle",
                 StoredCredentials {
@@ -790,7 +793,7 @@ mod tests {
         Some(
             User {
                 id: UserId(
-                    1,
+                    00000000-0000-0000-0000-000000000001,
                 ),
                 email: "dev@secutils.dev",
                 handle: "dev-handle",
@@ -815,7 +818,7 @@ mod tests {
 
         db.upsert_user(
             &MockUserBuilder::new(
-                100.try_into()?,
+                uuid!("00000000-0000-0000-0000-000000000001").into(),
                 "DEV@secutils.dev",
                 "DEV-handle",
                 StoredCredentials {
@@ -839,9 +842,9 @@ mod tests {
         Some(
             User {
                 id: UserId(
-                    1,
+                    00000000-0000-0000-0000-000000000001,
                 ),
-                email: "dev@secutils.dev",
+                email: "DEV@secutils.dev",
                 handle: "DEV-handle",
                 credentials: StoredCredentials {
                     password_hash: Some(
@@ -877,7 +880,7 @@ mod tests {
         assert!(db.get_user_by_email("prod@secutils.dev").await?.is_none());
 
         let user_dev = MockUserBuilder::new(
-            UserId::default(),
+            UserId::new(),
             "dev@secutils.dev",
             "dev-handle",
             StoredCredentials {
@@ -890,7 +893,7 @@ mod tests {
         .set_activated()
         .build();
         let user_prod = MockUserBuilder::new(
-            UserId::default(),
+            UserId::new(),
             "prod@secutils.dev",
             "prod-handle",
             StoredCredentials {
@@ -902,32 +905,32 @@ mod tests {
         )
         .build();
 
-        let dev_user_id = db.upsert_user(&user_dev).await?;
-        let prod_user_id = db.upsert_user(&user_prod).await?;
+        db.upsert_user(&user_dev).await?;
+        db.upsert_user(&user_prod).await?;
 
         assert_eq!(
             db.get_user_by_email("dev@secutils.dev").await?.unwrap().id,
-            dev_user_id
+            user_dev.id
         );
         assert_eq!(
             db.get_user_by_email("prod@secutils.dev").await?.unwrap().id,
-            prod_user_id
+            user_prod.id
         );
 
         assert_eq!(
             db.remove_user_by_email("dev@secutils.dev").await?.unwrap(),
-            dev_user_id
+            user_dev.id
         );
         assert!(db.get_user_by_email("dev@secutils.dev").await?.is_none());
         assert!(db.remove_user_by_email("dev@secutils.dev").await?.is_none());
         assert_eq!(
             db.get_user_by_email("prod@secutils.dev").await?.unwrap().id,
-            prod_user_id
+            user_prod.id
         );
 
         assert_eq!(
             db.remove_user_by_email("prod@secutils.dev").await?.unwrap(),
-            prod_user_id
+            user_prod.id
         );
         assert!(db.get_user_by_email("prod@secutils.dev").await?.is_none());
         assert!(db
@@ -942,7 +945,7 @@ mod tests {
     async fn can_manipulate_user_data(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = MockUserBuilder::new(
-            1.try_into()?,
+            uuid!("00000000-0000-0000-0000-000000000001").into(),
             "dev@secutils.dev",
             "dev-handle",
             StoredCredentials {
@@ -1029,7 +1032,7 @@ mod tests {
         // Create test users
         let users = vec![
             MockUserBuilder::new(
-                1.try_into()?,
+                uuid!("00000000-0000-0000-0000-000000000001").into(),
                 "dev@secutils.dev",
                 "dev-handle",
                 StoredCredentials {
@@ -1041,7 +1044,7 @@ mod tests {
             .set_activated()
             .build(),
             MockUserBuilder::new(
-                2.try_into()?,
+                uuid!("00000000-0000-0000-0000-000000000002").into(),
                 "prod@secutils.dev",
                 "prod-handle",
                 StoredCredentials {
@@ -1062,7 +1065,7 @@ mod tests {
             InternalUserDataNamespace::AccountActivationToken,
             // January 1, 2000 11:00:00
             UserData::new(
-                1.try_into()?,
+                uuid!("00000000-0000-0000-0000-000000000001").into(),
                 "data-1",
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             ),
@@ -1072,7 +1075,7 @@ mod tests {
             InternalUserDataNamespace::AccountActivationToken,
             // January 1, 2010 11:00:00
             UserData::new(
-                2.try_into()?,
+                uuid!("00000000-0000-0000-0000-000000000002").into(),
                 "data-2",
                 OffsetDateTime::from_unix_timestamp(1262340000)?,
             ),
@@ -1080,12 +1083,12 @@ mod tests {
         .await?;
 
         // Check that data exists.
-        assert_debug_snapshot!(db.get_user_data::<String>(1.try_into()?, InternalUserDataNamespace::AccountActivationToken)
+        assert_debug_snapshot!(db.get_user_data::<String>(uuid!("00000000-0000-0000-0000-000000000001").into(), InternalUserDataNamespace::AccountActivationToken)
                 .await?, @r###"
         Some(
             UserData {
                 user_id: UserId(
-                    1,
+                    00000000-0000-0000-0000-000000000001,
                 ),
                 key: None,
                 value: "data-1",
@@ -1093,12 +1096,12 @@ mod tests {
             },
         )
         "###);
-        assert_debug_snapshot!(db.get_user_data::<String>(2.try_into()?, InternalUserDataNamespace::AccountActivationToken)
+        assert_debug_snapshot!(db.get_user_data::<String>(uuid!("00000000-0000-0000-0000-000000000002").into(), InternalUserDataNamespace::AccountActivationToken)
                 .await?, @r###"
         Some(
             UserData {
                 user_id: UserId(
-                    2,
+                    00000000-0000-0000-0000-000000000002,
                 ),
                 key: None,
                 value: "data-2",
@@ -1117,14 +1120,14 @@ mod tests {
         // All data should still stay.
         assert!(db
             .get_user_data::<String>(
-                1.try_into()?,
+                uuid!("00000000-0000-0000-0000-000000000001").into(),
                 InternalUserDataNamespace::AccountActivationToken
             )
             .await?
             .is_some());
         assert!(db
             .get_user_data::<String>(
-                2.try_into()?,
+                uuid!("00000000-0000-0000-0000-000000000002").into(),
                 InternalUserDataNamespace::AccountActivationToken
             )
             .await?
@@ -1138,14 +1141,14 @@ mod tests {
         .await?;
         assert!(db
             .get_user_data::<String>(
-                1.try_into()?,
+                uuid!("00000000-0000-0000-0000-000000000001").into(),
                 InternalUserDataNamespace::AccountActivationToken
             )
             .await?
             .is_none());
         assert!(db
             .get_user_data::<String>(
-                2.try_into()?,
+                uuid!("00000000-0000-0000-0000-000000000002").into(),
                 InternalUserDataNamespace::AccountActivationToken
             )
             .await?
@@ -1159,7 +1162,7 @@ mod tests {
         .await?;
         assert!(db
             .get_user_data::<String>(
-                2.try_into()?,
+                uuid!("00000000-0000-0000-0000-000000000002").into(),
                 InternalUserDataNamespace::AccountActivationToken
             )
             .await?
@@ -1173,7 +1176,7 @@ mod tests {
         let user_shares = vec![
             UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
-                user_id: 1.try_into()?,
+                user_id: uuid!("00000000-0000-0000-0000-000000000001").into(),
                 resource: SharedResource::content_security_policy(uuid!(
                     "00000000-0000-0000-0000-000000000001"
                 )),
@@ -1181,7 +1184,7 @@ mod tests {
             },
             UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000002")),
-                user_id: 2.try_into()?,
+                user_id: uuid!("00000000-0000-0000-0000-000000000002").into(),
                 resource: SharedResource::content_security_policy(uuid!(
                     "00000000-0000-0000-0000-000000000002"
                 )),
@@ -1190,8 +1193,14 @@ mod tests {
         ];
 
         let db = Database::create(pool).await?;
-        db.insert_user(mock_user_with_id(1)?).await?;
-        db.insert_user(mock_user_with_id(2)?).await?;
+        db.insert_user(mock_user_with_id(uuid!(
+            "00000000-0000-0000-0000-000000000001"
+        ))?)
+        .await?;
+        db.insert_user(mock_user_with_id(uuid!(
+            "00000000-0000-0000-0000-000000000002"
+        ))?)
+        .await?;
 
         for user_share in user_shares.iter() {
             assert!(db.get_user_share(user_share.id).await?.is_none());
@@ -1218,7 +1227,7 @@ mod tests {
         let user_shares = [
             UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
-                user_id: 1.try_into()?,
+                user_id: uuid!("00000000-0000-0000-0000-000000000001").into(),
                 resource: SharedResource::content_security_policy(uuid!(
                     "00000000-0000-0000-0000-000000000001"
                 )),
@@ -1226,7 +1235,7 @@ mod tests {
             },
             UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000002")),
-                user_id: 2.try_into()?,
+                user_id: uuid!("00000000-0000-0000-0000-000000000002").into(),
                 resource: SharedResource::content_security_policy(uuid!(
                     "00000000-0000-0000-0000-000000000002"
                 )),
@@ -1235,8 +1244,14 @@ mod tests {
         ];
 
         let db = Database::create(pool).await?;
-        db.insert_user(mock_user_with_id(1)?).await?;
-        db.insert_user(mock_user_with_id(2)?).await?;
+        db.insert_user(mock_user_with_id(uuid!(
+            "00000000-0000-0000-0000-000000000001"
+        ))?)
+        .await?;
+        db.insert_user(mock_user_with_id(uuid!(
+            "00000000-0000-0000-0000-000000000002"
+        ))?)
+        .await?;
 
         // 1. Insert new user shares.
         for user_share in user_shares.iter() {
@@ -1255,7 +1270,10 @@ mod tests {
         );
 
         assert!(db
-            .get_user_share_by_resource(3.try_into()?, &user_shares[0].resource)
+            .get_user_share_by_resource(
+                uuid!("00000000-0000-0000-0000-000000000003").into(),
+                &user_shares[0].resource
+            )
             .await?
             .is_none());
         assert!(db
@@ -1276,7 +1294,7 @@ mod tests {
         let user_shares = vec![
             UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000001")),
-                user_id: 1.try_into()?,
+                user_id: uuid!("00000000-0000-0000-0000-000000000001").into(),
                 resource: SharedResource::content_security_policy(uuid!(
                     "00000000-0000-0000-0000-000000000001"
                 )),
@@ -1284,7 +1302,7 @@ mod tests {
             },
             UserShare {
                 id: UserShareId::from(uuid!("00000000-0000-0000-0000-000000000002")),
-                user_id: 2.try_into()?,
+                user_id: uuid!("00000000-0000-0000-0000-000000000002").into(),
                 resource: SharedResource::content_security_policy(uuid!(
                     "00000000-0000-0000-0000-000000000002"
                 )),
@@ -1293,8 +1311,14 @@ mod tests {
         ];
 
         let db = Database::create(pool).await?;
-        db.insert_user(mock_user_with_id(1)?).await?;
-        db.insert_user(mock_user_with_id(2)?).await?;
+        db.insert_user(mock_user_with_id(uuid!(
+            "00000000-0000-0000-0000-000000000001"
+        ))?)
+        .await?;
+        db.insert_user(mock_user_with_id(uuid!(
+            "00000000-0000-0000-0000-000000000002"
+        ))?)
+        .await?;
 
         for user_share in user_shares.iter() {
             assert!(db.get_user_share(user_share.id).await?.is_none());

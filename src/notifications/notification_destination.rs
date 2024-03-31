@@ -15,12 +15,15 @@ pub enum NotificationDestination {
 #[cfg(test)]
 mod tests {
     use super::NotificationDestination;
+    use uuid::uuid;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
         assert_eq!(
-            postcard::to_stdvec(&NotificationDestination::User(123.try_into()?))?,
-            vec![0, 246, 1]
+            postcard::to_stdvec(&NotificationDestination::User(
+                uuid!("00000000-0000-0000-0000-000000000001").into()
+            ))?,
+            vec![0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]
         );
         assert_eq!(
             postcard::to_stdvec(&NotificationDestination::Email("abc".to_string()))?,
@@ -36,8 +39,10 @@ mod tests {
     #[test]
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            postcard::from_bytes::<NotificationDestination>(&[0, 246, 1])?,
-            NotificationDestination::User(123.try_into()?)
+            postcard::from_bytes::<NotificationDestination>(&[
+                0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+            ])?,
+            NotificationDestination::User(uuid!("00000000-0000-0000-0000-000000000001").into())
         );
         assert_eq!(
             postcard::from_bytes::<NotificationDestination>(&[1, 3, 97, 98, 99])?,

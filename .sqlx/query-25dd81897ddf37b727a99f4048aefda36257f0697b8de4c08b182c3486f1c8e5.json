@@ -11,7 +11,7 @@
       {
         "ordinal": 1,
         "name": "user_id!",
-        "type_info": "Int4"
+        "type_info": "Uuid"
       },
       {
         "ordinal": 2,

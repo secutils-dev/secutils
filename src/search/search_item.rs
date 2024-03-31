@@ -60,6 +60,7 @@ mod tests {
     use crate::search::SearchItem;
     use insta::{assert_debug_snapshot, assert_json_snapshot};
     use time::OffsetDateTime;
+    use uuid::uuid;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
@@ -88,7 +89,7 @@ mod tests {
             keywords: Some("some keywords".to_string()),
             category: "some-category".to_string(),
             sub_category: Some("some-sub-category".to_string()),
-            user_id: Some(2.try_into()?),
+            user_id: Some(uuid!("00000000-0000-0000-0000-000000000002").into()),
             meta: Some(
                 [("one".to_string(), "two".to_string())]
                     .into_iter()
@@ -116,8 +117,8 @@ mod tests {
     fn can_create_id() -> anyhow::Result<()> {
         assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", None, None), @"9401142304413078507");
         assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", Some("some-sub-category"), None), @"1596497830688235325");
-        assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", None, Some(1.try_into()?)), @"1601645354856309167");
-        assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", Some("some-sub-category"), Some(1.try_into()?)), @"15509739472169832845");
+        assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", None, Some(uuid!("00000000-0000-0000-0000-000000000001").into())), @"15620247599751410876");
+        assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", Some("some-sub-category"), Some(uuid!("00000000-0000-0000-0000-000000000001").into())), @"5842154758832312172");
 
         Ok(())
     }

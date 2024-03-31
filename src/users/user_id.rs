@@ -1,23 +1,40 @@
 use serde::{Deserialize, Serialize};
-use std::ops::Deref;
+use std::{ops::Deref, str::FromStr};
+use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, Default, Debug, Eq, PartialEq, Clone, Copy, Hash)]
-pub struct UserId(i32);
+/// Represents unique identifier of the user.
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Copy, Hash)]
+pub struct UserId(Uuid);
+impl UserId {
+    /// Creates a new unique user share ID.
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::new_without_default))]
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
 
-impl TryFrom<i32> for UserId {
-    type Error = anyhow::Error;
+impl From<Uuid> for UserId {
+    fn from(value: Uuid) -> Self {
+        Self(value)
+    }
+}
 
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        if value > 0 {
-            Ok(Self(value))
-        } else {
-            Err(anyhow::anyhow!("User ID must be greater than 0."))
-        }
+impl From<&UserId> for Uuid {
+    fn from(value: &UserId) -> Self {
+        value.0
+    }
+}
+
+impl FromStr for UserId {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(Uuid::parse_str(s)?))
     }
 }
 
 impl Deref for UserId {
-    type Target = i32;
+    type Target = Uuid;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -27,19 +44,35 @@ impl Deref for UserId {
 #[cfg(test)]
 mod tests {
     use crate::users::UserId;
+    use uuid::{uuid, Uuid, Version};
 
     #[test]
-    fn default() {
-        assert_eq!(*UserId::default(), 0);
+    fn creation() {
+        let user_id = UserId::new();
+        let underlying_uuid = Uuid::from(&user_id);
+        assert_eq!(underlying_uuid.get_version(), Some(Version::Random));
+        assert!(!underlying_uuid.is_nil());
     }
 
     #[test]
-    fn conversion() -> anyhow::Result<()> {
-        assert_eq!(*UserId::try_from(1)?, 1);
-        assert_eq!(*UserId::try_from(100)?, 100);
+    fn conversion() {
+        assert_eq!(
+            *UserId::from(uuid!("00000000-0000-0000-0000-000000000001")),
+            uuid!("00000000-0000-0000-0000-000000000001")
+        );
 
-        assert!(UserId::try_from(-1).is_err());
-        assert!(UserId::try_from(0).is_err());
+        assert_eq!(
+            Uuid::from(&UserId::from(uuid!("00000000-0000-0000-0000-000000000001"))),
+            uuid!("00000000-0000-0000-0000-000000000001")
+        );
+    }
+
+    #[test]
+    fn parsing() -> anyhow::Result<()> {
+        assert_eq!(
+            "00000000-0000-0000-0000-000000000001".parse::<UserId>()?,
+            UserId::from(uuid!("00000000-0000-0000-0000-000000000001"))
+        );
 
         Ok(())
     }

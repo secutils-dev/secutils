@@ -27,7 +27,7 @@ impl SearchIndexSchemaFields {
         (
             Self {
                 id: schema_builder.add_u64_field("id", FAST | INDEXED | STORED),
-                user_id: schema_builder.add_i64_field("user_id", FAST | INDEXED | STORED),
+                user_id: schema_builder.add_text_field("user_id", STRING | STORED),
                 label: schema_builder.add_text_field("label", STRING | STORED),
                 label_ngram: schema_builder.add_text_field(
                     "label_ngram",

@@ -77,7 +77,6 @@ mod tests {
             WebPageResource, WebPageResourceContent, WebPageResourceContentData,
         },
     };
-    use anyhow::anyhow;
     use cron::Schedule;
     use lettre::transport::stub::AsyncStubTransport;
     use std::{collections::HashMap, ops::Add, time::Duration};
@@ -96,6 +95,7 @@ mod tests {
     pub use crate::{network::tests::*, scheduler::tests::*, server::tests::*, utils::tests::*};
     use ctor::ctor;
     use sqlx::{postgres::PgDatabaseError, PgPool};
+    use uuid::uuid;
 
     pub struct MockUserBuilder {
         user: User,
@@ -243,11 +243,11 @@ mod tests {
     }
 
     pub fn mock_user() -> anyhow::Result<User> {
-        mock_user_with_id(1)
+        mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000001"))
     }
 
-    pub fn mock_user_with_id<I: TryInto<UserId>>(id: I) -> anyhow::Result<User> {
-        let id = id.try_into().map_err(|_| anyhow!("err"))?;
+    pub fn mock_user_with_id<I: Into<UserId>>(id: I) -> anyhow::Result<User> {
+        let id = id.into();
         Ok(MockUserBuilder::new(
             id,
             &format!("dev-{}@secutils.dev", *id),

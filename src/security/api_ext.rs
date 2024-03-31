@@ -93,7 +93,7 @@ where
         };
 
         let user = User {
-            id: UserId::default(),
+            id: UserId::new(),
             email: user_email,
             handle: self.generate_user_handle().await?,
             credentials,
@@ -104,16 +104,11 @@ where
 
         // Use insert instead of upsert here to prevent multiple signup requests from the same user.
         // Consumer of the API is supposed to perform validation before invoking this method.
-        let user = self
-            .api
+        self.api
             .db
             .insert_user(&user)
             .await
-            .with_context(|| "Cannot signup user, failed to insert a new user.")
-            .map(|user_id| User {
-                id: user_id,
-                ..user
-            })?;
+            .with_context(|| "Cannot signup user, failed to insert a new user.")?;
 
         // Send email to the user with the account activation link.
         self.send_activation_link(&user).await?;

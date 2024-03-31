@@ -3,12 +3,12 @@ CREATE COLLATION case_insensitive (provider = icu, locale = 'und-u-ks-level2', d
 -- Table to store users.
 CREATE TABLE IF NOT EXISTS users
 (
-    id          SERIAL PRIMARY KEY NOT NULL,
-    email       TEXT               NOT NULL UNIQUE COLLATE case_insensitive,
-    handle      TEXT               NOT NULL UNIQUE COLLATE case_insensitive,
-    credentials BYTEA              NOT NULL,
-    created     TIMESTAMPTZ        NOT NULL,
-    activated   BOOL               NOT NULL
+    id          UUID PRIMARY KEY NOT NULL,
+    email       TEXT             NOT NULL UNIQUE COLLATE case_insensitive,
+    handle      TEXT             NOT NULL UNIQUE COLLATE case_insensitive,
+    credentials BYTEA            NOT NULL,
+    created     TIMESTAMPTZ      NOT NULL,
+    activated   BOOL             NOT NULL
 );
 
 -- Table to store intermediate WebAuthn Relying Party session data during user registration and authentication.
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS utils
 CREATE TABLE IF NOT EXISTS user_shares
 (
     id         UUID PRIMARY KEY NOT NULL,
-    user_id    INTEGER          NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    user_id    UUID             NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     resource   BYTEA            NOT NULL,
     created_at TIMESTAMPTZ      NOT NULL
 );
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS notifications
 -- Table to store user data (e.g., settings).
 CREATE TABLE IF NOT EXISTS user_data
 (
-    user_id   INTEGER     NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    user_id   UUID        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     namespace TEXT        NOT NULL COLLATE case_insensitive,
     key       TEXT        NOT NULL COLLATE case_insensitive,
     value     BYTEA       NOT NULL,
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS user_data_certificates_private_keys
     pkcs8      BYTEA            NOT NULL,
     encrypted  BOOL             NOT NULL,
     created_at TIMESTAMPTZ      NOT NULL,
-    user_id    INTEGER          NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    user_id    UUID             NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     UNIQUE (name, user_id)
 );
 
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS user_data_certificates_certificate_templates
     name       TEXT             NOT NULL COLLATE case_insensitive,
     attributes BYTEA            NOT NULL,
     created_at TIMESTAMPTZ      NOT NULL,
-    user_id    INTEGER          NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    user_id    UUID             NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     UNIQUE (name, user_id)
 );
 
@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS user_data_web_scraping_trackers
     job_config BYTEA,
     data       BYTEA            NOT NULL,
     created_at TIMESTAMPTZ      NOT NULL,
-    user_id    INTEGER          NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    user_id    UUID             NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     UNIQUE (name, kind, user_id)
 );
 
@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS user_data_web_scraping_trackers_history
     data       BYTEA            NOT NULL,
     created_at TIMESTAMPTZ      NOT NULL,
     tracker_id UUID             NOT NULL REFERENCES user_data_web_scraping_trackers (id) ON DELETE CASCADE,
-    user_id    INTEGER          NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    user_id    UUID             NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     UNIQUE (created_at, tracker_id)
 );
 
@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS user_data_web_security_csp
     name       TEXT             NOT NULL COLLATE case_insensitive,
     directives BYTEA            NOT NULL,
     created_at TIMESTAMPTZ      NOT NULL,
-    user_id    INTEGER          NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    user_id    UUID             NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     UNIQUE (name, user_id)
 );
 
@@ -129,7 +129,7 @@ CREATE TABLE IF NOT EXISTS user_data_webhooks_responders
     method     BYTEA            NOT NULL,
     settings   BYTEA            NOT NULL,
     created_at TIMESTAMPTZ      NOT NULL,
-    user_id    INTEGER          NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    user_id    UUID             NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     UNIQUE (name, user_id),
     UNIQUE (path, method, user_id)
 );
@@ -141,18 +141,18 @@ CREATE TABLE IF NOT EXISTS user_data_webhooks_responders_history
     data         BYTEA            NOT NULL,
     created_at   TIMESTAMPTZ      NOT NULL,
     responder_id UUID             NOT NULL REFERENCES user_data_webhooks_responders (id) ON DELETE CASCADE,
-    user_id      INTEGER          NOT NULL REFERENCES users (id) ON DELETE CASCADE
+    user_id      UUID             NOT NULL REFERENCES users (id) ON DELETE CASCADE
 );
 
 -- Table to store user subscriptions.
 CREATE TABLE IF NOT EXISTS user_subscriptions
 (
-    tier             INTEGER        NOT NULL,
-    started_at       TIMESTAMPTZ    NOT NULL,
+    tier             INTEGER     NOT NULL,
+    started_at       TIMESTAMPTZ NOT NULL,
     ends_at          TIMESTAMPTZ,
     trial_started_at TIMESTAMPTZ,
     trial_ends_at    TIMESTAMPTZ,
-    user_id          INTEGER UNIQUE NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    user_id          UUID UNIQUE NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     CHECK ((ends_at IS NULL OR (ends_at > started_at)) AND
            (trial_started_at IS NULL OR trial_ends_at IS NULL OR (trial_ends_at > trial_started_at)))
 );

@@ -27,12 +27,13 @@ mod tests {
     use crate::{logging::UserLogContext, security::StoredCredentials, tests::MockUserBuilder};
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
+    use uuid::uuid;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
-        assert_json_snapshot!(UserLogContext::new(1.try_into()?), @r###"
+        assert_json_snapshot!(UserLogContext::new(uuid!("00000000-0000-0000-0000-000000000001").into()), @r###"
         {
-          "id": 1
+          "id": "00000000-0000-0000-0000-000000000001"
         }
         "###);
 
@@ -42,7 +43,7 @@ mod tests {
     #[test]
     fn log_context() -> anyhow::Result<()> {
         let user = MockUserBuilder::new(
-            3.try_into()?,
+            uuid!("00000000-0000-0000-0000-000000000003").into(),
             "my-email",
             "my-handle",
             StoredCredentials {
@@ -54,7 +55,10 @@ mod tests {
         )
         .build();
 
-        assert_eq!(user.log_context(), UserLogContext::new(3.try_into()?));
+        assert_eq!(
+            user.log_context(),
+            UserLogContext::new(uuid!("00000000-0000-0000-0000-000000000003").into())
+        );
 
         Ok(())
     }

@@ -26,7 +26,7 @@
     ],
     "parameters": {
       "Left": [
-        "Int4",
+        "Uuid",
         "Uuid"
       ]
     },

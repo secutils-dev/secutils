@@ -40,19 +40,22 @@ mod tests {
     use super::RawNotification;
     use crate::notifications::{Notification, NotificationContent, NotificationDestination};
     use time::OffsetDateTime;
+    use uuid::uuid;
 
     #[test]
     fn can_convert_to_notification() -> anyhow::Result<()> {
         assert_eq!(
             Notification::try_from(RawNotification {
                 id: 1,
-                destination: vec![0, 246, 1],
+                destination: vec![0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
                 content: vec![0, 3, 97, 98, 99],
                 scheduled_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             Notification {
                 id: 1.try_into()?,
-                destination: NotificationDestination::User(123.try_into()?),
+                destination: NotificationDestination::User(
+                    uuid!("00000000-0000-0000-0000-000000000001").into()
+                ),
                 content: NotificationContent::Text("abc".to_string()),
                 scheduled_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             }
@@ -66,13 +69,15 @@ mod tests {
         assert_eq!(
             RawNotification::try_from(&Notification {
                 id: 1.try_into()?,
-                destination: NotificationDestination::User(123.try_into()?),
+                destination: NotificationDestination::User(
+                    uuid!("00000000-0000-0000-0000-000000000001").into()
+                ),
                 content: NotificationContent::Text("abc".to_string()),
                 scheduled_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             })?,
             RawNotification {
                 id: 1,
-                destination: vec![0, 246, 1],
+                destination: vec![0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
                 content: vec![0, 3, 97, 98, 99],
                 scheduled_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             }

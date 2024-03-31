@@ -109,7 +109,7 @@ ORDER BY created_at
         let result = query!(
                 r#"
         WITH new_responder(user_id, id, name, path, method, enabled, settings, created_at) AS (
-            VALUES ( $1::integer, $2::uuid, $3, $4, $5::bytea, $6::bool, $7::bytea, $8::timestamptz )
+            VALUES ( $1::uuid, $2::uuid, $3, $4, $5::bytea, $6::bool, $7::bytea, $8::timestamptz )
         )
         INSERT INTO user_data_webhooks_responders (user_id, id, name, path, method, enabled, settings, created_at)
         SELECT * FROM new_responder

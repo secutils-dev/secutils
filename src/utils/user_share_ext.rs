@@ -63,7 +63,7 @@ mod tests {
         let policy_id = uuid!("00000000-0000-0000-0000-000000000001");
         let user_share = UserShare {
             id: Default::default(),
-            user_id: UserId::default(),
+            user_id: UserId::new(),
             resource: SharedResource::content_security_policy(policy_id),
             created_at: OffsetDateTime::now_utc(),
         };
@@ -117,7 +117,7 @@ mod tests {
         let template_id = uuid!("00000000-0000-0000-0000-000000000001");
         let user_share = UserShare {
             id: Default::default(),
-            user_id: UserId::default(),
+            user_id: UserId::new(),
             resource: SharedResource::certificate_template(template_id),
             created_at: OffsetDateTime::now_utc(),
         };
