@@ -1,6 +1,6 @@
 use crate::{
     server::{app_state::AppState, http_errors::generic_internal_server_error},
-    users::{PublicUserDataNamespace, User, UserData},
+    users::{User, UserData, UserDataNamespace},
 };
 use actix_web::{web, HttpResponse, Responder};
 use serde::Deserialize;
@@ -11,7 +11,7 @@ use time::OffsetDateTime;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetDataQueryParameters {
-    pub namespace: PublicUserDataNamespace,
+    pub namespace: UserDataNamespace,
 }
 
 #[derive(Deserialize)]

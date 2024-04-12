@@ -5,40 +5,38 @@ use crate::{
         notification_content_template::SECUTILS_LOGO_BYTES, EmailNotificationAttachment,
         EmailNotificationContent,
     },
-    users::{InternalUserDataNamespace, UserId},
 };
-use anyhow::Context;
 use serde_json::json;
+use uuid::Uuid;
 
 /// Compiles account activation template as an email.
 pub async fn compile_to_email<DR: DnsResolver, ET: EmailTransport>(
     api: &Api<DR, ET>,
-    user_id: UserId,
+    flow_id: Uuid,
+    code: &str,
 ) -> anyhow::Result<EmailNotificationContent> {
-    let users_api = api.users();
-    let activation_code = users_api
-        .get_data::<String>(user_id, InternalUserDataNamespace::AccountActivationToken)
-        .await?
-        .with_context(|| {
-            format!("User ({}) doesn't have assigned activation code. Account activation isn't possible.", *user_id)
-        })?;
-    let Some(user) = users_api.get(user_id).await? else {
-        anyhow::bail!("User ({}) is not found.", *user_id);
-    };
+    if flow_id.is_nil() || code.is_empty() {
+        anyhow::bail!("Flow ID and code must be provided, but received code `{code}` and flow ID `{flow_id}`.");
+    }
 
+    let encoded_code = urlencoding::encode(code);
     let encoded_activation_link = format!(
-        "{}activate?code={}&email={}",
+        "{}activate?code={}&flow={}",
         api.config.public_url.as_str(),
-        urlencoding::encode(&activation_code.value),
-        urlencoding::encode(&user.email)
+        encoded_code,
+        urlencoding::encode(&flow_id.as_hyphenated().to_string())
     );
 
     Ok(EmailNotificationContent::html_with_attachments(
         "Activate your Secutils.dev account",
-        format!("To activate your Secutils.dev account, please use the following link: {encoded_activation_link}"),
+        format!("To activate your Secutils.dev account, please use the following code: {encoded_code}. Alternatively, navigate to the following URL in your browser: {encoded_activation_link}"),
         api.templates.render(
             "account_activation_email", 
-            &json!({ "encoded_activation_link": encoded_activation_link, "home_link": api.config.public_url.as_str() })
+            &json!({
+                "encoded_activation_link": encoded_activation_link,
+                "encoded_activation_code": encoded_code,
+                "home_link": api.config.public_url.as_str()
+            })
         )?,
         vec![EmailNotificationAttachment::inline(
             "secutils-logo",

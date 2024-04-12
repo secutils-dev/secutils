@@ -1,0 +1,58 @@
+services:
+  secutils_db:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_HOST_AUTH_METHOD=trust
+      - POSTGRES_DB=secutils
+    volumes:
+      - db_vol:/var/lib/postgresql/data
+      - type: bind
+        source: ../../database
+        target: /docker-entrypoint-initdb.d
+    networks:
+      - net
+
+  kratos_migrate:
+    image: oryd/kratos:d9dbaadc3
+    depends_on:
+      - secutils_db
+    volumes:
+      - type: bind
+        source: ./kratos.local.toml
+        target: /etc/config/kratos/kratos.toml
+    command: -c /etc/config/kratos/kratos.toml migrate sql -e --yes
+    restart: on-failure
+    networks:
+      - net
+
+  kratos:
+    image: oryd/kratos:d9dbaadc3
+    ports:
+      - '4433:4433' # public
+      - '4434:4434' # admin
+    restart: unless-stopped
+    depends_on:
+      - kratos_migrate
+      - secutils_db
+    volumes:
+      - type: bind
+        source: ./kratos.local.toml
+        target: /etc/config/kratos/kratos.toml
+      - type: bind
+        source: ../../database/kratos_user_identity.schema.json
+        target: /etc/config/kratos/kratos_user_identity.schema.json
+    command: serve -c /etc/config/kratos/kratos.toml --dev --watch-courier --sqa-opt-out
+    networks:
+      - net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  db_vol:
+    driver: local
+
+networks:
+  net:
+    driver: bridge

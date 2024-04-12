@@ -18,7 +18,7 @@ WORKDIR /app
 RUN set -x && \
     dpkg --add-architecture arm64 && \
     apt-get update && \
-    apt-get install -y pkg-config curl libssl-dev libssl-dev:arm64 g++-aarch64-linux-gnu libc6-dev-arm64-cross ca-certificates && \
+    apt-get install -y pkg-config curl libssl-dev libssl-dev:arm64 g++-aarch64-linux-gnu libc6-dev-arm64-cross protobuf-compiler ca-certificates && \
     rustup target add aarch64-unknown-linux-gnu
 
 # Copy assets and manifest.

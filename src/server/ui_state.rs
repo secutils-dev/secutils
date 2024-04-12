@@ -99,11 +99,7 @@ mod tests {
           "user": {
             "email": "dev-00000000-0000-0000-0000-000000000001@secutils.dev",
             "handle": "dev-handle-00000000-0000-0000-0000-000000000001",
-            "credentials": {
-              "password": true,
-              "passkey": false
-            },
-            "created": 1262340000,
+            "created_at": 1262340000,
             "activated": false,
             "subscription": {
               "tier": "ultimate",

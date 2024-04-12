@@ -5,14 +5,12 @@ use crate::{
     Config,
 };
 use handlebars::Handlebars;
-use webauthn_rs::Webauthn;
 
 pub struct Api<DR: DnsResolver, ET: EmailTransport> {
     pub db: Database,
     pub search_index: SearchIndex,
     pub config: Config,
     pub network: Network<DR, ET>,
-    pub webauthn: Webauthn,
     pub templates: Handlebars<'static>,
 }
 
@@ -23,7 +21,6 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
         database: Database,
         search_index: SearchIndex,
         network: Network<DR, ET>,
-        webauthn: Webauthn,
         templates: Handlebars<'static>,
     ) -> Self {
         Self {
@@ -31,7 +28,6 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
             db: database,
             search_index,
             network,
-            webauthn,
             templates,
         }
     }

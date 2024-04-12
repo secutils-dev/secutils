@@ -15,7 +15,7 @@ pub use self::{
     database_config::DatabaseConfig,
     raw_config::RawConfig,
     scheduler_jobs_config::SchedulerJobsConfig,
-    security_config::{BuiltinUserConfig, SecurityConfig, SESSION_KEY_LENGTH_BYTES},
+    security_config::SecurityConfig,
     smtp_catch_all_config::SmtpCatchAllConfig,
     smtp_config::SmtpConfig,
     subscriptions_config::{
@@ -36,6 +36,8 @@ pub struct Config {
     pub public_url: Url,
     /// Database configuration.
     pub db: DatabaseConfig,
+    /// Security configuration (session, built-in users etc.).
+    pub security: SecurityConfig,
     /// Configuration for the utility functions.
     pub utils: UtilsConfig,
     /// Configuration for the SMTP functionality.
@@ -59,6 +61,7 @@ impl From<RawConfig> for Config {
         Self {
             public_url: raw_config.public_url,
             db: raw_config.db,
+            security: raw_config.security,
             smtp: raw_config.smtp,
             components: raw_config.components,
             subscriptions: raw_config.subscriptions,
@@ -116,6 +119,10 @@ mod tests {
                 username: "postgres",
                 password: None,
             },
+            security: SecurityConfig {
+                session_cookie_name: "id",
+                preconfigured_users: None,
+            },
             utils: UtilsConfig {
                 webhook_url_type: Subdomain,
             },
@@ -135,6 +142,23 @@ mod tests {
                 },
             ),
             components: ComponentsConfig {
+                kratos_url: Url {
+                    scheme: "http",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: Some(
+                        Domain(
+                            "localhost",
+                        ),
+                    ),
+                    port: Some(
+                        4433,
+                    ),
+                    path: "/",
+                    query: None,
+                    fragment: None,
+                },
                 web_scraper_url: Url {
                     scheme: "http",
                     cannot_be_a_base: false,

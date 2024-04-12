@@ -1,0 +1,9 @@
+### Signup user
+POST http://127.0.0.1:7070/api/signup
+Accept: application/json
+Content-Type: application/json
+
+{
+  "id": "27b6bd98-955d-4f30-afea-03818d8eaa71",
+  "email": "dev@secutils.dev"
+}

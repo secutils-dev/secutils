@@ -35,13 +35,12 @@ mod tests {
     use super::{EmailNotificationContent, NotificationContent};
     use crate::{
         notifications::{EmailNotificationAttachment, NotificationContentTemplate},
-        tests::{mock_api, mock_user},
-        users::{InternalUserDataNamespace, UserData},
+        tests::mock_api,
     };
     use insta::assert_debug_snapshot;
     use itertools::Itertools;
     use sqlx::PgPool;
-    use time::OffsetDateTime;
+    use uuid::uuid;
 
     #[test]
     fn serialization() -> anyhow::Result<()> {
@@ -153,24 +152,11 @@ mod tests {
     #[sqlx::test]
     async fn convert_template_content_to_email(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
-        let user = mock_user()?;
         let activation_code = "some-code";
-
-        api.users().upsert(user.clone()).await?;
-        api.db
-            .upsert_user_data(
-                InternalUserDataNamespace::AccountActivationToken,
-                UserData::new(
-                    user.id,
-                    activation_code,
-                    OffsetDateTime::from_unix_timestamp(946720800)?,
-                ),
-            )
-            .await?;
-
         let mut template =
             NotificationContent::Template(NotificationContentTemplate::AccountActivation {
-                user_id: user.id,
+                flow_id: uuid!("00000000-0000-0000-0000-000000000001"),
+                code: activation_code.to_string(),
             })
             .into_email(&api)
             .await?;
@@ -186,9 +172,9 @@ mod tests {
         assert_debug_snapshot!(template, @r###"
         EmailNotificationContent {
             subject: "Activate your Secutils.dev account",
-            text: "To activate your Secutils.dev account, please use the following link: http://localhost:1234/activate?code=some-code&email=dev-00000000-0000-0000-0000-000000000001%40secutils.dev",
+            text: "To activate your Secutils.dev account, please use the following code: some-code. Alternatively, navigate to the following URL in your browser: http://localhost:1234/activate?code=some-code&flow=00000000-0000-0000-0000-000000000001",
             html: Some(
-                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>Activate your Secutils.dev account</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <p>Hi there,</p>\n  <p>Thanks for signing up! To activate your account, please click the button below:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/activate?code=some-code&email=dev-00000000-0000-0000-0000-000000000001%40secutils.dev\">Activate my account</a>\n  <p>Alternatively, copy and paste the following URL into your browser:</p>\n  <p>http://localhost:1234/activate?code=some-code&email=dev-00000000-0000-0000-0000-000000000001%40secutils.dev</p>\n  <p>If you have any trouble activating your account, please email to <a href=\"mailto: contact@secutils.dev\">contact@secutils.dev</a>\n    or simply reply to this email.</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
+                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>Activate your Secutils.dev account</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n    .numeric-code {\n      display: block;\n      width: 100px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <p>Hi there,</p>\n  <p>Thanks for signing up! To activate your account, please click the button below:</p>\n  <a class=\"navigate-link\" href=\"http://localhost:1234/activate?code=some-code&flow=00000000-0000-0000-0000-000000000001\">Activate my account</a>\n  <p>Alternatively, copy and paste the following URL into your browser:</p>\n  <p>http://localhost:1234/activate?code=some-code&flow=00000000-0000-0000-0000-000000000001</p>\n  <p>Or, simply copy and paste the following code into the account activation form:</p>\n  <p class=\"numeric-code\">some-code</p>\n  <p>If you have any trouble activating your account, please email as at <a href=\"mailto: contact@secutils.dev\">contact@secutils.dev</a>\n    or simply reply to this email.</p>\n  <a href=\"http://localhost:1234/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
             ),
             attachments: Some(
                 [

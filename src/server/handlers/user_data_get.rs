@@ -1,6 +1,6 @@
 use crate::{
     server::{app_state::AppState, http_errors::generic_internal_server_error},
-    users::{PublicUserDataNamespace, User},
+    users::{User, UserDataNamespace},
 };
 use actix_web::{web, HttpResponse, Responder};
 use serde::Deserialize;
@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetDataQueryParameters {
-    pub namespace: PublicUserDataNamespace,
+    pub namespace: UserDataNamespace,
 }
 
 pub async fn user_data_get(

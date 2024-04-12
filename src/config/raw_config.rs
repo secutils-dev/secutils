@@ -69,14 +69,13 @@ impl Provider for RawConfig {
 
 #[cfg(test)]
 mod tests {
-    use crate::config::{RawConfig, SESSION_KEY_LENGTH_BYTES};
+    use crate::config::RawConfig;
     use insta::{assert_debug_snapshot, assert_toml_snapshot};
     use url::Url;
 
     #[test]
     fn serialization_and_default() {
         let mut default_config = RawConfig::default();
-        default_config.security.session_key = "a".repeat(SESSION_KEY_LENGTH_BYTES);
         default_config.subscriptions.feature_overview_url =
             Some(Url::parse("http://localhost:7272").unwrap());
 
@@ -91,10 +90,10 @@ mod tests {
         username = 'postgres'
 
         [security]
-        session-key = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-        use-insecure-session-cookie = false
+        session-cookie-name = 'id'
 
         [components]
+        kratos-url = 'http://localhost:4433/'
         web-scraper-url = 'http://localhost:7272/'
         search-index-version = 4
 
@@ -194,10 +193,14 @@ mod tests {
         port = 5432
 
         [security]
-        session-key = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-        use-insecure-session-cookie = false
+        session-cookie-name = 'id2'
+
+        [security.preconfigured-users."dev@secutils.dev"]
+        handle = "dev"
+        tier = "ultimate"
 
         [components]
+        kratos-url = 'http://localhost:4433/'
         web-scraper-url = 'http://localhost:7272/'
         search-index-version = 3
 
@@ -320,11 +323,34 @@ mod tests {
                 ),
             },
             security: SecurityConfig {
-                session_key: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                use_insecure_session_cookie: false,
-                builtin_users: None,
+                session_cookie_name: "id2",
+                preconfigured_users: Some(
+                    {
+                        "dev@secutils.dev": PreconfiguredUserConfig {
+                            handle: "dev",
+                            tier: Ultimate,
+                        },
+                    },
+                ),
             },
             components: ComponentsConfig {
+                kratos_url: Url {
+                    scheme: "http",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: Some(
+                        Domain(
+                            "localhost",
+                        ),
+                    ),
+                    port: Some(
+                        4433,
+                    ),
+                    path: "/",
+                    query: None,
+                    fragment: None,
+                },
                 web_scraper_url: Url {
                     scheme: "http",
                     cannot_be_a_base: false,

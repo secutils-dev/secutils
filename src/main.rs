@@ -71,7 +71,6 @@ mod tests {
         database::Database,
         network::{DnsResolver, Network},
         search::SearchItem,
-        security::StoredCredentials,
         users::{User, UserId},
         utils::web_scraping::{
             WebPageResource, WebPageResourceContent, WebPageResourceContentData,
@@ -86,9 +85,8 @@ mod tests {
     use url::Url;
 
     use crate::{
-        config::{DatabaseConfig, SubscriptionConfig, UtilsConfig},
+        config::{DatabaseConfig, SecurityConfig, SubscriptionConfig, UtilsConfig},
         search::SearchIndex,
-        security::create_webauthn,
         templates::create_templates,
         users::{SubscriptionTier, UserSubscription},
     };
@@ -106,8 +104,7 @@ mod tests {
             id: UserId,
             email: I,
             handle: I,
-            credentials: StoredCredentials,
-            created: OffsetDateTime,
+            created_at: OffsetDateTime,
         ) -> Self {
             let email = email.into();
             Self {
@@ -115,11 +112,10 @@ mod tests {
                     id,
                     email,
                     handle: handle.into(),
-                    credentials,
-                    created,
+                    created_at,
                     subscription: UserSubscription {
                         tier: SubscriptionTier::Ultimate,
-                        started_at: created.add(Duration::from_secs(1)),
+                        started_at: created_at.add(Duration::from_secs(1)),
                         ends_at: None,
                         trial_started_at: None,
                         trial_ends_at: None,
@@ -252,10 +248,6 @@ mod tests {
             id,
             &format!("dev-{}@secutils.dev", *id),
             &format!("dev-handle-{}", *id),
-            StoredCredentials {
-                password_hash: Some("hash".to_string()),
-                ..Default::default()
-            },
             // January 1, 2010 11:00:00
             OffsetDateTime::from_unix_timestamp(1262340000)?,
         )
@@ -279,6 +271,7 @@ mod tests {
                 web_page_trackers_fetch: Schedule::try_from("0 * 1 * * * *")?,
                 notifications_send: Schedule::try_from("0 * 2 * * * *")?,
             },
+            security: SecurityConfig::default(),
             subscriptions: SubscriptionsConfig {
                 manage_url: Some(Url::parse("http://localhost:1234/subscription")?),
                 feature_overview_url: Some(Url::parse("http://localhost:1234/features")?),
@@ -311,13 +304,11 @@ mod tests {
         pool: PgPool,
         config: Config,
     ) -> anyhow::Result<Api<MockResolver, AsyncStubTransport>> {
-        let webauthn = create_webauthn(&config)?;
         Ok(Api::new(
             config,
             Database::create(pool).await?,
             mock_search_index()?,
             mock_network(),
-            webauthn,
             create_templates()?,
         ))
     }
@@ -326,14 +317,11 @@ mod tests {
         pool: PgPool,
         network: Network<DR, AsyncStubTransport>,
     ) -> anyhow::Result<Api<DR, AsyncStubTransport>> {
-        let config = mock_config()?;
-        let webauthn = create_webauthn(&config)?;
         Ok(Api::new(
-            config,
+            mock_config()?,
             Database::create(pool).await?,
             mock_search_index()?,
             network,
-            webauthn,
             create_templates()?,
         ))
     }
@@ -360,101 +348,6 @@ mod tests {
                 .collect::<Vec<_>>()
                 .join(",")
         )
-    }
-
-    pub mod webauthn {
-        pub const SERIALIZED_PASSKEY: &str = r#"{
-          "cred": {
-            "cred_id": "CVRiuJoJxH66qt-UWSnODqcnrVB4k_PFFHexRPqCroDAnaxn6_1Q01Y8VpYn8A2LcnpUeb6TBpTQaWUc4d1Mfg",
-            "cred": {
-              "type_": "ES256",
-              "key": {
-                "EC_EC2": {
-                  "curve": "SECP256R1",
-                  "x": "oRqUciz1zfd4bwCn-UaQ-KyfVDRfQHO5QIZl7PTPLDk",
-                  "y": "5-fVS4_f1-EpqxAxVdhKJcXBxv1UcGpM0QB-XIR5gV4"
-                }
-              }
-            },
-            "counter": 0,
-            "transports": null,
-            "user_verified": false,
-            "backup_eligible": false,
-            "backup_state": false,
-            "registration_policy": "preferred",
-            "extensions": {
-              "cred_protect": "NotRequested",
-              "hmac_create_secret": "NotRequested",
-              "appid": "NotRequested",
-              "cred_props": "Ignored"
-            },
-            "attestation": {
-              "data": "None",
-              "metadata": "None"
-            },
-            "attestation_format": "None"
-          }
-       }"#;
-
-        pub const SERIALIZED_REGISTRATION_STATE: &str = r#"{
-            "rs": {
-              "policy": "preferred",
-              "exclude_credentials": [],
-              "challenge": "36Fa2w5Kuv80nTzSHEvbA5rVE2Qm_x0ojjcPLYeB9RI",
-              "credential_algorithms": [
-                "ES256",
-                "RS256"
-              ],
-              "require_resident_key": false,
-              "authenticator_attachment": null,
-              "extensions": {
-                "uvm": true,
-                "credProps": true
-              },
-              "experimental_allow_passkeys": true
-            }
-       }"#;
-
-        pub const SERIALIZED_AUTHENTICATION_STATE: &str = r#"{
-            "ast": {
-              "credentials": [
-                {
-                  "cred_id": "fa900N3aOTRX0GThkakdjmLHsJdRTfvNMMxOgQ-hTy6W8-71w5zolJMDPq57ioYn1OM3fki5diO09kYyIBzQOg",
-                  "cred": {
-                    "type_": "ES256",
-                    "key": {
-                      "EC_EC2": {
-                        "curve": "SECP256R1",
-                        "x": "eLI4z21j77kGFYpblzcf5eapu3Wfk-H2eCbOX07EqEw",
-                        "y": "AKYln3mCuIXuz6IsPT6pSU3qeAQkfDEOd5tVr0h--70"
-                      }
-                    }
-                  },
-                  "counter": 0,
-                  "transports": null,
-                  "user_verified": false,
-                  "backup_eligible": false,
-                  "backup_state": false,
-                  "registration_policy": "preferred",
-                  "extensions": {
-                    "cred_protect": "NotRequested",
-                    "hmac_create_secret": "NotRequested",
-                    "appid": "NotRequested",
-                    "cred_props": "Ignored"
-                  },
-                  "attestation": {
-                    "data": "None",
-                    "metadata": "None"
-                  },
-                  "attestation_format": "None"
-                }
-              ],
-              "policy": "preferred",
-              "challenge": "I2B0dgzCcgwkTyuUwA4yByFw5bBAl02axcEEoQNuSVM",
-              "appid": null,
-              "allow_backup_eligible_upgrade": true
-            }
-       }"#;
     }
 
     #[ctor]

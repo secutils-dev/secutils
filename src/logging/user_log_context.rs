@@ -24,7 +24,7 @@ impl User {
 
 #[cfg(test)]
 mod tests {
-    use crate::{logging::UserLogContext, security::StoredCredentials, tests::MockUserBuilder};
+    use crate::{logging::UserLogContext, tests::MockUserBuilder};
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
     use uuid::uuid;
@@ -46,10 +46,6 @@ mod tests {
             uuid!("00000000-0000-0000-0000-000000000003").into(),
             "my-email",
             "my-handle",
-            StoredCredentials {
-                password_hash: Some("my-pass-hash".to_string()),
-                ..Default::default()
-            },
             // January 1, 2010 11:00:00
             OffsetDateTime::from_unix_timestamp(1262340000)?,
         )

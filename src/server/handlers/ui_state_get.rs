@@ -1,7 +1,7 @@
 use crate::{
     error::Error as SecutilsError,
     server::{AppState, SubscriptionState, UiState},
-    users::{ClientUserShare, PublicUserDataNamespace, User, UserShare},
+    users::{ClientUserShare, User, UserDataNamespace, UserShare},
 };
 use actix_web::{web, HttpResponse};
 use anyhow::anyhow;
@@ -17,7 +17,7 @@ pub async fn ui_state_get(
         state
             .api
             .users()
-            .get_data(user.id, PublicUserDataNamespace::UserSettings)
+            .get_data(user.id, UserDataNamespace::UserSettings)
             .await?
             .map(|user_data| user_data.value)
     } else {

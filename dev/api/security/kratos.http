@@ -1,0 +1,108 @@
+# Start registration flow.
+// @no-cookie-jar
+GET http://127.0.0.1:4433/self-service/registration/api
+Accept: application/json
+
+### Finish registration flow.
+// @no-cookie-jar
+POST http://127.0.0.1:4433/self-service/registration?flow=c923ffe5-9c83-4cf7-9be5-96702d9fdea8
+Accept: application/json
+Content-Type: application/json
+
+{
+  "traits.email": "su@secutils.dev",
+  "password": "some-password",
+  "method": "password"
+}
+
+###
+GET http://127.0.0.1:4433/sessions/whoami
+Accept: application/json
+Content-Type: application/json
+Cookie: id=xxxx
+
+###
+GET http://127.0.0.1:4433/sessions/whoami
+Accept: application/json
+Content-Type: application/json
+Cookie: id=xxxx
+
+
+### Start registration flow.
+// @no-cookie-jar
+GET http://127.0.0.1:4433/self-service/registration/browser
+Accept: application/json
+
+
+
+### Get identity
+GET {{kratosAdminHost}}/admin/identities/c94b3e19-321b-431a-8a4f-8b101ea03f98
+Accept: application/json
+
+### Get identity credentials
+GET {{kratosAdminHost}}/admin/identities/c94b3e19-321b-431a-8a4f-8b101ea03f98/credentials/password
+Accept: application/json
+
+### Create user
+POST {{kratosAdminHost}}/admin/identities
+Accept: application/json
+Content-Type: application/json
+
+{
+  "schema_id": "default",
+  "traits": {
+    "email": "su@secutils.dev"
+  },
+  "credentials": {
+    "password": {
+      "config": {
+        "password": "some-password"
+      }
+    }
+  }
+}
+
+### Recover account
+### Step 1: Find identity ID by email
+GET {{kratosAdminHost}}/admin/identities?credentials_identifier=test@secutils.dev
+
+### Recover account
+### Step 2: Get recovery code
+POST {{kratosAdminHost}}/admin/recovery/code
+Accept: application/json
+Content-Type: application/json
+
+{
+  "identity_id": "7e3a87de-c517-403d-90a2-35a6d52f1666"
+}
+
+### Recover account
+### Step 3: Get recovery flow
+GET {{kratosAdminHost}}/self-service/recovery/flows?id=f42192b5-067b-4aa3-a8b3-51ad4b1a3417
+
+### Recover account
+### Step 4: Recover account
+// @no-cookie-jar
+POST {{kratosAdminHost}}/self-service/recovery?flow=f42192b5-067b-4aa3-a8b3-51ad4b1a3417
+Content-Type: application/json
+
+{
+  "code": "226523"
+}
+
+### Recover account
+### Step 5: Recover account
+// @no-cookie-jar
+GET {{kratosAdminHost}}/self-service/settings/flows?id=9e9844c3-da5a-4107-981f-08cdf65267e0
+Cookie: id=xxxx
+Accept: application/json
+
+### Recover account
+### Step 4: Recover account
+// @no-cookie-jar
+POST {{host}}/api/kratos/email
+Content-Type: application/json
+
+{
+  "code": "226523"
+}

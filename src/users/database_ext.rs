@@ -10,7 +10,6 @@ use crate::{
 use anyhow::bail;
 use serde::{Deserialize, Serialize};
 use sqlx::{query, query_as, query_scalar};
-use time::OffsetDateTime;
 
 /// Extends primary database with the user management-related methods.
 impl Database {
@@ -19,7 +18,7 @@ impl Database {
         query_as!(
             RawUser,
             r#"
-SELECT id, email, handle, credentials, created, activated, s.tier as subscription_tier,
+SELECT id, email, handle, created_at, s.tier as subscription_tier,
        s.started_at as subscription_started_at, s.ends_at as subscription_ends_at,
        s.trial_started_at as subscription_trial_started_at, 
        s.trial_ends_at as subscription_trial_ends_at
@@ -42,7 +41,7 @@ WHERE u.id = $1
         query_as!(
             RawUser,
             r#"
-SELECT id, email, handle, credentials, created, activated, s.tier as subscription_tier,
+SELECT id, email, handle, created_at, s.tier as subscription_tier,
        s.started_at as subscription_started_at, s.ends_at as subscription_ends_at,
        s.trial_started_at as subscription_trial_started_at, 
        s.trial_ends_at as subscription_trial_ends_at
@@ -68,7 +67,7 @@ WHERE u.email = $1
         let mut raw_users = query_as!(
             RawUser,
             r#"
-SELECT id, email, handle, credentials, created, activated, s.tier as subscription_tier,
+SELECT id, email, handle, created_at, s.tier as subscription_tier,
        s.started_at as subscription_started_at, s.ends_at as subscription_ends_at,
        s.trial_started_at as subscription_trial_started_at, 
        s.trial_ends_at as subscription_trial_ends_at
@@ -99,22 +98,20 @@ WHERE u.handle = $1
 
     /// Inserts user to the `Users` tables, fails if user already exists.
     pub async fn insert_user<U: AsRef<User>>(&self, user: U) -> anyhow::Result<()> {
-        let raw_user = RawUser::try_from(user.as_ref())?;
+        let raw_user = RawUser::from(user.as_ref());
 
         let tx = self.pool.begin().await?;
 
         // Insert user.
         query!(
             r#"
-INSERT INTO users (id, email, handle, credentials, created, activated)
-VALUES ( $1, $2, $3, $4, $5, $6 )
+INSERT INTO users (id, email, handle, created_at)
+VALUES ( $1, $2, $3, $4 )
         "#,
             raw_user.id,
             &raw_user.email,
             &raw_user.handle,
-            raw_user.credentials,
-            raw_user.created,
-            raw_user.activated
+            raw_user.created_at
         )
         .execute(&self.pool)
         .await?;
@@ -140,22 +137,20 @@ VALUES ( $1, $2, $3, $4, $5, $6 )
 
     /// Inserts or updates user in the `Users` table.
     pub async fn upsert_user<U: AsRef<User>>(&self, user: U) -> anyhow::Result<()> {
-        let raw_user = RawUser::try_from(user.as_ref())?;
+        let raw_user = RawUser::from(user.as_ref());
 
         let tx = self.pool.begin().await?;
 
         // Update user
         query!(r#"
-INSERT INTO users (id, email, handle, credentials, created, activated)
-VALUES ( $1, $2, $3, $4, $5, $6 )
-ON CONFLICT(id) DO UPDATE SET email=excluded.email, handle=excluded.handle, credentials=excluded.credentials, created=excluded.created, activated=excluded.activated
+INSERT INTO users (id, email, handle, created_at)
+VALUES ( $1, $2, $3, $4 )
+ON CONFLICT(id) DO UPDATE SET email=excluded.email, handle=excluded.handle, created_at=excluded.created_at
         "#,
             raw_user.id,
             &raw_user.email,
             &raw_user.handle,
-            raw_user.credentials,
-            raw_user.created,
-            raw_user.activated
+            raw_user.created_at
         )
             .execute(&self.pool)
             .await?;
@@ -277,31 +272,6 @@ WHERE user_id = $1 AND namespace = $2 AND key = $3
         Ok(())
     }
 
-    /// Deletes user data from the `UserData` table with the specified data key if it's older than
-    /// specified `since` timestamp.
-    pub async fn cleanup_user_data(
-        &self,
-        user_data_key: impl Into<UserDataKey<'_>>,
-        since: OffsetDateTime,
-    ) -> anyhow::Result<()> {
-        let user_data_key = user_data_key.into();
-        let namespace = user_data_key.namespace.as_ref();
-        let key = user_data_key.key.unwrap_or_default();
-        query!(
-            r#"
-DELETE FROM user_data
-WHERE namespace = $1 AND key = $2 AND timestamp <= $3
-            "#,
-            namespace,
-            key,
-            since
-        )
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
     /// Retrieves user share from `user_shares` table using user share ID.
     pub async fn get_user_share(&self, id: UserShareId) -> anyhow::Result<Option<UserShare>> {
         query_as!(
@@ -385,19 +355,14 @@ RETURNING id as "id!", user_id as "user_id!", resource as "resource!", created_a
 mod tests {
     use crate::{
         database::Database,
-        security::StoredCredentials,
         tests::{mock_user_with_id, to_database_error, MockUserBuilder},
         users::{
-            InternalUserDataNamespace, PublicUserDataNamespace, SharedResource, SubscriptionTier,
-            UserData, UserId, UserShare, UserShareId, UserSubscription,
+            SharedResource, SubscriptionTier, UserData, UserDataNamespace, UserId, UserShare,
+            UserShareId, UserSubscription,
         },
     };
     use insta::assert_debug_snapshot;
     use sqlx::PgPool;
-    use std::{
-        ops::{Add, Sub},
-        time::Duration,
-    };
     use time::OffsetDateTime;
     use uuid::uuid;
 
@@ -411,10 +376,6 @@ mod tests {
                 uuid!("00000000-0000-0000-0000-000000000001").into(),
                 "dev@secutils.dev",
                 "dev-handle",
-                StoredCredentials {
-                    password_hash: Some("hash".to_string()),
-                    ..Default::default()
-                },
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             )
@@ -424,10 +385,6 @@ mod tests {
                 uuid!("00000000-0000-0000-0000-000000000002").into(),
                 "prod@secutils.dev",
                 "prod-handle",
-                StoredCredentials {
-                    password_hash: Some("hash_prod".to_string()),
-                    ..Default::default()
-                },
                 // January 1, 2010 11:00:00
                 OffsetDateTime::from_unix_timestamp(1262340000)?,
             )
@@ -443,10 +400,6 @@ mod tests {
                 uuid!("00000000-0000-0000-0000-000000000003").into(),
                 "user@secutils.dev",
                 "handle",
-                StoredCredentials {
-                    password_hash: Some("hash".to_string()),
-                    ..Default::default()
-                },
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             )
@@ -476,14 +429,8 @@ mod tests {
             ),
             email: "dev@secutils.dev",
             handle: "dev-handle",
-            credentials: StoredCredentials {
-                password_hash: Some(
-                    "hash",
-                ),
-                passkey: None,
-            },
-            created: 2000-01-01 10:00:00.0 +00:00:00,
-            activated: true,
+            created_at: 2000-01-01 10:00:00.0 +00:00:00,
+            activated: false,
             subscription: UserSubscription {
                 tier: Ultimate,
                 started_at: 2000-01-01 10:00:01.0 +00:00:00,
@@ -507,13 +454,7 @@ mod tests {
             ),
             email: "prod@secutils.dev",
             handle: "prod-handle",
-            credentials: StoredCredentials {
-                password_hash: Some(
-                    "hash_prod",
-                ),
-                passkey: None,
-            },
-            created: 2010-01-01 10:00:00.0 +00:00:00,
+            created_at: 2010-01-01 10:00:00.0 +00:00:00,
             activated: false,
             subscription: UserSubscription {
                 tier: Standard,
@@ -538,13 +479,7 @@ mod tests {
             ),
             email: "user@secutils.dev",
             handle: "handle",
-            credentials: StoredCredentials {
-                password_hash: Some(
-                    "hash",
-                ),
-                passkey: None,
-            },
-            created: 2000-01-01 10:00:00.0 +00:00:00,
+            created_at: 2000-01-01 10:00:00.0 +00:00:00,
             activated: false,
             subscription: UserSubscription {
                 tier: Professional,
@@ -576,10 +511,6 @@ mod tests {
             uuid!("00000000-0000-0000-0000-000000000001").into(),
             "DeV@secutils.dev",
             "DeV-handle",
-            StoredCredentials {
-                password_hash: Some("hash".to_string()),
-                ..Default::default()
-            },
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
@@ -603,14 +534,8 @@ mod tests {
                 ),
                 email: "DeV@secutils.dev",
                 handle: "DeV-handle",
-                credentials: StoredCredentials {
-                    password_hash: Some(
-                        "hash",
-                    ),
-                    passkey: None,
-                },
-                created: 2000-01-01 10:00:00.0 +00:00:00,
-                activated: true,
+                created_at: 2000-01-01 10:00:00.0 +00:00:00,
+                activated: false,
                 subscription: UserSubscription {
                     tier: Professional,
                     started_at: 2000-01-01 10:00:00.0 +00:00:00,
@@ -639,10 +564,6 @@ mod tests {
             uuid!("00000000-0000-0000-0000-000000000001").into(),
             "DeV@secutils.dev",
             "DeV-handle",
-            StoredCredentials {
-                password_hash: Some("hash".to_string()),
-                ..Default::default()
-            },
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
@@ -666,14 +587,8 @@ mod tests {
                 ),
                 email: "DeV@secutils.dev",
                 handle: "DeV-handle",
-                credentials: StoredCredentials {
-                    password_hash: Some(
-                        "hash",
-                    ),
-                    passkey: None,
-                },
-                created: 2000-01-01 10:00:00.0 +00:00:00,
-                activated: true,
+                created_at: 2000-01-01 10:00:00.0 +00:00:00,
+                activated: false,
                 subscription: UserSubscription {
                     tier: Professional,
                     started_at: 2000-01-01 10:00:00.0 +00:00:00,
@@ -704,10 +619,6 @@ mod tests {
             uuid!("00000000-0000-0000-0000-000000000001").into(),
             "dev@secutils.dev",
             "dev-handle",
-            StoredCredentials {
-                password_hash: Some("hash".to_string()),
-                ..Default::default()
-            },
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
@@ -722,14 +633,8 @@ mod tests {
                 ),
                 email: "dev@secutils.dev",
                 handle: "dev-handle",
-                credentials: StoredCredentials {
-                    password_hash: Some(
-                        "hash",
-                    ),
-                    passkey: None,
-                },
-                created: 2000-01-01 10:00:00.0 +00:00:00,
-                activated: true,
+                created_at: 2000-01-01 10:00:00.0 +00:00:00,
+                activated: false,
                 subscription: UserSubscription {
                     tier: Ultimate,
                     started_at: 2000-01-01 10:00:01.0 +00:00:00,
@@ -747,10 +652,6 @@ mod tests {
                     uuid!("00000000-0000-0000-0000-000000000100").into(),
                     "DEV@secutils.dev",
                     "DEV-handle",
-                    StoredCredentials {
-                        password_hash: Some("new-hash".to_string()),
-                        ..Default::default()
-                    },
                     // January 1, 2000 11:00:00
                     OffsetDateTime::from_unix_timestamp(1262340000)?,
                 )
@@ -778,10 +679,6 @@ mod tests {
                 uuid!("00000000-0000-0000-0000-000000000001").into(),
                 "dev@secutils.dev",
                 "dev-handle",
-                StoredCredentials {
-                    password_hash: Some("hash".to_string()),
-                    ..Default::default()
-                },
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             )
@@ -797,14 +694,8 @@ mod tests {
                 ),
                 email: "dev@secutils.dev",
                 handle: "dev-handle",
-                credentials: StoredCredentials {
-                    password_hash: Some(
-                        "hash",
-                    ),
-                    passkey: None,
-                },
-                created: 2000-01-01 10:00:00.0 +00:00:00,
-                activated: true,
+                created_at: 2000-01-01 10:00:00.0 +00:00:00,
+                activated: false,
                 subscription: UserSubscription {
                     tier: Ultimate,
                     started_at: 2000-01-01 10:00:01.0 +00:00:00,
@@ -821,10 +712,6 @@ mod tests {
                 uuid!("00000000-0000-0000-0000-000000000001").into(),
                 "DEV@secutils.dev",
                 "DEV-handle",
-                StoredCredentials {
-                    password_hash: Some("new-hash".to_string()),
-                    ..Default::default()
-                },
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(1262340000)?,
             )
@@ -846,13 +733,7 @@ mod tests {
                 ),
                 email: "DEV@secutils.dev",
                 handle: "DEV-handle",
-                credentials: StoredCredentials {
-                    password_hash: Some(
-                        "new-hash",
-                    ),
-                    passkey: None,
-                },
-                created: 2010-01-01 10:00:00.0 +00:00:00,
+                created_at: 2010-01-01 10:00:00.0 +00:00:00,
                 activated: false,
                 subscription: UserSubscription {
                     tier: Basic,
@@ -883,10 +764,6 @@ mod tests {
             UserId::new(),
             "dev@secutils.dev",
             "dev-handle",
-            StoredCredentials {
-                password_hash: Some("hash".to_string()),
-                ..Default::default()
-            },
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
@@ -896,10 +773,6 @@ mod tests {
             UserId::new(),
             "prod@secutils.dev",
             "prod-handle",
-            StoredCredentials {
-                password_hash: Some("hash_prod".to_string()),
-                ..Default::default()
-            },
             // January 1, 2010 11:00:00
             OffsetDateTime::from_unix_timestamp(1262340000)?,
         )
@@ -948,10 +821,6 @@ mod tests {
             uuid!("00000000-0000-0000-0000-000000000001").into(),
             "dev@secutils.dev",
             "dev-handle",
-            StoredCredentials {
-                password_hash: Some("hash".to_string()),
-                ..Default::default()
-            },
             OffsetDateTime::now_utc(),
         )
         .set_activated()
@@ -959,7 +828,7 @@ mod tests {
 
         // No user and no data yet.
         assert_eq!(
-            db.get_user_data::<String>(user.id, PublicUserDataNamespace::UserSettings)
+            db.get_user_data::<String>(user.id, UserDataNamespace::UserSettings)
                 .await?,
             None
         );
@@ -968,14 +837,14 @@ mod tests {
 
         // Nodata yet.
         assert_eq!(
-            db.get_user_data::<String>(user.id, PublicUserDataNamespace::UserSettings)
+            db.get_user_data::<String>(user.id, UserDataNamespace::UserSettings)
                 .await?,
             None
         );
 
         // Insert data.
         db.upsert_user_data(
-            PublicUserDataNamespace::UserSettings,
+            UserDataNamespace::UserSettings,
             UserData::new(
                 user.id,
                 "data",
@@ -984,7 +853,7 @@ mod tests {
         )
         .await?;
         assert_eq!(
-            db.get_user_data::<String>(user.id, PublicUserDataNamespace::UserSettings)
+            db.get_user_data::<String>(user.id, UserDataNamespace::UserSettings)
                 .await?,
             Some(UserData::new(
                 user.id,
@@ -995,7 +864,7 @@ mod tests {
 
         // Update data.
         db.upsert_user_data(
-            PublicUserDataNamespace::UserSettings,
+            UserDataNamespace::UserSettings,
             UserData::new(
                 user.id,
                 "data-new",
@@ -1004,7 +873,7 @@ mod tests {
         )
         .await?;
         assert_eq!(
-            db.get_user_data::<String>(user.id, PublicUserDataNamespace::UserSettings)
+            db.get_user_data::<String>(user.id, UserDataNamespace::UserSettings)
                 .await?,
             Some(UserData::new(
                 user.id,
@@ -1014,159 +883,13 @@ mod tests {
         );
 
         // Remove data.
-        db.remove_user_data(user.id, PublicUserDataNamespace::UserSettings)
+        db.remove_user_data(user.id, UserDataNamespace::UserSettings)
             .await?;
         assert_eq!(
-            db.get_user_data::<String>(user.id, PublicUserDataNamespace::UserSettings)
+            db.get_user_data::<String>(user.id, UserDataNamespace::UserSettings)
                 .await?,
             None
         );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn can_remove_old_user_data(pool: PgPool) -> anyhow::Result<()> {
-        let db = Database::create(pool).await?;
-
-        // Create test users
-        let users = vec![
-            MockUserBuilder::new(
-                uuid!("00000000-0000-0000-0000-000000000001").into(),
-                "dev@secutils.dev",
-                "dev-handle",
-                StoredCredentials {
-                    password_hash: Some("hash".to_string()),
-                    ..Default::default()
-                },
-                OffsetDateTime::now_utc(),
-            )
-            .set_activated()
-            .build(),
-            MockUserBuilder::new(
-                uuid!("00000000-0000-0000-0000-000000000002").into(),
-                "prod@secutils.dev",
-                "prod-handle",
-                StoredCredentials {
-                    password_hash: Some("hash".to_string()),
-                    ..Default::default()
-                },
-                OffsetDateTime::now_utc(),
-            )
-            .set_activated()
-            .build(),
-        ];
-        for user in users {
-            db.upsert_user(&user).await?;
-        }
-
-        // Insert data for both users.
-        db.upsert_user_data(
-            InternalUserDataNamespace::AccountActivationToken,
-            // January 1, 2000 11:00:00
-            UserData::new(
-                uuid!("00000000-0000-0000-0000-000000000001").into(),
-                "data-1",
-                OffsetDateTime::from_unix_timestamp(946720800)?,
-            ),
-        )
-        .await?;
-        db.upsert_user_data(
-            InternalUserDataNamespace::AccountActivationToken,
-            // January 1, 2010 11:00:00
-            UserData::new(
-                uuid!("00000000-0000-0000-0000-000000000002").into(),
-                "data-2",
-                OffsetDateTime::from_unix_timestamp(1262340000)?,
-            ),
-        )
-        .await?;
-
-        // Check that data exists.
-        assert_debug_snapshot!(db.get_user_data::<String>(uuid!("00000000-0000-0000-0000-000000000001").into(), InternalUserDataNamespace::AccountActivationToken)
-                .await?, @r###"
-        Some(
-            UserData {
-                user_id: UserId(
-                    00000000-0000-0000-0000-000000000001,
-                ),
-                key: None,
-                value: "data-1",
-                timestamp: 2000-01-01 10:00:00.0 +00:00:00,
-            },
-        )
-        "###);
-        assert_debug_snapshot!(db.get_user_data::<String>(uuid!("00000000-0000-0000-0000-000000000002").into(), InternalUserDataNamespace::AccountActivationToken)
-                .await?, @r###"
-        Some(
-            UserData {
-                user_id: UserId(
-                    00000000-0000-0000-0000-000000000002,
-                ),
-                key: None,
-                value: "data-2",
-                timestamp: 2010-01-01 10:00:00.0 +00:00:00,
-            },
-        )
-        "###);
-
-        // Run cleanup
-        db.cleanup_user_data(
-            InternalUserDataNamespace::AccountActivationToken,
-            OffsetDateTime::from_unix_timestamp(946720800)?.sub(Duration::from_secs(60)),
-        )
-        .await?;
-
-        // All data should still stay.
-        assert!(db
-            .get_user_data::<String>(
-                uuid!("00000000-0000-0000-0000-000000000001").into(),
-                InternalUserDataNamespace::AccountActivationToken
-            )
-            .await?
-            .is_some());
-        assert!(db
-            .get_user_data::<String>(
-                uuid!("00000000-0000-0000-0000-000000000002").into(),
-                InternalUserDataNamespace::AccountActivationToken
-            )
-            .await?
-            .is_some());
-
-        // Run cleanup with another `since`.
-        db.cleanup_user_data(
-            InternalUserDataNamespace::AccountActivationToken,
-            OffsetDateTime::from_unix_timestamp(946720800)?.add(Duration::from_secs(60)),
-        )
-        .await?;
-        assert!(db
-            .get_user_data::<String>(
-                uuid!("00000000-0000-0000-0000-000000000001").into(),
-                InternalUserDataNamespace::AccountActivationToken
-            )
-            .await?
-            .is_none());
-        assert!(db
-            .get_user_data::<String>(
-                uuid!("00000000-0000-0000-0000-000000000002").into(),
-                InternalUserDataNamespace::AccountActivationToken
-            )
-            .await?
-            .is_some());
-
-        // Run cleanup with another `since`.
-        db.cleanup_user_data(
-            InternalUserDataNamespace::AccountActivationToken,
-            OffsetDateTime::from_unix_timestamp(1262340000)?.add(Duration::from_secs(60)),
-        )
-        .await?;
-        assert!(db
-            .get_user_data::<String>(
-                uuid!("00000000-0000-0000-0000-000000000002").into(),
-                InternalUserDataNamespace::AccountActivationToken
-            )
-            .await?
-            .is_none());
 
         Ok(())
     }

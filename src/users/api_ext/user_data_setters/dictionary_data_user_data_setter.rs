@@ -52,7 +52,7 @@ mod tests {
     use crate::{
         database::Database,
         tests::mock_user,
-        users::{DictionaryDataUserDataSetter, PublicUserDataNamespace, User, UserData},
+        users::{DictionaryDataUserDataSetter, User, UserData, UserDataNamespace},
     };
     use serde_json::json;
     use sqlx::PgPool;
@@ -83,7 +83,7 @@ mod tests {
         .collect::<BTreeMap<_, _>>();
         DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
             &mock_db,
-            PublicUserDataNamespace::UserSettings,
+            UserDataNamespace::UserSettings,
             UserData::new(
                 mock_user.id,
                 initial_items.clone(),
@@ -93,7 +93,7 @@ mod tests {
         .await?;
         assert_eq!(
             mock_db
-                .get_user_data(mock_user.id, PublicUserDataNamespace::UserSettings)
+                .get_user_data(mock_user.id, UserDataNamespace::UserSettings)
                 .await?,
             Some(UserData::new(
                 mock_user.id,
@@ -108,7 +108,7 @@ mod tests {
             .collect::<BTreeMap<_, _>>();
         DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
             &mock_db,
-            PublicUserDataNamespace::UserSettings,
+            UserDataNamespace::UserSettings,
             UserData::new(
                 mock_user.id,
                 conflicting_items,
@@ -118,7 +118,7 @@ mod tests {
         .await?;
         assert_eq!(
             mock_db
-                .get_user_data(mock_user.id, PublicUserDataNamespace::UserSettings)
+                .get_user_data(mock_user.id, UserDataNamespace::UserSettings)
                 .await?,
             Some(UserData::new(
                 mock_user.id,
@@ -141,7 +141,7 @@ mod tests {
         .collect::<BTreeMap<_, _>>();
         DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
             &mock_db,
-            PublicUserDataNamespace::UserSettings,
+            UserDataNamespace::UserSettings,
             UserData::new(
                 mock_user.id,
                 conflicting_items,
@@ -151,7 +151,7 @@ mod tests {
         .await?;
         assert_eq!(
             mock_db
-                .get_user_data(mock_user.id, PublicUserDataNamespace::UserSettings)
+                .get_user_data(mock_user.id, UserDataNamespace::UserSettings)
                 .await?,
             Some(UserData::new(
                 mock_user.id,
@@ -171,7 +171,7 @@ mod tests {
             .collect::<BTreeMap<_, Option<serde_json::Value>>>();
         DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
             &mock_db,
-            PublicUserDataNamespace::UserSettings,
+            UserDataNamespace::UserSettings,
             UserData::new(
                 mock_user.id,
                 conflicting_items,
@@ -183,7 +183,7 @@ mod tests {
             mock_db
                 .get_user_data::<BTreeMap<String, serde_json::Value>>(
                     mock_user.id,
-                    PublicUserDataNamespace::UserSettings
+                    UserDataNamespace::UserSettings
                 )
                 .await?,
             None
@@ -195,7 +195,7 @@ mod tests {
             .collect::<BTreeMap<_, Option<serde_json::Value>>>();
         DictionaryDataUserDataSetter::upsert::<serde_json::Value>(
             &mock_db,
-            PublicUserDataNamespace::UserSettings,
+            UserDataNamespace::UserSettings,
             UserData::new(
                 mock_user.id,
                 conflicting_items,
@@ -207,7 +207,7 @@ mod tests {
             mock_db
                 .get_user_data::<BTreeMap<String, serde_json::Value>>(
                     mock_user.id,
-                    PublicUserDataNamespace::UserSettings
+                    UserDataNamespace::UserSettings
                 )
                 .await?,
             None

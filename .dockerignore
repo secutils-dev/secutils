@@ -1,7 +1,6 @@
 target
-tools/api
+dev/api
 
-.data
 .env
 .github
 .gitignore

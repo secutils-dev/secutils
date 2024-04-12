@@ -12,15 +12,11 @@ use crate::{
     network::{Network, TokioDnsResolver},
     scheduler::Scheduler,
     search::{populate_search_index, SearchIndex},
-    security::create_webauthn,
     templates::create_templates,
 };
 use actix_cors::Cors;
-use actix_identity::IdentityMiddleware;
-use actix_session::{storage::CookieSessionStore, SessionMiddleware};
-use actix_web::{cookie::Key, middleware, web, App, HttpServer, Result};
-use anyhow::{bail, Context};
-use bytes::Buf;
+use actix_web::{middleware, web, App, HttpServer, Result};
+use anyhow::Context;
 use lettre::{
     message::Mailbox, transport::smtp::authentication::Credentials, AsyncSmtpTransport,
     Tokio1Executor,
@@ -31,10 +27,7 @@ use std::{str::FromStr, sync::Arc};
 #[cfg(test)]
 pub use self::app_state::tests;
 
-use crate::{
-    config::{Config, RawConfig, SESSION_KEY_LENGTH_BYTES},
-    users::BuiltinUser,
-};
+use crate::config::{Config, RawConfig};
 pub use app_state::AppState;
 pub use ui_state::{Status, StatusLevel, SubscriptionState, UiState, WebhookUrlType};
 
@@ -50,13 +43,17 @@ pub async fn run(raw_config: RawConfig) -> Result<(), anyhow::Error> {
     let db_url = format!(
         "postgres://{}@{}:{}/{}",
         if let Some(ref password) = raw_config.db.password {
-            format!("{}:{password}", raw_config.db.username)
+            format!(
+                "{}:{}",
+                urlencoding::encode(&raw_config.db.username),
+                urlencoding::encode(password)
+            )
         } else {
             raw_config.db.username.clone()
         },
         raw_config.db.host,
         raw_config.db.port,
-        raw_config.db.name
+        urlencoding::encode(&raw_config.db.name)
     );
     let database = Database::create(
         PgPoolOptions::new()
@@ -82,38 +79,7 @@ pub async fn run(raw_config: RawConfig) -> Result<(), anyhow::Error> {
         AsyncSmtpTransport::<Tokio1Executor>::unencrypted_localhost()
     };
 
-    let http_secure_cookies = !raw_config.security.use_insecure_session_cookie;
     let http_port = raw_config.port;
-
-    if raw_config.security.session_key.len() < SESSION_KEY_LENGTH_BYTES {
-        bail!("Session key should be at least {SESSION_KEY_LENGTH_BYTES} characters long.");
-    }
-
-    let mut http_session_key = [0; SESSION_KEY_LENGTH_BYTES];
-    raw_config
-        .security
-        .session_key
-        .as_bytes()
-        .copy_to_slice(&mut http_session_key);
-
-    // Extract and parse builtin users from the configuration.
-    let builtin_users = raw_config
-        .security
-        .builtin_users
-        .as_ref()
-        .and_then(|users| {
-            if users.is_empty() {
-                None
-            } else {
-                Some(
-                    users
-                        .iter()
-                        .map(BuiltinUser::try_from)
-                        .collect::<anyhow::Result<Vec<_>>>(),
-                )
-            }
-        })
-        .transpose()?;
 
     let config = Config::from(raw_config);
     let api = Arc::new(Api::new(
@@ -121,23 +87,8 @@ pub async fn run(raw_config: RawConfig) -> Result<(), anyhow::Error> {
         database,
         search_index,
         Network::new(TokioDnsResolver::create(), email_transport),
-        create_webauthn(&config)?,
         create_templates()?,
     ));
-
-    if let Some(builtin_users) = builtin_users {
-        let builtin_users_count = builtin_users.len();
-
-        let users = api.users();
-        for builtin_user in builtin_users {
-            users
-                .upsert_builtin(builtin_user)
-                .await
-                .with_context(|| "Cannot initialize builtin user")?;
-        }
-
-        log::info!("Initialized {builtin_users_count} builtin users.");
-    }
 
     populate_search_index(&api).await?;
 
@@ -150,18 +101,6 @@ pub async fn run(raw_config: RawConfig) -> Result<(), anyhow::Error> {
         App::new()
             .wrap(middleware::Compat::new(middleware::Compress::default()))
             .wrap(middleware::NormalizePath::trim())
-            .wrap(IdentityMiddleware::default())
-            // The session middleware must be mounted AFTER the identity middleware: `actix-web`
-            // invokes middleware in the OPPOSITE order of registration when it receives an incoming
-            // request.
-            .wrap(
-                SessionMiddleware::builder(
-                    CookieSessionStore::default(),
-                    Key::from(&http_session_key),
-                )
-                .cookie_secure(http_secure_cookies)
-                .build(),
-            )
             .app_data(state.clone())
             .service(
                 web::scope("/api")
@@ -169,67 +108,6 @@ pub async fn run(raw_config: RawConfig) -> Result<(), anyhow::Error> {
                     .route("/status", web::post().to(handlers::status_set))
                     .route("/search", web::post().to(handlers::search))
                     .route("/send_message", web::post().to(handlers::send_message))
-                    .route("/signin", web::post().to(handlers::security_signin))
-                    .route("/signout", web::post().to(handlers::security_signout))
-                    .route("/signup", web::post().to(handlers::security_signup))
-                    .service(
-                        web::scope("/activation")
-                            .route(
-                                "/complete",
-                                web::post().to(handlers::security_activation_complete),
-                            )
-                            .route(
-                                "/send_link",
-                                web::post().to(handlers::security_activation_send_link),
-                            ),
-                    )
-                    .service(
-                        web::scope("/credentials")
-                            .route(
-                                "/{credentials}",
-                                web::delete().to(handlers::security_credentials_remove),
-                            )
-                            .route(
-                                "/send_link",
-                                web::post().to(handlers::security_credentials_send_link),
-                            )
-                            .route(
-                                "/password",
-                                web::post().to(handlers::security_credentials_update_password),
-                            )
-                            .route(
-                                "/password/reset",
-                                web::post().to(handlers::security_credentials_reset_password),
-                            )
-                            .route(
-                                "/passkey/start",
-                                web::post().to(handlers::security_credentials_update_passkey_start),
-                            )
-                            .route(
-                                "/passkey/finish",
-                                web::post()
-                                    .to(handlers::security_credentials_update_passkey_finish),
-                            ),
-                    )
-                    .service(
-                        web::scope("/webauthn")
-                            .route(
-                                "/signup/start",
-                                web::post().to(handlers::security_webauthn_signup_start),
-                            )
-                            .route(
-                                "/signup/finish",
-                                web::post().to(handlers::security_webauthn_signup_finish),
-                            )
-                            .route(
-                                "/signin/start",
-                                web::post().to(handlers::security_webauthn_signin_start),
-                            )
-                            .route(
-                                "/signin/finish",
-                                web::post().to(handlers::security_webauthn_signin_finish),
-                            ),
-                    )
                     .route("/user/data", web::post().to(handlers::user_data_set))
                     .route("/user/data", web::get().to(handlers::user_data_get))
                     .route(
@@ -247,6 +125,8 @@ pub async fn run(raw_config: RawConfig) -> Result<(), anyhow::Error> {
                     )
                     .service(
                         web::scope("/users")
+                            .route("/signup", web::post().to(handlers::security_users_signup))
+                            .route("/email", web::post().to(handlers::security_users_email))
                             .route("/remove", web::post().to(handlers::security_users_remove))
                             .route("/self", web::get().to(handlers::security_users_get_self))
                             .route("/{user_id}", web::get().to(handlers::security_users_get)),

@@ -47,7 +47,6 @@ pub mod tests {
         api::Api,
         database::Database,
         network::{Network, TokioDnsResolver},
-        security::{create_webauthn, StoredCredentials},
         server::AppState,
         templates::create_templates,
         tests::{mock_config, mock_network, mock_search_index, mock_user, MockUserBuilder},
@@ -61,7 +60,6 @@ pub mod tests {
 
     pub async fn mock_app_state(pool: PgPool) -> anyhow::Result<AppState> {
         let config = mock_config()?;
-        let webauthn = create_webauthn(&config)?;
         let api = Arc::new(Api::new(
             config,
             Database::create(pool).await?,
@@ -72,7 +70,6 @@ pub mod tests {
                 TokioDnsResolver::create(),
                 AsyncSmtpTransport::<Tokio1Executor>::unencrypted_localhost(),
             ),
-            webauthn,
             create_templates()?,
         ));
 
@@ -82,13 +79,11 @@ pub mod tests {
     #[sqlx::test]
     async fn can_detect_admin(pool: PgPool) -> anyhow::Result<()> {
         let config = mock_config()?;
-        let webauthn = create_webauthn(&config)?;
         let api = Arc::new(Api::new(
             config,
             Database::create(pool).await?,
             mock_search_index()?,
             mock_network(),
-            webauthn,
             create_templates()?,
         ));
 
@@ -101,10 +96,6 @@ pub mod tests {
             user.id,
             &format!("dev-{}@secutils.dev", *user.id),
             &format!("dev-handle-{}", *user.id),
-            StoredCredentials {
-                password_hash: Some("hash".to_string()),
-                ..Default::default()
-            },
             OffsetDateTime::now_utc(),
         )
         .set_subscription(UserSubscription {

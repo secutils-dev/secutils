@@ -1,34 +1,45 @@
-use crate::users::{InternalUserDataNamespace, PublicUserDataNamespace};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Ord, PartialOrd, Copy, Clone)]
+#[serde(rename_all = "camelCase")]
 pub enum UserDataNamespace {
-    Public(PublicUserDataNamespace),
-    Internal(InternalUserDataNamespace),
+    UserSettings,
 }
 
 impl AsRef<str> for UserDataNamespace {
     fn as_ref(&self) -> &str {
         match self {
-            UserDataNamespace::Public(namespace) => namespace.as_ref(),
-            UserDataNamespace::Internal(namespace) => namespace.as_ref(),
+            UserDataNamespace::UserSettings => "userSettings",
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::users::{InternalUserDataNamespace, PublicUserDataNamespace, UserDataNamespace};
+    use crate::users::UserDataNamespace;
+    use insta::assert_json_snapshot;
 
     #[test]
     fn proper_str_reference() -> anyhow::Result<()> {
-        assert_eq!(
-            UserDataNamespace::Internal(InternalUserDataNamespace::AccountActivationToken).as_ref(),
-            "accountActivationToken"
-        );
+        assert_eq!(UserDataNamespace::UserSettings.as_ref(), "userSettings");
 
+        Ok(())
+    }
+
+    #[test]
+    fn serialization() -> anyhow::Result<()> {
+        insta::with_settings!({ sort_maps => true }, {
+            assert_json_snapshot!(UserDataNamespace::UserSettings, @r###""userSettings""###);
+        });
+
+        Ok(())
+    }
+
+    #[test]
+    fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
-            UserDataNamespace::Public(PublicUserDataNamespace::UserSettings).as_ref(),
-            "userSettings"
+            serde_json::from_str::<UserDataNamespace>(r#""userSettings""#)?,
+            UserDataNamespace::UserSettings
         );
 
         Ok(())

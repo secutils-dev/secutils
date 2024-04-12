@@ -90,7 +90,7 @@ mod tests {
         );
 
         // Other fields should not be affected.
-        job_data.extra = original_job_data.extra.clone();
+        job_data.extra.clone_from(&original_job_data.extra);
         assert_eq!(job_data, original_job_data);
 
         Ok(())

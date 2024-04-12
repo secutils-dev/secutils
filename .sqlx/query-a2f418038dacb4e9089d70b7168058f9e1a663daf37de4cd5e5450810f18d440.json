@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT id, email, handle, created_at, s.tier as subscription_tier,\n       s.started_at as subscription_started_at, s.ends_at as subscription_ends_at,\n       s.trial_started_at as subscription_trial_started_at, \n       s.trial_ends_at as subscription_trial_ends_at\nFROM users as u\nINNER JOIN user_subscriptions as s\nON s.user_id = u.id\nWHERE u.email = $1\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "email",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "handle",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "subscription_tier",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "subscription_started_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "subscription_ends_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "subscription_trial_started_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "subscription_trial_ends_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "a2f418038dacb4e9089d70b7168058f9e1a663daf37de4cd5e5450810f18d440"
+}

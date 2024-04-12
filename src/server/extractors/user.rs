@@ -1,7 +1,9 @@
-use crate::{security::Credentials, server::app_state::AppState, users::User};
-use actix_identity::Identity;
-use actix_web::{dev::Payload, error::ErrorUnauthorized, web, Error, FromRequest, HttpRequest};
-use actix_web_httpauth::extractors::basic::BasicAuth;
+use crate::{server::app_state::AppState, users::User};
+use actix_web::{
+    dev::Payload,
+    error::{ErrorInternalServerError, ErrorUnauthorized},
+    web, Error, FromRequest, HttpRequest,
+};
 use anyhow::anyhow;
 use std::{future::Future, pin::Pin};
 
@@ -14,47 +16,17 @@ impl FromRequest for User {
         Box::pin(async move {
             let state = web::Data::<AppState>::extract(&req).await?;
 
-            // First check basic auth, don't fallback to the session even if basic auth isn't valid.
-            let basic_auth = Option::<BasicAuth>::extract(&req).await?;
-            if let Some(basic_auth) = basic_auth {
-                if let Some(password) = basic_auth.password() {
-                    let security_api = state.api.security();
-                    return match security_api
-                        .authenticate(
-                            basic_auth.user_id(),
-                            Credentials::Password(password.to_string()),
-                        )
-                        .await
-                    {
-                        Ok(user) => Ok(user),
-                        Err(err) => {
-                            log::error!("{}", err);
-                            return Err(ErrorUnauthorized(anyhow!("Unauthorized")));
-                        }
-                    };
-                }
-
+            // Check if request has a session cookie.
+            let Some(cookie) = req.cookie(&state.config.security.session_cookie_name) else {
                 return Err(ErrorUnauthorized(anyhow!("Unauthorized")));
-            }
+            };
 
-            let identity = Option::<Identity>::extract(&req).await?;
-            if let Some(identity_id) = identity.and_then(|identity| identity.id().ok()) {
-                return state
-                    .api
-                    .users()
-                    .get_by_email(identity_id)
-                    .await
-                    .and_then(|user| {
-                        if let Some(user) = user {
-                            Ok(user)
-                        } else {
-                            Err(anyhow!("Unauthorized"))
-                        }
-                    })
-                    .map_err(|_| ErrorUnauthorized(anyhow!("Unauthorized")));
+            let cookie_string = format!("{}={}", cookie.name(), cookie.value());
+            match state.api.security().authenticate(cookie_string).await {
+                Ok(Some(user)) => Ok(user),
+                Ok(None) => Err(ErrorUnauthorized(anyhow!("Unauthorized"))),
+                Err(_) => Err(ErrorInternalServerError(anyhow!("Internal server error"))),
             }
-
-            Err(ErrorUnauthorized(anyhow!("Unauthorized")))
         })
     }
 }

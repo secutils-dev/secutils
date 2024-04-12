@@ -2,14 +2,12 @@ use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
     users::{
-        BuiltinUser, DictionaryDataUserDataSetter, PublicUserDataNamespace, SharedResource, User,
-        UserData, UserDataKey, UserDataNamespace, UserId, UserSettingsSetter, UserShare,
-        UserShareId, UserSubscription,
+        DictionaryDataUserDataSetter, SharedResource, User, UserData, UserDataKey,
+        UserDataNamespace, UserId, UserSettingsSetter, UserShare, UserShareId,
     },
 };
 use anyhow::{bail, Context};
 use serde::Deserialize;
-use time::OffsetDateTime;
 
 pub mod errors;
 pub mod user_data_setters;
@@ -47,43 +45,6 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
         self.api.db.upsert_user(user).await
     }
 
-    /// Inserts or updates user in the `Users` store using `BuiltinUser`.
-    pub async fn upsert_builtin(&self, builtin_user: BuiltinUser) -> anyhow::Result<UserId> {
-        let user = match self.api.db.get_user_by_email(&builtin_user.email).await? {
-            Some(user) => User {
-                id: user.id,
-                email: user.email,
-                handle: builtin_user.handle,
-                created: user.created,
-                credentials: builtin_user.credentials,
-                activated: true,
-                subscription: UserSubscription {
-                    tier: builtin_user.tier,
-                    ..user.subscription
-                },
-            },
-            None => User {
-                id: UserId::new(),
-                email: builtin_user.email,
-                handle: builtin_user.handle,
-                credentials: builtin_user.credentials,
-                created: OffsetDateTime::now_utc(),
-                activated: true,
-                subscription: UserSubscription {
-                    tier: builtin_user.tier,
-                    started_at: OffsetDateTime::now_utc(),
-                    ends_at: None,
-                    trial_started_at: None,
-                    trial_ends_at: None,
-                },
-            },
-        };
-
-        self.upsert(&user).await?;
-
-        Ok(user.id)
-    }
-
     /// Removes the user with the specified email.
     pub async fn remove_by_email<E: AsRef<str>>(
         &self,
@@ -109,24 +70,8 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
     ) -> anyhow::Result<()> {
         let user_data_key = user_data_key.into();
         match user_data_key.namespace {
-            UserDataNamespace::Public(namespace) => match namespace {
-                PublicUserDataNamespace::UserSettings => {
-                    self.set_user_settings_data(user_data).await
-                }
-            },
-            UserDataNamespace::Internal(_) => {
-                self.api.db.upsert_user_data(user_data_key, user_data).await
-            }
+            UserDataNamespace::UserSettings => self.set_user_settings_data(user_data).await,
         }
-    }
-
-    /// Removes data with the specified key for the user with the specified id.
-    pub async fn remove_data(
-        &self,
-        user_id: UserId,
-        user_data_key: impl Into<UserDataKey<'_>>,
-    ) -> anyhow::Result<()> {
-        self.api.db.remove_user_data(user_id, user_data_key).await
     }
 
     /// Retrieves the user share by the specified ID.
@@ -168,7 +113,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
         }
         DictionaryDataUserDataSetter::upsert(
             &self.api.db,
-            PublicUserDataNamespace::UserSettings,
+            UserDataNamespace::UserSettings,
             UserData::new(
                 serialized_user_data.user_id,
                 user_settings.into_inner(),

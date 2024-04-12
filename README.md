@@ -35,25 +35,24 @@ Secutils.dev adheres to [open security principles](https://en.wikipedia.org/wiki
 
 ## Getting started
 
-Before running the Secutils.dev server, you need to configure the database connection. If you don't have a PostgreSQL
-server running, you can run a local one with Docker:
+Before running the Secutils.dev server, you need to configure the database and [Ory Kratos](https://github.com/ory/kratos) connections. If you don't have a PostgreSQL
+and an Ory Kratos servers running, you [can run them locally with the following Docker Compose file:](https://docs.docker.com/language/rust/develop/)
 
 ```shell
-docker run --rm -d \
-  -v "$(pwd)"/.data:/var/lib/postgresql/data \
-  -p 5432:5432 \
-  --network secutils \
-  --name secutils_db \
-  -e POSTGRES_DB=secutils \
-  -e POSTGRES_HOST_AUTH_METHOD=trust \
-  postgres
+docker-compose -f ./dev/docker/postgres-and-kratos.yml up --build --force-recreate
 ```
 
-Make sure to replace `POSTGRES_HOST_AUTH_METHOD=trust` with a more secure authentication method if you're planning to
-use a local database for an extended period. For the existing database, you'll need to provide connection details in the
+To remove everything and start from scratch, run:
+
+```shell
+docker-compose -f ./dev/docker/postgres-and-kratos.yml down --volumes --remove-orphans
+```
+
+Make sure to replace `POSTGRES_HOST_AUTH_METHOD=trust` in Docker Compose file with a more secure authentication method if you're
+planning to use a local database for an extended period. For the existing database, you'll need to provide connection details in the
 TOML configuration file as explained below.
 
-Once the database connection is configured, you can start the Secutils.dev server with `cargo run`. By default, the
+Once all services are configured, you can start the Secutils.dev server with `cargo run`. By default, the
 server will be accessible via http://localhost:7070. Use `curl` to verify that the server is up and running:
 
 ```shell
@@ -74,10 +73,15 @@ port = 5432
 username = 'postgres'
 password = 'password'
 
-# A session key used to encrypt session cookie. Should be at least 64 characters long. 
-# For example, can be generated with `openssl rand -hex 32`
-[security]
-session-key = "a1a95f90e375d24ee4abb567c96ec3b053ceb083a4df726c76f8570230311c58"
+# Connection details for Ory Kratos and Web Scraper services.
+[components]
+kratos-url = 'http://localhost:4433/'
+web-scraper-url = 'http://localhost:7272/'
+
+# A list of preconfigured users. Once a user with the specified email signs up, 
+# the server will automatically assign the user the specified handle and tier.
+[security.preconfigured-users]
+"admin@mydomain.dev" = { handle = "admin", tier = "ultimate" }
 
 # The configuration of the Deno runtime used to run responder scripts.
 [js-runtime]
@@ -89,13 +93,6 @@ max-user-script-execution-time = 30_000 # 30 seconds
 address = "xxx"
 username = "xxx"
 password = "xxx"
-
-# Defines a list of predefined Secutils.dev users.
-[[security.builtin-users]]
-email = "user@domain.xyz"
-handle = "local"
-password = "3efab73129f3d36e"
-tier = "ultimate"
 
 [utils]
 webhook-url-type = "path"

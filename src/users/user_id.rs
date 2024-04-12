@@ -7,7 +7,7 @@ use uuid::Uuid;
 pub struct UserId(Uuid);
 impl UserId {
     /// Creates a new unique user share ID.
-    #[cfg_attr(feature = "cargo-clippy", allow(clippy::new_without_default))]
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self(Uuid::new_v4())
     }

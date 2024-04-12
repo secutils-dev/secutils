@@ -6,45 +6,7 @@ CREATE TABLE IF NOT EXISTS users
     id          UUID PRIMARY KEY NOT NULL,
     email       TEXT             NOT NULL UNIQUE COLLATE case_insensitive,
     handle      TEXT             NOT NULL UNIQUE COLLATE case_insensitive,
-    credentials BYTEA            NOT NULL,
-    created     TIMESTAMPTZ      NOT NULL,
-    activated   BOOL             NOT NULL
-);
-
--- Table to store intermediate WebAuthn Relying Party session data during user registration and authentication.
-CREATE TABLE IF NOT EXISTS user_webauthn_sessions
-(
-    email         TEXT PRIMARY KEY NOT NULL UNIQUE COLLATE case_insensitive,
-    session_value BYTEA            NOT NULL,
-    timestamp     TIMESTAMPTZ      NOT NULL
-);
-
--- Table to store all available utilities.
-CREATE TABLE IF NOT EXISTS utils
-(
-    id        SERIAL PRIMARY KEY NOT NULL,
-    handle    TEXT               NOT NULL UNIQUE COLLATE case_insensitive,
-    name      TEXT               NOT NULL,
-    keywords  TEXT,
-    parent_id INTEGER REFERENCES utils (id) ON DELETE CASCADE
-);
-
--- Table to store user public shares (content security policies, certificate templates etc.).
-CREATE TABLE IF NOT EXISTS user_shares
-(
-    id         UUID PRIMARY KEY NOT NULL,
-    user_id    UUID             NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    resource   BYTEA            NOT NULL,
-    created_at TIMESTAMPTZ      NOT NULL
-);
-
--- Table to store notifications.
-CREATE TABLE IF NOT EXISTS notifications
-(
-    id           SERIAL PRIMARY KEY NOT NULL,
-    destination  BYTEA              NOT NULL,
-    content      BYTEA              NOT NULL,
-    scheduled_at TIMESTAMPTZ        NOT NULL
+    created_at  TIMESTAMPTZ      NOT NULL
 );
 
 -- Table to store user data (e.g., settings).
@@ -144,6 +106,15 @@ CREATE TABLE IF NOT EXISTS user_data_webhooks_responders_history
     user_id      UUID             NOT NULL REFERENCES users (id) ON DELETE CASCADE
 );
 
+-- Table to store user public shares (content security policies, certificate templates etc.).
+CREATE TABLE IF NOT EXISTS user_shares
+(
+    id         UUID PRIMARY KEY NOT NULL,
+    user_id    UUID             NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    resource   BYTEA            NOT NULL,
+    created_at TIMESTAMPTZ      NOT NULL
+);
+
 -- Table to store user subscriptions.
 CREATE TABLE IF NOT EXISTS user_subscriptions
 (
@@ -155,6 +126,25 @@ CREATE TABLE IF NOT EXISTS user_subscriptions
     user_id          UUID UNIQUE NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     CHECK ((ends_at IS NULL OR (ends_at > started_at)) AND
            (trial_started_at IS NULL OR trial_ends_at IS NULL OR (trial_ends_at > trial_started_at)))
+);
+
+-- Table to store notifications.
+CREATE TABLE IF NOT EXISTS notifications
+(
+    id           SERIAL PRIMARY KEY NOT NULL,
+    destination  BYTEA              NOT NULL,
+    content      BYTEA              NOT NULL,
+    scheduled_at TIMESTAMPTZ        NOT NULL
+);
+
+-- Table to store all available utilities.
+CREATE TABLE IF NOT EXISTS utils
+(
+    id        SERIAL PRIMARY KEY NOT NULL,
+    handle    TEXT               NOT NULL UNIQUE COLLATE case_insensitive,
+    name      TEXT               NOT NULL,
+    keywords  TEXT,
+    parent_id INTEGER REFERENCES utils (id) ON DELETE CASCADE
 );
 
 -- Table to store scheduler jobs.
@@ -184,7 +174,7 @@ CREATE TABLE IF NOT EXISTS scheduler_notifications
 );
 
 -- Table to store scheduler job notification states.
-CREATE TABLE IF NOT EXISTS public.scheduler_notification_states
+CREATE TABLE IF NOT EXISTS scheduler_notification_states
 (
     id    UUID    NOT NULL REFERENCES scheduler_notifications (id) ON DELETE CASCADE,
     state INTEGER NOT NULL,
@@ -212,7 +202,7 @@ VALUES (1, 'home', 'Home', 'home start docs guides changes', NULL),
 
 -- Create subscription for all existing users (basic tier + 14 days of trial).
 INSERT INTO user_subscriptions (user_id, tier, started_at, trial_started_at, trial_ends_at)
-SELECT id, 10, created, current_timestamp, (current_timestamp + INTERVAL '14 days')
+SELECT id, 10, current_timestamp, current_timestamp, (current_timestamp + INTERVAL '14 days')
 FROM users
 WHERE TRUE
 ON CONFLICT(user_id) DO NOTHING;
