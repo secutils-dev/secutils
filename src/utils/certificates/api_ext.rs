@@ -47,7 +47,7 @@ use std::{
 };
 use time::OffsetDateTime;
 use uuid::Uuid;
-use zip::{write::FileOptions, CompressionMethod, ZipWriter};
+use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
 /// API extension to work with certificates utilities.
 pub struct CertificatesApiExt<'a, DR: DnsResolver, ET: EmailTransport> {
@@ -545,7 +545,8 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
         let size = {
             let mut zip = ZipWriter::new(Cursor::new(&mut zip_buffer[..]));
 
-            let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
+            let options =
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
             zip.start_file("certificate.crt", options)?;
             zip.write_all(&certificate.to_pem()?)?;
 

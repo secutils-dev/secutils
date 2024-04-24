@@ -20,8 +20,8 @@ use time::OffsetDateTime;
 fn entity_to_document(
     entity: &SearchItem,
     schema_fields: &SearchIndexSchemaFields,
-) -> anyhow::Result<Document> {
-    let mut doc = Document::default();
+) -> anyhow::Result<TantivyDocument> {
+    let mut doc = TantivyDocument::default();
 
     doc.add_u64(schema_fields.id, entity.id);
 
@@ -261,7 +261,7 @@ impl SearchIndex {
 
         let mut found_docs = Vec::with_capacity(top_docs.len());
         for (_, doc_address) in top_docs.into_iter() {
-            let doc = searcher
+            let doc: TantivyDocument = searcher
                 .doc(doc_address)
                 .with_context(|| "Failed to retrieve search hit document.".to_string())?;
 
@@ -275,39 +275,39 @@ impl SearchIndex {
             let mut timestamp: Option<OffsetDateTime> = None;
             for field_value in doc {
                 if field_value.field == self.schema_fields.id {
-                    if let Value::U64(field_value_content) = field_value.value {
+                    if let OwnedValue::U64(field_value_content) = field_value.value {
                         id.replace(field_value_content);
                     }
                 } else if field_value.field == self.schema_fields.user_id {
-                    if let Value::Str(field_value_content) = field_value.value {
+                    if let OwnedValue::Str(field_value_content) = field_value.value {
                         if !field_value_content.is_empty() {
                             user_id.replace(field_value_content.parse()?);
                         }
                     }
                 } else if field_value.field == self.schema_fields.label {
-                    if let Value::Str(field_value_content) = field_value.value {
+                    if let OwnedValue::Str(field_value_content) = field_value.value {
                         label.replace(field_value_content);
                     }
                 } else if field_value.field == self.schema_fields.category {
-                    if let Value::Str(field_value_content) = field_value.value {
+                    if let OwnedValue::Str(field_value_content) = field_value.value {
                         category.replace(field_value_content);
                     }
                 } else if field_value.field == self.schema_fields.sub_category {
-                    if let Value::Str(field_value_content) = field_value.value {
+                    if let OwnedValue::Str(field_value_content) = field_value.value {
                         sub_category.replace(field_value_content);
                     }
                 } else if field_value.field == self.schema_fields.keywords {
-                    if let Value::Str(field_value_content) = field_value.value {
+                    if let OwnedValue::Str(field_value_content) = field_value.value {
                         keywords.replace(field_value_content);
                     }
                 } else if field_value.field == self.schema_fields.meta {
-                    if let Value::Bytes(field_value_content) = field_value.value {
+                    if let OwnedValue::Bytes(field_value_content) = field_value.value {
                         meta.replace(serde_json::from_slice::<HashMap<_, _>>(
                             &field_value_content,
                         )?);
                     }
                 } else if field_value.field == self.schema_fields.timestamp {
-                    if let Value::Date(field_value_content) = field_value.value {
+                    if let OwnedValue::Date(field_value_content) = field_value.value {
                         timestamp.replace(field_value_content.into_utc());
                     }
                 }
