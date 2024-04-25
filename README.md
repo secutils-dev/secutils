@@ -159,6 +159,16 @@ The documentation for Secutils.dev is located
 in [github.com/secutils-dev/secutils-docs](https://github.com/secutils-dev/secutils-docs/) and hosted
 at [secutils.dev/docs](https://secutils.dev/docs).
 
+## Shoutouts
+
+Secutils.dev wouldn't be possible without the following amazing projects and tools:
+
+| Name                                                                                                  | Description                                                                                                                                                                                                                                                               |
+|-------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| ![JetBrains logo](https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.png) | JetBrains develops fantastic developer tools that I use daily to build Secutils.dev. While the products aren't open-source or free by default, they provide a generous free license for open-source project maintainers. [Check it out!](https://jb.gg/OpenSourceSupport) |
+| ![Ory Kratos logo](https://raw.githubusercontent.com/ory/meta/master/static/logos/logo-kratos.svg)    | [Ory Kratos](https://github.com/ory/kratos) is an open-source alternative to Auth0, Okta, or Firebase with hardened security and PassKeys, SMS, OIDC, Social Sign In, MFA, FIDO, TOTP and OTP, WebAuthn, passwordless and much more.                                      |
+| To be continued...                                                                                    |                                                                                                                                                                                                                                                                           |
+
 ## Community
 
 - ❓ Ask questions on [GitHub Discussions](https://github.com/secutils-dev/secutils/discussions)
