@@ -14,7 +14,7 @@ leak_sensitive_values = true
 
 [identity]
 default_schema_id = "user"
-schemas = [{ id = "user", url = "file:///etc/config/kratos/kratos_user_identity.schema.json" }]
+schemas = [{ id = "user", url = "file:///etc/config/kratos/user_identity.schema.json" }]
 
 [session]
 cookie = { name = "id" }

@@ -9,8 +9,8 @@ services:
     volumes:
       - db_vol:/var/lib/postgresql/data
       - type: bind
-        source: ../../database
-        target: /docker-entrypoint-initdb.d
+        source: ./postgres_init.sql
+        target: /docker-entrypoint-initdb.d/postgres_init.sql
     networks:
       - net
 
@@ -41,8 +41,8 @@ services:
         source: ./kratos.local.toml
         target: /etc/config/kratos/kratos.toml
       - type: bind
-        source: ../../database/kratos_user_identity.schema.json
-        target: /etc/config/kratos/kratos_user_identity.schema.json
+        source: ../../config/user_identity.schema.json
+        target: /etc/config/kratos/user_identity.schema.json
     command: serve -c /etc/config/kratos/kratos.toml --dev --watch-courier --sqa-opt-out
     networks:
       - net
