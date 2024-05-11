@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths-ignore:
-      - 'tools/**'
+      - 'dev/**'
       - 'Dockerfile'
       - 'Dockerfile.aarch64-unknown-linux-musl'
       - 'LICENSE'
