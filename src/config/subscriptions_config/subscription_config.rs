@@ -5,7 +5,6 @@ use crate::config::{
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Default)]
-#[serde(rename_all = "kebab-case")]
 pub struct SubscriptionConfig {
     /// The config managing the webhooks utilities for a particular subscription.
     pub webhooks: SubscriptionWebhooksConfig,

@@ -2,7 +2,6 @@ use serde_derive::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
 pub struct SubscriptionCertificatesConfig {
     /// The number of private keys available to a particular subscription.
     pub private_keys: usize,
@@ -35,7 +34,7 @@ mod tests {
     fn serialization_and_default() {
         let config = SubscriptionCertificatesConfig::default();
         assert_toml_snapshot!(config, @r###"
-        private-keys = 100
+        private_keys = 100
         templates = 1000
         "###);
 
@@ -52,9 +51,9 @@ mod tests {
             ),
         };
         assert_toml_snapshot!(config, @r###"
-        private-keys = 1
+        private_keys = 1
         templates = 11
-        private-key-algorithms = ['RSA-1024']
+        private_key_algorithms = ['RSA-1024']
         "###);
     }
 
@@ -62,9 +61,9 @@ mod tests {
     fn deserialization() {
         let config: SubscriptionCertificatesConfig = toml::from_str(
             r#"
-        private-keys = 1
+        private_keys = 1
         templates = 11
-        private-key-algorithms = ['RSA-1024']
+        private_key_algorithms = ['RSA-1024']
     "#,
         )
         .unwrap();

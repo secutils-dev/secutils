@@ -2,11 +2,16 @@ use crate::{
     api::Api,
     logging::UserLogContext,
     network::{DnsResolver, EmailTransport, EmailTransportError},
-    security::kratos::Session,
+    security::{
+        credentials::Credentials,
+        jwt::Claims,
+        kratos::{Identity, Session},
+    },
     users::{User, UserId, UserSignupError, UserSubscription},
 };
 use anyhow::{anyhow, Context};
 use hex::ToHex;
+use jsonwebtoken::{decode, DecodingKey, Validation};
 use rand_core::{OsRng, RngCore};
 use reqwest::StatusCode;
 
@@ -57,75 +62,22 @@ where
         Ok(())
     }
 
-    /// Authenticates user with the specified session cookie string.
-    pub async fn authenticate<E: AsRef<str>>(
-        &self,
-        cookie_string: E,
-    ) -> anyhow::Result<Option<User>> {
-        // Retrieve session from the authentication component.
-        let client = reqwest::Client::new();
-        let session_request = match client
-            .request(
-                reqwest::Method::GET,
-                format!(
-                    "{}sessions/whoami",
-                    self.api.config.components.kratos_url.as_str()
-                ),
-            )
-            .header("Cookie", cookie_string.as_ref())
-            .build()
-        {
-            Ok(client) => client,
-            Err(err) => {
-                log::error!("Cannot build session request: {err:?}");
-                return Err(anyhow!(err));
-            }
-        };
-
-        let response = match client.execute(session_request).await {
-            Ok(response) => response,
-            Err(err) => {
-                log::error!("Cannot execute session request: {err:?}");
-                return Err(anyhow!(err));
-            }
-        };
-
-        let response_status = response.status();
-        if !response_status.is_success() {
-            let error_text = response.text().await.unwrap_or_default();
-            return match response_status {
-                StatusCode::UNAUTHORIZED => {
-                    log::error!("Session is not valid due to: {error_text}");
-                    Ok(None)
+    /// Authenticates user with the specified credentials.
+    pub async fn authenticate(&self, credentials: Credentials) -> anyhow::Result<Option<User>> {
+        let Some(identity) = self.get_identity(&credentials).await? else {
+            log::error!(
+                "Couldn't retrieve user identity with `{}` credentials.",
+                match credentials {
+                    Credentials::SessionCookie(_) => "session",
+                    Credentials::Jwt(_) => "jwt",
                 }
-                _ => {
-                    log::error!(
-                        "Session retrieval failed with the status code `{response_status}` and body: {error_text}"
-                    );
-                    Err(anyhow!(
-                        "Session retrieval failed with the status code `{response_status}`."
-                    ))
-                }
-            };
-        }
-
-        let session: Session = match response.json().await {
-            Ok(session) => session,
-            Err(err) => {
-                log::error!("Failed to deserialize user session: {err:?}");
-                return Err(anyhow!(err));
-            }
-        };
-
-        let Some(identity) = session.identity else {
-            log::error!(session_id:serde = session.id; "Session doesn't have associated identity information.");
+            );
             return Ok(None);
         };
 
         let Some(user) = self.api.users().get(UserId::from(identity.id)).await? else {
             log::error!(
-                user:serde = UserLogContext::new(UserId::from(identity.id)),
-                session_id:serde = session.id;
+                user:serde = UserLogContext::new(UserId::from(identity.id));
                 "User doesn't exist."
             );
             return Ok(None);
@@ -136,6 +88,91 @@ where
             activated: identity.activated(),
             ..user
         }))
+    }
+
+    /// Tries to retrieve user identity from Kratos using specified credentials.
+    async fn get_identity(&self, credentials: &Credentials) -> anyhow::Result<Option<Identity>> {
+        let client = reqwest::Client::new();
+        let request_builder = match credentials {
+            Credentials::SessionCookie(cookie) => client
+                .request(
+                    reqwest::Method::GET,
+                    format!(
+                        "{}sessions/whoami",
+                        self.api.config.components.kratos_url.as_str()
+                    ),
+                )
+                .header(
+                    "Cookie",
+                    format!("{}={}", cookie.name(), cookie.value()).as_bytes(),
+                ),
+            Credentials::Jwt(token) => {
+                let Some(jwt_secret) = self.api.config.security.jwt_secret.as_ref() else {
+                    return Err(anyhow!("JWT secret is not configured."));
+                };
+
+                let token = decode::<Claims>(
+                    token.as_ref(),
+                    &DecodingKey::from_secret(jwt_secret.as_bytes()),
+                    &Validation::default(),
+                )?;
+
+                client.request(
+                    reqwest::Method::GET,
+                    format!(
+                        "{}admin/identities?credentials_identifier={}",
+                        self.api.config.components.kratos_admin_url.as_str(),
+                        urlencoding::encode(&token.claims.sub)
+                    ),
+                )
+            }
+        };
+
+        let request = match request_builder.build() {
+            Ok(client) => client,
+            Err(err) => {
+                log::error!("Cannot build Kratos request: {err:?}");
+                return Err(anyhow!(err));
+            }
+        };
+
+        let response = match client.execute(request).await {
+            Ok(response) => response,
+            Err(err) => {
+                log::error!("Cannot execute Kratos request: {err:?}");
+                return Err(anyhow!(err));
+            }
+        };
+
+        let response_status = response.status();
+        if !response_status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return match response_status {
+                StatusCode::UNAUTHORIZED => {
+                    log::error!("Kratos request couldn't be authenticated: {error_text}");
+                    Ok(None)
+                }
+                _ => {
+                    log::error!(
+                        "Kratos request failed with the status code `{response_status}` and body: {error_text}"
+                    );
+                    Err(anyhow!(
+                        "Kratos request failed with the status code `{response_status}`."
+                    ))
+                }
+            };
+        }
+
+        Ok(match credentials {
+            Credentials::SessionCookie(_) => response
+                .json::<Session>()
+                .await
+                .map(|session| session.identity)?,
+            Credentials::Jwt(_) => response
+                .json::<Vec<Identity>>()
+                .await
+                .map(|identities| identities.into_iter().next())?,
+        })
     }
 
     /// Updates user's subscription.

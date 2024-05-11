@@ -1,9 +1,10 @@
-use crate::{server::app_state::AppState, users::User};
+use crate::{security::Credentials, server::app_state::AppState, users::User};
 use actix_web::{
     dev::Payload,
     error::{ErrorInternalServerError, ErrorUnauthorized},
     web, Error, FromRequest, HttpRequest,
 };
+use actix_web_httpauth::extractors::bearer::BearerAuth;
 use anyhow::anyhow;
 use std::{future::Future, pin::Pin};
 
@@ -16,16 +17,21 @@ impl FromRequest for User {
         Box::pin(async move {
             let state = web::Data::<AppState>::extract(&req).await?;
 
-            // Check if request has a session cookie.
-            let Some(cookie) = req.cookie(&state.config.security.session_cookie_name) else {
-                return Err(ErrorUnauthorized(anyhow!("Unauthorized")));
+            let credentials = match Option::<BearerAuth>::extract(&req).await? {
+                Some(bearer_auth) => Credentials::Jwt(bearer_auth.token().to_string()),
+                None => Credentials::SessionCookie(
+                    req.cookie(&state.config.security.session_cookie_name)
+                        .ok_or_else(|| ErrorUnauthorized(anyhow!("Unauthorized")))?,
+                ),
             };
 
-            let cookie_string = format!("{}={}", cookie.name(), cookie.value());
-            match state.api.security().authenticate(cookie_string).await {
+            match state.api.security().authenticate(credentials).await {
                 Ok(Some(user)) => Ok(user),
                 Ok(None) => Err(ErrorUnauthorized(anyhow!("Unauthorized"))),
-                Err(_) => Err(ErrorInternalServerError(anyhow!("Internal server error"))),
+                Err(err) => {
+                    log::error!("Failed to extract user information due to: {err:?}");
+                    Err(ErrorInternalServerError(anyhow!("Internal server error")))
+                }
             }
         })
     }

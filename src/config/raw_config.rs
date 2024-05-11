@@ -8,7 +8,6 @@ use url::Url;
 
 /// Raw configuration structure that is used to read the configuration from the file.
 #[derive(Deserialize, Serialize, Debug, Clone)]
-#[serde(rename_all = "kebab-case")]
 pub struct RawConfig {
     /// Defines a TCP port to listen on.
     pub port: u16,
@@ -35,6 +34,7 @@ impl RawConfig {
     pub fn read_from_file(path: &str) -> anyhow::Result<Self> {
         Ok(Figment::from(RawConfig::default())
             .merge(providers::Toml::file(path))
+            .merge(providers::Env::prefixed("SECUTILS_").split("__"))
             .extract()?)
     }
 }
@@ -81,7 +81,7 @@ mod tests {
 
         assert_toml_snapshot!(default_config, @r###"
         port = 7070
-        public-url = 'http://localhost:7070/'
+        public_url = 'http://localhost:7070/'
 
         [db]
         name = 'secutils'
@@ -90,91 +90,92 @@ mod tests {
         username = 'postgres'
 
         [security]
-        session-cookie-name = 'id'
+        session_cookie_name = 'id'
 
         [components]
-        kratos-url = 'http://localhost:4433/'
-        web-scraper-url = 'http://localhost:7272/'
-        search-index-version = 4
+        kratos_url = 'http://localhost:4433/'
+        kratos_admin_url = 'http://localhost:4434/'
+        web_scraper_url = 'http://localhost:7272/'
+        search_index_version = 4
 
         [scheduler]
-        web-page-trackers-schedule = '0 * * * * * *'
-        web-page-trackers-fetch = '0 * * * * * *'
-        notifications-send = '0/30 * * * * * *'
+        web_page_trackers_schedule = '0 * * * * * *'
+        web_page_trackers_fetch = '0 * * * * * *'
+        notifications_send = '0/30 * * * * * *'
 
         [subscriptions]
-        feature-overview-url = 'http://localhost:7272/'
+        feature_overview_url = 'http://localhost:7272/'
         [subscriptions.basic.webhooks]
         responders = 100
-        responder-requests = 30
-        js-runtime-heap-size = 10485760
-        js-runtime-script-execution-time = 30000
+        responder_requests = 30
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
 
-        [subscriptions.basic.web-scraping]
+        [subscriptions.basic.web_scraping]
         trackers = 100
-        tracker-revisions = 30
+        tracker_revisions = 30
 
         [subscriptions.basic.certificates]
-        private-keys = 100
+        private_keys = 100
         templates = 1000
 
-        [subscriptions.basic.web-security]
+        [subscriptions.basic.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
         [subscriptions.standard.webhooks]
         responders = 100
-        responder-requests = 30
-        js-runtime-heap-size = 10485760
-        js-runtime-script-execution-time = 30000
+        responder_requests = 30
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
 
-        [subscriptions.standard.web-scraping]
+        [subscriptions.standard.web_scraping]
         trackers = 100
-        tracker-revisions = 30
+        tracker_revisions = 30
 
         [subscriptions.standard.certificates]
-        private-keys = 100
+        private_keys = 100
         templates = 1000
 
-        [subscriptions.standard.web-security]
+        [subscriptions.standard.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
         [subscriptions.professional.webhooks]
         responders = 100
-        responder-requests = 30
-        js-runtime-heap-size = 10485760
-        js-runtime-script-execution-time = 30000
+        responder_requests = 30
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
 
-        [subscriptions.professional.web-scraping]
+        [subscriptions.professional.web_scraping]
         trackers = 100
-        tracker-revisions = 30
+        tracker_revisions = 30
 
         [subscriptions.professional.certificates]
-        private-keys = 100
+        private_keys = 100
         templates = 1000
 
-        [subscriptions.professional.web-security]
+        [subscriptions.professional.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
         [subscriptions.ultimate.webhooks]
         responders = 100
-        responder-requests = 30
-        js-runtime-heap-size = 10485760
-        js-runtime-script-execution-time = 30000
+        responder_requests = 30
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
 
-        [subscriptions.ultimate.web-scraping]
+        [subscriptions.ultimate.web_scraping]
         trackers = 100
-        tracker-revisions = 30
+        tracker_revisions = 30
 
         [subscriptions.ultimate.certificates]
-        private-keys = 100
+        private_keys = 100
         templates = 1000
 
-        [subscriptions.ultimate.web-security]
+        [subscriptions.ultimate.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
 
         [utils]
-        webhook-url-type = 'subdomain'
+        webhook_url_type = 'subdomain'
         "###);
     }
 
@@ -183,7 +184,7 @@ mod tests {
         let config: RawConfig = toml::from_str(
             r#"
         port = 7070
-        public-url = 'http://localhost:7070/'
+        public_url = 'http://localhost:7070/'
 
         [db]
         name = 'secutils'
@@ -193,102 +194,103 @@ mod tests {
         port = 5432
 
         [security]
-        session-cookie-name = 'id2'
+        session_cookie_name = 'id2'
 
-        [security.preconfigured-users."dev@secutils.dev"]
+        [security.preconfigured_users."dev@secutils.dev"]
         handle = "dev"
         tier = "ultimate"
 
         [components]
-        kratos-url = 'http://localhost:4433/'
-        web-scraper-url = 'http://localhost:7272/'
-        search-index-version = 3
+        kratos_url = 'http://localhost:4433/'
+        kratos_admin_url = 'http://localhost:4434/'
+        web_scraper_url = 'http://localhost:7272/'
+        search_index_version = 3
 
         [scheduler]
-        web-page-trackers-schedule = '0 * * * * * *'
-        web-page-trackers-fetch = '0 * * * * * *'
-        notifications-send = '0/30 * * * * * *'
+        web_page_trackers_schedule = '0 * * * * * *'
+        web_page_trackers_fetch = '0 * * * * * *'
+        notifications_send = '0/30 * * * * * *'
 
         [subscriptions]
-        feature-overview-url = 'http://localhost:7272/'
+        feature_overview_url = 'http://localhost:7272/'
 
         [subscriptions.basic.webhooks]
         responders = 1
-        responder-requests = 11
-        js-runtime-heap-size = 10
-        js-runtime-script-execution-time = 20
+        responder_requests = 11
+        js_runtime_heap_size = 10
+        js_runtime_script_execution_time = 20
 
-        [subscriptions.basic.web-scraping]
+        [subscriptions.basic.web_scraping]
         trackers = 1
-        tracker-revisions = 11
+        tracker_revisions = 11
 
-        [subscriptions.basic.web-security]
+        [subscriptions.basic.web_security]
         policies = 10
-        import-policy-from-url = false
+        import_policy_from_url = false
 
         [subscriptions.basic.certificates]
-        private-keys = 1
+        private_keys = 1
         templates = 11
-        private-key-algorithms = ['RSA-1024']
+        private_key_algorithms = ['RSA-1024']
 
         [subscriptions.standard.webhooks]
         responders = 2
-        responder-requests = 22
-        js-runtime-heap-size = 30
-        js-runtime-script-execution-time = 40
+        responder_requests = 22
+        js_runtime_heap_size = 30
+        js_runtime_script_execution_time = 40
 
-        [subscriptions.standard.web-scraping]
+        [subscriptions.standard.web_scraping]
         trackers = 2
-        tracker-revisions = 22
+        tracker_revisions = 22
 
-        [subscriptions.standard.web-security]
+        [subscriptions.standard.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
 
         [subscriptions.standard.certificates]
-        private-keys = 2
+        private_keys = 2
         templates = 22
-        private-key-algorithms = ['RSA-2048']
+        private_key_algorithms = ['RSA-2048']
 
         [subscriptions.professional.webhooks]
         responders = 3
-        responder-requests = 33
-        js-runtime-heap-size = 50
-        js-runtime-script-execution-time = 60
+        responder_requests = 33
+        js_runtime_heap_size = 50
+        js_runtime_script_execution_time = 60
 
-        [subscriptions.professional.web-scraping]
+        [subscriptions.professional.web_scraping]
         trackers = 3
-        tracker-revisions = 33
+        tracker_revisions = 33
 
-        [subscriptions.professional.web-security]
+        [subscriptions.professional.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
 
         [subscriptions.professional.certificates]
-        private-keys = 3
+        private_keys = 3
         templates = 33
-        private-key-algorithms = ['RSA-4096']
+        private_key_algorithms = ['RSA-4096']
 
         [subscriptions.ultimate.webhooks]
         responders = 4
-        responder-requests = 44
-        js-runtime-heap-size = 70
-        js-runtime-script-execution-time = 80
+        responder_requests = 44
+        js_runtime_heap_size = 70
+        js_runtime_script_execution_time = 80
 
-        [subscriptions.ultimate.web-scraping]
+        [subscriptions.ultimate.web_scraping]
         trackers = 4
-        tracker-revisions = 44
+        tracker_revisions = 44
 
-        [subscriptions.ultimate.web-security]
+        [subscriptions.ultimate.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
 
         [subscriptions.ultimate.certificates]
-        private-keys = 4
+        private_keys = 4
         templates = 44
 
         [utils]
-        webhook-url-type = 'subdomain'
+        webhook_url_type = 'subdomain'
     "#,
         )
         .unwrap();
@@ -324,6 +326,7 @@ mod tests {
             },
             security: SecurityConfig {
                 session_cookie_name: "id2",
+                jwt_secret: None,
                 preconfigured_users: Some(
                     {
                         "dev@secutils.dev": PreconfiguredUserConfig {
@@ -346,6 +349,23 @@ mod tests {
                     ),
                     port: Some(
                         4433,
+                    ),
+                    path: "/",
+                    query: None,
+                    fragment: None,
+                },
+                kratos_admin_url: Url {
+                    scheme: "http",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: Some(
+                        Domain(
+                            "localhost",
+                        ),
+                    ),
+                    port: Some(
+                        4434,
                     ),
                     path: "/",
                     query: None,

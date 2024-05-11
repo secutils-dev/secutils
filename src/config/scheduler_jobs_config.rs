@@ -6,7 +6,6 @@ use std::str::FromStr;
 /// Configuration for the Secutils.dev scheduler jobs.
 #[serde_as]
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-#[serde(rename_all = "kebab-case")]
 pub struct SchedulerJobsConfig {
     /// The schedule to use for the `WebPageTrackersSchedule` job.
     #[serde_as(as = "DisplayFromStr")]
@@ -40,9 +39,9 @@ mod tests {
     #[test]
     fn serialization_and_default() {
         assert_toml_snapshot!(SchedulerJobsConfig::default(), @r###"
-        web-page-trackers-schedule = '0 * * * * * *'
-        web-page-trackers-fetch = '0 * * * * * *'
-        notifications-send = '0/30 * * * * * *'
+        web_page_trackers_schedule = '0 * * * * * *'
+        web_page_trackers_fetch = '0 * * * * * *'
+        notifications_send = '0/30 * * * * * *'
         "###);
     }
 
@@ -50,9 +49,9 @@ mod tests {
     fn deserialization() {
         let config: SchedulerJobsConfig = toml::from_str(
             r#"
-        web-page-trackers-schedule = '0 * * * * * *'
-        web-page-trackers-fetch = '0 * * * * * *'
-        notifications-send = '0/30 * * * * * *'
+        web_page_trackers_schedule = '0 * * * * * *'
+        web_page_trackers_fetch = '0 * * * * * *'
+        notifications_send = '0/30 * * * * * *'
     "#,
         )
         .unwrap();

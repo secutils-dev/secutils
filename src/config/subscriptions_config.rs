@@ -18,7 +18,6 @@ pub use self::{
 
 /// Configuration related to the Secutils.dev subscriptions.
 #[derive(Deserialize, Serialize, Debug, Clone, Default, PartialEq)]
-#[serde(rename_all = "kebab-case")]
 pub struct SubscriptionsConfig {
     /// The URL to access the subscription management page.
     pub manage_url: Option<Url>,
@@ -65,72 +64,72 @@ mod tests {
         assert_toml_snapshot!(SubscriptionsConfig::default(), @r###"
         [basic.webhooks]
         responders = 100
-        responder-requests = 30
-        js-runtime-heap-size = 10485760
-        js-runtime-script-execution-time = 30000
+        responder_requests = 30
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
 
-        [basic.web-scraping]
+        [basic.web_scraping]
         trackers = 100
-        tracker-revisions = 30
+        tracker_revisions = 30
 
         [basic.certificates]
-        private-keys = 100
+        private_keys = 100
         templates = 1000
 
-        [basic.web-security]
+        [basic.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
         [standard.webhooks]
         responders = 100
-        responder-requests = 30
-        js-runtime-heap-size = 10485760
-        js-runtime-script-execution-time = 30000
+        responder_requests = 30
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
 
-        [standard.web-scraping]
+        [standard.web_scraping]
         trackers = 100
-        tracker-revisions = 30
+        tracker_revisions = 30
 
         [standard.certificates]
-        private-keys = 100
+        private_keys = 100
         templates = 1000
 
-        [standard.web-security]
+        [standard.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
         [professional.webhooks]
         responders = 100
-        responder-requests = 30
-        js-runtime-heap-size = 10485760
-        js-runtime-script-execution-time = 30000
+        responder_requests = 30
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
 
-        [professional.web-scraping]
+        [professional.web_scraping]
         trackers = 100
-        tracker-revisions = 30
+        tracker_revisions = 30
 
         [professional.certificates]
-        private-keys = 100
+        private_keys = 100
         templates = 1000
 
-        [professional.web-security]
+        [professional.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
         [ultimate.webhooks]
         responders = 100
-        responder-requests = 30
-        js-runtime-heap-size = 10485760
-        js-runtime-script-execution-time = 30000
+        responder_requests = 30
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
 
-        [ultimate.web-scraping]
+        [ultimate.web_scraping]
         trackers = 100
-        tracker-revisions = 30
+        tracker_revisions = 30
 
         [ultimate.certificates]
-        private-keys = 100
+        private_keys = 100
         templates = 1000
 
-        [ultimate.web-security]
+        [ultimate.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
         "###);
 
         let config = SubscriptionsConfig {
@@ -142,76 +141,76 @@ mod tests {
             ultimate: SubscriptionConfig::default(),
         };
         assert_toml_snapshot!(config, @r###"
-        manage-url = 'http://localhost:7272/'
-        feature-overview-url = 'http://localhost:7272/'
+        manage_url = 'http://localhost:7272/'
+        feature_overview_url = 'http://localhost:7272/'
         [basic.webhooks]
         responders = 100
-        responder-requests = 30
-        js-runtime-heap-size = 10485760
-        js-runtime-script-execution-time = 30000
+        responder_requests = 30
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
 
-        [basic.web-scraping]
+        [basic.web_scraping]
         trackers = 100
-        tracker-revisions = 30
+        tracker_revisions = 30
 
         [basic.certificates]
-        private-keys = 100
+        private_keys = 100
         templates = 1000
 
-        [basic.web-security]
+        [basic.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
         [standard.webhooks]
         responders = 100
-        responder-requests = 30
-        js-runtime-heap-size = 10485760
-        js-runtime-script-execution-time = 30000
+        responder_requests = 30
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
 
-        [standard.web-scraping]
+        [standard.web_scraping]
         trackers = 100
-        tracker-revisions = 30
+        tracker_revisions = 30
 
         [standard.certificates]
-        private-keys = 100
+        private_keys = 100
         templates = 1000
 
-        [standard.web-security]
+        [standard.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
         [professional.webhooks]
         responders = 100
-        responder-requests = 30
-        js-runtime-heap-size = 10485760
-        js-runtime-script-execution-time = 30000
+        responder_requests = 30
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
 
-        [professional.web-scraping]
+        [professional.web_scraping]
         trackers = 100
-        tracker-revisions = 30
+        tracker_revisions = 30
 
         [professional.certificates]
-        private-keys = 100
+        private_keys = 100
         templates = 1000
 
-        [professional.web-security]
+        [professional.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
         [ultimate.webhooks]
         responders = 100
-        responder-requests = 30
-        js-runtime-heap-size = 10485760
-        js-runtime-script-execution-time = 30000
+        responder_requests = 30
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
 
-        [ultimate.web-scraping]
+        [ultimate.web_scraping]
         trackers = 100
-        tracker-revisions = 30
+        tracker_revisions = 30
 
         [ultimate.certificates]
-        private-keys = 100
+        private_keys = 100
         templates = 1000
 
-        [ultimate.web-security]
+        [ultimate.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
         "###);
     }
 
@@ -219,83 +218,83 @@ mod tests {
     fn deserialization() {
         let config: SubscriptionsConfig = toml::from_str(
             r#"
-        manage-url = 'http://localhost:7272/'
-        feature-overview-url = 'http://localhost:7272/'
+        manage_url = 'http://localhost:7272/'
+        feature_overview_url = 'http://localhost:7272/'
 
         [basic.webhooks]
         responders = 1
-        responder-requests = 11
-        js-runtime-heap-size = 10
-        js-runtime-script-execution-time = 20
+        responder_requests = 11
+        js_runtime_heap_size = 10
+        js_runtime_script_execution_time = 20
 
-        [basic.web-scraping]
+        [basic.web_scraping]
         trackers = 1
-        tracker-revisions = 11
-        tracker-schedules = ["@", "@daily", "@weekly", "@monthly"]
+        tracker_revisions = 11
+        tracker_schedules = ["@", "@daily", "@weekly", "@monthly"]
 
         [basic.certificates]
-        private-keys = 1
+        private_keys = 1
         templates = 11
-        private-key-algorithms = ['RSA-1024']
+        private_key_algorithms = ['RSA-1024']
 
-        [basic.web-security]
+        [basic.web_security]
         policies = 10
-        import-policy-from-url = false
+        import_policy_from_url = false
 
         [standard.webhooks]
         responders = 2
-        responder-requests = 22
-        js-runtime-heap-size = 30
-        js-runtime-script-execution-time = 40
+        responder_requests = 22
+        js_runtime_heap_size = 30
+        js_runtime_script_execution_time = 40
 
-        [standard.web-scraping]
+        [standard.web_scraping]
         trackers = 2
-        tracker-revisions = 22
-        tracker-schedules = ["@", "@hourly", "@daily", "@weekly", "@monthly"]
+        tracker_revisions = 22
+        tracker_schedules = ["@", "@hourly", "@daily", "@weekly", "@monthly"]
 
-        [standard.web-security]
+        [standard.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
 
         [standard.certificates]
-        private-keys = 2
+        private_keys = 2
         templates = 22
-        private-key-algorithms = ['RSA-2048']
+        private_key_algorithms = ['RSA-2048']
 
         [professional.webhooks]
         responders = 3
-        responder-requests = 33
-        js-runtime-heap-size = 50
-        js-runtime-script-execution-time = 60
+        responder_requests = 33
+        js_runtime_heap_size = 50
+        js_runtime_script_execution_time = 60
 
-        [professional.web-scraping]
+        [professional.web_scraping]
         trackers = 3
-        tracker-revisions = 33
+        tracker_revisions = 33
 
-        [professional.web-security]
+        [professional.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
 
         [professional.certificates]
-        private-keys = 3
+        private_keys = 3
         templates = 33
 
         [ultimate.webhooks]
         responders = 4
-        responder-requests = 44
-        js-runtime-heap-size = 70
-        js-runtime-script-execution-time = 80
+        responder_requests = 44
+        js_runtime_heap_size = 70
+        js_runtime_script_execution_time = 80
 
-        [ultimate.web-scraping]
+        [ultimate.web_scraping]
         trackers = 4
-        tracker-revisions = 44
+        tracker_revisions = 44
 
-        [ultimate.web-security]
+        [ultimate.web_security]
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
 
         [ultimate.certificates]
-        private-keys = 4
+        private_keys = 4
         templates = 44
     "#,
         )

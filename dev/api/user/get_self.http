@@ -1,0 +1,4 @@
+### Get user information
+GET {{host}}/api/users/self
+Accept: application/json
+Authorization: {{api-credentials}}

@@ -5,7 +5,6 @@ use serde_with::{serde_as, DisplayFromStr};
 /// Configuration for the SMTP catch-all functionality.
 #[serde_as]
 #[derive(Deserialize, Serialize, Debug, Clone)]
-#[serde(rename_all = "kebab-case")]
 pub struct SmtpCatchAllConfig {
     /// Address of the catch-all email recipient.
     pub recipient: String,
@@ -28,7 +27,7 @@ mod tests {
             text_matcher: Regex::new(r"test").unwrap(),
         }, @r###"
         recipient = 'test@secutils.dev'
-        text-matcher = 'test'
+        text_matcher = 'test'
         "###);
     }
 
@@ -37,7 +36,7 @@ mod tests {
         let config: SmtpCatchAllConfig = toml::from_str(
             r#"
         recipient = 'test@secutils.dev'
-        text-matcher = 'test'
+        text_matcher = 'test'
     "#,
         )
         .unwrap();

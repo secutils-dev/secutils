@@ -21,8 +21,9 @@ RUN set -x && \
     apt-get install -y pkg-config curl libssl-dev cmake libssl-dev:arm64 g++-aarch64-linux-gnu libc6-dev-arm64-cross protobuf-compiler ca-certificates && \
     rustup target add aarch64-unknown-linux-gnu
 
-# Copy assets and manifest.
+# Copy assets, member crates, and manifest.
 COPY ["./assets", "./assets"]
+COPY ["./dev/crates", "./dev/crates"]
 COPY ["./Cargo.lock", "./Cargo.toml", "./"]
 
 # Fetch dependencies if they change.

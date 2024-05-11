@@ -1,7 +1,6 @@
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
 pub struct SubscriptionWebSecurityConfig {
     /// The number of policies (CSP, CORS etc.) available to a particular subscription.
     pub policies: usize,
@@ -27,7 +26,7 @@ mod tests {
     fn serialization_and_default() {
         assert_toml_snapshot!(SubscriptionWebSecurityConfig::default(), @r###"
         policies = 1000
-        import-policy-from-url = true
+        import_policy_from_url = true
         "###);
     }
 
@@ -36,7 +35,7 @@ mod tests {
         let config: SubscriptionWebSecurityConfig = toml::from_str(
             r#"
         policies = 100
-        import-policy-from-url = true
+        import_policy_from_url = true
     "#,
         )
         .unwrap();

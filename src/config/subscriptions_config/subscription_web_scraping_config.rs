@@ -2,7 +2,6 @@ use serde_derive::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
 pub struct SubscriptionWebScrapingConfig {
     /// The number of trackers (content, resources etc.) available to a particular subscription.
     pub trackers: usize,
@@ -33,7 +32,7 @@ mod tests {
         let config = SubscriptionWebScrapingConfig::default();
         assert_toml_snapshot!(config, @r###"
         trackers = 100
-        tracker-revisions = 30
+        tracker_revisions = 30
         "###);
     }
 
@@ -42,7 +41,7 @@ mod tests {
         let config: SubscriptionWebScrapingConfig = toml::from_str(
             r#"
         trackers = 100
-        tracker-revisions = 30
+        tracker_revisions = 30
     "#,
         )
         .unwrap();

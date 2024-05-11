@@ -2,7 +2,6 @@ use serde_derive::{Deserialize, Serialize};
 
 /// Configuration for the database connection.
 #[derive(Deserialize, Serialize, Debug, Clone)]
-#[serde(rename_all = "kebab-case")]
 pub struct DatabaseConfig {
     /// Name of the database to connect to.
     pub name: String,

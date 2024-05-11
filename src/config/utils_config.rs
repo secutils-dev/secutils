@@ -3,7 +3,6 @@ use serde_derive::{Deserialize, Serialize};
 
 /// Configuration for the JS runtime (Deno).
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "kebab-case")]
 pub struct UtilsConfig {
     /// Describes the preferred way to construct webhook URLs.
     pub webhook_url_type: WebhookUrlType,
@@ -24,12 +23,12 @@ mod tests {
 
     #[test]
     fn serialization_and_default() {
-        assert_toml_snapshot!(UtilsConfig::default(), @"webhook-url-type = 'subdomain'");
+        assert_toml_snapshot!(UtilsConfig::default(), @"webhook_url_type = 'subdomain'");
     }
 
     #[test]
     fn deserialization() {
-        let config: UtilsConfig = toml::from_str(r#"webhook-url-type = 'path'"#).unwrap();
+        let config: UtilsConfig = toml::from_str(r#"webhook_url_type = 'path'"#).unwrap();
         assert_eq!(
             config,
             UtilsConfig {

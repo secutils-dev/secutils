@@ -13,10 +13,12 @@ pub struct PreconfiguredUserConfig {
 
 /// Configuration for the SMTP functionality.
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "kebab-case")]
 pub struct SecurityConfig {
     /// Name of the session cookie used by the authentication component.
     pub session_cookie_name: String,
+    /// Secret key used to sign JWT tokens used for HTTP authentication. If not provided, HTTP
+    /// authentication will be disabled.
+    pub jwt_secret: Option<String>,
     /// List of the preconfigured users, if specified.
     pub preconfigured_users: Option<HashMap<String, PreconfiguredUserConfig>>,
 }
@@ -25,6 +27,7 @@ impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
             session_cookie_name: "id".to_string(),
+            jwt_secret: None,
             preconfigured_users: None,
         }
     }
@@ -40,9 +43,10 @@ mod tests {
 
     #[test]
     fn serialization_and_default() {
-        assert_toml_snapshot!(SecurityConfig::default(), @"session-cookie-name = 'id'");
+        assert_toml_snapshot!(SecurityConfig::default(), @"session_cookie_name = 'id'");
 
         let config = SecurityConfig {
+            jwt_secret: Some("3024bf8975b03b84e405f36a7bacd1c1".to_string()),
             preconfigured_users: Some(
                 [(
                     "test@secutils.dev".to_string(),
@@ -58,8 +62,9 @@ mod tests {
         };
 
         assert_toml_snapshot!(config, @r###"
-        session-cookie-name = 'id'
-        [preconfigured-users."test@secutils.dev"]
+        session_cookie_name = 'id'
+        jwt_secret = '3024bf8975b03b84e405f36a7bacd1c1'
+        [preconfigured_users."test@secutils.dev"]
         handle = 'test-handle'
         tier = 'basic'
         "###);
@@ -69,7 +74,7 @@ mod tests {
     fn deserialization() {
         let config: SecurityConfig = toml::from_str(
             r#"
-        session-cookie-name = 'id'
+        session_cookie_name = 'id'
     "#,
         )
         .unwrap();
@@ -78,15 +83,17 @@ mod tests {
             config,
             SecurityConfig {
                 session_cookie_name: "id".to_string(),
+                jwt_secret: None,
                 preconfigured_users: None,
             }
         );
 
         let config: SecurityConfig = toml::from_str(
             r#"
-        session-cookie-name = 'id'
+        session_cookie_name = 'id'
+        jwt_secret = '3024bf8975b03b84e405f36a7bacd1c1'
 
-        [preconfigured-users."test@secutils.dev"]
+        [preconfigured_users."test@secutils.dev"]
         handle = 'test-handle'
         tier = 'basic'
     "#,
@@ -96,6 +103,7 @@ mod tests {
         assert_eq!(
             config,
             SecurityConfig {
+                jwt_secret: Some("3024bf8975b03b84e405f36a7bacd1c1".to_string()),
                 preconfigured_users: Some(
                     [(
                         "test@secutils.dev".to_string(),

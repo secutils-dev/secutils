@@ -121,6 +121,7 @@ mod tests {
             },
             security: SecurityConfig {
                 session_cookie_name: "id",
+                jwt_secret: None,
                 preconfigured_users: None,
             },
             utils: UtilsConfig {
@@ -154,6 +155,23 @@ mod tests {
                     ),
                     port: Some(
                         4433,
+                    ),
+                    path: "/",
+                    query: None,
+                    fragment: None,
+                },
+                kratos_admin_url: Url {
+                    scheme: "http",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: Some(
+                        Domain(
+                            "localhost",
+                        ),
+                    ),
+                    port: Some(
+                        4434,
                     ),
                     path: "/",
                     query: None,

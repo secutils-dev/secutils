@@ -4,7 +4,6 @@ use std::time::Duration;
 
 #[serde_as]
 #[derive(Deserialize, Serialize, Debug, Copy, Clone, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
 pub struct SubscriptionWebhooksConfig {
     /// The number of responders available to a particular subscription.
     pub responders: usize,
@@ -38,9 +37,9 @@ mod tests {
         let config = SubscriptionWebhooksConfig::default();
         assert_toml_snapshot!(config, @r###"
         responders = 100
-        responder-requests = 30
-        js-runtime-heap-size = 10485760
-        js-runtime-script-execution-time = 30000
+        responder_requests = 30
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
         "###);
     }
 
@@ -49,9 +48,9 @@ mod tests {
         let config: SubscriptionWebhooksConfig = toml::from_str(
             r#"
         responders = 100
-        responder-requests = 30
-        js-runtime-heap-size = 10485760
-        js-runtime-script-execution-time = 30000
+        responder_requests = 30
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
     "#,
         )
         .unwrap();

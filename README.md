@@ -75,18 +75,19 @@ password = 'password'
 
 # Connection details for Ory Kratos and Web Scraper services.
 [components]
-kratos-url = 'http://localhost:4433/'
-web-scraper-url = 'http://localhost:7272/'
+kratos_url = 'http://localhost:4433/'
+kratos_admin_url = 'http://localhost:4434/'
+web_scraper_url = 'http://localhost:7272/'
 
 # A list of preconfigured users. Once a user with the specified email signs up, 
 # the server will automatically assign the user the specified handle and tier.
-[security.preconfigured-users]
+[security.preconfigured_users]
 "admin@mydomain.dev" = { handle = "admin", tier = "ultimate" }
 
 # The configuration of the Deno runtime used to run responder scripts.
-[js-runtime]
-max-heap-size = 10_485_760 # 10 MB
-max-user-script-execution-time = 30_000 # 30 seconds
+[js_runtime]
+max_heap_size = 10_485_760 # 10 MB
+max_user_script_execution_time = 30_000 # 30 seconds
 
 # SMTP server configuration used to send emails (signup emails, notifications etc.).
 [smtp]
@@ -95,7 +96,7 @@ username = "xxx"
 password = "xxx"
 
 [utils]
-webhook-url-type = "path"
+webhook_url_type = "path"
 ```
 
 If you saved your configuration to a file named `secutils.toml`, you can start the server with the following command:
@@ -108,17 +109,30 @@ You can also use `.env` file to specify the location of the configuration file a
 for development and testing:
 
 ```dotenv
+# Refer to https://github.com/launchbadge/sqlx for more details.
+DATABASE_URL=postgres://postgres@localhost/secutils
+
 # Path to the configuration file.
 SECUTILS_CONFIG=${PWD}/secutils.toml
 
-# Refer to https://github.com/launchbadge/sqlx for more details.
-DATABASE_URL=postgres://postgres@localhost/secutils
+# Secret key used to sign and verify JSON Web Tokens for API access
+# openssl rand -hex 16
+SECUTILS_SECURITY__JWT_SECRET=8ffe0cc38d7ff1afa78b6cd5696f2e21
 ```
 
 ### Usage
 
 At this point, it is recommended to use the Secutils.dev APIs through
-the [Web UI](https://github.com/secutils-dev/secutils-webui).
+the [Web UI](https://github.com/secutils-dev/secutils-webui), but you can also generate a JSON Web Token and use the 
+APIs directly with `curl` or any other HTTP client. To generate a token, run the following command:
+
+```shell
+cargo run -p jwt_tools generate \
+  --secret 8ffe0cc38d7ff1afa78b6cd5696f2e21 \
+  --sub user@secutils.dev --exp 30days
+---
+curl -XGET --header "Authorization: Bearer __token__" http://localhost:7070/api/status
+```
 
 ### Re-initialize local database
 

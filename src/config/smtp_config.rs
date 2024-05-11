@@ -3,7 +3,6 @@ use serde_derive::{Deserialize, Serialize};
 
 /// Configuration for the SMTP functionality.
 #[derive(Deserialize, Serialize, Debug, Clone)]
-#[serde(rename_all = "kebab-case")]
 pub struct SmtpConfig {
     /// Username to use to authenticate to the SMTP server.
     pub username: String,
@@ -49,9 +48,9 @@ mod tests {
         password = 'password'
         address = 'smtp.secutils.dev'
 
-        [catch-all]
+        [catch_all]
         recipient = 'test@secutils.dev'
-        text-matcher = 'test'
+        text_matcher = 'test'
         "###);
     }
 
@@ -63,9 +62,9 @@ mod tests {
         password = 'password'
         address = 'smtp.secutils.dev'
 
-        [catch-all]
+        [catch_all]
         recipient = 'test@secutils.dev'
-        text-matcher = 'test'
+        text_matcher = 'test'
     "#,
         )
         .unwrap();
