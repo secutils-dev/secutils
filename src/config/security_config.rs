@@ -1,6 +1,6 @@
 use crate::users::SubscriptionTier;
 use serde_derive::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Describes the preconfigured user configuration.
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
@@ -19,6 +19,8 @@ pub struct SecurityConfig {
     /// Secret key used to sign JWT tokens used for HTTP authentication. If not provided, HTTP
     /// authentication will be disabled.
     pub jwt_secret: Option<String>,
+    /// List of user or service account identifiers that should be treated as operators, if specified.
+    pub operators: Option<HashSet<String>>,
     /// List of the preconfigured users, if specified.
     pub preconfigured_users: Option<HashMap<String, PreconfiguredUserConfig>>,
 }
@@ -29,6 +31,7 @@ impl Default for SecurityConfig {
             session_cookie_name: "id".to_string(),
             jwt_secret: None,
             preconfigured_users: None,
+            operators: None,
         }
     }
 }
@@ -46,7 +49,9 @@ mod tests {
         assert_toml_snapshot!(SecurityConfig::default(), @"session_cookie_name = 'id'");
 
         let config = SecurityConfig {
+            session_cookie_name: "id".to_string(),
             jwt_secret: Some("3024bf8975b03b84e405f36a7bacd1c1".to_string()),
+            operators: Some(["test@secutils.dev".to_string()].into_iter().collect()),
             preconfigured_users: Some(
                 [(
                     "test@secutils.dev".to_string(),
@@ -58,12 +63,12 @@ mod tests {
                 .into_iter()
                 .collect(),
             ),
-            ..Default::default()
         };
 
         assert_toml_snapshot!(config, @r###"
         session_cookie_name = 'id'
         jwt_secret = '3024bf8975b03b84e405f36a7bacd1c1'
+        operators = ['test@secutils.dev']
         [preconfigured_users."test@secutils.dev"]
         handle = 'test-handle'
         tier = 'basic'
@@ -85,6 +90,7 @@ mod tests {
                 session_cookie_name: "id".to_string(),
                 jwt_secret: None,
                 preconfigured_users: None,
+                operators: None,
             }
         );
 
@@ -92,6 +98,7 @@ mod tests {
             r#"
         session_cookie_name = 'id'
         jwt_secret = '3024bf8975b03b84e405f36a7bacd1c1'
+        operators = ['test@secutils.dev']
 
         [preconfigured_users."test@secutils.dev"]
         handle = 'test-handle'
@@ -115,6 +122,7 @@ mod tests {
                     .into_iter()
                     .collect(),
                 ),
+                operators: Some(["test@secutils.dev".to_string()].into_iter().collect()),
                 ..Default::default()
             }
         );

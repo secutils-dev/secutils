@@ -9,7 +9,10 @@ use std::{collections::HashMap, str::FromStr};
 
 use crate::{
     logging::UserLogContext,
-    security::kratos::{EmailTemplateType, Identity},
+    security::{
+        kratos::{EmailTemplateType, Identity},
+        Operator,
+    },
 };
 use time::OffsetDateTime;
 use url::Url;
@@ -27,6 +30,7 @@ pub struct EmailParams {
 
 pub async fn security_users_email(
     state: web::Data<AppState>,
+    operator: Operator,
     body_params: web::Json<EmailParams>,
 ) -> Result<HttpResponse, SecutilsError> {
     let kratos_email = body_params.into_inner();
@@ -38,6 +42,7 @@ pub async fn security_users_email(
     let (destination, content) = match parse_email_params(&kratos_email) {
         Ok(content) => {
             log::info!(
+                operator:serde = operator.id(),
                 user:serde = identity_context;
                 "Received Kratos {} email request for {}.",
                 kratos_email.template_type,
@@ -50,6 +55,7 @@ pub async fn security_users_email(
         }
         Err(err) => {
             log::error!(
+                operator:serde = operator.id(),
                 user:serde = identity_context;
                 "Received unsupported ({}) Kratos email request for {}: {err:?}.",
                 kratos_email.template_type,
@@ -78,7 +84,7 @@ pub async fn security_users_email(
         .schedule_notification(destination, content, OffsetDateTime::now_utc())
         .await
     {
-        log::error!("Failed to schedule Kratos email notification: {err:?}");
+        log::error!(operator:serde = operator.id(); "Failed to schedule Kratos email notification: {err:?}");
     }
 
     Ok(HttpResponse::NoContent().finish())

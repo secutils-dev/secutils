@@ -6,6 +6,7 @@ use crate::{
         credentials::Credentials,
         jwt::Claims,
         kratos::{Identity, Session},
+        Operator,
     },
     users::{User, UserId, UserSignupError, UserSubscription},
 };
@@ -90,6 +91,30 @@ where
         }))
     }
 
+    /// Checks if the user or service account with specified credentials is an operator.
+    pub async fn get_operator(&self, credentials: Credentials) -> anyhow::Result<Option<Operator>> {
+        let operator_id = match &credentials {
+            // If the user is authenticated with a session cookie, user's email is used as an
+            // operator identifier.
+            Credentials::SessionCookie(_) => {
+                self.get_identity(&credentials)
+                    .await?
+                    .ok_or_else(|| anyhow!("Session cookie is invalid"))?
+                    .traits
+                    .email
+            }
+            // For JWT, we treat `sub` claim as an operator identifier.
+            Credentials::Jwt(token) => self.get_jwt_claims(token).await?.sub,
+        };
+
+        let operators = self.api.config.security.operators.as_ref();
+        if operators.map_or(false, |operators| operators.contains(&operator_id)) {
+            Ok(Some(Operator::new(operator_id)))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Tries to retrieve user identity from Kratos using specified credentials.
     async fn get_identity(&self, credentials: &Credentials) -> anyhow::Result<Option<Identity>> {
         let client = reqwest::Client::new();
@@ -107,22 +132,13 @@ where
                     format!("{}={}", cookie.name(), cookie.value()).as_bytes(),
                 ),
             Credentials::Jwt(token) => {
-                let Some(jwt_secret) = self.api.config.security.jwt_secret.as_ref() else {
-                    return Err(anyhow!("JWT secret is not configured."));
-                };
-
-                let token = decode::<Claims>(
-                    token.as_ref(),
-                    &DecodingKey::from_secret(jwt_secret.as_bytes()),
-                    &Validation::default(),
-                )?;
-
+                let claims = self.get_jwt_claims(token).await?;
                 client.request(
                     reqwest::Method::GET,
                     format!(
                         "{}admin/identities?credentials_identifier={}",
                         self.api.config.components.kratos_admin_url.as_str(),
-                        urlencoding::encode(&token.claims.sub)
+                        urlencoding::encode(&claims.sub)
                     ),
                 )
             }
@@ -173,6 +189,19 @@ where
                 .await
                 .map(|identities| identities.into_iter().next())?,
         })
+    }
+
+    /// Tries to parse JWT and extract claims.
+    async fn get_jwt_claims(&self, token: &str) -> anyhow::Result<Claims> {
+        let Some(jwt_secret) = self.api.config.security.jwt_secret.as_ref() else {
+            return Err(anyhow!("JWT secret is not configured."));
+        };
+        Ok(decode::<Claims>(
+            token,
+            &DecodingKey::from_secret(jwt_secret.as_bytes()),
+            &Validation::default(),
+        )?
+        .claims)
     }
 
     /// Updates user's subscription.

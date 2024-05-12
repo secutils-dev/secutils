@@ -122,6 +122,7 @@ mod tests {
             security: SecurityConfig {
                 session_cookie_name: "id",
                 jwt_secret: None,
+                operators: None,
                 preconfigured_users: None,
             },
             utils: UtilsConfig {

@@ -327,6 +327,7 @@ mod tests {
             security: SecurityConfig {
                 session_cookie_name: "id2",
                 jwt_secret: None,
+                operators: None,
                 preconfigured_users: Some(
                     {
                         "dev@secutils.dev": PreconfiguredUserConfig {

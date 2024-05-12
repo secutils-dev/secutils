@@ -36,14 +36,14 @@ verification = { enabled = true }
 [selfservice.flows.registration.after.password]
 hooks = [
     # `body is base64 version of "function(ctx) { id: ctx.identity.id, email: ctx.identity.traits.email }", see https://www.ory.sh/docs/guides/integrate-with-ory-cloud-through-webhooks
-    { hook = "web_hook", config = { method = "POST", url = "http://host.docker.internal:7070/api/users/signup", response.ignore = true, body = "base64://ZnVuY3Rpb24oY3R4KSB7IGlkZW50aXR5OiBjdHguaWRlbnRpdHkgfQ==" } },
+    { hook = "web_hook", config = { method = "POST", url = "http://host.docker.internal:7070/api/users/signup", response.ignore = true, body = "base64://ZnVuY3Rpb24oY3R4KSB7IGlkZW50aXR5OiBjdHguaWRlbnRpdHkgfQ==", auth = { type = "api_key", config.name = "Authorization", config.value = "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjIwMzEwNDc4MzksInN1YiI6IkBrcmF0b3MubG9jYWwifQ._tU8TYz7RJfS4yhSrSZ8b7jICm4fhvxKDcVYqA5iP80", config.in = "header" } } },
     { hook = "session" }
 ]
 
 [selfservice.flows.registration.after.webauthn]
 hooks = [
     # `body is base64 version of "function(ctx) { id: ctx.identity.id, email: ctx.identity.traits.email }", see https://www.ory.sh/docs/guides/integrate-with-ory-cloud-through-webhooks
-    { hook = "web_hook", config = { method = "POST", url = "http://host.docker.internal:7070/api/users/signup", response.ignore = true, body = "base64://ZnVuY3Rpb24oY3R4KSB7IGlkZW50aXR5OiBjdHguaWRlbnRpdHkgfQ==" } },
+    { hook = "web_hook", config = { method = "POST", url = "http://host.docker.internal:7070/api/users/signup", response.ignore = true, body = "base64://ZnVuY3Rpb24oY3R4KSB7IGlkZW50aXR5OiBjdHguaWRlbnRpdHkgfQ==", auth = { type = "api_key", config.name = "Authorization", config.value = "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjIwMzEwNDc4MzksInN1YiI6IkBrcmF0b3MubG9jYWwifQ._tU8TYz7RJfS4yhSrSZ8b7jICm4fhvxKDcVYqA5iP80", config.in = "header" } } },
     { hook = "session" }
 ]
 
@@ -53,4 +53,4 @@ cipher = ["32-LONG-SECRET-NOT-SECURE-AT-ALL"]
 
 [courier]
 delivery_strategy = "http"
-http = { request_config = { url = "http://host.docker.internal:7070/api/users/email", method = "POST", body = "base64://ZnVuY3Rpb24oY3R4KSB7CiAgcmVjaXBpZW50OiBjdHgucmVjaXBpZW50LAogIHRlbXBsYXRlX3R5cGU6IGN0eC50ZW1wbGF0ZV90eXBlLAogIGlkZW50aXR5OiBjdHgudGVtcGxhdGVfZGF0YS5pZGVudGl0eSwKICByZWNvdmVyeV9jb2RlOiBpZiAidGVtcGxhdGVfZGF0YSIgaW4gY3R4ICYmICJyZWNvdmVyeV9jb2RlIiBpbiBjdHgudGVtcGxhdGVfZGF0YSB0aGVuIGN0eC50ZW1wbGF0ZV9kYXRhLnJlY292ZXJ5X2NvZGUgZWxzZSBudWxsLAogIHJlY292ZXJ5X3VybDogaWYgInRlbXBsYXRlX2RhdGEiIGluIGN0eCAmJiAicmVjb3ZlcnlfdXJsIiBpbiBjdHgudGVtcGxhdGVfZGF0YSB0aGVuIGN0eC50ZW1wbGF0ZV9kYXRhLnJlY292ZXJ5X3VybCBlbHNlIG51bGwsCiAgdmVyaWZpY2F0aW9uX3VybDogaWYgInRlbXBsYXRlX2RhdGEiIGluIGN0eCAmJiAidmVyaWZpY2F0aW9uX3VybCIgaW4gY3R4LnRlbXBsYXRlX2RhdGEgdGhlbiBjdHgudGVtcGxhdGVfZGF0YS52ZXJpZmljYXRpb25fdXJsIGVsc2UgbnVsbCwKICB2ZXJpZmljYXRpb25fY29kZTogaWYgInRlbXBsYXRlX2RhdGEiIGluIGN0eCAmJiAidmVyaWZpY2F0aW9uX2NvZGUiIGluIGN0eC50ZW1wbGF0ZV9kYXRhIHRoZW4gY3R4LnRlbXBsYXRlX2RhdGEudmVyaWZpY2F0aW9uX2NvZGUgZWxzZSBudWxsCn0=", headers = { "Content-Type" = "application/json" } } }
+http = { request_config = { url = "http://host.docker.internal:7070/api/users/email", method = "POST", body = "base64://ZnVuY3Rpb24oY3R4KSB7CiAgcmVjaXBpZW50OiBjdHgucmVjaXBpZW50LAogIHRlbXBsYXRlX3R5cGU6IGN0eC50ZW1wbGF0ZV90eXBlLAogIGlkZW50aXR5OiBjdHgudGVtcGxhdGVfZGF0YS5pZGVudGl0eSwKICByZWNvdmVyeV9jb2RlOiBpZiAidGVtcGxhdGVfZGF0YSIgaW4gY3R4ICYmICJyZWNvdmVyeV9jb2RlIiBpbiBjdHgudGVtcGxhdGVfZGF0YSB0aGVuIGN0eC50ZW1wbGF0ZV9kYXRhLnJlY292ZXJ5X2NvZGUgZWxzZSBudWxsLAogIHJlY292ZXJ5X3VybDogaWYgInRlbXBsYXRlX2RhdGEiIGluIGN0eCAmJiAicmVjb3ZlcnlfdXJsIiBpbiBjdHgudGVtcGxhdGVfZGF0YSB0aGVuIGN0eC50ZW1wbGF0ZV9kYXRhLnJlY292ZXJ5X3VybCBlbHNlIG51bGwsCiAgdmVyaWZpY2F0aW9uX3VybDogaWYgInRlbXBsYXRlX2RhdGEiIGluIGN0eCAmJiAidmVyaWZpY2F0aW9uX3VybCIgaW4gY3R4LnRlbXBsYXRlX2RhdGEgdGhlbiBjdHgudGVtcGxhdGVfZGF0YS52ZXJpZmljYXRpb25fdXJsIGVsc2UgbnVsbCwKICB2ZXJpZmljYXRpb25fY29kZTogaWYgInRlbXBsYXRlX2RhdGEiIGluIGN0eCAmJiAidmVyaWZpY2F0aW9uX2NvZGUiIGluIGN0eC50ZW1wbGF0ZV9kYXRhIHRoZW4gY3R4LnRlbXBsYXRlX2RhdGEudmVyaWZpY2F0aW9uX2NvZGUgZWxzZSBudWxsCn0=", headers = { "Content-Type" = "application/json" }, auth = { type = "api_key", config.name = "Authorization", config.value = "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjIwMzEwNDc4MzksInN1YiI6IkBrcmF0b3MubG9jYWwifQ._tU8TYz7RJfS4yhSrSZ8b7jICm4fhvxKDcVYqA5iP80", config.in = "header" } } }

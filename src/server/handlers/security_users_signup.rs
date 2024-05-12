@@ -1,5 +1,5 @@
 use crate::{
-    security::kratos::Identity,
+    security::{kratos::Identity, Operator},
     server::{app_state::AppState, http_errors::generic_internal_server_error},
     users::{SubscriptionTier, User, UserId, UserSignupError, UserSubscription},
 };
@@ -16,6 +16,7 @@ pub struct SignupParams {
 /// Signups user with the provided identity.
 pub async fn security_users_signup(
     state: web::Data<AppState>,
+    operator: Operator,
     body_params: web::Json<SignupParams>,
 ) -> impl Responder {
     let body_params = body_params.into_inner();
@@ -42,7 +43,7 @@ pub async fn security_users_signup(
             match security_api.generate_user_handle().await {
                 Ok(handle) => handle,
                 Err(err) => {
-                    log::error!("Failed to generate user handle: {err:?}");
+                    log::error!(operator:serde = operator.id(); "Failed to generate user handle: {err:?}");
                     return generic_internal_server_error();
                 }
             },
@@ -68,11 +69,11 @@ pub async fn security_users_signup(
 
     match security_api.signup(&user).await {
         Ok(_) => {
-            log::info!(user:serde = user.log_context(); "Successfully signed up a new user.");
+            log::info!(operator:serde = operator.id(), user:serde = user.log_context(); "Successfully signed up a new user.");
             HttpResponse::Ok().finish()
         }
         Err(err) => {
-            log::error!(user:serde = user.log_context(); "Failed to signup a user: {err:?}");
+            log::error!(operator:serde = operator.id(), user:serde = user.log_context(); "Failed to signup a user: {err:?}");
             return match err.downcast_ref::<UserSignupError>() {
                 Some(err) => match err {
                     UserSignupError::EmailAlreadyRegistered => HttpResponse::BadRequest().json(

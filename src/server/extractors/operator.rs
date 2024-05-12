@@ -1,4 +1,7 @@
-use crate::{security::Credentials, server::app_state::AppState, users::User};
+use crate::{
+    security::{Credentials, Operator},
+    server::app_state::AppState,
+};
 use actix_web::{
     dev::Payload,
     error::{ErrorInternalServerError, ErrorUnauthorized},
@@ -7,7 +10,7 @@ use actix_web::{
 use anyhow::anyhow;
 use std::{future::Future, pin::Pin};
 
-impl FromRequest for User {
+impl FromRequest for Operator {
     type Error = Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self, Self::Error>>>>;
 
@@ -16,11 +19,11 @@ impl FromRequest for User {
         Box::pin(async move {
             let state = web::Data::<AppState>::extract(&req).await?;
             let credentials = Credentials::extract(&req).await?;
-            match state.api.security().authenticate(credentials).await {
+            match state.api.security().get_operator(credentials).await {
                 Ok(Some(user)) => Ok(user),
                 Ok(None) => Err(ErrorUnauthorized(anyhow!("Unauthorized"))),
                 Err(err) => {
-                    log::error!("Failed to extract user information due to: {err:?}");
+                    log::error!("Failed to extract operator information due to: {err:?}");
                     Err(ErrorInternalServerError(anyhow!("Internal server error")))
                 }
             }
