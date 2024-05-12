@@ -84,9 +84,11 @@ where
             return Ok(None);
         };
 
+        let operators = self.api.config.security.operators.as_ref();
         Ok(Some(User {
             created_at: identity.created_at,
-            activated: identity.activated(),
+            is_activated: identity.is_activated(),
+            is_operator: operators.map_or(false, |operators| operators.contains(&user.email)),
             ..user
         }))
     }

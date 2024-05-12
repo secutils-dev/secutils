@@ -21,9 +21,12 @@ impl FromRequest for Operator {
             let credentials = Credentials::extract(&req).await?;
             match state.api.security().get_operator(credentials).await {
                 Ok(Some(user)) => Ok(user),
-                Ok(None) => Err(ErrorUnauthorized(anyhow!("Unauthorized"))),
+                Ok(None) => {
+                    log::warn!(request_path:serde = req.path(); "Non-operator tried to access protected endpoint.");
+                    Err(ErrorUnauthorized(anyhow!("Unauthorized")))
+                }
                 Err(err) => {
-                    log::error!("Failed to extract operator information due to: {err:?}");
+                    log::error!(request_path:serde = req.path(); "Failed to extract operator information due to: {err:?}");
                     Err(ErrorInternalServerError(anyhow!("Internal server error")))
                 }
             }

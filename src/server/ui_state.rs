@@ -99,8 +99,8 @@ mod tests {
           "user": {
             "email": "dev-00000000-0000-0000-0000-000000000001@secutils.dev",
             "handle": "dev-handle-00000000-0000-0000-0000-000000000001",
-            "created_at": 1262340000,
-            "activated": false,
+            "createdAt": 1262340000,
+            "isActivated": false,
             "subscription": {
               "tier": "ultimate",
               "startedAt": 1262340001
@@ -108,7 +108,6 @@ mod tests {
           },
           "subscription": {
             "features": {
-              "admin": true,
               "certificates": {},
               "webhooks": {
                 "responderRequests": 30

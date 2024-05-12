@@ -1,13 +1,11 @@
 use crate::{
     config::{Config, SubscriptionConfig},
-    users::{SubscriptionTier, UserSubscription},
+    users::UserSubscription,
 };
 
 /// The subscription-dependent features available to the user.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct SubscriptionFeatures<'c> {
-    /// Indicates whether the user has access to the administrative functionality..
-    pub admin: bool,
     /// The subscription-dependent config.
     pub config: &'c SubscriptionConfig,
 }
@@ -16,7 +14,6 @@ impl<'c> SubscriptionFeatures<'c> {
     /// Returns all features available for the specified user subscription.
     pub fn new(config: &'c Config, subscription: UserSubscription) -> Self {
         Self {
-            admin: matches!(subscription.tier, SubscriptionTier::Ultimate),
             config: config
                 .subscriptions
                 .get_tier_config(subscription.effective_tier()),
@@ -153,7 +150,6 @@ mod test {
         };
 
         let features = SubscriptionFeatures::new(&config, subscription);
-        assert!(!features.admin);
         assert_eq!(features.config, &config.subscriptions.basic);
 
         let subscription = UserSubscription {
@@ -165,7 +161,6 @@ mod test {
         };
 
         let features = SubscriptionFeatures::new(&config, subscription);
-        assert!(!features.admin);
         assert_eq!(features.config, &config.subscriptions.standard);
 
         let subscription = UserSubscription {
@@ -177,7 +172,6 @@ mod test {
         };
 
         let features = SubscriptionFeatures::new(&config, subscription);
-        assert!(!features.admin);
         assert_eq!(features.config, &config.subscriptions.professional);
 
         let features = SubscriptionFeatures::new(
@@ -187,7 +181,6 @@ mod test {
                 ..subscription
             },
         );
-        assert!(!features.admin);
         assert_eq!(features.config, &config.subscriptions.professional);
 
         let features = SubscriptionFeatures::new(
@@ -197,7 +190,6 @@ mod test {
                 ..subscription
             },
         );
-        assert!(!features.admin);
         assert_eq!(features.config, &config.subscriptions.professional);
 
         let ultimate_subscription = UserSubscription {
@@ -206,7 +198,6 @@ mod test {
         };
 
         let features = SubscriptionFeatures::new(&config, ultimate_subscription);
-        assert!(features.admin);
         assert_eq!(features.config, &config.subscriptions.ultimate);
 
         Ok(())

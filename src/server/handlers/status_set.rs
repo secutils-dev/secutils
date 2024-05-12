@@ -1,6 +1,6 @@
 use crate::{
+    security::Operator,
     server::{app_state::AppState, StatusLevel},
-    users::User,
 };
 use actix_web::{error::ErrorInternalServerError, web, HttpResponse, Responder};
 use anyhow::anyhow;
@@ -14,10 +14,8 @@ pub struct SetStatusAPIParams {
 pub async fn status_set(
     state: web::Data<AppState>,
     body_params: web::Json<SetStatusAPIParams>,
-    user: User,
+    operator: Operator,
 ) -> impl Responder {
-    state.ensure_admin(&user)?;
-
     state
         .status
         .write()
@@ -25,5 +23,8 @@ pub async fn status_set(
             status.level = body_params.level;
             HttpResponse::NoContent().finish()
         })
-        .map_err(|err| ErrorInternalServerError(anyhow!("Failed to set server status: {:?}.", err)))
+        .map_err(|err| {
+            log::error!(operator:serde = operator.id(); "Failed to set server status: {err:?}.");
+            ErrorInternalServerError(anyhow!("Failed to set server status: {:?}.", err))
+        })
 }

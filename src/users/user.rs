@@ -3,6 +3,7 @@ use serde::Serialize;
 use time::OffsetDateTime;
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct User {
     #[serde(skip_serializing)]
     pub id: UserId,
@@ -10,7 +11,10 @@ pub struct User {
     pub handle: String,
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
-    pub activated: bool,
+    pub is_activated: bool,
+    /// Indicates whether the user has access to the operator functionality.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_operator: bool,
     pub subscription: UserSubscription,
 }
 
@@ -48,7 +52,7 @@ mod tests {
             // January 1, 2010 11:00:00
             OffsetDateTime::from_unix_timestamp(1262340000)?,
         )
-        .set_activated()
+        .set_is_activated()
         .set_subscription(UserSubscription {
             tier: SubscriptionTier::Professional,
             started_at: OffsetDateTime::from_unix_timestamp(1262340001)?,
@@ -63,8 +67,8 @@ mod tests {
             {
               "email": "my-email",
               "handle": "my-handle",
-              "created_at": 1262340000,
-              "activated": false,
+              "createdAt": 1262340000,
+              "isActivated": false,
               "subscription": {
                 "tier": "ultimate",
                 "startedAt": 1262340001
@@ -78,8 +82,8 @@ mod tests {
             {
               "email": "my-email",
               "handle": "my-handle",
-              "created_at": 1262340000,
-              "activated": true,
+              "createdAt": 1262340000,
+              "isActivated": true,
               "subscription": {
                 "tier": "professional",
                 "startedAt": 1262340001

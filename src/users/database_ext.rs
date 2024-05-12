@@ -379,7 +379,7 @@ mod tests {
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             )
-            .set_activated()
+            .set_is_activated()
             .build(),
             MockUserBuilder::new(
                 uuid!("00000000-0000-0000-0000-000000000002").into(),
@@ -430,7 +430,8 @@ mod tests {
             email: "dev@secutils.dev",
             handle: "dev-handle",
             created_at: 2000-01-01 10:00:00.0 +00:00:00,
-            activated: false,
+            is_activated: false,
+            is_operator: false,
             subscription: UserSubscription {
                 tier: Ultimate,
                 started_at: 2000-01-01 10:00:01.0 +00:00:00,
@@ -455,7 +456,8 @@ mod tests {
             email: "prod@secutils.dev",
             handle: "prod-handle",
             created_at: 2010-01-01 10:00:00.0 +00:00:00,
-            activated: false,
+            is_activated: false,
+            is_operator: false,
             subscription: UserSubscription {
                 tier: Standard,
                 started_at: 2010-01-01 10:00:00.0 +00:00:00,
@@ -480,7 +482,8 @@ mod tests {
             email: "user@secutils.dev",
             handle: "handle",
             created_at: 2000-01-01 10:00:00.0 +00:00:00,
-            activated: false,
+            is_activated: false,
+            is_operator: false,
             subscription: UserSubscription {
                 tier: Professional,
                 started_at: 2000-01-01 10:00:00.0 +00:00:00,
@@ -521,7 +524,7 @@ mod tests {
             trial_started_at: None,
             trial_ends_at: None,
         })
-        .set_activated()
+        .set_is_activated()
         .build();
         let db = Database::create(pool).await?;
         db.upsert_user(&user).await?;
@@ -535,7 +538,8 @@ mod tests {
                 email: "DeV@secutils.dev",
                 handle: "DeV-handle",
                 created_at: 2000-01-01 10:00:00.0 +00:00:00,
-                activated: false,
+                is_activated: false,
+                is_operator: false,
                 subscription: UserSubscription {
                     tier: Professional,
                     started_at: 2000-01-01 10:00:00.0 +00:00:00,
@@ -567,7 +571,7 @@ mod tests {
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
-        .set_activated()
+        .set_is_activated()
         .set_subscription(UserSubscription {
             tier: SubscriptionTier::Professional,
             started_at: OffsetDateTime::from_unix_timestamp(946720800)?,
@@ -588,7 +592,8 @@ mod tests {
                 email: "DeV@secutils.dev",
                 handle: "DeV-handle",
                 created_at: 2000-01-01 10:00:00.0 +00:00:00,
-                activated: false,
+                is_activated: false,
+                is_operator: false,
                 subscription: UserSubscription {
                     tier: Professional,
                     started_at: 2000-01-01 10:00:00.0 +00:00:00,
@@ -622,7 +627,7 @@ mod tests {
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
-        .set_activated()
+        .set_is_activated()
         .build();
         db.insert_user(&user).await?;
         assert_debug_snapshot!(db.get_user_by_email("dev@secutils.dev").await?, @r###"
@@ -634,7 +639,8 @@ mod tests {
                 email: "dev@secutils.dev",
                 handle: "dev-handle",
                 created_at: 2000-01-01 10:00:00.0 +00:00:00,
-                activated: false,
+                is_activated: false,
+                is_operator: false,
                 subscription: UserSubscription {
                     tier: Ultimate,
                     started_at: 2000-01-01 10:00:01.0 +00:00:00,
@@ -682,7 +688,7 @@ mod tests {
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             )
-            .set_activated()
+            .set_is_activated()
             .build(),
         )
         .await?;
@@ -695,7 +701,8 @@ mod tests {
                 email: "dev@secutils.dev",
                 handle: "dev-handle",
                 created_at: 2000-01-01 10:00:00.0 +00:00:00,
-                activated: false,
+                is_activated: false,
+                is_operator: false,
                 subscription: UserSubscription {
                     tier: Ultimate,
                     started_at: 2000-01-01 10:00:01.0 +00:00:00,
@@ -734,7 +741,8 @@ mod tests {
                 email: "DEV@secutils.dev",
                 handle: "DEV-handle",
                 created_at: 2010-01-01 10:00:00.0 +00:00:00,
-                activated: false,
+                is_activated: false,
+                is_operator: false,
                 subscription: UserSubscription {
                     tier: Basic,
                     started_at: 2010-01-01 10:00:00.0 +00:00:00,
@@ -767,7 +775,7 @@ mod tests {
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
-        .set_activated()
+        .set_is_activated()
         .build();
         let user_prod = MockUserBuilder::new(
             UserId::new(),
@@ -823,7 +831,7 @@ mod tests {
             "dev-handle",
             OffsetDateTime::now_utc(),
         )
-        .set_activated()
+        .set_is_activated()
         .build();
 
         // No user and no data yet.

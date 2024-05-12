@@ -19,7 +19,7 @@ pub struct Identity {
 
 impl Identity {
     /// Determines if the identity is activated.
-    pub fn activated(&self) -> bool {
+    pub fn is_activated(&self) -> bool {
         self.verifiable_addresses
             .iter()
             .any(|address| address.value == self.traits.email && address.verified)
@@ -84,7 +84,7 @@ mod tests {
             ],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
         }
-        .activated());
+        .is_activated());
 
         assert!(!Identity {
             id: "f7f3b3b4-3b0b-4b3b-8b3b-3b3b3b3b3b3b".parse()?,
@@ -107,7 +107,7 @@ mod tests {
             ],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
         }
-        .activated());
+        .is_activated());
 
         Ok(())
     }

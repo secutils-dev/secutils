@@ -26,7 +26,9 @@ impl<'u> TryFrom<RawUser<'u>> for User {
             handle: raw_user.handle.into_owned(),
             created_at: raw_user.created_at,
             // Activation status will be retrieved from the IAM service.
-            activated: false,
+            is_activated: false,
+            // Operator status will be retrieved from the configuration.
+            is_operator: false,
             subscription: UserSubscription {
                 tier: u8::try_from(raw_user.subscription_tier)?.try_into()?,
                 started_at: raw_user.subscription_started_at,
@@ -88,7 +90,8 @@ mod tests {
             email: "dev@secutils.dev",
             handle: "dev-handle",
             created_at: 2000-01-01 10:00:00.0 +00:00:00,
-            activated: false,
+            is_activated: false,
+            is_operator: false,
             subscription: UserSubscription {
                 tier: Ultimate,
                 started_at: 2000-01-01 10:00:01.0 +00:00:00,
@@ -119,7 +122,8 @@ mod tests {
             email: "dev@secutils.dev",
             handle: "dev-handle",
             created_at: 2000-01-01 10:00:00.0 +00:00:00,
-            activated: false,
+            is_activated: false,
+            is_operator: false,
             subscription: UserSubscription {
                 tier: Professional,
                 started_at: 2000-01-01 10:00:01.0 +00:00:00,

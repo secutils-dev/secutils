@@ -120,13 +120,14 @@ mod tests {
                         trial_started_at: None,
                         trial_ends_at: None,
                     },
-                    activated: false,
+                    is_activated: false,
+                    is_operator: false,
                 },
             }
         }
 
-        pub fn set_activated(mut self) -> Self {
-            self.user.activated = true;
+        pub fn set_is_activated(mut self) -> Self {
+            self.user.is_activated = true;
 
             self
         }

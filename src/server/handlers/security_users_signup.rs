@@ -63,7 +63,8 @@ pub async fn security_users_signup(
         email,
         handle,
         created_at: body_params.identity.created_at,
-        activated: body_params.identity.activated(),
+        is_activated: body_params.identity.is_activated(),
+        is_operator: false,
         subscription,
     };
 

@@ -40,9 +40,6 @@ struct ClientSubscriptionWebSecurityConfig {
 #[derive(Serialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientSubscriptionFeatures<'sf> {
-    /// Indicates whether the user has access to the administrative functionality.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    admin: bool,
     /// The config managing the certificates utilities for a particular subscription.
     certificates: ClientSubscriptionCertificatesConfig<'sf>,
     /// The config managing the webhooks utilities for a particular subscription.
@@ -56,7 +53,6 @@ pub struct ClientSubscriptionFeatures<'sf> {
 impl<'sf> From<SubscriptionFeatures<'sf>> for ClientSubscriptionFeatures<'sf> {
     fn from(value: SubscriptionFeatures<'sf>) -> Self {
         Self {
-            admin: value.admin,
             certificates: ClientSubscriptionCertificatesConfig {
                 private_key_algorithms: &value.config.certificates.private_key_algorithms,
             },
@@ -207,7 +203,6 @@ mod test {
 
         assert_json_snapshot!(features, @r###"
         {
-          "admin": true,
           "certificates": {},
           "webhooks": {
             "responderRequests": 30

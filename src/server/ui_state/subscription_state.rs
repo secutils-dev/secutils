@@ -40,7 +40,6 @@ mod tests {
         }, @r###"
         {
           "features": {
-            "admin": true,
             "certificates": {},
             "webhooks": {
               "responderRequests": 30
