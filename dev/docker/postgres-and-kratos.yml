@@ -20,7 +20,7 @@ services:
       - secutils_db
     volumes:
       - type: bind
-        source: ./kratos.local.toml
+        source: ./kratos.toml
         target: /etc/config/kratos/kratos.toml
     command: -c /etc/config/kratos/kratos.toml migrate sql -e --yes
     restart: on-failure
@@ -29,6 +29,12 @@ services:
 
   kratos:
     image: oryd/kratos:d9dbaadc3
+    environment:
+      - SECRETS_COOKIE=${SECRETS_COOKIE:-some_very_very_secure_cookie_key}
+      - SECRETS_CIPHER=${SECRETS_CIPHER:-some_very_very_secure_cipher_key}
+      - SELFSERVICE_FLOWS_REGISTRATION_AFTER_PASSWORD_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE=${SELFSERVICE_FLOWS_REGISTRATION_AFTER_PASSWORD_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE}
+      - SELFSERVICE_FLOWS_REGISTRATION_AFTER_WEBAUTHN_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE=${SELFSERVICE_FLOWS_REGISTRATION_AFTER_WEBAUTHN_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE}
+      - COURIER_HTTP_REQUEST_CONFIG_AUTH_CONFIG_VALUE=${COURIER_HTTP_REQUEST_CONFIG_AUTH_CONFIG_VALUE}
     ports:
       - '4433:4433' # public
       - '4434:4434' # admin
@@ -38,10 +44,10 @@ services:
       - secutils_db
     volumes:
       - type: bind
-        source: ./kratos.local.toml
+        source: ./kratos.toml
         target: /etc/config/kratos/kratos.toml
       - type: bind
-        source: ../../config/user_identity.schema.json
+        source: ./user_identity.schema.json
         target: /etc/config/kratos/user_identity.schema.json
     command: serve -c /etc/config/kratos/kratos.toml --dev --watch-courier --sqa-opt-out
     networks:

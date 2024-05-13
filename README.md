@@ -39,13 +39,13 @@ Before running the Secutils.dev server, you need to configure the database and [
 and an Ory Kratos servers running, you [can run them locally with the following Docker Compose file:](https://docs.docker.com/language/rust/develop/)
 
 ```shell
-docker-compose -f ./dev/docker/postgres-and-kratos.yml up --build --force-recreate
+docker-compose -f ./dev/docker/postgres-and-kratos.yml --env-file ./.env up --build --force-recreate
 ```
 
 To remove everything and start from scratch, run:
 
 ```shell
-docker-compose -f ./dev/docker/postgres-and-kratos.yml down --volumes --remove-orphans
+docker-compose -f ./dev/docker/postgres-and-kratos.yml --env-file ./.env down --volumes --remove-orphans
 ```
 
 Make sure to replace `POSTGRES_HOST_AUTH_METHOD=trust` in Docker Compose file with a more secure authentication method if you're
@@ -118,6 +118,13 @@ SECUTILS_CONFIG=${PWD}/secutils.toml
 # Secret key used to sign and verify JSON Web Tokens for API access
 # openssl rand -hex 16
 SECUTILS_SECURITY__JWT_SECRET=8ffe0cc38d7ff1afa78b6cd5696f2e21
+
+# JWT used by Kratos to authenticate requests to the API.
+# Requires config: security.operators = ["@kratos"]
+# Generated with: cargo run -p jwt_tools generate --secret 8ffe0cc38d7ff1afa78b6cd5696f2e21 --sub @kratos --exp 1year
+SELFSERVICE_FLOWS_REGISTRATION_AFTER_PASSWORD_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE="Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NDcyMDExNTcsInN1YiI6IkBrcmF0b3MifQ.O506N__dZu7ZM6p-rEr_QkMn3jp0mRyBwKP7jstRHV8"
+SELFSERVICE_FLOWS_REGISTRATION_AFTER_WEBAUTHN_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE="Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NDcyMDExNTcsInN1YiI6IkBrcmF0b3MifQ.O506N__dZu7ZM6p-rEr_QkMn3jp0mRyBwKP7jstRHV8"
+COURIER_HTTP_REQUEST_CONFIG_AUTH_CONFIG_VALUE="Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NDcyMDExNTcsInN1YiI6IkBrcmF0b3MifQ.O506N__dZu7ZM6p-rEr_QkMn3jp0mRyBwKP7jstRHV8"
 ```
 
 ### Usage
