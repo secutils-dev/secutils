@@ -138,7 +138,11 @@ cargo run -p jwt_tools generate \
   --secret 8ffe0cc38d7ff1afa78b6cd5696f2e21 \
   --sub user@secutils.dev --exp 30days
 ---
-curl -XGET --header "Authorization: Bearer __token__" http://localhost:7070/api/status
+eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3MTgyNjYxNTQsInN1YiI6InVzZXJAc2VjdXRpbHMuZGV2In0.e9sHurEyxhonOcR8dVVhmXdAWi287XReMiWUEVZuFwU
+---
+curl -XGET --header \
+  "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3MTgyNjYxNTQsInN1YiI6InVzZXJAc2VjdXRpbHMuZGV2In0.e9sHurEyxhonOcR8dVVhmXdAWi287XReMiWUEVZuFwU" \
+  http://localhost:7070/api/status
 ```
 
 ### Re-initialize local database

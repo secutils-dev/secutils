@@ -200,7 +200,7 @@ mod tests {
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
 
         // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
         let tracker = api
             .web_scraping(&user)
             .create_resources_tracker(WebPageTrackerCreateParams {
@@ -284,7 +284,7 @@ mod tests {
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
 
         // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
         let tracker = api
             .web_scraping(&user)
             .create_content_tracker(WebPageTrackerCreateParams {
@@ -368,7 +368,7 @@ mod tests {
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
 
         // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
         let tracker = api
             .web_scraping(&user)
             .create_resources_tracker(WebPageTrackerCreateParams {
@@ -434,7 +434,7 @@ mod tests {
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
 
         // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
         let tracker = api
             .web_scraping(&user)
             .create_resources_tracker(WebPageTrackerCreateParams {
@@ -492,7 +492,7 @@ mod tests {
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
 
         // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
         let tracker = api
             .web_scraping(&user)
             .create_resources_tracker(WebPageTrackerCreateParams {
@@ -554,7 +554,7 @@ mod tests {
         let job_id = uuid!("00000000-0000-0000-0000-000000000000");
 
         // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
 
         let job = WebPageTrackersTriggerJob::try_resume(
             api.clone(),

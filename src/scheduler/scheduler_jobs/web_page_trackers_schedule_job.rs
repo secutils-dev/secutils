@@ -239,7 +239,7 @@ mod tests {
         let api = Arc::new(mock_api_with_config(pool, config).await?);
 
         // Create user, trackers and tracker jobs.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
 
         let web_scraping = api.web_scraping(&user);
         let tracker_one = web_scraping
@@ -419,7 +419,7 @@ mod tests {
         let api = Arc::new(mock_api_with_config(pool, config).await?);
 
         // Create user, trackers and tracker jobs.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
 
         let resources_tracker = api
             .web_scraping(&user)
@@ -505,7 +505,7 @@ mod tests {
         let api = Arc::new(mock_api_with_config(pool, config).await?);
 
         // Create user, trackers and tracker jobs.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
 
         let resources_tracker = api
             .web_scraping(&user)

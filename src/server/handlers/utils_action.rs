@@ -556,8 +556,7 @@ mod tests {
 
         // Insert user into the database.
         let user = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000001"))?;
-        let users = api.users();
-        users.upsert(&user).await?;
+        api.db.upsert_user(&user).await?;
 
         // No user information.
         assert!(extract_user(&api, None, None, &action, &resource)
@@ -589,7 +588,7 @@ mod tests {
 
         // Both current user and user share that doesn't belong to that user were provided.
         let another_user = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
-        users.upsert(&another_user).await?;
+        api.db.upsert_user(&another_user).await?;
         let extracted_user = extract_user(
             &api,
             Some(user.clone()),
@@ -627,7 +626,7 @@ mod tests {
 
         // Current user isn't authorized.
         let another_user = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
-        users.upsert(&another_user).await?;
+        api.db.upsert_user(&another_user).await?;
         let extracted_user = extract_user(
             &api,
             Some(user.clone()),
@@ -671,8 +670,7 @@ mod tests {
         let app_state = mock_app_state(pool).await?;
 
         let user = mock_user()?;
-        let users = app_state.api.users();
-        users.upsert(&user).await?;
+        app_state.api.db.upsert_user(&user).await?;
 
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")
             .method(Method::GET)
@@ -703,8 +701,7 @@ mod tests {
         let app_state = mock_app_state(pool).await?;
 
         let user = mock_user()?;
-        let users = app_state.api.users();
-        users.upsert(&user).await?;
+        app_state.api.db.upsert_user(&user).await?;
 
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")
             .method(Method::DELETE)
@@ -735,8 +732,7 @@ mod tests {
         let app_state = mock_app_state(pool).await?;
 
         let user = mock_user()?;
-        let users = app_state.api.users();
-        users.upsert(&user).await?;
+        app_state.api.db.upsert_user(&user).await?;
 
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")
             .method(Method::POST)
@@ -788,8 +784,7 @@ mod tests {
         let app_state = mock_app_state(pool).await?;
 
         let user = mock_user()?;
-        let users = app_state.api.users();
-        users.upsert(&user).await?;
+        app_state.api.db.upsert_user(&user).await?;
 
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")
             .method(Method::POST)
@@ -817,8 +812,7 @@ mod tests {
         let app_state = mock_app_state(pool).await?;
 
         let user = mock_user()?;
-        let users = app_state.api.users();
-        users.upsert(&user).await?;
+        app_state.api.db.upsert_user(&user).await?;
 
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")
             .method(Method::POST)
@@ -857,8 +851,7 @@ mod tests {
         let app_state = mock_app_state(pool).await?;
 
         let user = mock_user()?;
-        let users = app_state.api.users();
-        users.upsert(&user).await?;
+        app_state.api.db.upsert_user(&user).await?;
 
         let certificates = app_state.api.certificates();
         let private_key = certificates
@@ -910,8 +903,7 @@ mod tests {
         let app_state = mock_app_state(pool).await?;
 
         let user = mock_user()?;
-        let users = app_state.api.users();
-        users.upsert(&user).await?;
+        app_state.api.db.upsert_user(&user).await?;
 
         let non_existent_id = uuid!("00000000-0000-0000-0000-000000000001");
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")

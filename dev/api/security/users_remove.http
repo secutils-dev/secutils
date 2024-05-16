@@ -5,5 +5,5 @@ Content-Type: application/json
 Authorization: {{api-credentials}}
 
 {
-  "email": "dev@secutils.dev"
+  "email": "test@secutils.dev"
 }

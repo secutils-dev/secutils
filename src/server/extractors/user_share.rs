@@ -118,8 +118,7 @@ mod tests {
         };
 
         let app_state = mock_app_state(pool).await?;
-        let users = app_state.api.users();
-        users.upsert(&user).await?;
+        app_state.api.db.upsert_user(&user).await?;
 
         let request = TestRequest::default()
             .insert_header((
@@ -149,9 +148,12 @@ mod tests {
         };
 
         let app_state = mock_app_state(pool).await?;
-        let users = app_state.api.users();
-        users.upsert(&user).await?;
-        users.insert_user_share(&mock_user_share).await?;
+        app_state.api.db.upsert_user(&user).await?;
+        app_state
+            .api
+            .users()
+            .insert_user_share(&mock_user_share)
+            .await?;
 
         let request = TestRequest::default()
             .insert_header((

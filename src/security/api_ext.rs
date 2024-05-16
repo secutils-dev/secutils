@@ -10,11 +10,13 @@ use crate::{
     },
     users::{User, UserId, UserSignupError, UserSubscription},
 };
+use actix_web::cookie::Cookie;
 use anyhow::{anyhow, Context};
 use hex::ToHex;
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use rand_core::{OsRng, RngCore};
 use reqwest::StatusCode;
+use uuid::Uuid;
 
 const USER_HANDLE_LENGTH_BYTES: usize = 8;
 
@@ -65,7 +67,15 @@ where
 
     /// Authenticates user with the specified credentials.
     pub async fn authenticate(&self, credentials: Credentials) -> anyhow::Result<Option<User>> {
-        let Some(identity) = self.get_identity(&credentials).await? else {
+        let identity = match &credentials {
+            Credentials::Jwt(token) => {
+                self.get_identity_by_email(&self.get_jwt_claims(token).await?.sub)
+                    .await
+            }
+            Credentials::SessionCookie(cookie) => self.get_identity_by_cookie(cookie).await,
+        }?;
+
+        let Some(identity) = identity else {
             log::error!(
                 "Couldn't retrieve user identity with `{}` credentials.",
                 match credentials {
@@ -93,13 +103,38 @@ where
         }))
     }
 
+    /// Terminates user's subscription, removes Kratos identity, and user information. If the user
+    /// or Kratos identity were found, returns the user ID.
+    pub async fn terminate(&self, user_email: &str) -> anyhow::Result<Option<UserId>> {
+        // Check if the identity for the user with specified email exists.
+        let identity = self
+            .get_identity_by_email(user_email)
+            .await
+            .with_context(|| "Failed to retrieve user identity.")?;
+        let user_id = if let Some(identity) = identity {
+            self.delete_identity(identity.id).await?;
+            Some(UserId::from(identity.id))
+        } else {
+            log::warn!("User with email `{}` doesn't exist.", user_email);
+            None
+        };
+
+        // Remove user and their data from the database.
+        Ok(self
+            .api
+            .db
+            .remove_user_by_email(user_email)
+            .await?
+            .or(user_id))
+    }
+
     /// Checks if the user or service account with specified credentials is an operator.
     pub async fn get_operator(&self, credentials: Credentials) -> anyhow::Result<Option<Operator>> {
         let operator_id = match &credentials {
             // If the user is authenticated with a session cookie, user's email is used as an
             // operator identifier.
-            Credentials::SessionCookie(_) => {
-                self.get_identity(&credentials)
+            Credentials::SessionCookie(cooke) => {
+                self.get_identity_by_cookie(cooke)
                     .await?
                     .ok_or_else(|| anyhow!("Session cookie is invalid"))?
                     .traits
@@ -118,33 +153,75 @@ where
     }
 
     /// Tries to retrieve user identity from Kratos using specified credentials.
-    async fn get_identity(&self, credentials: &Credentials) -> anyhow::Result<Option<Identity>> {
+    async fn get_identity_by_cookie(
+        &self,
+        cookie: &Cookie<'_>,
+    ) -> anyhow::Result<Option<Identity>> {
         let client = reqwest::Client::new();
-        let request_builder = match credentials {
-            Credentials::SessionCookie(cookie) => client
-                .request(
-                    reqwest::Method::GET,
-                    format!(
-                        "{}sessions/whoami",
-                        self.api.config.components.kratos_url.as_str()
-                    ),
-                )
-                .header(
-                    "Cookie",
-                    format!("{}={}", cookie.name(), cookie.value()).as_bytes(),
+        let request_builder = client
+            .request(
+                reqwest::Method::GET,
+                format!(
+                    "{}sessions/whoami",
+                    self.api.config.components.kratos_url.as_str()
                 ),
-            Credentials::Jwt(token) => {
-                let claims = self.get_jwt_claims(token).await?;
-                client.request(
-                    reqwest::Method::GET,
-                    format!(
-                        "{}admin/identities?credentials_identifier={}",
-                        self.api.config.components.kratos_admin_url.as_str(),
-                        urlencoding::encode(&claims.sub)
-                    ),
-                )
+            )
+            .header(
+                "Cookie",
+                format!("{}={}", cookie.name(), cookie.value()).as_bytes(),
+            );
+        let request = match request_builder.build() {
+            Ok(client) => client,
+            Err(err) => {
+                log::error!("Cannot build Kratos request: {err:?}");
+                return Err(anyhow!(err));
             }
         };
+
+        let response = match client.execute(request).await {
+            Ok(response) => response,
+            Err(err) => {
+                log::error!("Cannot execute Kratos request: {err:?}");
+                return Err(anyhow!(err));
+            }
+        };
+
+        let response_status = response.status();
+        if !response_status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return match response_status {
+                StatusCode::UNAUTHORIZED => {
+                    log::error!("Kratos request couldn't be authenticated: {error_text}");
+                    Ok(None)
+                }
+                _ => {
+                    log::error!(
+                        "Kratos request failed with the status code `{response_status}` and body: {error_text}"
+                    );
+                    Err(anyhow!(
+                        "Kratos request failed with the status code `{response_status}`."
+                    ))
+                }
+            };
+        }
+
+        Ok(response
+            .json::<Session>()
+            .await
+            .map(|session| session.identity)?)
+    }
+
+    /// Tries to retrieve user identity from Kratos using specified email.
+    async fn get_identity_by_email(&self, email: &str) -> anyhow::Result<Option<Identity>> {
+        let client = reqwest::Client::new();
+        let request_builder = client.request(
+            reqwest::Method::GET,
+            format!(
+                "{}admin/identities?credentials_identifier={}",
+                self.api.config.components.kratos_admin_url.as_str(),
+                urlencoding::encode(email)
+            ),
+        );
 
         let request = match request_builder.build() {
             Ok(client) => client,
@@ -181,16 +258,51 @@ where
             };
         }
 
-        Ok(match credentials {
-            Credentials::SessionCookie(_) => response
-                .json::<Session>()
-                .await
-                .map(|session| session.identity)?,
-            Credentials::Jwt(_) => response
-                .json::<Vec<Identity>>()
-                .await
-                .map(|identities| identities.into_iter().next())?,
-        })
+        Ok(response
+            .json::<Vec<Identity>>()
+            .await
+            .map(|identities| identities.into_iter().next())?)
+    }
+
+    /// Deletes user identity from Kratos.
+    async fn delete_identity(&self, id: Uuid) -> anyhow::Result<()> {
+        let client = reqwest::Client::new();
+        let request_builder = client.request(
+            reqwest::Method::DELETE,
+            format!(
+                "{}admin/identities/{id}",
+                self.api.config.components.kratos_admin_url.as_str()
+            ),
+        );
+
+        let request = match request_builder.build() {
+            Ok(client) => client,
+            Err(err) => {
+                log::error!("Cannot build Kratos DELETE identity request: {err:?}");
+                return Err(anyhow!(err));
+            }
+        };
+
+        let response = match client.execute(request).await {
+            Ok(response) => response,
+            Err(err) => {
+                log::error!("Cannot execute Kratos DELETE identity request: {err:?}");
+                return Err(anyhow!(err));
+            }
+        };
+
+        let response_status = response.status();
+        if !response_status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            log::error!(
+                "Kratos DELETE identity request failed with the status code `{response_status}` and body: {error_text}"
+            );
+            return Err(anyhow!(
+                "Kratos DELETE identity request failed with the status code `{response_status}`."
+            ));
+        }
+
+        Ok(())
     }
 
     /// Tries to parse JWT and extract claims.
@@ -227,8 +339,8 @@ where
 
         // Update user with new subscription.
         self.api
-            .users()
-            .upsert(&existing_user)
+            .db
+            .upsert_user(&existing_user)
             .await
             .with_context(|| format!("Cannot update user ({})", *existing_user.id))?;
 

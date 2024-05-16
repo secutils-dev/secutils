@@ -24,8 +24,8 @@ pub async fn security_users_remove(
         );
     }
 
-    let users_api = state.api.users();
-    match users_api.remove_by_email(&body_params.email).await {
+    let api = state.api.security();
+    match api.terminate(&body_params.email).await {
         Ok(Some(user_id)) => {
             log::info!(
                 operator:serde = operator.id(),

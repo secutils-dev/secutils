@@ -40,19 +40,6 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
         self.api.db.get_user_by_handle(user_handle).await
     }
 
-    /// Inserts or updates user in the `Users` store.
-    pub async fn upsert<U: AsRef<User>>(&self, user: U) -> anyhow::Result<()> {
-        self.api.db.upsert_user(user).await
-    }
-
-    /// Removes the user with the specified email.
-    pub async fn remove_by_email<E: AsRef<str>>(
-        &self,
-        user_email: E,
-    ) -> anyhow::Result<Option<UserId>> {
-        self.api.db.remove_user_by_email(user_email).await
-    }
-
     /// Retrieves data with the specified key for the user with the specified id.
     pub async fn get_data<R: for<'de> Deserialize<'de>>(
         &self,

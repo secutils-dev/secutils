@@ -21,19 +21,11 @@ Accept: application/json
 Content-Type: application/json
 Cookie: id=xxxx
 
-###
-GET http://127.0.0.1:4433/sessions/whoami
-Accept: application/json
-Content-Type: application/json
-Cookie: id=xxxx
-
 
 ### Start registration flow.
 // @no-cookie-jar
 GET http://127.0.0.1:4433/self-service/registration/browser
 Accept: application/json
-
-
 
 ### Get identity
 GET {{kratosAdminHost}}/admin/identities/c94b3e19-321b-431a-8a4f-8b101ea03f98

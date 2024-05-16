@@ -1,9 +1,0 @@
-### Signin user
-POST {{host}}/api/signin
-Accept: application/json
-Content-Type: application/json
-
-{
-  "email": "{{superuser-username}}",
-  "password": "{{superuser-password}}"
-}

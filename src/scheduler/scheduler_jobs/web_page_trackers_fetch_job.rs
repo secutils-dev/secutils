@@ -516,7 +516,7 @@ mod tests {
         let api = Arc::new(mock_api_with_config(pool, config).await?);
 
         // Create user and trackers.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
         let resources_tracker_job_id = scheduler
             .add(
                 WebPageTrackersTriggerJob::create(
@@ -622,7 +622,7 @@ mod tests {
         let api = Arc::new(mock_api_with_config(pool, config).await?);
 
         // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
 
         // Make sure that the tracker is only run once during a single minute (2 seconds after the
         // current second).
@@ -799,7 +799,7 @@ mod tests {
         let api = Arc::new(mock_api_with_config(pool, config).await?);
 
         // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
 
         // Make sure that the tracker is only run once during a single minute (2 seconds after the
         // current second).
@@ -958,7 +958,7 @@ mod tests {
         let tracker_schedule = mock_schedule_in_sec(1);
 
         // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
 
         let trigger_job_id = scheduler
             .add(
@@ -1140,7 +1140,7 @@ mod tests {
         let tracker_schedule = mock_schedule_in_sec(1);
 
         // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
 
         let trigger_job_id = scheduler
             .add(
@@ -1303,7 +1303,7 @@ mod tests {
         let tracker_schedule = mock_schedule_in_sec(1);
 
         // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
 
         let trigger_job_id = scheduler
             .add(
@@ -1504,7 +1504,7 @@ mod tests {
         let tracker_schedule = mock_schedule_in_sec(1);
 
         // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
 
         let trigger_job_id = scheduler
             .add(
@@ -1740,7 +1740,7 @@ mod tests {
         let tracker_schedule = mock_schedule_in_sec(1);
 
         // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
 
         let trigger_job_id = scheduler
             .add(
@@ -1906,7 +1906,7 @@ mod tests {
         let tracker_schedule = mock_schedule_in_sec(1);
 
         // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
 
         let trigger_job_id = scheduler
             .add(
@@ -2067,7 +2067,7 @@ mod tests {
         let tracker_schedule = mock_schedule_in_sec(1);
 
         // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
 
         let trigger_job_id = scheduler
             .add(
@@ -2266,7 +2266,7 @@ mod tests {
         let tracker_schedule = mock_schedule_in_sec(1);
 
         // Create user, tracker and tracker job.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
 
         let trigger_job_id = scheduler
             .add(

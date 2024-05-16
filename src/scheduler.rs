@@ -314,7 +314,7 @@ pub mod tests {
         let notifications_send_job_id = uuid!("00000000-0000-0000-0000-000000000004");
 
         // Create user, trackers and tracker jobs.
-        api.users().upsert(user.clone()).await?;
+        api.db.upsert_user(user.clone()).await?;
         let resources_tracker = api
             .web_scraping(&user)
             .create_resources_tracker(WebPageTrackerCreateParams {

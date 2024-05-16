@@ -343,8 +343,7 @@ mod tests {
 
         // Insert user into the database.
         let user = mock_user()?;
-        let users = app_state.api.users();
-        users.upsert(&user).await?;
+        app_state.api.db.upsert_user(&user).await?;
 
         // Insert responders data.
         let responder = app_state
@@ -445,8 +444,7 @@ mod tests {
 
         // Insert user into the database.
         let user = mock_user()?;
-        let users = app_state.api.users();
-        users.upsert(&user).await?;
+        app_state.api.db.upsert_user(&user).await?;
 
         // Insert responders data.
         let responder = app_state
@@ -516,8 +514,7 @@ mod tests {
 
         // Insert user into the database.
         let user = mock_user()?;
-        let users = app_state.api.users();
-        users.upsert(&user).await?;
+        app_state.api.db.upsert_user(&user).await?;
 
         // Insert responders data.
         let responder = app_state
@@ -585,8 +582,7 @@ mod tests {
 
         // Insert user into the database.
         let user = mock_user()?;
-        let users = app_state.api.users();
-        users.upsert(&user).await?;
+        app_state.api.db.upsert_user(&user).await?;
 
         // Insert responders data.
         let responder = app_state
@@ -704,8 +700,7 @@ mod tests {
         "###);
 
         let user = mock_user()?;
-        let users = app_state.api.users();
-        users.upsert(&user).await?;
+        app_state.api.db.upsert_user(&user).await?;
 
         // 2. Non-existent responder.
         let response = webhooks_responders(
