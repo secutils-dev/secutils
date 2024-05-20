@@ -1,7 +1,9 @@
 use crate::{
     error::Error as SecutilsError,
     notifications::{EmailNotificationContent, NotificationContent, NotificationDestination},
+    security::Operator,
     server::app_state::AppState,
+    users::User,
 };
 use actix_web::{web, HttpResponse};
 use serde::Deserialize;
@@ -16,6 +18,8 @@ pub struct SendMessageParams {
 pub async fn send_message(
     state: web::Data<AppState>,
     body_params: web::Json<SendMessageParams>,
+    operator: Option<Operator>,
+    user: Option<User>,
 ) -> Result<HttpResponse, SecutilsError> {
     let body = if let Some(ref email) = body_params.email {
         format!("{}:{}", body_params.message, email)
@@ -36,9 +40,14 @@ pub async fn send_message(
         }
     };
 
-    state
-        .api
-        .notifications()
+    log::info!(
+        operator:serde = operator.as_ref().map(|operator| operator.id()),
+        user:serde = user.as_ref().map(|user| user.log_context());
+        "Sending a message `{body}`."
+    );
+
+    let notifications = state.api.notifications();
+    notifications
         .schedule_notification(
             NotificationDestination::Email(recipient),
             NotificationContent::Email(EmailNotificationContent::text(
@@ -49,6 +58,10 @@ pub async fn send_message(
         )
         .await?;
 
-    log::info!("Successfully sent message `{}`", body);
+    log::info!(
+        operator:serde = operator.as_ref().map(|operator| operator.id()),
+        user:serde = user.as_ref().map(|user| user.log_context());
+        "Successfully sent message."
+    );
     Ok(HttpResponse::NoContent().finish())
 }
