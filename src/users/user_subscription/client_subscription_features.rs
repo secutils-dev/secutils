@@ -114,6 +114,7 @@ mod test {
                     .into_iter()
                     .collect(),
                 ),
+                min_schedule_interval: Duration::from_secs(10),
             },
             web_security: SubscriptionWebSecurityConfig {
                 policies: 10,

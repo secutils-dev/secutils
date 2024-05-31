@@ -114,6 +114,7 @@ mod tests {
         [subscriptions.basic.web_scraping]
         trackers = 100
         tracker_revisions = 30
+        min_schedule_interval = 10000
 
         [subscriptions.basic.certificates]
         private_keys = 100
@@ -131,6 +132,7 @@ mod tests {
         [subscriptions.standard.web_scraping]
         trackers = 100
         tracker_revisions = 30
+        min_schedule_interval = 10000
 
         [subscriptions.standard.certificates]
         private_keys = 100
@@ -148,6 +150,7 @@ mod tests {
         [subscriptions.professional.web_scraping]
         trackers = 100
         tracker_revisions = 30
+        min_schedule_interval = 10000
 
         [subscriptions.professional.certificates]
         private_keys = 100
@@ -165,6 +168,7 @@ mod tests {
         [subscriptions.ultimate.web_scraping]
         trackers = 100
         tracker_revisions = 30
+        min_schedule_interval = 10000
 
         [subscriptions.ultimate.certificates]
         private_keys = 100
@@ -223,6 +227,7 @@ mod tests {
         [subscriptions.basic.web_scraping]
         trackers = 1
         tracker_revisions = 11
+        min_schedule_interval = 10_000
 
         [subscriptions.basic.web_security]
         policies = 10
@@ -242,6 +247,7 @@ mod tests {
         [subscriptions.standard.web_scraping]
         trackers = 2
         tracker_revisions = 22
+        min_schedule_interval = 20_000
 
         [subscriptions.standard.web_security]
         policies = 1000
@@ -261,6 +267,7 @@ mod tests {
         [subscriptions.professional.web_scraping]
         trackers = 3
         tracker_revisions = 33
+        min_schedule_interval = 30_000
 
         [subscriptions.professional.web_security]
         policies = 1000
@@ -280,6 +287,7 @@ mod tests {
         [subscriptions.ultimate.web_scraping]
         trackers = 4
         tracker_revisions = 44
+        min_schedule_interval = 40_000
 
         [subscriptions.ultimate.web_security]
         policies = 1000
@@ -516,6 +524,7 @@ mod tests {
                         trackers: 1,
                         tracker_revisions: 11,
                         tracker_schedules: None,
+                        min_schedule_interval: 10s,
                     },
                     certificates: SubscriptionCertificatesConfig {
                         private_keys: 1,
@@ -542,6 +551,7 @@ mod tests {
                         trackers: 2,
                         tracker_revisions: 22,
                         tracker_schedules: None,
+                        min_schedule_interval: 20s,
                     },
                     certificates: SubscriptionCertificatesConfig {
                         private_keys: 2,
@@ -568,6 +578,7 @@ mod tests {
                         trackers: 3,
                         tracker_revisions: 33,
                         tracker_schedules: None,
+                        min_schedule_interval: 30s,
                     },
                     certificates: SubscriptionCertificatesConfig {
                         private_keys: 3,
@@ -594,6 +605,7 @@ mod tests {
                         trackers: 4,
                         tracker_revisions: 44,
                         tracker_schedules: None,
+                        min_schedule_interval: 40s,
                     },
                     certificates: SubscriptionCertificatesConfig {
                         private_keys: 4,

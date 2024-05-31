@@ -7,7 +7,7 @@ pub trait ScheduleExt {
 }
 
 impl ScheduleExt for Schedule {
-    /// Returns the minimum interval between occurrences. To calculate it, we take the first 10
+    /// Returns the minimum interval between occurrences. To calculate it, we take the first 100
     /// upcoming occurrences and calculate the interval between each of them. Then we take the
     /// smallest interval.
     fn min_interval(&self) -> anyhow::Result<Duration> {

@@ -71,6 +71,7 @@ mod tests {
         [basic.web_scraping]
         trackers = 100
         tracker_revisions = 30
+        min_schedule_interval = 10000
 
         [basic.certificates]
         private_keys = 100
@@ -88,6 +89,7 @@ mod tests {
         [standard.web_scraping]
         trackers = 100
         tracker_revisions = 30
+        min_schedule_interval = 10000
 
         [standard.certificates]
         private_keys = 100
@@ -105,6 +107,7 @@ mod tests {
         [professional.web_scraping]
         trackers = 100
         tracker_revisions = 30
+        min_schedule_interval = 10000
 
         [professional.certificates]
         private_keys = 100
@@ -122,6 +125,7 @@ mod tests {
         [ultimate.web_scraping]
         trackers = 100
         tracker_revisions = 30
+        min_schedule_interval = 10000
 
         [ultimate.certificates]
         private_keys = 100
@@ -152,6 +156,7 @@ mod tests {
         [basic.web_scraping]
         trackers = 100
         tracker_revisions = 30
+        min_schedule_interval = 10000
 
         [basic.certificates]
         private_keys = 100
@@ -169,6 +174,7 @@ mod tests {
         [standard.web_scraping]
         trackers = 100
         tracker_revisions = 30
+        min_schedule_interval = 10000
 
         [standard.certificates]
         private_keys = 100
@@ -186,6 +192,7 @@ mod tests {
         [professional.web_scraping]
         trackers = 100
         tracker_revisions = 30
+        min_schedule_interval = 10000
 
         [professional.certificates]
         private_keys = 100
@@ -203,6 +210,7 @@ mod tests {
         [ultimate.web_scraping]
         trackers = 100
         tracker_revisions = 30
+        min_schedule_interval = 10000
 
         [ultimate.certificates]
         private_keys = 100
@@ -231,6 +239,7 @@ mod tests {
         trackers = 1
         tracker_revisions = 11
         tracker_schedules = ["@", "@daily", "@weekly", "@monthly"]
+        min_schedule_interval = 10_000
 
         [basic.certificates]
         private_keys = 1
@@ -251,6 +260,7 @@ mod tests {
         trackers = 2
         tracker_revisions = 22
         tracker_schedules = ["@", "@hourly", "@daily", "@weekly", "@monthly"]
+        min_schedule_interval = 20_000
 
         [standard.web_security]
         policies = 1000
@@ -270,6 +280,7 @@ mod tests {
         [professional.web_scraping]
         trackers = 3
         tracker_revisions = 33
+        min_schedule_interval = 30_000
 
         [professional.web_security]
         policies = 1000
@@ -288,6 +299,7 @@ mod tests {
         [ultimate.web_scraping]
         trackers = 4
         tracker_revisions = 44
+        min_schedule_interval = 40_000
 
         [ultimate.web_security]
         policies = 1000
@@ -323,7 +335,8 @@ mod tests {
                             ]
                             .into_iter()
                             .collect()
-                        )
+                        ),
+                        min_schedule_interval: Duration::from_secs(10),
                     },
                     web_security: SubscriptionWebSecurityConfig {
                         policies: 10,
@@ -362,7 +375,8 @@ mod tests {
                             ]
                             .into_iter()
                             .collect()
-                        )
+                        ),
+                        min_schedule_interval: Duration::from_secs(20),
                     },
                     web_security: SubscriptionWebSecurityConfig::default(),
                     certificates: SubscriptionCertificatesConfig {
@@ -389,6 +403,7 @@ mod tests {
                         trackers: 3,
                         tracker_revisions: 33,
                         tracker_schedules: None,
+                        min_schedule_interval: Duration::from_secs(30),
                     },
                     web_security: SubscriptionWebSecurityConfig::default(),
                     certificates: SubscriptionCertificatesConfig {
@@ -408,6 +423,7 @@ mod tests {
                         trackers: 4,
                         tracker_revisions: 44,
                         tracker_schedules: None,
+                        min_schedule_interval: Duration::from_secs(40),
                     },
                     web_security: SubscriptionWebSecurityConfig::default(),
                     certificates: SubscriptionCertificatesConfig {
@@ -445,6 +461,7 @@ mod tests {
                         .into_iter()
                         .collect(),
                     ),
+                    min_schedule_interval: Duration::from_secs(10),
                 },
                 web_security: SubscriptionWebSecurityConfig {
                     policies: 10,
@@ -484,6 +501,7 @@ mod tests {
                         .into_iter()
                         .collect(),
                     ),
+                    min_schedule_interval: Duration::from_secs(20),
                 },
                 web_security: SubscriptionWebSecurityConfig::default(),
                 certificates: SubscriptionCertificatesConfig {
@@ -510,6 +528,7 @@ mod tests {
                     trackers: 3,
                     tracker_revisions: 33,
                     tracker_schedules: None,
+                    min_schedule_interval: Duration::from_secs(30),
                 },
                 web_security: SubscriptionWebSecurityConfig::default(),
                 certificates: SubscriptionCertificatesConfig {
@@ -529,6 +548,7 @@ mod tests {
                     trackers: 4,
                     tracker_revisions: 44,
                     tracker_schedules: None,
+                    min_schedule_interval: Duration::from_secs(40),
                 },
                 web_security: SubscriptionWebSecurityConfig::default(),
                 certificates: SubscriptionCertificatesConfig {
