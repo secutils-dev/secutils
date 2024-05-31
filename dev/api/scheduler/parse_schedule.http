@@ -1,0 +1,23 @@
+### Parse cron-like schedule (too little interval).
+# @no-cookie-jar
+POST {{host}}/api/scheduler/parse_schedule
+Accept: application/json
+Content-Type: application/json
+Cookie: {{cookie-credentials}}
+
+{
+  "schedule": "* * * * * *"
+}
+
+### Parse cron-like schedule (every Sunday).
+###  //               sec  min   hour   day of month   month   day of week   year
+###  let expression = "0   30   9,12,15     1,15       May-Aug  Mon,Wed,Fri  2018/2";
+# @no-cookie-jar
+POST {{host}}/api/scheduler/parse_schedule
+Accept: application/json
+Content-Type: application/json
+Cookie: {{cookie-credentials}}
+
+{
+  "schedule": "0 * 9,12,15 1,15 * *"
+}

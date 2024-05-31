@@ -33,6 +33,7 @@ impl<DR: DnsResolver, ET: EmailTransport> AppState<DR, ET> {
 pub mod tests {
     use crate::{
         api::Api,
+        config::Config,
         database::Database,
         network::{Network, TokioDnsResolver},
         server::AppState,
@@ -44,7 +45,13 @@ pub mod tests {
     use std::sync::Arc;
 
     pub async fn mock_app_state(pool: PgPool) -> anyhow::Result<AppState> {
-        let config = mock_config()?;
+        mock_app_state_with_config(pool, mock_config()?).await
+    }
+
+    pub async fn mock_app_state_with_config(
+        pool: PgPool,
+        config: Config,
+    ) -> anyhow::Result<AppState> {
         let api = Arc::new(Api::new(
             config,
             Database::create(pool).await?,

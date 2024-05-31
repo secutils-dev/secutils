@@ -65,6 +65,7 @@ mod test {
                     .into_iter()
                     .collect(),
                 ),
+                min_schedule_interval: Duration::from_secs(10),
             },
             web_security: SubscriptionWebSecurityConfig {
                 policies: 10,
@@ -105,6 +106,7 @@ mod test {
                     .into_iter()
                     .collect(),
                 ),
+                min_schedule_interval: Duration::from_secs(20),
             },
             web_security: SubscriptionWebSecurityConfig::default(),
             certificates: SubscriptionCertificatesConfig {
@@ -132,6 +134,7 @@ mod test {
                 trackers: 3,
                 tracker_revisions: 33,
                 tracker_schedules: None,
+                min_schedule_interval: Duration::from_secs(30),
             },
             web_security: SubscriptionWebSecurityConfig::default(),
             certificates: SubscriptionCertificatesConfig {

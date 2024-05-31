@@ -131,6 +131,10 @@ pub async fn run(raw_config: RawConfig) -> Result<(), anyhow::Error> {
                             .route("/self", web::get().to(handlers::security_users_get_self))
                             .route("/{user_id}", web::get().to(handlers::security_users_get)),
                     )
+                    .service(web::scope("/scheduler").route(
+                        "/parse_schedule",
+                        web::post().to(handlers::scheduler_parse_schedule),
+                    ))
                     .service(
                         web::scope("/utils")
                             .service(

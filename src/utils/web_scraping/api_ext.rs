@@ -772,13 +772,13 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                 }
             };
 
-            // Check if the interval between 10 next occurrences is at least 1 hour.
+            // Check if the interval between next occurrences is greater or equal to minimum
+            // interval defined by the subscription.
             let min_schedule_interval = schedule.min_interval()?;
-            let min_allowed_interval = Duration::from_secs(60 * 60);
-            if min_schedule_interval < min_allowed_interval {
+            if min_schedule_interval < features.config.web_scraping.min_schedule_interval {
                 bail!(SecutilsError::client(format!(
                     "Web page tracker schedule must have at least {} between occurrences, but detected {}.",
-                    humantime::format_duration(min_allowed_interval),
+                    humantime::format_duration(features.config.web_scraping.min_schedule_interval),
                     humantime::format_duration(min_schedule_interval)
                 )));
             }
@@ -1256,12 +1256,12 @@ mod tests {
                 url: url.clone(),
                 settings: settings.clone(),
                 job_config: Some(SchedulerJobConfig {
-                    schedule: "0 * * * * *".to_string(),
+                    schedule: "0/5 * * * * *".to_string(),
                     retry_strategy: None,
                     notifications: false,
                 }),
             }).await),
-            @r###""Web page tracker schedule must have at least 1h between occurrences, but detected 1m.""###
+            @r###""Web page tracker schedule must have at least 10s between occurrences, but detected 5s.""###
         );
 
         // Too few retry attempts.
@@ -1551,12 +1551,12 @@ mod tests {
                 url: url.clone(),
                 settings: settings.clone(),
                 job_config: Some(SchedulerJobConfig {
-                    schedule: "0 * * * * *".to_string(),
+                    schedule: "0/5 * * * * *".to_string(),
                     retry_strategy: None,
                     notifications: false,
                 }),
             }).await),
-            @r###""Web page tracker schedule must have at least 1h between occurrences, but detected 1m.""###
+            @r###""Web page tracker schedule must have at least 10s between occurrences, but detected 5s.""###
         );
 
         // Too few retry attempts.
@@ -2042,13 +2042,13 @@ mod tests {
         assert_debug_snapshot!(
             update_and_fail(api.update_resources_tracker(tracker.id, WebPageTrackerUpdateParams {
                 job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "0 * * * * *".to_string(),
+                    schedule: "0/5 * * * * *".to_string(),
                     retry_strategy: None,
                     notifications: false,
                 })),
                 ..Default::default()
             }).await),
-            @r###""Web page tracker schedule must have at least 1h between occurrences, but detected 1m.""###
+            @r###""Web page tracker schedule must have at least 10s between occurrences, but detected 5s.""###
         );
 
         // Too few retry attempts.
@@ -2506,13 +2506,13 @@ mod tests {
         assert_debug_snapshot!(
             update_and_fail(web_scraping.update_content_tracker(tracker.id, WebPageTrackerUpdateParams {
                 job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "0 * * * * *".to_string(),
+                    schedule: "0/5 * * * * *".to_string(),
                     retry_strategy: None,
                     notifications: false,
                 })),
                 ..Default::default()
             }).await),
-            @r###""Web page tracker schedule must have at least 1h between occurrences, but detected 1m.""###
+            @r###""Web page tracker schedule must have at least 10s between occurrences, but detected 5s.""###
         );
 
         // Too few retry attempts.

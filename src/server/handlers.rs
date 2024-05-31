@@ -1,3 +1,4 @@
+mod scheduler_parse_schedule;
 mod search;
 mod security_subscription_update;
 mod security_users_email;
@@ -16,7 +17,8 @@ mod utils_action;
 mod webhooks_responders;
 
 pub use self::{
-    search::search, security_subscription_update::security_subscription_update,
+    scheduler_parse_schedule::scheduler_parse_schedule, search::search,
+    security_subscription_update::security_subscription_update,
     security_users_email::security_users_email, security_users_get::security_users_get,
     security_users_get_by_email::security_users_get_by_email,
     security_users_get_self::security_users_get_self, security_users_remove::security_users_remove,
