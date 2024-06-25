@@ -98,3 +98,8 @@ Content-Type: application/json
 {
   "code": "226523"
 }
+
+### Kratos version.
+// @no-cookie-jar
+GET http://127.0.0.1:4434/version
+Accept: application/json
