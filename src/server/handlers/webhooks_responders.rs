@@ -1,4 +1,5 @@
 use crate::{
+    config::Config,
     error::Error as SecutilsError,
     js_runtime::{JsRuntime, JsRuntimeConfig},
     logging::{MetricsContext, UtilsResourceLogContext},
@@ -16,6 +17,7 @@ use actix_web::{
     },
     web, HttpRequest, HttpResponse,
 };
+use anyhow::bail;
 use bytes::Bytes;
 use serde::Deserialize;
 use std::{borrow::Cow, collections::HashMap};
@@ -36,20 +38,25 @@ pub async fn webhooks_responders(
 ) -> Result<HttpResponse, SecutilsError> {
     let path_params = path_params.into_inner();
 
-    // Extract user handle either from path of from the request headers.
-    let user_handle = if let Some(user_handle) = path_params.user_handle {
-        user_handle
-    } else {
+    // Remember the host from the request, if we need to extract subdomain and user handle from it.
+    let request_host = {
         let connection_info = request.connection_info();
-        if let Some(user_handle) = connection_info.host().split('.').next() {
-            user_handle.to_string()
-        } else {
-            log::error!(
-                "Failed to extract user handle from host headers ({}) and path ({}).",
-                connection_info.host(),
-                request.path()
-            );
-            return Ok(HttpResponse::NotFound().finish());
+        connection_info.host().to_string()
+    };
+
+    // Extract user handle either from path or from the request headers.
+    let (user_handle, subdomain) = if let Some(user_handle) = &path_params.user_handle {
+        (user_handle.as_str(), None)
+    } else {
+        match parse_webhook_host(&state.config, &request_host) {
+            Ok((user_handle, subdomain)) => (user_handle, subdomain),
+            Err(err) => {
+                log::error!(
+                    "Failed to extract user handle and subdomain from the request host ({:?}): {err:?}",
+                    request_host
+                );
+                return Ok(HttpResponse::NotFound().finish());
+            }
         }
     };
 
@@ -79,7 +86,7 @@ pub async fn webhooks_responders(
     };
 
     // Try to retrieve use by the handle.
-    let user = match state.api.users().get_by_handle(&user_handle).await {
+    let user = match state.api.users().get_by_handle(user_handle).await {
         Ok(Some(user)) => user,
         Ok(None) => {
             log::error!("Failed to find user by the handle ({user_handle}).");
@@ -113,14 +120,14 @@ pub async fn webhooks_responders(
     // Try to retrieve responder by the name.
     let webhooks = state.api.webhooks(&user);
     let responder = match webhooks
-        .find_responder(&responder_path, responder_method)
+        .find_responder(subdomain, &responder_path, responder_method)
         .await
     {
         Ok(Some(responder)) => responder,
         Ok(None) => {
             log::error!(
                 user:serde = user.log_context();
-               "User doesn't have an HTTP responder ({} {responder_path}) configured.",
+               "User doesn't have an HTTP responder ({} {subdomain:?} {responder_path}) configured.",
                 request.method().as_str()
             );
             return Ok(HttpResponse::NotFound().finish());
@@ -128,7 +135,7 @@ pub async fn webhooks_responders(
         Err(err) => {
             log::error!(
                 user:serde = user.log_context();
-                "Failed to retrieve HTTP responder ({} {responder_path}): {err:?}.",
+                "Failed to retrieve HTTP responder ({} {subdomain:?} {responder_path}): {err:?}.",
                 request.method().as_str()
             );
             return Ok(HttpResponse::NotFound().finish());
@@ -139,7 +146,7 @@ pub async fn webhooks_responders(
         log::error!(
             user:serde = user.log_context(),
             util:serde = responder.log_context();
-             "User has an HTTP responder ({} {responder_path}) configured, but it is disabled.",
+             "User has an HTTP responder ({} {subdomain:?} {responder_path}) configured, but it is disabled.",
             request.method().as_str(),
         );
         return Ok(HttpResponse::NotFound().finish());
@@ -317,15 +324,43 @@ pub async fn webhooks_responders(
     })
 }
 
+/// Parses the host that webhook was access through to determine user handle and subdomain.
+pub fn parse_webhook_host<'s>(
+    config: &Config,
+    webhook_host: &'s str,
+) -> anyhow::Result<(&'s str, Option<&'s str>)> {
+    let Some(public_host) = config.public_url.host_str() else {
+        bail!(SecutilsError::client(
+            "Public URL doesn't have a host, cannot extract responder subdomain."
+        ));
+    };
+
+    // First remove the public URL host from the request host to keep only user-specific part.
+    let Some(webhook_subdomain) = webhook_host.strip_suffix(&format!(".webhooks.{}", public_host))
+    else {
+        bail!(SecutilsError::client(format!(
+            "Failed to extract base host from the webhook host ({webhook_host})."
+        )));
+    };
+
+    // Next separate user handle part from the rest of the subdomain, e.g.,:
+    // a.b.c.user-handle.secutils.dev -> (user-handle, Some("a.b.c"))
+    Ok(match webhook_subdomain.rsplit_once('.') {
+        // No custom subdomain, just user handle.
+        None => (webhook_subdomain, None),
+        Some((subdomain, user_handle)) => (user_handle, Some(subdomain)),
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::webhooks_responders;
+    use super::{parse_webhook_host, webhooks_responders};
     use crate::{
         server::handlers::webhooks_responders::PathParams,
-        tests::{mock_app_state, mock_user},
+        tests::{mock_app_state, mock_config, mock_user},
         utils::webhooks::{
             tests::{RespondersCreateParams, RespondersUpdateParams},
-            ResponderMethod, ResponderSettings,
+            ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,
         },
     };
     use actix_web::{
@@ -351,7 +386,11 @@ mod tests {
             .webhooks(&user)
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/one/two".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/one/two".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: ResponderSettings {
@@ -452,7 +491,11 @@ mod tests {
             .webhooks(&user)
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/one/two".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/one/two".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: ResponderSettings {
@@ -522,7 +565,11 @@ mod tests {
             .webhooks(&user)
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: ResponderSettings {
@@ -577,6 +624,138 @@ mod tests {
     }
 
     #[sqlx::test]
+    async fn can_handle_request_with_subdomain_url_type_and_custom_subdomain(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+
+        // Insert user into the database.
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        // Insert responders data.
+        let responder_one = app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "name_one".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/one/two".to_string(),
+                    subdomain: Some("a.b.c".to_string()),
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 3,
+                    status_code: 200,
+                    body: Some("body".to_string()),
+                    headers: Some(vec![("key".to_string(), "value".to_string())]),
+                    script: None,
+                },
+            })
+            .await?;
+        let responder_two = app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "name_two".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/one/two".to_string(),
+                    subdomain: Some("c.b.a".to_string()),
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 3,
+                    status_code: 200,
+                    body: Some("body-two".to_string()),
+                    headers: Some(vec![("key-2".to_string(), "value-2".to_string())]),
+                    script: None,
+                },
+            })
+            .await?;
+
+        let request =
+            TestRequest::with_uri("https://a.b.c.dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev/one/two?query=value")
+                .insert_header(("x-replaced-path", "/one/two"))
+                .insert_header(("x-forwarded-host", "a.b.c.dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev"))
+                .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let app_state = web::Data::new(app_state);
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_debug_snapshot!(response, @r###"
+        HttpResponse {
+            error: None,
+            res: 
+            Response HTTP/1.1 200 OK
+              headers:
+                "key": "value"
+              body: Sized(4)
+            ,
+        }
+        "###);
+
+        let body = response.into_body().try_into_bytes().unwrap();
+        assert_eq!(body, Bytes::from_static(b"body"));
+
+        let responder_requests = app_state
+            .api
+            .webhooks(&user)
+            .get_responder_requests(responder_one.id)
+            .await?;
+        assert_eq!(responder_requests.len(), 1);
+        assert_eq!(
+            responder_requests[0].url,
+            Cow::Borrowed("/one/two?query=value")
+        );
+
+        let request =
+            TestRequest::with_uri("https://c.b.a.dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev/one/two?query=value-2")
+                .insert_header(("x-replaced-path", "/one/two"))
+                .insert_header(("x-forwarded-host", "c.b.a.dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev"))
+                .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_debug_snapshot!(response, @r###"
+        HttpResponse {
+            error: None,
+            res: 
+            Response HTTP/1.1 200 OK
+              headers:
+                "key-2": "value-2"
+              body: Sized(8)
+            ,
+        }
+        "###);
+
+        let body = response.into_body().try_into_bytes().unwrap();
+        assert_eq!(body, Bytes::from_static(b"body-two"));
+
+        let responder_requests = app_state
+            .api
+            .webhooks(&user)
+            .get_responder_requests(responder_two.id)
+            .await?;
+        assert_eq!(responder_requests.len(), 1);
+        assert_eq!(
+            responder_requests[0].url,
+            Cow::Borrowed("/one/two?query=value-2")
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
     async fn can_handle_responders_with_script(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
@@ -591,7 +770,11 @@ mod tests {
             .create_responder(
                 RespondersCreateParams {
                     name: "name_one".to_string(),
-                    path: "/one/two".to_string(),
+                    location: ResponderLocation {
+                        path_type: ResponderPathType::Exact,
+                        path: "/one/two".to_string(),
+                        subdomain: None
+                    },
                     method: ResponderMethod::Any,
                     enabled: true,
                     settings: ResponderSettings {
@@ -730,7 +913,11 @@ mod tests {
             .webhooks(&user)
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/one/two".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/one/two".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Any,
                 enabled: false,
                 settings: ResponderSettings {
@@ -819,6 +1006,33 @@ mod tests {
             responder_requests[0].url,
             Cow::Borrowed("/one/two?query=value")
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn can_parse_webhook_hosts() -> anyhow::Result<()> {
+        let test_cases = [
+            ("a.handle.webhooks.secutils.dev", ("handle", Some("a"))),
+            (
+                "my-sub.handle.webhooks.secutils.dev",
+                ("handle", Some("my-sub")),
+            ),
+            (
+                "a.b.c.handle.webhooks.secutils.dev",
+                ("handle", Some("a.b.c")),
+            ),
+            (
+                "a1.b-d.com.handle.webhooks.secutils.dev",
+                ("handle", Some("a1.b-d.com")),
+            ),
+            ("handle.webhooks.secutils.dev", ("handle", None)),
+        ];
+
+        let config = mock_config()?;
+        for (webhook_host, expected_result) in test_cases {
+            assert_eq!(parse_webhook_host(&config, webhook_host)?, expected_result);
+        }
 
         Ok(())
     }

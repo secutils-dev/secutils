@@ -5,7 +5,9 @@ use crate::{
     database::Database,
     error::Error as SecutilsError,
     users::UserId,
-    utils::webhooks::{Responder, ResponderMethod, ResponderRequest},
+    utils::webhooks::{
+        Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderRequest,
+    },
 };
 use anyhow::{anyhow, bail};
 use raw_responder::RawResponder;
@@ -28,7 +30,7 @@ impl<'pool> WebhooksDatabaseExt<'pool> {
         let raw_responders = query_as!(
             RawResponder,
             r#"
-SELECT id, name, path, method, enabled, settings, created_at
+SELECT id, name, location, method, enabled, settings, created_at
 FROM user_data_webhooks_responders
 WHERE user_id = $1
 ORDER BY created_at
@@ -55,7 +57,7 @@ ORDER BY created_at
         query_as!(
             RawResponder,
             r#"
-        SELECT id, name, path, method, enabled, settings, created_at
+        SELECT id, name, location, method, enabled, settings, created_at
         FROM user_data_webhooks_responders
         WHERE user_id = $1 AND id = $2
                         "#,
@@ -68,24 +70,45 @@ ORDER BY created_at
         .transpose()
     }
 
-    /// Retrieves responder for the specified path and method.
+    /// Retrieves responder for the specified location and method.
     pub async fn find_responder(
         &self,
         user_id: UserId,
+        subdomain: Option<&str>,
         path: &str,
         method: ResponderMethod,
     ) -> anyhow::Result<Option<Responder>> {
         let raw_method = RawResponder::get_raw_method(method)?;
         let raw_any_method = RawResponder::get_raw_method(ResponderMethod::Any)?;
+
+        let raw_location_exact = ResponderLocation {
+            path_type: ResponderPathType::Exact,
+            path: path.to_string(),
+            subdomain: subdomain.map(|s| s.to_string()),
+        }
+        .to_string();
+        let raw_location_prefix = ResponderLocation {
+            path_type: ResponderPathType::Prefix,
+            path: path.to_string(),
+            subdomain: subdomain.map(|s| s.to_string()),
+        }
+        .to_string();
+
+        // Find the most specific responder ("ORDER BY length(location) DESC") that matches the
+        // location and method. The "ORDER BY location DESC" means that we prefer exact match to a
+        // prefix match ("=" vs "^" in natural sort).
         query_as!(
             RawResponder,
             r#"
-        SELECT id, name, path, method, enabled, settings, created_at
+        SELECT id, name, location, method, enabled, settings, created_at
         FROM user_data_webhooks_responders
-        WHERE user_id = $1 AND path = $2 AND (method = $3 OR method = $4)
+        WHERE user_id = $1 AND (location = $2 OR starts_with($3, location COLLATE "und-x-icu")) AND (method = $4 OR method = $5)
+        ORDER BY length(location) DESC, location DESC
+        LIMIT 1
                         "#,
             *user_id,
-            path,
+            raw_location_exact,
+            raw_location_prefix,
             raw_method,
             raw_any_method
         )
@@ -105,23 +128,23 @@ ORDER BY created_at
         let id = *user_id;
         let raw_any_method = RawResponder::get_raw_method(ResponderMethod::Any)?;
         // Construct a query that inserts a new responder only if there is no other existing
-        // responder that already covers the same path and method.
+        // responder that already covers the same location and method.
         let result = query!(
                 r#"
-        WITH new_responder(user_id, id, name, path, method, enabled, settings, created_at) AS (
+        WITH new_responder(user_id, id, name, location, method, enabled, settings, created_at) AS (
             VALUES ( $1::uuid, $2::uuid, $3, $4, $5::bytea, $6::bool, $7::bytea, $8::timestamptz )
         )
-        INSERT INTO user_data_webhooks_responders (user_id, id, name, path, method, enabled, settings, created_at)
+        INSERT INTO user_data_webhooks_responders (user_id, id, name, location, method, enabled, settings, created_at)
         SELECT * FROM new_responder
         WHERE NOT EXISTS(
             SELECT id FROM user_data_webhooks_responders 
-            WHERE user_id = $1 AND path = $4 AND (method = $9 OR $5 = $9)
+            WHERE user_id = $1 AND location = $4 AND (method = $9 OR $5 = $9)
         )
                 "#,
                 id,
                 raw_responder.id,
                 raw_responder.name,
-                raw_responder.path,
+                raw_responder.location,
                 raw_responder.method,
                 raw_responder.enabled,
                 raw_responder.settings,
@@ -135,31 +158,29 @@ ORDER BY created_at
             Ok(result) if result.rows_affected() > 0 => Ok(()),
             Ok(_) => {
                 bail!(SecutilsError::client(format!(
-                    "Responder with such path ('{}') and method ('{:?}') conflicts with another responder.",
-                    responder.path, responder.method
+                    "Responder with such location ('{:?}') and method ('{:?}') conflicts with another responder.",
+                    &responder.location, responder.method
                 )))
             }
-            Err(err) => {
-                match err.as_database_error() {
-                    Some(database_error) if database_error.is_unique_violation() => {
-                        let error_message = if database_error.message().contains(".path") {
-                            format!("Responder with such path ('{}') and method ('{:?}') already exists.", responder.path, responder.method)
-                        } else {
-                            format!(
-                                "Responder with such name ('{}') already exists.",
-                                responder.name
-                            )
-                        };
-                        bail!(SecutilsError::client_with_root_cause(
-                            anyhow!(err).context(error_message)
-                        ))
-                    }
-                    _ => bail!(SecutilsError::from(anyhow!(err).context(format!(
-                        "Couldn't create responder ('{}') due to unknown reason.",
-                        responder.name
-                    )))),
+            Err(err) => match err.as_database_error() {
+                Some(database_error) if database_error.is_unique_violation() => {
+                    let error_message = if database_error.message().contains(".location") {
+                        format!("Responder with such location ('{:?}') and method ('{:?}') already exists.", &responder.location, responder.method)
+                    } else {
+                        format!(
+                            "Responder with such name ('{}') already exists.",
+                            responder.name
+                        )
+                    };
+                    bail!(SecutilsError::client_with_root_cause(
+                        anyhow!(err).context(error_message)
+                    ))
                 }
-            }
+                _ => bail!(SecutilsError::from(anyhow!(err).context(format!(
+                    "Couldn't create responder ('{}') due to unknown reason.",
+                    responder.name
+                )))),
+            },
         }
     }
 
@@ -172,20 +193,20 @@ ORDER BY created_at
         let raw_responder = RawResponder::try_from(responder)?;
         let raw_any_method = RawResponder::get_raw_method(ResponderMethod::Any)?;
         // Construct a query that updates a new responder only if there is no other existing
-        // responder that already covers the same path and method.
+        // responder that already covers the same location and method.
         let result = query!(
             r#"
     UPDATE user_data_webhooks_responders
-    SET name = $3, path = $4, method = $5, enabled = $6, settings = $7
+    SET name = $3, location = $4, method = $5, enabled = $6, settings = $7
     WHERE user_id = $1 AND id = $2 AND NOT EXISTS(
         SELECT id FROM user_data_webhooks_responders 
-        WHERE user_id = $1 AND id != $2 AND path = $4 AND (method = $8 OR method = $5 OR $5 = $8)
+        WHERE user_id = $1 AND id != $2 AND location = $4 AND (method = $8 OR method = $5 OR $5 = $8)
     )
             "#,
             *user_id,
             raw_responder.id,
             raw_responder.name,
-            raw_responder.path,
+            raw_responder.location,
             raw_responder.method,
             raw_responder.enabled,
             raw_responder.settings,
@@ -198,31 +219,29 @@ ORDER BY created_at
             Ok(result) if result.rows_affected() > 0 => Ok(()),
             Ok(_) => {
                 bail!(SecutilsError::client(format!(
-                    "Responder with such path ('{}') and method ('{:?}') doesn't exist or conflicts with another responder.",
-                    responder.path, responder.method
+                    "Responder with such location ('{:?}') and method ('{:?}') doesn't exist or conflicts with another responder.",
+                    &responder.location, responder.method
                 )))
             }
-            Err(err) => {
-                match err.as_database_error() {
-                    Some(database_error) if database_error.is_unique_violation() => {
-                        let error_message = if database_error.message().contains(".path") {
-                            format!("Responder with such path ('{}') and method ('{:?}') already exists.", responder.path, responder.method)
-                        } else {
-                            format!(
-                                "Responder with such name ('{}') already exists.",
-                                responder.name
-                            )
-                        };
-                        bail!(SecutilsError::client_with_root_cause(
-                            anyhow!(err).context(error_message)
-                        ))
-                    }
-                    _ => bail!(SecutilsError::from(anyhow!(err).context(format!(
-                        "Couldn't update responder ('{}') due to unknown reason.",
-                        responder.name
-                    )))),
+            Err(err) => match err.as_database_error() {
+                Some(database_error) if database_error.is_unique_violation() => {
+                    let error_message = if database_error.message().contains(".location") {
+                        format!("Responder with such location ('{:?}') and method ('{:?}') already exists.", &responder.location, responder.method)
+                    } else {
+                        format!(
+                            "Responder with such name ('{}') already exists.",
+                            responder.name
+                        )
+                    };
+                    bail!(SecutilsError::client_with_root_cause(
+                        anyhow!(err).context(error_message)
+                    ))
                 }
-            }
+                _ => bail!(SecutilsError::from(anyhow!(err).context(format!(
+                    "Couldn't update responder ('{}') due to unknown reason.",
+                    responder.name
+                )))),
+            },
         }
     }
 
@@ -357,7 +376,9 @@ mod tests {
         database::Database,
         error::Error as SecutilsError,
         tests::{mock_user, to_database_error, MockResponderBuilder},
-        utils::webhooks::{Responder, ResponderMethod, ResponderRequest},
+        utils::webhooks::{
+            Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderRequest,
+        },
     };
     use insta::assert_debug_snapshot;
     use sqlx::PgPool;
@@ -512,7 +533,7 @@ mod tests {
             .unwrap();
         assert_debug_snapshot!(
             insert_error,
-            @r###""Responder with such path ('/') and method ('Any') conflicts with another responder.""###
+            @r###""Responder with such location ('/ (Exact)') and method ('Any') conflicts with another responder.""###
         );
 
         webhooks
@@ -545,7 +566,7 @@ mod tests {
             .unwrap();
         assert_debug_snapshot!(
             insert_error,
-            @r###""Responder with such path ('/path') and method ('Get') conflicts with another responder.""###
+            @r###""Responder with such location ('/path (Exact)') and method ('Get') conflicts with another responder.""###
         );
 
         Ok(())
@@ -666,7 +687,7 @@ mod tests {
             .unwrap();
         assert_debug_snapshot!(
             update_error,
-            @r###""Responder with such path ('/') and method ('Any') doesn't exist or conflicts with another responder.""###
+            @r###""Responder with such location ('/ (Exact)') and method ('Any') doesn't exist or conflicts with another responder.""###
         );
 
         // Same path and ANY method.
@@ -687,7 +708,7 @@ mod tests {
             .unwrap();
         assert_debug_snapshot!(
             update_error,
-            @r###""Responder with such path ('/') and method ('Post') doesn't exist or conflicts with another responder.""###
+            @r###""Responder with such location ('/ (Exact)') and method ('Post') doesn't exist or conflicts with another responder.""###
         );
 
         // Same path and method.
@@ -708,7 +729,7 @@ mod tests {
             .unwrap();
         assert_debug_snapshot!(
             update_error,
-            @r###""Responder with such path ('/path') and method ('Post') doesn't exist or conflicts with another responder.""###
+            @r###""Responder with such location ('/path (Exact)') and method ('Post') doesn't exist or conflicts with another responder.""###
         );
 
         // Same path and ANY method.
@@ -728,7 +749,7 @@ mod tests {
             .unwrap();
         assert_debug_snapshot!(
             update_error,
-            @r###""Responder with such path ('/path') and method ('Any') doesn't exist or conflicts with another responder.""###
+            @r###""Responder with such location ('/path (Exact)') and method ('Any') doesn't exist or conflicts with another responder.""###
         );
 
         Ok(())
@@ -759,7 +780,7 @@ mod tests {
             .unwrap();
         assert_debug_snapshot!(
             update_error,
-            @r###""Responder with such path ('/') and method ('Any') doesn't exist or conflicts with another responder.""###
+            @r###""Responder with such location ('/ (Exact)') and method ('Any') doesn't exist or conflicts with another responder.""###
         );
 
         Ok(())
@@ -875,22 +896,210 @@ mod tests {
             ResponderMethod::Trace,
         ] {
             assert_eq!(
-                webhooks.find_responder(user.id, "/", method).await?,
+                webhooks.find_responder(user.id, None, "/", method).await?,
                 Some(responders[0].clone())
             );
 
             if matches!(method, ResponderMethod::Post) {
                 assert_eq!(
-                    webhooks.find_responder(user.id, "/path", method).await?,
+                    webhooks
+                        .find_responder(user.id, None, "/path", method)
+                        .await?,
                     Some(responders[1].clone())
                 );
             } else {
                 assert_eq!(
-                    webhooks.find_responder(user.id, "/path", method).await?,
+                    webhooks
+                        .find_responder(user.id, None, "/path", method)
+                        .await?,
                     None
                 );
             }
         }
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_retrieve_responders_for_location(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let responders = vec![
+            MockResponderBuilder::create(
+                uuid!("00000000-0000-0000-0000-000000000001"),
+                "some-name",
+                "/a/b",
+            )?
+            .with_location(ResponderLocation {
+                path_type: ResponderPathType::Prefix,
+                path: "/a/b".to_string(),
+                subdomain: Some("sub".to_string()),
+            })
+            .build(),
+            MockResponderBuilder::create(
+                uuid!("00000000-0000-0000-0000-000000000002"),
+                "some-name-2",
+                "/a/b/c",
+            )?
+            .with_location(ResponderLocation {
+                path_type: ResponderPathType::Prefix,
+                path: "/a/b/c".to_string(),
+                subdomain: Some("sub".to_string()),
+            })
+            .build(),
+            MockResponderBuilder::create(
+                uuid!("00000000-0000-0000-0000-000000000003"),
+                "some-name-3",
+                "/a",
+            )?
+            .with_location(ResponderLocation {
+                path_type: ResponderPathType::Prefix,
+                path: "/a".to_string(),
+                subdomain: Some("sub".to_string()),
+            })
+            .build(),
+            MockResponderBuilder::create(
+                uuid!("00000000-0000-0000-0000-000000000004"),
+                "some-name-4",
+                "/a/b/c/d",
+            )?
+            .with_location(ResponderLocation {
+                path_type: ResponderPathType::Exact,
+                path: "/a/b/c/d".to_string(),
+                subdomain: Some("sub".to_string()),
+            })
+            .build(),
+        ];
+
+        let webhooks = db.webhooks();
+        for responder in responders.iter() {
+            webhooks.insert_responder(user.id, responder).await?;
+        }
+
+        assert_eq!(
+            webhooks
+                .find_responder(user.id, Some("sub"), "/", ResponderMethod::Get)
+                .await?,
+            None
+        );
+
+        assert_eq!(
+            webhooks
+                .find_responder(user.id, Some("sub"), "/a", ResponderMethod::Get)
+                .await?,
+            Some(responders[2].clone())
+        );
+
+        assert_eq!(
+            webhooks
+                .find_responder(user.id, Some("sub"), "/a/b", ResponderMethod::Get)
+                .await?,
+            Some(responders[0].clone())
+        );
+
+        assert_eq!(
+            webhooks
+                .find_responder(user.id, Some("sub"), "/a/b/c", ResponderMethod::Get)
+                .await?,
+            Some(responders[1].clone())
+        );
+
+        assert_eq!(
+            webhooks
+                .find_responder(user.id, Some("sub"), "/a/b/c/d", ResponderMethod::Get)
+                .await?,
+            Some(responders[3].clone())
+        );
+
+        assert_eq!(
+            webhooks
+                .find_responder(user.id, Some("sub"), "/a/b/c/d/e", ResponderMethod::Get)
+                .await?,
+            Some(responders[1].clone())
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_retrieve_catch_all_responder(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let responders = vec![
+            MockResponderBuilder::create(
+                uuid!("00000000-0000-0000-0000-000000000001"),
+                "some-name",
+                "/a/b/c/d",
+            )?
+            .with_location(ResponderLocation {
+                path_type: ResponderPathType::Exact,
+                path: "/a/b/c/d".to_string(),
+                subdomain: Some("sub".to_string()),
+            })
+            .build(),
+            MockResponderBuilder::create(
+                uuid!("00000000-0000-0000-0000-000000000002"),
+                "some-name-catch-all",
+                "/",
+            )?
+            .with_location(ResponderLocation {
+                path_type: ResponderPathType::Prefix,
+                path: "/".to_string(),
+                subdomain: Some("sub".to_string()),
+            })
+            .build(),
+        ];
+
+        let webhooks = db.webhooks();
+        for responder in responders.iter() {
+            webhooks.insert_responder(user.id, responder).await?;
+        }
+
+        assert_eq!(
+            webhooks
+                .find_responder(user.id, Some("sub"), "/", ResponderMethod::Get)
+                .await?,
+            Some(responders[1].clone())
+        );
+
+        assert_eq!(
+            webhooks
+                .find_responder(user.id, Some("sub"), "/a", ResponderMethod::Get)
+                .await?,
+            Some(responders[1].clone())
+        );
+
+        assert_eq!(
+            webhooks
+                .find_responder(user.id, Some("sub"), "/a/b", ResponderMethod::Get)
+                .await?,
+            Some(responders[1].clone())
+        );
+
+        assert_eq!(
+            webhooks
+                .find_responder(user.id, Some("sub"), "/a/b/c", ResponderMethod::Get)
+                .await?,
+            Some(responders[1].clone())
+        );
+
+        assert_eq!(
+            webhooks
+                .find_responder(user.id, Some("sub"), "/a/b/c/d", ResponderMethod::Get)
+                .await?,
+            Some(responders[0].clone())
+        );
+
+        assert_eq!(
+            webhooks
+                .find_responder(user.id, Some("sub"), "/a/b/c/d/e", ResponderMethod::Get)
+                .await?,
+            Some(responders[1].clone())
+        );
 
         Ok(())
     }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, name, path, method, enabled, settings, created_at\n        FROM user_data_webhooks_responders\n        WHERE user_id = $1 AND path = $2 AND (method = $3 OR method = $4)\n                        ",
+  "query": "\n        SELECT id, name, location, method, enabled, settings, created_at\n        FROM user_data_webhooks_responders\n        WHERE user_id = $1 AND id = $2\n                        ",
   "describe": {
     "columns": [
       {
@@ -15,7 +15,7 @@
       },
       {
         "ordinal": 2,
-        "name": "path",
+        "name": "location",
         "type_info": "Text"
       },
       {
@@ -42,9 +42,7 @@
     "parameters": {
       "Left": [
         "Uuid",
-        "Text",
-        "Bytea",
-        "Bytea"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -57,5 +55,5 @@
       false
     ]
   },
-  "hash": "e63db773684d0224f45cb01f8c3245212a5181663fe22b8f70e8d45e958a3ef3"
+  "hash": "4098e6816e56990f14b0aa0cca98e5a9e9e66f37f13dde8422c112f59d500c9c"
 }

@@ -47,20 +47,20 @@ fn main() -> Result<(), anyhow::Error> {
         )
         .get_matches();
 
-    let mut raw_config = RawConfig::read_from_file(
+    let raw_config = RawConfig::read_from_file(
         matches
             .get_one::<String>("CONFIG")
             .ok_or_else(|| anyhow!("<CONFIG> argument is not provided."))?,
     )?;
 
-    // CLI argument takes precedence.
-    if let Some(port) = matches.get_one::<u16>("PORT") {
-        raw_config.port = *port;
-    }
-
     log::info!("Secutils.dev raw configuration: {raw_config:?}.");
 
-    server::run(raw_config)
+    // CLI argument takes precedence.
+    let http_port = matches
+        .get_one::<u16>("PORT")
+        .copied()
+        .unwrap_or(raw_config.port);
+    server::run(Config::from(raw_config), http_port)
 }
 
 #[cfg(test)]
@@ -257,7 +257,7 @@ mod tests {
 
     pub fn mock_config() -> anyhow::Result<Config> {
         Ok(Config {
-            public_url: Url::parse("http://localhost:1234")?,
+            public_url: Url::parse("https://secutils.dev")?,
             db: DatabaseConfig::default(),
             utils: UtilsConfig::default(),
             smtp: Some(SmtpConfig {

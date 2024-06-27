@@ -42,7 +42,8 @@ mod tests {
           "features": {
             "certificates": {},
             "webhooks": {
-              "responderRequests": 30
+              "responderRequests": 30,
+              "responderCustomSubdomains": true
             },
             "webScraping": {
               "trackerRevisions": 30

@@ -7,7 +7,7 @@ use uuid::Uuid;
 pub(super) struct RawResponder {
     pub id: Uuid,
     pub name: String,
-    pub path: String,
+    pub location: String,
     pub method: Vec<u8>,
     pub enabled: bool,
     pub settings: Vec<u8>,
@@ -37,7 +37,7 @@ impl TryFrom<RawResponder> for Responder {
         Ok(Responder {
             id: raw.id,
             name: raw.name,
-            path: raw.path,
+            location: raw.location.parse()?,
             method: postcard::from_bytes::<ResponderMethod>(&raw.method)?,
             enabled: raw.enabled,
             settings: ResponderSettings {
@@ -67,7 +67,7 @@ impl TryFrom<&Responder> for RawResponder {
         Ok(RawResponder {
             id: item.id,
             name: item.name.clone(),
-            path: item.path.to_string(),
+            location: item.location.to_string(),
             method: postcard::to_stdvec(&item.method)?,
             enabled: item.enabled,
             settings: postcard::to_stdvec(&raw_settings)?,
@@ -79,7 +79,8 @@ impl TryFrom<&Responder> for RawResponder {
 #[cfg(test)]
 mod tests {
     use crate::utils::webhooks::{
-        database_ext::raw_responder::RawResponder, Responder, ResponderMethod, ResponderSettings,
+        database_ext::raw_responder::RawResponder, Responder, ResponderLocation, ResponderMethod,
+        ResponderPathType, ResponderSettings,
     };
     use time::OffsetDateTime;
     use uuid::uuid;
@@ -90,7 +91,11 @@ mod tests {
             RawResponder::try_from(&Responder {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "res".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None
+                },
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: ResponderSettings {
@@ -105,7 +110,7 @@ mod tests {
             RawResponder {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "res".to_string(),
-                path: "/".to_string(),
+                location: "@:=:/".to_string(),
                 method: vec![0],
                 enabled: true,
                 settings: vec![0, 200, 1, 0, 0, 0],
@@ -118,7 +123,11 @@ mod tests {
             RawResponder::try_from(&Responder {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "res".to_string(),
-                path: "/path".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Prefix,
+                    path: "/path".to_string(),
+                    subdomain: Some("sub".to_string())
+                },
                 method: ResponderMethod::Connect,
                 enabled: false,
                 settings: ResponderSettings {
@@ -133,7 +142,7 @@ mod tests {
             RawResponder {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "res".to_string(),
-                path: "/path".to_string(),
+                location: "sub:^:/path".to_string(),
                 method: vec![7],
                 enabled: false,
                 settings: vec![
@@ -156,7 +165,7 @@ mod tests {
             Responder::try_from(RawResponder {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "res".to_string(),
-                path: "/".to_string(),
+                location: "@:=:/".to_string(),
                 method: vec![0],
                 enabled: true,
                 settings: vec![0, 200, 1, 0, 0, 0],
@@ -166,7 +175,11 @@ mod tests {
             Responder {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "res".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None
+                },
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: ResponderSettings {
@@ -184,7 +197,7 @@ mod tests {
             Responder::try_from(RawResponder {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "res".to_string(),
-                path: "/path".to_string(),
+                location: "sub:^:/path".to_string(),
                 method: vec![7],
                 enabled: false,
                 settings: vec![
@@ -199,7 +212,11 @@ mod tests {
             Responder {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "res".to_string(),
-                path: "/path".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Prefix,
+                    path: "/path".to_string(),
+                    subdomain: Some("sub".to_string())
+                },
                 method: ResponderMethod::Connect,
                 enabled: false,
                 settings: ResponderSettings {

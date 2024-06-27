@@ -49,6 +49,7 @@ mod test {
             webhooks: SubscriptionWebhooksConfig {
                 responders: 1,
                 responder_requests: 11,
+                responder_custom_subdomains: false,
                 js_runtime_heap_size: 2,
                 js_runtime_script_execution_time: Duration::from_secs(3),
             },
@@ -89,6 +90,7 @@ mod test {
             webhooks: SubscriptionWebhooksConfig {
                 responders: 2,
                 responder_requests: 22,
+                responder_custom_subdomains: true,
                 js_runtime_heap_size: 3,
                 js_runtime_script_execution_time: Duration::from_secs(4),
             },
@@ -127,6 +129,7 @@ mod test {
             webhooks: SubscriptionWebhooksConfig {
                 responders: 3,
                 responder_requests: 33,
+                responder_custom_subdomains: true,
                 js_runtime_heap_size: 4,
                 js_runtime_script_execution_time: Duration::from_secs(5),
             },
