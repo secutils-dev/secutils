@@ -65,6 +65,7 @@ mod tests {
         [basic.webhooks]
         responders = 100
         responder_requests = 30
+        responder_custom_subdomains = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
 
@@ -83,6 +84,7 @@ mod tests {
         [standard.webhooks]
         responders = 100
         responder_requests = 30
+        responder_custom_subdomains = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
 
@@ -101,6 +103,7 @@ mod tests {
         [professional.webhooks]
         responders = 100
         responder_requests = 30
+        responder_custom_subdomains = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
 
@@ -119,6 +122,7 @@ mod tests {
         [ultimate.webhooks]
         responders = 100
         responder_requests = 30
+        responder_custom_subdomains = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
 
@@ -150,6 +154,7 @@ mod tests {
         [basic.webhooks]
         responders = 100
         responder_requests = 30
+        responder_custom_subdomains = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
 
@@ -168,6 +173,7 @@ mod tests {
         [standard.webhooks]
         responders = 100
         responder_requests = 30
+        responder_custom_subdomains = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
 
@@ -186,6 +192,7 @@ mod tests {
         [professional.webhooks]
         responders = 100
         responder_requests = 30
+        responder_custom_subdomains = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
 
@@ -204,6 +211,7 @@ mod tests {
         [ultimate.webhooks]
         responders = 100
         responder_requests = 30
+        responder_custom_subdomains = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
 
@@ -232,6 +240,7 @@ mod tests {
         [basic.webhooks]
         responders = 1
         responder_requests = 11
+        responder_custom_subdomains = false
         js_runtime_heap_size = 10
         js_runtime_script_execution_time = 20
 
@@ -253,6 +262,7 @@ mod tests {
         [standard.webhooks]
         responders = 2
         responder_requests = 22
+        responder_custom_subdomains = true
         js_runtime_heap_size = 30
         js_runtime_script_execution_time = 40
 
@@ -274,6 +284,7 @@ mod tests {
         [professional.webhooks]
         responders = 3
         responder_requests = 33
+        responder_custom_subdomains = true
         js_runtime_heap_size = 50
         js_runtime_script_execution_time = 60
 
@@ -293,6 +304,7 @@ mod tests {
         [ultimate.webhooks]
         responders = 4
         responder_requests = 44
+        responder_custom_subdomains = true
         js_runtime_heap_size = 70
         js_runtime_script_execution_time = 80
 
@@ -320,6 +332,7 @@ mod tests {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 1,
                         responder_requests: 11,
+                        responder_custom_subdomains: false,
                         js_runtime_heap_size: 10,
                         js_runtime_script_execution_time: Duration::from_millis(20),
                     },
@@ -359,6 +372,7 @@ mod tests {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 2,
                         responder_requests: 22,
+                        responder_custom_subdomains: true,
                         js_runtime_heap_size: 30,
                         js_runtime_script_execution_time: Duration::from_millis(40),
                     },
@@ -396,6 +410,7 @@ mod tests {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 3,
                         responder_requests: 33,
+                        responder_custom_subdomains: true,
                         js_runtime_heap_size: 50,
                         js_runtime_script_execution_time: Duration::from_millis(60),
                     },
@@ -416,6 +431,7 @@ mod tests {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 4,
                         responder_requests: 44,
+                        responder_custom_subdomains: true,
                         js_runtime_heap_size: 70,
                         js_runtime_script_execution_time: Duration::from_millis(80),
                     },
@@ -445,6 +461,7 @@ mod tests {
                 webhooks: SubscriptionWebhooksConfig {
                     responders: 1,
                     responder_requests: 11,
+                    responder_custom_subdomains: false,
                     js_runtime_heap_size: 10,
                     js_runtime_script_execution_time: Duration::from_millis(20),
                 },
@@ -484,6 +501,7 @@ mod tests {
                 webhooks: SubscriptionWebhooksConfig {
                     responders: 2,
                     responder_requests: 22,
+                    responder_custom_subdomains: true,
                     js_runtime_heap_size: 30,
                     js_runtime_script_execution_time: Duration::from_millis(40),
                 },
@@ -521,6 +539,7 @@ mod tests {
                 webhooks: SubscriptionWebhooksConfig {
                     responders: 3,
                     responder_requests: 33,
+                    responder_custom_subdomains: true,
                     js_runtime_heap_size: 50,
                     js_runtime_script_execution_time: Duration::from_millis(60),
                 },
@@ -541,6 +560,7 @@ mod tests {
                 webhooks: SubscriptionWebhooksConfig {
                     responders: 4,
                     responder_requests: 44,
+                    responder_custom_subdomains: true,
                     js_runtime_heap_size: 70,
                     js_runtime_script_execution_time: Duration::from_millis(80),
                 },

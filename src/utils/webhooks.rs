@@ -5,8 +5,8 @@ mod responders;
 pub use self::{
     api_ext::RespondersRequestCreateParams,
     responders::{
-        Responder, ResponderMethod, ResponderRequest, ResponderRequestHeaders,
-        ResponderScriptContext, ResponderScriptResult, ResponderSettings,
+        Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderRequest,
+        ResponderRequestHeaders, ResponderScriptContext, ResponderScriptResult, ResponderSettings,
     },
 };
 use crate::{
@@ -81,8 +81,8 @@ pub mod tests {
         tests::{mock_api, mock_user},
         utils::{
             webhooks::{
-                webhooks_handle_action, Responder, ResponderMethod, ResponderSettings,
-                RespondersRequestCreateParams,
+                webhooks_handle_action, Responder, ResponderLocation, ResponderMethod,
+                ResponderPathType, ResponderSettings, RespondersRequestCreateParams,
             },
             UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
         },
@@ -104,7 +104,11 @@ pub mod tests {
                 responder: Responder {
                     id,
                     name: name.to_string(),
-                    path: path.to_string(),
+                    location: ResponderLocation {
+                        path_type: ResponderPathType::Exact,
+                        path: path.to_string(),
+                        subdomain: None,
+                    },
                     method: ResponderMethod::Any,
                     enabled: true,
                     settings: ResponderSettings {
@@ -126,6 +130,11 @@ pub mod tests {
 
         pub fn with_body(mut self, body: &str) -> Self {
             self.responder.settings.body = Some(body.to_string());
+            self
+        }
+
+        pub fn with_location(mut self, location: ResponderLocation) -> Self {
+            self.responder.location = location;
             self
         }
 
@@ -154,7 +163,11 @@ pub mod tests {
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: ResponderSettings {
@@ -169,7 +182,11 @@ pub mod tests {
         let responder_two = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_two".to_string(),
-                path: "/path".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Get,
                 enabled: false,
                 settings: responder_one.settings.clone(),
@@ -194,7 +211,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"path\":\"/\",\"method\":\"GET\",\"enabled\":true,\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]},{\"id\":\"[UUID]\",\"name\":\"name_two\",\"path\":\"/path\",\"method\":\"GET\",\"enabled\":false,\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]}]""###
+                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"location\":{\"pathType\":\"=\",\"path\":\"/\"},\"method\":\"GET\",\"enabled\":true,\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]},{\"id\":\"[UUID]\",\"name\":\"name_two\",\"location\":{\"pathType\":\"=\",\"path\":\"/path\"},\"method\":\"GET\",\"enabled\":false,\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]}]""###
             );
         });
 
@@ -214,7 +231,11 @@ pub mod tests {
             UtilsResource::WebhooksResponders,
             Some(UtilsActionParams::json(json!({
                 "name": "name_one",
-                "path": "/",
+                "location": {
+                    "pathType": "^",
+                    "path": "/",
+                    "subdomain": "sub"
+                },
                 "method": "GET",
                 "enabled": true,
                 "settings": ResponderSettings {
@@ -241,7 +262,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"path\":\"/\",\"method\":\"GET\",\"enabled\":true,\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]}""###
+                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"location\":{\"pathType\":\"^\",\"path\":\"/\",\"subdomain\":\"sub\"},\"method\":\"GET\",\"enabled\":true,\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]}""###
             );
         });
 
@@ -258,7 +279,11 @@ pub mod tests {
         let responder = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: ResponderSettings {
@@ -280,7 +305,11 @@ pub mod tests {
             UtilsResource::WebhooksResponders,
             Some(UtilsActionParams::json(json!({
                 "name": "name_one_updated",
-                "path": "/",
+                "location": {
+                    "pathType": "^",
+                    "path": "/path",
+                    "subdomain": "sub"
+                },
                 "method": "GET",
                 "enabled": false,
                 "settings": ResponderSettings {
@@ -302,7 +331,11 @@ pub mod tests {
             Responder {
                 id: responder.id,
                 name: "name_one_updated".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Prefix,
+                    path: "/path".to_string(),
+                    subdomain: Some("sub".to_string()),
+                },
                 method: ResponderMethod::Get,
                 enabled: false,
                 settings: ResponderSettings {
@@ -329,7 +362,11 @@ pub mod tests {
         let responder = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: ResponderSettings {
@@ -372,7 +409,11 @@ pub mod tests {
         let responder = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: ResponderSettings {
@@ -456,7 +497,11 @@ pub mod tests {
         let responder = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: ResponderSettings {

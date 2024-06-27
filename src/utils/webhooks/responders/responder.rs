@@ -1,4 +1,4 @@
-use crate::utils::webhooks::{ResponderMethod, ResponderSettings};
+use crate::utils::webhooks::{ResponderLocation, ResponderMethod, ResponderSettings};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -10,8 +10,8 @@ pub struct Responder {
     pub id: Uuid,
     /// Arbitrary name of the responder.
     pub name: String,
-    /// Path of the responder.
-    pub path: String,
+    /// Location of the responder.
+    pub location: ResponderLocation,
     /// HTTP method of the responder.
     pub method: ResponderMethod,
     /// Indicates whether the responder is enabled.
@@ -25,7 +25,9 @@ pub struct Responder {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::webhooks::{Responder, ResponderMethod, ResponderSettings};
+    use crate::utils::webhooks::{
+        Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,
+    };
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
     use uuid::uuid;
@@ -35,7 +37,11 @@ mod tests {
         assert_json_snapshot!(Responder {
             id: uuid!("00000000-0000-0000-0000-000000000001"),
             name: "some-name".to_string(),
-            path: "/path".to_string(),
+            location: ResponderLocation {
+                path_type: ResponderPathType::Exact,
+                path: "/path".to_string(),
+                subdomain: None
+            },
             method: ResponderMethod::Post,
             enabled: true,
             settings: ResponderSettings {
@@ -50,7 +56,10 @@ mod tests {
         {
           "id": "00000000-0000-0000-0000-000000000001",
           "name": "some-name",
-          "path": "/path",
+          "location": {
+            "pathType": "=",
+            "path": "/path"
+          },
           "method": "POST",
           "enabled": true,
           "settings": {
@@ -80,7 +89,10 @@ mod tests {
         {
           "id": "00000000-0000-0000-0000-000000000001",
           "name": "some-name",
-          "path": "/path",
+          "location": {
+            "path": "/path",
+            "pathType": "="
+          },
           "method": "POST",
           "enabled": true,
           "settings": {
@@ -102,7 +114,11 @@ mod tests {
             Responder {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "some-name".to_string(),
-                path: "/path".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: None
+                },
                 method: ResponderMethod::Post,
                 enabled: true,
                 settings: ResponderSettings {

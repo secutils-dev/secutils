@@ -9,7 +9,7 @@ use crate::{
     users::User,
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
-        webhooks::{Responder, ResponderMethod, ResponderRequest},
+        webhooks::{Responder, ResponderMethod, ResponderPathType, ResponderRequest},
     },
 };
 use anyhow::bail;
@@ -47,13 +47,23 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
     /// Returns responder for specified path and method, if any.
     pub async fn find_responder(
         &self,
+        subdomain: Option<&str>,
         path: &str,
         method: ResponderMethod,
     ) -> anyhow::Result<Option<Responder>> {
+        if subdomain.is_some() {
+            let features = self.user.subscription.get_features(&self.api.config);
+            if !features.config.webhooks.responder_custom_subdomains {
+                bail!(SecutilsError::client(
+                    "Responder subdomains are not allowed."
+                ));
+            }
+        }
+
         self.api
             .db
             .webhooks()
-            .find_responder(self.user.id, path, method)
+            .find_responder(self.user.id, subdomain, path, method)
             .await
     }
 
@@ -65,7 +75,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
         let responder = Responder {
             id: Uuid::now_v7(),
             name: params.name,
-            path: params.path,
+            location: params.location,
             method: params.method,
             enabled: params.enabled,
             settings: params.settings,
@@ -93,7 +103,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
         params: RespondersUpdateParams,
     ) -> anyhow::Result<Responder> {
         if params.name.is_none()
-            && params.path.is_none()
+            && params.location.is_none()
             && params.method.is_none()
             && params.enabled.is_none()
             && params.settings.is_none()
@@ -111,7 +121,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
 
         let responder = Responder {
             name: params.name.unwrap_or(existing_responder.name),
-            path: params.path.unwrap_or(existing_responder.path),
+            location: params.location.unwrap_or(existing_responder.location),
             method: params.method.unwrap_or(existing_responder.method),
             enabled: params.enabled.unwrap_or(existing_responder.enabled),
             settings: params.settings.unwrap_or(existing_responder.settings),
@@ -237,19 +247,40 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
             )));
         }
 
-        if responder.path.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
+        if responder.location.path.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
             bail!(SecutilsError::client(format!(
-                "Responder path cannot be longer than {} characters.",
+                "Responder location path cannot be longer than {} characters.",
                 MAX_UTILS_ENTITY_NAME_LENGTH
             )));
         }
 
-        let is_path_valid = responder.path.starts_with('/')
-            && (responder.path.len() == 1 || !responder.path.ends_with('/'));
+        let is_path_valid = responder.location.path.starts_with('/')
+            && (responder.location.path.len() == 1 || !responder.location.path.ends_with('/'));
         if !is_path_valid {
             bail!(SecutilsError::client(
-                "Responder paths must begin with '/' and should not end with '/'."
+                "Responder location paths must begin with '/' and should not end with '/'."
             ));
+        }
+
+        let features = self.user.subscription.get_features(&self.api.config);
+        if let Some(ref subdomain) = responder.location.subdomain {
+            if !features.config.webhooks.responder_custom_subdomains {
+                bail!(SecutilsError::client(
+                    "Responder subdomains are not allowed."
+                ));
+            }
+
+            let Some(public_host) = self.api.config.public_url.host_str() else {
+                bail!(SecutilsError::client(
+                    "Public URL doesn't have a host, cannot validate responder subdomain."
+                ));
+            };
+
+            if !self.is_valid_webhooks_subdomain(public_host, subdomain) {
+                bail!(SecutilsError::client(format!(
+                    "Responder subdomain ('{subdomain}') is not valid."
+                )));
+            }
         }
 
         if !(100..=999).contains(&responder.settings.status_code) {
@@ -259,7 +290,6 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
             )));
         }
 
-        let features = self.user.subscription.get_features(&self.api.config);
         if !(0..=features.config.webhooks.responder_requests)
             .contains(&responder.settings.requests_to_track)
         {
@@ -290,15 +320,39 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
                 ))
             })?;
 
-        if responder.path != request_url.path() {
+        let valid_request = match responder.location.path_type {
+            ResponderPathType::Exact => responder.location.path == request_url.path(),
+            ResponderPathType::Prefix => request_url.path().starts_with(&responder.location.path),
+        };
+        if !valid_request {
             bail!(SecutilsError::client(format!(
-                "Responder request path ('{}') does not match responder path ('{}').",
+                "Responder request path ('{}') does not match responder path ('{:?}').",
                 request_url.path(),
-                responder.path
+                responder.location
             )));
         }
 
         Ok(())
+    }
+
+    fn is_valid_webhooks_subdomain(&self, public_host: &str, subdomain: &str) -> bool {
+        // Add a bit of padding in case public_hostname changes length significantly in the
+        // future making subdomain length invalid.
+        let webhooks_host = format!("{subdomain}.safety-padding.webhooks.{public_host}");
+
+        // First, check if it's a valid subdomain in general.
+        if addr::parse_domain_name(&webhooks_host).is_err() {
+            return false;
+        };
+
+        // Then, use URL parser to make sure subdomain is valid as is and doesn't require any
+        // transformations (e.g., puny code conversion).
+        let Ok(webhooks_url) = Url::parse(&format!("https://{webhooks_host}")) else {
+            return false;
+        };
+
+        let webhooks_url_host = webhooks_url.host_str();
+        webhooks_url_host == Some(&webhooks_host)
     }
 }
 
@@ -316,7 +370,8 @@ mod tests {
         tests::{mock_api, mock_user},
         utils::webhooks::{
             api_ext::{RespondersCreateParams, RespondersUpdateParams},
-            Responder, ResponderMethod, ResponderSettings, RespondersRequestCreateParams,
+            Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,
+            RespondersRequestCreateParams,
         },
     };
     use insta::assert_debug_snapshot;
@@ -344,7 +399,11 @@ mod tests {
         let responder = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: ResponderSettings {
@@ -388,7 +447,11 @@ mod tests {
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None
+                },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: settings.clone()
@@ -400,7 +463,11 @@ mod tests {
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "a".repeat(101),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None
+                },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: settings.clone()
@@ -412,55 +479,139 @@ mod tests {
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
-                path: "".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "".to_string(),
+                    subdomain: None
+                },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: settings.clone()
             }).await),
-            @r###""Responder paths must begin with '/' and should not end with '/'.""###
+            @r###""Responder location paths must begin with '/' and should not end with '/'.""###
         );
 
         // Very long path.
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
-                path: "/a".repeat(51),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/a".repeat(51),
+                    subdomain: None
+                },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: settings.clone()
             }).await),
-            @r###""Responder path cannot be longer than 100 characters.""###
+            @r###""Responder location path cannot be longer than 100 characters.""###
         );
 
         // Invalid path start
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
-                path: "path".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "path".to_string(),
+                    subdomain: None
+                },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: settings.clone()
             }).await),
-            @r###""Responder paths must begin with '/' and should not end with '/'.""###
+            @r###""Responder location paths must begin with '/' and should not end with '/'.""###
         );
 
         // Invalid path end
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
-                path: "/path/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path/".to_string(),
+                    subdomain: None
+                },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: settings.clone()
             }).await),
-            @r###""Responder paths must begin with '/' and should not end with '/'.""###
+            @r###""Responder location paths must begin with '/' and should not end with '/'.""###
+        );
+
+        // Empty subdomain.
+        assert_debug_snapshot!(
+            create_and_fail(webhooks.create_responder(RespondersCreateParams {
+                name: "some-name".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: Some("".to_string())
+                },
+                method: ResponderMethod::Get,
+                enabled: true,
+                settings: settings.clone()
+            }).await),
+            @r###""Responder subdomain ('') is not valid.""###
+        );
+
+        // Empty subdomain labels.
+        assert_debug_snapshot!(
+            create_and_fail(webhooks.create_responder(RespondersCreateParams {
+                name: "some-name".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: Some("sub..sub".to_string())
+                },
+                method: ResponderMethod::Get,
+                enabled: true,
+                settings: settings.clone()
+            }).await),
+            @r###""Responder subdomain ('sub..sub') is not valid.""###
+        );
+
+        // Invalid subdomain.
+        assert_debug_snapshot!(
+            create_and_fail(webhooks.create_responder(RespondersCreateParams {
+                name: "some-name".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: Some("сабдомейн".to_string())
+                },
+                method: ResponderMethod::Get,
+                enabled: true,
+                settings: settings.clone()
+            }).await),
+            @r###""Responder subdomain ('сабдомейн') is not valid.""###
+        );
+
+        // Long subdomain.
+        assert_debug_snapshot!(
+            create_and_fail(webhooks.create_responder(RespondersCreateParams {
+                name: "some-name".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: Some("s".repeat(201))
+                },
+                method: ResponderMethod::Get,
+                enabled: true,
+                settings: settings.clone()
+            }).await),
+            @r###""Responder subdomain ('sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss') is not valid.""###
         );
 
         // Invalid status code
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
-                path: "/path".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: None
+                },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: ResponderSettings {
@@ -475,7 +626,11 @@ mod tests {
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
-                path: "/path".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: None
+                },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: ResponderSettings {
@@ -490,7 +645,11 @@ mod tests {
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
-                path: "/path".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: None
+                },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: ResponderSettings {
@@ -505,7 +664,11 @@ mod tests {
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
-                path: "/path".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: None
+                },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: ResponderSettings {
@@ -529,7 +692,11 @@ mod tests {
         let responder = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: ResponderSettings {
@@ -548,7 +715,7 @@ mod tests {
                 responder.id,
                 RespondersUpdateParams {
                     name: None,
-                    path: None,
+                    location: None,
                     method: None,
                     enabled: Some(false),
                     settings: None,
@@ -571,7 +738,7 @@ mod tests {
                 responder.id,
                 RespondersUpdateParams {
                     name: Some("name_two".to_string()),
-                    path: None,
+                    location: None,
                     method: None,
                     enabled: None,
                     settings: None,
@@ -595,7 +762,11 @@ mod tests {
                 responder.id,
                 RespondersUpdateParams {
                     name: None,
-                    path: Some("/path".to_string()),
+                    location: Some(ResponderLocation {
+                        path_type: ResponderPathType::Exact,
+                        path: "/path".to_string(),
+                        subdomain: None,
+                    }),
                     method: None,
                     enabled: None,
                     settings: None,
@@ -604,7 +775,44 @@ mod tests {
             .await?;
         let expected_responder = Responder {
             name: "name_two".to_string(),
-            path: "/path".to_string(),
+            location: ResponderLocation {
+                path_type: ResponderPathType::Exact,
+                path: "/path".to_string(),
+                subdomain: None,
+            },
+            enabled: false,
+            ..responder.clone()
+        };
+        assert_eq!(expected_responder, updated_responder);
+        assert_eq!(
+            expected_responder,
+            webhooks.get_responder(responder.id).await?.unwrap()
+        );
+
+        // Update subdomain.
+        let updated_responder = webhooks
+            .update_responder(
+                responder.id,
+                RespondersUpdateParams {
+                    name: None,
+                    location: Some(ResponderLocation {
+                        path_type: ResponderPathType::Prefix,
+                        path: "/path".to_string(),
+                        subdomain: Some("sub".to_string()),
+                    }),
+                    method: None,
+                    enabled: None,
+                    settings: None,
+                },
+            )
+            .await?;
+        let expected_responder = Responder {
+            name: "name_two".to_string(),
+            location: ResponderLocation {
+                path_type: ResponderPathType::Prefix,
+                path: "/path".to_string(),
+                subdomain: Some("sub".to_string()),
+            },
             enabled: false,
             ..responder.clone()
         };
@@ -620,7 +828,7 @@ mod tests {
                 responder.id,
                 RespondersUpdateParams {
                     name: None,
-                    path: None,
+                    location: None,
                     method: Some(ResponderMethod::Post),
                     enabled: None,
                     settings: None,
@@ -629,7 +837,11 @@ mod tests {
             .await?;
         let expected_responder = Responder {
             name: "name_two".to_string(),
-            path: "/path".to_string(),
+            location: ResponderLocation {
+                path_type: ResponderPathType::Prefix,
+                path: "/path".to_string(),
+                subdomain: Some("sub".to_string()),
+            },
             method: ResponderMethod::Post,
             enabled: false,
             ..responder.clone()
@@ -646,7 +858,7 @@ mod tests {
                 responder.id,
                 RespondersUpdateParams {
                     name: None,
-                    path: None,
+                    location: None,
                     method: None,
                     enabled: None,
                     settings: Some(ResponderSettings {
@@ -661,7 +873,11 @@ mod tests {
             .await?;
         let expected_responder = Responder {
             name: "name_two".to_string(),
-            path: "/path".to_string(),
+            location: ResponderLocation {
+                path_type: ResponderPathType::Prefix,
+                path: "/path".to_string(),
+                subdomain: Some("sub".to_string()),
+            },
             method: ResponderMethod::Post,
             enabled: false,
             settings: ResponderSettings {
@@ -699,7 +915,11 @@ mod tests {
         let responder = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: settings.clone(),
@@ -717,7 +937,7 @@ mod tests {
                     responder.id,
                     RespondersUpdateParams {
                         name: None,
-                        path: None,
+                        location: None,
                         method: None,
                         enabled: None,
                         settings: None,
@@ -740,7 +960,7 @@ mod tests {
                     uuid!("00000000-0000-0000-0000-000000000002"),
                     RespondersUpdateParams {
                         name: Some("some-new-name".to_string()),
-                        path: None,
+                        location: None,
                         method: None,
                         enabled: None,
                         settings: None,
@@ -757,7 +977,7 @@ mod tests {
         assert_debug_snapshot!(
             update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: Some("".to_string()),
-                path: None,
+                location: None,
                 method: None,
                 enabled: None,
                 settings: None
@@ -769,7 +989,7 @@ mod tests {
         assert_debug_snapshot!(
             update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: Some("a".repeat(101)),
-                path: None,
+                location: None,
                 method: None,
                 enabled: None,
                 settings: None
@@ -781,55 +1001,135 @@ mod tests {
         assert_debug_snapshot!(
             update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
-                path: Some("".to_string()),
+                location: Some(ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "".to_string(),
+                    subdomain: None
+                }),
                 method: None,
                 enabled: None,
                 settings: None
             }).await),
-            @r###""Responder paths must begin with '/' and should not end with '/'.""###
+            @r###""Responder location paths must begin with '/' and should not end with '/'.""###
         );
 
         // Very long path.
         assert_debug_snapshot!(
             update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
-                path: Some("/a".repeat(51)),
+                location: Some(ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/a".repeat(51),
+                    subdomain: None
+                }),
                 method: None,
                 enabled: None,
                 settings: None
             }).await),
-            @r###""Responder path cannot be longer than 100 characters.""###
+            @r###""Responder location path cannot be longer than 100 characters.""###
         );
 
         // Invalid path start
         assert_debug_snapshot!(
             update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
-                path: Some("path".to_string()),
+                location: Some(ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "path".to_string(),
+                    subdomain: None
+                }),
                 method: None,
                 enabled: None,
                 settings: None
             }).await),
-            @r###""Responder paths must begin with '/' and should not end with '/'.""###
+            @r###""Responder location paths must begin with '/' and should not end with '/'.""###
         );
 
         // Invalid path end
         assert_debug_snapshot!(
             update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
-                path: Some("/path/".to_string()),
+                location: Some(ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path/".to_string(),
+                    subdomain: None
+                }),
                 method: None,
                 enabled: None,
                 settings: None
             }).await),
-            @r###""Responder paths must begin with '/' and should not end with '/'.""###
+            @r###""Responder location paths must begin with '/' and should not end with '/'.""###
+        );
+
+        // Empty subdomain.
+        assert_debug_snapshot!(
+             update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
+                name: None,
+                location: Some(ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: Some("".to_string())
+                }),
+                method: None,
+                enabled: None,
+                settings: None
+            }).await),
+            @r###""Responder subdomain ('') is not valid.""###
+        );
+
+        // Empty subdomain labels.
+        assert_debug_snapshot!(
+             update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
+                name: None,
+                location: Some(ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: Some("sub..sub".to_string())
+                }),
+                method: None,
+                enabled: None,
+                settings: None
+            }).await),
+            @r###""Responder subdomain ('sub..sub') is not valid.""###
+        );
+
+        // Invalid subdomain.
+        assert_debug_snapshot!(
+             update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
+                name: None,
+                location: Some(ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: Some("сабдомейн".to_string())
+                }),
+                method: None,
+                enabled: None,
+                settings: None
+            }).await),
+            @r###""Responder subdomain ('сабдомейн') is not valid.""###
+        );
+
+        // Long subdomain.
+        assert_debug_snapshot!(
+             update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
+                name: None,
+                location: Some(ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: Some("s".repeat(201))
+                }),
+                method: None,
+                enabled: None,
+                settings: None
+            }).await),
+            @r###""Responder subdomain ('sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss') is not valid.""###
         );
 
         // Invalid status code
         assert_debug_snapshot!(
             update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
-                path: None,
+                location: None,
                 method: None,
                 enabled: None,
                 settings: Some(ResponderSettings {
@@ -844,7 +1144,7 @@ mod tests {
         assert_debug_snapshot!(
             update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
-                path: None,
+                location: None,
                 method: None,
                 enabled: None,
                 settings: Some(ResponderSettings {
@@ -859,7 +1159,7 @@ mod tests {
         assert_debug_snapshot!(
             update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
-                path: None,
+                location: None,
                 method: None,
                 enabled: None,
                 settings: Some(ResponderSettings {
@@ -874,7 +1174,7 @@ mod tests {
         assert_debug_snapshot!(
             update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
-                path: None,
+                location: None,
                 method: None,
                 enabled: None,
                 settings: Some(ResponderSettings {
@@ -907,7 +1207,11 @@ mod tests {
             webhooks
                 .create_responder(RespondersCreateParams {
                     name: "name_one".to_string(),
-                    path: "/".to_string(),
+                    location: ResponderLocation {
+                        path_type: ResponderPathType::Exact,
+                        path: "/".to_string(),
+                        subdomain: None,
+                    },
                     method: ResponderMethod::Any,
                     enabled: true,
                     settings: settings.clone(),
@@ -916,7 +1220,11 @@ mod tests {
             webhooks
                 .create_responder(RespondersCreateParams {
                     name: "name_two".to_string(),
-                    path: "/path".to_string(),
+                    location: ResponderLocation {
+                        path_type: ResponderPathType::Prefix,
+                        path: "/path".to_string(),
+                        subdomain: Some("sub".to_string()),
+                    },
                     method: ResponderMethod::Post,
                     enabled: true,
                     settings: settings.clone(),
@@ -937,17 +1245,24 @@ mod tests {
             ResponderMethod::Trace,
         ] {
             assert_eq!(
-                webhooks.find_responder("/", method).await?,
+                webhooks.find_responder(None, "/", method).await?,
                 Some(responders[0].clone())
             );
 
             if matches!(method, ResponderMethod::Post) {
                 assert_eq!(
-                    webhooks.find_responder("/path", method).await?,
+                    webhooks
+                        .find_responder(Some("sub"), "/path", method)
+                        .await?,
                     Some(responders[1].clone())
                 );
             } else {
-                assert_eq!(webhooks.find_responder("/path", method).await?, None);
+                assert_eq!(
+                    webhooks
+                        .find_responder(Some("sub"), "/path", method)
+                        .await?,
+                    None
+                );
             }
         }
 
@@ -972,7 +1287,11 @@ mod tests {
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: settings.clone(),
@@ -981,7 +1300,11 @@ mod tests {
         let responder_two = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_two".to_string(),
-                path: "/path".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: settings.clone(),
@@ -1021,7 +1344,11 @@ mod tests {
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: settings.clone(),
@@ -1034,7 +1361,11 @@ mod tests {
         let responder_two = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_two".to_string(),
-                path: "/path".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Any,
                 enabled: false,
                 settings: settings.clone(),
@@ -1066,7 +1397,11 @@ mod tests {
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: settings.clone(),
@@ -1075,7 +1410,11 @@ mod tests {
         let responder_two = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_two".to_string(),
-                path: "/two".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/two".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Any,
                 enabled: false,
                 settings: settings.clone(),
@@ -1139,7 +1478,11 @@ mod tests {
         let responder = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/path".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: settings.clone(),
@@ -1156,28 +1499,28 @@ mod tests {
                 responder.id,
                 get_request_create_params("/"),
             ).await),
-            @r###""Responder request path ('/') does not match responder path ('/path').""###
+            @r###""Responder request path ('/') does not match responder path ('/path (Exact)').""###
         );
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder_request(
                 responder.id,
                 get_request_create_params("/?query=value"),
             ).await),
-            @r###""Responder request path ('/') does not match responder path ('/path').""###
+            @r###""Responder request path ('/') does not match responder path ('/path (Exact)').""###
         );
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder_request(
                 responder.id,
                 get_request_create_params("/other-path"),
             ).await),
-            @r###""Responder request path ('/other-path') does not match responder path ('/path').""###
+            @r###""Responder request path ('/other-path') does not match responder path ('/path (Exact)').""###
         );
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder_request(
                 responder.id,
                 get_request_create_params("/other-path?query=value"),
             ).await),
-            @r###""Responder request path ('/other-path') does not match responder path ('/path').""###
+            @r###""Responder request path ('/other-path') does not match responder path ('/path (Exact)').""###
         );
 
         Ok(())
@@ -1202,7 +1545,11 @@ mod tests {
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: settings.clone(),
@@ -1211,7 +1558,11 @@ mod tests {
         let responder_two = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_two".to_string(),
-                path: "/two".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/two".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: settings.clone(),
@@ -1285,7 +1636,11 @@ mod tests {
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_one".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: settings.clone(),
@@ -1294,7 +1649,11 @@ mod tests {
         let responder_two = webhooks
             .create_responder(RespondersCreateParams {
                 name: "name_two".to_string(),
-                path: "/two".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/two".to_string(),
+                    subdomain: None,
+                },
                 method: ResponderMethod::Any,
                 enabled: false,
                 settings: settings.clone(),

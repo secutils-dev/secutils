@@ -1,12 +1,12 @@
-use crate::utils::webhooks::{ResponderMethod, ResponderSettings};
+use crate::utils::webhooks::{ResponderLocation, ResponderMethod, ResponderSettings};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RespondersUpdateParams {
     pub name: Option<String>,
-    /// Path of the responder.
-    pub path: Option<String>,
+    /// Location of the responder.
+    pub location: Option<ResponderLocation>,
     /// HTTP method of the responder.
     pub method: Option<ResponderMethod>,
     /// Whether the responder is enabled.
@@ -18,7 +18,8 @@ pub struct RespondersUpdateParams {
 #[cfg(test)]
 mod tests {
     use crate::utils::webhooks::{
-        api_ext::RespondersUpdateParams, ResponderMethod, ResponderSettings,
+        api_ext::RespondersUpdateParams, ResponderLocation, ResponderMethod, ResponderPathType,
+        ResponderSettings,
     };
 
     #[test]
@@ -28,7 +29,10 @@ mod tests {
                 r#"
 {
     "name": "res",
-    "path": "/",
+    "location": {
+        "path": "/",
+        "pathType": "="
+    },
     "method": "GET",
     "enabled": true,
     "settings": {
@@ -43,7 +47,11 @@ mod tests {
             )?,
             RespondersUpdateParams {
                 name: Some("res".to_string()),
-                path: Some("/".to_string()),
+                location: Some(ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None
+                }),
                 method: Some(ResponderMethod::Get),
                 enabled: Some(true),
                 settings: Some(ResponderSettings {
@@ -64,7 +72,11 @@ mod tests {
                 r#"
 {
     "name": "res",
-    "path": "/",
+    "location": {
+        "subdomain": "sub",
+        "path": "/path",
+        "pathType": "^"
+    },
     "method": "GET",
     "settings": {
         "requestsToTrack": 10,
@@ -78,7 +90,11 @@ mod tests {
             )?,
             RespondersUpdateParams {
                 name: Some("res".to_string()),
-                path: Some("/".to_string()),
+                location: Some(ResponderLocation {
+                    path_type: ResponderPathType::Prefix,
+                    path: "/path".to_string(),
+                    subdomain: Some("sub".to_string())
+                }),
                 method: Some(ResponderMethod::Get),
                 enabled: None,
                 settings: Some(ResponderSettings {
@@ -98,7 +114,10 @@ mod tests {
             serde_json::from_str::<RespondersUpdateParams>(
                 r#"
 {
-    "path": "/",
+    "location": {
+        "path": "/path",
+        "pathType": "="
+    },
     "method": "POST",
     "settings": {
         "requestsToTrack": 10,
@@ -112,7 +131,11 @@ mod tests {
             )?,
             RespondersUpdateParams {
                 name: None,
-                path: Some("/".to_string()),
+                location: Some(ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain: None
+                }),
                 method: Some(ResponderMethod::Post),
                 enabled: None,
                 settings: Some(ResponderSettings {
@@ -145,7 +168,7 @@ mod tests {
             )?,
             RespondersUpdateParams {
                 name: None,
-                path: None,
+                location: None,
                 method: Some(ResponderMethod::Get),
                 enabled: None,
                 settings: Some(ResponderSettings {
@@ -177,7 +200,7 @@ mod tests {
             )?,
             RespondersUpdateParams {
                 name: None,
-                path: None,
+                location: None,
                 method: None,
                 enabled: None,
                 settings: Some(ResponderSettings {
@@ -205,7 +228,7 @@ mod tests {
             )?,
             RespondersUpdateParams {
                 name: None,
-                path: None,
+                location: None,
                 method: None,
                 enabled: None,
                 settings: Some(ResponderSettings {
@@ -222,7 +245,7 @@ mod tests {
             serde_json::from_str::<RespondersUpdateParams>(r#"{}"#)?,
             RespondersUpdateParams {
                 name: None,
-                path: None,
+                location: None,
                 method: None,
                 enabled: None,
                 settings: None

@@ -1,12 +1,12 @@
-use crate::utils::webhooks::{ResponderMethod, ResponderSettings};
+use crate::utils::webhooks::{ResponderLocation, ResponderMethod, ResponderSettings};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RespondersCreateParams {
     pub name: String,
-    /// Path of the responder.
-    pub path: String,
+    /// Location of the responder.
+    pub location: ResponderLocation,
     /// HTTP method of the responder.
     pub method: ResponderMethod,
     /// Indicates whether the responder is enabled.
@@ -18,7 +18,8 @@ pub struct RespondersCreateParams {
 #[cfg(test)]
 mod tests {
     use crate::utils::webhooks::{
-        api_ext::RespondersCreateParams, ResponderMethod, ResponderSettings,
+        api_ext::RespondersCreateParams, ResponderLocation, ResponderMethod, ResponderPathType,
+        ResponderSettings,
     };
 
     #[test]
@@ -28,7 +29,10 @@ mod tests {
                 r#"
 {
     "name": "res",
-    "path": "/",
+    "location": {
+        "path": "/",
+        "pathType": "="
+    },
     "method": "GET",
     "enabled": true,
     "settings": {
@@ -43,7 +47,11 @@ mod tests {
             )?,
             RespondersCreateParams {
                 name: "res".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain: None
+                },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: ResponderSettings {
@@ -64,7 +72,11 @@ mod tests {
                 r#"
 {
     "name": "res",
-    "path": "/",
+    "location": {
+        "subdomain": "sub",
+        "path": "/path",
+        "pathType": "^"
+    },
     "method": "GET",
     "enabled": false,
     "settings": {
@@ -75,7 +87,11 @@ mod tests {
             )?,
             RespondersCreateParams {
                 name: "res".to_string(),
-                path: "/".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Prefix,
+                    path: "/path".to_string(),
+                    subdomain: Some("sub".to_string())
+                },
                 method: ResponderMethod::Get,
                 enabled: false,
                 settings: ResponderSettings {

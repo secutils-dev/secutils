@@ -27,33 +27,33 @@ use std::{str::FromStr, sync::Arc};
 #[cfg(test)]
 pub use self::app_state::tests;
 
-use crate::config::{Config, RawConfig};
+use crate::config::Config;
 pub use app_state::AppState;
 pub use ui_state::{Status, StatusLevel, SubscriptionState, UiState, WebhookUrlType};
 
 #[tokio::main]
-pub async fn run(raw_config: RawConfig) -> Result<(), anyhow::Error> {
+pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
     let datastore_dir = Directories::ensure_data_dir_exists()?;
     log::info!("Data is available at {}", datastore_dir.as_path().display());
     let search_index = SearchIndex::open_path(datastore_dir.join(format!(
         "search_index_v{}",
-        raw_config.components.search_index_version
+        config.components.search_index_version
     )))?;
 
     let db_url = format!(
         "postgres://{}@{}:{}/{}",
-        if let Some(ref password) = raw_config.db.password {
+        if let Some(ref password) = config.db.password {
             format!(
                 "{}:{}",
-                urlencoding::encode(&raw_config.db.username),
+                urlencoding::encode(&config.db.username),
                 urlencoding::encode(password)
             )
         } else {
-            raw_config.db.username.clone()
+            config.db.username.clone()
         },
-        raw_config.db.host,
-        raw_config.db.port,
-        urlencoding::encode(&raw_config.db.name)
+        config.db.host,
+        config.db.port,
+        urlencoding::encode(&config.db.name)
     );
     let database = Database::create(
         PgPoolOptions::new()
@@ -63,7 +63,7 @@ pub async fn run(raw_config: RawConfig) -> Result<(), anyhow::Error> {
     )
     .await?;
 
-    let email_transport = if let Some(ref smtp_config) = raw_config.smtp {
+    let email_transport = if let Some(ref smtp_config) = config.smtp {
         if let Some(ref catch_all_config) = smtp_config.catch_all {
             Mailbox::from_str(catch_all_config.recipient.as_str())
                 .with_context(|| "Cannot parse SMTP catch-all recipient.")?;
@@ -79,9 +79,6 @@ pub async fn run(raw_config: RawConfig) -> Result<(), anyhow::Error> {
         AsyncSmtpTransport::<Tokio1Executor>::unencrypted_localhost()
     };
 
-    let http_port = raw_config.port;
-
-    let config = Config::from(raw_config);
     let api = Arc::new(Api::new(
         config.clone(),
         database,
