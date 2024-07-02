@@ -70,11 +70,11 @@ ORDER BY created_at
         .transpose()
     }
 
-    /// Retrieves responder for the specified location and method.
+    /// Retrieves responder for the specified subdomain prefix, path and method.
     pub async fn find_responder(
         &self,
         user_id: UserId,
-        subdomain: Option<&str>,
+        subdomain_prefix: Option<&str>,
         path: &str,
         method: ResponderMethod,
     ) -> anyhow::Result<Option<Responder>> {
@@ -84,13 +84,13 @@ ORDER BY created_at
         let raw_location_exact = ResponderLocation {
             path_type: ResponderPathType::Exact,
             path: path.to_string(),
-            subdomain: subdomain.map(|s| s.to_string()),
+            subdomain_prefix: subdomain_prefix.map(|s| s.to_string()),
         }
         .to_string();
         let raw_location_prefix = ResponderLocation {
             path_type: ResponderPathType::Prefix,
             path: path.to_string(),
-            subdomain: subdomain.map(|s| s.to_string()),
+            subdomain_prefix: subdomain_prefix.map(|s| s.to_string()),
         }
         .to_string();
 
@@ -935,7 +935,7 @@ mod tests {
             .with_location(ResponderLocation {
                 path_type: ResponderPathType::Prefix,
                 path: "/a/b".to_string(),
-                subdomain: Some("sub".to_string()),
+                subdomain_prefix: Some("sub".to_string()),
             })
             .build(),
             MockResponderBuilder::create(
@@ -946,7 +946,7 @@ mod tests {
             .with_location(ResponderLocation {
                 path_type: ResponderPathType::Prefix,
                 path: "/a/b/c".to_string(),
-                subdomain: Some("sub".to_string()),
+                subdomain_prefix: Some("sub".to_string()),
             })
             .build(),
             MockResponderBuilder::create(
@@ -957,7 +957,7 @@ mod tests {
             .with_location(ResponderLocation {
                 path_type: ResponderPathType::Prefix,
                 path: "/a".to_string(),
-                subdomain: Some("sub".to_string()),
+                subdomain_prefix: Some("sub".to_string()),
             })
             .build(),
             MockResponderBuilder::create(
@@ -968,7 +968,7 @@ mod tests {
             .with_location(ResponderLocation {
                 path_type: ResponderPathType::Exact,
                 path: "/a/b/c/d".to_string(),
-                subdomain: Some("sub".to_string()),
+                subdomain_prefix: Some("sub".to_string()),
             })
             .build(),
         ];
@@ -1038,7 +1038,7 @@ mod tests {
             .with_location(ResponderLocation {
                 path_type: ResponderPathType::Exact,
                 path: "/a/b/c/d".to_string(),
-                subdomain: Some("sub".to_string()),
+                subdomain_prefix: Some("sub".to_string()),
             })
             .build(),
             MockResponderBuilder::create(
@@ -1049,7 +1049,7 @@ mod tests {
             .with_location(ResponderLocation {
                 path_type: ResponderPathType::Prefix,
                 path: "/".to_string(),
-                subdomain: Some("sub".to_string()),
+                subdomain_prefix: Some("sub".to_string()),
             })
             .build(),
         ];

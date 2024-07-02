@@ -98,7 +98,7 @@ mod tests {
           },
           "user": {
             "email": "dev-00000000-0000-0000-0000-000000000001@secutils.dev",
-            "handle": "dev-handle-00000000-0000-0000-0000-000000000001",
+            "handle": "devhandle00000000000000000000000000000001",
             "createdAt": 1262340000,
             "isActivated": false,
             "subscription": {
@@ -111,7 +111,7 @@ mod tests {
               "certificates": {},
               "webhooks": {
                 "responderRequests": 30,
-                "responderCustomSubdomains": true
+                "responderCustomSubdomainPrefix": true
               },
               "webScraping": {
                 "trackerRevisions": 30

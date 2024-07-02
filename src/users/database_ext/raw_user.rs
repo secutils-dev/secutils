@@ -73,7 +73,7 @@ mod tests {
         assert_debug_snapshot!(User::try_from(RawUser {
             id: uuid!("00000000-0000-0000-0000-000000000001"),
             email: Cow::Borrowed("dev@secutils.dev"),
-            handle: Cow::Borrowed("dev-handle"),
+            handle: Cow::Borrowed("devhandle"),
             // January 1, 2000 11:00:00
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             subscription_tier: SubscriptionTier::Ultimate as i32,
@@ -88,7 +88,7 @@ mod tests {
                 00000000-0000-0000-0000-000000000001,
             ),
             email: "dev@secutils.dev",
-            handle: "dev-handle",
+            handle: "devhandle",
             created_at: 2000-01-01 10:00:00.0 +00:00:00,
             is_activated: false,
             is_operator: false,
@@ -105,7 +105,7 @@ mod tests {
         assert_debug_snapshot!(User::try_from(RawUser {
             id: uuid!("00000000-0000-0000-0000-000000000001"),
             email: Cow::Borrowed("dev@secutils.dev"),
-            handle: Cow::Borrowed("dev-handle"),
+            handle: Cow::Borrowed("devhandle"),
             // January 1, 2000 11:00:00
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             subscription_tier: SubscriptionTier::Professional as i32,
@@ -120,7 +120,7 @@ mod tests {
                 00000000-0000-0000-0000-000000000001,
             ),
             email: "dev@secutils.dev",
-            handle: "dev-handle",
+            handle: "devhandle",
             created_at: 2000-01-01 10:00:00.0 +00:00:00,
             is_activated: false,
             is_operator: false,
@@ -150,7 +150,7 @@ mod tests {
                 &MockUserBuilder::new(
                     uuid!("00000000-0000-0000-0000-000000000001").into(),
                     "dev@secutils.dev".to_string(),
-                    "dev-handle".to_string(),
+                    "devhandle".to_string(),
                     OffsetDateTime::from_unix_timestamp(946720800)?,
                 )
                 .build()
@@ -158,7 +158,7 @@ mod tests {
             RawUser {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 email: Cow::Borrowed("dev@secutils.dev"),
-                handle: Cow::Borrowed("dev-handle"),
+                handle: Cow::Borrowed("devhandle"),
                 // January 1, 2000 11:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 subscription_tier: 100,
@@ -180,7 +180,7 @@ mod tests {
                 &MockUserBuilder::new(
                     uuid!("00000000-0000-0000-0000-000000000001").into(),
                     "dev@secutils.dev".to_string(),
-                    "dev-handle".to_string(),
+                    "devhandle".to_string(),
                     OffsetDateTime::from_unix_timestamp(946720800)?,
                 )
                 .set_subscription(UserSubscription {
@@ -195,7 +195,7 @@ mod tests {
             RawUser {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 email: Cow::Borrowed("dev@secutils.dev"),
-                handle: Cow::Borrowed("dev-handle"),
+                handle: Cow::Borrowed("devhandle"),
                 // January 1, 2000 11:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 subscription_tier: 20,
@@ -217,7 +217,7 @@ mod tests {
         assert!(User::try_from(RawUser {
             id: uuid!("00000000-0000-0000-0000-000000000001"),
             email: Cow::Borrowed("dev@secutils.dev"),
-            handle: Cow::Borrowed("dev-handle"),
+            handle: Cow::Borrowed("devhandle"),
             created_at: time::Date::MIN.midnight().assume_utc(),
             subscription_tier: -1,
             subscription_started_at: time::Date::MIN.midnight().assume_utc(),

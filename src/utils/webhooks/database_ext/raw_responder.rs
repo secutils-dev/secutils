@@ -94,7 +94,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None
+                    subdomain_prefix: None
                 },
                 method: ResponderMethod::Any,
                 enabled: true,
@@ -110,7 +110,7 @@ mod tests {
             RawResponder {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "res".to_string(),
-                location: "@:=:/".to_string(),
+                location: ":=:/".to_string(),
                 method: vec![0],
                 enabled: true,
                 settings: vec![0, 200, 1, 0, 0, 0],
@@ -126,7 +126,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Prefix,
                     path: "/path".to_string(),
-                    subdomain: Some("sub".to_string())
+                    subdomain_prefix: Some("sub".to_string())
                 },
                 method: ResponderMethod::Connect,
                 enabled: false,
@@ -165,7 +165,7 @@ mod tests {
             Responder::try_from(RawResponder {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "res".to_string(),
-                location: "@:=:/".to_string(),
+                location: ":=:/".to_string(),
                 method: vec![0],
                 enabled: true,
                 settings: vec![0, 200, 1, 0, 0, 0],
@@ -178,7 +178,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None
+                    subdomain_prefix: None
                 },
                 method: ResponderMethod::Any,
                 enabled: true,
@@ -215,7 +215,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Prefix,
                     path: "/path".to_string(),
-                    subdomain: Some("sub".to_string())
+                    subdomain_prefix: Some("sub".to_string())
                 },
                 method: ResponderMethod::Connect,
                 enabled: false,

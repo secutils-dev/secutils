@@ -45,14 +45,14 @@ pub async fn webhooks_responders(
     };
 
     // Extract user handle either from path or from the request headers.
-    let (user_handle, subdomain) = if let Some(user_handle) = &path_params.user_handle {
+    let (user_handle, subdomain_prefix) = if let Some(user_handle) = &path_params.user_handle {
         (user_handle.as_str(), None)
     } else {
         match parse_webhook_host(&state.config, &request_host) {
-            Ok((user_handle, subdomain)) => (user_handle, subdomain),
+            Ok((user_handle, subdomain_prefix)) => (user_handle, subdomain_prefix),
             Err(err) => {
                 log::error!(
-                    "Failed to extract user handle and subdomain from the request host ({:?}): {err:?}",
+                    "Failed to extract user handle and subdomain prefix from the request host ({:?}): {err:?}",
                     request_host
                 );
                 return Ok(HttpResponse::NotFound().finish());
@@ -120,14 +120,14 @@ pub async fn webhooks_responders(
     // Try to retrieve responder by the name.
     let webhooks = state.api.webhooks(&user);
     let responder = match webhooks
-        .find_responder(subdomain, &responder_path, responder_method)
+        .find_responder(subdomain_prefix, &responder_path, responder_method)
         .await
     {
         Ok(Some(responder)) => responder,
         Ok(None) => {
             log::error!(
                 user:serde = user.log_context();
-               "User doesn't have an HTTP responder ({} {subdomain:?} {responder_path}) configured.",
+               "User doesn't have an HTTP responder ({} {subdomain_prefix:?} {responder_path}) configured.",
                 request.method().as_str()
             );
             return Ok(HttpResponse::NotFound().finish());
@@ -135,7 +135,7 @@ pub async fn webhooks_responders(
         Err(err) => {
             log::error!(
                 user:serde = user.log_context();
-                "Failed to retrieve HTTP responder ({} {subdomain:?} {responder_path}): {err:?}.",
+                "Failed to retrieve HTTP responder ({} {subdomain_prefix:?} {responder_path}): {err:?}.",
                 request.method().as_str()
             );
             return Ok(HttpResponse::NotFound().finish());
@@ -146,7 +146,7 @@ pub async fn webhooks_responders(
         log::error!(
             user:serde = user.log_context(),
             util:serde = responder.log_context();
-             "User has an HTTP responder ({} {subdomain:?} {responder_path}) configured, but it is disabled.",
+             "User has an HTTP responder ({} {subdomain_prefix:?} {responder_path}) configured, but it is disabled.",
             request.method().as_str(),
         );
         return Ok(HttpResponse::NotFound().finish());
@@ -324,14 +324,14 @@ pub async fn webhooks_responders(
     })
 }
 
-/// Parses the host that webhook was access through to determine user handle and subdomain.
+/// Parses the host that webhook was access through to determine user handle and subdomain prefix.
 pub fn parse_webhook_host<'s>(
     config: &Config,
     webhook_host: &'s str,
 ) -> anyhow::Result<(&'s str, Option<&'s str>)> {
     let Some(public_host) = config.public_url.host_str() else {
         bail!(SecutilsError::client(
-            "Public URL doesn't have a host, cannot extract responder subdomain."
+            "Public URL doesn't have a host, cannot extract responder subdomain prefix."
         ));
     };
 
@@ -344,11 +344,11 @@ pub fn parse_webhook_host<'s>(
     };
 
     // Next separate user handle part from the rest of the subdomain, e.g.,:
-    // a.b.c.user-handle.secutils.dev -> (user-handle, Some("a.b.c"))
-    Ok(match webhook_subdomain.rsplit_once('.') {
+    // abc-user-handle.secutils.dev -> (user-handle, Some("abc"))
+    Ok(match webhook_subdomain.rsplit_once('-') {
         // No custom subdomain, just user handle.
         None => (webhook_subdomain, None),
-        Some((subdomain, user_handle)) => (user_handle, Some(subdomain)),
+        Some((subdomain_prefix, user_handle)) => (user_handle, Some(subdomain_prefix)),
     })
 }
 
@@ -389,7 +389,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/one/two".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
                 enabled: true,
@@ -404,12 +404,12 @@ mod tests {
             .await?;
 
         let request = TestRequest::with_uri(
-            "https://secutils.dev/api/webhooks/dev-handle-00000000-0000-0000-0000-000000000001/one/two?query=value",
+            "https://secutils.dev/api/webhooks/devhandle00000000000000000000000000000001/one/two?query=value",
         )
         .method(Method::PUT)
         .insert_header(("x-key", "x-value"))
         .insert_header(("x-key-2", "x-value-2"))
-        .param("user_handle", "dev-handle-00000000-0000-0000-0000-000000000001")
+        .param("user_handle", "devhandle00000000000000000000000000000001")
         .param("responder_path", "one/two")
         .to_http_request();
         let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
@@ -494,7 +494,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/one/two".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
                 enabled: true,
@@ -509,9 +509,9 @@ mod tests {
             .await?;
 
         let request =
-            TestRequest::with_uri("https://dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev/one/two?query=value")
+            TestRequest::with_uri("https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/one/two?query=value")
                 .insert_header(("x-replaced-path", "/one/two"))
-                .insert_header(("x-forwarded-host", "dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev"))
+                .insert_header(("x-forwarded-host", "devhandle00000000000000000000000000000001.webhooks.secutils.dev"))
                 .to_http_request();
         let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
             .await
@@ -568,7 +568,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
                 enabled: true,
@@ -583,12 +583,12 @@ mod tests {
             .await?;
 
         let request = TestRequest::with_uri(
-            "https://dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev",
+            "https://devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         )
         .insert_header(("x-replaced-path", "/"))
         .insert_header((
             "x-forwarded-host",
-            "dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev",
+            "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
         let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
@@ -642,7 +642,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/one/two".to_string(),
-                    subdomain: Some("a.b.c".to_string()),
+                    subdomain_prefix: Some("abc".to_string()),
                 },
                 method: ResponderMethod::Any,
                 enabled: true,
@@ -663,7 +663,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/one/two".to_string(),
-                    subdomain: Some("c.b.a".to_string()),
+                    subdomain_prefix: Some("cba".to_string()),
                 },
                 method: ResponderMethod::Any,
                 enabled: true,
@@ -678,9 +678,9 @@ mod tests {
             .await?;
 
         let request =
-            TestRequest::with_uri("https://a.b.c.dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev/one/two?query=value")
+            TestRequest::with_uri("https://abc-devhandle00000000000000000000000000000001.webhooks.secutils.dev/one/two?query=value")
                 .insert_header(("x-replaced-path", "/one/two"))
-                .insert_header(("x-forwarded-host", "a.b.c.dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev"))
+                .insert_header(("x-forwarded-host", "abc-devhandle00000000000000000000000000000001.webhooks.secutils.dev"))
                 .to_http_request();
         let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
             .await
@@ -716,9 +716,9 @@ mod tests {
         );
 
         let request =
-            TestRequest::with_uri("https://c.b.a.dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev/one/two?query=value-2")
+            TestRequest::with_uri("https://cba-devhandle00000000000000000000000000000001.webhooks.secutils.dev/one/two?query=value-2")
                 .insert_header(("x-replaced-path", "/one/two"))
-                .insert_header(("x-forwarded-host", "c.b.a.dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev"))
+                .insert_header(("x-forwarded-host", "cba-devhandle00000000000000000000000000000001.webhooks.secutils.dev"))
                 .to_http_request();
         let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
             .await
@@ -773,7 +773,7 @@ mod tests {
                     location: ResponderLocation {
                         path_type: ResponderPathType::Exact,
                         path: "/one/two".to_string(),
-                        subdomain: None
+                        subdomain_prefix: None
                     },
                     method: ResponderMethod::Any,
                     enabled: true,
@@ -791,9 +791,9 @@ mod tests {
             .await?;
 
         let request =
-            TestRequest::with_uri("https://dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev/one/two?query=some")
+            TestRequest::with_uri("https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/one/two?query=some")
                 .insert_header(("x-replaced-path", "/one/two"))
-                .insert_header(("x-forwarded-host", "dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev"))
+                .insert_header(("x-forwarded-host", "devhandle00000000000000000000000000000001.webhooks.secutils.dev"))
                 .peer_addr("127.0.0.1:8080".parse()?)
                 .to_http_request();
         let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
@@ -815,7 +815,7 @@ mod tests {
             Response HTTP/1.1 300 Multiple Choices
               headers:
                 "one": "two"
-              body: Sized(282)
+              body: Sized(276)
             ,
         }
         "###);
@@ -828,7 +828,7 @@ mod tests {
                 "method": "GET",
                 "headers": {
                     "x-replaced-path": "/one/two",
-                    "x-forwarded-host": "dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev",
+                    "x-forwarded-host": "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
                 },
                 "path": "/one/two",
                 "query": {
@@ -853,9 +853,9 @@ mod tests {
         pool: PgPool,
     ) -> anyhow::Result<()> {
         let request =
-            TestRequest::with_uri("https://dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev/one/two?query=value")
+            TestRequest::with_uri("https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/one/two?query=value")
                 .insert_header(("x-replaced-path", "/one/two"))
-                .insert_header(("x-forwarded-host", "dev-handle-00000000-0000-0000-0000-000000000001.webhooks.secutils.dev"))
+                .insert_header(("x-forwarded-host", "devhandle00000000000000000000000000000001.webhooks.secutils.dev"))
                 .to_http_request();
         let app_state = mock_app_state(pool).await?;
         let app_state = web::Data::new(app_state);
@@ -916,7 +916,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/one/two".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
                 enabled: false,
@@ -1013,18 +1013,15 @@ mod tests {
     #[tokio::test]
     async fn can_parse_webhook_hosts() -> anyhow::Result<()> {
         let test_cases = [
-            ("a.handle.webhooks.secutils.dev", ("handle", Some("a"))),
+            ("a-handle.webhooks.secutils.dev", ("handle", Some("a"))),
             (
-                "my-sub.handle.webhooks.secutils.dev",
+                "my-sub-handle.webhooks.secutils.dev",
                 ("handle", Some("my-sub")),
             ),
+            ("abc-handle.webhooks.secutils.dev", ("handle", Some("abc"))),
             (
-                "a.b.c.handle.webhooks.secutils.dev",
-                ("handle", Some("a.b.c")),
-            ),
-            (
-                "a1.b-d.com.handle.webhooks.secutils.dev",
-                ("handle", Some("a1.b-d.com")),
+                "a1-b-d-com-handle.webhooks.secutils.dev",
+                ("handle", Some("a1-b-d-com")),
             ),
             ("handle.webhooks.secutils.dev", ("handle", None)),
         ];

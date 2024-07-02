@@ -15,8 +15,8 @@ struct ClientSubscriptionCertificatesConfig<'sf> {
 struct ClientSubscriptionWebhooksConfig {
     /// The number of responders requests per responder that retained for a particular subscription.
     responder_requests: usize,
-    /// Indicates whether the subscription supports custom subdomains for responders.
-    responder_custom_subdomains: bool,
+    /// Indicates whether the subscription supports custom subdomain prefix for responders.
+    responder_custom_subdomain_prefix: bool,
 }
 
 #[derive(Serialize, Clone, PartialEq)]
@@ -60,7 +60,10 @@ impl<'sf> From<SubscriptionFeatures<'sf>> for ClientSubscriptionFeatures<'sf> {
             },
             webhooks: ClientSubscriptionWebhooksConfig {
                 responder_requests: value.config.webhooks.responder_requests,
-                responder_custom_subdomains: value.config.webhooks.responder_custom_subdomains,
+                responder_custom_subdomain_prefix: value
+                    .config
+                    .webhooks
+                    .responder_custom_subdomain_prefix,
             },
             web_scraping: ClientSubscriptionWebScrapingConfig {
                 tracker_revisions: value.config.web_scraping.tracker_revisions,
@@ -101,7 +104,7 @@ mod test {
             webhooks: SubscriptionWebhooksConfig {
                 responders: 1,
                 responder_requests: 11,
-                responder_custom_subdomains: false,
+                responder_custom_subdomain_prefix: false,
                 js_runtime_heap_size: 2,
                 js_runtime_script_execution_time: Duration::from_secs(3),
             },
@@ -153,7 +156,7 @@ mod test {
           "certificates": {},
           "webhooks": {
             "responderRequests": 30,
-            "responderCustomSubdomains": true
+            "responderCustomSubdomainPrefix": true
           },
           "webScraping": {
             "trackerRevisions": 30
@@ -183,7 +186,7 @@ mod test {
           },
           "webhooks": {
             "responderRequests": 11,
-            "responderCustomSubdomains": false
+            "responderCustomSubdomainPrefix": false
           },
           "webScraping": {
             "trackerRevisions": 11,
@@ -213,7 +216,7 @@ mod test {
           "certificates": {},
           "webhooks": {
             "responderRequests": 30,
-            "responderCustomSubdomains": true
+            "responderCustomSubdomainPrefix": true
           },
           "webScraping": {
             "trackerRevisions": 30

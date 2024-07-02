@@ -315,7 +315,7 @@ mod tests {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 100,
                         responder_requests: 30,
-                        responder_custom_subdomains: true,
+                        responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 10485760,
                         js_runtime_script_execution_time: 30s,
                     },
@@ -339,7 +339,7 @@ mod tests {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 100,
                         responder_requests: 30,
-                        responder_custom_subdomains: true,
+                        responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 10485760,
                         js_runtime_script_execution_time: 30s,
                     },
@@ -363,7 +363,7 @@ mod tests {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 100,
                         responder_requests: 30,
-                        responder_custom_subdomains: true,
+                        responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 10485760,
                         js_runtime_script_execution_time: 30s,
                     },
@@ -387,7 +387,7 @@ mod tests {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 100,
                         responder_requests: 30,
-                        responder_custom_subdomains: true,
+                        responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 10485760,
                         js_runtime_script_execution_time: 30s,
                     },

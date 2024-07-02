@@ -248,7 +248,7 @@ mod tests {
         Ok(MockUserBuilder::new(
             id,
             &format!("dev-{}@secutils.dev", *id),
-            &format!("dev-handle-{}", *id),
+            &format!("devhandle{}", *id.as_simple()),
             // January 1, 2010 11:00:00
             OffsetDateTime::from_unix_timestamp(1262340000)?,
         )
