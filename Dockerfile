@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.2
 
-FROM --platform=$BUILDPLATFORM rust:1.78-slim-bookworm as SERVER_BUILDER
+FROM --platform=$BUILDPLATFORM rust:1.78-slim-bookworm AS server_builder
 ARG TARGETPLATFORM
 
 ## Statically link binary to OpenSSL libraries.
@@ -47,8 +47,8 @@ ENV APP_USER=secutils
 ENV APP_USER_UID=1001
 
 WORKDIR /app
-COPY --from=SERVER_BUILDER ["/app/secutils", "./"]
-COPY --from=SERVER_BUILDER ["/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs/"]
+COPY --from=server_builder ["/app/secutils", "./"]
+COPY --from=server_builder ["/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs/"]
 
 # Configure group and user.
 RUN addgroup --system --gid $APP_USER_UID $APP_USER \
