@@ -107,7 +107,7 @@ pub mod tests {
                     location: ResponderLocation {
                         path_type: ResponderPathType::Exact,
                         path: path.to_string(),
-                        subdomain: None,
+                        subdomain_prefix: None,
                     },
                     method: ResponderMethod::Any,
                     enabled: true,
@@ -166,7 +166,7 @@ pub mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
@@ -185,7 +185,7 @@ pub mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Get,
                 enabled: false,
@@ -234,7 +234,7 @@ pub mod tests {
                 "location": {
                     "pathType": "^",
                     "path": "/",
-                    "subdomain": "sub"
+                    "subdomainPrefix": "sub"
                 },
                 "method": "GET",
                 "enabled": true,
@@ -262,7 +262,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"location\":{\"pathType\":\"^\",\"path\":\"/\",\"subdomain\":\"sub\"},\"method\":\"GET\",\"enabled\":true,\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]}""###
+                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"location\":{\"pathType\":\"^\",\"path\":\"/\",\"subdomainPrefix\":\"sub\"},\"method\":\"GET\",\"enabled\":true,\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]}""###
             );
         });
 
@@ -282,7 +282,7 @@ pub mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
@@ -308,7 +308,7 @@ pub mod tests {
                 "location": {
                     "pathType": "^",
                     "path": "/path",
-                    "subdomain": "sub"
+                    "subdomainPrefix": "sub"
                 },
                 "method": "GET",
                 "enabled": false,
@@ -334,7 +334,7 @@ pub mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Prefix,
                     path: "/path".to_string(),
-                    subdomain: Some("sub".to_string()),
+                    subdomain_prefix: Some("sub".to_string()),
                 },
                 method: ResponderMethod::Get,
                 enabled: false,
@@ -365,7 +365,7 @@ pub mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
@@ -412,7 +412,7 @@ pub mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
@@ -500,7 +500,7 @@ pub mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Get,
                 enabled: true,

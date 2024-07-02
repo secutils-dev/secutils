@@ -375,7 +375,7 @@ mod tests {
             MockUserBuilder::new(
                 uuid!("00000000-0000-0000-0000-000000000001").into(),
                 "dev@secutils.dev",
-                "dev-handle",
+                "devhandle",
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             )
@@ -428,7 +428,7 @@ mod tests {
                 00000000-0000-0000-0000-000000000001,
             ),
             email: "dev@secutils.dev",
-            handle: "dev-handle",
+            handle: "devhandle",
             created_at: 2000-01-01 10:00:00.0 +00:00:00,
             is_activated: false,
             is_operator: false,
@@ -513,7 +513,7 @@ mod tests {
         let user = MockUserBuilder::new(
             uuid!("00000000-0000-0000-0000-000000000001").into(),
             "DeV@secutils.dev",
-            "DeV-handle",
+            "DeVhandle",
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
@@ -536,7 +536,7 @@ mod tests {
                     00000000-0000-0000-0000-000000000001,
                 ),
                 email: "DeV@secutils.dev",
-                handle: "DeV-handle",
+                handle: "DeVhandle",
                 created_at: 2000-01-01 10:00:00.0 +00:00:00,
                 is_activated: false,
                 is_operator: false,
@@ -567,7 +567,7 @@ mod tests {
         let user = MockUserBuilder::new(
             uuid!("00000000-0000-0000-0000-000000000001").into(),
             "DeV@secutils.dev",
-            "DeV-handle",
+            "DeVhandle",
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
@@ -583,14 +583,14 @@ mod tests {
         let db = Database::create(pool).await?;
         db.upsert_user(&user).await?;
 
-        assert_debug_snapshot!(db.get_user_by_handle("dev-handle").await?,  @r###"
+        assert_debug_snapshot!(db.get_user_by_handle("devhandle").await?,  @r###"
         Some(
             User {
                 id: UserId(
                     00000000-0000-0000-0000-000000000001,
                 ),
                 email: "DeV@secutils.dev",
-                handle: "DeV-handle",
+                handle: "DeVhandle",
                 created_at: 2000-01-01 10:00:00.0 +00:00:00,
                 is_activated: false,
                 is_operator: false,
@@ -605,11 +605,11 @@ mod tests {
         )
         "###);
         assert_eq!(
-            db.get_user_by_handle("DEV-handle").await?.unwrap().id,
+            db.get_user_by_handle("DEVhandle").await?.unwrap().id,
             user.id
         );
         assert_eq!(
-            db.get_user_by_handle("DeV-handle").await?.unwrap().id,
+            db.get_user_by_handle("DeVhandle").await?.unwrap().id,
             user.id
         );
 
@@ -623,7 +623,7 @@ mod tests {
         let user = MockUserBuilder::new(
             uuid!("00000000-0000-0000-0000-000000000001").into(),
             "dev@secutils.dev",
-            "dev-handle",
+            "devhandle",
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
@@ -637,7 +637,7 @@ mod tests {
                     00000000-0000-0000-0000-000000000001,
                 ),
                 email: "dev@secutils.dev",
-                handle: "dev-handle",
+                handle: "devhandle",
                 created_at: 2000-01-01 10:00:00.0 +00:00:00,
                 is_activated: false,
                 is_operator: false,
@@ -657,7 +657,7 @@ mod tests {
                 &MockUserBuilder::new(
                     uuid!("00000000-0000-0000-0000-000000000100").into(),
                     "DEV@secutils.dev",
-                    "DEV-handle",
+                    "DEVhandle",
                     // January 1, 2000 11:00:00
                     OffsetDateTime::from_unix_timestamp(1262340000)?,
                 )
@@ -684,7 +684,7 @@ mod tests {
             &MockUserBuilder::new(
                 uuid!("00000000-0000-0000-0000-000000000001").into(),
                 "dev@secutils.dev",
-                "dev-handle",
+                "devhandle",
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(946720800)?,
             )
@@ -699,7 +699,7 @@ mod tests {
                     00000000-0000-0000-0000-000000000001,
                 ),
                 email: "dev@secutils.dev",
-                handle: "dev-handle",
+                handle: "devhandle",
                 created_at: 2000-01-01 10:00:00.0 +00:00:00,
                 is_activated: false,
                 is_operator: false,
@@ -718,7 +718,7 @@ mod tests {
             &MockUserBuilder::new(
                 uuid!("00000000-0000-0000-0000-000000000001").into(),
                 "DEV@secutils.dev",
-                "DEV-handle",
+                "DEVhandle",
                 // January 1, 2000 11:00:00
                 OffsetDateTime::from_unix_timestamp(1262340000)?,
             )
@@ -739,7 +739,7 @@ mod tests {
                     00000000-0000-0000-0000-000000000001,
                 ),
                 email: "DEV@secutils.dev",
-                handle: "DEV-handle",
+                handle: "DEVhandle",
                 created_at: 2010-01-01 10:00:00.0 +00:00:00,
                 is_activated: false,
                 is_operator: false,
@@ -771,7 +771,7 @@ mod tests {
         let user_dev = MockUserBuilder::new(
             UserId::new(),
             "dev@secutils.dev",
-            "dev-handle",
+            "devhandle",
             // January 1, 2000 11:00:00
             OffsetDateTime::from_unix_timestamp(946720800)?,
         )
@@ -828,7 +828,7 @@ mod tests {
         let user = MockUserBuilder::new(
             uuid!("00000000-0000-0000-0000-000000000001").into(),
             "dev@secutils.dev",
-            "dev-handle",
+            "devhandle",
             OffsetDateTime::now_utc(),
         )
         .set_is_activated()

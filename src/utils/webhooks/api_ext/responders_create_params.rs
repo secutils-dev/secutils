@@ -50,7 +50,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None
+                    subdomain_prefix: None
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
@@ -73,7 +73,7 @@ mod tests {
 {
     "name": "res",
     "location": {
-        "subdomain": "sub",
+        "subdomainPrefix": "sub",
         "path": "/path",
         "pathType": "^"
     },
@@ -90,7 +90,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Prefix,
                     path: "/path".to_string(),
-                    subdomain: Some("sub".to_string())
+                    subdomain_prefix: Some("sub".to_string())
                 },
                 method: ResponderMethod::Get,
                 enabled: false,

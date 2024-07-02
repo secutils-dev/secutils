@@ -6,6 +6,7 @@ use crate::{
     api::Api,
     error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
+    security::USER_HANDLE_LENGTH_BYTES,
     users::User,
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
@@ -44,18 +45,18 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
         self.api.db.webhooks().get_responder(self.user.id, id).await
     }
 
-    /// Returns responder for specified path and method, if any.
+    /// Returns responder for specified subdomain prefix, path and method, if any.
     pub async fn find_responder(
         &self,
-        subdomain: Option<&str>,
+        subdomain_prefix: Option<&str>,
         path: &str,
         method: ResponderMethod,
     ) -> anyhow::Result<Option<Responder>> {
-        if subdomain.is_some() {
+        if subdomain_prefix.is_some() {
             let features = self.user.subscription.get_features(&self.api.config);
-            if !features.config.webhooks.responder_custom_subdomains {
+            if !features.config.webhooks.responder_custom_subdomain_prefix {
                 bail!(SecutilsError::client(
-                    "Responder subdomains are not allowed."
+                    "Responder subdomain prefixes are not allowed."
                 ));
             }
         }
@@ -63,7 +64,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
         self.api
             .db
             .webhooks()
-            .find_responder(self.user.id, subdomain, path, method)
+            .find_responder(self.user.id, subdomain_prefix, path, method)
             .await
     }
 
@@ -263,22 +264,22 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
         }
 
         let features = self.user.subscription.get_features(&self.api.config);
-        if let Some(ref subdomain) = responder.location.subdomain {
-            if !features.config.webhooks.responder_custom_subdomains {
+        if let Some(ref subdomain_prefix) = responder.location.subdomain_prefix {
+            if !features.config.webhooks.responder_custom_subdomain_prefix {
                 bail!(SecutilsError::client(
-                    "Responder subdomains are not allowed."
+                    "Responder subdomain prefixes are not allowed."
                 ));
             }
 
             let Some(public_host) = self.api.config.public_url.host_str() else {
                 bail!(SecutilsError::client(
-                    "Public URL doesn't have a host, cannot validate responder subdomain."
+                    "Public URL doesn't have a host, cannot validate responder subdomain prefix."
                 ));
             };
 
-            if !self.is_valid_webhooks_subdomain(public_host, subdomain) {
+            if !self.is_valid_webhooks_subdomain_prefix(public_host, subdomain_prefix) {
                 bail!(SecutilsError::client(format!(
-                    "Responder subdomain ('{subdomain}') is not valid."
+                    "Responder subdomain prefix ('{subdomain_prefix}') is not valid."
                 )));
             }
         }
@@ -335,10 +336,22 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
         Ok(())
     }
 
-    fn is_valid_webhooks_subdomain(&self, public_host: &str, subdomain: &str) -> bool {
-        // Add a bit of padding in case public_hostname changes length significantly in the
-        // future making subdomain length invalid.
-        let webhooks_host = format!("{subdomain}.safety-padding.webhooks.{public_host}");
+    fn is_valid_webhooks_subdomain_prefix(
+        &self,
+        public_host: &str,
+        subdomain_prefix: &str,
+    ) -> bool {
+        // Subdomain prefix should not contain dots to not add nested DNS labels.
+        if subdomain_prefix.contains('.') {
+            return false;
+        }
+
+        let webhooks_host = format!(
+            "{subdomain_prefix}-{}.webhooks.{public_host}",
+            // Add a bit of padding in case public_hostname changes length significantly in the
+            // future making subdomain length invalid.
+            "a".repeat(USER_HANDLE_LENGTH_BYTES + 10),
+        );
 
         // First, check if it's a valid subdomain in general.
         if addr::parse_domain_name(&webhooks_host).is_err() {
@@ -402,7 +415,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
                 enabled: true,
@@ -450,7 +463,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None
+                    subdomain_prefix: None
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
@@ -466,7 +479,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None
+                    subdomain_prefix: None
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
@@ -482,7 +495,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "".to_string(),
-                    subdomain: None
+                    subdomain_prefix: None
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
@@ -498,7 +511,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/a".repeat(51),
-                    subdomain: None
+                    subdomain_prefix: None
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
@@ -514,7 +527,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "path".to_string(),
-                    subdomain: None
+                    subdomain_prefix: None
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
@@ -530,7 +543,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path/".to_string(),
-                    subdomain: None
+                    subdomain_prefix: None
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
@@ -539,68 +552,68 @@ mod tests {
             @r###""Responder location paths must begin with '/' and should not end with '/'.""###
         );
 
-        // Empty subdomain.
+        // Empty subdomain prefix.
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path".to_string(),
-                    subdomain: Some("".to_string())
+                    subdomain_prefix: Some("".to_string())
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: settings.clone()
             }).await),
-            @r###""Responder subdomain ('') is not valid.""###
+            @r###""Responder subdomain prefix ('') is not valid.""###
         );
 
-        // Empty subdomain labels.
+        // Subdomain prefix with dots.
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path".to_string(),
-                    subdomain: Some("sub..sub".to_string())
+                    subdomain_prefix: Some("sub.sub".to_string())
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: settings.clone()
             }).await),
-            @r###""Responder subdomain ('sub..sub') is not valid.""###
+            @r###""Responder subdomain prefix ('sub.sub') is not valid.""###
         );
 
-        // Invalid subdomain.
+        // Invalid subdomain prefix.
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path".to_string(),
-                    subdomain: Some("сабдомейн".to_string())
+                    subdomain_prefix: Some("сабдомейн".to_string())
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: settings.clone()
             }).await),
-            @r###""Responder subdomain ('сабдомейн') is not valid.""###
+            @r###""Responder subdomain prefix ('сабдомейн') is not valid.""###
         );
 
-        // Long subdomain.
+        // Long subdomain prefix.
         assert_debug_snapshot!(
             create_and_fail(webhooks.create_responder(RespondersCreateParams {
                 name: "some-name".to_string(),
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path".to_string(),
-                    subdomain: Some("s".repeat(201))
+                    subdomain_prefix: Some("s".repeat(201))
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: settings.clone()
             }).await),
-            @r###""Responder subdomain ('sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss') is not valid.""###
+            @r###""Responder subdomain prefix ('sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss') is not valid.""###
         );
 
         // Invalid status code
@@ -610,7 +623,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path".to_string(),
-                    subdomain: None
+                    subdomain_prefix: None
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
@@ -629,7 +642,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path".to_string(),
-                    subdomain: None
+                    subdomain_prefix: None
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
@@ -648,7 +661,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path".to_string(),
-                    subdomain: None
+                    subdomain_prefix: None
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
@@ -667,7 +680,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path".to_string(),
-                    subdomain: None
+                    subdomain_prefix: None
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
@@ -695,7 +708,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
                 enabled: true,
@@ -765,7 +778,7 @@ mod tests {
                     location: Some(ResponderLocation {
                         path_type: ResponderPathType::Exact,
                         path: "/path".to_string(),
-                        subdomain: None,
+                        subdomain_prefix: None,
                     }),
                     method: None,
                     enabled: None,
@@ -778,7 +791,7 @@ mod tests {
             location: ResponderLocation {
                 path_type: ResponderPathType::Exact,
                 path: "/path".to_string(),
-                subdomain: None,
+                subdomain_prefix: None,
             },
             enabled: false,
             ..responder.clone()
@@ -789,7 +802,7 @@ mod tests {
             webhooks.get_responder(responder.id).await?.unwrap()
         );
 
-        // Update subdomain.
+        // Update subdomain prefix.
         let updated_responder = webhooks
             .update_responder(
                 responder.id,
@@ -798,7 +811,7 @@ mod tests {
                     location: Some(ResponderLocation {
                         path_type: ResponderPathType::Prefix,
                         path: "/path".to_string(),
-                        subdomain: Some("sub".to_string()),
+                        subdomain_prefix: Some("sub".to_string()),
                     }),
                     method: None,
                     enabled: None,
@@ -811,7 +824,7 @@ mod tests {
             location: ResponderLocation {
                 path_type: ResponderPathType::Prefix,
                 path: "/path".to_string(),
-                subdomain: Some("sub".to_string()),
+                subdomain_prefix: Some("sub".to_string()),
             },
             enabled: false,
             ..responder.clone()
@@ -840,7 +853,7 @@ mod tests {
             location: ResponderLocation {
                 path_type: ResponderPathType::Prefix,
                 path: "/path".to_string(),
-                subdomain: Some("sub".to_string()),
+                subdomain_prefix: Some("sub".to_string()),
             },
             method: ResponderMethod::Post,
             enabled: false,
@@ -876,7 +889,7 @@ mod tests {
             location: ResponderLocation {
                 path_type: ResponderPathType::Prefix,
                 path: "/path".to_string(),
-                subdomain: Some("sub".to_string()),
+                subdomain_prefix: Some("sub".to_string()),
             },
             method: ResponderMethod::Post,
             enabled: false,
@@ -918,7 +931,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
                 enabled: true,
@@ -1004,7 +1017,7 @@ mod tests {
                 location: Some(ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "".to_string(),
-                    subdomain: None
+                    subdomain_prefix: None
                 }),
                 method: None,
                 enabled: None,
@@ -1020,7 +1033,7 @@ mod tests {
                 location: Some(ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/a".repeat(51),
-                    subdomain: None
+                    subdomain_prefix: None
                 }),
                 method: None,
                 enabled: None,
@@ -1036,7 +1049,7 @@ mod tests {
                 location: Some(ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "path".to_string(),
-                    subdomain: None
+                    subdomain_prefix: None
                 }),
                 method: None,
                 enabled: None,
@@ -1052,7 +1065,7 @@ mod tests {
                 location: Some(ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path/".to_string(),
-                    subdomain: None
+                    subdomain_prefix: None
                 }),
                 method: None,
                 enabled: None,
@@ -1061,68 +1074,68 @@ mod tests {
             @r###""Responder location paths must begin with '/' and should not end with '/'.""###
         );
 
-        // Empty subdomain.
+        // Empty subdomain prefix.
         assert_debug_snapshot!(
              update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
                 location: Some(ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path".to_string(),
-                    subdomain: Some("".to_string())
+                    subdomain_prefix: Some("".to_string())
                 }),
                 method: None,
                 enabled: None,
                 settings: None
             }).await),
-            @r###""Responder subdomain ('') is not valid.""###
+            @r###""Responder subdomain prefix ('') is not valid.""###
         );
 
-        // Empty subdomain labels.
+        // Subdomain prefix with dots.
         assert_debug_snapshot!(
              update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
                 location: Some(ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path".to_string(),
-                    subdomain: Some("sub..sub".to_string())
+                    subdomain_prefix: Some("sub.sub".to_string())
                 }),
                 method: None,
                 enabled: None,
                 settings: None
             }).await),
-            @r###""Responder subdomain ('sub..sub') is not valid.""###
+            @r###""Responder subdomain prefix ('sub.sub') is not valid.""###
         );
 
-        // Invalid subdomain.
+        // Invalid subdomain prefix.
         assert_debug_snapshot!(
              update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
                 location: Some(ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path".to_string(),
-                    subdomain: Some("сабдомейн".to_string())
+                    subdomain_prefix: Some("сабдомейн".to_string())
                 }),
                 method: None,
                 enabled: None,
                 settings: None
             }).await),
-            @r###""Responder subdomain ('сабдомейн') is not valid.""###
+            @r###""Responder subdomain prefix ('сабдомейн') is not valid.""###
         );
 
-        // Long subdomain.
+        // Long subdomain prefix.
         assert_debug_snapshot!(
              update_and_fail(webhooks.update_responder(responder.id, RespondersUpdateParams {
                 name: None,
                 location: Some(ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path".to_string(),
-                    subdomain: Some("s".repeat(201))
+                    subdomain_prefix: Some("s".repeat(201))
                 }),
                 method: None,
                 enabled: None,
                 settings: None
             }).await),
-            @r###""Responder subdomain ('sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss') is not valid.""###
+            @r###""Responder subdomain prefix ('sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss') is not valid.""###
         );
 
         // Invalid status code
@@ -1210,7 +1223,7 @@ mod tests {
                     location: ResponderLocation {
                         path_type: ResponderPathType::Exact,
                         path: "/".to_string(),
-                        subdomain: None,
+                        subdomain_prefix: None,
                     },
                     method: ResponderMethod::Any,
                     enabled: true,
@@ -1223,7 +1236,7 @@ mod tests {
                     location: ResponderLocation {
                         path_type: ResponderPathType::Prefix,
                         path: "/path".to_string(),
-                        subdomain: Some("sub".to_string()),
+                        subdomain_prefix: Some("sub".to_string()),
                     },
                     method: ResponderMethod::Post,
                     enabled: true,
@@ -1290,7 +1303,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
                 enabled: true,
@@ -1303,7 +1316,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
@@ -1347,7 +1360,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
                 enabled: true,
@@ -1364,7 +1377,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
                 enabled: false,
@@ -1400,7 +1413,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
                 enabled: true,
@@ -1413,7 +1426,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/two".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
                 enabled: false,
@@ -1481,7 +1494,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
                 enabled: true,
@@ -1548,7 +1561,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
                 enabled: true,
@@ -1561,7 +1574,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/two".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
                 enabled: true,
@@ -1639,7 +1652,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
                 enabled: true,
@@ -1652,7 +1665,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/two".to_string(),
-                    subdomain: None,
+                    subdomain_prefix: None,
                 },
                 method: ResponderMethod::Any,
                 enabled: false,

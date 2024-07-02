@@ -12,9 +12,10 @@ pub struct ResponderLocation {
     pub path_type: ResponderPathType,
     /// Responder location path.
     pub path: String,
-    /// Optional subdomain to match. If not specified, root domain is used.
+    /// Optional subdomain prefix for a responder location (prefix-<user-handle>). If not specified
+    /// subdomain based on the user handle is used.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub subdomain: Option<String>,
+    pub subdomain_prefix: Option<String>,
 }
 
 impl Display for ResponderLocation {
@@ -22,9 +23,9 @@ impl Display for ResponderLocation {
         write!(
             f,
             "{}:{}:{}",
-            self.subdomain
+            self.subdomain_prefix
                 .as_deref()
-                .unwrap_or("@")
+                .unwrap_or("")
                 .to_ascii_lowercase(),
             self.path_type,
             self.path.to_ascii_lowercase()
@@ -34,7 +35,7 @@ impl Display for ResponderLocation {
 
 impl Debug for ResponderLocation {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        match self.subdomain {
+        match self.subdomain_prefix {
             Some(ref subdomain) => write!(
                 f,
                 "{} ({}, {:?})",
@@ -60,9 +61,9 @@ impl FromStr for ResponderLocation {
         if parts.len() == 3 {
             if let Ok(path_type) = parts[1].parse() {
                 return Ok(ResponderLocation {
-                    subdomain: match parts[0] {
-                        "@" => None,
-                        subdomain => Some(subdomain.to_ascii_lowercase()),
+                    subdomain_prefix: match parts[0] {
+                        "" => None,
+                        subdomain_prefix => Some(subdomain_prefix.to_ascii_lowercase()),
                     },
                     path_type,
                     path: parts[2].to_ascii_lowercase(),
@@ -83,7 +84,7 @@ mod tests {
         let location = ResponderLocation {
             path_type: ResponderPathType::Exact,
             path: "/pAth".to_string(),
-            subdomain: None,
+            subdomain_prefix: None,
         };
         assert_json_snapshot!(location, @r###"
         {
@@ -91,18 +92,18 @@ mod tests {
           "path": "/pAth"
         }
         "###);
-        assert_eq!(location.to_string(), "@:=:/path");
+        assert_eq!(location.to_string(), ":=:/path");
 
         let location = ResponderLocation {
             path_type: ResponderPathType::Prefix,
             path: "/paTh".to_string(),
-            subdomain: Some("mY.domAiN".to_string()),
+            subdomain_prefix: Some("mY.domAiN".to_string()),
         };
         assert_json_snapshot!(location, @r###"
         {
           "pathType": "^",
           "path": "/paTh",
-          "subdomain": "mY.domAiN"
+          "subdomainPrefix": "mY.domAiN"
         }
         "###);
         assert_eq!(location.to_string(), "my.domain:^:/path");
@@ -124,15 +125,15 @@ mod tests {
             ResponderLocation {
                 path_type: ResponderPathType::Exact,
                 path: "/pAth".to_string(),
-                subdomain: None,
+                subdomain_prefix: None,
             }
         );
         assert_eq!(
-            "@:=:/pAth".parse::<ResponderLocation>()?,
+            ":=:/pAth".parse::<ResponderLocation>()?,
             ResponderLocation {
                 path_type: ResponderPathType::Exact,
                 path: "/path".to_string(),
-                subdomain: None,
+                subdomain_prefix: None,
             }
         );
 
@@ -142,14 +143,14 @@ mod tests {
         {
           "pathType": "^",
           "path": "/paTh",
-          "subdomain": "mY.domain"
+          "subdomainPrefix": "mY.domain"
         }
         "#
             )?,
             ResponderLocation {
                 path_type: ResponderPathType::Prefix,
                 path: "/paTh".to_string(),
-                subdomain: Some("mY.domain".to_string()),
+                subdomain_prefix: Some("mY.domain".to_string()),
             }
         );
         assert_eq!(
@@ -157,7 +158,7 @@ mod tests {
             ResponderLocation {
                 path_type: ResponderPathType::Prefix,
                 path: "/path".to_string(),
-                subdomain: Some("my.domain".to_string()),
+                subdomain_prefix: Some("my.domain".to_string()),
             }
         );
 

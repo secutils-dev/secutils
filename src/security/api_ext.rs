@@ -18,7 +18,7 @@ use rand_core::{OsRng, RngCore};
 use reqwest::StatusCode;
 use uuid::Uuid;
 
-const USER_HANDLE_LENGTH_BYTES: usize = 8;
+pub const USER_HANDLE_LENGTH_BYTES: usize = 8;
 
 /// Secutils.dev security controller.
 pub struct SecurityApiExt<'a, DR: DnsResolver, ET: EmailTransport> {

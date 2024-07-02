@@ -40,7 +40,7 @@ mod tests {
             location: ResponderLocation {
                 path_type: ResponderPathType::Exact,
                 path: "/path".to_string(),
-                subdomain: None
+                subdomain_prefix: None
             },
             method: ResponderMethod::Post,
             enabled: true,
@@ -117,7 +117,7 @@ mod tests {
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
                     path: "/path".to_string(),
-                    subdomain: None
+                    subdomain_prefix: None
                 },
                 method: ResponderMethod::Post,
                 enabled: true,
