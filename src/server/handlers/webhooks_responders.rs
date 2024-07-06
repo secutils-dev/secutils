@@ -176,7 +176,7 @@ pub async fn webhooks_responders(
                 url: Cow::Owned(if let Some(query) = request.uri().query() {
                     format!("{responder_path}?{query}")
                 } else {
-                    responder_path
+                    responder_path.to_string()
                 }),
                 body: if payload.is_empty() {
                     None
@@ -209,7 +209,7 @@ pub async fn webhooks_responders(
                     .iter()
                     .map(|(name, value)| (name.as_str(), value.to_str().unwrap_or_default()))
                     .collect(),
-                path: request.path(),
+                path: responder_path.as_str(),
                 query: query
                     .iter()
                     .map(|(k, v)| (k.as_str(), v.as_str()))
