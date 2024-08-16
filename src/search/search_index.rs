@@ -32,7 +32,7 @@ fn entity_to_document(
     }
 
     doc.add_text(schema_fields.label, &entity.label);
-    doc.add_text(schema_fields.label_ngram, &entity.label.to_lowercase());
+    doc.add_text(schema_fields.label_ngram, entity.label.to_lowercase());
     doc.add_text(schema_fields.category, &entity.category);
     if let Some(ref keywords) = entity.keywords {
         doc.add_text(schema_fields.keywords, keywords);

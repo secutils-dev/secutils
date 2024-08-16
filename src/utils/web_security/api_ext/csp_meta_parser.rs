@@ -9,6 +9,7 @@ use html5ever::{
     },
     LocalName, QualName,
 };
+use std::cell::Cell;
 
 /// Parses content security policies from a `<meta>` HTML tags.
 pub struct CspMetaParser;
@@ -23,22 +24,22 @@ impl CspMetaParser {
             .try_reinterpret::<fmt::UTF8>()
             .map_err(|_| anyhow!("HTML content isn't a valid UTF-8 text."))?;
 
-        let mut input = BufferQueue::default();
+        let input = BufferQueue::default();
         input.push_back(utf8_chunk);
 
         // Start tokenizing and collect CSP `<meta>` tags.
         let mut sink = CspMetaTokenSink::new();
-        let mut tokenizer = Tokenizer::new(&mut sink, TokenizerOpts::default());
-        let _ = tokenizer.feed(&mut input);
+        let tokenizer = Tokenizer::new(&mut sink, TokenizerOpts::default());
+        let _ = tokenizer.feed(&input);
         tokenizer.end();
 
-        Ok(sink.csp_values)
+        Ok(sink.csp_values.take())
     }
 }
 
 /// Serves as a sink for the tokenizer that parses HTML.
 struct CspMetaTokenSink {
-    csp_values: Vec<String>,
+    csp_values: Cell<Vec<String>>,
     equiv_attr_name: QualName,
     content_attr_name: QualName,
 }
@@ -47,7 +48,7 @@ impl CspMetaTokenSink {
     /// Creates new sink.
     fn new() -> Self {
         Self {
-            csp_values: vec![],
+            csp_values: Cell::new(vec![]),
             equiv_attr_name: QualName::new(None, ns!(), LocalName::from("http-equiv")),
             content_attr_name: QualName::new(None, ns!(), LocalName::from("content")),
         }
@@ -56,7 +57,7 @@ impl CspMetaTokenSink {
 impl TokenSink for &mut CspMetaTokenSink {
     type Handle = ();
 
-    fn process_token(&mut self, token: Token, _: u64) -> TokenSinkResult<Self::Handle> {
+    fn process_token(&self, token: Token, _: u64) -> TokenSinkResult<Self::Handle> {
         if let Token::TagToken(tag) = token {
             if tag.kind != TagKind::StartTag {
                 return TokenSinkResult::Continue;
@@ -86,7 +87,9 @@ impl TokenSink for &mut CspMetaTokenSink {
                         }
                     });
                     if let Some(csp_meta_content) = csp_meta_content {
-                        self.csp_values.push(csp_meta_content);
+                        let mut csp_values = self.csp_values.take();
+                        csp_values.push(csp_meta_content);
+                        self.csp_values.set(csp_values);
                     } else {
                         log::error!("Found `<meta http-equiv='Content-Security-Policy'>` tag without `content` attribute.");
                     }
