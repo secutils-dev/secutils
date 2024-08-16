@@ -86,6 +86,7 @@ where
                 }),
                 Box::<SimpleJobCode>::default(),
                 Box::<SimpleNotificationCode>::default(),
+                1000,
             )
             .await?,
             api,
@@ -259,6 +260,7 @@ pub mod tests {
             }),
             Box::<SimpleJobCode>::default(),
             Box::<SimpleNotificationCode>::default(),
+            1000,
         )
         .await?)
     }

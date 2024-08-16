@@ -41,7 +41,7 @@ impl JsRuntime {
 
     /// Initializes the JS runtime platform, should be called only once and in the main thread.
     pub fn init_platform() {
-        deno_core::JsRuntime::init_platform(None);
+        deno_core::JsRuntime::init_platform(None, false);
     }
 
     /// Executes a user script and returns the result.

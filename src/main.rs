@@ -354,6 +354,6 @@ mod tests {
     #[ctor]
     fn init_deno_runtime() {
         // Make sure deno runtime is initialized in the main thread before other tests.
-        deno_core::JsRuntime::init_platform(None);
+        deno_core::JsRuntime::init_platform(None, false);
     }
 }
