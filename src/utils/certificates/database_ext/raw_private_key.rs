@@ -12,6 +12,7 @@ pub(super) struct RawPrivateKey {
     pub pkcs8: Vec<u8>,
     pub encrypted: bool,
     pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 impl TryFrom<RawPrivateKey> for PrivateKey {
@@ -25,6 +26,7 @@ impl TryFrom<RawPrivateKey> for PrivateKey {
             pkcs8: raw.pkcs8,
             encrypted: raw.encrypted,
             created_at: raw.created_at,
+            updated_at: raw.updated_at,
         })
     }
 }
@@ -40,6 +42,7 @@ impl TryFrom<&PrivateKey> for RawPrivateKey {
             pkcs8: item.pkcs8.clone(),
             encrypted: item.encrypted,
             created_at: item.created_at,
+            updated_at: item.updated_at,
         })
     }
 }
@@ -62,6 +65,8 @@ mod tests {
                 encrypted: true,
                 // January 1, 2000 10:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 10:00:10
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             })?,
             PrivateKey {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -72,6 +77,7 @@ mod tests {
                 pkcs8: vec![1, 2, 3],
                 encrypted: true,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             }
         );
 
@@ -84,6 +90,8 @@ mod tests {
                 encrypted: false,
                 // January 1, 2000 10:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 10:00:10
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             })?,
             PrivateKey {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -94,6 +102,7 @@ mod tests {
                 pkcs8: vec![1, 2, 3],
                 encrypted: false,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             }
         );
 
@@ -112,6 +121,7 @@ mod tests {
                 pkcs8: vec![1, 2, 3],
                 encrypted: true,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             })?,
             RawPrivateKey {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -121,6 +131,8 @@ mod tests {
                 encrypted: true,
                 // January 1, 2000 10:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 10:00:10
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             }
         );
 
@@ -134,6 +146,7 @@ mod tests {
                 pkcs8: vec![1, 2, 3],
                 encrypted: false,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             })?,
             RawPrivateKey {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -143,6 +156,8 @@ mod tests {
                 encrypted: false,
                 // January 1, 2000 10:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 10:00:00
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             }
         );
 

@@ -81,6 +81,9 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
     ) -> anyhow::Result<PrivateKey> {
         Self::assert_private_key_name(&params.key_name)?;
 
+        // Preserve timestamp only up to seconds.
+        let created_at =
+            OffsetDateTime::from_unix_timestamp(OffsetDateTime::now_utc().unix_timestamp())?;
         let private_key = PrivateKey {
             id: Uuid::now_v7(),
             name: params.key_name,
@@ -90,10 +93,8 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
                 params.passphrase.as_deref(),
             )?,
             encrypted: params.passphrase.is_some(),
-            // Preserve timestamp only up to seconds.
-            created_at: OffsetDateTime::from_unix_timestamp(
-                OffsetDateTime::now_utc().unix_timestamp(),
-            )?,
+            created_at,
+            updated_at: created_at,
         };
 
         self.api
@@ -162,6 +163,9 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
             (private_key.pkcs8, private_key.encrypted)
         };
 
+        // Preserve timestamp only up to seconds.
+        let updated_at =
+            OffsetDateTime::from_unix_timestamp(OffsetDateTime::now_utc().unix_timestamp())?;
         self.api
             .db
             .certificates()
@@ -171,6 +175,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
                     name,
                     pkcs8,
                     encrypted,
+                    updated_at,
                     ..private_key
                 },
             )
@@ -259,14 +264,15 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
     ) -> anyhow::Result<CertificateTemplate> {
         Self::assert_certificate_template_name(&params.template_name)?;
 
+        // Preserve timestamp only up to seconds.
+        let created_at =
+            OffsetDateTime::from_unix_timestamp(OffsetDateTime::now_utc().unix_timestamp())?;
         let certificate_template = CertificateTemplate {
             id: Uuid::now_v7(),
             name: params.template_name,
             attributes: params.attributes,
-            // Preserve timestamp only up to seconds.
-            created_at: OffsetDateTime::from_unix_timestamp(
-                OffsetDateTime::now_utc().unix_timestamp(),
-            )?,
+            created_at,
+            updated_at: created_at,
         };
 
         self.api
@@ -299,6 +305,9 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
             )));
         };
 
+        // Preserve timestamp only up to seconds.
+        let updated_at =
+            OffsetDateTime::from_unix_timestamp(OffsetDateTime::now_utc().unix_timestamp())?;
         self.api
             .db
             .certificates()
@@ -315,6 +324,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
                     } else {
                         certificate_template.attributes
                     },
+                    updated_at,
                     ..certificate_template
                 },
             )

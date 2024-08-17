@@ -20,6 +20,9 @@ pub struct PrivateKey {
     /// Date and time when the private key was created.
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
+    /// Date and time when the private key was last updated.
+    #[serde(with = "time::serde::timestamp")]
+    pub updated_at: OffsetDateTime,
 }
 
 #[cfg(test)]
@@ -38,8 +41,10 @@ mod tests {
                 alg: PrivateKeyAlgorithm::Rsa { key_size: PrivateKeySize::Size2048 },
                 pkcs8: vec![1, 2, 3],
                 encrypted: true,
-                 // January 1, 2000 11:00:00
-                created_at: OffsetDateTime::from_unix_timestamp(946720800)?
+                // January 1, 2000 11:00:00
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 11:00:10
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?
             },
             @r###"
         {
@@ -55,7 +60,8 @@ mod tests {
             3
           ],
           "encrypted": true,
-          "createdAt": 946720800
+          "createdAt": 946720800,
+          "updatedAt": 946720810
         }
         "###
         );
@@ -81,7 +87,8 @@ mod tests {
             3
           ],
           "encrypted": true,
-          "createdAt": 946720800
+          "createdAt": 946720800,
+          "updatedAt": 946720810
         }
         "#
             )?,
@@ -94,7 +101,9 @@ mod tests {
                 pkcs8: vec![1, 2, 3],
                 encrypted: true,
                 // January 1, 2000 11:00:00
-                created_at: OffsetDateTime::from_unix_timestamp(946720800)?
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 11:00:00
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?
             },
         );
 

@@ -21,6 +21,9 @@ pub struct Responder {
     /// Date and time when the web page tracker was created.
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
+    /// Date and time when the web page tracker was last updated.
+    #[serde(with = "time::serde::timestamp")]
+    pub updated_at: OffsetDateTime,
 }
 
 #[cfg(test)]
@@ -51,7 +54,8 @@ mod tests {
                 headers: Some(vec![("key".to_string(), "value".to_string())]),
                 script: Some("return { body: `custom body` };".to_string()),
             },
-            created_at: OffsetDateTime::from_unix_timestamp(946720800)?
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?
         }, @r###"
         {
           "id": "00000000-0000-0000-0000-000000000001",
@@ -74,7 +78,8 @@ mod tests {
             ],
             "script": "return { body: `custom body` };"
           },
-          "createdAt": 946720800
+          "createdAt": 946720800,
+          "updatedAt": 946720810
         }
         "###);
 
@@ -107,7 +112,8 @@ mod tests {
             ],
             "script": "return { body: `custom body` };"
           },
-          "createdAt": 946720800
+          "createdAt": 946720800,
+          "updatedAt": 946720810
         }
         "#
             )?,
@@ -128,7 +134,8 @@ mod tests {
                     headers: Some(vec![("key".to_string(), "value".to_string())]),
                     script: Some("return { body: `custom body` };".to_string()),
                 },
-                created_at: OffsetDateTime::from_unix_timestamp(946720800)?
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?
             }
         );
 

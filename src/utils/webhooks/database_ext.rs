@@ -30,10 +30,10 @@ impl<'pool> WebhooksDatabaseExt<'pool> {
         let raw_responders = query_as!(
             RawResponder,
             r#"
-SELECT id, name, location, method, enabled, settings, created_at
+SELECT id, name, location, method, enabled, settings, created_at, updated_at
 FROM user_data_webhooks_responders
 WHERE user_id = $1
-ORDER BY created_at
+ORDER BY updated_at
                 "#,
             *user_id
         )
@@ -57,7 +57,7 @@ ORDER BY created_at
         query_as!(
             RawResponder,
             r#"
-        SELECT id, name, location, method, enabled, settings, created_at
+        SELECT id, name, location, method, enabled, settings, created_at, updated_at
         FROM user_data_webhooks_responders
         WHERE user_id = $1 AND id = $2
                         "#,
@@ -100,7 +100,7 @@ ORDER BY created_at
         query_as!(
             RawResponder,
             r#"
-        SELECT id, name, location, method, enabled, settings, created_at
+        SELECT id, name, location, method, enabled, settings, created_at, updated_at
         FROM user_data_webhooks_responders
         WHERE user_id = $1 AND (location = $2 OR starts_with($3, location COLLATE "und-x-icu")) AND (method = $4 OR method = $5)
         ORDER BY length(location) DESC, location DESC
@@ -112,10 +112,10 @@ ORDER BY created_at
             raw_method,
             raw_any_method
         )
-        .fetch_optional(self.pool)
-        .await?
-        .map(Responder::try_from)
-        .transpose()
+            .fetch_optional(self.pool)
+            .await?
+            .map(Responder::try_from)
+            .transpose()
     }
 
     /// Inserts responder.
@@ -131,14 +131,14 @@ ORDER BY created_at
         // responder that already covers the same location and method.
         let result = query!(
                 r#"
-        WITH new_responder(user_id, id, name, location, method, enabled, settings, created_at) AS (
-            VALUES ( $1::uuid, $2::uuid, $3, $4, $5::bytea, $6::bool, $7::bytea, $8::timestamptz )
+        WITH new_responder(user_id, id, name, location, method, enabled, settings, created_at, updated_at) AS (
+            VALUES ( $1::uuid, $2::uuid, $3, $4, $5::bytea, $6::bool, $7::bytea, $8::timestamptz, $9::timestamptz )
         )
-        INSERT INTO user_data_webhooks_responders (user_id, id, name, location, method, enabled, settings, created_at)
+        INSERT INTO user_data_webhooks_responders (user_id, id, name, location, method, enabled, settings, created_at, updated_at)
         SELECT * FROM new_responder
         WHERE NOT EXISTS(
             SELECT id FROM user_data_webhooks_responders 
-            WHERE user_id = $1 AND location = $4 AND (method = $9 OR $5 = $9)
+            WHERE user_id = $1 AND location = $4 AND (method = $10 OR $5 = $10)
         )
                 "#,
                 id,
@@ -149,6 +149,7 @@ ORDER BY created_at
                 raw_responder.enabled,
                 raw_responder.settings,
                 raw_responder.created_at,
+                raw_responder.updated_at,
                 raw_any_method
             )
             .execute(self.pool)
@@ -197,10 +198,10 @@ ORDER BY created_at
         let result = query!(
             r#"
     UPDATE user_data_webhooks_responders
-    SET name = $3, location = $4, method = $5, enabled = $6, settings = $7
+    SET name = $3, location = $4, method = $5, enabled = $6, settings = $7, updated_at = $8
     WHERE user_id = $1 AND id = $2 AND NOT EXISTS(
         SELECT id FROM user_data_webhooks_responders 
-        WHERE user_id = $1 AND id != $2 AND location = $4 AND (method = $8 OR method = $5 OR $5 = $8)
+        WHERE user_id = $1 AND id != $2 AND location = $4 AND (method = $9 OR method = $5 OR $5 = $9)
     )
             "#,
             *user_id,
@@ -210,10 +211,11 @@ ORDER BY created_at
             raw_responder.method,
             raw_responder.enabled,
             raw_responder.settings,
+            raw_responder.updated_at,
             raw_any_method
         )
-        .execute(self.pool)
-        .await;
+            .execute(self.pool)
+            .await;
 
         match result {
             Ok(result) if result.rows_affected() > 0 => Ok(()),

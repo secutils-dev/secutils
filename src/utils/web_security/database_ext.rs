@@ -31,7 +31,7 @@ impl<'pool> WebSecurityDatabaseExt<'pool> {
         query_as!(
             RawContentSecurityPolicy,
             r#"
-SELECT id, name, directives, created_at
+SELECT id, name, directives, created_at, updated_at
 FROM user_data_web_security_csp
 WHERE user_id = $1 AND id = $2
                 "#,
@@ -53,14 +53,15 @@ WHERE user_id = $1 AND id = $2
         let raw_policy = RawContentSecurityPolicy::try_from(policy)?;
         let result = query!(
             r#"
-    INSERT INTO user_data_web_security_csp (user_id, id, name, directives, created_at)
-    VALUES ( $1, $2, $3, $4, $5 )
+    INSERT INTO user_data_web_security_csp (user_id, id, name, directives, created_at, updated_at)
+    VALUES ( $1, $2, $3, $4, $5, $6 )
             "#,
             *user_id,
             raw_policy.id,
             raw_policy.name,
             raw_policy.directives,
-            raw_policy.created_at
+            raw_policy.created_at,
+            raw_policy.updated_at
         )
         .execute(self.pool)
         .await;
@@ -96,13 +97,14 @@ WHERE user_id = $1 AND id = $2
         let result = query!(
             r#"
     UPDATE user_data_web_security_csp
-    SET name = $3, directives = $4
+    SET name = $3, directives = $4, updated_at = $5
     WHERE user_id = $1 AND id = $2
             "#,
             *user_id,
             raw_policy.id,
             raw_policy.name,
-            raw_policy.directives
+            raw_policy.directives,
+            raw_policy.updated_at
         )
         .execute(self.pool)
         .await;
@@ -166,10 +168,10 @@ WHERE user_id = $1 AND id = $2
         let raw_policies = query_as!(
             RawContentSecurityPolicy,
             r#"
-    SELECT id, name, directives, created_at
+    SELECT id, name, directives, created_at, updated_at
     FROM user_data_web_security_csp
     WHERE user_id = $1
-    ORDER BY created_at
+    ORDER BY updated_at
                     "#,
             *user_id
         )
@@ -237,12 +239,14 @@ mod tests {
                 name: "csp-name".to_string(),
                 directives: get_mock_directives()?,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
             ContentSecurityPolicy {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
                 name: "csp-name-2".to_string(),
                 directives: get_mock_directives()?,
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
         ];
 
@@ -288,6 +292,7 @@ mod tests {
             name: "csp-name".to_string(),
             directives: get_mock_directives()?,
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
 
         db.web_security()
@@ -328,6 +333,7 @@ mod tests {
                     name: "csp-name".to_string(),
                     directives: get_mock_directives()?,
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
             )
             .await?;
@@ -342,6 +348,7 @@ mod tests {
                         "https://secutils.dev".to_string(),
                     ])],
                     created_at: OffsetDateTime::from_unix_timestamp(956720800)?,
+                    updated_at: OffsetDateTime::from_unix_timestamp(946720820)?,
                 },
             )
             .await?;
@@ -360,6 +367,7 @@ mod tests {
                     "https://secutils.dev".to_string(),
                 ])],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720820)?,
             }
         );
 
@@ -379,6 +387,7 @@ mod tests {
             name: "csp-name-a".to_string(),
             directives: get_mock_directives()?,
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
         db.web_security()
             .insert_content_security_policy(user.id, &content_security_policy_a)
@@ -389,6 +398,7 @@ mod tests {
             name: "csp-name-b".to_string(),
             directives: get_mock_directives()?,
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
         db.web_security()
             .insert_content_security_policy(user.id, &content_security_policy_b)
@@ -403,6 +413,7 @@ mod tests {
                     name: "csp-name-a".to_string(),
                     directives: get_mock_directives()?,
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
             )
             .await
@@ -439,6 +450,7 @@ mod tests {
                     name: "csp-name-a".to_string(),
                     directives: get_mock_directives()?,
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
             )
             .await
@@ -466,12 +478,14 @@ mod tests {
                 name: "csp-name".to_string(),
                 directives: get_mock_directives()?,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
             ContentSecurityPolicy {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
                 name: "csp-name-2".to_string(),
                 directives: get_mock_directives()?,
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
         ];
 
@@ -546,12 +560,14 @@ mod tests {
                 name: "csp-name".to_string(),
                 directives: get_mock_directives()?,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
             ContentSecurityPolicy {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
                 name: "csp-name-2".to_string(),
                 directives: get_mock_directives()?,
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
         ];
 

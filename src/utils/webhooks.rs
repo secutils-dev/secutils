@@ -119,6 +119,7 @@ pub mod tests {
                         script: None,
                     },
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
             })
         }
@@ -211,7 +212,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"location\":{\"pathType\":\"=\",\"path\":\"/\"},\"method\":\"GET\",\"enabled\":true,\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]},{\"id\":\"[UUID]\",\"name\":\"name_two\",\"location\":{\"pathType\":\"=\",\"path\":\"/path\"},\"method\":\"GET\",\"enabled\":false,\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]}]""###
+                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"location\":{\"pathType\":\"=\",\"path\":\"/\"},\"method\":\"GET\",\"enabled\":true,\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP],\"updatedAt\":[TIMESTAMP]},{\"id\":\"[UUID]\",\"name\":\"name_two\",\"location\":{\"pathType\":\"=\",\"path\":\"/path\"},\"method\":\"GET\",\"enabled\":false,\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP],\"updatedAt\":[TIMESTAMP]}]""###
             );
         });
 
@@ -262,7 +263,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"location\":{\"pathType\":\"^\",\"path\":\"/\",\"subdomainPrefix\":\"sub\"},\"method\":\"GET\",\"enabled\":true,\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP]}""###
+                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"location\":{\"pathType\":\"^\",\"path\":\"/\",\"subdomainPrefix\":\"sub\"},\"method\":\"GET\",\"enabled\":true,\"settings\":{\"requestsToTrack\":3,\"statusCode\":200},\"createdAt\":[TIMESTAMP],\"updatedAt\":[TIMESTAMP]}""###
             );
         });
 
@@ -345,7 +346,8 @@ pub mod tests {
                     body: None,
                     headers: None,
                 },
-                created_at: responder.created_at
+                created_at: responder.created_at,
+                updated_at: responder.updated_at
             }
         );
 

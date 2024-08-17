@@ -16,6 +16,9 @@ pub struct CertificateTemplate {
     /// Date and time when the certificate template was created.
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
+    /// Date and time when the certificate template was last updated.
+    #[serde(with = "time::serde::timestamp")]
+    pub updated_at: OffsetDateTime,
 }
 
 #[cfg(test)]
@@ -48,7 +51,9 @@ mod tests {
                 .set_country("US")
                 .build(),
                 // January 1, 2000 11:00:00
-                created_at: OffsetDateTime::from_unix_timestamp(946720800)?
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 11:00:10
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
             @r###"
         {
@@ -66,7 +71,8 @@ mod tests {
             "version": 3,
             "isCa": true
           },
-          "createdAt": 946720800
+          "createdAt": 946720800,
+          "updatedAt": 946720810
         }
         "###
         );
@@ -94,7 +100,8 @@ mod tests {
             "version": 3,
             "isCa": true
           },
-          "createdAt": 946720800
+          "createdAt": 946720800,
+          "updatedAt": 946720810
         }
         "#
             )?,
@@ -113,7 +120,9 @@ mod tests {
                 .set_country("US")
                 .build(),
                 // January 1, 2000 11:00:00
-                created_at: OffsetDateTime::from_unix_timestamp(946720800)?
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 11:00:10
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?
             },
         );
 

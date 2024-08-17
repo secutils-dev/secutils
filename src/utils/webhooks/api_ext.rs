@@ -73,6 +73,9 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
         &self,
         params: RespondersCreateParams,
     ) -> anyhow::Result<Responder> {
+        // Preserve timestamp only up to seconds.
+        let created_at =
+            OffsetDateTime::from_unix_timestamp(OffsetDateTime::now_utc().unix_timestamp())?;
         let responder = Responder {
             id: Uuid::now_v7(),
             name: params.name,
@@ -80,10 +83,8 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
             method: params.method,
             enabled: params.enabled,
             settings: params.settings,
-            // Preserve timestamp only up to seconds.
-            created_at: OffsetDateTime::from_unix_timestamp(
-                OffsetDateTime::now_utc().unix_timestamp(),
-            )?,
+            created_at,
+            updated_at: created_at,
         };
 
         self.validate_responder(&responder)?;
@@ -126,6 +127,10 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
             method: params.method.unwrap_or(existing_responder.method),
             enabled: params.enabled.unwrap_or(existing_responder.enabled),
             settings: params.settings.unwrap_or(existing_responder.settings),
+            // Preserve timestamp only up to seconds.
+            updated_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
             ..existing_responder
         };
 
