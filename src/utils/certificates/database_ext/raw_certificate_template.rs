@@ -10,6 +10,7 @@ pub(super) struct RawCertificateTemplate {
     pub name: String,
     pub attributes: Vec<u8>,
     pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 impl TryFrom<RawCertificateTemplate> for CertificateTemplate {
@@ -21,6 +22,7 @@ impl TryFrom<RawCertificateTemplate> for CertificateTemplate {
             name: raw.name,
             attributes: postcard::from_bytes::<RawCertificateAttributes>(&raw.attributes)?.into(),
             created_at: raw.created_at,
+            updated_at: raw.updated_at,
         })
     }
 }
@@ -36,6 +38,7 @@ impl TryFrom<&CertificateTemplate> for RawCertificateTemplate {
                 item.attributes.clone(),
             ))?,
             created_at: item.created_at,
+            updated_at: item.updated_at,
         })
     }
 }
@@ -62,6 +65,8 @@ mod tests {
                 ],
                 // January 1, 2000 10:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 10:00:10
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             })?,
             CertificateTemplate {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -85,6 +90,7 @@ mod tests {
                     ),
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             }
         );
 
@@ -116,6 +122,7 @@ mod tests {
                     ),
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             })?,
             RawCertificateTemplate {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -126,6 +133,8 @@ mod tests {
                 ],
                 // January 1, 2000 10:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 10:00:10
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             }
         );
 

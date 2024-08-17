@@ -36,7 +36,7 @@ impl<'pool> CertificatesDatabaseExt<'pool> {
         query_as!(
             RawPrivateKey,
             r#"
-SELECT id, name, alg, pkcs8, encrypted, created_at
+SELECT id, name, alg, pkcs8, encrypted, created_at, updated_at
 FROM user_data_certificates_private_keys
 WHERE user_id = $1 AND id = $2
                 "#,
@@ -58,8 +58,8 @@ WHERE user_id = $1 AND id = $2
         let raw_private_key = RawPrivateKey::try_from(private_key)?;
         let result = query!(
             r#"
-INSERT INTO user_data_certificates_private_keys (user_id, id, name, alg, pkcs8, encrypted, created_at)
-VALUES ( $1, $2, $3, $4, $5, $6, $7 )
+INSERT INTO user_data_certificates_private_keys (user_id, id, name, alg, pkcs8, encrypted, created_at, updated_at)
+VALUES ( $1, $2, $3, $4, $5, $6, $7, $8 )
         "#,
             *user_id,
             raw_private_key.id,
@@ -67,10 +67,11 @@ VALUES ( $1, $2, $3, $4, $5, $6, $7 )
             raw_private_key.alg,
             raw_private_key.pkcs8,
             raw_private_key.encrypted,
-            raw_private_key.created_at
+            raw_private_key.created_at,
+            raw_private_key.updated_at
         )
-        .execute(self.pool)
-        .await;
+            .execute(self.pool)
+            .await;
 
         if let Err(err) = result {
             let is_conflict_error = err
@@ -103,14 +104,15 @@ VALUES ( $1, $2, $3, $4, $5, $6, $7 )
         let result = query!(
             r#"
 UPDATE user_data_certificates_private_keys
-SET name = $3, pkcs8 = $4, encrypted = $5
+SET name = $3, pkcs8 = $4, encrypted = $5, updated_at = $6
 WHERE user_id = $1 AND id = $2
         "#,
             *user_id,
             raw_private_key.id,
             raw_private_key.name,
             raw_private_key.pkcs8,
-            raw_private_key.encrypted
+            raw_private_key.encrypted,
+            raw_private_key.updated_at
         )
         .execute(self.pool)
         .await;
@@ -169,10 +171,10 @@ WHERE user_id = $1 AND id = $2
         let raw_private_keys = query_as!(
             RawPrivateKey,
             r#"
-SELECT id, name, alg, ''::bytea as "pkcs8!", encrypted, created_at
+SELECT id, name, alg, ''::bytea as "pkcs8!", encrypted, created_at, updated_at
 FROM user_data_certificates_private_keys
 WHERE user_id = $1
-ORDER BY created_at
+ORDER BY updated_at
                 "#,
             *user_id
         )
@@ -196,7 +198,7 @@ ORDER BY created_at
         query_as!(
             RawCertificateTemplate,
             r#"
-SELECT id, name, attributes, created_at
+SELECT id, name, attributes, created_at, updated_at
 FROM user_data_certificates_certificate_templates
 WHERE user_id = $1 AND id = $2
                 "#,
@@ -218,17 +220,18 @@ WHERE user_id = $1 AND id = $2
         let raw_certificate_template = RawCertificateTemplate::try_from(certificate_template)?;
         let result = query!(
             r#"
-INSERT INTO user_data_certificates_certificate_templates (user_id, id, name, attributes, created_at)
-VALUES ( $1, $2, $3, $4, $5 )
+INSERT INTO user_data_certificates_certificate_templates (user_id, id, name, attributes, created_at, updated_at)
+VALUES ( $1, $2, $3, $4, $5, $6 )
         "#,
             *user_id,
             raw_certificate_template.id,
             raw_certificate_template.name,
             raw_certificate_template.attributes,
-            raw_certificate_template.created_at
+            raw_certificate_template.created_at,
+            raw_certificate_template.updated_at
         )
-        .execute(self.pool)
-        .await;
+            .execute(self.pool)
+            .await;
 
         if let Err(err) = result {
             let is_conflict_error = err
@@ -261,13 +264,14 @@ VALUES ( $1, $2, $3, $4, $5 )
         let result = query!(
             r#"
 UPDATE user_data_certificates_certificate_templates
-SET name = $3, attributes = $4
+SET name = $3, attributes = $4, updated_at = $5
 WHERE user_id = $1 AND id = $2
         "#,
             *user_id,
             raw_certificate_template.id,
             raw_certificate_template.name,
-            raw_certificate_template.attributes
+            raw_certificate_template.attributes,
+            raw_certificate_template.updated_at
         )
         .execute(self.pool)
         .await;
@@ -331,10 +335,10 @@ WHERE user_id = $1 AND id = $2
         let raw_certificate_templates = query_as!(
             RawCertificateTemplate,
             r#"
-SELECT id, name, attributes, created_at
+SELECT id, name, attributes, created_at, updated_at
 FROM user_data_certificates_certificate_templates
 WHERE user_id = $1
-ORDER BY created_at
+ORDER BY updated_at
                 "#,
             *user_id
         )
@@ -409,6 +413,7 @@ mod tests {
                 pkcs8: vec![1, 2, 3],
                 encrypted: true,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
             PrivateKey {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
@@ -419,6 +424,7 @@ mod tests {
                 pkcs8: vec![4, 5, 6],
                 encrypted: false,
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
         ];
 
@@ -468,6 +474,7 @@ mod tests {
             pkcs8: vec![1, 2, 3],
             encrypted: true,
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
 
         db.certificates()
@@ -479,8 +486,7 @@ mod tests {
             .insert_private_key(user.id, &private_key)
             .await
             .unwrap_err()
-            .downcast::<SecutilsError>()
-            .unwrap();
+            .downcast::<SecutilsError>()?;
         assert_eq!(insert_error.status_code(), 400);
         assert_debug_snapshot!(
             insert_error.root_cause.to_string(),
@@ -512,6 +518,7 @@ mod tests {
                     pkcs8: vec![1, 2, 3],
                     encrypted: true,
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
             )
             .await?;
@@ -528,6 +535,7 @@ mod tests {
                     pkcs8: vec![4, 5, 6],
                     encrypted: false,
                     created_at: OffsetDateTime::from_unix_timestamp(956720800)?,
+                    updated_at: OffsetDateTime::from_unix_timestamp(946720820)?,
                 },
             )
             .await?;
@@ -548,6 +556,7 @@ mod tests {
                 pkcs8: vec![4, 5, 6],
                 encrypted: false,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720820)?,
             }
         );
 
@@ -571,6 +580,7 @@ mod tests {
             pkcs8: vec![1, 2, 3],
             encrypted: true,
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
         db.certificates()
             .insert_private_key(user.id, &private_key_a)
@@ -585,6 +595,7 @@ mod tests {
             pkcs8: vec![3, 4, 5],
             encrypted: true,
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
         db.certificates()
             .insert_private_key(user.id, &private_key_b)
@@ -603,6 +614,7 @@ mod tests {
                     pkcs8: vec![3, 4, 5],
                     encrypted: true,
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
             )
             .await
@@ -643,6 +655,7 @@ mod tests {
                     pkcs8: vec![3, 4, 5],
                     encrypted: true,
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
             )
             .await
@@ -674,6 +687,7 @@ mod tests {
                 pkcs8: vec![1, 2, 3],
                 encrypted: true,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
             PrivateKey {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
@@ -684,6 +698,7 @@ mod tests {
                 pkcs8: vec![4, 5, 6],
                 encrypted: false,
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
         ];
 
@@ -759,6 +774,7 @@ mod tests {
                 pkcs8: vec![1, 2, 3],
                 encrypted: true,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
             PrivateKey {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
@@ -769,6 +785,7 @@ mod tests {
                 pkcs8: vec![4, 5, 6],
                 encrypted: false,
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
         ];
 
@@ -804,12 +821,14 @@ mod tests {
                 name: "ct-name".to_string(),
                 attributes: get_mock_certificate_attributes()?,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
             CertificateTemplate {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
                 name: "ct-name-2".to_string(),
                 attributes: get_mock_certificate_attributes()?,
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
         ];
 
@@ -855,6 +874,7 @@ mod tests {
             name: "ct-name".to_string(),
             attributes: get_mock_certificate_attributes()?,
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
 
         db.certificates()
@@ -895,6 +915,7 @@ mod tests {
                     name: "ct-name".to_string(),
                     attributes: get_mock_certificate_attributes()?,
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
             )
             .await?;
@@ -924,6 +945,7 @@ mod tests {
                         ),
                     },
                     created_at: OffsetDateTime::from_unix_timestamp(956720800)?,
+                    updated_at: OffsetDateTime::from_unix_timestamp(946720820)?,
                 },
             )
             .await?;
@@ -957,6 +979,7 @@ mod tests {
                     ),
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720820)?,
             }
         );
 
@@ -976,6 +999,7 @@ mod tests {
             name: "ct-name-a".to_string(),
             attributes: get_mock_certificate_attributes()?,
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
         db.certificates()
             .insert_certificate_template(user.id, &certificate_template_a)
@@ -986,6 +1010,7 @@ mod tests {
             name: "ct-name-b".to_string(),
             attributes: get_mock_certificate_attributes()?,
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
         db.certificates()
             .insert_certificate_template(user.id, &certificate_template_b)
@@ -1000,6 +1025,7 @@ mod tests {
                     name: "ct-name-a".to_string(),
                     attributes: get_mock_certificate_attributes()?,
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
             )
             .await
@@ -1036,12 +1062,12 @@ mod tests {
                     name: "ct-name-a".to_string(),
                     attributes: get_mock_certificate_attributes()?,
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
             )
             .await
             .unwrap_err()
-            .downcast::<SecutilsError>()
-            .unwrap();
+            .downcast::<SecutilsError>()?;
         assert_eq!(update_error.status_code(), 400);
         assert_debug_snapshot!(
             update_error,
@@ -1063,12 +1089,14 @@ mod tests {
                 name: "ct-name".to_string(),
                 attributes: get_mock_certificate_attributes()?,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
             CertificateTemplate {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
                 name: "ct-name-2".to_string(),
                 attributes: get_mock_certificate_attributes()?,
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
         ];
 
@@ -1140,12 +1168,14 @@ mod tests {
                 name: "ct-name".to_string(),
                 attributes: get_mock_certificate_attributes()?,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
             CertificateTemplate {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
                 name: "ct-name-2".to_string(),
                 attributes: get_mock_certificate_attributes()?,
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
         ];
 

@@ -38,10 +38,10 @@ impl<'pool> WebScrapingDatabaseExt<'pool> {
         let raw_trackers = query_as!(
             RawWebPageTracker,
             r#"
-SELECT id, name, url, kind, job_id, job_config, user_id, data, created_at
+SELECT id, name, url, kind, job_id, job_config, user_id, data, created_at, updated_at
 FROM user_data_web_scraping_trackers
 WHERE user_id = $1 AND kind = $2
-ORDER BY created_at
+ORDER BY updated_at
                 "#,
             *self.user_id,
             kind
@@ -66,7 +66,7 @@ ORDER BY created_at
         query_as!(
             RawWebPageTracker,
             r#"
-    SELECT id, name, url, kind, user_id, job_id, job_config, data, created_at
+    SELECT id, name, url, kind, user_id, job_id, job_config, data, created_at, updated_at
     FROM user_data_web_scraping_trackers
     WHERE user_id = $1 AND id = $2 AND kind = $3
                     "#,
@@ -88,8 +88,8 @@ ORDER BY created_at
         let raw_tracker = RawWebPageTracker::try_from(tracker)?;
         let result = query!(
             r#"
-    INSERT INTO user_data_web_scraping_trackers (user_id, id, name, url, kind, job_id, job_config, data, created_at)
-    VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9 )
+    INSERT INTO user_data_web_scraping_trackers (user_id, id, name, url, kind, job_id, job_config, data, created_at, updated_at)
+    VALUES ( $1, $2, $3, $4, $5, $6, $7, $8, $9, $10 )
             "#,
             *self.user_id,
             raw_tracker.id,
@@ -99,10 +99,11 @@ ORDER BY created_at
             raw_tracker.job_id,
             raw_tracker.job_config,
             raw_tracker.data,
-            raw_tracker.created_at
+            raw_tracker.created_at,
+            raw_tracker.updated_at
         )
-        .execute(self.pool)
-        .await;
+            .execute(self.pool)
+            .await;
 
         if let Err(err) = result {
             let is_conflict_error = err
@@ -135,7 +136,7 @@ ORDER BY created_at
         let result = query!(
             r#"
 UPDATE user_data_web_scraping_trackers
-SET name = $4, url = $5, job_config = $6, data = $7, job_id = $8
+SET name = $4, url = $5, job_config = $6, data = $7, job_id = $8, updated_at = $9
 WHERE user_id = $1 AND id = $2 AND kind = $3
         "#,
             *self.user_id,
@@ -145,7 +146,8 @@ WHERE user_id = $1 AND id = $2 AND kind = $3
             raw_tracker.url,
             raw_tracker.job_config,
             raw_tracker.data,
-            raw_tracker.job_id
+            raw_tracker.job_id,
+            raw_tracker.updated_at
         )
         .execute(self.pool)
         .await;
@@ -326,10 +328,10 @@ impl<'pool> WebScrapingDatabaseSystemExt<'pool> {
         let raw_trackers = query_as!(
             RawWebPageTracker,
             r#"
-SELECT id, name, url, kind, user_id, job_id, job_config, data, created_at
+SELECT id, name, url, kind, user_id, job_id, job_config, data, created_at, updated_at
 FROM user_data_web_scraping_trackers
 WHERE job_config IS NOT NULL AND job_id IS NULL AND kind = $1
-ORDER BY created_at
+ORDER BY updated_at
                 "#,
             kind
         )
@@ -362,7 +364,8 @@ ORDER BY created_at
                  let records = query!(
 r#"
 SELECT trackers.id, trackers.name, trackers.url, trackers.kind, trackers.job_id,
-       trackers.job_config, trackers.user_id, trackers.data, trackers.created_at, jobs.extra
+       trackers.job_config, trackers.user_id, trackers.data, trackers.created_at, trackers.updated_at,
+       jobs.extra
 FROM user_data_web_scraping_trackers as trackers
 INNER JOIN scheduler_jobs as jobs
 ON trackers.job_id = jobs.id
@@ -398,6 +401,7 @@ LIMIT $3;
                         user_id: record.user_id,
                         data: record.data,
                         created_at: record.created_at,
+                        updated_at: record.updated_at
                     })?;
                 }
 
@@ -417,7 +421,7 @@ LIMIT $3;
         query_as!(
             RawWebPageTracker,
             r#"
-    SELECT id, name, url, kind, user_id, job_id, job_config, data, created_at
+    SELECT id, name, url, kind, user_id, job_id, job_config, data, created_at, updated_at
     FROM user_data_web_scraping_trackers
     WHERE job_id = $1 AND kind = $2
                     "#,
@@ -1389,15 +1393,15 @@ mod tests {
 
         let web_scraping = db.web_scraping(user.id);
         for (index, tracker) in resources_trackers.iter_mut().enumerate() {
-            tracker.created_at = tracker
-                .created_at
+            tracker.updated_at = tracker
+                .updated_at
                 .checked_add(Duration::from_secs(index as u64).try_into()?)
                 .unwrap();
             web_scraping.insert_web_page_tracker(tracker).await?;
         }
         for (index, tracker) in content_trackers.iter_mut().enumerate() {
-            tracker.created_at = tracker
-                .created_at
+            tracker.updated_at = tracker
+                .updated_at
                 .checked_add(Duration::from_secs(index as u64).try_into()?)
                 .unwrap();
             web_scraping.insert_web_page_tracker(tracker).await?;

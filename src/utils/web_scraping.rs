@@ -168,6 +168,7 @@ pub mod tests {
                         headers: Default::default(),
                     },
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                     meta: None,
                 },
             })
@@ -269,7 +270,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP]},{\"id\":\"[UUID]\",\"name\":\"name_two\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP]}]""###
+                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP],\"updatedAt\":[TIMESTAMP]},{\"id\":\"[UUID]\",\"name\":\"name_two\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP],\"updatedAt\":[TIMESTAMP]}]""###
             );
         });
 
@@ -341,7 +342,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"retryStrategy\":{\"type\":\"constant\",\"interval\":1000000,\"maxAttempts\":5},\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP]},{\"id\":\"[UUID]\",\"name\":\"name_two\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"retryStrategy\":{\"type\":\"constant\",\"interval\":1000000,\"maxAttempts\":5},\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP]}]""###
+                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"retryStrategy\":{\"type\":\"constant\",\"interval\":1000000,\"maxAttempts\":5},\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP],\"updatedAt\":[TIMESTAMP]},{\"id\":\"[UUID]\",\"name\":\"name_two\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"retryStrategy\":{\"type\":\"constant\",\"interval\":1000000,\"maxAttempts\":5},\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP],\"updatedAt\":[TIMESTAMP]}]""###
             );
         });
 
@@ -399,7 +400,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"retryStrategy\":{\"type\":\"linear\",\"initialInterval\":120000,\"increment\":1000,\"maxInterval\":200000,\"maxAttempts\":10},\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP]}""###
+                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"retryStrategy\":{\"type\":\"linear\",\"initialInterval\":120000,\"increment\":1000,\"maxInterval\":200000,\"maxAttempts\":10},\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP],\"updatedAt\":[TIMESTAMP]}""###
             );
         });
 
@@ -457,7 +458,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"retryStrategy\":{\"type\":\"exponential\",\"initialInterval\":120000,\"multiplier\":2,\"maxInterval\":200000,\"maxAttempts\":10},\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP]}""###
+                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"retryStrategy\":{\"type\":\"exponential\",\"initialInterval\":120000,\"multiplier\":2,\"maxInterval\":200000,\"maxAttempts\":10},\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP],\"updatedAt\":[TIMESTAMP]}""###
             );
         });
 
@@ -488,6 +489,9 @@ pub mod tests {
                 }),
             })
             .await?;
+
+        // Pause to make sure updated_at is later than created_at.
+        tokio::time::sleep(Duration::from_millis(1000)).await;
 
         let action_result = web_scraping_handle_action(
             mock_user.clone(),
@@ -541,9 +545,11 @@ pub mod tests {
                     notifications: false,
                 }),
                 created_at: tracker.created_at,
+                updated_at: updated_tracker.updated_at,
                 meta: None
             }
         );
+        assert!(updated_tracker.updated_at > tracker.updated_at);
 
         Ok(())
     }
@@ -625,6 +631,7 @@ pub mod tests {
                     notifications: false,
                 }),
                 created_at: tracker.created_at,
+                updated_at: tracker.updated_at,
                 meta: None
             }
         );

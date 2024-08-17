@@ -669,6 +669,10 @@ mod tests {
             created_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
             )?,
+            // Preserve timestamp only up to seconds.
+            updated_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
             meta: None,
         };
 
@@ -846,6 +850,10 @@ mod tests {
             created_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
             )?,
+            // Preserve timestamp only up to seconds.
+            updated_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
             meta: None,
         };
 
@@ -989,6 +997,10 @@ mod tests {
             job_id: Some(trigger_job_id),
             // Preserve timestamp only up to seconds.
             created_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
+            // Preserve timestamp only up to seconds.
+            updated_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
             )?,
             meta: None,
@@ -1173,6 +1185,10 @@ mod tests {
             created_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
             )?,
+            // Preserve timestamp only up to seconds.
+            updated_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
             meta: None,
         };
 
@@ -1337,6 +1353,10 @@ mod tests {
             job_id: Some(trigger_job_id),
             // Preserve timestamp only up to seconds.
             created_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
+            // Preserve timestamp only up to seconds.
+            updated_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
             )?,
             meta: None,
@@ -1538,6 +1558,10 @@ mod tests {
             job_id: Some(trigger_job_id),
             // Preserve timestamp only up to seconds.
             created_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
+            // Preserve timestamp only up to seconds.
+            updated_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
             )?,
             meta: None,
@@ -1773,6 +1797,10 @@ mod tests {
             created_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
             )?,
+            // Preserve timestamp only up to seconds.
+            updated_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
             meta: None,
         };
 
@@ -1939,6 +1967,10 @@ mod tests {
             created_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
             )?,
+            // Preserve timestamp only up to seconds.
+            updated_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
             meta: None,
         };
 
@@ -2101,6 +2133,10 @@ mod tests {
             job_id: Some(trigger_job_id),
             // Preserve timestamp only up to seconds.
             created_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
+            // Preserve timestamp only up to seconds.
+            updated_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
             )?,
             meta: None,
@@ -2300,6 +2336,10 @@ mod tests {
             job_id: Some(trigger_job_id),
             // Preserve timestamp only up to seconds.
             created_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
+            // Preserve timestamp only up to seconds.
+            updated_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
             )?,
             meta: None,

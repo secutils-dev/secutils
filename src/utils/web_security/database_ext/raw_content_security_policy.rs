@@ -9,6 +9,7 @@ pub(super) struct RawContentSecurityPolicy {
     pub name: String,
     pub directives: Vec<u8>,
     pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 impl TryFrom<RawContentSecurityPolicy> for ContentSecurityPolicy {
@@ -34,6 +35,7 @@ impl TryFrom<RawContentSecurityPolicy> for ContentSecurityPolicy {
             name: raw.name,
             directives,
             created_at: raw.created_at,
+            updated_at: raw.updated_at,
         })
     }
 }
@@ -54,6 +56,7 @@ impl TryFrom<&ContentSecurityPolicy> for RawContentSecurityPolicy {
             name: item.name.clone(),
             directives,
             created_at: item.created_at,
+            updated_at: item.updated_at,
         })
     }
 }
@@ -84,6 +87,8 @@ mod tests {
                 ],
                 // January 1, 2000 10:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 10:00:10
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             })?,
             ContentSecurityPolicy {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -102,6 +107,7 @@ mod tests {
                     )
                 ],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             }
         );
 
@@ -128,6 +134,7 @@ mod tests {
                     )
                 ],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             })?,
             RawContentSecurityPolicy {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -142,6 +149,8 @@ mod tests {
                 ],
                 // January 1, 2000 10:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 10:00:10
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             }
         );
 

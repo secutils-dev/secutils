@@ -18,6 +18,7 @@ pub(super) struct RawWebPageTracker {
     pub job_config: Option<Vec<u8>>,
     pub data: Vec<u8>,
     pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
@@ -100,6 +101,7 @@ impl<Tag: WebPageTrackerTag> TryFrom<RawWebPageTracker> for WebPageTracker<Tag> 
                 headers: raw_data.headers,
             },
             created_at: raw.created_at,
+            updated_at: raw.updated_at,
             meta: raw_data.meta,
         })
     }
@@ -169,6 +171,7 @@ impl<Tag: WebPageTrackerTag> TryFrom<&WebPageTracker<Tag>> for RawWebPageTracker
             job_config,
             data: postcard::to_stdvec(&raw_data)?,
             created_at: item.created_at,
+            updated_at: item.updated_at,
         })
     }
 }
@@ -203,6 +206,8 @@ mod tests {
                 data: vec![1, 0, 0, 0, 0],
                 // January 1, 2000 10:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 10:00:10
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             })?,
             WebPageTracker {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -218,6 +223,7 @@ mod tests {
                     headers: Default::default()
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 meta: None
             }
         );
@@ -242,6 +248,8 @@ mod tests {
                 ],
                 // January 1, 2000 10:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 10:00:10
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             })?,
             WebPageTracker {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
@@ -277,6 +285,7 @@ mod tests {
                     )
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 meta: None
             }
         );
@@ -301,6 +310,7 @@ mod tests {
                     headers: Default::default(),
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 meta: None
             })?,
             RawWebPageTracker {
@@ -314,6 +324,8 @@ mod tests {
                 data: vec![1, 0, 0, 0, 0],
                 // January 1, 2000 10:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 10:00:10
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             }
         );
 
@@ -352,6 +364,7 @@ mod tests {
                     ),
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 meta: None
             })?,
             RawWebPageTracker {
@@ -373,6 +386,8 @@ mod tests {
                 ],
                 // January 1, 2000 10:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 10:00:10
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             }
         );
 

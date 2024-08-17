@@ -35,6 +35,9 @@ pub struct WebPageTracker<Tag: WebPageTrackerTag> {
     /// Date and time when the web page tracker was created.
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
+    /// Date and time when the web page tracker was last updated.
+    #[serde(with = "time::serde::timestamp")]
+    pub updated_at: OffsetDateTime,
 }
 
 #[cfg(test)]
@@ -69,7 +72,8 @@ mod tests {
             "revisions": 3,
             "delay": 2500
           },
-          "createdAt": 946720800
+          "createdAt": 946720800,
+          "updatedAt": 946720810
         }
         "###);
 
@@ -95,7 +99,8 @@ mod tests {
             "revisions": 3,
             "delay": 2500
           },
-          "createdAt": 946720800
+          "createdAt": 946720800,
+          "updatedAt": 946720810
         }
         "###);
 
@@ -132,7 +137,8 @@ mod tests {
               "resourceFilterMap": "return resource;"
             }
           },
-          "createdAt": 946720800
+          "createdAt": 946720800,
+          "updatedAt": 946720810
         }
         "###);
 
@@ -160,7 +166,8 @@ mod tests {
             "delay": 2500,
             "scripts": {}
           },
-          "createdAt": 946720800
+          "createdAt": 946720800,
+          "updatedAt": 946720810
         }
         "###);
 
@@ -201,7 +208,8 @@ mod tests {
             "delay": 2500,
             "scripts": {}
           },
-          "createdAt": 946720800
+          "createdAt": 946720800,
+          "updatedAt": 946720810
         }
         "###);
 

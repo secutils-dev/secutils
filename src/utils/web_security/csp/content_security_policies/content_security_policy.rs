@@ -16,6 +16,9 @@ pub struct ContentSecurityPolicy {
     /// Date and time when the content security policy was created.
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
+    /// Date and time when the content security policy was last updated.
+    #[serde(with = "time::serde::timestamp")]
+    pub updated_at: OffsetDateTime,
 }
 
 #[cfg(test)]
@@ -36,7 +39,9 @@ mod tests {
                 ContentSecurityPolicyDirective::ChildSrc(["'self'".to_string()].into_iter().collect())
             ],
             // January 1, 2000 11:00:00
-            created_at: OffsetDateTime::from_unix_timestamp(946720800)?
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            // January 1, 2000 11:00:10
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?
         }, @r###"
         {
           "id": "00000000-0000-0000-0000-000000000001",
@@ -49,7 +54,8 @@ mod tests {
               ]
             }
           ],
-          "createdAt": 946720800
+          "createdAt": 946720800,
+          "updatedAt": 946720810
         }
         "###);
 
@@ -60,7 +66,7 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicy>(
-                &json!({ "id": "00000000-0000-0000-0000-000000000001", "name": "some-name", "directives": [{"name": "child-src", "value": ["'self'", "https://*"]}], "createdAt": 946720800 })
+                &json!({ "id": "00000000-0000-0000-0000-000000000001", "name": "some-name", "directives": [{"name": "child-src", "value": ["'self'", "https://*"]}], "createdAt": 946720800, "updatedAt": 946720810 })
                     .to_string()
             )?,
             ContentSecurityPolicy {
@@ -72,13 +78,15 @@ mod tests {
                         .collect()
                 )],
                 // January 1, 2000 11:00:00
-                created_at: OffsetDateTime::from_unix_timestamp(946720800)?
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 11:00:10
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?
             }
         );
 
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicy>(
-                &json!({ "id": "00000000-0000-0000-0000-000000000001" ,"name": "some-name", "directives": [{"name": "sandbox", "value": []}], "createdAt": 946720800 })
+                &json!({ "id": "00000000-0000-0000-0000-000000000001", "name": "some-name", "directives": [{"name": "sandbox", "value": []}], "createdAt": 946720800, "updatedAt": 946720810 })
                     .to_string()
             )?,
             ContentSecurityPolicy {
@@ -86,7 +94,9 @@ mod tests {
                 name: "some-name".to_string(),
                 directives: vec![ContentSecurityPolicyDirective::Sandbox(HashSet::new())],
                 // January 1, 2000 11:00:00
-                created_at: OffsetDateTime::from_unix_timestamp(946720800)?
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                // January 1, 2000 11:00:10
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?
             }
         );
 

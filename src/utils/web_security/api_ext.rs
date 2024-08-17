@@ -194,14 +194,15 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
             }
         };
 
+        // Preserve timestamp only up to seconds.
+        let created_at =
+            OffsetDateTime::from_unix_timestamp(OffsetDateTime::now_utc().unix_timestamp())?;
         let policy = ContentSecurityPolicy {
             id: Uuid::now_v7(),
             name: params.name,
             directives,
-            // Preserve timestamp only up to seconds.
-            created_at: OffsetDateTime::from_unix_timestamp(
-                OffsetDateTime::now_utc().unix_timestamp(),
-            )?,
+            created_at,
+            updated_at: created_at,
         };
 
         self.validate_content_security_policy(&policy).await?;
@@ -243,6 +244,10 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
         let policy = ContentSecurityPolicy {
             name: params.name.unwrap_or(existing_policy.name),
             directives: params.directives.unwrap_or(existing_policy.directives),
+            // Preserve timestamp only up to seconds.
+            updated_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
             ..existing_policy
         };
 

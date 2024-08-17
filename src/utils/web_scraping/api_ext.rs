@@ -596,6 +596,9 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
     where
         V: Fn(&WebPageTracker<Tag>) -> anyhow::Result<()>,
     {
+        // Preserve timestamp only up to seconds.
+        let created_at =
+            OffsetDateTime::from_unix_timestamp(OffsetDateTime::now_utc().unix_timestamp())?;
         let tracker = WebPageTracker {
             id: Uuid::now_v7(),
             name: params.name,
@@ -604,10 +607,8 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             user_id: self.user.id,
             job_id: None,
             job_config: params.job_config,
-            // Preserve timestamp only up to seconds.
-            created_at: OffsetDateTime::from_unix_timestamp(
-                OffsetDateTime::now_utc().unix_timestamp(),
-            )?,
+            created_at,
+            updated_at: created_at,
             meta: None,
         };
 
@@ -695,6 +696,10 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             settings: params.settings.unwrap_or(existing_tracker.settings),
             job_id,
             job_config: params.job_config.unwrap_or(existing_tracker.job_config),
+            // Preserve timestamp only up to seconds.
+            updated_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
             ..existing_tracker
         };
 
