@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\nSELECT id, name, alg, ''::bytea as \"pkcs8!\", encrypted, created_at\nFROM user_data_certificates_private_keys\nWHERE user_id = $1\nORDER BY created_at\n                ",
+  "query": "\nSELECT id, name, attributes, created_at, updated_at\nFROM user_data_certificates_certificate_templates\nWHERE user_id = $1 AND id = $2\n                ",
   "describe": {
     "columns": [
       {
@@ -15,27 +15,23 @@
       },
       {
         "ordinal": 2,
-        "name": "alg",
+        "name": "attributes",
         "type_info": "Bytea"
       },
       {
         "ordinal": 3,
-        "name": "pkcs8!",
-        "type_info": "Bytea"
+        "name": "created_at",
+        "type_info": "Timestamptz"
       },
       {
         "ordinal": 4,
-        "name": "encrypted",
-        "type_info": "Bool"
-      },
-      {
-        "ordinal": 5,
-        "name": "created_at",
+        "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
+        "Uuid",
         "Uuid"
       ]
     },
@@ -43,10 +39,9 @@
       false,
       false,
       false,
-      null,
       false,
       false
     ]
   },
-  "hash": "9d91a28d9ac9eedab7d75a0108ba1cd336196e61c330d7884a79d309d157fa4b"
+  "hash": "b8c1d7fb1b4e0572abe4810e77361ee603c2937d643a47e268da19fa56ea0be9"
 }

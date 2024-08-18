@@ -91,7 +91,7 @@ pub async fn web_security_handle_action<DR: DnsResolver, ET: EmailTransport>(
         (
             UtilsResource::WebSecurityContentSecurityPolicies,
             UtilsAction::Execute {
-                resource_id,
+                resource_id: Some(resource_id),
                 operation: UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize,
             },
         ) => UtilsActionResult::json(
@@ -434,7 +434,7 @@ pub mod tests {
             mock_user.clone(),
             &api,
             UtilsAction::Execute {
-                resource_id: policy_original.id,
+                resource_id: Some(policy_original.id),
                 operation: UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize,
             },
             UtilsResource::WebSecurityContentSecurityPolicies,

@@ -25,25 +25,40 @@ fn extract_resource(req: &HttpRequest) -> Option<UtilsResource> {
 
 fn extract_action(req: &HttpRequest, resource: &UtilsResource) -> Option<UtilsAction> {
     let match_info = req.match_info();
-    let (Ok(resource_id), resource_operation, generic_operation) = (
-        match_info
-            .get("resource_id")
-            .map(Uuid::parse_str)
-            .transpose(),
+    let (generic_resource_operation, custom_resource_operation) = (
+        match_info.get("resource_operation"),
         match_info
             .get("resource_operation")
-            .map(|operation| UtilsResourceOperation::try_from((resource, operation)))
+            .map(|operation| UtilsResourceOperation::try_from((resource, operation, req.method())))
             .transpose(),
-        match_info.get("resource_operation"),
-    ) else {
+    );
+
+    // If resource id cannot be parsed, and `resource_operation` parameter isn't provided, treat
+    // `resource_id` as a custom **global** resource operation.
+    let resource_id = match_info
+        .get("resource_id")
+        .map(Uuid::parse_str)
+        .transpose();
+    let (Ok(resource_id), custom_resource_operation) = (match resource_id {
+        Err(_) if generic_resource_operation.is_none() => (
+            Ok(None),
+            match_info
+                .get("resource_id")
+                .map(|operation| {
+                    UtilsResourceOperation::try_from((resource, operation, req.method()))
+                })
+                .transpose(),
+        ),
+        _ => (resource_id, custom_resource_operation),
+    }) else {
         return None;
     };
 
     match (
         req.method(),
         resource_id,
-        resource_operation,
-        generic_operation,
+        custom_resource_operation,
+        generic_resource_operation,
     ) {
         // Resource collection based actions.
         (&Method::GET, None, Ok(None), None) => Some(UtilsAction::List),
@@ -62,10 +77,12 @@ fn extract_action(req: &HttpRequest, resource: &UtilsResource) -> Option<UtilsAc
         (&Method::POST, Some(resource_id), _, Some("unshare")) => {
             Some(UtilsAction::Unshare { resource_id })
         }
-        (&Method::POST, Some(resource_id), Ok(Some(operation)), _) => Some(UtilsAction::Execute {
-            resource_id,
-            operation,
-        }),
+        (&Method::GET | &Method::POST, resource_id, Ok(Some(operation)), _) => {
+            Some(UtilsAction::Execute {
+                resource_id,
+                operation,
+            })
+        }
         // Unsupported actions.
         _ => None,
     }
@@ -390,7 +407,7 @@ mod tests {
                 &resource,
             ),
             Some(UtilsAction::Execute {
-                resource_id,
+                resource_id: Some(resource_id),
                 operation: UtilsResourceOperation::CertificatesTemplateGenerate
             })
         );
@@ -411,7 +428,7 @@ mod tests {
                 &resource,
             ),
             Some(UtilsAction::Execute {
-                resource_id,
+                resource_id: Some(resource_id),
                 operation: UtilsResourceOperation::CertificatesPrivateKeyExport
             })
         );
@@ -432,7 +449,7 @@ mod tests {
                 &resource,
             ),
             Some(UtilsAction::Execute {
-                resource_id,
+                resource_id: Some(resource_id),
                 operation: UtilsResourceOperation::WebhooksRespondersGetHistory
             })
         );
@@ -447,8 +464,22 @@ mod tests {
                 &resource,
             ),
             Some(UtilsAction::Execute {
-                resource_id,
+                resource_id: Some(resource_id),
                 operation: UtilsResourceOperation::WebhooksRespondersClearHistory
+            })
+        );
+
+        assert_eq!(
+            extract_action(
+                &TestRequest::with_uri("https://secutils.dev/api/utils")
+                    .method(Method::GET)
+                    .param("resource_id", "stats")
+                    .to_http_request(),
+                &resource,
+            ),
+            Some(UtilsAction::Execute {
+                resource_id: None,
+                operation: UtilsResourceOperation::WebhooksRespondersGetStats
             })
         );
     }
@@ -468,7 +499,7 @@ mod tests {
                 &resource,
             ),
             Some(UtilsAction::Execute {
-                resource_id,
+                resource_id: Some(resource_id),
                 operation: UtilsResourceOperation::WebScrapingGetHistory
             })
         );
@@ -483,7 +514,7 @@ mod tests {
                 &resource,
             ),
             Some(UtilsAction::Execute {
-                resource_id,
+                resource_id: Some(resource_id),
                 operation: UtilsResourceOperation::WebScrapingClearHistory
             })
         );
@@ -504,7 +535,7 @@ mod tests {
                 &resource,
             ),
             Some(UtilsAction::Execute {
-                resource_id,
+                resource_id: Some(resource_id),
                 operation: UtilsResourceOperation::WebScrapingGetHistory
             })
         );
@@ -519,7 +550,7 @@ mod tests {
                 &resource,
             ),
             Some(UtilsAction::Execute {
-                resource_id,
+                resource_id: Some(resource_id),
                 operation: UtilsResourceOperation::WebScrapingClearHistory
             })
         );
@@ -540,7 +571,7 @@ mod tests {
                 &resource,
             ),
             Some(UtilsAction::Execute {
-                resource_id,
+                resource_id: Some(resource_id),
                 operation: UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize
             })
         );

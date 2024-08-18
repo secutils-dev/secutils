@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\nSELECT id, name, url, kind, user_id, job_id, job_config, data, created_at\nFROM user_data_web_scraping_trackers\nWHERE job_config IS NOT NULL AND job_id IS NULL AND kind = $1\nORDER BY created_at\n                ",
+  "query": "\n    SELECT id, name, url, kind, user_id, job_id, job_config, data, created_at, updated_at\n    FROM user_data_web_scraping_trackers\n    WHERE job_id = $1 AND kind = $2\n                    ",
   "describe": {
     "columns": [
       {
@@ -47,10 +47,16 @@
         "ordinal": 8,
         "name": "created_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
+        "Uuid",
         "Bytea"
       ]
     },
@@ -63,8 +69,9 @@
       true,
       true,
       false,
+      false,
       false
     ]
   },
-  "hash": "a6ab5f4c7d873dbd2bfe99c8dd8f209a080604faffc70d654f3a1f1aef4daa6a"
+  "hash": "d4401c53e62182e9edefb08e8e983b76e3360b6d982eb356aa0f78b84e4f9403"
 }

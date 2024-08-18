@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\nSELECT trackers.id, trackers.name, trackers.url, trackers.kind, trackers.job_id,\n       trackers.job_config, trackers.user_id, trackers.data, trackers.created_at, jobs.extra\nFROM user_data_web_scraping_trackers as trackers\nINNER JOIN scheduler_jobs as jobs\nON trackers.job_id = jobs.id\nWHERE trackers.kind = $1 AND jobs.stopped = true AND trackers.created_at > $2\nORDER BY trackers.created_at\nLIMIT $3;\n",
+  "query": "\nSELECT trackers.id, trackers.name, trackers.url, trackers.kind, trackers.job_id,\n       trackers.job_config, trackers.user_id, trackers.data, trackers.created_at, trackers.updated_at,\n       jobs.extra\nFROM user_data_web_scraping_trackers as trackers\nINNER JOIN scheduler_jobs as jobs\nON trackers.job_id = jobs.id\nWHERE trackers.kind = $1 AND jobs.stopped = true AND trackers.created_at > $2\nORDER BY trackers.created_at\nLIMIT $3;\n",
   "describe": {
     "columns": [
       {
@@ -50,6 +50,11 @@
       },
       {
         "ordinal": 9,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
         "name": "extra",
         "type_info": "Bytea"
       }
@@ -71,8 +76,9 @@
       false,
       false,
       false,
+      false,
       true
     ]
   },
-  "hash": "68d09a3d5c91bbbb31be733bd52e105dfd3ba903fca0260a4d47546e143f201a"
+  "hash": "1695ab79095c95a7b618d5a2bcadb224a79ee2ede903b4924fd3f5539e1b6171"
 }

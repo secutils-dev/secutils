@@ -1745,6 +1745,7 @@ mod tests {
             .await?;
         let expected_tracker = WebPageTracker {
             name: "name_two".to_string(),
+            updated_at: updated_tracker.updated_at,
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);
@@ -1769,6 +1770,7 @@ mod tests {
         let expected_tracker = WebPageTracker {
             name: "name_two".to_string(),
             url: "http://localhost:1234/my/app?q=3".parse()?,
+            updated_at: updated_tracker.updated_at,
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);
@@ -1800,6 +1802,7 @@ mod tests {
                 revisions: 4,
                 ..tracker.settings.clone()
             },
+            updated_at: updated_tracker.updated_at,
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);
@@ -1843,6 +1846,7 @@ mod tests {
                 }),
                 notifications: false,
             }),
+            updated_at: updated_tracker.updated_at,
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);
@@ -1872,6 +1876,7 @@ mod tests {
                 ..tracker.settings.clone()
             },
             job_config: None,
+            updated_at: updated_tracker.updated_at,
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);
@@ -2222,6 +2227,7 @@ mod tests {
             .await?;
         let expected_tracker = WebPageTracker {
             name: "name_two".to_string(),
+            updated_at: updated_tracker.updated_at,
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);
@@ -2243,6 +2249,7 @@ mod tests {
         let expected_tracker = WebPageTracker {
             name: "name_two".to_string(),
             url: "http://localhost:1234/my/app?q=3".parse()?,
+            updated_at: updated_tracker.updated_at,
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);
@@ -2271,6 +2278,7 @@ mod tests {
                 revisions: 4,
                 ..tracker.settings.clone()
             },
+            updated_at: updated_tracker.updated_at,
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);
@@ -2311,6 +2319,7 @@ mod tests {
                 }),
                 notifications: false,
             }),
+            updated_at: updated_tracker.updated_at,
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);
@@ -2337,6 +2346,7 @@ mod tests {
                 ..tracker.settings.clone()
             },
             job_config: None,
+            updated_at: updated_tracker.updated_at,
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);
@@ -2708,6 +2718,7 @@ mod tests {
         let expected_tracker = WebPageTracker {
             name: "name_two".to_string(),
             job_id: Some(uuid!("00000000-0000-0000-0000-000000000001")),
+            updated_at: updated_tracker.updated_at,
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);
@@ -2741,6 +2752,7 @@ mod tests {
                 retry_strategy: None,
                 notifications: true,
             }),
+            updated_at: updated_tracker.updated_at,
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);
@@ -2810,6 +2822,7 @@ mod tests {
         let expected_tracker = WebPageTracker {
             name: "name_two".to_string(),
             job_id: Some(uuid!("00000000-0000-0000-0000-000000000001")),
+            updated_at: updated_tracker.updated_at,
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);
@@ -2840,6 +2853,7 @@ mod tests {
                 retry_strategy: None,
                 notifications: true,
             }),
+            updated_at: updated_tracker.updated_at,
             ..tracker.clone()
         };
         assert_eq!(expected_tracker, updated_tracker);

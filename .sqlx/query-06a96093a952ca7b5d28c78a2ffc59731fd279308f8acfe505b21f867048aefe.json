@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    UPDATE user_data_web_security_csp\n    SET name = $3, directives = $4, updated_at = $5\n    WHERE user_id = $1 AND id = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Bytea",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "06a96093a952ca7b5d28c78a2ffc59731fd279308f8acfe505b21f867048aefe"
+}

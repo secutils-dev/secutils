@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT r.id AS responder_id, COUNT(rh.id) AS request_count, MAX(rh.created_at) AS last_requested_at\nFROM user_data_webhooks_responders AS r\nJOIN user_data_webhooks_responders_history AS rh\nON r.id = rh.responder_id\nWHERE r.user_id = $1\nGROUP BY r.id\nORDER BY r.updated_at\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "responder_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "request_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "last_requested_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "d3dff488871283501e349cd285509197be3ab78d76fea4127246bee48a454dbe"
+}

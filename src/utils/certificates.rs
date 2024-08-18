@@ -72,7 +72,7 @@ pub async fn certificates_handle_action<DR: DnsResolver, ET: EmailTransport>(
         (
             UtilsResource::CertificatesPrivateKeys,
             UtilsAction::Execute {
-                resource_id,
+                resource_id: Some(resource_id),
                 operation: UtilsResourceOperation::CertificatesPrivateKeyExport,
             },
         ) => UtilsActionResult::json(
@@ -140,7 +140,7 @@ pub async fn certificates_handle_action<DR: DnsResolver, ET: EmailTransport>(
         (
             UtilsResource::CertificatesTemplates,
             UtilsAction::Execute {
-                resource_id,
+                resource_id: Some(resource_id),
                 operation: UtilsResourceOperation::CertificatesTemplateGenerate,
             },
         ) => UtilsActionResult::json(
@@ -432,7 +432,7 @@ pub mod tests {
             mock_user.clone(),
             &api,
             UtilsAction::Execute {
-                resource_id: private_key_original.id,
+                resource_id: Some(private_key_original.id),
                 operation: UtilsResourceOperation::CertificatesPrivateKeyExport,
             },
             UtilsResource::CertificatesPrivateKeys,
@@ -711,7 +711,7 @@ pub mod tests {
             mock_user.clone(),
             &api,
             UtilsAction::Execute {
-                resource_id: template_original.id,
+                resource_id: Some(template_original.id),
                 operation: UtilsResourceOperation::CertificatesTemplateGenerate,
             },
             UtilsResource::CertificatesTemplates,

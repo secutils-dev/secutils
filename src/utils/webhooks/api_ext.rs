@@ -2,6 +2,11 @@ mod responders_create_params;
 mod responders_request_create_params;
 mod responders_update_params;
 
+pub use self::{
+    responders_create_params::RespondersCreateParams,
+    responders_request_create_params::RespondersRequestCreateParams,
+    responders_update_params::RespondersUpdateParams,
+};
 use crate::{
     api::Api,
     error::Error as SecutilsError,
@@ -10,19 +15,15 @@ use crate::{
     users::User,
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
-        webhooks::{Responder, ResponderMethod, ResponderPathType, ResponderRequest},
+        webhooks::{
+            Responder, ResponderMethod, ResponderPathType, ResponderRequest, ResponderStats,
+        },
     },
 };
 use anyhow::bail;
 use time::OffsetDateTime;
 use url::Url;
 use uuid::Uuid;
-
-pub use self::{
-    responders_create_params::RespondersCreateParams,
-    responders_request_create_params::RespondersRequestCreateParams,
-    responders_update_params::RespondersUpdateParams,
-};
 
 pub struct WebhooksApiExt<'a, 'u, DR: DnsResolver, ET: EmailTransport> {
     api: &'a Api<DR, ET>,
@@ -38,6 +39,15 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
     /// Retrieves all responders that belong to the specified user.
     pub async fn get_responders(&self) -> anyhow::Result<Vec<Responder>> {
         self.api.db.webhooks().get_responders(self.user.id).await
+    }
+
+    /// Retrieves stats for all responders that belong to the specified user.
+    pub async fn get_responders_stats(&self) -> anyhow::Result<Vec<ResponderStats>> {
+        self.api
+            .db
+            .webhooks()
+            .get_responders_stats(self.user.id)
+            .await
     }
 
     /// Returns responder by its ID.
@@ -389,7 +399,7 @@ mod tests {
         utils::webhooks::{
             api_ext::{RespondersCreateParams, RespondersUpdateParams},
             Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,
-            RespondersRequestCreateParams,
+            ResponderStats, RespondersRequestCreateParams,
         },
     };
     use insta::assert_debug_snapshot;
@@ -1393,6 +1403,90 @@ mod tests {
         assert_eq!(
             webhooks.get_responders().await?,
             vec![responder_one.clone(), responder_two.clone()],
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn properly_returns_all_responders_stats(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let webhooks = api.webhooks(&mock_user);
+        assert!(webhooks.get_responders().await?.is_empty());
+
+        let settings = ResponderSettings {
+            requests_to_track: 10,
+            status_code: 200,
+            body: None,
+            headers: None,
+            script: None,
+        };
+        let responder_one = webhooks
+            .create_responder(RespondersCreateParams {
+                name: "name_one".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: settings.clone(),
+            })
+            .await?;
+        let responder_two = webhooks
+            .create_responder(RespondersCreateParams {
+                name: "name_two".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/path".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: false,
+                settings: settings.clone(),
+            })
+            .await?;
+
+        assert!(webhooks.get_responders_stats().await?.is_empty());
+
+        let request_one = webhooks
+            .create_responder_request(responder_one.id, get_request_create_params("/?query=value"))
+            .await?
+            .unwrap();
+        assert_eq!(
+            webhooks.get_responders_stats().await?,
+            vec![ResponderStats {
+                responder_id: responder_one.id,
+                request_count: 1,
+                last_requested_at: Some(request_one.created_at),
+            }]
+        );
+
+        let request_two = webhooks
+            .create_responder_request(
+                responder_two.id,
+                get_request_create_params("/path?query=value"),
+            )
+            .await?
+            .unwrap();
+        assert_eq!(
+            webhooks.get_responders_stats().await?,
+            vec![
+                ResponderStats {
+                    responder_id: responder_one.id,
+                    request_count: 1,
+                    last_requested_at: Some(request_one.created_at),
+                },
+                ResponderStats {
+                    responder_id: responder_two.id,
+                    request_count: 1,
+                    last_requested_at: Some(request_two.created_at),
+                }
+            ]
         );
 
         Ok(())

@@ -78,7 +78,7 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
         (
             UtilsResource::WebScrapingResources,
             UtilsAction::Execute {
-                resource_id,
+                resource_id: Some(resource_id),
                 operation: UtilsResourceOperation::WebScrapingGetHistory,
             },
         ) => UtilsActionResult::json(
@@ -89,7 +89,7 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
         (
             UtilsResource::WebScrapingContent,
             UtilsAction::Execute {
-                resource_id,
+                resource_id: Some(resource_id),
                 operation: UtilsResourceOperation::WebScrapingGetHistory,
             },
         ) => UtilsActionResult::json(
@@ -100,7 +100,7 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
         (
             UtilsResource::WebScrapingResources | UtilsResource::WebScrapingContent,
             UtilsAction::Execute {
-                resource_id,
+                resource_id: Some(resource_id),
                 operation: UtilsResourceOperation::WebScrapingClearHistory,
             },
         ) => {
@@ -843,7 +843,7 @@ pub mod tests {
             mock_user.clone(),
             &api,
             UtilsAction::Execute {
-                resource_id: resources_tracker.id,
+                resource_id: Some(resources_tracker.id),
                 operation: UtilsResourceOperation::WebScrapingGetHistory,
             },
             UtilsResource::WebScrapingResources,
@@ -863,7 +863,7 @@ pub mod tests {
             mock_user.clone(),
             &api,
             UtilsAction::Execute {
-                resource_id: content_tracker.id,
+                resource_id: Some(content_tracker.id),
                 operation: UtilsResourceOperation::WebScrapingGetHistory,
             },
             UtilsResource::WebScrapingContent,
@@ -1017,7 +1017,7 @@ pub mod tests {
             mock_user.clone(),
             &api,
             UtilsAction::Execute {
-                resource_id: resources_tracker.id,
+                resource_id: Some(resources_tracker.id),
                 operation: UtilsResourceOperation::WebScrapingClearHistory,
             },
             UtilsResource::WebScrapingResources,
@@ -1030,7 +1030,7 @@ pub mod tests {
             mock_user.clone(),
             &api,
             UtilsAction::Execute {
-                resource_id: content_tracker.id,
+                resource_id: Some(content_tracker.id),
                 operation: UtilsResourceOperation::WebScrapingClearHistory,
             },
             UtilsResource::WebScrapingContent,

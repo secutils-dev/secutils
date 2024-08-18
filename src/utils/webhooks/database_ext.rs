@@ -7,6 +7,7 @@ use crate::{
     users::UserId,
     utils::webhooks::{
         Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderRequest,
+        ResponderStats,
     },
 };
 use anyhow::{anyhow, bail};
@@ -46,6 +47,36 @@ ORDER BY updated_at
         }
 
         Ok(responders)
+    }
+
+    /// Retrieves stats for all responders.
+    pub async fn get_responders_stats(
+        &self,
+        user_id: UserId,
+    ) -> anyhow::Result<Vec<ResponderStats>> {
+        let raw_responders_stats = query!(
+            r#"
+SELECT r.id AS responder_id, COUNT(rh.id) AS request_count, MAX(rh.created_at) AS last_requested_at
+FROM user_data_webhooks_responders AS r
+JOIN user_data_webhooks_responders_history AS rh
+ON r.id = rh.responder_id
+WHERE r.user_id = $1
+GROUP BY r.id
+ORDER BY r.updated_at
+                "#,
+            *user_id
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(raw_responders_stats
+            .into_iter()
+            .map(|record| ResponderStats {
+                responder_id: record.responder_id,
+                request_count: record.request_count.unwrap_or(0) as usize,
+                last_requested_at: record.last_requested_at,
+            })
+            .collect())
     }
 
     /// Retrieves responder for the specified user with the specified ID.
@@ -380,6 +411,7 @@ mod tests {
         tests::{mock_user, to_database_error, MockResponderBuilder},
         utils::webhooks::{
             Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderRequest,
+            ResponderStats,
         },
     };
     use insta::assert_debug_snapshot;
@@ -1133,6 +1165,101 @@ mod tests {
         }
 
         assert_eq!(webhooks.get_responders(user.id).await?, responders);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_retrieve_all_responders_stats(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let responders = vec![
+            MockResponderBuilder::create(
+                uuid!("00000000-0000-0000-0000-000000000001"),
+                "some-name",
+                "/",
+            )?
+            .build(),
+            MockResponderBuilder::create(
+                uuid!("00000000-0000-0000-0000-000000000002"),
+                "some-name-2",
+                "/path",
+            )?
+            .build(),
+        ];
+
+        let webhooks = db.webhooks();
+        for responder in responders.iter() {
+            webhooks.insert_responder(user.id, responder).await?;
+        }
+
+        assert!(webhooks.get_responders_stats(user.id).await?.is_empty());
+
+        webhooks
+            .insert_responder_request(
+                user.id,
+                &create_request(
+                    uuid!("00000000-0000-0000-0000-000000000001"),
+                    responders[0].id,
+                )?,
+            )
+            .await?;
+        assert_eq!(
+            webhooks.get_responders_stats(user.id).await?,
+            vec![ResponderStats {
+                responder_id: responders[0].id,
+                request_count: 1,
+                last_requested_at: Some(OffsetDateTime::from_unix_timestamp(946720800)?)
+            }]
+        );
+
+        webhooks
+            .insert_responder_request(
+                user.id,
+                &ResponderRequest {
+                    created_at: OffsetDateTime::from_unix_timestamp(946720810)?,
+                    ..create_request(
+                        uuid!("00000000-0000-0000-0000-000000000002"),
+                        responders[0].id,
+                    )?
+                },
+            )
+            .await?;
+        assert_eq!(
+            webhooks.get_responders_stats(user.id).await?,
+            vec![ResponderStats {
+                responder_id: responders[0].id,
+                request_count: 2,
+                last_requested_at: Some(OffsetDateTime::from_unix_timestamp(946720810)?)
+            }]
+        );
+
+        webhooks
+            .insert_responder_request(
+                user.id,
+                &create_request(
+                    uuid!("00000000-0000-0000-0000-000000000003"),
+                    responders[1].id,
+                )?,
+            )
+            .await?;
+        assert_eq!(
+            webhooks.get_responders_stats(user.id).await?,
+            vec![
+                ResponderStats {
+                    responder_id: responders[0].id,
+                    request_count: 2,
+                    last_requested_at: Some(OffsetDateTime::from_unix_timestamp(946720810)?)
+                },
+                ResponderStats {
+                    responder_id: responders[1].id,
+                    request_count: 1,
+                    last_requested_at: Some(OffsetDateTime::from_unix_timestamp(946720800)?)
+                }
+            ]
+        );
 
         Ok(())
     }

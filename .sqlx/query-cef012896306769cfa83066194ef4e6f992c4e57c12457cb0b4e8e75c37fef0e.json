@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\nSELECT id, name, attributes, created_at\nFROM user_data_certificates_certificate_templates\nWHERE user_id = $1 AND id = $2\n                ",
+  "query": "\nSELECT id, name, attributes, created_at, updated_at\nFROM user_data_certificates_certificate_templates\nWHERE user_id = $1\nORDER BY updated_at\n                ",
   "describe": {
     "columns": [
       {
@@ -22,11 +22,15 @@
         "ordinal": 3,
         "name": "created_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid",
         "Uuid"
       ]
     },
@@ -34,8 +38,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "99e8a35a9d39a6edbd95f087040c54966fe86fbca547db96795343b120e2b591"
+  "hash": "cef012896306769cfa83066194ef4e6f992c4e57c12457cb0b4e8e75c37fef0e"
 }
