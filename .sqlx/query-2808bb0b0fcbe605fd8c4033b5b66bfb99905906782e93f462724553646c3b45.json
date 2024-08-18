@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\nSELECT id, name, attributes, created_at\nFROM user_data_certificates_certificate_templates\nWHERE user_id = $1\nORDER BY created_at\n                ",
+  "query": "\nSELECT id, name, directives, created_at, updated_at\nFROM user_data_web_security_csp\nWHERE user_id = $1 AND id = $2\n                ",
   "describe": {
     "columns": [
       {
@@ -15,17 +15,23 @@
       },
       {
         "ordinal": 2,
-        "name": "attributes",
+        "name": "directives",
         "type_info": "Bytea"
       },
       {
         "ordinal": 3,
         "name": "created_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
+        "Uuid",
         "Uuid"
       ]
     },
@@ -33,8 +39,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "faefaa039b94bdc11d3dcb00e606ab1d2de0425c357f45f0351aa0271c420984"
+  "hash": "2808bb0b0fcbe605fd8c4033b5b66bfb99905906782e93f462724553646c3b45"
 }

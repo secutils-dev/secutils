@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    INSERT INTO user_data_web_security_csp (user_id, id, name, directives, created_at, updated_at)\n    VALUES ( $1, $2, $3, $4, $5, $6 )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Bytea",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "888b251abf2d1f82c2bec9dc07bb172797fb301bca932635f1ed398c73e8bd92"
+}

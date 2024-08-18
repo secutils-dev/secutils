@@ -15,6 +15,16 @@ POST {{host}}/api/utils/webhooks/responders/018cb666-e66c-755c-8d1e-7ff6cacb8641
 Authorization: {{api-credentials}}
 Accept: application/json
 
-###
+### Get all responders.
+GET {{host}}/api/utils/webhooks/responders
+Cookie: {{cookie-credentials}}
+Accept: application/json
+
+### Get all responders stats.
+GET {{host}}/api/utils/webhooks/responders/stats
+Cookie: {{cookie-credentials}}
+Accept: application/json
+
+
 
 

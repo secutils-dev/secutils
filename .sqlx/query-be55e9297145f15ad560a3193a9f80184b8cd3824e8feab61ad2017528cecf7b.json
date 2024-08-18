@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n    SELECT id, name, directives, created_at\n    FROM user_data_web_security_csp\n    WHERE user_id = $1\n    ORDER BY created_at\n                    ",
+  "query": "\n    SELECT id, name, directives, created_at, updated_at\n    FROM user_data_web_security_csp\n    WHERE user_id = $1\n    ORDER BY updated_at\n                    ",
   "describe": {
     "columns": [
       {
@@ -22,6 +22,11 @@
         "ordinal": 3,
         "name": "created_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
@@ -33,8 +38,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "0e9b174f42ef6c82128c63e9ecb187637763ab43600d584b386f5f2abd800fe6"
+  "hash": "be55e9297145f15ad560a3193a9f80184b8cd3824e8feab61ad2017528cecf7b"
 }

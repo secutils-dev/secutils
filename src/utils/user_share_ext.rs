@@ -16,7 +16,7 @@ impl UserShare {
                     (
                         UtilsResource::CertificatesTemplates,
                         UtilsAction::Execute {
-                            resource_id,
+                            resource_id: Some(resource_id),
                             operation,
                         },
                     ) => {
@@ -36,7 +36,7 @@ impl UserShare {
                     (
                         UtilsResource::WebSecurityContentSecurityPolicies,
                         UtilsAction::Execute {
-                            resource_id,
+                            resource_id: Some(resource_id),
                             operation,
                         },
                     ) => policy_id == resource_id
@@ -87,7 +87,7 @@ mod tests {
                 resource_id: policy_id,
             },
             UtilsAction::Execute {
-                resource_id: uuid!("00000000-0000-0000-0000-000000000002"),
+                resource_id: Some(uuid!("00000000-0000-0000-0000-000000000002")),
                 operation: UtilsResourceOperation::CertificatesTemplateGenerate,
             },
         ];
@@ -101,7 +101,7 @@ mod tests {
                 resource_id: policy_id,
             },
             UtilsAction::Execute {
-                resource_id: policy_id,
+                resource_id: Some(policy_id),
                 operation: UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize,
             },
         ];
@@ -141,7 +141,7 @@ mod tests {
                 resource_id: template_id,
             },
             UtilsAction::Execute {
-                resource_id: uuid!("00000000-0000-0000-0000-000000000002"),
+                resource_id: Some(uuid!("00000000-0000-0000-0000-000000000002")),
                 operation: UtilsResourceOperation::CertificatesTemplateGenerate,
             },
         ];
@@ -156,7 +156,7 @@ mod tests {
                 resource_id: template_id,
             },
             UtilsAction::Execute {
-                resource_id: template_id,
+                resource_id: Some(template_id),
                 operation: UtilsResourceOperation::CertificatesTemplateGenerate,
             },
         ];

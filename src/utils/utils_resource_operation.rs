@@ -1,4 +1,5 @@
 use crate::utils::UtilsResource;
+use actix_web::http::Method;
 
 /// Describe custom util's resource operation.
 #[allow(clippy::enum_variant_names)]
@@ -8,6 +9,7 @@ pub enum UtilsResourceOperation {
     CertificatesPrivateKeyExport,
     WebhooksRespondersGetHistory,
     WebhooksRespondersClearHistory,
+    WebhooksRespondersGetStats,
     WebScrapingGetHistory,
     WebScrapingClearHistory,
     WebSecurityContentSecurityPolicySerialize,
@@ -26,10 +28,12 @@ impl UtilsResourceOperation {
     }
 }
 
-impl TryFrom<(&UtilsResource, &str)> for UtilsResourceOperation {
+impl TryFrom<(&UtilsResource, &str, &Method)> for UtilsResourceOperation {
     type Error = ();
 
-    fn try_from((resource, operation): (&UtilsResource, &str)) -> Result<Self, Self::Error> {
+    fn try_from(
+        (resource, operation, method): (&UtilsResource, &str, &Method),
+    ) -> Result<Self, Self::Error> {
         match resource {
             // Private keys custom actions.
             UtilsResource::CertificatesPrivateKeys if operation == "export" => {
@@ -47,6 +51,9 @@ impl TryFrom<(&UtilsResource, &str)> for UtilsResourceOperation {
             }
             UtilsResource::WebhooksResponders if operation == "clear" => {
                 Ok(UtilsResourceOperation::WebhooksRespondersClearHistory)
+            }
+            UtilsResource::WebhooksResponders if operation == "stats" && method == Method::GET => {
+                Ok(UtilsResourceOperation::WebhooksRespondersGetStats)
             }
 
             // Web scraping custom actions.
@@ -75,6 +82,7 @@ impl TryFrom<(&UtilsResource, &str)> for UtilsResourceOperation {
 mod tests {
     use super::UtilsResourceOperation;
     use crate::utils::UtilsResource;
+    use actix_web::http::Method;
 
     #[test]
     fn properly_checks_if_action_requires_params() {
@@ -84,6 +92,7 @@ mod tests {
 
         assert!(!UtilsResourceOperation::WebhooksRespondersGetHistory.requires_params());
         assert!(!UtilsResourceOperation::WebhooksRespondersClearHistory.requires_params());
+        assert!(!UtilsResourceOperation::WebhooksRespondersGetStats.requires_params());
 
         assert!(UtilsResourceOperation::WebScrapingGetHistory.requires_params());
         assert!(!UtilsResourceOperation::WebScrapingClearHistory.requires_params());
@@ -96,78 +105,125 @@ mod tests {
     #[test]
     fn properly_parses_resource_action_operation() {
         assert_eq!(
-            UtilsResourceOperation::try_from((&UtilsResource::CertificatesPrivateKeys, "export")),
+            UtilsResourceOperation::try_from((
+                &UtilsResource::CertificatesPrivateKeys,
+                "export",
+                &Method::POST
+            )),
             Ok(UtilsResourceOperation::CertificatesPrivateKeyExport)
         );
         assert!(UtilsResourceOperation::try_from((
             &UtilsResource::CertificatesTemplates,
-            "export"
+            "export",
+            &Method::POST
         ))
         .is_err());
 
         assert_eq!(
-            UtilsResourceOperation::try_from((&UtilsResource::CertificatesTemplates, "generate")),
+            UtilsResourceOperation::try_from((
+                &UtilsResource::CertificatesTemplates,
+                "generate",
+                &Method::POST
+            )),
             Ok(UtilsResourceOperation::CertificatesTemplateGenerate)
         );
         assert!(UtilsResourceOperation::try_from((
             &UtilsResource::CertificatesPrivateKeys,
-            "generate"
+            "generate",
+            &Method::POST
         ))
         .is_err());
 
         assert!(UtilsResourceOperation::try_from((
             &UtilsResource::CertificatesPrivateKeys,
-            "share"
+            "share",
+            &Method::POST
         ))
         .is_err());
 
         assert!(UtilsResourceOperation::try_from((
             &UtilsResource::CertificatesPrivateKeys,
-            "unshare"
+            "unshare",
+            &Method::POST
         ))
         .is_err());
 
         assert_eq!(
-            UtilsResourceOperation::try_from((&UtilsResource::WebhooksResponders, "history")),
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebhooksResponders,
+                "history",
+                &Method::POST
+            )),
             Ok(UtilsResourceOperation::WebhooksRespondersGetHistory)
         );
         assert_eq!(
-            UtilsResourceOperation::try_from((&UtilsResource::WebhooksResponders, "clear")),
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebhooksResponders,
+                "clear",
+                &Method::POST
+            )),
             Ok(UtilsResourceOperation::WebhooksRespondersClearHistory)
+        );
+        assert_eq!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebhooksResponders,
+                "stats",
+                &Method::GET
+            )),
+            Ok(UtilsResourceOperation::WebhooksRespondersGetStats)
         );
 
         assert_eq!(
-            UtilsResourceOperation::try_from((&UtilsResource::WebScrapingResources, "history")),
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingResources,
+                "history",
+                &Method::POST
+            )),
             Ok(UtilsResourceOperation::WebScrapingGetHistory)
         );
         assert_eq!(
-            UtilsResourceOperation::try_from((&UtilsResource::WebScrapingResources, "clear")),
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingResources,
+                "clear",
+                &Method::POST
+            )),
             Ok(UtilsResourceOperation::WebScrapingClearHistory)
         );
         assert_eq!(
-            UtilsResourceOperation::try_from((&UtilsResource::WebScrapingContent, "history")),
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingContent,
+                "history",
+                &Method::POST
+            )),
             Ok(UtilsResourceOperation::WebScrapingGetHistory)
         );
         assert_eq!(
-            UtilsResourceOperation::try_from((&UtilsResource::WebScrapingContent, "clear")),
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingContent,
+                "clear",
+                &Method::POST
+            )),
             Ok(UtilsResourceOperation::WebScrapingClearHistory)
         );
         assert!(UtilsResourceOperation::try_from((
             &UtilsResource::CertificatesPrivateKeys,
-            "history"
+            "history",
+            &Method::POST
         ))
         .is_err());
 
         assert_eq!(
             UtilsResourceOperation::try_from((
                 &UtilsResource::WebSecurityContentSecurityPolicies,
-                "serialize"
+                "serialize",
+                &Method::POST
             )),
             Ok(UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize)
         );
         assert!(UtilsResourceOperation::try_from((
             &UtilsResource::WebSecurityContentSecurityPolicies,
-            "generate"
+            "generate",
+            &Method::POST
         ))
         .is_err());
     }

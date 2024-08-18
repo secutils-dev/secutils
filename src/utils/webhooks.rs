@@ -7,6 +7,7 @@ pub use self::{
     responders::{
         Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderRequest,
         ResponderRequestHeaders, ResponderScriptContext, ResponderScriptResult, ResponderSettings,
+        ResponderStats,
     },
 };
 use crate::{
@@ -56,20 +57,27 @@ pub async fn webhooks_handle_action<DR: DnsResolver, ET: EmailTransport>(
         (
             UtilsResource::WebhooksResponders,
             UtilsAction::Execute {
-                resource_id,
+                resource_id: Some(resource_id),
                 operation: UtilsResourceOperation::WebhooksRespondersGetHistory,
             },
         ) => UtilsActionResult::json(webhooks.get_responder_requests(resource_id).await?),
         (
             UtilsResource::WebhooksResponders,
             UtilsAction::Execute {
-                resource_id,
+                resource_id: Some(resource_id),
                 operation: UtilsResourceOperation::WebhooksRespondersClearHistory,
             },
         ) => {
             webhooks.clear_responder_requests(resource_id).await?;
             Ok(UtilsActionResult::empty())
         }
+        (
+            UtilsResource::WebhooksResponders,
+            UtilsAction::Execute {
+                operation: UtilsResourceOperation::WebhooksRespondersGetStats,
+                ..
+            },
+        ) => UtilsActionResult::json(webhooks.get_responders_stats().await?),
         _ => Err(SecutilsError::client("Invalid resource or action.").into()),
     }
 }
@@ -458,7 +466,7 @@ pub mod tests {
             mock_user.clone(),
             &api,
             UtilsAction::Execute {
-                resource_id: responder.id,
+                resource_id: Some(responder.id),
                 operation: UtilsResourceOperation::WebhooksRespondersGetHistory,
             },
             UtilsResource::WebhooksResponders,
@@ -549,7 +557,7 @@ pub mod tests {
             mock_user.clone(),
             &api,
             UtilsAction::Execute {
-                resource_id: responder.id,
+                resource_id: Some(responder.id),
                 operation: UtilsResourceOperation::WebhooksRespondersClearHistory,
             },
             UtilsResource::WebhooksResponders,
@@ -562,6 +570,76 @@ pub mod tests {
             .get_responder_requests(responder.id)
             .await?
             .is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn properly_handles_get_stats_operation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        // Insert responders and requests.
+        let webhooks = api.webhooks(&mock_user);
+        let responder = webhooks
+            .create_responder(RespondersCreateParams {
+                name: "name_one".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Get,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 3,
+                    script: None,
+                    status_code: 200,
+                    body: None,
+                    headers: None,
+                },
+            })
+            .await?;
+        let request_one = webhooks
+            .create_responder_request(
+                responder.id,
+                RespondersRequestCreateParams {
+                    client_address: None,
+                    method: Cow::Borrowed("POST"),
+                    headers: None,
+                    url: Cow::Borrowed("/?query=value"),
+                    body: None,
+                },
+            )
+            .await?
+            .unwrap();
+
+        let action_result = webhooks_handle_action(
+            mock_user.clone(),
+            &api,
+            UtilsAction::Execute {
+                resource_id: None,
+                operation: UtilsResourceOperation::WebhooksRespondersGetStats,
+            },
+            UtilsResource::WebhooksResponders,
+            None,
+        )
+        .await?;
+
+        let mut settings = insta::Settings::clone_current();
+        settings.add_filter(&responder.id.to_string(), "[UUID]");
+        settings.add_filter(
+            &request_one.created_at.unix_timestamp().to_string(),
+            "[TIMESTAMP]",
+        );
+
+        settings.bind(|| {
+            assert_json_snapshot!(
+                serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
+                @r###""[{\"responderId\":\"[UUID]\",\"requestCount\":1,\"lastRequestedAt\":[TIMESTAMP]}]""###
+            );
+        });
 
         Ok(())
     }

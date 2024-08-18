@@ -623,6 +623,7 @@ mod tests {
             .await?;
         let expected_policy = ContentSecurityPolicy {
             name: "name_two".to_string(),
+            updated_at: updated_policy.updated_at,
             ..policy.clone()
         };
         assert_eq!(expected_policy, updated_policy);
@@ -651,6 +652,7 @@ mod tests {
             directives: vec![ContentSecurityPolicyDirective::DefaultSrc(
                 ["'none'".to_string()].into_iter().collect(),
             )],
+            updated_at: updated_policy.updated_at,
             ..policy.clone()
         };
         assert_eq!(expected_policy, updated_policy);

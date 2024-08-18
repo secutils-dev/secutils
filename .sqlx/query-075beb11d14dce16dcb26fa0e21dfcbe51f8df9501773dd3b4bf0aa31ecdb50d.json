@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\nSELECT id, name, url, kind, job_id, job_config, user_id, data, created_at\nFROM user_data_web_scraping_trackers\nWHERE user_id = $1 AND kind = $2\nORDER BY created_at\n                ",
+  "query": "\nSELECT id, name, location, method, enabled, settings, created_at, updated_at\nFROM user_data_webhooks_responders\nWHERE user_id = $1\nORDER BY updated_at\n                ",
   "describe": {
     "columns": [
       {
@@ -15,44 +15,38 @@
       },
       {
         "ordinal": 2,
-        "name": "url",
+        "name": "location",
         "type_info": "Text"
       },
       {
         "ordinal": 3,
-        "name": "kind",
+        "name": "method",
         "type_info": "Bytea"
       },
       {
         "ordinal": 4,
-        "name": "job_id",
-        "type_info": "Uuid"
+        "name": "enabled",
+        "type_info": "Bool"
       },
       {
         "ordinal": 5,
-        "name": "job_config",
+        "name": "settings",
         "type_info": "Bytea"
       },
       {
         "ordinal": 6,
-        "name": "user_id",
-        "type_info": "Uuid"
+        "name": "created_at",
+        "type_info": "Timestamptz"
       },
       {
         "ordinal": 7,
-        "name": "data",
-        "type_info": "Bytea"
-      },
-      {
-        "ordinal": 8,
-        "name": "created_at",
+        "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Bytea"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -60,12 +54,11 @@
       false,
       false,
       false,
-      true,
-      true,
+      false,
       false,
       false,
       false
     ]
   },
-  "hash": "1f3f7bd4f175a191a37461adf59b4566a5cb65c1a0d4c25f15d50302e2e57182"
+  "hash": "075beb11d14dce16dcb26fa0e21dfcbe51f8df9501773dd3b4bf0aa31ecdb50d"
 }

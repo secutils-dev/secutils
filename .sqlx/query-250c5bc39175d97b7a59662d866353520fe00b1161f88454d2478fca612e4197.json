@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\nSELECT id, name, location, method, enabled, settings, created_at\nFROM user_data_webhooks_responders\nWHERE user_id = $1\nORDER BY created_at\n                ",
+  "query": "\nSELECT id, name, alg, pkcs8, encrypted, created_at, updated_at\nFROM user_data_certificates_private_keys\nWHERE user_id = $1 AND id = $2\n                ",
   "describe": {
     "columns": [
       {
@@ -15,32 +15,33 @@
       },
       {
         "ordinal": 2,
-        "name": "location",
-        "type_info": "Text"
+        "name": "alg",
+        "type_info": "Bytea"
       },
       {
         "ordinal": 3,
-        "name": "method",
+        "name": "pkcs8",
         "type_info": "Bytea"
       },
       {
         "ordinal": 4,
-        "name": "enabled",
+        "name": "encrypted",
         "type_info": "Bool"
       },
       {
         "ordinal": 5,
-        "name": "settings",
-        "type_info": "Bytea"
+        "name": "created_at",
+        "type_info": "Timestamptz"
       },
       {
         "ordinal": 6,
-        "name": "created_at",
+        "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
+        "Uuid",
         "Uuid"
       ]
     },
@@ -54,5 +55,5 @@
       false
     ]
   },
-  "hash": "fbdf0a338af32482eb315d5981ed4c86e61cfab303dd850b4c0dcf61cc92bec3"
+  "hash": "250c5bc39175d97b7a59662d866353520fe00b1161f88454d2478fca612e4197"
 }

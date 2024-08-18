@@ -19,7 +19,7 @@ pub enum UtilsAction {
     Unshare { resource_id: Uuid },
     /// Execute util's resource custom operation (POST).
     Execute {
-        resource_id: Uuid,
+        resource_id: Option<Uuid>,
         operation: UtilsResourceOperation,
     },
 }
@@ -72,18 +72,23 @@ mod tests {
         .requires_params());
 
         assert!(UtilsAction::Execute {
-            resource_id: uuid!("00000000-0000-0000-0000-000000000001"),
+            resource_id: Some(uuid!("00000000-0000-0000-0000-000000000001")),
             operation: UtilsResourceOperation::CertificatesPrivateKeyExport,
         }
         .requires_params());
         assert!(UtilsAction::Execute {
-            resource_id: uuid!("00000000-0000-0000-0000-000000000001"),
+            resource_id: Some(uuid!("00000000-0000-0000-0000-000000000001")),
             operation: UtilsResourceOperation::CertificatesTemplateGenerate,
         }
         .requires_params());
         assert!(UtilsAction::Execute {
-            resource_id: uuid!("00000000-0000-0000-0000-000000000001"),
+            resource_id: Some(uuid!("00000000-0000-0000-0000-000000000001")),
             operation: UtilsResourceOperation::WebScrapingGetHistory,
+        }
+        .requires_params());
+        assert!(!UtilsAction::Execute {
+            resource_id: None,
+            operation: UtilsResourceOperation::WebhooksRespondersGetStats,
         }
         .requires_params());
     }

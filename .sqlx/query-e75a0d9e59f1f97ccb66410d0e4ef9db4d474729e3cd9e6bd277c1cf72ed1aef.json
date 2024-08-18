@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, name, location, method, enabled, settings, created_at\n        FROM user_data_webhooks_responders\n        WHERE user_id = $1 AND (location = $2 OR starts_with($3, location COLLATE \"und-x-icu\")) AND (method = $4 OR method = $5)\n        ORDER BY length(location) DESC, location DESC\n        LIMIT 1\n                        ",
+  "query": "\n        SELECT id, name, location, method, enabled, settings, created_at, updated_at\n        FROM user_data_webhooks_responders\n        WHERE user_id = $1 AND id = $2\n                        ",
   "describe": {
     "columns": [
       {
@@ -37,15 +37,17 @@
         "ordinal": 6,
         "name": "created_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
         "Uuid",
-        "Text",
-        "Text",
-        "Bytea",
-        "Bytea"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -55,8 +57,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "1d4ee010e2cde8644f68085af9d3a9ce18efe335ed23f18df52cdd769344a715"
+  "hash": "e75a0d9e59f1f97ccb66410d0e4ef9db4d474729e3cd9e6bd277c1cf72ed1aef"
 }
