@@ -1,7 +1,6 @@
 use crate::scheduler::{
-    database_ext::RawSchedulerJobStoredData, SchedulerJob, SchedulerJobMetadata,
+    SchedulerJob, SchedulerJobMetadata, database_ext::RawSchedulerJobStoredData,
 };
-use cron::Schedule;
 use tokio_cron_scheduler::Job;
 
 pub trait JobExt {
@@ -33,12 +32,11 @@ impl JobExt for Job {
         &mut self,
         raw_job_data: &RawSchedulerJobStoredData,
     ) -> anyhow::Result<bool> {
-        let existing_schedule = raw_job_data
-            .schedule
-            .as_ref()
-            .map(|schedule| Schedule::try_from(schedule.as_str()))
-            .transpose()?;
-        Ok(self.job_data()?.schedule() == existing_schedule)
+        Ok(raw_job_data.schedule
+            == self
+                .job_data()?
+                .schedule()
+                .map(|cron| cron.pattern.to_string()))
     }
 
     /// Populates job's fields with the raw job data.

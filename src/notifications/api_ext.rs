@@ -6,11 +6,11 @@ use crate::{
         NotificationContent, NotificationDestination, NotificationId,
     },
 };
-use anyhow::{anyhow, bail, Context};
-use futures::{pin_mut, StreamExt};
+use anyhow::{Context, anyhow, bail};
+use futures::{StreamExt, pin_mut};
 use lettre::{
-    message::{header::ContentType, Attachment, MultiPart, SinglePart},
     Message,
+    message::{Attachment, MultiPart, SinglePart, header::ContentType},
 };
 use std::cmp;
 use time::OffsetDateTime;
@@ -491,11 +491,12 @@ mod tests {
         }
 
         for n in 0..=9 {
-            assert!(api
-                .db
-                .get_notification((n + 1).try_into()?)
-                .await?
-                .is_some());
+            assert!(
+                api.db
+                    .get_notification((n + 1).try_into()?)
+                    .await?
+                    .is_some()
+            );
         }
 
         assert_eq!(api.notifications().send_pending_notifications(3).await?, 3);
@@ -525,11 +526,12 @@ mod tests {
         assert_eq!(api.notifications().send_pending_notifications(10).await?, 4);
 
         for n in 0..=9 {
-            assert!(api
-                .db
-                .get_notification((n + 1).try_into()?)
-                .await?
-                .is_none());
+            assert!(
+                api.db
+                    .get_notification((n + 1).try_into()?)
+                    .await?
+                    .is_none()
+            );
         }
 
         Ok(())

@@ -126,13 +126,13 @@ pub mod tests {
         tests::{mock_api, mock_user},
         users::{SharedResource, UserShareId},
         utils::{
+            UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
             web_security::{
-                api_ext::ContentSecurityPoliciesCreateParams, web_security_handle_action,
                 ContentSecurityPolicy, ContentSecurityPolicyContent,
                 ContentSecurityPolicyDirective, ContentSecurityPolicySandboxDirectiveValue,
                 ContentSecurityPolicyTrustedTypesDirectiveValue,
+                api_ext::ContentSecurityPoliciesCreateParams, web_security_handle_action,
             },
-            UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
         },
     };
     use serde::Deserialize;
@@ -403,11 +403,12 @@ pub mod tests {
         .await?;
         assert!(empty_result.into_inner().is_none());
 
-        assert!(api
-            .web_security()
-            .get_content_security_policy(mock_user.id, policy.id)
-            .await?
-            .is_none());
+        assert!(
+            api.web_security()
+                .get_content_security_policy(mock_user.id, policy.id)
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }
@@ -446,7 +447,10 @@ pub mod tests {
 
         let deserialized_result =
             serde_json::from_value::<String>(serialize_result.into_inner().unwrap())?;
-        assert_eq!(deserialized_result, "upgrade-insecure-requests; default-src 'self' https://secutils.dev; trusted-types 'allow-duplicates'; sandbox allow-forms allow-popups; report-uri https://secutils.dev/report");
+        assert_eq!(
+            deserialized_result,
+            "upgrade-insecure-requests; default-src 'self' https://secutils.dev; trusted-types 'allow-duplicates'; sandbox allow-forms allow-popups; report-uri https://secutils.dev/report"
+        );
 
         Ok(())
     }

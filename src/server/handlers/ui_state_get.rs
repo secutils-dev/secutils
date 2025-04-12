@@ -3,7 +3,7 @@ use crate::{
     server::{AppState, SubscriptionState, UiState},
     users::{ClientUserShare, User, UserDataNamespace, UserShare},
 };
-use actix_web::{web, HttpResponse};
+use actix_web::{HttpResponse, web};
 use anyhow::anyhow;
 use std::ops::Deref;
 

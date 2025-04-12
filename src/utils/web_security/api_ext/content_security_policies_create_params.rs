@@ -11,8 +11,8 @@ pub struct ContentSecurityPoliciesCreateParams {
 #[cfg(test)]
 mod tests {
     use crate::utils::web_security::{
-        api_ext::ContentSecurityPoliciesCreateParams, ContentSecurityPolicyContent,
-        ContentSecurityPolicySource,
+        ContentSecurityPolicyContent, ContentSecurityPolicySource,
+        api_ext::ContentSecurityPoliciesCreateParams,
     };
     use url::Url;
 

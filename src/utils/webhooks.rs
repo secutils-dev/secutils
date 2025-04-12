@@ -88,11 +88,11 @@ pub mod tests {
     use crate::{
         tests::{mock_api, mock_user},
         utils::{
-            webhooks::{
-                webhooks_handle_action, Responder, ResponderLocation, ResponderMethod,
-                ResponderPathType, ResponderSettings, RespondersRequestCreateParams,
-            },
             UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
+            webhooks::{
+                Responder, ResponderLocation, ResponderMethod, ResponderPathType,
+                ResponderSettings, RespondersRequestCreateParams, webhooks_handle_action,
+            },
         },
     };
     use insta::assert_json_snapshot;
@@ -566,10 +566,12 @@ pub mod tests {
         .await?;
         assert!(action_result.into_inner().is_none());
 
-        assert!(webhooks
-            .get_responder_requests(responder.id)
-            .await?
-            .is_empty());
+        assert!(
+            webhooks
+                .get_responder_requests(responder.id)
+                .await?
+                .is_empty()
+        );
 
         Ok(())
     }

@@ -11,7 +11,7 @@ pub struct WebScraperContentRequestScripts<'a> {
     pub extract_content: Option<&'a str>,
 }
 
-impl<'a> WebScraperContentRequestScripts<'a> {
+impl WebScraperContentRequestScripts<'_> {
     /// Returns `true` if none of the scripts are set.
     pub fn is_empty(&self) -> bool {
         self.extract_content.is_none()

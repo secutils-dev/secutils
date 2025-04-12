@@ -9,7 +9,7 @@ pub struct UserDataKey<'p> {
 }
 
 /// Base implementation for the user data with the default key.
-impl<'p> From<UserDataNamespace> for UserDataKey<'p> {
+impl From<UserDataNamespace> for UserDataKey<'_> {
     fn from(namespace: UserDataNamespace) -> Self {
         Self {
             namespace,

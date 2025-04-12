@@ -1,8 +1,8 @@
 use crate::{
     security::Operator,
-    server::{http_errors::generic_internal_server_error, AppState},
+    server::{AppState, http_errors::generic_internal_server_error},
 };
-use actix_web::{web, Error, HttpResponse, Responder};
+use actix_web::{Error, HttpResponse, Responder, web};
 use serde::Deserialize;
 
 #[derive(Deserialize)]

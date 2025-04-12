@@ -11,15 +11,15 @@ use crate::{
     js_runtime::JsRuntime,
     network::{Network, TokioDnsResolver},
     scheduler::Scheduler,
-    search::{populate_search_index, SearchIndex},
+    search::{SearchIndex, populate_search_index},
     templates::create_templates,
 };
 use actix_cors::Cors;
-use actix_web::{middleware, web, App, HttpServer, Result};
+use actix_web::{App, HttpServer, Result, middleware, web};
 use anyhow::Context;
 use lettre::{
-    message::Mailbox, transport::smtp::authentication::Credentials, AsyncSmtpTransport,
-    Tokio1Executor,
+    AsyncSmtpTransport, Tokio1Executor, message::Mailbox,
+    transport::smtp::authentication::Credentials,
 };
 use sqlx::postgres::PgPoolOptions;
 use std::{str::FromStr, sync::Arc};

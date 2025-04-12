@@ -6,7 +6,7 @@ use crate::{
         UserDataNamespace, UserId, UserSettingsSetter, UserShare, UserShareId,
     },
 };
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use serde::Deserialize;
 
 pub mod errors;

@@ -54,9 +54,9 @@ pub mod tests {
     use lettre::transport::stub::AsyncStubTransport;
     use std::net::Ipv4Addr;
     use trust_dns_resolver::{
-        error::{ResolveError, ResolveErrorKind},
-        proto::rr::{rdata::A, RData, Record},
         Name,
+        error::{ResolveError, ResolveErrorKind},
+        proto::rr::{RData, Record, rdata::A},
     };
     use url::Url;
 

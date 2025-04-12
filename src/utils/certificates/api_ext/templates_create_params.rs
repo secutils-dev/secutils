@@ -11,8 +11,8 @@ pub struct TemplatesCreateParams {
 #[cfg(test)]
 mod tests {
     use crate::utils::certificates::{
-        api_ext::TemplatesCreateParams, CertificateAttributes, ExtendedKeyUsage, KeyUsage,
-        PrivateKeyAlgorithm, SignatureAlgorithm, Version,
+        CertificateAttributes, ExtendedKeyUsage, KeyUsage, PrivateKeyAlgorithm, SignatureAlgorithm,
+        Version, api_ext::TemplatesCreateParams,
     };
     use time::OffsetDateTime;
 

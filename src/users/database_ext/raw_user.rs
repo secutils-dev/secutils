@@ -16,7 +16,7 @@ pub(super) struct RawUser<'s> {
     pub subscription_trial_ends_at: Option<OffsetDateTime>,
 }
 
-impl<'u> TryFrom<RawUser<'u>> for User {
+impl TryFrom<RawUser<'_>> for User {
     type Error = anyhow::Error;
 
     fn try_from(raw_user: RawUser) -> Result<Self, Self::Error> {
@@ -214,18 +214,20 @@ mod tests {
 
     #[test]
     fn fails_if_malformed() -> anyhow::Result<()> {
-        assert!(User::try_from(RawUser {
-            id: uuid!("00000000-0000-0000-0000-000000000001"),
-            email: Cow::Borrowed("dev@secutils.dev"),
-            handle: Cow::Borrowed("devhandle"),
-            created_at: time::Date::MIN.midnight().assume_utc(),
-            subscription_tier: -1,
-            subscription_started_at: time::Date::MIN.midnight().assume_utc(),
-            subscription_ends_at: None,
-            subscription_trial_started_at: None,
-            subscription_trial_ends_at: None,
-        })
-        .is_err());
+        assert!(
+            User::try_from(RawUser {
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
+                email: Cow::Borrowed("dev@secutils.dev"),
+                handle: Cow::Borrowed("devhandle"),
+                created_at: time::Date::MIN.midnight().assume_utc(),
+                subscription_tier: -1,
+                subscription_started_at: time::Date::MIN.midnight().assume_utc(),
+                subscription_ends_at: None,
+                subscription_trial_started_at: None,
+                subscription_trial_ends_at: None,
+            })
+            .is_err()
+        );
 
         Ok(())
     }

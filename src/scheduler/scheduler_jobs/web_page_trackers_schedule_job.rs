@@ -128,13 +128,12 @@ impl WebPageTrackersScheduleJob {
 mod tests {
     use super::WebPageTrackersScheduleJob;
     use crate::{
-        scheduler::{scheduler_job::SchedulerJob, SchedulerJobConfig, SchedulerJobMetadata},
+        scheduler::{SchedulerJobConfig, SchedulerJobMetadata, scheduler_job::SchedulerJob},
         tests::{mock_api_with_config, mock_config, mock_scheduler, mock_scheduler_job, mock_user},
         utils::web_scraping::{
-            tests::WebPageTrackerCreateParams, WebPageTrackerKind, WebPageTrackerSettings,
+            WebPageTrackerKind, WebPageTrackerSettings, tests::WebPageTrackerCreateParams,
         },
     };
-    use cron::Schedule;
     use futures::StreamExt;
     use insta::assert_debug_snapshot;
     use sqlx::PgPool;
@@ -145,7 +144,7 @@ mod tests {
     #[sqlx::test]
     async fn can_create_job_with_correct_parameters(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_schedule = Schedule::try_from("1/5 * * * * *")?;
+        config.scheduler.web_page_trackers_schedule = "1/5 * * * * *".to_string();
 
         let api = mock_api_with_config(pool, config).await?;
 
@@ -176,7 +175,7 @@ mod tests {
     #[sqlx::test]
     async fn can_resume_job(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_schedule = Schedule::try_from("0 0 * * * *")?;
+        config.scheduler.web_page_trackers_schedule = "0 0 * * * *".to_string();
 
         let api = mock_api_with_config(pool, config).await?;
 
@@ -233,7 +232,7 @@ mod tests {
         let mut scheduler = mock_scheduler(&pool).await?;
 
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
+        config.scheduler.web_page_trackers_schedule = "1/1 * * * * *".to_string();
 
         let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(pool, config).await?);
@@ -253,7 +252,7 @@ mod tests {
                     headers: Default::default(),
                 },
                 job_config: Some(SchedulerJobConfig {
-                    schedule: "1 2 3 4 5 6 2030".to_string(),
+                    schedule: "1 2 3 4 5 6".to_string(),
                     retry_strategy: None,
                     notifications: true,
                 }),
@@ -271,7 +270,7 @@ mod tests {
                     headers: Default::default(),
                 },
                 job_config: Some(SchedulerJobConfig {
-                    schedule: "1 2 3 4 5 6 2035".to_string(),
+                    schedule: "1 2 3 4 5 6".to_string(),
                     retry_strategy: None,
                     notifications: true,
                 }),
@@ -289,7 +288,7 @@ mod tests {
                     headers: Default::default(),
                 },
                 job_config: Some(SchedulerJobConfig {
-                    schedule: "1 2 3 4 5 6 2040".to_string(),
+                    schedule: "1 2 3 4 5 6".to_string(),
                     retry_strategy: None,
                     notifications: true,
                 }),
@@ -413,7 +412,7 @@ mod tests {
         let mut scheduler = mock_scheduler(&pool).await?;
 
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
+        config.scheduler.web_page_trackers_schedule = "1/1 * * * * *".to_string();
 
         let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(pool, config).await?);
@@ -451,16 +450,18 @@ mod tests {
             })
             .await?;
 
-        assert!(api
-            .web_scraping_system()
-            .get_unscheduled_resources_trackers()
-            .await?
-            .is_empty());
-        assert!(api
-            .web_scraping_system()
-            .get_unscheduled_content_trackers()
-            .await?
-            .is_empty());
+        assert!(
+            api.web_scraping_system()
+                .get_unscheduled_resources_trackers()
+                .await?
+                .is_empty()
+        );
+        assert!(
+            api.web_scraping_system()
+                .get_unscheduled_content_trackers()
+                .await?
+                .is_empty()
+        );
 
         let schedule_job_id = scheduler
             .add(WebPageTrackersScheduleJob::create(api.clone()).await?)
@@ -472,20 +473,22 @@ mod tests {
         scheduler.shutdown().await?;
 
         // Tracker has not been assigned job ID.
-        assert!(api
-            .web_scraping(&user)
-            .get_resources_tracker(resources_tracker.id)
-            .await?
-            .unwrap()
-            .job_id
-            .is_none());
-        assert!(api
-            .web_scraping(&user)
-            .get_content_tracker(content_tracker.id)
-            .await?
-            .unwrap()
-            .job_id
-            .is_none());
+        assert!(
+            api.web_scraping(&user)
+                .get_resources_tracker(resources_tracker.id)
+                .await?
+                .unwrap()
+                .job_id
+                .is_none()
+        );
+        assert!(
+            api.web_scraping(&user)
+                .get_content_tracker(content_tracker.id)
+                .await?
+                .unwrap()
+                .job_id
+                .is_none()
+        );
 
         let mut jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
         assert_eq!(jobs.len(), 1);
@@ -499,7 +502,7 @@ mod tests {
         let mut scheduler = mock_scheduler(&pool).await?;
 
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_schedule = Schedule::try_from("1/1 * * * * *")?;
+        config.scheduler.web_page_trackers_schedule = "1/1 * * * * *".to_string();
 
         let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(pool, config).await?);
@@ -519,7 +522,7 @@ mod tests {
                     headers: Default::default(),
                 },
                 job_config: Some(SchedulerJobConfig {
-                    schedule: "1 2 3 4 5 6 2030".to_string(),
+                    schedule: "1 2 3 4 5 6".to_string(),
                     retry_strategy: None,
                     notifications: true,
                 }),
@@ -537,23 +540,25 @@ mod tests {
                     headers: Default::default(),
                 },
                 job_config: Some(SchedulerJobConfig {
-                    schedule: "1 2 3 4 5 6 2030".to_string(),
+                    schedule: "1 2 3 4 5 6".to_string(),
                     retry_strategy: None,
                     notifications: true,
                 }),
             })
             .await?;
 
-        assert!(api
-            .web_scraping_system()
-            .get_unscheduled_resources_trackers()
-            .await?
-            .is_empty());
-        assert!(api
-            .web_scraping_system()
-            .get_unscheduled_content_trackers()
-            .await?
-            .is_empty());
+        assert!(
+            api.web_scraping_system()
+                .get_unscheduled_resources_trackers()
+                .await?
+                .is_empty()
+        );
+        assert!(
+            api.web_scraping_system()
+                .get_unscheduled_content_trackers()
+                .await?
+                .is_empty()
+        );
 
         let schedule_job_id = scheduler
             .add(WebPageTrackersScheduleJob::create(api.clone()).await?)
@@ -565,20 +570,22 @@ mod tests {
         scheduler.shutdown().await?;
 
         // Tracker has not been assigned job ID.
-        assert!(api
-            .web_scraping(&user)
-            .get_resources_tracker(resources_tracker.id)
-            .await?
-            .unwrap()
-            .job_id
-            .is_none());
-        assert!(api
-            .web_scraping(&user)
-            .get_content_tracker(content_tracker.id)
-            .await?
-            .unwrap()
-            .job_id
-            .is_none());
+        assert!(
+            api.web_scraping(&user)
+                .get_resources_tracker(resources_tracker.id)
+                .await?
+                .unwrap()
+                .job_id
+                .is_none()
+        );
+        assert!(
+            api.web_scraping(&user)
+                .get_content_tracker(content_tracker.id)
+                .await?
+                .unwrap()
+                .job_id
+                .is_none()
+        );
 
         let mut jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
         assert_eq!(jobs.len(), 1);

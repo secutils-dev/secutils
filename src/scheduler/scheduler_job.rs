@@ -29,14 +29,18 @@ mod tests {
 
     #[test]
     fn properly_determines_unique_jobs() -> anyhow::Result<()> {
-        assert!(!SchedulerJob::WebPageTrackersTrigger {
-            kind: WebPageTrackerKind::WebPageContent
-        }
-        .is_unique());
-        assert!(!SchedulerJob::WebPageTrackersTrigger {
-            kind: WebPageTrackerKind::WebPageResources
-        }
-        .is_unique());
+        assert!(
+            !SchedulerJob::WebPageTrackersTrigger {
+                kind: WebPageTrackerKind::WebPageContent
+            }
+            .is_unique()
+        );
+        assert!(
+            !SchedulerJob::WebPageTrackersTrigger {
+                kind: WebPageTrackerKind::WebPageResources
+            }
+            .is_unique()
+        );
         assert!(SchedulerJob::WebPageTrackersSchedule.is_unique());
         assert!(SchedulerJob::WebPageTrackersFetch.is_unique());
         assert!(SchedulerJob::NotificationsSend.is_unique());

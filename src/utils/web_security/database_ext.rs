@@ -5,11 +5,11 @@ use crate::{
     error::Error as SecutilsError,
     users::UserId,
     utils::web_security::{
-        database_ext::raw_content_security_policy::RawContentSecurityPolicy, ContentSecurityPolicy,
+        ContentSecurityPolicy, database_ext::raw_content_security_policy::RawContentSecurityPolicy,
     },
 };
 use anyhow::{anyhow, bail};
-use sqlx::{error::ErrorKind as SqlxErrorKind, query, query_as, Pool, Postgres};
+use sqlx::{Pool, Postgres, error::ErrorKind as SqlxErrorKind, query, query_as};
 use uuid::Uuid;
 
 /// A database extension for the web security utility-related operations.
@@ -270,11 +270,12 @@ mod tests {
             .unwrap();
         assert_eq!(content_security_policy, content_security_policies.remove(0));
 
-        assert!(db
-            .web_security()
-            .get_content_security_policy(user.id, uuid!("00000000-0000-0000-0000-000000000003"))
-            .await?
-            .is_none());
+        assert!(
+            db.web_security()
+                .get_content_security_policy(user.id, uuid!("00000000-0000-0000-0000-000000000003"))
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }

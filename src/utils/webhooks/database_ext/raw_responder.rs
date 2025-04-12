@@ -82,8 +82,8 @@ impl TryFrom<&Responder> for RawResponder {
 #[cfg(test)]
 mod tests {
     use crate::utils::webhooks::{
-        database_ext::raw_responder::RawResponder, Responder, ResponderLocation, ResponderMethod,
-        ResponderPathType, ResponderSettings,
+        Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,
+        database_ext::raw_responder::RawResponder,
     };
     use time::OffsetDateTime;
     use uuid::uuid;

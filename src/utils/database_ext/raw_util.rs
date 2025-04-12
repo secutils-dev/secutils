@@ -92,41 +92,49 @@ mod tests {
 
     #[test]
     fn fails_if_malformed() -> anyhow::Result<()> {
-        assert!(Util::try_from(RawUtil {
-            id: 0,
-            handle: "some-handle".to_string(),
-            name: "some-name".to_string(),
-            keywords: Some("some-keywords".to_string()),
-            parent_id: None,
-        })
-        .is_err());
+        assert!(
+            Util::try_from(RawUtil {
+                id: 0,
+                handle: "some-handle".to_string(),
+                name: "some-name".to_string(),
+                keywords: Some("some-keywords".to_string()),
+                parent_id: None,
+            })
+            .is_err()
+        );
 
-        assert!(Util::try_from(RawUtil {
-            id: 1,
-            handle: "".to_string(),
-            name: "some-name".to_string(),
-            keywords: Some("some-keywords".to_string()),
-            parent_id: None,
-        })
-        .is_err());
+        assert!(
+            Util::try_from(RawUtil {
+                id: 1,
+                handle: "".to_string(),
+                name: "some-name".to_string(),
+                keywords: Some("some-keywords".to_string()),
+                parent_id: None,
+            })
+            .is_err()
+        );
 
-        assert!(Util::try_from(RawUtil {
-            id: 1,
-            handle: "some-handle".to_string(),
-            name: "".to_string(),
-            keywords: Some("some-keywords".to_string()),
-            parent_id: None,
-        })
-        .is_err());
+        assert!(
+            Util::try_from(RawUtil {
+                id: 1,
+                handle: "some-handle".to_string(),
+                name: "".to_string(),
+                keywords: Some("some-keywords".to_string()),
+                parent_id: None,
+            })
+            .is_err()
+        );
 
-        assert!(Util::try_from(RawUtil {
-            id: 1,
-            handle: "some-handle".to_string(),
-            name: "some-name".to_string(),
-            keywords: Some("some-keywords".to_string()),
-            parent_id: Some(0),
-        })
-        .is_err());
+        assert!(
+            Util::try_from(RawUtil {
+                id: 1,
+                handle: "some-handle".to_string(),
+                name: "some-name".to_string(),
+                keywords: Some("some-keywords".to_string()),
+                parent_id: Some(0),
+            })
+            .is_err()
+        );
 
         Ok(())
     }

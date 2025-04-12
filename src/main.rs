@@ -19,7 +19,7 @@ mod utils;
 
 use crate::config::{Config, RawConfig};
 use anyhow::anyhow;
-use clap::{crate_authors, crate_description, crate_version, value_parser, Arg, Command};
+use clap::{Arg, Command, crate_authors, crate_description, crate_version, value_parser};
 
 fn main() -> Result<(), anyhow::Error> {
     dotenvy::dotenv().ok();
@@ -76,7 +76,6 @@ mod tests {
             WebPageResource, WebPageResourceContent, WebPageResourceContentData,
         },
     };
-    use cron::Schedule;
     use lettre::transport::stub::AsyncStubTransport;
     use std::{collections::HashMap, ops::Add, time::Duration};
     use tantivy::Index;
@@ -92,7 +91,7 @@ mod tests {
     };
     pub use crate::{network::tests::*, scheduler::tests::*, server::tests::*, utils::tests::*};
     use ctor::ctor;
-    use sqlx::{postgres::PgDatabaseError, PgPool};
+    use sqlx::{PgPool, postgres::PgDatabaseError};
     use uuid::uuid;
 
     pub struct MockUserBuilder {
@@ -268,9 +267,9 @@ mod tests {
             }),
             components: ComponentsConfig::default(),
             scheduler: SchedulerJobsConfig {
-                web_page_trackers_schedule: Schedule::try_from("0 * 0 * * * *")?,
-                web_page_trackers_fetch: Schedule::try_from("0 * 1 * * * *")?,
-                notifications_send: Schedule::try_from("0 * 2 * * * *")?,
+                web_page_trackers_schedule: "0 * 0 * * *".to_string(),
+                web_page_trackers_fetch: "0 * 1 * * *".to_string(),
+                notifications_send: "0 * 2 * * *".to_string(),
             },
             security: SecurityConfig::default(),
             subscriptions: SubscriptionsConfig {

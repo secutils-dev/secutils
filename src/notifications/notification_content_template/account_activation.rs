@@ -2,8 +2,8 @@ use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
     notifications::{
-        notification_content_template::SECUTILS_LOGO_BYTES, EmailNotificationAttachment,
-        EmailNotificationContent,
+        EmailNotificationAttachment, EmailNotificationContent,
+        notification_content_template::SECUTILS_LOGO_BYTES,
     },
 };
 use serde_json::json;
@@ -16,7 +16,9 @@ pub async fn compile_to_email<DR: DnsResolver, ET: EmailTransport>(
     code: &str,
 ) -> anyhow::Result<EmailNotificationContent> {
     if flow_id.is_nil() || code.is_empty() {
-        anyhow::bail!("Flow ID and code must be provided, but received code `{code}` and flow ID `{flow_id}`.");
+        anyhow::bail!(
+            "Flow ID and code must be provided, but received code `{code}` and flow ID `{flow_id}`."
+        );
     }
 
     let encoded_code = urlencoding::encode(code);
@@ -29,19 +31,21 @@ pub async fn compile_to_email<DR: DnsResolver, ET: EmailTransport>(
 
     Ok(EmailNotificationContent::html_with_attachments(
         "Activate your Secutils.dev account",
-        format!("To activate your Secutils.dev account, please use the following code: {encoded_code}. Alternatively, navigate to the following URL in your browser: {encoded_activation_link}"),
+        format!(
+            "To activate your Secutils.dev account, please use the following code: {encoded_code}. Alternatively, navigate to the following URL in your browser: {encoded_activation_link}"
+        ),
         api.templates.render(
-            "account_activation_email", 
+            "account_activation_email",
             &json!({
                 "encoded_activation_link": encoded_activation_link,
                 "encoded_activation_code": encoded_code,
                 "home_link": api.config.public_url.as_str()
-            })
+            }),
         )?,
         vec![EmailNotificationAttachment::inline(
             "secutils-logo",
             "image/png",
             SECUTILS_LOGO_BYTES.to_vec(),
-        )]
+        )],
     ))
 }

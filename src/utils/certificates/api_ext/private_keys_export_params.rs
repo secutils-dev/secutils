@@ -11,7 +11,7 @@ pub struct PrivateKeysExportParams {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::certificates::{api_ext::PrivateKeysExportParams, ExportFormat};
+    use crate::utils::certificates::{ExportFormat, api_ext::PrivateKeysExportParams};
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {

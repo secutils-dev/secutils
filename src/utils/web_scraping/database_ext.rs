@@ -7,15 +7,15 @@ use crate::{
     scheduler::SchedulerJobMetadata,
     users::UserId,
     utils::web_scraping::{
-        database_ext::raw_web_page_data_revision::RawWebPageDataRevision, WebPageDataRevision,
-        WebPageTracker, WebPageTrackerTag,
+        WebPageDataRevision, WebPageTracker, WebPageTrackerTag,
+        database_ext::raw_web_page_data_revision::RawWebPageDataRevision,
     },
 };
 use anyhow::{anyhow, bail};
 use async_stream::try_stream;
 use futures::Stream;
 use raw_web_page_tracker::RawWebPageTracker;
-use sqlx::{error::ErrorKind as SqlxErrorKind, query, query_as, Pool, Postgres};
+use sqlx::{Pool, Postgres, error::ErrorKind as SqlxErrorKind, query, query_as};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -354,7 +354,7 @@ ORDER BY updated_at
     pub fn get_pending_web_page_trackers<'a, Tag: WebPageTrackerTag + 'a>(
         &'a self,
         page_size: usize,
-    ) -> impl Stream<Item = anyhow::Result<WebPageTracker<Tag>>> + '_ {
+    ) -> impl Stream<Item = anyhow::Result<WebPageTracker<Tag>>> + 'a {
         let page_limit = page_size as i64;
         try_stream! {
             let mut last_created_at = OffsetDateTime::UNIX_EPOCH;
@@ -486,8 +486,8 @@ mod tests {
             SchedulerJobRetryStrategy,
         },
         tests::{
-            mock_scheduler_job, mock_upsert_scheduler_job, mock_user, to_database_error,
-            MockWebPageTrackerBuilder, RawSchedulerJobStoredData,
+            MockWebPageTrackerBuilder, RawSchedulerJobStoredData, mock_scheduler_job,
+            mock_upsert_scheduler_job, mock_user, to_database_error,
         },
         utils::web_scraping::{
             WebPageContentTrackerTag, WebPageDataRevision, WebPageResource, WebPageResourceContent,
@@ -504,7 +504,7 @@ mod tests {
     };
     use time::OffsetDateTime;
     use url::Url;
-    use uuid::{uuid, Uuid};
+    use uuid::{Uuid, uuid};
 
     fn create_resources_revision(
         id: Uuid,
@@ -616,12 +616,14 @@ mod tests {
             .unwrap();
         assert_eq!(tracker, content_trackers.remove(0));
 
-        assert!(web_scraping
-            .get_web_page_tracker::<WebPageResourcesTrackerTag>(uuid!(
-                "00000000-0000-0000-0000-000000000005"
-            ))
-            .await?
-            .is_none());
+        assert!(
+            web_scraping
+                .get_web_page_tracker::<WebPageResourcesTrackerTag>(uuid!(
+                    "00000000-0000-0000-0000-000000000005"
+                ))
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }
@@ -1075,10 +1077,12 @@ mod tests {
 
         // No history yet.
         for tracker in trackers.iter() {
-            assert!(web_scraping
-                .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(tracker.id)
-                .await?
-                .is_empty());
+            assert!(
+                web_scraping
+                    .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(tracker.id)
+                    .await?
+                    .is_empty()
+            );
         }
 
         let mut revisions = vec![
@@ -1114,12 +1118,14 @@ mod tests {
             .await?;
         assert_eq!(history, vec![revisions.remove(0)]);
 
-        assert!(web_scraping
-            .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(uuid!(
-                "00000000-0000-0000-0000-000000000004"
-            ))
-            .await?
-            .is_empty());
+        assert!(
+            web_scraping
+                .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(uuid!(
+                    "00000000-0000-0000-0000-000000000004"
+                ))
+                .await?
+                .is_empty()
+        );
 
         Ok(())
     }
@@ -1208,14 +1214,18 @@ mod tests {
             .remove_web_page_tracker_history_revision(trackers[1].id, revisions[2].id)
             .await?;
 
-        assert!(web_scraping
-            .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(trackers[0].id)
-            .await?
-            .is_empty());
-        assert!(web_scraping
-            .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(trackers[1].id)
-            .await?
-            .is_empty());
+        assert!(
+            web_scraping
+                .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(trackers[0].id)
+                .await?
+                .is_empty()
+        );
+        assert!(
+            web_scraping
+                .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(trackers[1].id)
+                .await?
+                .is_empty()
+        );
 
         Ok(())
     }
@@ -1289,14 +1299,18 @@ mod tests {
             .clear_web_page_tracker_history(trackers[1].id)
             .await?;
 
-        assert!(web_scraping
-            .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(trackers[0].id)
-            .await?
-            .is_empty());
-        assert!(web_scraping
-            .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(trackers[1].id)
-            .await?
-            .is_empty());
+        assert!(
+            web_scraping
+                .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(trackers[0].id)
+                .await?
+                .is_empty()
+        );
+        assert!(
+            web_scraping
+                .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(trackers[1].id)
+                .await?
+                .is_empty()
+        );
 
         Ok(())
     }

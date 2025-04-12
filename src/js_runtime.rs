@@ -2,13 +2,13 @@ mod js_runtime_config;
 mod script_termination_reason;
 
 use crate::js_runtime::script_termination_reason::ScriptTerminationReason;
-use anyhow::{bail, Context};
-use deno_core::{serde_v8, v8, PollEventLoopOptions, RuntimeOptions};
+use anyhow::{Context, bail};
+use deno_core::{PollEventLoopOptions, RuntimeOptions, serde_v8, v8};
 use serde::{Deserialize, Serialize};
 use std::{
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -137,7 +137,7 @@ impl JsRuntime {
             .map_err(|err| {
                 timeout_token.swap(true, Ordering::Relaxed);
                 self.inner_runtime.v8_isolate().cancel_terminate_execution();
-                handle_error(err)
+                handle_error(err.into())
             })?;
 
         // Wait for the promise to resolve.
@@ -149,7 +149,7 @@ impl JsRuntime {
             .map_err(|err| {
                 timeout_token.swap(true, Ordering::Relaxed);
                 self.inner_runtime.v8_isolate().cancel_terminate_execution();
-                handle_error(err)
+                handle_error(err.into())
             })?;
 
         // Abort termination thread, if script managed to complete.
@@ -165,7 +165,7 @@ impl JsRuntime {
 #[cfg(test)]
 pub mod tests {
     use super::{JsRuntime, JsRuntimeConfig};
-    use deno_core::error::JsError;
+    use deno_core::error::CoreError;
     use serde::{Deserialize, Serialize};
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -216,11 +216,15 @@ pub mod tests {
             )
             .await
             .unwrap_err()
-            .downcast::<JsError>()?;
-        assert_eq!(
-            result.exception_message,
-            "Uncaught (in promise) Error: Uh oh."
-        );
+            .downcast::<CoreError>()?;
+        if let CoreError::Js(ref js_error) = result {
+            assert_eq!(
+                js_error.exception_message,
+                "Uncaught (in promise) Error: Uh oh."
+            );
+        } else {
+            panic!("Expected JsError, got {result:?}");
+        }
 
         Ok(())
     }

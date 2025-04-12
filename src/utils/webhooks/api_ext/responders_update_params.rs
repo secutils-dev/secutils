@@ -18,8 +18,8 @@ pub struct RespondersUpdateParams {
 #[cfg(test)]
 mod tests {
     use crate::utils::webhooks::{
-        api_ext::RespondersUpdateParams, ResponderLocation, ResponderMethod, ResponderPathType,
-        ResponderSettings,
+        ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,
+        api_ext::RespondersUpdateParams,
     };
 
     #[test]

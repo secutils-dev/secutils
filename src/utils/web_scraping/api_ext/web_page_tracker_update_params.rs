@@ -31,8 +31,8 @@ mod tests {
     use crate::{
         scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
         utils::web_scraping::{
-            api_ext::WebPageTrackerUpdateParams,
-            tests::WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME, WebPageTrackerSettings,
+            WebPageTrackerSettings, api_ext::WebPageTrackerUpdateParams,
+            tests::WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
         },
     };
     use std::time::Duration;

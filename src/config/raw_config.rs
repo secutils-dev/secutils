@@ -1,8 +1,8 @@
 use crate::config::{
-    database_config::DatabaseConfig, utils_config::UtilsConfig, ComponentsConfig,
-    SchedulerJobsConfig, SecurityConfig, SmtpConfig, SubscriptionsConfig,
+    ComponentsConfig, SchedulerJobsConfig, SecurityConfig, SmtpConfig, SubscriptionsConfig,
+    database_config::DatabaseConfig, utils_config::UtilsConfig,
 };
-use figment::{providers, providers::Format, value, Figment, Metadata, Profile, Provider};
+use figment::{Figment, Metadata, Profile, Provider, providers, providers::Format, value};
 use serde_derive::{Deserialize, Serialize};
 use url::Url;
 
@@ -99,9 +99,9 @@ mod tests {
         search_index_version = 4
 
         [scheduler]
-        web_page_trackers_schedule = '0 * * * * * *'
-        web_page_trackers_fetch = '0 * * * * * *'
-        notifications_send = '0/30 * * * * * *'
+        web_page_trackers_schedule = '0 * * * * *'
+        web_page_trackers_fetch = '0 * * * * *'
+        notifications_send = '0/30 * * * * *'
 
         [subscriptions]
         feature_overview_url = 'http://localhost:7272/'
@@ -408,97 +408,9 @@ mod tests {
                 search_index_version: 3,
             },
             scheduler: SchedulerJobsConfig {
-                web_page_trackers_schedule: Schedule {
-                    source: "0 * * * * * *",
-                    fields: ScheduleFields {
-                        years: Years {
-                            ordinals: None,
-                        },
-                        days_of_week: DaysOfWeek {
-                            ordinals: None,
-                        },
-                        months: Months {
-                            ordinals: None,
-                        },
-                        days_of_month: DaysOfMonth {
-                            ordinals: None,
-                        },
-                        hours: Hours {
-                            ordinals: None,
-                        },
-                        minutes: Minutes {
-                            ordinals: None,
-                        },
-                        seconds: Seconds {
-                            ordinals: Some(
-                                {
-                                    0,
-                                },
-                            ),
-                        },
-                    },
-                },
-                web_page_trackers_fetch: Schedule {
-                    source: "0 * * * * * *",
-                    fields: ScheduleFields {
-                        years: Years {
-                            ordinals: None,
-                        },
-                        days_of_week: DaysOfWeek {
-                            ordinals: None,
-                        },
-                        months: Months {
-                            ordinals: None,
-                        },
-                        days_of_month: DaysOfMonth {
-                            ordinals: None,
-                        },
-                        hours: Hours {
-                            ordinals: None,
-                        },
-                        minutes: Minutes {
-                            ordinals: None,
-                        },
-                        seconds: Seconds {
-                            ordinals: Some(
-                                {
-                                    0,
-                                },
-                            ),
-                        },
-                    },
-                },
-                notifications_send: Schedule {
-                    source: "0/30 * * * * * *",
-                    fields: ScheduleFields {
-                        years: Years {
-                            ordinals: None,
-                        },
-                        days_of_week: DaysOfWeek {
-                            ordinals: None,
-                        },
-                        months: Months {
-                            ordinals: None,
-                        },
-                        days_of_month: DaysOfMonth {
-                            ordinals: None,
-                        },
-                        hours: Hours {
-                            ordinals: None,
-                        },
-                        minutes: Minutes {
-                            ordinals: None,
-                        },
-                        seconds: Seconds {
-                            ordinals: Some(
-                                {
-                                    0,
-                                    30,
-                                },
-                            ),
-                        },
-                    },
-                },
+                web_page_trackers_schedule: "0 * * * * * *",
+                web_page_trackers_fetch: "0 * * * * * *",
+                notifications_send: "0/30 * * * * * *",
             },
             subscriptions: SubscriptionsConfig {
                 manage_url: None,

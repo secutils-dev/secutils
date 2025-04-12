@@ -92,8 +92,12 @@ mod tests {
             },
         ];
         for action in unauthorized_actions {
-            assert!(!user_share
-                .is_action_authorized(&action, &UtilsResource::WebSecurityContentSecurityPolicies));
+            assert!(
+                !user_share.is_action_authorized(
+                    &action,
+                    &UtilsResource::WebSecurityContentSecurityPolicies
+                )
+            );
         }
 
         let authorized_actions = vec![
@@ -106,8 +110,12 @@ mod tests {
             },
         ];
         for action in authorized_actions {
-            assert!(user_share
-                .is_action_authorized(&action, &UtilsResource::WebSecurityContentSecurityPolicies));
+            assert!(
+                user_share.is_action_authorized(
+                    &action,
+                    &UtilsResource::WebSecurityContentSecurityPolicies
+                )
+            );
         }
     }
 

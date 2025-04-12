@@ -49,7 +49,7 @@ pub fn web_page_content_revisions_diff(
 #[cfg(test)]
 mod tests {
     use crate::utils::web_scraping::{
-        web_page_content_revisions_diff, WebPageContentTrackerTag, WebPageDataRevision,
+        WebPageContentTrackerTag, WebPageDataRevision, web_page_content_revisions_diff,
     };
     use insta::assert_debug_snapshot;
     use serde_json::json;

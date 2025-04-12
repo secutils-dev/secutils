@@ -44,7 +44,7 @@ impl Deref for UserId {
 #[cfg(test)]
 mod tests {
     use crate::users::UserId;
-    use uuid::{uuid, Uuid, Version};
+    use uuid::{Uuid, Version, uuid};
 
     #[test]
     fn creation() {

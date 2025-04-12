@@ -2,12 +2,11 @@ use crate::utils::web_security::ContentSecurityPolicySource;
 use anyhow::anyhow;
 use bytes::Bytes;
 use html5ever::{
-    namespace_url, ns,
-    tendril::{fmt, fmt::Slice, ByteTendril, ReadExt},
+    LocalName, QualName, namespace_url, ns,
+    tendril::{ByteTendril, ReadExt, fmt, fmt::Slice},
     tokenizer::{
         BufferQueue, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
     },
-    LocalName, QualName,
 };
 use std::cell::Cell;
 
@@ -91,7 +90,9 @@ impl TokenSink for &mut CspMetaTokenSink {
                         csp_values.push(csp_meta_content);
                         self.csp_values.set(csp_values);
                     } else {
-                        log::error!("Found `<meta http-equiv='Content-Security-Policy'>` tag without `content` attribute.");
+                        log::error!(
+                            "Found `<meta http-equiv='Content-Security-Policy'>` tag without `content` attribute."
+                        );
                     }
                 }
             }

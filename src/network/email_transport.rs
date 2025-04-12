@@ -1,9 +1,9 @@
 use lettre::{
+    AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
     transport::{
         smtp::Error as SmtpError,
         stub::{AsyncStubTransport, Error as StubError},
     },
-    AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
 };
 use std::error::Error as StdError;
 

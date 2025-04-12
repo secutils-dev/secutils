@@ -3,13 +3,13 @@ mod database_ext;
 mod web_page_trackers;
 
 pub use self::web_page_trackers::{
-    web_page_content_revisions_diff, web_page_resources_revisions_diff, WebPageContentTrackerTag,
-    WebPageDataRevision, WebPageResource, WebPageResourceContent, WebPageResourceContentData,
-    WebPageResourceDiffStatus, WebPageResourcesData, WebPageResourcesTrackerTag, WebPageTracker,
-    WebPageTrackerKind, WebPageTrackerSettings, WebPageTrackerTag, WebScraperContentRequest,
-    WebScraperContentRequestScripts, WebScraperContentResponse, WebScraperErrorResponse,
-    WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesRequestScripts,
-    WebScraperResourcesResponse,
+    WebPageContentTrackerTag, WebPageDataRevision, WebPageResource, WebPageResourceContent,
+    WebPageResourceContentData, WebPageResourceDiffStatus, WebPageResourcesData,
+    WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings,
+    WebPageTrackerTag, WebScraperContentRequest, WebScraperContentRequestScripts,
+    WebScraperContentResponse, WebScraperErrorResponse, WebScraperResource,
+    WebScraperResourcesRequest, WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
+    web_page_content_revisions_diff, web_page_resources_revisions_diff,
 };
 use self::web_page_trackers::{WebPageResourceInternal, WebPageResourcesTrackerInternalTag};
 use crate::{
@@ -116,22 +116,23 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
 #[cfg(test)]
 pub mod tests {
     pub use crate::utils::web_scraping::api_ext::{
-        WebPageTrackerCreateParams, WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
-        WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
+        WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
+        WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME, WebPageTrackerCreateParams,
     };
     use crate::{
         scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
         tests::{mock_api, mock_user},
         utils::{
+            UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
             web_scraping::{
+                WebPageContentTrackerTag, WebPageDataRevision, WebPageResourceInternal,
+                WebPageResourcesData, WebPageResourcesTrackerInternalTag, WebPageTracker,
+                WebPageTrackerSettings, WebPageTrackerTag,
                 api_ext::{
                     WebPageContentTrackerGetHistoryParams, WebPageResourcesTrackerGetHistoryParams,
                 },
-                web_scraping_handle_action, WebPageContentTrackerTag, WebPageDataRevision,
-                WebPageResourceInternal, WebPageResourcesData, WebPageResourcesTrackerInternalTag,
-                WebPageTracker, WebPageTrackerSettings, WebPageTrackerTag,
+                web_scraping_handle_action,
             },
-            UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
         },
     };
     use insta::assert_json_snapshot;
@@ -140,7 +141,7 @@ pub mod tests {
     use std::{collections::HashMap, time::Duration};
     use time::OffsetDateTime;
     use url::Url;
-    use uuid::{uuid, Uuid};
+    use uuid::{Uuid, uuid};
 
     pub struct MockWebPageTrackerBuilder<Tag: WebPageTrackerTag> {
         tracker: WebPageTracker<Tag>,
@@ -1039,28 +1040,30 @@ pub mod tests {
         .await?;
         assert!(action_result.into_inner().is_none());
 
-        assert!(api
-            .web_scraping(&mock_user)
-            .get_resources_tracker_history(
-                resources_tracker.id,
-                WebPageResourcesTrackerGetHistoryParams {
-                    refresh: false,
-                    calculate_diff: false,
-                }
-            )
-            .await?
-            .is_empty());
-        assert!(api
-            .web_scraping(&mock_user)
-            .get_content_tracker_history(
-                content_tracker.id,
-                WebPageContentTrackerGetHistoryParams {
-                    refresh: false,
-                    calculate_diff: false
-                }
-            )
-            .await?
-            .is_empty());
+        assert!(
+            api.web_scraping(&mock_user)
+                .get_resources_tracker_history(
+                    resources_tracker.id,
+                    WebPageResourcesTrackerGetHistoryParams {
+                        refresh: false,
+                        calculate_diff: false,
+                    }
+                )
+                .await?
+                .is_empty()
+        );
+        assert!(
+            api.web_scraping(&mock_user)
+                .get_content_tracker_history(
+                    content_tracker.id,
+                    WebPageContentTrackerGetHistoryParams {
+                        refresh: false,
+                        calculate_diff: false
+                    }
+                )
+                .await?
+                .is_empty()
+        );
 
         Ok(())
     }

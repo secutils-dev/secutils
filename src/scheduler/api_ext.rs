@@ -79,8 +79,8 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 mod tests {
     use crate::{
         scheduler::{
-            database_ext::RawSchedulerJobStoredData, SchedulerJob, SchedulerJobMetadata,
-            SchedulerJobRetryStrategy,
+            SchedulerJob, SchedulerJobMetadata, SchedulerJobRetryStrategy,
+            database_ext::RawSchedulerJobStoredData,
         },
         tests::{mock_api, mock_upsert_scheduler_job},
     };

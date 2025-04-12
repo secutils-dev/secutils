@@ -110,8 +110,8 @@ impl From<CertificateAttributes> for RawCertificateAttributes {
 mod tests {
     use super::RawCertificateAttributes;
     use crate::utils::certificates::{
-        database_ext::raw_private_key_algorithm::RawPrivateKeyAlgorithm, CertificateAttributes,
-        ExtendedKeyUsage, KeyUsage, PrivateKeyAlgorithm, SignatureAlgorithm, Version,
+        CertificateAttributes, ExtendedKeyUsage, KeyUsage, PrivateKeyAlgorithm, SignatureAlgorithm,
+        Version, database_ext::raw_private_key_algorithm::RawPrivateKeyAlgorithm,
     };
     use time::OffsetDateTime;
 

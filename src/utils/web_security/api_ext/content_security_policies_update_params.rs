@@ -11,7 +11,7 @@ pub struct ContentSecurityPoliciesUpdateParams {
 #[cfg(test)]
 mod tests {
     use crate::utils::web_security::{
-        api_ext::ContentSecurityPoliciesUpdateParams, ContentSecurityPolicyDirective,
+        ContentSecurityPolicyDirective, api_ext::ContentSecurityPoliciesUpdateParams,
     };
 
     #[test]

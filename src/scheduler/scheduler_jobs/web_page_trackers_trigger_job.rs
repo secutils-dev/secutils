@@ -119,11 +119,11 @@ impl WebPageTrackersTriggerJob {
 mod tests {
     use super::WebPageTrackersTriggerJob;
     use crate::{
-        scheduler::{scheduler_job::SchedulerJob, SchedulerJobConfig},
+        scheduler::{SchedulerJobConfig, scheduler_job::SchedulerJob},
         tests::{mock_api, mock_get_scheduler_job, mock_scheduler, mock_scheduler_job, mock_user},
         utils::web_scraping::{
-            tests::WebPageTrackerCreateParams, WebPageTracker, WebPageTrackerKind,
-            WebPageTrackerSettings,
+            WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings,
+            tests::WebPageTrackerCreateParams,
         },
     };
     use insta::assert_debug_snapshot;
@@ -417,11 +417,12 @@ mod tests {
             }]
         );
 
-        assert!(api
-            .web_scraping_system()
-            .get_resources_tracker_by_job_id(job_id)
-            .await?
-            .is_none());
+        assert!(
+            api.web_scraping_system()
+                .get_resources_tracker_by_job_id(job_id)
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }
@@ -473,13 +474,14 @@ mod tests {
             .await?;
         assert!(unscheduled_trackers.is_empty());
 
-        assert!(api
-            .web_scraping(&user)
-            .get_resources_tracker(tracker.id)
-            .await?
-            .unwrap()
-            .job_id
-            .is_none());
+        assert!(
+            api.web_scraping(&user)
+                .get_resources_tracker(tracker.id)
+                .await?
+                .unwrap()
+                .job_id
+                .is_none()
+        );
 
         Ok(())
     }
@@ -535,13 +537,14 @@ mod tests {
             .await?;
         assert!(unscheduled_trackers.is_empty());
 
-        assert!(api
-            .web_scraping(&user)
-            .get_resources_tracker(tracker.id)
-            .await?
-            .unwrap()
-            .job_id
-            .is_none());
+        assert!(
+            api.web_scraping(&user)
+                .get_resources_tracker(tracker.id)
+                .await?
+                .unwrap()
+                .job_id
+                .is_none()
+        );
 
         Ok(())
     }
@@ -596,16 +599,18 @@ mod tests {
             .await?;
         assert!(unscheduled_trackers.is_empty());
 
-        assert!(api
-            .web_scraping_system()
-            .get_resources_tracker_by_job_id(job_id)
-            .await?
-            .is_none());
-        assert!(api
-            .web_scraping_system()
-            .get_content_tracker_by_job_id(job_id)
-            .await?
-            .is_none());
+        assert!(
+            api.web_scraping_system()
+                .get_resources_tracker_by_job_id(job_id)
+                .await?
+                .is_none()
+        );
+        assert!(
+            api.web_scraping_system()
+                .get_content_tracker_by_job_id(job_id)
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }

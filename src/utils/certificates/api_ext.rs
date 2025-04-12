@@ -39,7 +39,7 @@ use openssl::{
     pkey::{PKey, Private},
     rsa::Rsa,
     symm::Cipher,
-    x509::{extension, X509Builder, X509NameBuilder, X509},
+    x509::{X509, X509Builder, X509NameBuilder, extension},
 };
 use std::{
     io::{Cursor, Write},
@@ -47,7 +47,7 @@ use std::{
 };
 use time::OffsetDateTime;
 use uuid::Uuid;
-use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
+use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
 /// API extension to work with certificates utilities.
 pub struct CertificatesApiExt<'a, DR: DnsResolver, ET: EmailTransport> {
@@ -793,14 +793,14 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 mod tests {
     use super::{CertificatesApiExt, PrivateKeysCreateParams};
     use crate::{
-        tests::{mock_api, mock_user, MockResolver},
+        tests::{MockResolver, mock_api, mock_user},
         utils::certificates::{
+            CertificateAttributes, ExportFormat, ExtendedKeyUsage, KeyUsage, PrivateKeyAlgorithm,
+            PrivateKeyEllipticCurve, PrivateKeySize, SignatureAlgorithm, Version,
             api_ext::{
                 PrivateKeysExportParams, PrivateKeysUpdateParams, TemplatesCreateParams,
                 TemplatesGenerateParams, TemplatesUpdateParams,
             },
-            CertificateAttributes, ExportFormat, ExtendedKeyUsage, KeyUsage, PrivateKeyAlgorithm,
-            PrivateKeyEllipticCurve, PrivateKeySize, SignatureAlgorithm, Version,
         },
     };
     use insta::assert_debug_snapshot;
@@ -1448,10 +1448,12 @@ mod tests {
             .remove_private_key(mock_user.id, private_key.id)
             .await?;
 
-        assert!(certificates
-            .get_private_key(mock_user.id, private_key.id)
-            .await?
-            .is_none());
+        assert!(
+            certificates
+                .get_private_key(mock_user.id, private_key.id)
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }
@@ -1464,10 +1466,12 @@ mod tests {
         api.db.insert_user(&mock_user).await?;
 
         let certificates = api.certificates();
-        assert!(certificates
-            .get_private_keys(mock_user.id)
-            .await?
-            .is_empty());
+        assert!(
+            certificates
+                .get_private_keys(mock_user.id)
+                .await?
+                .is_empty()
+        );
 
         let private_key_one = certificates
             .create_private_key(
@@ -1514,10 +1518,12 @@ mod tests {
             .remove_private_key(mock_user.id, private_key_two.id)
             .await?;
 
-        assert!(certificates
-            .get_private_keys(mock_user.id)
-            .await?
-            .is_empty());
+        assert!(
+            certificates
+                .get_private_keys(mock_user.id)
+                .await?
+                .is_empty()
+        );
 
         Ok(())
     }
@@ -1874,10 +1880,12 @@ mod tests {
             .remove_certificate_template(mock_user.id, certificate_template.id)
             .await?;
 
-        assert!(certificates
-            .get_certificate_template(mock_user.id, certificate_template.id)
-            .await?
-            .is_none());
+        assert!(
+            certificates
+                .get_certificate_template(mock_user.id, certificate_template.id)
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }
@@ -1890,10 +1898,12 @@ mod tests {
         api.db.insert_user(&mock_user).await?;
 
         let certificates = api.certificates();
-        assert!(certificates
-            .get_certificate_templates(mock_user.id)
-            .await?
-            .is_empty());
+        assert!(
+            certificates
+                .get_certificate_templates(mock_user.id)
+                .await?
+                .is_empty()
+        );
 
         let certificate_template_one = certificates
             .create_certificate_template(
@@ -1933,10 +1943,12 @@ mod tests {
             .remove_certificate_template(mock_user.id, certificate_template_two.id)
             .await?;
 
-        assert!(certificates
-            .get_certificate_templates(mock_user.id)
-            .await?
-            .is_empty());
+        assert!(
+            certificates
+                .get_certificate_templates(mock_user.id)
+                .await?
+                .is_empty()
+        );
 
         Ok(())
     }
@@ -2124,11 +2136,12 @@ mod tests {
             Some(template_share_one.clone())
         );
 
-        assert!(api
-            .users()
-            .get_user_share(template_share_one.id)
-            .await?
-            .is_none());
+        assert!(
+            api.users()
+                .get_user_share(template_share_one.id)
+                .await?
+                .is_none()
+        );
 
         // Sharing again should return different share.
         let template_share_two = certificates
@@ -2143,11 +2156,12 @@ mod tests {
             Some(template_share_two.clone())
         );
 
-        assert!(api
-            .users()
-            .get_user_share(template_share_two.id)
-            .await?
-            .is_none());
+        assert!(
+            api.users()
+                .get_user_share(template_share_two.id)
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }
@@ -2185,11 +2199,12 @@ mod tests {
             .remove_certificate_template(mock_user.id, certificate_template.id)
             .await?;
 
-        assert!(api
-            .users()
-            .get_user_share(template_share.id)
-            .await?
-            .is_none());
+        assert!(
+            api.users()
+                .get_user_share(template_share.id)
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }

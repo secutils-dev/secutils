@@ -183,8 +183,8 @@ mod tests {
         scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
         tests::mock_user,
         utils::web_scraping::{
-            api_ext::WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME, WebPageResourcesTrackerTag,
-            WebPageTracker, WebPageTrackerSettings,
+            WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerSettings,
+            api_ext::WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
         },
     };
     use std::time::Duration;

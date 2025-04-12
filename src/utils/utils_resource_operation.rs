@@ -112,12 +112,14 @@ mod tests {
             )),
             Ok(UtilsResourceOperation::CertificatesPrivateKeyExport)
         );
-        assert!(UtilsResourceOperation::try_from((
-            &UtilsResource::CertificatesTemplates,
-            "export",
-            &Method::POST
-        ))
-        .is_err());
+        assert!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::CertificatesTemplates,
+                "export",
+                &Method::POST
+            ))
+            .is_err()
+        );
 
         assert_eq!(
             UtilsResourceOperation::try_from((
@@ -127,26 +129,32 @@ mod tests {
             )),
             Ok(UtilsResourceOperation::CertificatesTemplateGenerate)
         );
-        assert!(UtilsResourceOperation::try_from((
-            &UtilsResource::CertificatesPrivateKeys,
-            "generate",
-            &Method::POST
-        ))
-        .is_err());
+        assert!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::CertificatesPrivateKeys,
+                "generate",
+                &Method::POST
+            ))
+            .is_err()
+        );
 
-        assert!(UtilsResourceOperation::try_from((
-            &UtilsResource::CertificatesPrivateKeys,
-            "share",
-            &Method::POST
-        ))
-        .is_err());
+        assert!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::CertificatesPrivateKeys,
+                "share",
+                &Method::POST
+            ))
+            .is_err()
+        );
 
-        assert!(UtilsResourceOperation::try_from((
-            &UtilsResource::CertificatesPrivateKeys,
-            "unshare",
-            &Method::POST
-        ))
-        .is_err());
+        assert!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::CertificatesPrivateKeys,
+                "unshare",
+                &Method::POST
+            ))
+            .is_err()
+        );
 
         assert_eq!(
             UtilsResourceOperation::try_from((
@@ -205,12 +213,14 @@ mod tests {
             )),
             Ok(UtilsResourceOperation::WebScrapingClearHistory)
         );
-        assert!(UtilsResourceOperation::try_from((
-            &UtilsResource::CertificatesPrivateKeys,
-            "history",
-            &Method::POST
-        ))
-        .is_err());
+        assert!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::CertificatesPrivateKeys,
+                "history",
+                &Method::POST
+            ))
+            .is_err()
+        );
 
         assert_eq!(
             UtilsResourceOperation::try_from((
@@ -220,11 +230,13 @@ mod tests {
             )),
             Ok(UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize)
         );
-        assert!(UtilsResourceOperation::try_from((
-            &UtilsResource::WebSecurityContentSecurityPolicies,
-            "generate",
-            &Method::POST
-        ))
-        .is_err());
+        assert!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebSecurityContentSecurityPolicies,
+                "generate",
+                &Method::POST
+            ))
+            .is_err()
+        );
     }
 }

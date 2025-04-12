@@ -1,5 +1,5 @@
 use crate::{security::Credentials, server::app_state::AppState};
-use actix_web::{dev::Payload, error::ErrorUnauthorized, web, Error, FromRequest, HttpRequest};
+use actix_web::{Error, FromRequest, HttpRequest, dev::Payload, error::ErrorUnauthorized, web};
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use anyhow::anyhow;
 use std::{future::Future, pin::Pin};

@@ -355,7 +355,7 @@ RETURNING id as "id!", user_id as "user_id!", resource as "resource!", created_a
 mod tests {
     use crate::{
         database::Database,
-        tests::{mock_user_with_id, to_database_error, MockUserBuilder},
+        tests::{MockUserBuilder, mock_user_with_id, to_database_error},
         users::{
             SharedResource, SubscriptionTier, UserData, UserDataNamespace, UserId, UserShare,
             UserShareId, UserSubscription,
@@ -500,10 +500,11 @@ mod tests {
         }
         "###);
 
-        assert!(db
-            .get_user_by_email("unknown@secutils.dev")
-            .await?
-            .is_none());
+        assert!(
+            db.get_user_by_email("unknown@secutils.dev")
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }
@@ -814,10 +815,11 @@ mod tests {
             user_prod.id
         );
         assert!(db.get_user_by_email("prod@secutils.dev").await?.is_none());
-        assert!(db
-            .remove_user_by_email("prod@secutils.dev")
-            .await?
-            .is_none());
+        assert!(
+            db.remove_user_by_email("prod@secutils.dev")
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }
@@ -1000,22 +1002,24 @@ mod tests {
             Some(user_shares[1].clone())
         );
 
-        assert!(db
-            .get_user_share_by_resource(
+        assert!(
+            db.get_user_share_by_resource(
                 uuid!("00000000-0000-0000-0000-000000000003").into(),
                 &user_shares[0].resource
             )
             .await?
-            .is_none());
-        assert!(db
-            .get_user_share_by_resource(
+            .is_none()
+        );
+        assert!(
+            db.get_user_share_by_resource(
                 user_shares[0].user_id,
                 &SharedResource::content_security_policy(uuid!(
                     "00000000-0000-0000-0000-000000000003"
                 ))
             )
             .await?
-            .is_none());
+            .is_none()
+        );
 
         Ok(())
     }

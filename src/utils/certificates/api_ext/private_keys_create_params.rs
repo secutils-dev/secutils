@@ -12,7 +12,7 @@ pub struct PrivateKeysCreateParams {
 #[cfg(test)]
 mod tests {
     use crate::utils::certificates::{
-        api_ext::PrivateKeysCreateParams, PrivateKeyAlgorithm, PrivateKeySize,
+        PrivateKeyAlgorithm, PrivateKeySize, api_ext::PrivateKeysCreateParams,
     };
 
     #[test]

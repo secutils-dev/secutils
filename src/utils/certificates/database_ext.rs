@@ -9,12 +9,12 @@ use crate::{
     error::Error as SecutilsError,
     users::UserId,
     utils::certificates::{
-        database_ext::raw_certificate_template::RawCertificateTemplate, CertificateTemplate,
-        PrivateKey,
+        CertificateTemplate, PrivateKey,
+        database_ext::raw_certificate_template::RawCertificateTemplate,
     },
 };
 use anyhow::{anyhow, bail};
-use sqlx::{error::ErrorKind as SqlxErrorKind, query, query_as, Pool, Postgres};
+use sqlx::{Pool, Postgres, error::ErrorKind as SqlxErrorKind, query, query_as};
 use uuid::Uuid;
 
 /// A database extension for the certificate utility-related operations.
@@ -448,11 +448,12 @@ mod tests {
             .unwrap();
         assert_eq!(private_key, private_keys.remove(0));
 
-        assert!(db
-            .certificates()
-            .get_private_key(user.id, uuid!("00000000-0000-0000-0000-000000000003"))
-            .await?
-            .is_none());
+        assert!(
+            db.certificates()
+                .get_private_key(user.id, uuid!("00000000-0000-0000-0000-000000000003"))
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }
@@ -852,11 +853,12 @@ mod tests {
             .unwrap();
         assert_eq!(certificate_template, certificate_templates.remove(0));
 
-        assert!(db
-            .certificates()
-            .get_certificate_template(user.id, uuid!("00000000-0000-0000-0000-000000000003"))
-            .await?
-            .is_none());
+        assert!(
+            db.certificates()
+                .get_certificate_template(user.id, uuid!("00000000-0000-0000-0000-000000000003"))
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }

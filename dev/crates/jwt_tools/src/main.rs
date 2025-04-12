@@ -1,5 +1,5 @@
 use clap::{Args, Parser, Subcommand};
-use jsonwebtoken::{encode, EncodingKey, Header};
+use jsonwebtoken::{EncodingKey, Header, encode};
 use serde_json::json;
 use time::OffsetDateTime;
 

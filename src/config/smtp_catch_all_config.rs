@@ -1,6 +1,6 @@
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr};
+use serde_with::{DisplayFromStr, serde_as};
 
 /// Configuration for the SMTP catch-all functionality.
 #[serde_as]

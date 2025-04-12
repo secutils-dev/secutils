@@ -13,23 +13,23 @@ use crate::{
     api::Api,
     error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
-    scheduler::{ScheduleExt, SchedulerJobRetryStrategy},
+    scheduler::{CronExt, SchedulerJobRetryStrategy},
     users::User,
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
         web_scraping::{
-            database_ext::WebScrapingDatabaseSystemExt, web_page_content_revisions_diff,
-            web_page_resources_revisions_diff, WebPageContentTrackerTag, WebPageDataRevision,
-            WebPageResource, WebPageResourcesData, WebPageResourcesTrackerInternalTag,
-            WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerTag,
-            WebScraperContentRequest, WebScraperContentRequestScripts, WebScraperContentResponse,
-            WebScraperErrorResponse, WebScraperResource, WebScraperResourcesRequest,
-            WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
+            WebPageContentTrackerTag, WebPageDataRevision, WebPageResource, WebPageResourcesData,
+            WebPageResourcesTrackerInternalTag, WebPageResourcesTrackerTag, WebPageTracker,
+            WebPageTrackerTag, WebScraperContentRequest, WebScraperContentRequestScripts,
+            WebScraperContentResponse, WebScraperErrorResponse, WebScraperResource,
+            WebScraperResourcesRequest, WebScraperResourcesRequestScripts,
+            WebScraperResourcesResponse, database_ext::WebScrapingDatabaseSystemExt,
+            web_page_content_revisions_diff, web_page_resources_revisions_diff,
         },
     },
 };
 use anyhow::{anyhow, bail};
-use cron::Schedule;
+use croner::Cron;
 use futures::Stream;
 use std::time::Duration;
 use time::OffsetDateTime;
@@ -764,7 +764,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
 
         if let Some(job_config) = &tracker.job_config {
             // Validate that the schedule is a valid cron expression.
-            let schedule = match Schedule::try_from(job_config.schedule.as_str()) {
+            let schedule = match Cron::parse_pattern(job_config.schedule.as_str()) {
                 Ok(schedule) => schedule,
                 Err(err) => {
                     bail!(SecutilsError::client_with_root_cause(
@@ -792,20 +792,18 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             if let Some(retry_strategy) = &job_config.retry_strategy {
                 let max_attempts = retry_strategy.max_attempts();
                 if max_attempts == 0 || max_attempts > MAX_WEB_PAGE_TRACKER_RETRY_ATTEMPTS {
-                    bail!(SecutilsError::client(
-                        format!("Web page tracker max retry attempts cannot be zero or greater than {MAX_WEB_PAGE_TRACKER_RETRY_ATTEMPTS}, but received {max_attempts}.")
-                    ));
+                    bail!(SecutilsError::client(format!(
+                        "Web page tracker max retry attempts cannot be zero or greater than {MAX_WEB_PAGE_TRACKER_RETRY_ATTEMPTS}, but received {max_attempts}."
+                    )));
                 }
 
                 let min_interval = *retry_strategy.min_interval();
                 if min_interval < MIN_WEB_PAGE_TRACKER_RETRY_INTERVAL {
-                    bail!(SecutilsError::client(
-                        format!(
-                            "Web page tracker min retry interval cannot be less than {}, but received {}.",
-                            humantime::format_duration(MIN_WEB_PAGE_TRACKER_RETRY_INTERVAL),
-                            humantime::format_duration(min_interval)
-                        )
-                    ));
+                    bail!(SecutilsError::client(format!(
+                        "Web page tracker min retry interval cannot be less than {}, but received {}.",
+                        humantime::format_duration(MIN_WEB_PAGE_TRACKER_RETRY_INTERVAL),
+                        humantime::format_duration(min_interval)
+                    )));
                 }
 
                 if let SchedulerJobRetryStrategy::Linear { max_interval, .. }
@@ -813,34 +811,33 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                 {
                     let max_interval = *max_interval;
                     if max_interval < MIN_WEB_PAGE_TRACKER_RETRY_INTERVAL {
-                        bail!(SecutilsError::client(
-                            format!(
-                                "Web page tracker retry strategy max interval cannot be less than {}, but received {}.",
-                                humantime::format_duration(MIN_WEB_PAGE_TRACKER_RETRY_INTERVAL),
-                                humantime::format_duration(max_interval)
-                            )
-                        ));
+                        bail!(SecutilsError::client(format!(
+                            "Web page tracker retry strategy max interval cannot be less than {}, but received {}.",
+                            humantime::format_duration(MIN_WEB_PAGE_TRACKER_RETRY_INTERVAL),
+                            humantime::format_duration(max_interval)
+                        )));
                     }
 
                     if max_interval > MAX_WEB_PAGE_TRACKER_RETRY_INTERVAL
                         || max_interval > min_schedule_interval
                     {
-                        bail!(SecutilsError::client(
-                            format!(
-                                "Web page tracker retry strategy max interval cannot be greater than {}, but received {}.",
-                                humantime::format_duration(MAX_WEB_PAGE_TRACKER_RETRY_INTERVAL.min(min_schedule_interval)),
-                                humantime::format_duration(max_interval)
-                            )
-                        ));
+                        bail!(SecutilsError::client(format!(
+                            "Web page tracker retry strategy max interval cannot be greater than {}, but received {}.",
+                            humantime::format_duration(
+                                MAX_WEB_PAGE_TRACKER_RETRY_INTERVAL.min(min_schedule_interval)
+                            ),
+                            humantime::format_duration(max_interval)
+                        )));
                     }
                 }
             }
         }
 
         if !self.api.network.is_public_web_url(&tracker.url).await {
-            bail!(SecutilsError::client(
-                format!("Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received {}.", tracker.url)
-            ));
+            bail!(SecutilsError::client(format!(
+                "Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received {}.",
+                tracker.url
+            )));
         }
 
         Ok(())
@@ -990,23 +987,23 @@ mod tests {
         error::Error as SecutilsError,
         scheduler::{SchedulerJob, SchedulerJobConfig, SchedulerJobRetryStrategy},
         tests::{
-            mock_api, mock_api_with_config, mock_api_with_network, mock_config,
-            mock_network_with_records, mock_scheduler_job, mock_upsert_scheduler_job, mock_user,
-            RawSchedulerJobStoredData,
+            RawSchedulerJobStoredData, mock_api, mock_api_with_config, mock_api_with_network,
+            mock_config, mock_network_with_records, mock_scheduler_job, mock_upsert_scheduler_job,
+            mock_user,
         },
         utils::web_scraping::{
+            WebPageContentTrackerTag, WebPageResource, WebPageResourceDiffStatus,
+            WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings,
+            WebScraperContentRequest, WebScraperContentResponse, WebScraperErrorResponse,
+            WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesResponse,
             api_ext::{
                 WebPageContentTrackerGetHistoryParams, WebPageResourcesTrackerGetHistoryParams,
                 WebPageTrackerUpdateParams,
             },
             tests::{
-                WebPageTrackerCreateParams, WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
-                WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
+                WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
+                WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME, WebPageTrackerCreateParams,
             },
-            WebPageContentTrackerTag, WebPageResource, WebPageResourceDiffStatus,
-            WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings,
-            WebScraperContentRequest, WebScraperContentResponse, WebScraperErrorResponse,
-            WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesResponse,
         },
     };
     use actix_web::ResponseError;
@@ -1017,11 +1014,11 @@ mod tests {
     use std::{net::Ipv4Addr, time::Duration};
     use time::OffsetDateTime;
     use trust_dns_resolver::{
-        proto::rr::{rdata::A, RData, Record},
         Name,
+        proto::rr::{RData, Record, rdata::A},
     };
     use url::Url;
-    use uuid::{uuid, Uuid};
+    use uuid::{Uuid, uuid};
 
     fn get_resources(timestamp: i64, label: &str) -> anyhow::Result<WebScraperResourcesResponse> {
         Ok(WebScraperResourcesResponse {
@@ -1249,7 +1246,7 @@ mod tests {
             @r###"
         Error {
             context: "Web page tracker schedule must be a valid cron expression.",
-            source: "Failed to parse schedule `-`: Error { kind: Expression(\"Invalid cron expression.\") }",
+            source: "Failed to parse schedule `-`: Invalid pattern: Pattern must consist of five or six fields (minute, hour, day, month, day of week, and optional second).",
         }
         "###
         );
@@ -1544,7 +1541,7 @@ mod tests {
             @r###"
         Error {
             context: "Web page tracker schedule must be a valid cron expression.",
-            source: "Failed to parse schedule `-`: Error { kind: Expression(\"Invalid cron expression.\") }",
+            source: "Failed to parse schedule `-`: Invalid pattern: Pattern must consist of five or six fields (minute, hour, day, month, day of week, and optional second).",
         }
         "###
         );
@@ -2043,7 +2040,7 @@ mod tests {
             @r###"
         Error {
             context: "Web page tracker schedule must be a valid cron expression.",
-            source: "Failed to parse schedule `-`: Error { kind: Expression(\"Invalid cron expression.\") }",
+            source: "Failed to parse schedule `-`: Invalid pattern: Pattern must consist of five or six fields (minute, hour, day, month, day of week, and optional second).",
         }
         "###
         );
@@ -2512,7 +2509,7 @@ mod tests {
             @r###"
         Error {
             context: "Web page tracker schedule must be a valid cron expression.",
-            source: "Failed to parse schedule `-`: Error { kind: Expression(\"Invalid cron expression.\") }",
+            source: "Failed to parse schedule `-`: Invalid pattern: Pattern must consist of five or six fields (minute, hour, day, month, day of week, and optional second).",
         }
         "###
         );
@@ -2924,10 +2921,12 @@ mod tests {
         api.db.insert_user(&mock_user).await?;
 
         let web_scraping = api.web_scraping(&mock_user);
-        assert!(web_scraping
-            .get_resources_tracker(uuid!("00000000-0000-0000-0000-000000000001"))
-            .await?
-            .is_none());
+        assert!(
+            web_scraping
+                .get_resources_tracker(uuid!("00000000-0000-0000-0000-000000000001"))
+                .await?
+                .is_none()
+        );
 
         let tracker_one = web_scraping
             .create_resources_tracker(WebPageTrackerCreateParams {
@@ -2975,10 +2974,12 @@ mod tests {
         api.db.insert_user(&mock_user).await?;
 
         let web_scraping = api.web_scraping(&mock_user);
-        assert!(web_scraping
-            .get_content_tracker(uuid!("00000000-0000-0000-0000-000000000001"))
-            .await?
-            .is_none());
+        assert!(
+            web_scraping
+                .get_content_tracker(uuid!("00000000-0000-0000-0000-000000000001"))
+                .await?
+                .is_none()
+        );
 
         let tracker_one = web_scraping
             .create_content_tracker(WebPageTrackerCreateParams {

@@ -1,9 +1,9 @@
 use futures::future::BoxFuture;
 use trust_dns_resolver::{
+    TokioAsyncResolver,
     config::{ResolverConfig, ResolverOpts},
     error::ResolveError,
     lookup_ip::LookupIp,
-    TokioAsyncResolver,
 };
 
 /// Trait describing a facade for a `AsyncResolver` from `trust-dns-resolver`.
@@ -37,6 +37,7 @@ pub mod tests {
     use futures::future::BoxFuture;
     use std::sync::Arc;
     use trust_dns_resolver::{
+        Name,
         error::ResolveError,
         lookup::Lookup,
         lookup_ip::LookupIp,
@@ -44,7 +45,6 @@ pub mod tests {
             op::Query,
             rr::{Record, RecordType},
         },
-        Name,
     };
 
     #[derive(Clone)]

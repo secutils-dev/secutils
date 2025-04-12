@@ -10,7 +10,7 @@ pub struct TemplatesGenerateParams {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::certificates::{api_ext::TemplatesGenerateParams, ExportFormat};
+    use crate::utils::certificates::{ExportFormat, api_ext::TemplatesGenerateParams};
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {

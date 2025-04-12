@@ -2,7 +2,7 @@ use crate::{
     server::{app_state::AppState, http_errors::generic_internal_server_error},
     users::{User, UserDataNamespace},
 };
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, web};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 

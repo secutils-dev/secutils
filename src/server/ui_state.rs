@@ -42,8 +42,8 @@ mod tests {
 
     use crate::{
         server::{
-            ui_state::subscription_state::SubscriptionState, Status, StatusLevel, UiState,
-            WebhookUrlType,
+            Status, StatusLevel, UiState, WebhookUrlType,
+            ui_state::subscription_state::SubscriptionState,
         },
         tests::{mock_config, mock_user},
         users::{ClientUserShare, SharedResource, UserShare, UserShareId},

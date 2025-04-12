@@ -1,6 +1,6 @@
 use crate::config::Config;
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, TimestampSeconds};
+use serde_with::{TimestampSeconds, serde_as};
 use time::{Duration, OffsetDateTime};
 
 mod client_subscription_features;

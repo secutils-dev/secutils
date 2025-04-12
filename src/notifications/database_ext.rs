@@ -3,7 +3,7 @@ mod raw_notification;
 use crate::{
     database::Database,
     notifications::{
-        database_ext::raw_notification::RawNotification, Notification, NotificationId,
+        Notification, NotificationId, database_ext::raw_notification::RawNotification,
     },
 };
 use anyhow::bail;

@@ -137,10 +137,10 @@ pub async fn populate_search_index<DR: DnsResolver, ET: EmailTransport>(
 mod tests {
     use crate::{
         search::{
-            search_index_initializer::{
-                flatten_utils_tree, is_update_needed, util_to_search_item, UTIL_SEARCH_CATEGORY,
-            },
             SearchItem,
+            search_index_initializer::{
+                UTIL_SEARCH_CATEGORY, flatten_utils_tree, is_update_needed, util_to_search_item,
+            },
         },
         utils::Util,
     };

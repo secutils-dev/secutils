@@ -30,8 +30,8 @@ mod test {
         },
         tests::mock_config,
         users::{
-            user_subscription::subscription_features::SubscriptionFeatures, SubscriptionTier,
-            UserSubscription,
+            SubscriptionTier, UserSubscription,
+            user_subscription::subscription_features::SubscriptionFeatures,
         },
         utils::certificates::{PrivateKeyAlgorithm, PrivateKeySize},
     };

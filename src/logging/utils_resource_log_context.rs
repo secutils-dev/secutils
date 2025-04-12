@@ -1,9 +1,9 @@
 use crate::utils::{
+    UtilsResource,
     web_scraping::{WebPageTracker, WebPageTrackerKind, WebPageTrackerTag},
     webhooks::Responder,
-    UtilsResource,
 };
-use serde::{ser::SerializeStruct, Serialize, Serializer};
+use serde::{Serialize, Serializer, ser::SerializeStruct};
 use uuid::Uuid;
 
 /// Represents a context for the utility resource used for the structured logging.
@@ -42,7 +42,7 @@ impl<Tag: WebPageTrackerTag> WebPageTracker<Tag> {
     }
 }
 
-impl<'n> Serialize for UtilsResourceLogContext<'n> {
+impl Serialize for UtilsResourceLogContext<'_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -61,8 +61,8 @@ mod tests {
         logging::UtilsResourceLogContext,
         tests::{MockResponderBuilder, MockWebPageTrackerBuilder},
         utils::{
-            web_scraping::{WebPageContentTrackerTag, WebPageResourcesTrackerTag},
             UtilsResource,
+            web_scraping::{WebPageContentTrackerTag, WebPageResourcesTrackerTag},
         },
     };
     use insta::assert_json_snapshot;

@@ -5,7 +5,7 @@ use crate::{
     server::app_state::AppState,
     users::User,
 };
-use actix_web::{web, HttpResponse};
+use actix_web::{HttpResponse, web};
 use serde::Deserialize;
 use time::OffsetDateTime;
 

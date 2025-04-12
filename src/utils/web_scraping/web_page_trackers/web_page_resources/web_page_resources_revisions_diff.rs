@@ -227,8 +227,8 @@ mod tests {
     use crate::{
         tests::MockWebPageResourceBuilder,
         utils::web_scraping::{
-            web_page_resources_revisions_diff, WebPageDataRevision, WebPageResourceContentData,
-            WebPageResourcesData,
+            WebPageDataRevision, WebPageResourceContentData, WebPageResourcesData,
+            web_page_resources_revisions_diff,
         },
     };
     use insta::assert_json_snapshot;

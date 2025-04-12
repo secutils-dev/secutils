@@ -10,7 +10,7 @@ pub struct ContentSecurityPoliciesSerializeParams {
 #[cfg(test)]
 mod tests {
     use crate::utils::web_security::{
-        api_ext::ContentSecurityPoliciesSerializeParams, ContentSecurityPolicySource,
+        ContentSecurityPolicySource, api_ext::ContentSecurityPoliciesSerializeParams,
     };
 
     #[test]

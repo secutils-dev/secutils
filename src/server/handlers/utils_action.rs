@@ -5,12 +5,12 @@ use crate::{
     server::AppState,
     users::{User, UserShare},
     utils::{
+        UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
         certificates::certificates_handle_action, web_scraping::web_scraping_handle_action,
-        web_security::web_security_handle_action, webhooks::webhooks_handle_action, UtilsAction,
-        UtilsActionParams, UtilsResource, UtilsResourceOperation,
+        web_security::web_security_handle_action, webhooks::webhooks_handle_action,
     },
 };
-use actix_web::{http::Method, web, HttpRequest, HttpResponse};
+use actix_web::{HttpRequest, HttpResponse, http::Method, web};
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
@@ -189,8 +189,8 @@ mod tests {
         tests::{mock_api, mock_app_state, mock_user, mock_user_with_id},
         users::{SharedResource, UserShare, UserShareId},
         utils::{
-            certificates::{tests::PrivateKeysCreateParams, PrivateKeyAlgorithm},
             UtilsAction, UtilsResource, UtilsResourceOperation,
+            certificates::{PrivateKeyAlgorithm, tests::PrivateKeysCreateParams},
         },
     };
     use actix_web::{body::MessageBody, http::Method, test::TestRequest, web};
@@ -283,22 +283,26 @@ mod tests {
             UtilsResource::WebScrapingContent,
             UtilsResource::WebSecurityContentSecurityPolicies,
         ] {
-            assert!(extract_action(
-                &TestRequest::with_uri("https://secutils.dev/api/utils")
-                    .method(Method::PUT)
-                    .to_http_request(),
-                &resource,
-            )
-            .is_none());
+            assert!(
+                extract_action(
+                    &TestRequest::with_uri("https://secutils.dev/api/utils")
+                        .method(Method::PUT)
+                        .to_http_request(),
+                    &resource,
+                )
+                .is_none()
+            );
 
-            assert!(extract_action(
-                &TestRequest::with_uri("https://secutils.dev/api/utils")
-                    .method(Method::POST)
-                    .param("resource_id", resource_id.to_string())
-                    .to_http_request(),
-                &resource,
-            )
-            .is_none());
+            assert!(
+                extract_action(
+                    &TestRequest::with_uri("https://secutils.dev/api/utils")
+                        .method(Method::POST)
+                        .param("resource_id", resource_id.to_string())
+                        .to_http_request(),
+                    &resource,
+                )
+                .is_none()
+            );
         }
     }
 
@@ -590,9 +594,11 @@ mod tests {
         api.db.upsert_user(&user).await?;
 
         // No user information.
-        assert!(extract_user(&api, None, None, &action, &resource)
-            .await?
-            .is_none());
+        assert!(
+            extract_user(&api, None, None, &action, &resource)
+                .await?
+                .is_none()
+        );
 
         // Only current user is provided.
         let extracted_user =

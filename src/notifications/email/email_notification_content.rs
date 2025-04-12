@@ -65,7 +65,9 @@ mod tests {
     fn serialization() -> anyhow::Result<()> {
         assert_eq!(
             postcard::to_stdvec(&EmailNotificationContent::text("subject", "text"))?,
-            vec![7, 115, 117, 98, 106, 101, 99, 116, 4, 116, 101, 120, 116, 0, 0]
+            vec![
+                7, 115, 117, 98, 106, 101, 99, 116, 4, 116, 101, 120, 116, 0, 0
+            ]
         );
 
         assert_eq!(

@@ -3,18 +3,18 @@ use crate::{
     logging::UserLogContext,
     network::{DnsResolver, EmailTransport, EmailTransportError},
     security::{
+        Operator,
         credentials::Credentials,
         jwt::Claims,
         kratos::{Identity, Session},
-        Operator,
     },
     users::{User, UserId, UserSignupError, UserSubscription},
 };
 use actix_web::cookie::Cookie;
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use hex::ToHex;
-use jsonwebtoken::{decode, DecodingKey, Validation};
-use rand_core::{OsRng, RngCore};
+use jsonwebtoken::{DecodingKey, Validation, decode};
+use rand_core::{OsRng, TryRngCore};
 use reqwest::StatusCode;
 use uuid::Uuid;
 
@@ -98,7 +98,7 @@ where
         Ok(Some(User {
             created_at: identity.created_at,
             is_activated: identity.is_activated(),
-            is_operator: operators.map_or(false, |operators| operators.contains(&user.email)),
+            is_operator: operators.is_some_and(|operators| operators.contains(&user.email)),
             ..user
         }))
     }
@@ -145,7 +145,7 @@ where
         };
 
         let operators = self.api.config.security.operators.as_ref();
-        if operators.map_or(false, |operators| operators.contains(&operator_id)) {
+        if operators.is_some_and(|operators| operators.contains(&operator_id)) {
             Ok(Some(Operator::new(operator_id)))
         } else {
             Ok(None)
@@ -351,7 +351,7 @@ where
     pub async fn generate_user_handle(&self) -> anyhow::Result<String> {
         let mut bytes = [0u8; USER_HANDLE_LENGTH_BYTES];
         loop {
-            OsRng.fill_bytes(&mut bytes);
+            OsRng.try_fill_bytes(&mut bytes)?;
             let handle = bytes.encode_hex::<String>();
             if self.api.users().get_by_handle(&handle).await?.is_none() {
                 return Ok(handle);

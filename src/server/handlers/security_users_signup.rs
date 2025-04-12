@@ -1,9 +1,9 @@
 use crate::{
-    security::{kratos::Identity, Operator},
+    security::{Operator, kratos::Identity},
     server::{app_state::AppState, http_errors::generic_internal_server_error},
     users::{SubscriptionTier, User, UserId, UserSignupError, UserSubscription},
 };
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, web};
 use serde::Deserialize;
 use serde_json::json;
 use std::ops::Add;
@@ -75,14 +75,14 @@ pub async fn security_users_signup(
         }
         Err(err) => {
             log::error!(operator:serde = operator.id(), user:serde = user.log_context(); "Failed to signup a user: {err:?}");
-            return match err.downcast_ref::<UserSignupError>() {
+            match err.downcast_ref::<UserSignupError>() {
                 Some(err) => match err {
                     UserSignupError::EmailAlreadyRegistered => HttpResponse::BadRequest().json(
                         json!({ "message": "The email address is already registered. Please try signing in or use a different email address." })
                     )
                 },
                 None => generic_internal_server_error(),
-            };
+            }
         }
     }
 }

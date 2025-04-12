@@ -5,17 +5,18 @@ use crate::{
     logging::{MetricsContext, UtilsResourceLogContext},
     server::app_state::AppState,
     utils::{
-        webhooks::{ResponderScriptContext, ResponderScriptResult, RespondersRequestCreateParams},
         UtilsResource,
+        webhooks::{ResponderScriptContext, ResponderScriptResult, RespondersRequestCreateParams},
     },
 };
 use actix_web::{
+    HttpRequest, HttpResponse,
     body::MessageBody,
     http::{
-        header::{HeaderName, HeaderValue},
         StatusCode,
+        header::{HeaderName, HeaderValue},
     },
-    web, HttpRequest, HttpResponse,
+    web,
 };
 use anyhow::bail;
 use bytes::Bytes;
@@ -359,12 +360,12 @@ mod tests {
         server::handlers::webhooks_responders::PathParams,
         tests::{mock_app_state, mock_config, mock_user},
         utils::webhooks::{
-            tests::{RespondersCreateParams, RespondersUpdateParams},
             ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,
+            tests::{RespondersCreateParams, RespondersUpdateParams},
         },
     };
     use actix_web::{
-        body::MessageBody, dev::Payload, http::Method, test::TestRequest, web, FromRequest,
+        FromRequest, body::MessageBody, dev::Payload, http::Method, test::TestRequest, web,
     };
     use bytes::Bytes;
     use insta::assert_debug_snapshot;

@@ -9,15 +9,15 @@ mod web_scraper;
 
 pub use self::{
     web_page_content::{
-        web_page_content_revisions_diff, WebPageContentTrackerTag, WebScraperContentRequest,
-        WebScraperContentRequestScripts, WebScraperContentResponse,
+        WebPageContentTrackerTag, WebScraperContentRequest, WebScraperContentRequestScripts,
+        WebScraperContentResponse, web_page_content_revisions_diff,
     },
     web_page_data_revision::WebPageDataRevision,
     web_page_resources::{
-        web_page_resources_revisions_diff, WebPageResource, WebPageResourceContent,
-        WebPageResourceContentData, WebPageResourceDiffStatus, WebPageResourcesData,
-        WebPageResourcesTrackerTag, WebScraperResource, WebScraperResourcesRequest,
-        WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
+        WebPageResource, WebPageResourceContent, WebPageResourceContentData,
+        WebPageResourceDiffStatus, WebPageResourcesData, WebPageResourcesTrackerTag,
+        WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesRequestScripts,
+        WebScraperResourcesResponse, web_page_resources_revisions_diff,
     },
     web_page_tracker::WebPageTracker,
     web_page_tracker_kind::WebPageTrackerKind,

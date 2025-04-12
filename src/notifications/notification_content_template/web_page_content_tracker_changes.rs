@@ -2,8 +2,8 @@ use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
     notifications::{
-        notification_content_template::SECUTILS_LOGO_BYTES, EmailNotificationAttachment,
-        EmailNotificationContent,
+        EmailNotificationAttachment, EmailNotificationContent,
+        notification_content_template::SECUTILS_LOGO_BYTES,
     },
 };
 use serde_json::json;
@@ -41,13 +41,13 @@ pub async fn compile_to_email<DR: DnsResolver, ET: EmailTransport>(
             api.templates.render(
                 "web_page_content_tracker_changes_error_email",
                 &json!({
-                "tracker_name": tracker_name,
-                "error_message": error_message,
-                "back_link": back_link,
-                "home_link": api.config.public_url.as_str(),
-            }),
-            )?
-        )
+                    "tracker_name": tracker_name,
+                    "error_message": error_message,
+                    "back_link": back_link,
+                    "home_link": api.config.public_url.as_str(),
+                }),
+            )?,
+        ),
     };
 
     Ok(EmailNotificationContent::html_with_attachments(

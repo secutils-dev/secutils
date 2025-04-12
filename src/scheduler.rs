@@ -1,7 +1,7 @@
 mod api_ext;
+mod cron_ext;
 mod database_ext;
 mod job_ext;
-mod schedule_ext;
 mod scheduler_job;
 mod scheduler_job_config;
 mod scheduler_job_metadata;
@@ -10,7 +10,7 @@ mod scheduler_job_retry_strategy;
 mod scheduler_jobs;
 
 use anyhow::anyhow;
-use futures::{pin_mut, StreamExt};
+use futures::{StreamExt, pin_mut};
 use std::{collections::HashSet, sync::Arc};
 use tokio::sync::RwLock;
 use tokio_cron_scheduler::{
@@ -19,8 +19,8 @@ use tokio_cron_scheduler::{
 };
 
 pub use self::{
-    schedule_ext::ScheduleExt, scheduler_job::SchedulerJob,
-    scheduler_job_config::SchedulerJobConfig, scheduler_job_metadata::SchedulerJobMetadata,
+    cron_ext::CronExt, scheduler_job::SchedulerJob, scheduler_job_config::SchedulerJobConfig,
+    scheduler_job_metadata::SchedulerJobMetadata,
     scheduler_job_retry_state::SchedulerJobRetryState,
     scheduler_job_retry_strategy::SchedulerJobRetryStrategy,
 };
@@ -202,11 +202,11 @@ pub mod tests {
     use crate::{
         config::{Config, DatabaseConfig},
         scheduler::{
-            scheduler_job::SchedulerJob, Scheduler, SchedulerJobConfig, SchedulerJobMetadata,
+            Scheduler, SchedulerJobConfig, SchedulerJobMetadata, scheduler_job::SchedulerJob,
         },
         tests::{mock_api_with_config, mock_config, mock_user},
         utils::web_scraping::{
-            tests::WebPageTrackerCreateParams, WebPageTrackerKind, WebPageTrackerSettings,
+            WebPageTrackerKind, WebPageTrackerSettings, tests::WebPageTrackerCreateParams,
         },
     };
     use anyhow::anyhow;
@@ -219,10 +219,10 @@ pub mod tests {
         JobScheduler, PostgresMetadataStore, PostgresNotificationStore, PostgresStore,
         SimpleJobCode, SimpleNotificationCode,
     };
-    use uuid::{uuid, Uuid};
+    use uuid::{Uuid, uuid};
 
     pub use super::database_ext::tests::{
-        mock_get_scheduler_job, mock_upsert_scheduler_job, RawSchedulerJobStoredData,
+        RawSchedulerJobStoredData, mock_get_scheduler_job, mock_upsert_scheduler_job,
     };
 
     pub async fn mock_scheduler(pool: &PgPool) -> anyhow::Result<JobScheduler> {
@@ -329,7 +329,7 @@ pub mod tests {
                     headers: Default::default(),
                 },
                 job_config: Some(SchedulerJobConfig {
-                    schedule: "1 2 3 4 5 6 2030".to_string(),
+                    schedule: "1 2 3 4 5 6".to_string(),
                     retry_strategy: None,
                     notifications: true,
                 }),
@@ -347,7 +347,7 @@ pub mod tests {
                     headers: Default::default(),
                 },
                 job_config: Some(SchedulerJobConfig {
-                    schedule: "1 2 3 4 5 6 2030".to_string(),
+                    schedule: "1 2 3 4 5 6".to_string(),
                     retry_strategy: None,
                     notifications: true,
                 }),
@@ -368,7 +368,7 @@ pub mod tests {
                 SchedulerJob::WebPageTrackersTrigger {
                     kind: WebPageTrackerKind::WebPageResources,
                 },
-                "1 2 3 4 5 6 2030",
+                "1 2 3 4 5 6",
             ),
         )
         .await?;
@@ -379,7 +379,7 @@ pub mod tests {
                 SchedulerJob::WebPageTrackersTrigger {
                     kind: WebPageTrackerKind::WebPageContent,
                 },
-                "1 2 3 4 5 6 2030",
+                "1 2 3 4 5 6",
             ),
         )
         .await?;
@@ -388,7 +388,7 @@ pub mod tests {
             &mock_scheduler_job(
                 schedule_job_id,
                 SchedulerJob::WebPageTrackersSchedule,
-                "0 * 0 * * * *",
+                "0 * 0 * * *",
             ),
         )
         .await?;
@@ -397,36 +397,44 @@ pub mod tests {
             &mock_scheduler_job(
                 notifications_send_job_id,
                 SchedulerJob::NotificationsSend,
-                "0 * 2 * * * *",
+                "0 * 2 * * *",
             ),
         )
         .await?;
 
         let mut scheduler = Scheduler::start(api.clone()).await?;
 
-        assert!(scheduler
-            .inner_scheduler
-            .next_tick_for_job(resources_trigger_job_id)
-            .await?
-            .is_some());
+        assert!(
+            scheduler
+                .inner_scheduler
+                .next_tick_for_job(resources_trigger_job_id)
+                .await?
+                .is_some()
+        );
 
-        assert!(scheduler
-            .inner_scheduler
-            .next_tick_for_job(content_trigger_job_id)
-            .await?
-            .is_some());
+        assert!(
+            scheduler
+                .inner_scheduler
+                .next_tick_for_job(content_trigger_job_id)
+                .await?
+                .is_some()
+        );
 
-        assert!(scheduler
-            .inner_scheduler
-            .next_tick_for_job(schedule_job_id)
-            .await?
-            .is_some());
+        assert!(
+            scheduler
+                .inner_scheduler
+                .next_tick_for_job(schedule_job_id)
+                .await?
+                .is_some()
+        );
 
-        assert!(scheduler
-            .inner_scheduler
-            .next_tick_for_job(notifications_send_job_id)
-            .await?
-            .is_some());
+        assert!(
+            scheduler
+                .inner_scheduler
+                .next_tick_for_job(notifications_send_job_id)
+                .await?
+                .is_some()
+        );
 
         Ok(())
     }
@@ -457,7 +465,7 @@ pub mod tests {
                     ],
                 ),
                 Some(
-                    "0 * 0 * * * *",
+                    "0 * 0 * * *",
                 ),
             ),
             (
@@ -469,7 +477,7 @@ pub mod tests {
                     ],
                 ),
                 Some(
-                    "0 * 1 * * * *",
+                    "0 * 1 * * *",
                 ),
             ),
             (
@@ -481,7 +489,7 @@ pub mod tests {
                     ],
                 ),
                 Some(
-                    "0 * 2 * * * *",
+                    "0 * 2 * * *",
                 ),
             ),
         ]
@@ -534,15 +542,21 @@ pub mod tests {
         Scheduler::start(api.clone()).await?;
 
         // Old jobs should have been removed.
-        assert!(mock_get_scheduler_job(&api.db, schedule_job_id)
-            .await?
-            .is_none());
-        assert!(mock_get_scheduler_job(&api.db, fetch_job_id)
-            .await?
-            .is_none());
-        assert!(mock_get_scheduler_job(&api.db, notifications_send_job_id)
-            .await?
-            .is_none());
+        assert!(
+            mock_get_scheduler_job(&api.db, schedule_job_id)
+                .await?
+                .is_none()
+        );
+        assert!(
+            mock_get_scheduler_job(&api.db, fetch_job_id)
+                .await?
+                .is_none()
+        );
+        assert!(
+            mock_get_scheduler_job(&api.db, notifications_send_job_id)
+                .await?
+                .is_none()
+        );
 
         let jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
         assert_eq!(jobs.len(), 3);
@@ -564,7 +578,7 @@ pub mod tests {
                     ],
                 ),
                 Some(
-                    "0 * 0 * * * *",
+                    "0 * 0 * * *",
                 ),
             ),
             (
@@ -576,7 +590,7 @@ pub mod tests {
                     ],
                 ),
                 Some(
-                    "0 * 1 * * * *",
+                    "0 * 1 * * *",
                 ),
             ),
             (
@@ -588,7 +602,7 @@ pub mod tests {
                     ],
                 ),
                 Some(
-                    "0 * 2 * * * *",
+                    "0 * 2 * * *",
                 ),
             ),
         ]

@@ -46,7 +46,7 @@ mod tests {
         scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
         tests::MockWebPageTrackerBuilder,
         utils::web_scraping::{
-            api_ext::WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME, WebPageResourcesTrackerTag,
+            WebPageResourcesTrackerTag, api_ext::WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
         },
     };
     use insta::assert_json_snapshot;

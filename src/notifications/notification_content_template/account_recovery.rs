@@ -2,8 +2,8 @@ use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
     notifications::{
-        notification_content_template::SECUTILS_LOGO_BYTES, EmailNotificationAttachment,
-        EmailNotificationContent,
+        EmailNotificationAttachment, EmailNotificationContent,
+        notification_content_template::SECUTILS_LOGO_BYTES,
     },
 };
 use serde_json::json;

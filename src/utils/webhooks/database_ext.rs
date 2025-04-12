@@ -13,7 +13,7 @@ use crate::{
 use anyhow::{anyhow, bail};
 use raw_responder::RawResponder;
 use raw_responder_request::RawResponderRequest;
-use sqlx::{query, query_as, Pool, Postgres};
+use sqlx::{Pool, Postgres, query, query_as};
 use uuid::Uuid;
 
 /// A database extension for the webhooks utility-related operations.
@@ -197,7 +197,10 @@ ORDER BY r.updated_at
             Err(err) => match err.as_database_error() {
                 Some(database_error) if database_error.is_unique_violation() => {
                     let error_message = if database_error.message().contains(".location") {
-                        format!("Responder with such location ('{:?}') and method ('{:?}') already exists.", &responder.location, responder.method)
+                        format!(
+                            "Responder with such location ('{:?}') and method ('{:?}') already exists.",
+                            &responder.location, responder.method
+                        )
                     } else {
                         format!(
                             "Responder with such name ('{}') already exists.",
@@ -259,7 +262,10 @@ ORDER BY r.updated_at
             Err(err) => match err.as_database_error() {
                 Some(database_error) if database_error.is_unique_violation() => {
                     let error_message = if database_error.message().contains(".location") {
-                        format!("Responder with such location ('{:?}') and method ('{:?}') already exists.", &responder.location, responder.method)
+                        format!(
+                            "Responder with such location ('{:?}') and method ('{:?}') already exists.",
+                            &responder.location, responder.method
+                        )
                     } else {
                         format!(
                             "Responder with such name ('{}') already exists.",
@@ -408,7 +414,7 @@ mod tests {
     use crate::{
         database::Database,
         error::Error as SecutilsError,
-        tests::{mock_user, to_database_error, MockResponderBuilder},
+        tests::{MockResponderBuilder, mock_user, to_database_error},
         utils::webhooks::{
             Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderRequest,
             ResponderStats,
@@ -418,7 +424,7 @@ mod tests {
     use sqlx::PgPool;
     use std::borrow::Cow;
     use time::OffsetDateTime;
-    use uuid::{uuid, Uuid};
+    use uuid::{Uuid, uuid};
 
     fn create_request(id: Uuid, responder_id: Uuid) -> anyhow::Result<ResponderRequest<'static>> {
         Ok(ResponderRequest {
@@ -474,10 +480,12 @@ mod tests {
             .unwrap();
         assert_eq!(responder, responders.remove(0));
 
-        assert!(webhooks
-            .get_responder(user.id, uuid!("00000000-0000-0000-0000-000000000005"))
-            .await?
-            .is_none());
+        assert!(
+            webhooks
+                .get_responder(user.id, uuid!("00000000-0000-0000-0000-000000000005"))
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }
@@ -1292,10 +1300,12 @@ mod tests {
 
         // No history yet.
         for responder in responders.iter() {
-            assert!(webhooks
-                .get_responder_requests(user.id, responder.id)
-                .await?
-                .is_empty());
+            assert!(
+                webhooks
+                    .get_responder_requests(user.id, responder.id)
+                    .await?
+                    .is_empty()
+            );
         }
 
         let mut requests = vec![
@@ -1326,10 +1336,12 @@ mod tests {
             .await?;
         assert_eq!(history, vec![requests.remove(0)]);
 
-        assert!(webhooks
-            .get_responder_requests(user.id, uuid!("00000000-0000-0000-0000-000000000004"))
-            .await?
-            .is_empty());
+        assert!(
+            webhooks
+                .get_responder_requests(user.id, uuid!("00000000-0000-0000-0000-000000000004"))
+                .await?
+                .is_empty()
+        );
 
         Ok(())
     }
@@ -1411,14 +1423,18 @@ mod tests {
             .remove_responder_request(user.id, responders[1].id, requests[2].id)
             .await?;
 
-        assert!(webhooks
-            .get_responder_requests(user.id, responders[0].id)
-            .await?
-            .is_empty());
-        assert!(webhooks
-            .get_responder_requests(user.id, responders[1].id)
-            .await?
-            .is_empty());
+        assert!(
+            webhooks
+                .get_responder_requests(user.id, responders[0].id)
+                .await?
+                .is_empty()
+        );
+        assert!(
+            webhooks
+                .get_responder_requests(user.id, responders[1].id)
+                .await?
+                .is_empty()
+        );
 
         Ok(())
     }
@@ -1485,14 +1501,18 @@ mod tests {
             .clear_responder_requests(user.id, responders[1].id)
             .await?;
 
-        assert!(webhooks
-            .get_responder_requests(user.id, responders[0].id)
-            .await?
-            .is_empty());
-        assert!(webhooks
-            .get_responder_requests(user.id, responders[1].id)
-            .await?
-            .is_empty());
+        assert!(
+            webhooks
+                .get_responder_requests(user.id, responders[0].id)
+                .await?
+                .is_empty()
+        );
+        assert!(
+            webhooks
+                .get_responder_requests(user.id, responders[1].id)
+                .await?
+                .is_empty()
+        );
 
         Ok(())
     }

@@ -11,7 +11,7 @@ pub struct WebScraperResourcesRequestScripts<'a> {
     pub resource_filter_map: Option<&'a str>,
 }
 
-impl<'a> WebScraperResourcesRequestScripts<'a> {
+impl WebScraperResourcesRequestScripts<'_> {
     /// Returns `true` if none of the scripts are set.
     pub fn is_empty(&self) -> bool {
         self.resource_filter_map.is_none()

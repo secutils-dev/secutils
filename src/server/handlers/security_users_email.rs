@@ -3,15 +3,15 @@ use crate::{
     notifications::{NotificationContent, NotificationContentTemplate, NotificationDestination},
     server::AppState,
 };
-use actix_web::{web, HttpResponse};
+use actix_web::{HttpResponse, web};
 use serde_derive::Deserialize;
 use std::{collections::HashMap, str::FromStr};
 
 use crate::{
     logging::UserLogContext,
     security::{
-        kratos::{EmailTemplateType, Identity},
         Operator,
+        kratos::{EmailTemplateType, Identity},
     },
 };
 use time::OffsetDateTime;

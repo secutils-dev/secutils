@@ -1,5 +1,5 @@
 use serde::Serialize;
-use serde_with::{serde_as, DurationNanoSeconds};
+use serde_with::{DurationNanoSeconds, serde_as};
 use std::time::Duration;
 
 /// Represents a metrics context for the structured logging.

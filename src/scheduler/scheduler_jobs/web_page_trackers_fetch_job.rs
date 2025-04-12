@@ -9,7 +9,7 @@ use crate::{
     },
     utils::web_scraping::{WebPageTracker, WebPageTrackerTag},
 };
-use futures::{pin_mut, StreamExt};
+use futures::{StreamExt, pin_mut};
 use std::{sync::Arc, time::Instant};
 use time::OffsetDateTime;
 use tokio_cron_scheduler::{Job, JobScheduler};
@@ -404,27 +404,26 @@ mod tests {
     use super::WebPageTrackersFetchJob;
     use crate::{
         scheduler::{
-            scheduler_job::SchedulerJob, scheduler_jobs::WebPageTrackersTriggerJob,
-            SchedulerJobConfig, SchedulerJobRetryStrategy,
+            SchedulerJobConfig, SchedulerJobRetryStrategy, scheduler_job::SchedulerJob,
+            scheduler_jobs::WebPageTrackersTriggerJob,
         },
         tests::{
             mock_api_with_config, mock_config, mock_get_scheduler_job, mock_schedule_in_sec,
             mock_schedule_in_secs, mock_scheduler, mock_scheduler_job, mock_user,
         },
         utils::web_scraping::{
-            tests::{
-                WebPageTrackerCreateParams, WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
-                WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME,
-            },
             WebPageContentTrackerTag, WebPageDataRevision, WebPageResource, WebPageResourceContent,
             WebPageResourceContentData, WebPageResourcesData, WebPageResourcesTrackerTag,
             WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings, WebScraperContentRequest,
             WebScraperContentRequestScripts, WebScraperContentResponse, WebScraperErrorResponse,
             WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesRequestScripts,
             WebScraperResourcesResponse,
+            tests::{
+                WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
+                WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME, WebPageTrackerCreateParams,
+            },
         },
     };
-    use cron::Schedule;
     use futures::StreamExt;
     use httpmock::MockServer;
     use insta::assert_debug_snapshot;
@@ -432,12 +431,12 @@ mod tests {
     use std::{default::Default, ops::Add, sync::Arc, time::Duration};
     use time::OffsetDateTime;
     use url::Url;
-    use uuid::{uuid, Uuid};
+    use uuid::{Uuid, uuid};
 
     #[sqlx::test]
     async fn can_create_job_with_correct_parameters(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_fetch = Schedule::try_from("1/5 * * * * *")?;
+        config.scheduler.web_page_trackers_fetch = "1/5 * * * * *".to_string();
 
         let api = mock_api_with_config(pool, config).await?;
 
@@ -468,7 +467,7 @@ mod tests {
     #[sqlx::test]
     async fn can_resume_job(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_fetch = Schedule::try_from("0 0 * * * *")?;
+        config.scheduler.web_page_trackers_fetch = "0 0 * * * *".to_string();
 
         let api = mock_api_with_config(pool, config).await?;
 
@@ -507,8 +506,7 @@ mod tests {
     #[sqlx::test]
     async fn remove_pending_trackers_jobs_if_zero_revisions(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_fetch =
-            Schedule::try_from(mock_schedule_in_sec(2).as_str())?;
+        config.scheduler.web_page_trackers_fetch = mock_schedule_in_sec(2);
 
         let mut scheduler = mock_scheduler(&pool).await?;
 
@@ -610,8 +608,7 @@ mod tests {
     #[sqlx::test]
     async fn can_fetch_resources(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_fetch =
-            Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
+        config.scheduler.web_page_trackers_fetch = mock_schedule_in_sec(3);
 
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
@@ -775,15 +772,16 @@ mod tests {
             Some((trigger_job_id, Some(false)))
         );
 
-        assert!(api
-            .db
-            .get_notification_ids(
-                OffsetDateTime::now_utc().add(Duration::from_secs(3600 * 24 * 365)),
-                10
-            )
-            .collect::<Vec<_>>()
-            .await
-            .is_empty());
+        assert!(
+            api.db
+                .get_notification_ids(
+                    OffsetDateTime::now_utc().add(Duration::from_secs(3600 * 24 * 365)),
+                    10
+                )
+                .collect::<Vec<_>>()
+                .await
+                .is_empty()
+        );
 
         Ok(())
     }
@@ -791,8 +789,7 @@ mod tests {
     #[sqlx::test]
     async fn can_fetch_content(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_fetch =
-            Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
+        config.scheduler.web_page_trackers_fetch = mock_schedule_in_sec(3);
 
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
@@ -934,15 +931,16 @@ mod tests {
             Some((trigger_job_id, Some(false)))
         );
 
-        assert!(api
-            .db
-            .get_notification_ids(
-                OffsetDateTime::now_utc().add(Duration::from_secs(3600 * 24 * 365)),
-                10
-            )
-            .collect::<Vec<_>>()
-            .await
-            .is_empty());
+        assert!(
+            api.db
+                .get_notification_ids(
+                    OffsetDateTime::now_utc().add(Duration::from_secs(3600 * 24 * 365)),
+                    10
+                )
+                .collect::<Vec<_>>()
+                .await
+                .is_empty()
+        );
 
         Ok(())
     }
@@ -950,8 +948,7 @@ mod tests {
     #[sqlx::test]
     async fn schedules_notification_when_resources_change(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_fetch =
-            Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
+        config.scheduler.web_page_trackers_fetch = mock_schedule_in_sec(3);
 
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
@@ -1123,10 +1120,12 @@ mod tests {
                 .len(),
             2
         );
-        assert!(!mock_get_scheduler_job(&api.db, trigger_job_id)
-            .await?
-            .and_then(|job| job.stopped)
-            .unwrap_or_default());
+        assert!(
+            !mock_get_scheduler_job(&api.db, trigger_job_id)
+                .await?
+                .and_then(|job| job.stopped)
+                .unwrap_or_default()
+        );
 
         Ok(())
     }
@@ -1136,8 +1135,7 @@ mod tests {
         pool: PgPool,
     ) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_fetch =
-            Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
+        config.scheduler.web_page_trackers_fetch = mock_schedule_in_sec(3);
 
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
@@ -1292,10 +1290,12 @@ mod tests {
                 .len(),
             1
         );
-        assert!(!mock_get_scheduler_job(&api.db, trigger_job_id)
-            .await?
-            .and_then(|job| job.stopped)
-            .unwrap_or_default());
+        assert!(
+            !mock_get_scheduler_job(&api.db, trigger_job_id)
+                .await?
+                .and_then(|job| job.stopped)
+                .unwrap_or_default()
+        );
 
         Ok(())
     }
@@ -1303,8 +1303,7 @@ mod tests {
     #[sqlx::test]
     async fn retries_when_resources_change_check_fails(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_fetch =
-            Schedule::try_from(mock_schedule_in_secs(&[3, 6]).as_str())?;
+        config.scheduler.web_page_trackers_fetch = mock_schedule_in_secs(&[3, 6]);
 
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
@@ -1437,10 +1436,12 @@ mod tests {
                 .len(),
             1
         );
-        assert!(mock_get_scheduler_job(&api.db, trigger_job_id)
-            .await?
-            .and_then(|job| job.stopped)
-            .unwrap_or_default());
+        assert!(
+            mock_get_scheduler_job(&api.db, trigger_job_id)
+                .await?
+                .and_then(|job| job.stopped)
+                .unwrap_or_default()
+        );
 
         while api
             .db
@@ -1495,10 +1496,12 @@ mod tests {
                 .len(),
             1
         );
-        assert!(!mock_get_scheduler_job(&api.db, trigger_job_id)
-            .await?
-            .and_then(|job| job.stopped)
-            .unwrap_or_default());
+        assert!(
+            !mock_get_scheduler_job(&api.db, trigger_job_id)
+                .await?
+                .and_then(|job| job.stopped)
+                .unwrap_or_default()
+        );
 
         Ok(())
     }
@@ -1508,8 +1511,7 @@ mod tests {
         pool: PgPool,
     ) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_fetch =
-            Schedule::try_from(mock_schedule_in_secs(&[3, 6]).as_str())?;
+        config.scheduler.web_page_trackers_fetch = mock_schedule_in_secs(&[3, 6]);
 
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
@@ -1643,10 +1645,12 @@ mod tests {
                 .len(),
             1
         );
-        assert!(mock_get_scheduler_job(&api.db, trigger_job_id)
-            .await?
-            .and_then(|job| job.stopped)
-            .unwrap_or_default());
+        assert!(
+            mock_get_scheduler_job(&api.db, trigger_job_id)
+                .await?
+                .and_then(|job| job.stopped)
+                .unwrap_or_default()
+        );
 
         // Create a mock
         let resources = WebScraperResourcesResponse {
@@ -1737,10 +1741,12 @@ mod tests {
                 .len(),
             2
         );
-        assert!(!mock_get_scheduler_job(&api.db, trigger_job_id)
-            .await?
-            .and_then(|job| job.stopped)
-            .unwrap_or_default());
+        assert!(
+            !mock_get_scheduler_job(&api.db, trigger_job_id)
+                .await?
+                .and_then(|job| job.stopped)
+                .unwrap_or_default()
+        );
 
         Ok(())
     }
@@ -1748,8 +1754,7 @@ mod tests {
     #[sqlx::test]
     async fn schedules_notification_when_content_change(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_fetch =
-            Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
+        config.scheduler.web_page_trackers_fetch = mock_schedule_in_sec(3);
 
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
@@ -1905,10 +1910,12 @@ mod tests {
                 .len(),
             2
         );
-        assert!(!mock_get_scheduler_job(&api.db, trigger_job_id)
-            .await?
-            .and_then(|job| job.stopped)
-            .unwrap_or_default());
+        assert!(
+            !mock_get_scheduler_job(&api.db, trigger_job_id)
+                .await?
+                .and_then(|job| job.stopped)
+                .unwrap_or_default()
+        );
 
         Ok(())
     }
@@ -1918,8 +1925,7 @@ mod tests {
         pool: PgPool,
     ) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_fetch =
-            Schedule::try_from(mock_schedule_in_sec(3).as_str())?;
+        config.scheduler.web_page_trackers_fetch = mock_schedule_in_sec(3);
 
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
@@ -2072,10 +2078,12 @@ mod tests {
                 .len(),
             1
         );
-        assert!(!mock_get_scheduler_job(&api.db, trigger_job_id)
-            .await?
-            .and_then(|job| job.stopped)
-            .unwrap_or_default());
+        assert!(
+            !mock_get_scheduler_job(&api.db, trigger_job_id)
+                .await?
+                .and_then(|job| job.stopped)
+                .unwrap_or_default()
+        );
 
         Ok(())
     }
@@ -2083,8 +2091,7 @@ mod tests {
     #[sqlx::test]
     async fn retries_when_content_change_check_fails(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_fetch =
-            Schedule::try_from(mock_schedule_in_secs(&[3, 6]).as_str())?;
+        config.scheduler.web_page_trackers_fetch = mock_schedule_in_secs(&[3, 6]);
 
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
@@ -2215,10 +2222,12 @@ mod tests {
                 .len(),
             1
         );
-        assert!(mock_get_scheduler_job(&api.db, trigger_job_id)
-            .await?
-            .and_then(|job| job.stopped)
-            .unwrap_or_default());
+        assert!(
+            mock_get_scheduler_job(&api.db, trigger_job_id)
+                .await?
+                .and_then(|job| job.stopped)
+                .unwrap_or_default()
+        );
 
         while api
             .db
@@ -2273,10 +2282,12 @@ mod tests {
                 .len(),
             1
         );
-        assert!(!mock_get_scheduler_job(&api.db, trigger_job_id)
-            .await?
-            .and_then(|job| job.stopped)
-            .unwrap_or_default());
+        assert!(
+            !mock_get_scheduler_job(&api.db, trigger_job_id)
+                .await?
+                .and_then(|job| job.stopped)
+                .unwrap_or_default()
+        );
 
         Ok(())
     }
@@ -2286,8 +2297,7 @@ mod tests {
         pool: PgPool,
     ) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.web_page_trackers_fetch =
-            Schedule::try_from(mock_schedule_in_secs(&[3, 6]).as_str())?;
+        config.scheduler.web_page_trackers_fetch = mock_schedule_in_secs(&[3, 6]);
 
         let server = MockServer::start();
         config.components.web_scraper_url = Url::parse(&server.base_url())?;
@@ -2419,10 +2429,12 @@ mod tests {
                 .len(),
             1
         );
-        assert!(mock_get_scheduler_job(&api.db, trigger_job_id)
-            .await?
-            .and_then(|job| job.stopped)
-            .unwrap_or_default());
+        assert!(
+            mock_get_scheduler_job(&api.db, trigger_job_id)
+                .await?
+                .and_then(|job| job.stopped)
+                .unwrap_or_default()
+        );
 
         // Create a mock
         let content = WebScraperContentResponse {
@@ -2500,10 +2512,12 @@ mod tests {
                 .len(),
             2
         );
-        assert!(!mock_get_scheduler_job(&api.db, trigger_job_id)
-            .await?
-            .and_then(|job| job.stopped)
-            .unwrap_or_default());
+        assert!(
+            !mock_get_scheduler_job(&api.db, trigger_job_id)
+                .await?
+                .and_then(|job| job.stopped)
+                .unwrap_or_default()
+        );
 
         Ok(())
     }

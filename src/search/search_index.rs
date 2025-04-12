@@ -4,16 +4,16 @@ use crate::{
     search::{SearchFilter, SearchItem},
     users::UserId,
 };
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use std::{collections::HashMap, path::Path, thread, time::Duration};
 use tantivy::{
+    Index, IndexReader, IndexWriter, ReloadPolicy,
     collector::TopDocs,
-    directory::{error::LockError, MmapDirectory},
+    directory::{MmapDirectory, error::LockError},
     error::TantivyError,
     query::{BooleanQuery, Occur, Query, QueryParser, TermQuery},
     schema::*,
     tokenizer::{LowerCaser, NgramTokenizer, RawTokenizer, TextAnalyzer},
-    Index, IndexReader, IndexWriter, ReloadPolicy,
 };
 use time::OffsetDateTime;
 
@@ -45,7 +45,7 @@ fn entity_to_document(
     }
 
     if let Some(ref meta) = entity.meta {
-        doc.add_bytes(schema_fields.meta, serde_json::ser::to_vec(meta)?);
+        doc.add_bytes(schema_fields.meta, &serde_json::ser::to_vec(meta)?);
     }
 
     doc.add_date(
@@ -273,41 +273,42 @@ impl SearchIndex {
             let mut keywords: Option<String> = None;
             let mut meta: Option<HashMap<String, String>> = None;
             let mut timestamp: Option<OffsetDateTime> = None;
-            for field_value in doc {
-                if field_value.field == self.schema_fields.id {
-                    if let OwnedValue::U64(field_value_content) = field_value.value {
+            for (field, doc_value) in doc.field_values() {
+                let value: OwnedValue = doc_value.into();
+                if field == self.schema_fields.id {
+                    if let OwnedValue::U64(field_value_content) = value {
                         id.replace(field_value_content);
                     }
-                } else if field_value.field == self.schema_fields.user_id {
-                    if let OwnedValue::Str(field_value_content) = field_value.value {
+                } else if field == self.schema_fields.user_id {
+                    if let OwnedValue::Str(field_value_content) = value {
                         if !field_value_content.is_empty() {
                             user_id.replace(field_value_content.parse()?);
                         }
                     }
-                } else if field_value.field == self.schema_fields.label {
-                    if let OwnedValue::Str(field_value_content) = field_value.value {
+                } else if field == self.schema_fields.label {
+                    if let OwnedValue::Str(field_value_content) = value {
                         label.replace(field_value_content);
                     }
-                } else if field_value.field == self.schema_fields.category {
-                    if let OwnedValue::Str(field_value_content) = field_value.value {
+                } else if field == self.schema_fields.category {
+                    if let OwnedValue::Str(field_value_content) = value {
                         category.replace(field_value_content);
                     }
-                } else if field_value.field == self.schema_fields.sub_category {
-                    if let OwnedValue::Str(field_value_content) = field_value.value {
+                } else if field == self.schema_fields.sub_category {
+                    if let OwnedValue::Str(field_value_content) = value {
                         sub_category.replace(field_value_content);
                     }
-                } else if field_value.field == self.schema_fields.keywords {
-                    if let OwnedValue::Str(field_value_content) = field_value.value {
+                } else if field == self.schema_fields.keywords {
+                    if let OwnedValue::Str(field_value_content) = value {
                         keywords.replace(field_value_content);
                     }
-                } else if field_value.field == self.schema_fields.meta {
-                    if let OwnedValue::Bytes(field_value_content) = field_value.value {
+                } else if field == self.schema_fields.meta {
+                    if let OwnedValue::Bytes(field_value_content) = value {
                         meta.replace(serde_json::from_slice::<HashMap<_, _>>(
                             &field_value_content,
                         )?);
                     }
-                } else if field_value.field == self.schema_fields.timestamp {
-                    if let OwnedValue::Date(field_value_content) = field_value.value {
+                } else if field == self.schema_fields.timestamp {
+                    if let OwnedValue::Date(field_value_content) = value {
                         timestamp.replace(field_value_content.into_utc());
                     }
                 }
@@ -649,6 +650,7 @@ mod tests {
                     TermQuery(Term(field=1, type=Str, "00000000-0000-0000-0000-000000000001")),
                 ),
             ],
+            minimum_number_should_match: 1,
         }
         "###
         );
@@ -777,9 +779,11 @@ mod tests {
                                 },
                             ),
                         ],
+                        minimum_number_should_match: 1,
                     },
                 ),
             ],
+            minimum_number_should_match: 0,
         }
         "###
         );
@@ -814,6 +818,7 @@ mod tests {
                     TermQuery(Term(field=6, type=Str, "Some-Category")),
                 ),
             ],
+            minimum_number_should_match: 0,
         }
         "###
         );
@@ -854,6 +859,7 @@ mod tests {
                                 TermQuery(Term(field=1, type=Str, "00000000-0000-0000-0000-000000000001")),
                             ),
                         ],
+                        minimum_number_should_match: 1,
                     },
                 ),
                 (
@@ -955,9 +961,11 @@ mod tests {
                                 },
                             ),
                         ],
+                        minimum_number_should_match: 1,
                     },
                 ),
             ],
+            minimum_number_should_match: 0,
         }
         "###
         );
@@ -1088,6 +1096,7 @@ mod tests {
                                 },
                             ),
                         ],
+                        minimum_number_should_match: 1,
                     },
                 ),
                 (
@@ -1095,6 +1104,7 @@ mod tests {
                     TermQuery(Term(field=6, type=Str, "Some-Category")),
                 ),
             ],
+            minimum_number_should_match: 0,
         }
         "###
         );

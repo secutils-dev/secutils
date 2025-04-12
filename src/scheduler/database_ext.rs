@@ -110,9 +110,9 @@ pub mod tests {
         scheduler::{SchedulerJob, SchedulerJobMetadata, SchedulerJobRetryState},
     };
     use futures::{Stream, StreamExt};
-    use sqlx::{query, query_as, PgPool};
+    use sqlx::{PgPool, query, query_as};
     use time::OffsetDateTime;
-    use uuid::{uuid, Uuid};
+    use uuid::{Uuid, uuid};
 
     pub async fn mock_upsert_scheduler_job(
         db: &Database,

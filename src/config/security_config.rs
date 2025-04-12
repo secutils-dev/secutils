@@ -39,7 +39,7 @@ impl Default for SecurityConfig {
 #[cfg(test)]
 mod tests {
     use crate::{
-        config::{security_config::PreconfiguredUserConfig, SecurityConfig},
+        config::{SecurityConfig, security_config::PreconfiguredUserConfig},
         users::SubscriptionTier,
     };
     use insta::assert_toml_snapshot;

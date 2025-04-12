@@ -1,10 +1,10 @@
-use crate::{error::Error as SecutilsError, scheduler::ScheduleExt, server::AppState, users::User};
-use actix_web::{web, HttpResponse};
+use crate::{error::Error as SecutilsError, scheduler::CronExt, server::AppState, users::User};
+use actix_web::{HttpResponse, web};
 use anyhow::anyhow;
-use cron::Schedule;
+use croner::Cron;
 use serde_derive::{Deserialize, Serialize};
-use serde_with::{serde_as, DurationMilliSeconds, TimestampSeconds};
-use std::{str::FromStr, time::Duration};
+use serde_with::{DurationMilliSeconds, TimestampSeconds, serde_as};
+use std::time::Duration;
 use time::OffsetDateTime;
 
 #[derive(Deserialize)]
@@ -32,7 +32,7 @@ pub async fn scheduler_parse_schedule(
     body_params: web::Json<SchedulerParseScheduleParams>,
 ) -> Result<HttpResponse, SecutilsError> {
     // First, try parse schedule as cron expression.
-    let schedule = match Schedule::from_str(&body_params.schedule) {
+    let schedule = match Cron::parse_pattern(&body_params.schedule) {
         Ok(schedule) => schedule,
         Err(err) => {
             log::error!(user:serde = user.log_context(); "Failed to parse schedule: {err}");
@@ -59,7 +59,7 @@ pub async fn scheduler_parse_schedule(
     Ok(HttpResponse::Ok().json(SchedulerParseScheduleResult {
         min_interval,
         next_occurrences: schedule
-            .upcoming(chrono::Utc)
+            .iter_from(chrono::Utc::now())
             .take(5)
             .map(|ts| {
                 OffsetDateTime::from_unix_timestamp(ts.timestamp())
@@ -104,7 +104,9 @@ mod tests {
         assert_eq!(response.status(), 400);
         assert_eq!(
             response.into_body().try_into_bytes().unwrap(),
-            Bytes::from_static(b"Invalid expression: Invalid cron expression.")
+            Bytes::from_static(
+                b"Invalid pattern: Pattern must consist of six fields, seconds can not be omitted."
+            )
         );
 
         Ok(())
@@ -156,7 +158,7 @@ mod tests {
             web::Data::new(app_state),
             user,
             web::Json(SchedulerParseScheduleParams {
-                schedule: "0 1 2 3 4 Sat 2050/2".to_string(),
+                schedule: "0 1 2 3 4 Sat".to_string(),
             }),
         )
         .await?;
@@ -166,13 +168,13 @@ mod tests {
         assert_eq!(
             serde_json::from_slice::<SchedulerParseScheduleResult>(&body)?,
             SchedulerParseScheduleResult {
-                min_interval: Duration::from_secs(189_302_400),
+                min_interval: Duration::from_secs(157_852_800),
                 next_occurrences: vec![
-                    OffsetDateTime::from_unix_timestamp(2848183260)?,
-                    OffsetDateTime::from_unix_timestamp(3037485660)?,
-                    OffsetDateTime::from_unix_timestamp(3731796060)?,
-                    OffsetDateTime::from_unix_timestamp(3921098460)?,
-                    OffsetDateTime::from_unix_timestamp(4110400860)?
+                    OffsetDateTime::from_unix_timestamp(1806717660)?,
+                    OffsetDateTime::from_unix_timestamp(1964570460)?,
+                    OffsetDateTime::from_unix_timestamp(2153872860)?,
+                    OffsetDateTime::from_unix_timestamp(2501028060)?,
+                    OffsetDateTime::from_unix_timestamp(2690330460)?
                 ]
             }
         );

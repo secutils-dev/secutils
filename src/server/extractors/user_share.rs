@@ -3,10 +3,11 @@ use crate::{
     users::{UserShare, UserShareId},
 };
 use actix_web::{
+    Error, FromRequest, HttpRequest,
     dev::Payload,
     error::{ErrorBadRequest, ErrorInternalServerError, ErrorUnauthorized},
     http::header::HeaderName,
-    web, Error, FromRequest, HttpRequest,
+    web,
 };
 use anyhow::anyhow;
 use std::{future::Future, pin::Pin};
@@ -75,7 +76,7 @@ mod tests {
         tests::{mock_app_state, mock_user},
         users::{SharedResource, UserShare, UserShareId},
     };
-    use actix_web::{dev::Payload, test::TestRequest, FromRequest};
+    use actix_web::{FromRequest, dev::Payload, test::TestRequest};
     use insta::assert_debug_snapshot;
     use sqlx::PgPool;
     use time::OffsetDateTime;

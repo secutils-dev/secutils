@@ -5,7 +5,7 @@ use crate::utils::web_security::{
 };
 use anyhow::anyhow;
 use content_security_policy::Directive;
-use serde::{de, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -774,7 +774,9 @@ mod tests {
 
         // Enforcing header supports all directives.
         for directive in all_directives.iter() {
-            assert!(directive.is_supported_for_source(ContentSecurityPolicySource::EnforcingHeader));
+            assert!(
+                directive.is_supported_for_source(ContentSecurityPolicySource::EnforcingHeader)
+            );
         }
 
         // Report-only header supports all directives except for `sandbox`.

@@ -1,5 +1,5 @@
 use crate::{error::Error as SecutilsError, server::app_state::AppState};
-use actix_web::{web, HttpResponse};
+use actix_web::{HttpResponse, web};
 use anyhow::anyhow;
 use std::ops::Deref;
 

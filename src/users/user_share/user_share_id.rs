@@ -49,7 +49,7 @@ impl Deref for UserShareId {
 #[cfg(test)]
 mod tests {
     use crate::users::UserShareId;
-    use uuid::{uuid, Uuid, Version};
+    use uuid::{Uuid, Version, uuid};
 
     #[test]
     fn creation() {

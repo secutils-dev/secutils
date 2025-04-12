@@ -21,7 +21,7 @@ struct RawResponderRequestData<'a> {
     body: Option<Cow<'a, [u8]>>,
 }
 
-impl<'a> TryFrom<RawResponderRequest> for ResponderRequest<'a> {
+impl TryFrom<RawResponderRequest> for ResponderRequest<'_> {
     type Error = anyhow::Error;
 
     fn try_from(raw: RawResponderRequest) -> Result<Self, Self::Error> {
@@ -39,7 +39,7 @@ impl<'a> TryFrom<RawResponderRequest> for ResponderRequest<'a> {
     }
 }
 
-impl<'a> TryFrom<&ResponderRequest<'a>> for RawResponderRequest {
+impl TryFrom<&ResponderRequest<'_>> for RawResponderRequest {
     type Error = anyhow::Error;
 
     fn try_from(item: &ResponderRequest) -> Result<Self, Self::Error> {

@@ -1,8 +1,8 @@
 use crate::{
+    Config,
     database::Database,
     network::{DnsResolver, EmailTransport, Network},
     search::SearchIndex,
-    Config,
 };
 use handlebars::Handlebars;
 

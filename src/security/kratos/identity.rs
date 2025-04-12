@@ -67,47 +67,51 @@ mod tests {
 
     #[test]
     fn activated() -> anyhow::Result<()> {
-        assert!(Identity {
-            id: "f7f3b3b4-3b0b-4b3b-8b3b-3b3b3b3b3b3b".parse()?,
-            traits: IdentityTraits {
-                email: "dev@secutils.dev".to_string()
-            },
-            verifiable_addresses: vec![
-                IdentityVerifiableAddress {
-                    value: "dev1@secutils.dev".to_string(),
-                    verified: false,
+        assert!(
+            Identity {
+                id: "f7f3b3b4-3b0b-4b3b-8b3b-3b3b3b3b3b3b".parse()?,
+                traits: IdentityTraits {
+                    email: "dev@secutils.dev".to_string()
                 },
-                IdentityVerifiableAddress {
-                    value: "dev@secutils.dev".to_string(),
-                    verified: true,
-                }
-            ],
-            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
-        }
-        .is_activated());
+                verifiable_addresses: vec![
+                    IdentityVerifiableAddress {
+                        value: "dev1@secutils.dev".to_string(),
+                        verified: false,
+                    },
+                    IdentityVerifiableAddress {
+                        value: "dev@secutils.dev".to_string(),
+                        verified: true,
+                    }
+                ],
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            }
+            .is_activated()
+        );
 
-        assert!(!Identity {
-            id: "f7f3b3b4-3b0b-4b3b-8b3b-3b3b3b3b3b3b".parse()?,
-            traits: IdentityTraits {
-                email: "dev@secutils.dev".to_string()
-            },
-            verifiable_addresses: vec![
-                IdentityVerifiableAddress {
-                    value: "dev@secutils.dev".to_string(),
-                    verified: false,
+        assert!(
+            !Identity {
+                id: "f7f3b3b4-3b0b-4b3b-8b3b-3b3b3b3b3b3b".parse()?,
+                traits: IdentityTraits {
+                    email: "dev@secutils.dev".to_string()
                 },
-                IdentityVerifiableAddress {
-                    value: "dev1@secutils.dev".to_string(),
-                    verified: false,
-                },
-                IdentityVerifiableAddress {
-                    value: "dev2@secutils.dev".to_string(),
-                    verified: true,
-                }
-            ],
-            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
-        }
-        .is_activated());
+                verifiable_addresses: vec![
+                    IdentityVerifiableAddress {
+                        value: "dev@secutils.dev".to_string(),
+                        verified: false,
+                    },
+                    IdentityVerifiableAddress {
+                        value: "dev1@secutils.dev".to_string(),
+                        verified: false,
+                    },
+                    IdentityVerifiableAddress {
+                        value: "dev2@secutils.dev".to_string(),
+                        verified: true,
+                    }
+                ],
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            }
+            .is_activated()
+        );
 
         Ok(())
     }

@@ -1,6 +1,6 @@
 mod error_kind;
 
-use actix_web::{http::StatusCode, HttpResponse, HttpResponseBuilder, ResponseError};
+use actix_web::{HttpResponse, HttpResponseBuilder, ResponseError, http::StatusCode};
 use anyhow::anyhow;
 use serde_json::json;
 use std::fmt::{Debug, Display, Formatter};
@@ -86,7 +86,7 @@ impl From<anyhow::Error> for Error {
 #[cfg(test)]
 mod tests {
     use super::{Error, ErrorKind};
-    use actix_web::{body::MessageBody, http::StatusCode, ResponseError};
+    use actix_web::{ResponseError, body::MessageBody, http::StatusCode};
     use anyhow::anyhow;
     use bytes::Bytes;
     use insta::assert_debug_snapshot;

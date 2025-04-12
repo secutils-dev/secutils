@@ -15,8 +15,8 @@ services:
       - net
 
   kratos_migrate:
-    # Custom image with UV required: https://github.com/ory/kratos/compare/v1.3.0...secutils-dev:kratos:v1.3.0-uv-required?expand=1
-    image: oryd/kratos:v1.3.0-uv-required
+    # Custom image with UV required: https://github.com/ory/kratos/compare/v1.3.1...secutils-dev:kratos:v1.3.1-uv-required?expand=1
+    image: oryd/kratos:v1.3.1-uv-required
     depends_on:
       - secutils_db
     volumes:
@@ -29,8 +29,8 @@ services:
       - net
 
   kratos:
-    # Custom image with UV required: https://github.com/ory/kratos/compare/v1.3.0...secutils-dev:kratos:v1.3.0-uv-required?expand=1
-    image: oryd/kratos:v1.3.0-uv-required
+    # Custom image with UV required: https://github.com/ory/kratos/compare/v1.3.1...secutils-dev:kratos:v1.3.1-uv-required?expand=1
+    image: oryd/kratos:v1.3.1-uv-required
     environment:
       - SECRETS_COOKIE=${SECRETS_COOKIE:-some_very_very_secure_cookie_key}
       - SECRETS_CIPHER=${SECRETS_CIPHER:-some_very_very_secure_cipher_key}

@@ -162,12 +162,12 @@ pub mod tests {
         tests::{mock_api, mock_user},
         users::{SharedResource, UserShareId},
         utils::{
-            certificates::{
-                api_ext::TemplatesCreateParams, CertificateAttributes, CertificateTemplate,
-                ExtendedKeyUsage, KeyUsage, PrivateKey, PrivateKeyAlgorithm, PrivateKeySize,
-                SignatureAlgorithm, Version,
-            },
             UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
+            certificates::{
+                CertificateAttributes, CertificateTemplate, ExtendedKeyUsage, KeyUsage, PrivateKey,
+                PrivateKeyAlgorithm, PrivateKeySize, SignatureAlgorithm, Version,
+                api_ext::TemplatesCreateParams,
+            },
         },
     };
     use serde::Deserialize;
@@ -400,11 +400,12 @@ pub mod tests {
         .await?;
         assert!(empty_result.into_inner().is_none());
 
-        assert!(api
-            .certificates()
-            .get_private_key(mock_user.id, private_key.id)
-            .await?
-            .is_none());
+        assert!(
+            api.certificates()
+                .get_private_key(mock_user.id, private_key.id)
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }
@@ -680,11 +681,12 @@ pub mod tests {
         .await?;
         assert!(empty_result.into_inner().is_none());
 
-        assert!(api
-            .certificates()
-            .get_certificate_template(mock_user.id, template.id)
-            .await?
-            .is_none());
+        assert!(
+            api.certificates()
+                .get_certificate_template(mock_user.id, template.id)
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }

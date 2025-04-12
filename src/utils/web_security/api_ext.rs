@@ -19,8 +19,8 @@ use crate::{
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
         web_security::{
-            api_ext::csp_meta_parser::CspMetaParser, ContentSecurityPolicy,
-            ContentSecurityPolicyDirective, ContentSecurityPolicySource,
+            ContentSecurityPolicy, ContentSecurityPolicyDirective, ContentSecurityPolicySource,
+            api_ext::csp_meta_parser::CspMetaParser,
         },
     },
 };
@@ -89,9 +89,9 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
                 source,
             } => {
                 if !self.api.network.is_public_web_url(&url).await {
-                    bail!(SecutilsError::client(
-                        format!("Remote URL must be either `http` or `https` and have a valid public reachable domain name, but received {url}.")
-                    ));
+                    bail!(SecutilsError::client(format!(
+                        "Remote URL must be either `http` or `https` and have a valid public reachable domain name, but received {url}."
+                    )));
                 }
 
                 let client = reqwest::ClientBuilder::new()
@@ -126,7 +126,9 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
 
                         let status = response.status();
                         if status.is_client_error() || status.is_server_error() {
-                            bail!(SecutilsError::client(format!("Cannot fetch content security policy from a web page ({url}), request failed with HTTP status: {status}.")));
+                            bail!(SecutilsError::client(format!(
+                                "Cannot fetch content security policy from a web page ({url}), request failed with HTTP status: {status}."
+                            )));
                         }
 
                         // Extract all values for the specified header, multiple values are allowed,
@@ -166,7 +168,9 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
 
                         let status = response.status();
                         if status.is_client_error() || status.is_server_error() {
-                            bail!(SecutilsError::client(format!("Cannot fetch content security policy from a web page ({url}), request failed with HTTP status: {status}.")));
+                            bail!(SecutilsError::client(format!(
+                                "Cannot fetch content security policy from a web page ({url}), request failed with HTTP status: {status}."
+                            )));
                         }
 
                         let mut header_values = CspMetaParser::parse(&response.bytes().await?)?;
@@ -435,13 +439,13 @@ mod tests {
         error::Error as SecutilsError,
         tests::{mock_api, mock_api_with_network, mock_network_with_records, mock_user},
         utils::web_security::{
+            ContentSecurityPolicy, ContentSecurityPolicyContent, ContentSecurityPolicyDirective,
+            ContentSecurityPolicySandboxDirectiveValue, ContentSecurityPolicySource,
+            ContentSecurityPolicyTrustedTypesDirectiveValue,
             api_ext::{
                 ContentSecurityPoliciesCreateParams, ContentSecurityPoliciesSerializeParams,
                 ContentSecurityPoliciesUpdateParams, WebSecurityApiExt,
             },
-            ContentSecurityPolicy, ContentSecurityPolicyContent, ContentSecurityPolicyDirective,
-            ContentSecurityPolicySandboxDirectiveValue, ContentSecurityPolicySource,
-            ContentSecurityPolicyTrustedTypesDirectiveValue,
         },
     };
     use httpmock::MockServer;
@@ -449,8 +453,8 @@ mod tests {
     use sqlx::PgPool;
     use std::net::Ipv4Addr;
     use trust_dns_resolver::{
-        proto::rr::{rdata::A, RData, Record},
         Name,
+        proto::rr::{RData, Record, rdata::A},
     };
     use url::Url;
     use uuid::uuid;
@@ -1376,15 +1380,23 @@ mod tests {
             .await
             .unwrap_err()
             .downcast::<SecutilsError>()?;
-        assert_eq!(import_result.to_string(), format!("content-security-policy header is missing for URL (http://localhost:{}/some-path).", server.port()));
+        assert_eq!(
+            import_result.to_string(),
+            format!(
+                "content-security-policy header is missing for URL (http://localhost:{}/some-path).",
+                server.port()
+            )
+        );
 
         redirect_mock.assert();
         assert_eq!(web_page_mock.hits(), 0);
 
-        assert!(web_security
-            .get_content_security_policies(mock_user.id)
-            .await?
-            .is_empty());
+        assert!(
+            web_security
+                .get_content_security_policies(mock_user.id)
+                .await?
+                .is_empty()
+        );
 
         Ok(())
     }
@@ -1444,7 +1456,13 @@ mod tests {
             .await
             .unwrap_err()
             .downcast::<SecutilsError>()?;
-        assert_eq!(import_result.to_string(), format!("content-security-policy header is missing for URL (http://localhost:{}/some-path).", server.port()));
+        assert_eq!(
+            import_result.to_string(),
+            format!(
+                "content-security-policy header is missing for URL (http://localhost:{}/some-path).",
+                server.port()
+            )
+        );
 
         let import_result = web_security
             .create_content_security_policy(
@@ -1462,7 +1480,13 @@ mod tests {
             .await
             .unwrap_err()
             .downcast::<SecutilsError>()?;
-        assert_eq!(import_result.to_string(), format!("content-security-policy-report-only header is missing for URL (http://localhost:{}/some-path).", server.port()));
+        assert_eq!(
+            import_result.to_string(),
+            format!(
+                "content-security-policy-report-only header is missing for URL (http://localhost:{}/some-path).",
+                server.port()
+            )
+        );
 
         web_page_mock_head.assert_hits(2);
 
@@ -1492,10 +1516,12 @@ mod tests {
 
         web_page_mock_get.assert();
 
-        assert!(web_security
-            .get_content_security_policies(mock_user.id)
-            .await?
-            .is_empty());
+        assert!(
+            web_security
+                .get_content_security_policies(mock_user.id)
+                .await?
+                .is_empty()
+        );
 
         Ok(())
     }
@@ -1556,7 +1582,10 @@ mod tests {
             .downcast::<SecutilsError>()?;
         assert_eq!(
             import_result.to_string(),
-            format!("Cannot fetch content security policy from a web page (http://localhost:{}/some-path), request failed with HTTP status: 404 Not Found.", server.port())
+            format!(
+                "Cannot fetch content security policy from a web page (http://localhost:{}/some-path), request failed with HTTP status: 404 Not Found.",
+                server.port()
+            )
         );
 
         web_page_mock_head.assert();
@@ -1579,15 +1608,20 @@ mod tests {
             .downcast::<SecutilsError>()?;
         assert_eq!(
             import_result.to_string(),
-            format!("Cannot fetch content security policy from a web page (http://localhost:{}/some-path), request failed with HTTP status: 404 Not Found.", server.port())
+            format!(
+                "Cannot fetch content security policy from a web page (http://localhost:{}/some-path), request failed with HTTP status: 404 Not Found.",
+                server.port()
+            )
         );
 
         web_page_mock_get.assert();
 
-        assert!(web_security
-            .get_content_security_policies(mock_user.id)
-            .await?
-            .is_empty());
+        assert!(
+            web_security
+                .get_content_security_policies(mock_user.id)
+                .await?
+                .is_empty()
+        );
 
         Ok(())
     }
@@ -1647,10 +1681,12 @@ mod tests {
         web_security
             .remove_content_security_policy(mock_user.id, policy_two.id)
             .await?;
-        assert!(web_security
-            .get_content_security_policies(mock_user.id)
-            .await?
-            .is_empty());
+        assert!(
+            web_security
+                .get_content_security_policies(mock_user.id)
+                .await?
+                .is_empty()
+        );
 
         Ok(())
     }
@@ -1722,11 +1758,12 @@ mod tests {
             Some(policy_share_one.clone())
         );
 
-        assert!(api
-            .users()
-            .get_user_share(policy_share_one.id)
-            .await?
-            .is_none());
+        assert!(
+            api.users()
+                .get_user_share(policy_share_one.id)
+                .await?
+                .is_none()
+        );
 
         // Sharing again should return different share.
         let policy_share_two = web_security
@@ -1741,11 +1778,12 @@ mod tests {
             Some(policy_share_two.clone())
         );
 
-        assert!(api
-            .users()
-            .get_user_share(policy_share_two.id)
-            .await?
-            .is_none());
+        assert!(
+            api.users()
+                .get_user_share(policy_share_two.id)
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }
@@ -1780,10 +1818,12 @@ mod tests {
             .remove_content_security_policy(mock_user.id, policy.id)
             .await?;
 
-        assert!(web_security
-            .get_content_security_policy(mock_user.id, policy.id)
-            .await?
-            .is_none());
+        assert!(
+            web_security
+                .get_content_security_policy(mock_user.id, policy.id)
+                .await?
+                .is_none()
+        );
         assert!(api.users().get_user_share(policy_share.id).await?.is_none(),);
 
         Ok(())

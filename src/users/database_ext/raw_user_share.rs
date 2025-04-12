@@ -111,14 +111,16 @@ mod tests {
 
     #[test]
     fn fails_if_malformed() -> anyhow::Result<()> {
-        assert!(UserShare::try_from(RawUserShare {
-            id: uuid!("00000000-0000-0000-0000-000000000001"),
-            user_id: uuid!("00000000-0000-0000-0000-000000000002"),
-            resource: vec![1, 2, 3],
-            // January 1, 2000 10:00:00
-            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
-        })
-        .is_err());
+        assert!(
+            UserShare::try_from(RawUserShare {
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
+                user_id: uuid!("00000000-0000-0000-0000-000000000002"),
+                resource: vec![1, 2, 3],
+                // January 1, 2000 10:00:00
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            })
+            .is_err()
+        );
 
         Ok(())
     }

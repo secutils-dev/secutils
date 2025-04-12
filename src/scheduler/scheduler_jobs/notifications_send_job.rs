@@ -98,7 +98,7 @@ impl NotificationsSendJob {
 
 #[cfg(test)]
 mod tests {
-    use super::{NotificationsSendJob, MAX_NOTIFICATIONS_TO_SEND};
+    use super::{MAX_NOTIFICATIONS_TO_SEND, NotificationsSendJob};
     use crate::{
         notifications::{NotificationContent, NotificationDestination},
         scheduler::scheduler_job::SchedulerJob,
@@ -107,7 +107,6 @@ mod tests {
             mock_scheduler_job, mock_user,
         },
     };
-    use cron::Schedule;
     use futures::StreamExt;
     use insta::assert_debug_snapshot;
     use sqlx::PgPool;
@@ -118,7 +117,7 @@ mod tests {
     #[sqlx::test]
     async fn can_create_job_with_correct_parameters(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.notifications_send = Schedule::try_from("1/5 * * * * *")?;
+        config.scheduler.notifications_send = "1/5 * * * * *".to_string();
 
         let api = mock_api_with_config(pool, config).await?;
 
@@ -149,7 +148,7 @@ mod tests {
     #[sqlx::test]
     async fn can_resume_job(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.scheduler.notifications_send = Schedule::try_from("0 0 * * * *")?;
+        config.scheduler.notifications_send = "0 0 * * * *".to_string();
 
         let api = mock_api_with_config(pool, config).await?;
 
@@ -190,7 +189,7 @@ mod tests {
         let mut scheduler = mock_scheduler(&pool).await?;
 
         let mut config = mock_config()?;
-        config.scheduler.notifications_send = Schedule::try_from(mock_schedule_in_sec(2).as_str())?;
+        config.scheduler.notifications_send = mock_schedule_in_sec(2);
 
         let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(pool, config).await?);

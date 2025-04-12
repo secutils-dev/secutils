@@ -397,9 +397,9 @@ mod tests {
         error::Error as SecutilsError,
         tests::{mock_api, mock_user},
         utils::webhooks::{
-            api_ext::{RespondersCreateParams, RespondersUpdateParams},
             Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,
             ResponderStats, RespondersRequestCreateParams,
+            api_ext::{RespondersCreateParams, RespondersUpdateParams},
         },
     };
     use insta::assert_debug_snapshot;
@@ -1701,32 +1701,38 @@ mod tests {
 
         webhooks.remove_responder(responder_one.id).await?;
 
-        assert!(webhooks
-            .get_responder_requests(responder_one.id)
-            .await
-            .is_err());
-        assert!(api
-            .db
-            .webhooks()
-            .get_responder_requests(mock_user.id, responder_one.id)
-            .await?
-            .is_empty());
+        assert!(
+            webhooks
+                .get_responder_requests(responder_one.id)
+                .await
+                .is_err()
+        );
+        assert!(
+            api.db
+                .webhooks()
+                .get_responder_requests(mock_user.id, responder_one.id)
+                .await?
+                .is_empty()
+        );
 
         let responder_two_requests = webhooks.get_responder_requests(responder_two.id).await?;
         assert_eq!(responder_two_requests.len(), 1);
 
         webhooks.remove_responder(responder_two.id).await?;
 
-        assert!(webhooks
-            .get_responder_requests(responder_two.id)
-            .await
-            .is_err());
-        assert!(api
-            .db
-            .webhooks()
-            .get_responder_requests(mock_user.id, responder_two.id)
-            .await?
-            .is_empty());
+        assert!(
+            webhooks
+                .get_responder_requests(responder_two.id)
+                .await
+                .is_err()
+        );
+        assert!(
+            api.db
+                .webhooks()
+                .get_responder_requests(mock_user.id, responder_two.id)
+                .await?
+                .is_empty()
+        );
 
         Ok(())
     }

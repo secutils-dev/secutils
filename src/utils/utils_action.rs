@@ -48,48 +48,66 @@ mod tests {
     #[test]
     fn properly_checks_if_action_requires_params() {
         assert!(UtilsAction::Create.requires_params());
-        assert!(UtilsAction::Update {
-            resource_id: uuid!("00000000-0000-0000-0000-000000000001")
-        }
-        .requires_params());
+        assert!(
+            UtilsAction::Update {
+                resource_id: uuid!("00000000-0000-0000-0000-000000000001")
+            }
+            .requires_params()
+        );
 
         assert!(!UtilsAction::List.requires_params());
-        assert!(!UtilsAction::Get {
-            resource_id: uuid!("00000000-0000-0000-0000-000000000001")
-        }
-        .requires_params());
-        assert!(!UtilsAction::Delete {
-            resource_id: uuid!("00000000-0000-0000-0000-000000000001")
-        }
-        .requires_params());
-        assert!(!UtilsAction::Share {
-            resource_id: uuid!("00000000-0000-0000-0000-000000000001")
-        }
-        .requires_params());
-        assert!(!UtilsAction::Unshare {
-            resource_id: uuid!("00000000-0000-0000-0000-000000000001")
-        }
-        .requires_params());
+        assert!(
+            !UtilsAction::Get {
+                resource_id: uuid!("00000000-0000-0000-0000-000000000001")
+            }
+            .requires_params()
+        );
+        assert!(
+            !UtilsAction::Delete {
+                resource_id: uuid!("00000000-0000-0000-0000-000000000001")
+            }
+            .requires_params()
+        );
+        assert!(
+            !UtilsAction::Share {
+                resource_id: uuid!("00000000-0000-0000-0000-000000000001")
+            }
+            .requires_params()
+        );
+        assert!(
+            !UtilsAction::Unshare {
+                resource_id: uuid!("00000000-0000-0000-0000-000000000001")
+            }
+            .requires_params()
+        );
 
-        assert!(UtilsAction::Execute {
-            resource_id: Some(uuid!("00000000-0000-0000-0000-000000000001")),
-            operation: UtilsResourceOperation::CertificatesPrivateKeyExport,
-        }
-        .requires_params());
-        assert!(UtilsAction::Execute {
-            resource_id: Some(uuid!("00000000-0000-0000-0000-000000000001")),
-            operation: UtilsResourceOperation::CertificatesTemplateGenerate,
-        }
-        .requires_params());
-        assert!(UtilsAction::Execute {
-            resource_id: Some(uuid!("00000000-0000-0000-0000-000000000001")),
-            operation: UtilsResourceOperation::WebScrapingGetHistory,
-        }
-        .requires_params());
-        assert!(!UtilsAction::Execute {
-            resource_id: None,
-            operation: UtilsResourceOperation::WebhooksRespondersGetStats,
-        }
-        .requires_params());
+        assert!(
+            UtilsAction::Execute {
+                resource_id: Some(uuid!("00000000-0000-0000-0000-000000000001")),
+                operation: UtilsResourceOperation::CertificatesPrivateKeyExport,
+            }
+            .requires_params()
+        );
+        assert!(
+            UtilsAction::Execute {
+                resource_id: Some(uuid!("00000000-0000-0000-0000-000000000001")),
+                operation: UtilsResourceOperation::CertificatesTemplateGenerate,
+            }
+            .requires_params()
+        );
+        assert!(
+            UtilsAction::Execute {
+                resource_id: Some(uuid!("00000000-0000-0000-0000-000000000001")),
+                operation: UtilsResourceOperation::WebScrapingGetHistory,
+            }
+            .requires_params()
+        );
+        assert!(
+            !UtilsAction::Execute {
+                resource_id: None,
+                operation: UtilsResourceOperation::WebhooksRespondersGetStats,
+            }
+            .requires_params()
+        );
     }
 }

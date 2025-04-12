@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use serde_with::{serde_as, TimestampSeconds};
+use serde_with::{TimestampSeconds, serde_as};
 use time::OffsetDateTime;
 
 /// JWT claims struct.

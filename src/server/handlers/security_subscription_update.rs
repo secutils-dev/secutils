@@ -3,7 +3,7 @@ use crate::{
     server::{app_state::AppState, http_errors::generic_internal_server_error},
     users::UserSubscription,
 };
-use actix_web::{web, Error, HttpResponse, Responder};
+use actix_web::{Error, HttpResponse, Responder, web};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
