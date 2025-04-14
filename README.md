@@ -121,7 +121,7 @@ SECUTILS_SECURITY__JWT_SECRET=8ffe0cc38d7ff1afa78b6cd5696f2e21
 
 # JWT used by Kratos to authenticate requests to the API.
 # Requires config: security.operators = ["@kratos"]
-# Generated with: cargo run -p jwt_tools generate --secret 8ffe0cc38d7ff1afa78b6cd5696f2e21 --sub @kratos --exp 1year
+# Generated with: cargo run -p secutils-jwt-tools generate --secret 8ffe0cc38d7ff1afa78b6cd5696f2e21 --sub @kratos --exp 1year
 SELFSERVICE_FLOWS_REGISTRATION_AFTER_PASSWORD_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE="Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NDcyMDExNTcsInN1YiI6IkBrcmF0b3MifQ.O506N__dZu7ZM6p-rEr_QkMn3jp0mRyBwKP7jstRHV8"
 SELFSERVICE_FLOWS_REGISTRATION_AFTER_WEBAUTHN_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE="Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NDcyMDExNTcsInN1YiI6IkBrcmF0b3MifQ.O506N__dZu7ZM6p-rEr_QkMn3jp0mRyBwKP7jstRHV8"
 COURIER_HTTP_REQUEST_CONFIG_AUTH_CONFIG_VALUE="Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NDcyMDExNTcsInN1YiI6IkBrcmF0b3MifQ.O506N__dZu7ZM6p-rEr_QkMn3jp0mRyBwKP7jstRHV8"
@@ -134,7 +134,7 @@ the [Web UI](https://github.com/secutils-dev/secutils-webui), but you can also g
 APIs directly with `curl` or any other HTTP client. To generate a token, run the following command:
 
 ```shell
-cargo run -p jwt_tools generate \
+cargo run -p secutils-jwt-tools generate \
   --secret 8ffe0cc38d7ff1afa78b6cd5696f2e21 \
   --sub user@secutils.dev --exp 30days
 ---
