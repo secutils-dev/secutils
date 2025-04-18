@@ -1,5 +1,3 @@
-import { useCallback, useEffect, useState } from 'react';
-
 import type { Criteria, Pagination, PropertySort } from '@elastic/eui';
 import {
   EuiButton,
@@ -17,6 +15,7 @@ import {
 } from '@elastic/eui';
 import axios from 'axios';
 import { unix } from 'moment';
+import { useCallback, useEffect, useState } from 'react';
 
 import { certificateTypeString, getDistinguishedNameString, signatureAlgorithmString } from './certificate_attributes';
 import type { CertificateTemplate } from './certificate_template';

@@ -1,7 +1,3 @@
-import type { MouseEventHandler, ReactElement, ReactNode } from 'react';
-import { useCallback, useState } from 'react';
-import { Navigate, useLocation, useSearchParams } from 'react-router';
-
 import {
   EuiHeader,
   EuiHeaderBreadcrumbs,
@@ -19,6 +15,9 @@ import {
 import type { EuiPageSectionProps, IconType } from '@elastic/eui';
 import type { EuiBreadcrumbProps } from '@elastic/eui/src/components/breadcrumbs/types';
 import { css } from '@emotion/react';
+import { useCallback, useState } from 'react';
+import type { MouseEventHandler, ReactElement, ReactNode } from 'react';
+import { Navigate, useLocation, useSearchParams } from 'react-router';
 
 import { PageHeader } from './page_header';
 import { ContactFormModal } from '../app_container/contact_form_modal';

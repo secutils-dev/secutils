@@ -1,6 +1,5 @@
-import { useCallback, useState } from 'react';
-
 import axios from 'axios';
+import { useCallback, useState } from 'react';
 
 import type { ContentSecurityPolicy } from './content_security_policy';
 import { serializeContentSecurityPolicyDirectives } from './content_security_policy';

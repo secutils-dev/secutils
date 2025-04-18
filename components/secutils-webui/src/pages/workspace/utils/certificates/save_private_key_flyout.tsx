@@ -1,8 +1,7 @@
-import type { ChangeEvent } from 'react';
-import { useCallback, useState } from 'react';
-
 import { EuiDescribedFormGroup, EuiFieldText, EuiForm, EuiFormRow, EuiLink, EuiSelect } from '@elastic/eui';
 import axios from 'axios';
+import type { ChangeEvent } from 'react';
+import { useCallback, useState } from 'react';
 
 import type { EncryptionMode } from './encryption_mode';
 import { EncryptionModeSelector } from './encryption_mode_selector';

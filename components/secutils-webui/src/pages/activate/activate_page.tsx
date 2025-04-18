@@ -1,8 +1,7 @@
-import { type ChangeEvent, useCallback, useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
-
 import { EuiButton, EuiFieldText, EuiForm, EuiFormRow, EuiLink, EuiPanel } from '@elastic/eui';
 import type { FrontendApi, VerificationFlow } from '@ory/client';
+import { type ChangeEvent, useCallback, useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router';
 
 import { SettingsFlyout } from '../../app_container';
 import { PageErrorState, PageLoadingState, PageSuccessState } from '../../components';

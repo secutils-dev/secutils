@@ -1,6 +1,3 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
-
 import {
   EuiButton,
   EuiButtonGroup,
@@ -15,6 +12,8 @@ import {
 import { css } from '@emotion/react';
 import axios from 'axios';
 import { unix } from 'moment';
+import type { ReactNode } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { WebPageContentRevision, WebPageDataRevision } from './web_page_data_revision';
 import type { WebPageTracker } from './web_page_tracker';

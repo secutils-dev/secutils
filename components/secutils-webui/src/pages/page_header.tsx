@@ -1,7 +1,6 @@
-import type { ReactNode } from 'react';
-
 import { EuiPageHeader, EuiPageSection, useEuiTheme } from '@elastic/eui';
 import { css } from '@emotion/react';
+import type { ReactNode } from 'react';
 
 export interface PageHeaderProps {
   title: ReactNode;

@@ -1,6 +1,3 @@
-import type { ReactNode } from 'react';
-import { useCallback, useEffect, useState } from 'react';
-
 import type { Criteria, Pagination, PropertySort } from '@elastic/eui';
 import {
   EuiButton,
@@ -20,16 +17,18 @@ import {
   useEuiTheme,
 } from '@elastic/eui';
 import axios from 'axios';
-import { TimestampTableCell } from '../../components/timestamp_table_cell';
+import { useCallback, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 
 import type { Responder } from './responder';
 import { ResponderEditFlyout } from './responder_edit_flyout';
 import { ResponderName } from './responder_name';
 import { ResponderRequestsTable } from './responder_requests_table';
+import type { ResponderStats } from './responder_stats';
 import { PageErrorState, PageLoadingState } from '../../../../components';
 import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage } from '../../../../model';
+import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
-import type { ResponderStats } from './responder_stats';
 
 export default function Responders() {
   const theme = useEuiTheme();

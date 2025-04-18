@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
-
 import { EuiButtonIcon, EuiFieldText, EuiSelect, EuiSpacer, EuiToolTip } from '@elastic/eui';
+import { useEffect, useState } from 'react';
 
 import type { RetryInterval } from './consts';
 import {

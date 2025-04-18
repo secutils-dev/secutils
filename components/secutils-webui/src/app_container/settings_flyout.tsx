@@ -1,6 +1,3 @@
-import { lazy, useCallback, useState } from 'react';
-import type { ChangeEvent } from 'react';
-
 import type { EuiThemeColorMode } from '@elastic/eui';
 import {
   EuiButton,
@@ -25,6 +22,8 @@ import { css } from '@emotion/react';
 import type { UiNodeInputAttributes } from '@ory/client';
 import type { AxiosError } from 'axios';
 import { unix, utc } from 'moment/moment';
+import type { ChangeEvent } from 'react';
+import { lazy, useCallback, useState } from 'react';
 
 import { useAppContext } from '../hooks';
 import type { AsyncData, SerializedPublicKeyCredentialCreationOptions } from '../model';

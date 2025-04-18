@@ -1,6 +1,3 @@
-import type { ReactNode } from 'react';
-import { useCallback, useEffect, useState } from 'react';
-
 import type { Criteria, Pagination, PropertySort } from '@elastic/eui';
 import {
   EuiButton,
@@ -18,7 +15,8 @@ import {
   EuiToolTip,
 } from '@elastic/eui';
 import axios from 'axios';
-import { TimestampTableCell } from '../../components/timestamp_table_cell';
+import { useCallback, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 
 import type { WebPageResourcesRevision } from './web_page_data_revision';
 import { WebPageResourcesTrackerEditFlyout } from './web_page_resources_tracker_edit_flyout';
@@ -28,6 +26,7 @@ import { WebPageTrackerHistory } from './web_page_tracker_history';
 import { WebPageTrackerName } from './web_page_tracker_name';
 import { PageErrorState, PageLoadingState } from '../../../../components';
 import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage } from '../../../../model';
+import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 
 export default function WebPageResourcesTrackers() {

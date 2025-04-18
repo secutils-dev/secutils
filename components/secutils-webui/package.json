@@ -41,6 +41,7 @@
     "@commitlint/cli": "^19.8.0",
     "@commitlint/config-conventional": "^19.8.0",
     "@eslint/eslintrc": "^3.3.1",
+    "@eslint/js": "^9.24.0",
     "@parcel/compressor-brotli": "^2.14.4",
     "@parcel/compressor-gzip": "^2.14.4",
     "@parcel/config-default": "^2.14.4",
@@ -58,8 +59,10 @@
     "buffer": "^6.0.3",
     "eslint": "^9.24.0",
     "eslint-config-prettier": "^10.1.2",
+    "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-prettier": "^5.2.6",
     "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
     "globals": "^16.0.0",
     "husky": "^9.1.7",
     "monaco-editor": "^0.52.2",
@@ -84,6 +87,7 @@
     "build": "parcel build --no-source-maps",
     "watch": "parcel --port 7171",
     "perf": "parcel build --reporter @parcel/reporter-bundle-buddy",
+    "lint": "eslint . --fix",
     "prepare": "husky"
   }
 }

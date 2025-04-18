@@ -1,5 +1,5 @@
-import { now, unix } from 'moment/moment';
 import { EuiText, EuiToolTip } from '@elastic/eui';
+import { now, unix } from 'moment/moment';
 
 /**
  * The maximum difference in days between the current date and the timestamp for the timestamp to be displayed as a

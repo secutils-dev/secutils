@@ -1,7 +1,3 @@
-import type { ChangeEvent, MouseEventHandler } from 'react';
-import { useCallback, useState } from 'react';
-import { Navigate, useNavigate, useSearchParams } from 'react-router';
-
 import {
   EuiButton,
   EuiButtonEmpty,
@@ -12,6 +8,9 @@ import {
   EuiPanel,
 } from '@elastic/eui';
 import type { FrontendApi, LoginFlow, UiNodeInputAttributes } from '@ory/client';
+import type { ChangeEvent, MouseEventHandler } from 'react';
+import { useCallback, useState } from 'react';
+import { Navigate, useNavigate, useSearchParams } from 'react-router';
 
 import { RecoverAccountModal } from './recover_account_modal';
 import { useAppContext, usePageMeta } from '../../hooks';

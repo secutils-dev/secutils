@@ -1,7 +1,3 @@
-import type { MouseEventHandler } from 'react';
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
-
 import {
   EuiButton,
   EuiButtonEmpty,
@@ -17,6 +13,9 @@ import {
   EuiTitle,
 } from '@elastic/eui';
 import type { FrontendApi, RecoveryFlow } from '@ory/client';
+import type { MouseEventHandler } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router';
 
 import { useAppContext } from '../../hooks';
 import type { AsyncData } from '../../model';

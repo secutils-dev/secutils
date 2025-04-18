@@ -1,5 +1,3 @@
-import { useCallback, useEffect, useState } from 'react';
-
 import type { Criteria, Pagination, PropertySort } from '@elastic/eui';
 import {
   EuiButton,
@@ -17,7 +15,7 @@ import {
   EuiToolTip,
 } from '@elastic/eui';
 import axios from 'axios';
-import { TimestampTableCell } from '../../components/timestamp_table_cell';
+import { useCallback, useEffect, useState } from 'react';
 
 import { PRIVATE_KEYS_PROD_WARNING_USER_SETTINGS_KEY } from './consts';
 import type { PrivateKey } from './private_key';
@@ -27,6 +25,7 @@ import { SavePrivateKeyFlyout } from './save_private_key_flyout';
 import { PageErrorState, PageLoadingState } from '../../../../components';
 import type { AsyncData } from '../../../../model';
 import { getApiRequestConfig, getApiUrl, getErrorMessage } from '../../../../model';
+import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 
 export default function CertificatesPrivateKeys() {

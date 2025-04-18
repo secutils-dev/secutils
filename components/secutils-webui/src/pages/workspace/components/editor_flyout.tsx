@@ -1,5 +1,3 @@
-import type { ReactNode } from 'react';
-
 import {
   EuiButton,
   EuiButtonEmpty,
@@ -11,6 +9,7 @@ import {
   EuiFlyoutHeader,
   EuiTitle,
 } from '@elastic/eui';
+import type { ReactNode } from 'react';
 
 export interface Props {
   title: ReactNode;

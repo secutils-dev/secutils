@@ -1,6 +1,5 @@
-import { useMemo, useState } from 'react';
-
 import { EuiComboBox } from '@elastic/eui';
+import { useMemo, useState } from 'react';
 
 export interface ContentSecurityPolicySourcesComboboxProps {
   value?: string[];

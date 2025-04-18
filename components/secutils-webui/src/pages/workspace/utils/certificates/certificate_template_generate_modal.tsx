@@ -1,6 +1,3 @@
-import type { ChangeEvent, MouseEventHandler } from 'react';
-import { useCallback, useState } from 'react';
-
 import {
   EuiButton,
   EuiButtonEmpty,
@@ -17,6 +14,8 @@ import {
   EuiTitle,
 } from '@elastic/eui';
 import axios from 'axios';
+import type { ChangeEvent, MouseEventHandler } from 'react';
+import { useCallback, useState } from 'react';
 
 import type { CertificateTemplate } from './certificate_template';
 import type { AsyncData } from '../../../../model';

@@ -1,5 +1,3 @@
-import { useCallback, useEffect, useState } from 'react';
-
 import type { Criteria, Pagination, PropertySort } from '@elastic/eui';
 import {
   EuiButton,
@@ -14,7 +12,7 @@ import {
   EuiToolTip,
 } from '@elastic/eui';
 import axios from 'axios';
-import { TimestampTableCell } from '../../../components/timestamp_table_cell';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { ContentSecurityPolicy, SerializedContentSecurityPolicyDirectives } from './content_security_policy';
 import { deserializeContentSecurityPolicyDirectives, getContentSecurityPolicyString } from './content_security_policy';
@@ -24,6 +22,7 @@ import { ContentSecurityPolicyShareModal } from './content_security_policy_share
 import { SaveContentSecurityPolicyFlyout } from './save_content_security_policy_flyout';
 import { PageErrorState, PageLoadingState } from '../../../../../components';
 import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage } from '../../../../../model';
+import { TimestampTableCell } from '../../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../../hooks';
 
 export default function WebSecurityContentSecurityPolicies() {

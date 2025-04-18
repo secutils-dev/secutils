@@ -1,6 +1,3 @@
-import type { ChangeEvent } from 'react';
-import { useState } from 'react';
-
 import {
   EuiAccordion,
   EuiComboBox,
@@ -12,6 +9,8 @@ import {
   EuiSpacer,
   EuiSwitch,
 } from '@elastic/eui';
+import type { ChangeEvent } from 'react';
+import { useState } from 'react';
 
 import type { ContentSecurityPolicy } from './content_security_policy';
 import { ContentSecurityPolicySandboxCombobox } from './content_security_policy_sandbox_combobox';

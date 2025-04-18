@@ -1,6 +1,3 @@
-import type { ChangeEvent } from 'react';
-import { useCallback, useState } from 'react';
-
 import {
   EuiComboBox,
   EuiDescribedFormGroup,
@@ -13,6 +10,8 @@ import {
   EuiSwitch,
 } from '@elastic/eui';
 import axios from 'axios';
+import type { ChangeEvent } from 'react';
+import { useCallback, useState } from 'react';
 
 import type { RetryInterval } from './consts';
 import {

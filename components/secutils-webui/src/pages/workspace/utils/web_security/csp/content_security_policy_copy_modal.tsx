@@ -1,6 +1,3 @@
-import type { ChangeEvent } from 'react';
-import { useCallback, useEffect, useState } from 'react';
-
 import {
   EuiButtonEmpty,
   EuiCallOut,
@@ -17,6 +14,8 @@ import {
   EuiTitle,
 } from '@elastic/eui';
 import axios from 'axios';
+import type { ChangeEvent } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { ContentSecurityPolicy } from './content_security_policy';
 import type { AsyncData } from '../../../../../model';

@@ -1,6 +1,3 @@
-import type { ChangeEvent, MouseEventHandler } from 'react';
-import { useCallback, useState } from 'react';
-
 import {
   EuiButton,
   EuiFieldText,
@@ -14,6 +11,8 @@ import {
   EuiTitle,
 } from '@elastic/eui';
 import type { FrontendApi, LoginFlow, UiNodeInputAttributes } from '@ory/client';
+import type { ChangeEvent, MouseEventHandler } from 'react';
+import { useCallback, useState } from 'react';
 
 import { useAppContext } from '../../hooks';
 import type { AsyncData, SerializedPublicKeyCredentialRequestOptions } from '../../model';

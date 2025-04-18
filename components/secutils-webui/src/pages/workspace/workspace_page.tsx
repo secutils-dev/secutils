@@ -1,11 +1,10 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import type { ReactNode } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router';
-
 import type { EuiSideNavItemType } from '@elastic/eui';
 import { EuiButtonIcon, EuiFlexGroup, EuiFlexItem, EuiIcon, EuiSideNav, EuiSpacer, useEuiTheme } from '@elastic/eui';
 import type { EuiBreadcrumbProps } from '@elastic/eui/src/components/breadcrumbs/types';
 import { css } from '@emotion/react';
+import type { ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Navigate, useNavigate, useParams } from 'react-router';
 
 import { SiteSearchBar } from './components/site_search_bar';
 import { getUtilIcon, UTIL_HANDLES, UtilsComponents, UtilsShareComponents } from './utils';

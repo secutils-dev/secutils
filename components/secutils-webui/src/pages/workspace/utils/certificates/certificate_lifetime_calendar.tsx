@@ -1,8 +1,7 @@
-import { useCallback, useState } from 'react';
-
 import { EuiDatePicker } from '@elastic/eui';
 import type { Moment } from 'moment';
 import { unix } from 'moment';
+import { useCallback, useState } from 'react';
 
 export interface CertificateLifetimeCalendarProps {
   isDisabled?: boolean;

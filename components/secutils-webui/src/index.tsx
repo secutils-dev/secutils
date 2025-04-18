@@ -1,6 +1,5 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
-
 import { createRoot } from 'react-dom/client';
 
 import './index.css';

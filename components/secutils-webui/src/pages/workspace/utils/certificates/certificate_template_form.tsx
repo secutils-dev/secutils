@@ -1,6 +1,3 @@
-import type { ChangeEvent } from 'react';
-import { useState } from 'react';
-
 import {
   EuiComboBox,
   EuiDescribedFormGroup,
@@ -10,6 +7,8 @@ import {
   EuiLink,
   EuiSelect,
 } from '@elastic/eui';
+import type { ChangeEvent } from 'react';
+import { useState } from 'react';
 
 import type { CertificateAttributes, SignatureAlgorithm } from './certificate_attributes';
 import { CertificateLifetimeCalendar } from './certificate_lifetime_calendar';

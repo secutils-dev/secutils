@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-
 import { EuiButton, EuiFlexGroup, EuiFlexItem } from '@elastic/eui';
 import axios from 'axios';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { ContentSecurityPolicy, SerializedContentSecurityPolicyDirectives } from './content_security_policy';
 import { deserializeContentSecurityPolicyDirectives } from './content_security_policy';

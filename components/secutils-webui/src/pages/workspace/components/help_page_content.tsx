@@ -1,7 +1,6 @@
-import type { ReactNode } from 'react';
-
 import { EuiFlexGroup } from '@elastic/eui';
 import { css } from '@emotion/react';
+import type { ReactNode } from 'react';
 
 import { useFontSizes } from '../hooks';
 

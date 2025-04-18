@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
-
 import { EuiButton, EuiFlexGroup, EuiFlexItem } from '@elastic/eui';
 import axios from 'axios';
+import { useEffect, useState } from 'react';
 
 import type { CertificateTemplate } from './certificate_template';
 import { CertificateTemplateForm } from './certificate_template_form';

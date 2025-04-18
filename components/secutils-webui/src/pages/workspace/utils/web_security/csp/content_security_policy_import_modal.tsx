@@ -1,5 +1,3 @@
-import { useCallback, useState } from 'react';
-
 import {
   EuiButton,
   EuiButtonEmpty,
@@ -21,6 +19,7 @@ import {
   EuiTitle,
 } from '@elastic/eui';
 import axios from 'axios';
+import { useCallback, useState } from 'react';
 
 import type { AsyncData } from '../../../../../model';
 import { getApiRequestConfig, getApiUrl, getErrorMessage, isClientError } from '../../../../../model';

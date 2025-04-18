@@ -1,5 +1,3 @@
-import { useCallback, useState } from 'react';
-
 import {
   EuiButton,
   EuiButtonEmpty,
@@ -10,6 +8,7 @@ import {
   useEuiTheme,
 } from '@elastic/eui';
 import { css } from '@emotion/react';
+import { useCallback, useState } from 'react';
 
 import { useAppContext } from './use_app_context';
 import { getOryApi } from '../tools/ory';

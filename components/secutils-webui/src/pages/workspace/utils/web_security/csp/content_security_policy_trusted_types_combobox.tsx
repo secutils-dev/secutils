@@ -1,6 +1,5 @@
-import { useState } from 'react';
-
 import { EuiComboBox } from '@elastic/eui';
+import { useState } from 'react';
 
 export interface ContentSecurityPolicySourcesComboboxProps {
   value?: string[];

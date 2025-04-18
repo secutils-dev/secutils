@@ -1,6 +1,5 @@
-import { type ChangeEvent, useState } from 'react';
-
 import { EuiFieldText, EuiFormRow, EuiSelect } from '@elastic/eui';
+import { type ChangeEvent, useState } from 'react';
 
 import type { EncryptionMode } from './encryption_mode';
 

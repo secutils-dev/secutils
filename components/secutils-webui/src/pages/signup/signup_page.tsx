@@ -1,7 +1,3 @@
-import type { ChangeEvent, MouseEventHandler } from 'react';
-import { useCallback, useState } from 'react';
-import { Navigate, useNavigate, useSearchParams } from 'react-router';
-
 import {
   EuiButton,
   EuiButtonEmpty,
@@ -15,6 +11,9 @@ import {
 } from '@elastic/eui';
 import { css } from '@emotion/react';
 import type { FrontendApi, RegistrationFlow, UiNodeInputAttributes } from '@ory/client';
+import type { ChangeEvent, MouseEventHandler } from 'react';
+import { useCallback, useState } from 'react';
+import { Navigate, useNavigate, useSearchParams } from 'react-router';
 
 import { useAppContext, usePageMeta } from '../../hooks';
 import { getCsrfToken, getSecurityErrorMessage, isClientError } from '../../model';

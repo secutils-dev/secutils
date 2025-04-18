@@ -1,8 +1,7 @@
-import { useCallback, useState } from 'react';
-
 import type { EuiDataGridCellValueElementProps, EuiDataGridColumn, Pagination } from '@elastic/eui';
 import { EuiDataGrid, EuiFlexGroup, EuiFlexItem, EuiStat, EuiText } from '@elastic/eui';
 import { unix } from 'moment';
+import { useCallback, useState } from 'react';
 
 import type { WebPageResourcesRevision } from './web_page_data_revision';
 import type { WebPageResource } from './web_page_resource';

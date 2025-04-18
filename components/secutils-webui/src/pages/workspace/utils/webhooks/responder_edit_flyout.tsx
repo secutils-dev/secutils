@@ -1,6 +1,3 @@
-import type { ChangeEvent } from 'react';
-import { useCallback, useMemo, useState } from 'react';
-
 import type { EuiSwitchEvent } from '@elastic/eui';
 import {
   EuiButtonIcon,
@@ -22,6 +19,8 @@ import {
 } from '@elastic/eui';
 import axios from 'axios';
 import { customAlphabet, urlAlphabet } from 'nanoid';
+import { useCallback, useMemo, useState } from 'react';
+import type { ChangeEvent } from 'react';
 
 import type { Responder } from './responder';
 import { useRangeTicks } from '../../../../hooks';
