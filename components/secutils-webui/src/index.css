@@ -1,0 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Roboto+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+.root {
+    display: flex;
+    height: 100vh;
+    padding-top: 48px;
+}
+
+.euiToastHeader {
+    align-items: center;
+}
+
+.euiOverlayMask[data-relative-to-header='below'] {
+    top: 0;
+}
+
+/* Bug fix for v82.2.0 */
+.root .euiDataGridRowCell__actionButtonIcon {
+    inline-size: 12px;
+    block-size: 12px;
+}
+
+.signin-form, .signup-form, .password-form {
+    width: 280px;
+}

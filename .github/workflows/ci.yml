@@ -6,19 +6,19 @@ on:
     paths-ignore:
       - 'dev/**'
       - 'Dockerfile'
+      - 'Dockerfile.webui'
       - 'Dockerfile.aarch64-unknown-linux-musl'
       - 'LICENSE'
       - '*.md'
       - '.husky/**'
-      - '*.json'
 
 env:
   CARGO_TERM_COLOR: always
   DATABASE_URL: postgres://postgres@localhost:5432/secutils
 
 jobs:
-  ci:
-    name: Build (Linux)
+  ci-api:
+    name: Build API (Linux)
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -32,7 +32,6 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v4
-        name: Checkout
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
@@ -53,7 +52,7 @@ jobs:
 
       - name: Check database schema
         run: |
-          cargo install --force sqlx-cli
+          cargo install --locked --force sqlx-cli
           cargo sqlx database create
           cargo sqlx migrate run
           cargo sqlx prepare --check
@@ -66,3 +65,19 @@ jobs:
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+  ci-webui:
+    name: Build Web UI (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ws
+
+      - name: Build
+        run: npm run build -w components/secutils-webui

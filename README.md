@@ -3,9 +3,6 @@
 Secutils.dev is an open-source, versatile, yet simple security toolbox for engineers and researchers built by
 application security engineers.
 
-Refer to [secutils-dev/secutils-webui](https://github.com/secutils-dev/secutils-webui) for the web interface component
-of Secutils.dev.
-
 ## Why Secutils.dev?
 
 Big security solutions are impressive, but often too expensive, complex, and kind of overkill for us regular engineers.
@@ -127,10 +124,13 @@ SELFSERVICE_FLOWS_REGISTRATION_AFTER_WEBAUTHN_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE="
 COURIER_HTTP_REQUEST_CONFIG_AUTH_CONFIG_VALUE="Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NDcyMDExNTcsInN1YiI6IkBrcmF0b3MifQ.O506N__dZu7ZM6p-rEr_QkMn3jp0mRyBwKP7jstRHV8"
 ```
 
+### Web UI
+
+Install all the required dependencies with `npm install` and run the UI in watch mode with `npm run watch -w components/secutils-webui`. The UI should be accessible at http://localhost:7171.
+
 ### Usage
 
-At this point, it is recommended to use the Secutils.dev APIs through
-the [Web UI](https://github.com/secutils-dev/secutils-webui), but you can also generate a JSON Web Token and use the 
+At this point, it is recommended to use the Secutils.dev APIs through the Web UI, but you can also generate a JSON Web Token and use the 
 APIs directly with `curl` or any other HTTP client. To generate a token, run the following command:
 
 ```shell
@@ -167,9 +167,11 @@ Build images with the following commands:
 ```shell
 # Host architecture
 docker build --tag secutils-api:latest .
+docker build --tag secutils-webui:latest -f Dockerfile.webui .
 
 # Cross-compile to ARM64 architecture
 docker build --platform linux/arm64 --tag secutils-api:latest .
+docker build --platform linux/arm64 --tag secutils-webui:latest -f Dockerfile.webui .
 
 # Cross-compile to ARM64 musl architecture
 docker build --platform linux/arm64 --tag secutils-api:latest -f Dockerfile.aarch64-unknown-linux-musl .

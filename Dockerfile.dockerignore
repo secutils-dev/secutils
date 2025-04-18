@@ -1,0 +1,22 @@
+# Paths that should be ignored by all Docker images
+node_modules
+.idea
+.DS_Store
+dev
+.parcel-cache
+target
+dist
+.env
+.nvmrc
+.github
+.husky
+Dockerfile
+Dockerfile.webui
+*.md
+LICENSE
+secutils.toml
+rustfmt.toml
+
+# Path that should be ignored by api Docker image
+/components
+*.json

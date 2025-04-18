@@ -1,5 +1,7 @@
 node_modules/
 target/
+dist
+.parcel-cache
 
 .idea/
 .env
