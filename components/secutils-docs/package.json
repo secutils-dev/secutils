@@ -18,19 +18,19 @@
     ]
   },
   "dependencies": {
-    "@docusaurus/core": "^3.4.0",
-    "@docusaurus/preset-classic": "^3.4.0",
-    "@docusaurus/theme-mermaid": "^3.4.0",
-    "@mdx-js/react": "^3.0.1",
-    "docusaurus-plugin-sass": "^0.2.5",
-    "prism-react-renderer": "^2.3.1",
+    "@docusaurus/core": "^3.7.0",
+    "@docusaurus/preset-classic": "^3.7.0",
+    "@docusaurus/theme-mermaid": "^3.7.0",
+    "@mdx-js/react": "^3.1.0",
+    "docusaurus-plugin-sass": "^0.2.6",
+    "prism-react-renderer": "^2.4.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "sass": "^1.77.4"
+    "sass": "^1.87.0"
   },
   "devDependencies": {
-    "@docusaurus/module-type-aliases": "^3.4.0",
-    "@docusaurus/tsconfig": "^3.4.0",
+    "@docusaurus/module-type-aliases": "^3.7.0",
+    "@docusaurus/tsconfig": "^3.7.0",
     "typescript": "^5.8.3"
   },
   "scripts": {
