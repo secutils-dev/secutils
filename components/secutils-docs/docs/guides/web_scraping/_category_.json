@@ -1,0 +1,10 @@
+{
+  "label": "Web Scraping",
+  "collapsed": false,
+  "collapsible": false,
+  "position": 5,
+  "link": {
+    "type": "generated-index",
+    "description": "Learn more about Secutils.dev tools for dealing with web scraping."
+  }
+}

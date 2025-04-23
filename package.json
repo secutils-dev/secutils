@@ -5,6 +5,7 @@
     ]
   },
   "workspaces": [
+    "components/secutils-docs",
     "components/secutils-webui"
   ],
   "devDependencies": {

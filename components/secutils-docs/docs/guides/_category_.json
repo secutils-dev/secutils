@@ -1,0 +1,10 @@
+{
+  "label": "Guides",
+  "collapsed": false,
+  "collapsible": false,
+  "position": 2,
+  "link": {
+    "type": "generated-index",
+    "description": "Learn the most important Secutils.dev functionality with step-by-step guides and detailed video instructions."
+  }
+}

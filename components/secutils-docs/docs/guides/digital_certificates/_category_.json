@@ -1,0 +1,10 @@
+{
+  "label": "Digital Certificates",
+  "collapsed": false,
+  "collapsible": false,
+  "position": 2,
+  "link": {
+    "type": "generated-index",
+    "description": "Learn more about Secutils.dev tools for dealing with digital certificates and private keys."
+  }
+}

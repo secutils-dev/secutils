@@ -1,0 +1,194 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+
+/* You can override the default Infima variables here. */
+:root {
+  --ifm-navbar-height: 48px;
+  --ifm-navbar-padding-vertical: 0;
+  --ifm-navbar-padding-horizontal: 8px;
+  --ifm-navbar-shadow: 0 .7px 1.4px #00000012, 0 1.9px 4px #0000000d, 0 4.5px 10px #0000000d;
+  --ifm-navbar-background-color: #fff;
+
+  --ifm-link-hover-color: #006bb8;
+  --ifm-link-color: #006bb8;
+  --ifm-navbar-link-color: #006bb8;
+  --ifm-navbar-link-hover-color: #006bb8;
+
+  --ifm-menu-color-active: #006bb8;
+
+  --ifm-button-padding-horizontal: 0.75rem;
+  --ifm-link-hover-decoration: underline;
+
+  --ifm-footer-link-color: #007871;
+  --ifm-footer-link-hover-color: #007871;
+  --ifm-footer-padding-vertical: 1rem;
+  --ifm-footer-link-horizontal-spacing: 0.2rem;
+
+  --ifm-navbar-item-padding-vertical: 0;
+  --ifm-navbar-item-padding-horizontal: 0;
+
+  --ifm-color-primary: #2e8555;
+  --ifm-color-primary-dark: #29784c;
+  --ifm-color-primary-darker: #277148;
+  --ifm-color-primary-darkest: #205d3b;
+  --ifm-color-primary-light: #33925d;
+  --ifm-color-primary-lighter: #359962;
+  --ifm-color-primary-lightest: #3cad6e;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --ifm-font-family-base: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+}
+
+/* For readability concerns, you should choose a lighter palette in dark mode. */
+[data-theme='dark'] {
+  --ifm-navbar-background-color: #1d1e24;
+  --ifm-footer-background-color: #141519;
+
+  --ifm-navbar-shadow: 0 .7px 1.4px #0000002d, 0 1.9px 4px #00000020, 0 4.5px 10px #00000020;
+  --ifm-color-primary: #25c2a0;
+  --ifm-color-primary-dark: #21af90;
+  --ifm-color-primary-darker: #1fa588;
+  --ifm-color-primary-darkest: #1a8870;
+  --ifm-color-primary-light: #29d5b0;
+  --ifm-color-primary-lighter: #32d8b4;
+  --ifm-color-primary-lightest: #4fddbf;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+
+  --ifm-link-hover-color: #36a2ef;
+  --ifm-link-color: #36a2ef;
+  --ifm-navbar-link-color: #36a2ef;
+  --ifm-navbar-link-hover-color: #36a2ef;
+
+  --ifm-menu-color-active: #36a2ef;
+
+  --ifm-footer-link-color: #7dded8;
+  --ifm-footer-link-hover-color: #7dded8;
+}
+
+[data-theme='dark'] .main-wrapper {
+  background-color: #141519;
+}
+
+.footer {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.footer__links {
+  margin-bottom: 0.25rem;
+  font-weight: 500;
+}
+
+.footer__links svg {
+  display: none;
+}
+
+.navbar__link:hover {
+  text-decoration: underline;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.su-navbar-button {
+  background-color: #0077cc;
+  color: #fff;
+  border: 0 solid #1a1c21;
+
+  cursor: pointer;
+  font-weight: 500;
+  font-family: var(--ifm-font-family-base);
+  min-width: 112px;
+  font-size: 0.875rem;
+  padding: 0 0.75rem;
+  margin-right: 0.5rem;
+  height: 2rem;
+
+  border-radius: .375rem;
+  --ifm-navbar-item-padding-horizontal: 0.75rem;
+}
+
+.su-navbar-button:hover {
+  text-decoration: underline;
+  transform: translateY(-1px);
+  transition: transform 250ms ease-in-out 0s, background-color 250ms ease-in-out 0s;
+}
+
+[data-theme='dark'] .su-navbar-button {
+  background-color: #36a2ef;
+  color: #000;
+  border: 0 solid #e5e7eb;
+}
+
+.su-navbar-link {
+  font-size: 0.875rem;
+  margin-left: 1rem;
+  margin-right: 1rem;
+}
+
+.su-navbar-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+
+  margin-top: 0.75rem;
+}
+
+.docs-wrapper .su-navbar-blog, .blog-wrapper .su-navbar-docs {
+  display: none;
+}
+
+/* Tailwind `sm` responsive size, we want to show navbar items */
+@media screen and (min-width: 640px) {
+  .navbar__item {
+    display: inline-block;
+  }
+
+  .navbar__item.su-navbar-breadcrumb {
+    background-color: #d6d7d9;
+    color: #343741;
+
+    border-radius: 6px;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    padding: 4px 12px;
+    margin-left: -0.55rem;
+  }
+
+  [data-theme='dark'] .navbar__item.su-navbar-breadcrumb {
+    background-color: #42444b;
+    color: #fff;
+  }
+
+  .colorModeToggle_node_modules-\@docusaurus-theme-classic-lib-theme-Navbar-Content-styles-module {
+    display: block !important;
+  }
+
+  .su-navbar-buttons {
+    margin-top: 0;
+  }
+
+  .navbar-sidebar .su-navbar-buttons {
+    display: none;
+  }
+}
+
+/* Smallest resolution we should support */
+@media screen and (min-width: 320px) {
+  .footer__link-item, .footer__link-separator {
+    display: inline;
+  }
+}
+
+.su-table {
+  --ifm-leading: 0;
+  white-space: pre;
+}
+
+.su-table td:last-child {
+  width: 100%;
+}
+
+.su-table td:last-child code {
+  white-space: pre-wrap;
+}

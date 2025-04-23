@@ -1,0 +1,10 @@
+{
+  "label": "Web Security",
+  "collapsed": false,
+  "collapsible": false,
+  "position": 4,
+  "link": {
+    "type": "generated-index",
+    "description": "Learn more about Secutils.dev tools for dealing with web security."
+  }
+}
