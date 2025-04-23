@@ -13,7 +13,7 @@ import {
   EuiTitle,
 } from '@elastic/eui';
 import axios from 'axios';
-import type { ChangeEvent, MouseEventHandler } from 'react';
+import type { ChangeEvent } from 'react';
 import { useCallback, useState } from 'react';
 
 import type { EncryptionMode } from './encryption_mode';
@@ -41,49 +41,6 @@ export function PrivateKeyExportModal({ privateKey, onClose }: PrivateKeyExportM
   const [currentPassphrase, setCurrentPassphrase] = useState<string>('');
 
   const [exportStatus, setExportStatus] = useState<AsyncData<undefined> | null>(null);
-  const onPrivateKeyExport: MouseEventHandler<HTMLButtonElement> = useCallback(
-    (e) => {
-      e.preventDefault();
-
-      if (exportStatus?.status === 'pending') {
-        return;
-      }
-
-      setExportStatus({ status: 'pending' });
-
-      axios
-        .post<number[]>(
-          getApiUrl(`/api/utils/certificates/private_keys/${encodeURIComponent(privateKey.id)}/export`),
-          {
-            format,
-            passphrase: privateKey.encrypted ? currentPassphrase : null,
-            exportPassphrase: exportEncryptionMode === 'passphrase' ? exportPassphrase : null,
-          },
-          getApiRequestConfig(),
-        )
-        .then(
-          (response) => {
-            const keyContent = new Uint8Array(response.data);
-            if (format === 'pem') {
-              Downloader.download(`${privateKey.name}.pem`, keyContent, 'application/x-pem-file');
-            } else if (format === 'pkcs8') {
-              Downloader.download(`${privateKey.name}.p8`, keyContent, 'application/pkcs8');
-            } else {
-              Downloader.download(`${privateKey.name}.pfx`, keyContent, 'application/x-pkcs12');
-            }
-
-            setExportStatus({ status: 'succeeded', data: undefined });
-
-            onClose();
-          },
-          (err: Error) => {
-            setExportStatus({ status: 'failed', error: getErrorMessage(err) });
-          },
-        );
-    },
-    [exportPassphrase, currentPassphrase, exportEncryptionMode, format, exportStatus],
-  );
-
   const exportStatusCallout =
     exportStatus?.status === 'succeeded' ? (
       <EuiFormRow>
@@ -144,7 +101,45 @@ export function PrivateKeyExportModal({ privateKey, onClose }: PrivateKeyExportM
           type="submit"
           form="export-form"
           fill
-          onClick={onPrivateKeyExport}
+          onClick={(e) => {
+            e.preventDefault();
+
+            if (exportStatus?.status === 'pending') {
+              return;
+            }
+
+            setExportStatus({ status: 'pending' });
+
+            axios
+              .post<number[]>(
+                getApiUrl(`/api/utils/certificates/private_keys/${encodeURIComponent(privateKey.id)}/export`),
+                {
+                  format,
+                  passphrase: privateKey.encrypted ? currentPassphrase : null,
+                  exportPassphrase: exportEncryptionMode === 'passphrase' ? exportPassphrase : null,
+                },
+                getApiRequestConfig(),
+              )
+              .then(
+                (response) => {
+                  const keyContent = new Uint8Array(response.data);
+                  if (format === 'pem') {
+                    Downloader.download(`${privateKey.name}.pem`, keyContent, 'application/x-pem-file');
+                  } else if (format === 'pkcs8') {
+                    Downloader.download(`${privateKey.name}.p8`, keyContent, 'application/pkcs8');
+                  } else {
+                    Downloader.download(`${privateKey.name}.pfx`, keyContent, 'application/x-pkcs12');
+                  }
+
+                  setExportStatus({ status: 'succeeded', data: undefined });
+
+                  onClose();
+                },
+                (err: Error) => {
+                  setExportStatus({ status: 'failed', error: getErrorMessage(err) });
+                },
+              );
+          }}
           isDisabled={exportEncryptionMode === 'passphrase' && exportPassphrase === null}
           isLoading={exportStatus?.status === 'pending'}
         >

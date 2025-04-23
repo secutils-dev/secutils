@@ -146,7 +146,19 @@ export function WebPageContentTrackerEditFlyout({ onClose, tracker }: Props) {
         });
       },
     );
-  }, [name, url, delay, revisions, headers, extractContentScript, jobConfig, tracker, updatingStatus]);
+  }, [
+    name,
+    url,
+    delay,
+    revisions,
+    headers,
+    extractContentScript,
+    jobConfig,
+    tracker,
+    updatingStatus,
+    addToast,
+    onClose,
+  ]);
 
   const notifications = jobConfig ? (
     <EuiFormRow

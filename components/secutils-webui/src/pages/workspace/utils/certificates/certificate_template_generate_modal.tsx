@@ -14,7 +14,7 @@ import {
   EuiTitle,
 } from '@elastic/eui';
 import axios from 'axios';
-import type { ChangeEvent, MouseEventHandler } from 'react';
+import type { ChangeEvent } from 'react';
 import { useCallback, useState } from 'react';
 
 import type { CertificateTemplate } from './certificate_template';
@@ -39,40 +39,6 @@ export function CertificateTemplateGenerateModal({ template, onClose }: Certific
   }, []);
 
   const [generatingStatus, setGeneratingStatus] = useState<AsyncData<undefined> | null>(null);
-  const onCertificateGenerate: MouseEventHandler<HTMLButtonElement> = useCallback(
-    (e) => {
-      e.preventDefault();
-
-      if (generatingStatus?.status === 'pending') {
-        return;
-      }
-
-      setGeneratingStatus({ status: 'pending' });
-
-      const generateUrl = getApiUrl(`/api/utils/certificates/templates/${encodeURIComponent(template.id)}/generate`);
-      axios.post<number[]>(generateUrl, { format, passphrase: passphrase || null }, getApiRequestConfig()).then(
-        (res) => {
-          const content = new Uint8Array(res.data);
-          if (format === 'pem') {
-            Downloader.download(`${template.name}.zip`, content, 'application/zip');
-          } else if (format === 'pkcs8') {
-            Downloader.download(`${template.name}.p8`, content, 'application/pkcs8');
-          } else {
-            Downloader.download(`${template.name}.pfx`, content, 'application/x-pkcs12');
-          }
-
-          setGeneratingStatus({ status: 'succeeded', data: undefined });
-
-          onClose();
-        },
-        (err: Error) => {
-          setGeneratingStatus({ status: 'failed', error: getErrorMessage(err) });
-        },
-      );
-    },
-    [passphrase, format, generatingStatus],
-  );
-
   const generatingStatusCallout =
     generatingStatus?.status === 'succeeded' ? (
       <EuiFormRow>
@@ -128,7 +94,38 @@ export function CertificateTemplateGenerateModal({ template, onClose }: Certific
           type="submit"
           form="generate-form"
           fill
-          onClick={onCertificateGenerate}
+          onClick={(e) => {
+            e.preventDefault();
+
+            if (generatingStatus?.status === 'pending') {
+              return;
+            }
+
+            setGeneratingStatus({ status: 'pending' });
+
+            const generateUrl = getApiUrl(
+              `/api/utils/certificates/templates/${encodeURIComponent(template.id)}/generate`,
+            );
+            axios.post<number[]>(generateUrl, { format, passphrase: passphrase || null }, getApiRequestConfig()).then(
+              (res) => {
+                const content = new Uint8Array(res.data);
+                if (format === 'pem') {
+                  Downloader.download(`${template.name}.zip`, content, 'application/zip');
+                } else if (format === 'pkcs8') {
+                  Downloader.download(`${template.name}.p8`, content, 'application/pkcs8');
+                } else {
+                  Downloader.download(`${template.name}.pfx`, content, 'application/x-pkcs12');
+                }
+
+                setGeneratingStatus({ status: 'succeeded', data: undefined });
+
+                onClose();
+              },
+              (err: Error) => {
+                setGeneratingStatus({ status: 'failed', error: getErrorMessage(err) });
+              },
+            );
+          }}
           isLoading={generatingStatus?.status === 'pending'}
         >
           Generate

@@ -97,12 +97,6 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
   ];
   const [visibleColumns, setVisibleColumns] = useState(() => columns.map(({ id }) => id));
   const [sortingColumns, setSortingColumns] = useState<Array<{ id: string; direction: 'asc' | 'desc' }>>([]);
-  const onSort = useCallback(
-    (sortingColumns: Array<{ id: string; direction: 'asc' | 'desc' }>) => {
-      setSortingColumns(sortingColumns);
-    },
-    [sortingColumns],
-  );
 
   const [pagination, setPagination] = useState<Pagination>({
     pageIndex: 0,
@@ -307,7 +301,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
             rowCount={requests.data.length}
             renderCellValue={renderCellValue}
             inMemory={{ level: 'sorting' }}
-            sorting={{ columns: sortingColumns, onSort }}
+            sorting={{ columns: sortingColumns, onSort: setSortingColumns }}
             pagination={{
               ...pagination,
               onChangeItemsPerPage: onChangeItemsPerPage,

@@ -54,7 +54,7 @@ export function ContentSecurityPolicySourcesCombobox({
         ? KEYWORD_SOURCES.filter((keywordSource) => !omitKeywordSources.includes(keywordSource.name))
         : KEYWORD_SOURCES;
     return keywordSourcesToPermit.map(({ name, safe }) => ({ label: name, color: !safe ? 'red' : undefined }));
-  }, []);
+  }, [omitKeywordSources]);
 
   const [selectedSources, setSelectedSources] = useState<Array<{ label: string; color?: string }>>(
     value?.map((source) => ({ label: source, color: isSourceSafe(source) ? undefined : 'red' })) ?? [],

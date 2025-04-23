@@ -1,7 +1,3 @@
-import { lazy, Suspense } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
-import { createRoot } from 'react-dom/client';
-
 import './index.css';
 
 import { icon as EuiIconSecurityApp } from '@elastic/eui/es/components/icon/assets/app_security';
@@ -79,6 +75,9 @@ import { icon as EuiIconTrash } from '@elastic/eui/es/components/icon/assets/tra
 import { icon as EuiIconUser } from '@elastic/eui/es/components/icon/assets/user';
 import { icon as EuiIconWarning } from '@elastic/eui/es/components/icon/assets/warning';
 import { appendIconComponentCache } from '@elastic/eui/es/components/icon/icon';
+import { lazy, Suspense } from 'react';
+import { createRoot } from 'react-dom/client';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
 
 import { AppContainer } from './app_container';
 import { PageLoadingState } from './components';

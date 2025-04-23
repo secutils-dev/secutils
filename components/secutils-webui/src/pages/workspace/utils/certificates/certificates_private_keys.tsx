@@ -15,7 +15,7 @@ import {
   EuiToolTip,
 } from '@elastic/eui';
 import axios from 'axios';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { PRIVATE_KEYS_PROD_WARNING_USER_SETTINGS_KEY } from './consts';
 import type { PrivateKey } from './private_key';
@@ -37,35 +37,18 @@ export default function CertificatesPrivateKeys() {
   const [privateKeyToExport, setPrivateKeyToExport] = useState<PrivateKey | null>(null);
   const [privateKeyToEdit, setPrivateKeyToEdit] = useState<PrivateKey | null | undefined>(null);
 
-  const loadPrivateKeys = () => {
-    axios.get<PrivateKey[]>(getApiUrl('/api/utils/certificates/private_keys'), getApiRequestConfig()).then(
-      (response) => {
-        setPrivateKeys({ status: 'succeeded', data: response.data });
-        setTitleActions(response.data.length === 0 ? null : createButton);
-      },
-      (err: Error) => {
-        setPrivateKeys({ status: 'failed', error: getErrorMessage(err) });
-      },
-    );
-  };
-
-  useEffect(() => {
-    if (!uiState.synced) {
-      return;
-    }
-
-    loadPrivateKeys();
-  }, [uiState]);
-
-  const createButton = (
-    <EuiButton
-      iconType={'plusInCircle'}
-      title="Create a new private key"
-      fill
-      onClick={() => setPrivateKeyToEdit(undefined)}
-    >
-      Create private key
-    </EuiButton>
+  const createButton = useMemo(
+    () => (
+      <EuiButton
+        iconType={'plusInCircle'}
+        title="Create a new private key"
+        fill
+        onClick={() => setPrivateKeyToEdit(undefined)}
+      >
+        Create private key
+      </EuiButton>
+    ),
+    [],
   );
 
   const docsButton = (
@@ -78,6 +61,26 @@ export default function CertificatesPrivateKeys() {
       Learn how to
     </EuiButtonEmpty>
   );
+
+  const loadPrivateKeys = useCallback(() => {
+    axios.get<PrivateKey[]>(getApiUrl('/api/utils/certificates/private_keys'), getApiRequestConfig()).then(
+      (response) => {
+        setPrivateKeys({ status: 'succeeded', data: response.data });
+        setTitleActions(response.data.length === 0 ? null : createButton);
+      },
+      (err: Error) => {
+        setPrivateKeys({ status: 'failed', error: getErrorMessage(err) });
+      },
+    );
+  }, [setTitleActions, createButton]);
+
+  useEffect(() => {
+    if (!uiState.synced) {
+      return;
+    }
+
+    loadPrivateKeys();
+  }, [uiState, loadPrivateKeys]);
 
   const editFlyout =
     privateKeyToEdit !== null ? (

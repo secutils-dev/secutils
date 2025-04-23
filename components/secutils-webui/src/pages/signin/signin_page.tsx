@@ -8,7 +8,7 @@ import {
   EuiPanel,
 } from '@elastic/eui';
 import type { FrontendApi, LoginFlow, UiNodeInputAttributes } from '@ory/client';
-import type { ChangeEvent, MouseEventHandler } from 'react';
+import type { ChangeEvent } from 'react';
 import { useCallback, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router';
 
@@ -88,76 +88,6 @@ export function SigninPage() {
   }
 
   const [signinStatus, setSigninStatus] = useState<AsyncData<null, { isPasskey: boolean }> | null>(null);
-  const onSignin: MouseEventHandler<HTMLButtonElement> = useCallback(
-    (e) => {
-      e.preventDefault();
-
-      if (signinStatus?.status === 'pending') {
-        return;
-      }
-
-      setSigninStatus({ status: 'pending', state: { isPasskey: false } });
-      startSigninFlow(async (api, flow) => {
-        await api.updateLoginFlow({
-          flow: flow.id,
-          updateLoginFlowBody: {
-            method: 'password' as const,
-            password,
-            csrf_token: getCsrfToken(flow),
-            identifier: email,
-          },
-        });
-      });
-    },
-    [email, password, signinStatus],
-  );
-
-  const onSigninWithPasskey: MouseEventHandler<HTMLButtonElement> = useCallback(
-    (e) => {
-      e.preventDefault();
-
-      if (signinStatus?.status === 'pending') {
-        return;
-      }
-
-      setSigninStatus({ status: 'pending', state: { isPasskey: true } });
-      startSigninFlow(async (api, flow) => {
-        const axiosResponse = await api.updateLoginFlow(
-          {
-            flow: flow.id,
-            updateLoginFlowBody: { method: 'webauthn' as const, csrf_token: getCsrfToken(flow), identifier: email },
-          },
-          { validateStatus: (status) => status < 500 },
-        );
-
-        const { data: updatedFlow } = await api.getLoginFlow({ id: flow.id });
-        const publicKeyNode = updatedFlow?.ui?.nodes?.find(
-          (node) => node.attributes.node_type === 'input' && node.attributes.name === 'webauthn_login_trigger',
-        );
-        if (!publicKeyNode) {
-          throw axiosResponse;
-        }
-
-        const publicKey = (
-          JSON.parse((publicKeyNode.attributes as UiNodeInputAttributes).value as string) as {
-            publicKey: SerializedPublicKeyCredentialRequestOptions;
-          }
-        ).publicKey;
-
-        await api.updateLoginFlow({
-          flow: updatedFlow.id,
-          updateLoginFlowBody: {
-            method: 'webauthn' as const,
-            csrf_token: getCsrfToken(updatedFlow),
-            webauthn_login: await signinWithPasskey(publicKey),
-            identifier: email,
-          },
-        });
-      });
-    },
-    [email, signinStatus],
-  );
-
   const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] = useState(false);
   const onToggleResetPasswordModal = useCallback(() => {
     setIsResetPasswordModalOpen((isOpen) => !isOpen);
@@ -201,7 +131,26 @@ export function SigninPage() {
               form="signin-form"
               fill
               fullWidth
-              onClick={onSignin}
+              onClick={(e) => {
+                e.preventDefault();
+
+                if (signinStatus?.status === 'pending') {
+                  return;
+                }
+
+                setSigninStatus({ status: 'pending', state: { isPasskey: false } });
+                startSigninFlow(async (api, flow) => {
+                  await api.updateLoginFlow({
+                    flow: flow.id,
+                    updateLoginFlowBody: {
+                      method: 'password' as const,
+                      password,
+                      csrf_token: getCsrfToken(flow),
+                      identifier: email,
+                    },
+                  });
+                });
+              }}
               isLoading={signinStatus?.status === 'pending' && signinStatus?.state?.isPasskey !== true}
               isDisabled={
                 email.trim().length === 0 ||
@@ -225,7 +174,53 @@ export function SigninPage() {
                   form="signin-form"
                   fill
                   fullWidth
-                  onClick={onSigninWithPasskey}
+                  onClick={(e) => {
+                    e.preventDefault();
+
+                    if (signinStatus?.status === 'pending') {
+                      return;
+                    }
+
+                    setSigninStatus({ status: 'pending', state: { isPasskey: true } });
+                    startSigninFlow(async (api, flow) => {
+                      const axiosResponse = await api.updateLoginFlow(
+                        {
+                          flow: flow.id,
+                          updateLoginFlowBody: {
+                            method: 'webauthn' as const,
+                            csrf_token: getCsrfToken(flow),
+                            identifier: email,
+                          },
+                        },
+                        { validateStatus: (status) => status < 500 },
+                      );
+
+                      const { data: updatedFlow } = await api.getLoginFlow({ id: flow.id });
+                      const publicKeyNode = updatedFlow?.ui?.nodes?.find(
+                        (node) =>
+                          node.attributes.node_type === 'input' && node.attributes.name === 'webauthn_login_trigger',
+                      );
+                      if (!publicKeyNode) {
+                        throw axiosResponse;
+                      }
+
+                      const publicKey = (
+                        JSON.parse((publicKeyNode.attributes as UiNodeInputAttributes).value as string) as {
+                          publicKey: SerializedPublicKeyCredentialRequestOptions;
+                        }
+                      ).publicKey;
+
+                      await api.updateLoginFlow({
+                        flow: updatedFlow.id,
+                        updateLoginFlowBody: {
+                          method: 'webauthn' as const,
+                          csrf_token: getCsrfToken(updatedFlow),
+                          webauthn_login: await signinWithPasskey(publicKey),
+                          identifier: email,
+                        },
+                      });
+                    });
+                  }}
                   isLoading={signinStatus?.status === 'pending' && signinStatus?.state?.isPasskey === true}
                   isDisabled={email.trim().length === 0 || signinStatus?.status === 'pending'}
                 >

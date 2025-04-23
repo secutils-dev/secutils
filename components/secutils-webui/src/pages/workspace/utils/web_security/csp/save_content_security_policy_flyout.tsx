@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 
 import type { ContentSecurityPolicy } from './content_security_policy';
 import { serializeContentSecurityPolicyDirectives } from './content_security_policy';
@@ -22,70 +22,72 @@ export function SaveContentSecurityPolicyFlyout({ onClose, policy }: Props) {
   );
 
   const [updatingStatus, setUpdatingStatus] = useState<AsyncData<void>>();
-  const onSave = useCallback(() => {
-    if (updatingStatus?.status === 'pending' || !policyToSave) {
-      return;
-    }
-
-    setUpdatingStatus({ status: 'pending' });
-
-    const [requestPromise, successMessage, errorMessage] = policyToSave.id
-      ? [
-          axios.put(
-            getApiUrl(`/api/utils/web_security/csp/${policyToSave.id}`),
-            {
-              name: policyToSave.name !== policy?.name ? policyToSave.name : null,
-              directives: serializeContentSecurityPolicyDirectives(policyToSave.directives),
-            },
-            getApiRequestConfig(),
-          ),
-          `Successfully updated "${policyToSave.name}" policy`,
-          `Unable to update "${policyToSave.name}" policy, please try again later`,
-        ]
-      : [
-          axios.post(
-            getApiUrl('/api/utils/web_security/csp'),
-            {
-              name: policyToSave.name,
-              content: { type: 'directives', value: serializeContentSecurityPolicyDirectives(policyToSave.directives) },
-            },
-            getApiRequestConfig(),
-          ),
-          `Successfully saved "${policyToSave.name}" policy`,
-          `Unable to save "${policyToSave.name}" policy, please try again later`,
-        ];
-    requestPromise.then(
-      () => {
-        setUpdatingStatus({ status: 'succeeded', data: undefined });
-
-        addToast({
-          id: `success-save-policy-${policyToSave.name}`,
-          iconType: 'check',
-          color: 'success',
-          title: successMessage,
-        });
-
-        onClose(true);
-      },
-      (err: Error) => {
-        const remoteErrorMessage = getErrorMessage(err);
-        setUpdatingStatus({ status: 'failed', error: remoteErrorMessage });
-
-        addToast({
-          id: `failed-save-policy-${policyToSave.name}`,
-          iconType: 'warning',
-          color: 'danger',
-          title: isClientError(err) ? remoteErrorMessage : errorMessage,
-        });
-      },
-    );
-  }, [policyToSave, updatingStatus]);
 
   return (
     <EditorFlyout
       title={`${policy ? 'Edit' : 'Add'} policy`}
       onClose={() => onClose()}
-      onSave={onSave}
+      onSave={() => {
+        if (updatingStatus?.status === 'pending' || !policyToSave) {
+          return;
+        }
+
+        setUpdatingStatus({ status: 'pending' });
+
+        const [requestPromise, successMessage, errorMessage] = policyToSave.id
+          ? [
+              axios.put(
+                getApiUrl(`/api/utils/web_security/csp/${policyToSave.id}`),
+                {
+                  name: policyToSave.name !== policy?.name ? policyToSave.name : null,
+                  directives: serializeContentSecurityPolicyDirectives(policyToSave.directives),
+                },
+                getApiRequestConfig(),
+              ),
+              `Successfully updated "${policyToSave.name}" policy`,
+              `Unable to update "${policyToSave.name}" policy, please try again later`,
+            ]
+          : [
+              axios.post(
+                getApiUrl('/api/utils/web_security/csp'),
+                {
+                  name: policyToSave.name,
+                  content: {
+                    type: 'directives',
+                    value: serializeContentSecurityPolicyDirectives(policyToSave.directives),
+                  },
+                },
+                getApiRequestConfig(),
+              ),
+              `Successfully saved "${policyToSave.name}" policy`,
+              `Unable to save "${policyToSave.name}" policy, please try again later`,
+            ];
+        requestPromise.then(
+          () => {
+            setUpdatingStatus({ status: 'succeeded', data: undefined });
+
+            addToast({
+              id: `success-save-policy-${policyToSave.name}`,
+              iconType: 'check',
+              color: 'success',
+              title: successMessage,
+            });
+
+            onClose(true);
+          },
+          (err: Error) => {
+            const remoteErrorMessage = getErrorMessage(err);
+            setUpdatingStatus({ status: 'failed', error: remoteErrorMessage });
+
+            addToast({
+              id: `failed-save-policy-${policyToSave.name}`,
+              iconType: 'warning',
+              color: 'danger',
+              title: isClientError(err) ? remoteErrorMessage : errorMessage,
+            });
+          },
+        );
+      }}
       canSave={policyToSave.name.length > 0 && policyToSave.directives?.size > 0}
       saveInProgress={updatingStatus?.status === 'pending'}
     >

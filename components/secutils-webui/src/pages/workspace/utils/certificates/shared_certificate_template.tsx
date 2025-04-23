@@ -59,7 +59,7 @@ export default function SharedCertificateTemplate() {
           setTemplate({ status: 'failed', error: getErrorMessage(err) });
         },
       );
-  }, [uiState]);
+  }, [uiState, setTitle, setTitleActions]);
 
   if (template.status === 'pending') {
     return <PageLoadingState />;

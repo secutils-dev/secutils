@@ -17,9 +17,10 @@ import {
   EuiTabs,
   EuiTextArea,
   EuiTitle,
+  htmlIdGenerator,
 } from '@elastic/eui';
 import axios from 'axios';
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 
 import type { AsyncData } from '../../../../../model';
 import { getApiRequestConfig, getApiUrl, getErrorMessage, isClientError } from '../../../../../model';
@@ -50,51 +51,6 @@ export function ContentSecurityPolicyImportModal({ onClose }: ContentSecurityPol
     (importType === 'serialized' ? serializedPolicy.length > 0 : isValidURL(remotePolicy.url));
 
   const [importStatus, setImportStatus] = useState<AsyncData<undefined> | null>(null);
-  const onImportPolicy = useCallback(() => {
-    if (!uiState.synced || importStatus?.status === 'pending') {
-      return;
-    }
-
-    setImportStatus({ status: 'pending' });
-
-    axios
-      .post(
-        getApiUrl('/api/utils/web_security/csp'),
-        {
-          name,
-          content: { type: importType, value: importType === 'serialized' ? serializedPolicy : remotePolicy },
-        },
-        getApiRequestConfig(),
-      )
-      .then(
-        () => {
-          addToast({
-            id: `success-import-policy-${name}`,
-            iconType: 'check',
-            color: 'success',
-            title: `Successfully imported "${name}" content security policy`,
-          });
-
-          setImportStatus({ status: 'succeeded', data: undefined });
-
-          onClose(true /** success **/);
-        },
-        (err: Error) => {
-          const remoteErrorMessage = getErrorMessage(err);
-          setImportStatus({ status: 'failed', error: remoteErrorMessage });
-
-          addToast({
-            id: `failed-import-policy-${name}`,
-            iconType: 'warning',
-            color: 'danger',
-            title: isClientError(err)
-              ? remoteErrorMessage
-              : `Unable to import "${name}" policy, please try again later`,
-          });
-        },
-      );
-  }, [uiState, importType, name, serializedPolicy, remotePolicy, importStatus]);
-
   const serializedPolicyInput =
     importType === 'serialized' ? (
       <EuiFormRow
@@ -193,7 +149,49 @@ export function ContentSecurityPolicyImportModal({ onClose }: ContentSecurityPol
           component="form"
           onSubmit={(e) => {
             e.preventDefault();
-            onImportPolicy();
+
+            if (!uiState.synced || importStatus?.status === 'pending') {
+              return;
+            }
+
+            setImportStatus({ status: 'pending' });
+
+            axios
+              .post(
+                getApiUrl('/api/utils/web_security/csp'),
+                {
+                  name,
+                  content: { type: importType, value: importType === 'serialized' ? serializedPolicy : remotePolicy },
+                },
+                getApiRequestConfig(),
+              )
+              .then(
+                () => {
+                  addToast({
+                    id: `success-import-policy-${name}`,
+                    iconType: 'check',
+                    color: 'success',
+                    title: `Successfully imported "${name}" content security policy`,
+                  });
+
+                  setImportStatus({ status: 'succeeded', data: undefined });
+
+                  onClose(true /** success **/);
+                },
+                (err: Error) => {
+                  const remoteErrorMessage = getErrorMessage(err);
+                  setImportStatus({ status: 'failed', error: remoteErrorMessage });
+
+                  addToast({
+                    id: htmlIdGenerator('failed-import-policy')(),
+                    iconType: 'warning',
+                    color: 'danger',
+                    title: isClientError(err)
+                      ? remoteErrorMessage
+                      : `Unable to import "${name}" policy, please try again later`,
+                  });
+                },
+              );
           }}
         >
           <EuiTabs>

@@ -68,7 +68,7 @@ export function WebPageTrackerHistory({ kind, tracker, children }: WebPageTracke
           (response) => {
             setRevisions({ status: 'succeeded', data: response.data });
 
-            // Reset revision index only if it's not set or doesn't exist in the new data.
+            // Reset a revision index only if it's not set or doesn't exist in the new data.
             if (refresh || revisionIndex === null || revisionIndex >= response.data.length) {
               setRevisionIndex(response.data.length > 0 ? response.data.length - 1 : null);
             }
@@ -89,7 +89,7 @@ export function WebPageTrackerHistory({ kind, tracker, children }: WebPageTracke
           },
         );
     },
-    [getApiUrl, revisionIndex, mode],
+    [revisionIndex, mode, kind, tracker.id],
   );
 
   useEffect(() => {
@@ -98,7 +98,7 @@ export function WebPageTrackerHistory({ kind, tracker, children }: WebPageTracke
     }
 
     fetchHistory();
-  }, [uiState, tracker]);
+  }, [uiState, tracker, fetchHistory]);
 
   const onRevisionChange = useCallback(
     (revisionId: string) => {

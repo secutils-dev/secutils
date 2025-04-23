@@ -1,13 +1,16 @@
 import { EuiButton, EuiFieldText, EuiForm, EuiFormRow, EuiLink, EuiPanel } from '@elastic/eui';
 import type { FrontendApi, VerificationFlow } from '@ory/client';
-import { type ChangeEvent, useCallback, useEffect, useState } from 'react';
+import type { ChangeEvent } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 
 import { SettingsFlyout } from '../../app_container';
 import { PageErrorState, PageLoadingState, PageSuccessState } from '../../components';
 import { useAppContext, usePageHeaderActions, usePageMeta } from '../../hooks';
-import { type AsyncData, getCsrfToken, getSecurityErrorMessage } from '../../model';
+import type { AsyncData } from '../../model';
+import { getCsrfToken, getSecurityErrorMessage } from '../../model';
 import { getOryApi } from '../../tools/ory';
+import { Page } from '../page';
 
 async function getVerificationFlow(api: FrontendApi, flowId?: string) {
   if (flowId) {
@@ -21,8 +24,6 @@ async function getVerificationFlow(api: FrontendApi, flowId?: string) {
 
   return (await api.createBrowserVerificationFlow()).data;
 }
-
-import { Page } from '../page';
 
 type VerificationProcess =
   | {
@@ -101,7 +102,7 @@ export function ActivatePage() {
             'The activation link is not valid or may have already expired. You can request a new link from the account settings.',
         });
       });
-  }, [searchParams, code, process, uiState]);
+  }, [searchParams, code, process, uiState, setSearchParams]);
 
   const onSendActivationLink = (flow: VerificationFlow, email: string) => {
     setProcess({ status: 'succeeded', data: { step: 'awaiting_reactivation', flow, email, isLoading: true } });

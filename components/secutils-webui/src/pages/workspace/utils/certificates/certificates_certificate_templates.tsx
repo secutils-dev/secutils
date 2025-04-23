@@ -15,7 +15,7 @@ import {
 } from '@elastic/eui';
 import axios from 'axios';
 import { unix } from 'moment';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { certificateTypeString, getDistinguishedNameString, signatureAlgorithmString } from './certificate_attributes';
 import type { CertificateTemplate } from './certificate_template';
@@ -38,37 +38,6 @@ export default function CertificatesCertificateTemplates() {
   const [templateToEdit, setTemplateToEdit] = useState<CertificateTemplate | null | undefined>(null);
   const [templateToRemove, setTemplateToRemove] = useState<CertificateTemplate | null>(null);
 
-  const loadCertificateTemplates = () => {
-    axios.get<CertificateTemplate[]>(getApiUrl('/api/utils/certificates/templates'), getApiRequestConfig()).then(
-      (res) => {
-        setTemplates({ status: 'succeeded', data: res.data });
-        setTitleActions(res.data.length === 0 ? null : createButton);
-      },
-      (err: Error) => {
-        setTemplates({ status: 'failed', error: getErrorMessage(err) });
-      },
-    );
-  };
-
-  useEffect(() => {
-    if (!uiState.synced) {
-      return;
-    }
-
-    loadCertificateTemplates();
-  }, [uiState]);
-
-  const createButton = (
-    <EuiButton
-      iconType={'plusInCircle'}
-      title="Create a new certificate template"
-      fill
-      onClick={() => setTemplateToEdit(undefined)}
-    >
-      Create certificate template
-    </EuiButton>
-  );
-
   const docsButton = (
     <EuiButtonEmpty
       iconType={'documentation'}
@@ -79,6 +48,40 @@ export default function CertificatesCertificateTemplates() {
       Learn how to
     </EuiButtonEmpty>
   );
+
+  const createButton = useMemo(
+    () => (
+      <EuiButton
+        iconType={'plusInCircle'}
+        title="Create a new certificate template"
+        fill
+        onClick={() => setTemplateToEdit(undefined)}
+      >
+        Create certificate template
+      </EuiButton>
+    ),
+    [],
+  );
+
+  const loadCertificateTemplates = useCallback(() => {
+    axios.get<CertificateTemplate[]>(getApiUrl('/api/utils/certificates/templates'), getApiRequestConfig()).then(
+      (res) => {
+        setTemplates({ status: 'succeeded', data: res.data });
+        setTitleActions(res.data.length === 0 ? null : createButton);
+      },
+      (err: Error) => {
+        setTemplates({ status: 'failed', error: getErrorMessage(err) });
+      },
+    );
+  }, [setTitleActions, createButton]);
+
+  useEffect(() => {
+    if (!uiState.synced) {
+      return;
+    }
+
+    loadCertificateTemplates();
+  }, [uiState, loadCertificateTemplates]);
 
   const editFlyout =
     templateToEdit !== null ? (

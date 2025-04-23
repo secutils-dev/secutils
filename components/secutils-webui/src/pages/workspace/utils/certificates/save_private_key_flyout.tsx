@@ -59,66 +59,6 @@ export function SavePrivateKeyFlyout({ onClose, privateKey }: SavePrivateKeyFlyo
   const [currentPassphrase, setCurrentPassphrase] = useState<string>('');
 
   const [updatingStatus, setUpdatingStatus] = useState<AsyncData<void>>();
-  const onSave = useCallback(() => {
-    if (updatingStatus?.status === 'pending') {
-      return;
-    }
-
-    setUpdatingStatus({ status: 'pending' });
-
-    // Only passphrase and name change are allowed for existing private keys.
-    const newPassphraseToSend = encryptionMode === 'passphrase' ? passphrase : null;
-    const currentPassphraseToSend = privateKey?.encrypted ? currentPassphrase : null;
-    const [requestPromise, successMessage, errorMessage] = privateKey
-      ? [
-          axios.put(
-            getApiUrl(`/api/utils/certificates/private_keys/${privateKey.id}`),
-            {
-              keyName: privateKey.name !== name ? name.trim() : null,
-              ...(!privateKey.encrypted || newPassphraseToSend !== currentPassphraseToSend
-                ? { passphrase: currentPassphraseToSend, newPassphrase: newPassphraseToSend }
-                : {}),
-            },
-            getApiRequestConfig(),
-          ),
-          `Successfully updated "${name}" private key`,
-          `Unable to update "${name}" private key, please try again later`,
-        ]
-      : [
-          axios.post(
-            getApiUrl('/api/utils/certificates/private_keys'),
-            { keyName: name, alg: keyAlgorithm, passphrase: newPassphraseToSend },
-            getApiRequestConfig(),
-          ),
-          `Successfully saved "${name}" private key`,
-          `Unable to save "${name}" private key, please try again later`,
-        ];
-    requestPromise.then(
-      () => {
-        setUpdatingStatus({ status: 'succeeded', data: undefined });
-
-        addToast({
-          id: `success-save-private-key-${name}`,
-          iconType: 'check',
-          color: 'success',
-          title: successMessage,
-        });
-
-        onClose(true);
-      },
-      (err: Error) => {
-        const remoteErrorMessage = getErrorMessage(err);
-        setUpdatingStatus({ status: 'failed', error: remoteErrorMessage });
-
-        addToast({
-          id: `failed-save-private-key-${name}`,
-          iconType: 'warning',
-          color: 'danger',
-          title: isClientError(err) ? remoteErrorMessage : errorMessage,
-        });
-      },
-    );
-  }, [name, keyAlgorithm, encryptionMode, currentPassphrase, passphrase, privateKey, updatingStatus]);
 
   const canSave = () => {
     if (name.trim().length === 0) {
@@ -144,7 +84,66 @@ export function SavePrivateKeyFlyout({ onClose, privateKey }: SavePrivateKeyFlyo
     <EditorFlyout
       title={`${privateKey ? 'Edit' : 'Add'} private key`}
       onClose={() => onClose()}
-      onSave={onSave}
+      onSave={() => {
+        if (updatingStatus?.status === 'pending') {
+          return;
+        }
+
+        setUpdatingStatus({ status: 'pending' });
+
+        // Only passphrase and name change are allowed for existing private keys.
+        const newPassphraseToSend = encryptionMode === 'passphrase' ? passphrase : null;
+        const currentPassphraseToSend = privateKey?.encrypted ? currentPassphrase : null;
+        const [requestPromise, successMessage, errorMessage] = privateKey
+          ? [
+              axios.put(
+                getApiUrl(`/api/utils/certificates/private_keys/${privateKey.id}`),
+                {
+                  keyName: privateKey.name !== name ? name.trim() : null,
+                  ...(!privateKey.encrypted || newPassphraseToSend !== currentPassphraseToSend
+                    ? { passphrase: currentPassphraseToSend, newPassphrase: newPassphraseToSend }
+                    : {}),
+                },
+                getApiRequestConfig(),
+              ),
+              `Successfully updated "${name}" private key`,
+              `Unable to update "${name}" private key, please try again later`,
+            ]
+          : [
+              axios.post(
+                getApiUrl('/api/utils/certificates/private_keys'),
+                { keyName: name, alg: keyAlgorithm, passphrase: newPassphraseToSend },
+                getApiRequestConfig(),
+              ),
+              `Successfully saved "${name}" private key`,
+              `Unable to save "${name}" private key, please try again later`,
+            ];
+        requestPromise.then(
+          () => {
+            setUpdatingStatus({ status: 'succeeded', data: undefined });
+
+            addToast({
+              id: `success-save-private-key-${name}`,
+              iconType: 'check',
+              color: 'success',
+              title: successMessage,
+            });
+
+            onClose(true);
+          },
+          (err: Error) => {
+            const remoteErrorMessage = getErrorMessage(err);
+            setUpdatingStatus({ status: 'failed', error: remoteErrorMessage });
+
+            addToast({
+              id: `failed-save-private-key-${name}`,
+              iconType: 'warning',
+              color: 'danger',
+              title: isClientError(err) ? remoteErrorMessage : errorMessage,
+            });
+          },
+        );
+      }}
       canSave={canSave()}
       saveInProgress={updatingStatus?.status === 'pending'}
     >

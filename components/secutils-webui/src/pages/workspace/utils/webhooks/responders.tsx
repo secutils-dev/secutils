@@ -17,7 +17,7 @@ import {
   useEuiTheme,
 } from '@elastic/eui';
 import axios from 'axios';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import type { Responder } from './responder';
@@ -40,7 +40,32 @@ export default function Responders() {
   const [responderToRemove, setResponderToRemove] = useState<Responder | null>(null);
   const [responderToEdit, setResponderToEdit] = useState<Responder | null | undefined>(null);
 
-  const loadResponders = () => {
+  const createButton = useMemo(
+    () => (
+      <EuiButton
+        iconType={'plusInCircle'}
+        title="Create new responder"
+        fill
+        onClick={() => setResponderToEdit(undefined)}
+      >
+        Create responder
+      </EuiButton>
+    ),
+    [],
+  );
+
+  const docsButton = (
+    <EuiButtonEmpty
+      iconType={'documentation'}
+      title="Learn how to create and use responders"
+      target={'_blank'}
+      href={'/docs/guides/webhooks'}
+    >
+      Learn how to
+    </EuiButtonEmpty>
+  );
+
+  const loadResponders = useCallback(() => {
     Promise.all([
       axios.get<Responder[]>(getApiUrl('/api/utils/webhooks/responders'), getApiRequestConfig()),
       axios.get<ResponderStats[]>(getApiUrl('/api/utils/webhooks/responders/stats'), getApiRequestConfig()),
@@ -59,7 +84,7 @@ export default function Responders() {
         setResponders({ status: 'failed', error: getErrorMessage(err) });
       },
     );
-  };
+  }, [createButton, setTitleActions]);
 
   useEffect(() => {
     if (!uiState.synced) {
@@ -67,7 +92,7 @@ export default function Responders() {
     }
 
     loadResponders();
-  }, [uiState]);
+  }, [uiState, loadResponders]);
 
   const getResponderUrl = useCallback(
     (responder: Responder) => {
@@ -82,28 +107,6 @@ export default function Responders() {
         : `${location.protocol}//${subdomain}.webhooks.${location.host}${responder.location.path}`;
     },
     [uiState],
-  );
-
-  const createButton = (
-    <EuiButton
-      iconType={'plusInCircle'}
-      title="Create new responder"
-      fill
-      onClick={() => setResponderToEdit(undefined)}
-    >
-      Create responder
-    </EuiButton>
-  );
-
-  const docsButton = (
-    <EuiButtonEmpty
-      iconType={'documentation'}
-      title="Learn how to create and use responders"
-      target={'_blank'}
-      href={'/docs/guides/webhooks'}
-    >
-      Learn how to
-    </EuiButtonEmpty>
   );
 
   const [itemIdToExpandedRowMap, setItemIdToExpandedRowMap] = useState<Record<string, ReactNode>>({});

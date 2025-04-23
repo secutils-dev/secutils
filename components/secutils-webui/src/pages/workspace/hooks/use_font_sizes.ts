@@ -4,7 +4,7 @@ export function useFontSizes() {
   const isWithinMaxBreakpoint = useIsWithinMaxBreakpoint('l');
 
   return {
-    text: isWithinMaxBreakpoint ? useEuiFontSize('m') : useEuiFontSize('l'),
+    text: useEuiFontSize(isWithinMaxBreakpoint ? 'm' : 'l'),
     codeSample: isWithinMaxBreakpoint ? ('m' as const) : ('l' as const),
   };
 }

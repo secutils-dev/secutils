@@ -267,6 +267,8 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
     responder,
     updatingStatus,
     supportsCustomSubdomainPrefixes,
+    addToast,
+    onClose,
   ]);
 
   const maxResponderRequests = uiState.subscription?.features?.webhooks.responderRequests ?? 0;

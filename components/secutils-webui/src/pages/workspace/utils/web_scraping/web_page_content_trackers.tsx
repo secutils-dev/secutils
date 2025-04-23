@@ -15,7 +15,7 @@ import {
   EuiToolTip,
 } from '@elastic/eui';
 import axios from 'axios';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { WebPageContentTrackerEditFlyout } from './web_page_content_tracker_edit_flyout';
@@ -37,35 +37,18 @@ export default function WebPageContentTrackers() {
   const [trackerToRemove, setTrackerToRemove] = useState<WebPageTracker | null>(null);
   const [trackerToEdit, setTrackerToEdit] = useState<WebPageTracker | null | undefined>(null);
 
-  const loadTrackers = () => {
-    axios.get<WebPageTracker[]>(getApiUrl('/api/utils/web_scraping/content'), getApiRequestConfig()).then(
-      (response) => {
-        setTrackers({ status: 'succeeded', data: response.data });
-        setTitleActions(response.data.length === 0 ? null : createButton);
-      },
-      (err: Error) => {
-        setTrackers({ status: 'failed', error: getErrorMessage(err) });
-      },
-    );
-  };
-
-  useEffect(() => {
-    if (!uiState.synced) {
-      return;
-    }
-
-    loadTrackers();
-  }, [uiState]);
-
-  const createButton = (
-    <EuiButton
-      iconType={'plusInCircle'}
-      fill
-      title="Track content for a web page"
-      onClick={() => setTrackerToEdit(undefined)}
-    >
-      Track content
-    </EuiButton>
+  const createButton = useMemo(
+    () => (
+      <EuiButton
+        iconType={'plusInCircle'}
+        fill
+        title="Track content for a web page"
+        onClick={() => setTrackerToEdit(undefined)}
+      >
+        Track content
+      </EuiButton>
+    ),
+    [],
   );
 
   const docsButton = (
@@ -78,6 +61,26 @@ export default function WebPageContentTrackers() {
       Learn how to
     </EuiButtonEmpty>
   );
+
+  const loadTrackers = useCallback(() => {
+    axios.get<WebPageTracker[]>(getApiUrl('/api/utils/web_scraping/content'), getApiRequestConfig()).then(
+      (response) => {
+        setTrackers({ status: 'succeeded', data: response.data });
+        setTitleActions(response.data.length === 0 ? null : createButton);
+      },
+      (err: Error) => {
+        setTrackers({ status: 'failed', error: getErrorMessage(err) });
+      },
+    );
+  }, [createButton, setTitleActions]);
+
+  useEffect(() => {
+    if (!uiState.synced) {
+      return;
+    }
+
+    loadTrackers();
+  }, [uiState, loadTrackers]);
 
   const editFlyout =
     trackerToEdit !== null ? (

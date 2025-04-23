@@ -1,6 +1,6 @@
 import axios from 'axios';
 import moment from 'moment';
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 
 import type { CertificateTemplate } from './certificate_template';
 import { CertificateTemplateForm } from './certificate_template_form';
@@ -39,67 +39,65 @@ export function SaveCertificateTemplateFlyout({ onClose, template }: SaveCertifi
   );
 
   const [updatingStatus, setUpdatingStatus] = useState<AsyncData<void>>();
-  const onSave = useCallback(() => {
-    if (updatingStatus?.status === 'pending') {
-      return;
-    }
-
-    setUpdatingStatus({ status: 'pending' });
-
-    const [requestPromise, successMessage, errorMessage] = templateToSave.id
-      ? [
-          axios.put(
-            getApiUrl(`/api/utils/certificates/templates/${templateToSave.id}`),
-            {
-              templateName: templateToSave.name !== template?.name ? templateToSave.name : null,
-              attributes: templateToSave.attributes,
-            },
-            getApiRequestConfig(),
-          ),
-          `Successfully updated "${templateToSave.name}" certificate template`,
-          `Unable to update "${templateToSave.name}" certificate template, please try again later`,
-        ]
-      : [
-          axios.post(
-            getApiUrl('/api/utils/certificates/templates'),
-            { templateName: templateToSave.name, attributes: templateToSave.attributes },
-            getApiRequestConfig(),
-          ),
-          `Successfully saved "${templateToSave.name}" certificate template`,
-          `Unable to save "${templateToSave.name}" certificate template, please try again later`,
-        ];
-    requestPromise.then(
-      () => {
-        setUpdatingStatus({ status: 'succeeded', data: undefined });
-
-        addToast({
-          id: `success-save-certificate-template-${templateToSave.name}`,
-          iconType: 'check',
-          color: 'success',
-          title: successMessage,
-        });
-
-        onClose(true);
-      },
-      (err: Error) => {
-        const remoteErrorMessage = getErrorMessage(err);
-        setUpdatingStatus({ status: 'failed', error: remoteErrorMessage });
-
-        addToast({
-          id: `failed-save-certificate-template-${templateToSave.name}`,
-          iconType: 'warning',
-          color: 'danger',
-          title: isClientError(err) ? remoteErrorMessage : errorMessage,
-        });
-      },
-    );
-  }, [templateToSave, updatingStatus]);
-
   return (
     <EditorFlyout
       title={`${template ? 'Edit' : 'Add'} certificate template`}
       onClose={() => onClose()}
-      onSave={onSave}
+      onSave={() => {
+        if (updatingStatus?.status === 'pending') {
+          return;
+        }
+
+        setUpdatingStatus({ status: 'pending' });
+
+        const [requestPromise, successMessage, errorMessage] = templateToSave.id
+          ? [
+              axios.put(
+                getApiUrl(`/api/utils/certificates/templates/${templateToSave.id}`),
+                {
+                  templateName: templateToSave.name !== template?.name ? templateToSave.name : null,
+                  attributes: templateToSave.attributes,
+                },
+                getApiRequestConfig(),
+              ),
+              `Successfully updated "${templateToSave.name}" certificate template`,
+              `Unable to update "${templateToSave.name}" certificate template, please try again later`,
+            ]
+          : [
+              axios.post(
+                getApiUrl('/api/utils/certificates/templates'),
+                { templateName: templateToSave.name, attributes: templateToSave.attributes },
+                getApiRequestConfig(),
+              ),
+              `Successfully saved "${templateToSave.name}" certificate template`,
+              `Unable to save "${templateToSave.name}" certificate template, please try again later`,
+            ];
+        requestPromise.then(
+          () => {
+            setUpdatingStatus({ status: 'succeeded', data: undefined });
+
+            addToast({
+              id: `success-save-certificate-template-${templateToSave.name}`,
+              iconType: 'check',
+              color: 'success',
+              title: successMessage,
+            });
+
+            onClose(true);
+          },
+          (err: Error) => {
+            const remoteErrorMessage = getErrorMessage(err);
+            setUpdatingStatus({ status: 'failed', error: remoteErrorMessage });
+
+            addToast({
+              id: `failed-save-certificate-template-${templateToSave.name}`,
+              iconType: 'warning',
+              color: 'danger',
+              title: isClientError(err) ? remoteErrorMessage : errorMessage,
+            });
+          },
+        );
+      }}
       canSave={templateToSave.name.length > 0}
       saveInProgress={updatingStatus?.status === 'pending'}
     >

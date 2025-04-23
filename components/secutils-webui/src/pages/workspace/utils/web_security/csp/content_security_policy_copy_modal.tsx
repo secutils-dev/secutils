@@ -14,7 +14,6 @@ import {
   EuiTitle,
 } from '@elastic/eui';
 import axios from 'axios';
-import type { ChangeEvent } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 
 import type { ContentSecurityPolicy } from './content_security_policy';
@@ -31,11 +30,6 @@ export function ContentSecurityPolicyCopyModal({ policy, onClose }: ContentSecur
   const { uiState } = useWorkspaceContext();
 
   const [source, setSource] = useState<string>('enforcingHeader');
-  const onSourceChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
-    setSource(e.target.value);
-    onSerializePolicy(e.target.value);
-  }, []);
-
   const [snippet, setSnippet] = useState<string>('');
 
   const [serializingStatus, setSerializingStatus] = useState<AsyncData<undefined> | null>(null);
@@ -89,7 +83,7 @@ ${sourceToUse === 'enforcingHeader' ? 'Content-Security-Policy' : 'Content-Secur
     }
 
     onSerializePolicy();
-  }, [uiState]);
+  }, [uiState, onSerializePolicy]);
 
   const copyStatusCallout =
     serializingStatus?.status === 'failed' ? (
@@ -135,7 +129,10 @@ ${sourceToUse === 'enforcingHeader' ? 'Content-Security-Policy' : 'Content-Secur
                 { value: 'meta', text: 'HTML meta tag' },
               ]}
               value={source}
-              onChange={onSourceChange}
+              onChange={(e) => {
+                setSource(e.target.value);
+                onSerializePolicy(e.target.value);
+              }}
             />
           </EuiFormRow>
           <EuiFormRow label="Snippet" fullWidth>

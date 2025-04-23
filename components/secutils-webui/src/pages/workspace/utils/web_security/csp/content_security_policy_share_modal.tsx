@@ -1,4 +1,3 @@
-import type { EuiSwitchEvent } from '@elastic/eui';
 import {
   EuiButtonEmpty,
   EuiCallOut,
@@ -35,11 +34,6 @@ export function ContentSecurityPolicyShareModal({ policy, onClose }: ContentSecu
   const { uiState } = useWorkspaceContext();
 
   const [isPolicyShared, setIsPolicyShared] = useState<boolean>(false);
-  const onIsPolicySharedChange = useCallback((e: EuiSwitchEvent) => {
-    setIsPolicyShared(e.target.checked);
-    onShareToggle(e.target.checked);
-  }, []);
-
   const [userShare, setUserShare] = useState<AsyncData<UserShare | null>>({ status: 'pending' });
 
   const onShareToggle = useCallback(
@@ -117,7 +111,14 @@ export function ContentSecurityPolicyShareModal({ policy, onClose }: ContentSecu
             helpText={'Anyone on the internet with the link can view the policy'}
             isDisabled={userShare.status === 'pending'}
           >
-            <EuiSwitch label="Share policy" checked={isPolicyShared} onChange={onIsPolicySharedChange} />
+            <EuiSwitch
+              label="Share policy"
+              checked={isPolicyShared}
+              onChange={(e) => {
+                setIsPolicyShared(e.target.checked);
+                onShareToggle(e.target.checked);
+              }}
+            />
           </EuiFormRow>
         </EuiForm>
       </EuiModalBody>

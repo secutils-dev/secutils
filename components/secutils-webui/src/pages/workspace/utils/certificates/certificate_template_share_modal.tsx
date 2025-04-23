@@ -1,4 +1,3 @@
-import type { EuiSwitchEvent } from '@elastic/eui';
 import {
   EuiButtonEmpty,
   EuiCallOut,
@@ -35,11 +34,6 @@ export function CertificateTemplateShareModal({ template, onClose }: Certificate
   const { uiState } = useWorkspaceContext();
 
   const [isTemplateShared, setIsTemplateShared] = useState<boolean>(false);
-  const onIsTemplateSharedChange = useCallback((e: EuiSwitchEvent) => {
-    setIsTemplateShared(e.target.checked);
-    onShareToggle(e.target.checked);
-  }, []);
-
   const [userShare, setUserShare] = useState<AsyncData<UserShare | null>>({ status: 'pending' });
 
   const onShareToggle = useCallback(
@@ -118,7 +112,14 @@ export function CertificateTemplateShareModal({ template, onClose }: Certificate
             helpText={'Anyone on the internet with the link can view the template'}
             isDisabled={userShare.status === 'pending'}
           >
-            <EuiSwitch label="Share template" checked={isTemplateShared} onChange={onIsTemplateSharedChange} />
+            <EuiSwitch
+              label="Share template"
+              checked={isTemplateShared}
+              onChange={(e) => {
+                setIsTemplateShared(e.target.checked);
+                onShareToggle(e.target.checked);
+              }}
+            />
           </EuiFormRow>
         </EuiForm>
       </EuiModalBody>

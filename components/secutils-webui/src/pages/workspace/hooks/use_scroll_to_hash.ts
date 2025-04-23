@@ -14,5 +14,5 @@ export function useScrollToHash(delay = 250) {
         window.scrollTo({ top: elementToScroll.offsetTop - FIXED_HEADER_HEIGHT, behavior: 'smooth' });
       }, delay);
     }
-  }, []);
+  }, [delay, location.hash]);
 }

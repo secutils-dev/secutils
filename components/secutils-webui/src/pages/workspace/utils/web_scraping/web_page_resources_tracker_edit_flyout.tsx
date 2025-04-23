@@ -150,7 +150,19 @@ export function WebPageResourcesTrackerEditFlyout({ onClose, tracker }: Props) {
         });
       },
     );
-  }, [name, url, delay, revisions, resourceFilterMapScript, headers, jobConfig, tracker, updatingStatus]);
+  }, [
+    name,
+    url,
+    delay,
+    revisions,
+    resourceFilterMapScript,
+    headers,
+    jobConfig,
+    tracker,
+    updatingStatus,
+    addToast,
+    onClose,
+  ]);
 
   const notifications = jobConfig ? (
     <EuiFormRow

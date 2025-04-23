@@ -42,12 +42,6 @@ export function SettingsFlyout({ onClose }: Props) {
   const { settings, setSettings, uiState, refreshUiState, addToast } = useAppContext();
 
   const uiTheme = settings?.[USER_SETTINGS_KEY_COMMON_UI_THEME] as EuiThemeColorMode | undefined;
-  const onThemeChange = useCallback(
-    (e: ChangeEvent<HTMLSelectElement>) => {
-      setSettings({ [USER_SETTINGS_KEY_COMMON_UI_THEME]: e.target.value });
-    },
-    [settings],
-  );
 
   const [isPasskeySupported] = useState<boolean>(isWebAuthnSupported());
 
@@ -66,161 +60,7 @@ export function SettingsFlyout({ onClose }: Props) {
   >({ visible: false });
 
   const [setPasswordStatus, setSetPasswordStatus] = useState<AsyncData<null> | null>(null);
-  const onSetPassword = useCallback(() => {
-    if (setPasswordStatus?.status === 'pending' || password !== repeatPassword) {
-      return;
-    }
-
-    setSetPasswordStatus({ status: 'pending' });
-
-    getOryApi()
-      .then(async (api) => {
-        const updateState = () => {
-          setSetPasswordStatus({ status: 'succeeded', data: null });
-          setPassword('');
-          setRepeatPassword('');
-
-          addToast({ id: 'set-password', color: 'success', title: 'Password has been set' });
-
-          refreshUiState();
-        };
-
-        const { data: flow } = await api.createBrowserSettingsFlow();
-        try {
-          await api.updateSettingsFlow({
-            flow: flow.id,
-            updateSettingsFlowBody: { method: 'password' as const, password, csrf_token: getCsrfToken(flow) },
-          });
-        } catch (err) {
-          if ((err as AxiosError).response?.status !== 403) {
-            throw err;
-          }
-
-          setSetPasswordStatus({ status: 'failed', error: 'Access confirmation required' });
-          setIsReauthenticateModalVisible({
-            visible: true,
-            action: async () => {
-              const { data: updatedFlow } = await api.getSettingsFlow({ id: flow.id });
-              await api.updateSettingsFlow({
-                flow: flow.id,
-                updateSettingsFlowBody: {
-                  method: 'password' as const,
-                  password,
-                  csrf_token: getCsrfToken(updatedFlow),
-                },
-              });
-
-              updateState();
-            },
-          });
-          return;
-        }
-
-        updateState();
-      })
-      .catch((err: Error) => {
-        const originalErrorMessage = getSecurityErrorMessage(err);
-        setSetPasswordStatus({ status: 'failed', error: originalErrorMessage ?? 'Unknown error' });
-
-        addToast({
-          id: 'set-password-error',
-          color: 'danger',
-          title: 'Failed to set password',
-          text: (
-            <>
-              {isClientError(err) && originalErrorMessage
-                ? originalErrorMessage
-                : 'Unable to set password, please try again later.'}
-            </>
-          ),
-        });
-      });
-  }, [password, repeatPassword, refreshUiState]);
-
   const [setPasskeyStatus, setSetPasskeyStatus] = useState<AsyncData<null> | null>(null);
-  const onSetPasskey = useCallback(() => {
-    if (setPasskeyStatus?.status === 'pending') {
-      return;
-    }
-
-    setSetPasskeyStatus({ status: 'pending' });
-
-    getOryApi()
-      .then(async (api) => {
-        const updateState = () => {
-          setSetPasskeyStatus({ status: 'succeeded', data: null });
-          addToast({ id: 'set-passkey', color: 'success', title: 'Passkey has been set' });
-          refreshUiState();
-        };
-
-        const { data: flow } = await api.createBrowserSettingsFlow();
-        const publicKeyNode = flow?.ui?.nodes?.find(
-          (node) => node.attributes.node_type === 'input' && node.attributes.name === 'webauthn_register_trigger',
-        );
-        if (!publicKeyNode) {
-          throw new Error('Cannot set passkey.');
-        }
-
-        const { publicKey } = JSON.parse((publicKeyNode.attributes as UiNodeInputAttributes).value as string) as {
-          publicKey: SerializedPublicKeyCredentialCreationOptions;
-        };
-
-        try {
-          await api.updateSettingsFlow({
-            flow: flow.id,
-            updateSettingsFlowBody: {
-              method: 'webauthn' as const,
-              csrf_token: getCsrfToken(flow),
-              webauthn_register: await signupWithPasskey(publicKey),
-              webauthn_register_displayname: uiState.user!.email,
-            },
-          });
-        } catch (err) {
-          if ((err as AxiosError).response?.status !== 403) {
-            throw err;
-          }
-
-          setSetPasskeyStatus({ status: 'failed', error: 'Access confirmation required' });
-          setIsReauthenticateModalVisible({
-            visible: true,
-            action: async () => {
-              const { data: updatedFlow } = await api.getSettingsFlow({ id: flow.id });
-              await api.updateSettingsFlow({
-                flow: flow.id,
-                updateSettingsFlowBody: {
-                  method: 'webauthn' as const,
-                  csrf_token: getCsrfToken(updatedFlow),
-                  webauthn_register: await signupWithPasskey(publicKey),
-                  webauthn_register_displayname: uiState.user!.email,
-                },
-              });
-
-              updateState();
-            },
-          });
-          return;
-        }
-
-        updateState();
-      })
-      .catch((err: Error) => {
-        const originalErrorMessage = getSecurityErrorMessage(err);
-        setSetPasskeyStatus({ status: 'failed', error: originalErrorMessage ?? 'Unknown error' });
-
-        addToast({
-          id: 'set-passkey-error',
-          color: 'danger',
-          title: 'Failed to set passkey',
-          text: (
-            <>
-              {isClientError(err) && originalErrorMessage
-                ? originalErrorMessage
-                : 'Unable to set passkey, please try again later.'}
-            </>
-          ),
-        });
-      });
-  }, [uiState, refreshUiState]);
 
   const changeInProgress = setPasswordStatus?.status === 'pending' || setPasskeyStatus?.status === 'pending';
   const passkeySection = isPasskeySupported ? (
@@ -229,7 +69,92 @@ export function SettingsFlyout({ onClose }: Props) {
         <EuiButton
           fullWidth
           disabled={changeInProgress}
-          onClick={onSetPasskey}
+          onClick={() => {
+            if (setPasskeyStatus?.status === 'pending') {
+              return;
+            }
+
+            setSetPasskeyStatus({ status: 'pending' });
+
+            getOryApi()
+              .then(async (api) => {
+                const updateState = () => {
+                  setSetPasskeyStatus({ status: 'succeeded', data: null });
+                  addToast({ id: 'set-passkey', color: 'success', title: 'Passkey has been set' });
+                  refreshUiState();
+                };
+
+                const { data: flow } = await api.createBrowserSettingsFlow();
+                const publicKeyNode = flow?.ui?.nodes?.find(
+                  (node) =>
+                    node.attributes.node_type === 'input' && node.attributes.name === 'webauthn_register_trigger',
+                );
+                if (!publicKeyNode) {
+                  throw new Error('Cannot set passkey.');
+                }
+
+                const { publicKey } = JSON.parse(
+                  (publicKeyNode.attributes as UiNodeInputAttributes).value as string,
+                ) as {
+                  publicKey: SerializedPublicKeyCredentialCreationOptions;
+                };
+
+                try {
+                  await api.updateSettingsFlow({
+                    flow: flow.id,
+                    updateSettingsFlowBody: {
+                      method: 'webauthn' as const,
+                      csrf_token: getCsrfToken(flow),
+                      webauthn_register: await signupWithPasskey(publicKey),
+                      webauthn_register_displayname: uiState.user!.email,
+                    },
+                  });
+                } catch (err) {
+                  if ((err as AxiosError).response?.status !== 403) {
+                    throw err;
+                  }
+
+                  setSetPasskeyStatus({ status: 'failed', error: 'Access confirmation required' });
+                  setIsReauthenticateModalVisible({
+                    visible: true,
+                    action: async () => {
+                      const { data: updatedFlow } = await api.getSettingsFlow({ id: flow.id });
+                      await api.updateSettingsFlow({
+                        flow: flow.id,
+                        updateSettingsFlowBody: {
+                          method: 'webauthn' as const,
+                          csrf_token: getCsrfToken(updatedFlow),
+                          webauthn_register: await signupWithPasskey(publicKey),
+                          webauthn_register_displayname: uiState.user!.email,
+                        },
+                      });
+
+                      updateState();
+                    },
+                  });
+                  return;
+                }
+
+                updateState();
+              })
+              .catch((err: Error) => {
+                const originalErrorMessage = getSecurityErrorMessage(err);
+                setSetPasskeyStatus({ status: 'failed', error: originalErrorMessage ?? 'Unknown error' });
+
+                addToast({
+                  id: 'set-passkey-error',
+                  color: 'danger',
+                  title: 'Failed to set passkey',
+                  text: (
+                    <>
+                      {isClientError(err) && originalErrorMessage
+                        ? originalErrorMessage
+                        : 'Unable to set passkey, please try again later.'}
+                    </>
+                  ),
+                });
+              });
+          }}
           isLoading={setPasskeyStatus?.status === 'pending'}
         >
           Set passkey
@@ -250,7 +175,9 @@ export function SettingsFlyout({ onClose }: Props) {
               { value: 'dark', text: 'Dark' },
             ]}
             value={uiTheme ?? 'light'}
-            onChange={onThemeChange}
+            onChange={(e: ChangeEvent<HTMLSelectElement>) => {
+              setSettings({ [USER_SETTINGS_KEY_COMMON_UI_THEME]: e.target.value });
+            }}
           />
         </EuiFormRow>
       </EuiDescribedFormGroup>
@@ -285,7 +212,79 @@ export function SettingsFlyout({ onClose }: Props) {
               <EuiButton
                 disabled={password !== repeatPassword || password.length < 8 || changeInProgress}
                 isLoading={setPasswordStatus?.status === 'pending'}
-                onClick={onSetPassword}
+                onClick={() => {
+                  if (setPasswordStatus?.status === 'pending' || password !== repeatPassword) {
+                    return;
+                  }
+
+                  setSetPasswordStatus({ status: 'pending' });
+                  getOryApi()
+                    .then(async (api) => {
+                      const updateState = () => {
+                        setSetPasswordStatus({ status: 'succeeded', data: null });
+                        setPassword('');
+                        setRepeatPassword('');
+
+                        addToast({ id: 'set-password', color: 'success', title: 'Password has been set' });
+
+                        refreshUiState();
+                      };
+
+                      const { data: flow } = await api.createBrowserSettingsFlow();
+                      try {
+                        await api.updateSettingsFlow({
+                          flow: flow.id,
+                          updateSettingsFlowBody: {
+                            method: 'password' as const,
+                            password,
+                            csrf_token: getCsrfToken(flow),
+                          },
+                        });
+                      } catch (err) {
+                        if ((err as AxiosError).response?.status !== 403) {
+                          throw err;
+                        }
+
+                        setSetPasswordStatus({ status: 'failed', error: 'Access confirmation required' });
+                        setIsReauthenticateModalVisible({
+                          visible: true,
+                          action: async () => {
+                            const { data: updatedFlow } = await api.getSettingsFlow({ id: flow.id });
+                            await api.updateSettingsFlow({
+                              flow: flow.id,
+                              updateSettingsFlowBody: {
+                                method: 'password' as const,
+                                password,
+                                csrf_token: getCsrfToken(updatedFlow),
+                              },
+                            });
+
+                            updateState();
+                          },
+                        });
+                        return;
+                      }
+
+                      updateState();
+                    })
+                    .catch((err: Error) => {
+                      const originalErrorMessage = getSecurityErrorMessage(err);
+                      setSetPasswordStatus({ status: 'failed', error: originalErrorMessage ?? 'Unknown error' });
+
+                      addToast({
+                        id: 'set-password-error',
+                        color: 'danger',
+                        title: 'Failed to set password',
+                        text: (
+                          <>
+                            {isClientError(err) && originalErrorMessage
+                              ? originalErrorMessage
+                              : 'Unable to set password, please try again later.'}
+                          </>
+                        ),
+                      });
+                    });
+                }}
               >
                 Set password
               </EuiButton>

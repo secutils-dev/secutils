@@ -61,7 +61,7 @@ export default function WebSecuritySharedContentSecurityPolicy() {
           setPolicy({ status: 'failed', error: getErrorMessage(err) });
         },
       );
-  }, [uiState]);
+  }, [uiState, setTitle, setTitleActions]);
 
   if (policy.status === 'pending') {
     return <PageLoadingState />;

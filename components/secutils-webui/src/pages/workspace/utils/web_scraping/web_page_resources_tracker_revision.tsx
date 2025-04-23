@@ -145,7 +145,7 @@ export function WebPageResourcesTrackerRevision({ revision }: WebPageResourcesTr
 
       return null;
     },
-    [transformedRevision],
+    [transformedRevision, revision],
   );
 
   return (

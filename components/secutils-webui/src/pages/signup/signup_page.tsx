@@ -101,84 +101,11 @@ export function SignupPage() {
   }
 
   const [signupStatus, setSignupStatus] = useState<AsyncData<null, { isPasskey: boolean }> | null>(null);
-  const onSignupWithPassword: MouseEventHandler<HTMLButtonElement> = useCallback(
-    (e) => {
-      e.preventDefault();
-
-      if (signupStatus?.status === 'pending') {
-        return;
-      }
-
-      setSignupStatus({ status: 'pending', state: { isPasskey: false } });
-      startSignupFlow(async (api, flow) => {
-        await api.updateRegistrationFlow({
-          flow: flow.id,
-          updateRegistrationFlowBody: {
-            method: 'password' as const,
-            password,
-            csrf_token: getCsrfToken(flow),
-            traits: { email },
-          },
-        });
-      });
-    },
-    [email, password, signupStatus],
-  );
-
   const onContinueWithPassword: MouseEventHandler<HTMLButtonElement> = useCallback((e) => {
     e.preventDefault();
 
     setFormState(FormState.WithPassword);
   }, []);
-
-  const onSignupWithPasskey: MouseEventHandler<HTMLButtonElement> = useCallback(
-    (e) => {
-      e.preventDefault();
-
-      if (signupStatus?.status === 'pending') {
-        return;
-      }
-
-      setSignupStatus({ status: 'pending', state: { isPasskey: true } });
-      startSignupFlow(async (api, flow) => {
-        const axiosResponse = await api.updateRegistrationFlow(
-          {
-            flow: flow.id,
-            updateRegistrationFlowBody: {
-              method: 'profile' as const,
-              csrf_token: getCsrfToken(flow),
-              traits: { email },
-            },
-          },
-          { validateStatus: (status) => status < 500 },
-        );
-
-        const updatedFlow = axiosResponse.data as unknown as RegistrationFlow;
-        const publicKeyNode = updatedFlow?.ui?.nodes?.find(
-          (node) => node.attributes.node_type === 'input' && node.attributes.name === 'webauthn_register_trigger',
-        );
-        if (!publicKeyNode) {
-          throw axiosResponse;
-        }
-
-        const { publicKey } = JSON.parse((publicKeyNode.attributes as UiNodeInputAttributes).value as string) as {
-          publicKey: SerializedPublicKeyCredentialCreationOptions;
-        };
-
-        await api.updateRegistrationFlow({
-          flow: updatedFlow.id,
-          updateRegistrationFlowBody: {
-            method: 'webauthn' as const,
-            csrf_token: getCsrfToken(updatedFlow),
-            webauthn_register: await signupWithPasskey(publicKey),
-            webauthn_register_displayname: email,
-            traits: { email },
-          },
-        });
-      });
-    },
-    [email, signupStatus],
-  );
 
   if (uiState.user) {
     return <Navigate to="/ws" />;
@@ -201,7 +128,26 @@ export function SignupPage() {
         form="signup-form"
         fill
         fullWidth
-        onClick={onSignupWithPassword}
+        onClick={(e) => {
+          e.preventDefault();
+
+          if (signupStatus?.status === 'pending') {
+            return;
+          }
+
+          setSignupStatus({ status: 'pending', state: { isPasskey: false } });
+          startSignupFlow(async (api, flow) => {
+            await api.updateRegistrationFlow({
+              flow: flow.id,
+              updateRegistrationFlowBody: {
+                method: 'password' as const,
+                password,
+                csrf_token: getCsrfToken(flow),
+                traits: { email },
+              },
+            });
+          });
+        }}
         isLoading={signupStatus?.status === 'pending' && signupStatus?.state?.isPasskey !== true}
         isDisabled={
           email.trim().length === 0 ||
@@ -271,7 +217,54 @@ export function SignupPage() {
                   form="signup-form"
                   fill
                   fullWidth
-                  onClick={onSignupWithPasskey}
+                  onClick={(e) => {
+                    e.preventDefault();
+
+                    if (signupStatus?.status === 'pending') {
+                      return;
+                    }
+
+                    setSignupStatus({ status: 'pending', state: { isPasskey: true } });
+                    startSignupFlow(async (api, flow) => {
+                      const axiosResponse = await api.updateRegistrationFlow(
+                        {
+                          flow: flow.id,
+                          updateRegistrationFlowBody: {
+                            method: 'profile' as const,
+                            csrf_token: getCsrfToken(flow),
+                            traits: { email },
+                          },
+                        },
+                        { validateStatus: (status) => status < 500 },
+                      );
+
+                      const updatedFlow = axiosResponse.data as unknown as RegistrationFlow;
+                      const publicKeyNode = updatedFlow?.ui?.nodes?.find(
+                        (node) =>
+                          node.attributes.node_type === 'input' && node.attributes.name === 'webauthn_register_trigger',
+                      );
+                      if (!publicKeyNode) {
+                        throw axiosResponse;
+                      }
+
+                      const { publicKey } = JSON.parse(
+                        (publicKeyNode.attributes as UiNodeInputAttributes).value as string,
+                      ) as {
+                        publicKey: SerializedPublicKeyCredentialCreationOptions;
+                      };
+
+                      await api.updateRegistrationFlow({
+                        flow: updatedFlow.id,
+                        updateRegistrationFlowBody: {
+                          method: 'webauthn' as const,
+                          csrf_token: getCsrfToken(updatedFlow),
+                          webauthn_register: await signupWithPasskey(publicKey),
+                          webauthn_register_displayname: email,
+                          traits: { email },
+                        },
+                      });
+                    });
+                  }}
                   isLoading={signupStatus?.status === 'pending' && signupStatus?.state?.isPasskey === true}
                   isDisabled={email.trim().length === 0 || signupStatus?.status === 'pending'}
                 >

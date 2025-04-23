@@ -31,6 +31,7 @@ export function SiteSearchBar() {
 
   const [searchItems, setSearchItems] = useState<AsyncData<EuiSelectableTemplateSitewideOption[]> | null>(null);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const onKeyUpCapture = useCallback(
     debounce((searchQuery: string) => {
       if (!searchQuery) {

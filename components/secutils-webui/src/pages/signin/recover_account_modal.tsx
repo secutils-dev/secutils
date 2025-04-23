@@ -147,7 +147,7 @@ export function RecoverAccountModal({ email, onClose }: RecoverAccountModalProps
     if (uiState.user) {
       navigate('/ws');
     }
-  }, [uiState]);
+  }, [uiState, navigate]);
 
   const awaitingRecoveryCode = !!accountRecoveryStatus?.state;
   return (

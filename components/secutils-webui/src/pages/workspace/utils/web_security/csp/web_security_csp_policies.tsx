@@ -12,7 +12,7 @@ import {
   EuiToolTip,
 } from '@elastic/eui';
 import axios from 'axios';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { ContentSecurityPolicy, SerializedContentSecurityPolicyDirectives } from './content_security_policy';
 import { deserializeContentSecurityPolicyDirectives, getContentSecurityPolicyString } from './content_security_policy';
@@ -35,7 +35,45 @@ export default function WebSecurityContentSecurityPolicies() {
 
   const [policies, setPolicies] = useState<AsyncData<ContentSecurityPolicy[]>>({ status: 'pending' });
 
-  const loadPolicies = () => {
+  const createButton = useMemo(
+    () => (
+      <EuiFlexGroup responsive={false} gutterSize="s" alignItems="center" justifyContent={'center'}>
+        <EuiFlexItem grow={false}>
+          <EuiButton
+            iconType={'importAction'}
+            title="Import content security policy"
+            onClick={() => setIsImportModalOpen(true)}
+          >
+            Import policy
+          </EuiButton>
+        </EuiFlexItem>
+        <EuiFlexItem grow={false}>
+          <EuiButton
+            iconType={'plusInCircle'}
+            fill
+            title="Create new content security policy"
+            onClick={() => setPolicyToEdit(undefined)}
+          >
+            Create policy
+          </EuiButton>
+        </EuiFlexItem>
+      </EuiFlexGroup>
+    ),
+    [],
+  );
+
+  const docsButton = (
+    <EuiButtonEmpty
+      iconType={'documentation'}
+      title="Learn how to create and use content security policies"
+      target={'_blank'}
+      href={'/docs/guides/web_security/csp'}
+    >
+      Learn how to
+    </EuiButtonEmpty>
+  );
+
+  const loadPolicies = useCallback(() => {
     axios
       .get<
         ContentSecurityPolicy<SerializedContentSecurityPolicyDirectives>[]
@@ -55,7 +93,7 @@ export default function WebSecurityContentSecurityPolicies() {
           setPolicies({ status: 'failed', error: getErrorMessage(err) });
         },
       );
-  };
+  }, [createButton, setTitleActions]);
 
   useEffect(() => {
     if (!uiState.synced) {
@@ -63,42 +101,7 @@ export default function WebSecurityContentSecurityPolicies() {
     }
 
     loadPolicies();
-  }, [uiState]);
-
-  const createButton = (
-    <EuiFlexGroup responsive={false} gutterSize="s" alignItems="center" justifyContent={'center'}>
-      <EuiFlexItem grow={false}>
-        <EuiButton
-          iconType={'importAction'}
-          title="Import content security policy"
-          onClick={() => setIsImportModalOpen(true)}
-        >
-          Import policy
-        </EuiButton>
-      </EuiFlexItem>
-      <EuiFlexItem grow={false}>
-        <EuiButton
-          iconType={'plusInCircle'}
-          fill
-          title="Create new content security policy"
-          onClick={() => setPolicyToEdit(undefined)}
-        >
-          Create policy
-        </EuiButton>
-      </EuiFlexItem>
-    </EuiFlexGroup>
-  );
-
-  const docsButton = (
-    <EuiButtonEmpty
-      iconType={'documentation'}
-      title="Learn how to create and use content security policies"
-      target={'_blank'}
-      href={'/docs/guides/web_security/csp'}
-    >
-      Learn how to
-    </EuiButtonEmpty>
-  );
+  }, [uiState, loadPolicies]);
 
   const editFlyout =
     policyToEdit !== null ? (

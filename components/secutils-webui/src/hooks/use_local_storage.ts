@@ -22,7 +22,7 @@ export function useLocalStorage<TValue>(key: string, defaultValue: TValue) {
     } catch (err) {
       console.error(err);
     }
-  }, [storedValue]);
+  }, [storedValue, key]);
 
   return [storedValue, setStoredValue] as [TValue, Dispatch<SetStateAction<TValue>>];
 }

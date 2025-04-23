@@ -8,7 +8,7 @@ import {
   useEuiTheme,
 } from '@elastic/eui';
 import { css } from '@emotion/react';
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 
 import { useAppContext } from './use_app_context';
 import { getOryApi } from '../tools/ory';
@@ -30,23 +30,6 @@ export function usePageHeaderActions() {
     setIsAccountPopoverOpen(false);
     setIsSettingsOpen(!isSettingsOpen);
   };
-
-  const onSignout = useCallback(() => {
-    setIsAccountPopoverOpen(false);
-
-    getOryApi()
-      .then(async (api) => {
-        const flow = await api.createBrowserLogoutFlow();
-        await api.updateLogoutFlow({ token: flow.data.logout_token });
-
-        window.location.replace('/signin');
-        setTimeout(() => window.location.reload(), 500);
-      })
-      .catch((err) => {
-        console.log(`Failed to sign out: ${err}`);
-        addToast({ id: 'signout-error', title: 'Failed to sign out' });
-      });
-  }, []);
 
   const actions = uiState.user
     ? [
@@ -88,7 +71,26 @@ export function usePageHeaderActions() {
               <EuiContextMenuItem key="settings" icon="gear" onClick={onToggleSettings}>
                 Settings
               </EuiContextMenuItem>,
-              <EuiContextMenuItem key="signout" icon="exit" onClick={onSignout}>
+              <EuiContextMenuItem
+                key="signout"
+                icon="exit"
+                onClick={() => {
+                  setIsAccountPopoverOpen(false);
+
+                  getOryApi()
+                    .then(async (api) => {
+                      const flow = await api.createBrowserLogoutFlow();
+                      await api.updateLogoutFlow({ token: flow.data.logout_token });
+
+                      window.location.replace('/signin');
+                      setTimeout(() => window.location.reload(), 500);
+                    })
+                    .catch((err) => {
+                      console.log(`Failed to sign out: ${err}`);
+                      addToast({ id: 'signout-error', title: 'Failed to sign out' });
+                    });
+                }}
+              >
                 Sign out
               </EuiContextMenuItem>,
             ]}

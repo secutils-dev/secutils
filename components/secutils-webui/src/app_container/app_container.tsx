@@ -22,7 +22,10 @@ import type { PageToast } from '../pages/page';
 
 export function AppContainer() {
   const location = useLocation();
-  const [isUiStateRefreshInProgress, setIsUiStateRefreshInProgress] = useState(false);
+
+  // Settings aren't sensitive data, so we can duplicate them in the local storage to improve overall responsiveness.
+  const [localSettings, setLocalSettings] = useLocalStorage<UserSettings | undefined>('settings', undefined);
+
   const [uiState, setUiState] = useState<UiState>({
     synced: false,
     status: { level: 'available' },
@@ -31,12 +34,6 @@ export function AppContainer() {
     webhookUrlType: 'path',
   });
   const refreshUiState = useCallback(() => {
-    if (isUiStateRefreshInProgress) {
-      return;
-    }
-
-    setIsUiStateRefreshInProgress(true);
-
     axios.get(getApiUrl('/api/ui/state'), getApiRequestConfig()).then(
       ({ data }: { data: UiState }) => {
         setUiState({ ...data, synced: true });
@@ -50,16 +47,13 @@ export function AppContainer() {
         if (!data.userShare) {
           removeUserShareId();
         }
-
-        setIsUiStateRefreshInProgress(false);
       },
       () => {
-        setUiState({ ...uiState, status: { level: 'unavailable' }, synced: true });
-        setIsUiStateRefreshInProgress(false);
+        setUiState((currentUiState) => ({ ...currentUiState, status: { level: 'unavailable' }, synced: true }));
       },
     );
-  }, [isUiStateRefreshInProgress]);
-  useEffect(refreshUiState, []);
+  }, [setLocalSettings]);
+  useEffect(refreshUiState, [refreshUiState]);
 
   // Track share context and refresh UI state if it changes.
   useEffect(() => {
@@ -73,24 +67,25 @@ export function AppContainer() {
     if (shareContextHasChanged) {
       refreshUiState();
     }
-  }, [location.search, uiState]);
+  }, [location.search, uiState, refreshUiState]);
 
-  // Settings aren't sensitive data, so we can duplicate them in the local storage to improve overall responsiveness.
-  const [localSettings, setLocalSettings] = useLocalStorage<UserSettings | undefined>('settings', undefined);
   const [settings, setSettings] = useState<UserSettings | undefined>(localSettings);
-  const updateSettings = useCallback((settingsToUpdate: Record<string, unknown>) => {
-    setSettings((currentSettings) => ({ ...currentSettings, ...settingsToUpdate }));
-    setLocalSettings((currentSettings) => ({ ...currentSettings, ...settingsToUpdate }));
+  const updateSettings = useCallback(
+    (settingsToUpdate: Record<string, unknown>) => {
+      setSettings((currentSettings) => ({ ...currentSettings, ...settingsToUpdate }));
+      setLocalSettings((currentSettings) => ({ ...currentSettings, ...settingsToUpdate }));
 
-    setUserData<UserSettings>(USER_SETTINGS_USER_DATA_TYPE, settingsToUpdate)
-      .then((settings) => {
-        setSettings(settings ?? undefined);
-        setLocalSettings(settings ?? undefined);
-      })
-      .catch((err: Error) => {
-        console.error(`Failed update user settings: ${getErrorMessage(err)}`);
-      });
-  }, []);
+      setUserData<UserSettings>(USER_SETTINGS_USER_DATA_TYPE, settingsToUpdate)
+        .then((settings) => {
+          setSettings(settings ?? undefined);
+          setLocalSettings(settings ?? undefined);
+        })
+        .catch((err: Error) => {
+          console.error(`Failed update user settings: ${getErrorMessage(err)}`);
+        });
+    },
+    [setLocalSettings],
+  );
 
   const uiTheme = settings?.[USER_SETTINGS_KEY_COMMON_UI_THEME] as EuiThemeColorMode | undefined;
   const [toasts, setToasts] = useState<PageToast[]>([]);

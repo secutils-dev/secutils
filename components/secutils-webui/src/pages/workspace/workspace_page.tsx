@@ -59,31 +59,34 @@ export function WorkspacePage() {
     setIsSideNavOpenOnMobile(!isSideNavOpenOnMobile);
   }, [isSideNavOpenOnMobile]);
 
-  const getBreadcrumbs = useCallback((util: Util, utilsMap: Map<string, Util>, deepLink?: string) => {
-    const breadcrumbs: EuiBreadcrumbProps[] = [];
-    let utilToBreadcrumb: Util | undefined = util;
-    while (utilToBreadcrumb) {
-      const utilUrl = `/ws/${utilToBreadcrumb.handle}`;
-      const shouldIncludeURL =
-        (utilToBreadcrumb.handle !== util.handle || deepLink != null) && !utilToBreadcrumb.utils?.length;
-      breadcrumbs.unshift({
-        text: utilToBreadcrumb.name,
-        onClick: shouldIncludeURL
-          ? (e) => {
-              e.preventDefault();
-              navigate(utilUrl);
-            }
-          : undefined,
-        href: shouldIncludeURL ? utilUrl : undefined,
-      });
+  const getBreadcrumbs = useCallback(
+    (util: Util, utilsMap: Map<string, Util>, deepLink?: string) => {
+      const breadcrumbs: EuiBreadcrumbProps[] = [];
+      let utilToBreadcrumb: Util | undefined = util;
+      while (utilToBreadcrumb) {
+        const utilUrl = `/ws/${utilToBreadcrumb.handle}`;
+        const shouldIncludeURL =
+          (utilToBreadcrumb.handle !== util.handle || deepLink != null) && !utilToBreadcrumb.utils?.length;
+        breadcrumbs.unshift({
+          text: utilToBreadcrumb.name,
+          onClick: shouldIncludeURL
+            ? (e) => {
+                e.preventDefault();
+                navigate(utilUrl);
+              }
+            : undefined,
+          href: shouldIncludeURL ? utilUrl : undefined,
+        });
 
-      const utilSeparatorIndex = utilToBreadcrumb.handle.lastIndexOf('__');
-      utilToBreadcrumb =
-        utilSeparatorIndex > 0 ? utilsMap.get(utilToBreadcrumb.handle.slice(0, utilSeparatorIndex)) : undefined;
-    }
+        const utilSeparatorIndex = utilToBreadcrumb.handle.lastIndexOf('__');
+        utilToBreadcrumb =
+          utilSeparatorIndex > 0 ? utilsMap.get(utilToBreadcrumb.handle.slice(0, utilSeparatorIndex)) : undefined;
+      }
 
-    return deepLink ? [...breadcrumbs, { text: deepLink }] : breadcrumbs;
-  }, []);
+      return deepLink ? [...breadcrumbs, { text: deepLink }] : breadcrumbs;
+    },
+    [navigate],
+  );
 
   const [titleActions, setTitleActions] = useState<ReactNode | null>(null);
   const [title, setTitle] = useState<string | null>(null);
@@ -111,10 +114,6 @@ export function WorkspacePage() {
             ? undefined
             : (e) => {
                 e.preventDefault();
-                setTitleActions(null);
-                setSelectedUtil(util);
-                setTitle(util.name);
-                setNavigationBar({ breadcrumbs: getBreadcrumbs(util, utilsMap) });
                 navigate(utilUrl);
               },
         items: (showOnlyFavorites && util.utils
@@ -130,7 +129,7 @@ export function WorkspacePage() {
       ),
       utilsMap,
     ];
-  }, [uiState, selectedUtil, deepLinkFromParam, favorites, showOnlyFavorites]);
+  }, [uiState, selectedUtil, deepLinkFromParam, favorites, showOnlyFavorites, navigate]);
 
   useEffect(() => {
     const newSelectedUtil =
@@ -146,7 +145,7 @@ export function WorkspacePage() {
       });
       setTitleActions(null);
     }
-  }, [utilIdFromParam, selectedUtil, utilsMap, deepLinkFromParam, navigationBar]);
+  }, [utilIdFromParam, selectedUtil, utilsMap, deepLinkFromParam, navigationBar, getBreadcrumbs]);
 
   const content = useMemo(() => {
     // Check if URL is invalid.

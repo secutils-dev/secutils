@@ -65,7 +65,7 @@ export function WebPageTrackerJobSchedule({ schedule, onChange }: WebPageTracker
         setCustomScheduleCheck({ status: 'failed', error: getErrorMessage(e) });
         onChange('', []);
       });
-  }, [customSchedule]);
+  }, [customSchedule, onChange]);
 
   const typePicker = (
     <EuiSelect
