@@ -25,11 +25,11 @@
   "dependencies": {
     "@babel/runtime": "^7.27.0",
     "@elastic/datemath": "^5.0.3",
-    "@elastic/eui": "^101.3.0",
+    "@elastic/eui": "^101.4.0",
     "@emotion/css": "^11.13.5",
     "@emotion/react": "^11.14.0",
     "@monaco-editor/react": "^4.7.0",
-    "@ory/client": "^1.20.7",
+    "@ory/client": "^1.20.8",
     "axios": "^1.8.4",
     "moment": "^2.30.1",
     "nanoid": "^5.1.5",
@@ -39,7 +39,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
-    "@eslint/js": "^9.24.0",
+    "@eslint/js": "^9.25.1",
     "@parcel/compressor-brotli": "^2.14.4",
     "@parcel/compressor-gzip": "^2.14.4",
     "@parcel/config-default": "^2.14.4",
@@ -55,7 +55,7 @@
     "@types/react": "^18.3.20",
     "@types/react-dom": "^18.3.6",
     "buffer": "^6.0.3",
-    "eslint": "^9.24.0",
+    "eslint": "^9.25.1",
     "eslint-config-prettier": "^10.1.2",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-prettier": "^5.2.6",
@@ -68,7 +68,7 @@
     "process": "^0.11.10",
     "svgo": "^3.3.2",
     "typescript": "^5.8.3",
-    "typescript-eslint": "^8.30.1",
+    "typescript-eslint": "^8.31.0",
     "url": "^0.11.4"
   },
   "optionalDependencies": {
