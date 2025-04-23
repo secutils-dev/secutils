@@ -73,6 +73,7 @@
   },
   "optionalDependencies": {
     "@parcel/watcher-linux-arm64-musl": "^2.5.1",
+    "@parcel/watcher-linux-x64-glibc": "^2.5.1",
     "@lmdb/lmdb-linux-arm64": "^3.2.6",
     "@swc/core-linux-arm64-musl": "^1.11.22",
     "lightningcss-linux-arm64-musl": "^1.29.3"
