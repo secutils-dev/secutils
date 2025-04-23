@@ -76,7 +76,8 @@
     "@parcel/watcher-linux-x64-glibc": "^2.5.1",
     "@lmdb/lmdb-linux-arm64": "^3.2.6",
     "@swc/core-linux-arm64-musl": "^1.11.22",
-    "lightningcss-linux-arm64-musl": "^1.29.3"
+    "lightningcss-linux-arm64-musl": "^1.29.3",
+    "lightningcss-linux-x64-gnu": "^1.29.3"
   },
   "overrides": {
     "typescript": "^5.8.3"
