@@ -23,7 +23,7 @@ RUN set -x && \
 
 # Copy assets, member crates, and manifest.
 COPY ["./assets", "./assets"]
-COPY ["./dev/crates", "./dev/crates"]
+COPY ["./components/secutils-jwt-tools", "./components/secutils-jwt-tools"]
 COPY ["./Cargo.lock", "./Cargo.toml", "./"]
 
 # Fetch dependencies if they change.
