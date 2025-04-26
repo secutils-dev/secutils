@@ -67,7 +67,7 @@ export default function Home() {
         <EuiFlexItem>
           <EuiCard
             css={GUIDE_CARD_STYLE}
-            icon={<EuiIcon size="xxl" type={`discuss`} />}
+            icon={<EuiIcon size="xxl" type={`comment`} />}
             title="Contribute"
             paddingSize="xl"
             description="Engage with the Secutils.dev community or become a contributor"

@@ -15,12 +15,12 @@ import { icon as EuiIconCalendar } from '@elastic/eui/es/components/icon/assets/
 import { icon as EuiIconCheck } from '@elastic/eui/es/components/icon/assets/check';
 import { icon as EuiIconCheer } from '@elastic/eui/es/components/icon/assets/cheer';
 import { icon as EuiIconClock } from '@elastic/eui/es/components/icon/assets/clock';
-import { icon as EuiControlsHorizontal } from '@elastic/eui/es/components/icon/assets/controls_horizontal';
+import { icon as EuiIconComment } from '@elastic/eui/es/components/icon/assets/comment';
+import { icon as EuiIconControls } from '@elastic/eui/es/components/icon/assets/controls';
 import { icon as EuiIconCopy } from '@elastic/eui/es/components/icon/assets/copy';
 import { icon as EuiIconCopyClipboard } from '@elastic/eui/es/components/icon/assets/copy_clipboard';
 import { icon as EuiIconCross } from '@elastic/eui/es/components/icon/assets/cross';
 import { icon as EuiIconCut } from '@elastic/eui/es/components/icon/assets/cut';
-import { icon as EuiIconDiscuss } from '@elastic/eui/es/components/icon/assets/discuss';
 import { icon as EuiIconDocumentation } from '@elastic/eui/es/components/icon/assets/documentation';
 import { icon as EuiIconDot } from '@elastic/eui/es/components/icon/assets/dot';
 import { icon as EuiIconDownload } from '@elastic/eui/es/components/icon/assets/download';
@@ -102,12 +102,12 @@ appendIconComponentCache({
   check: EuiIconCheck,
   cheer: EuiIconCheer,
   clock: EuiIconClock,
-  controlsHorizontal: EuiControlsHorizontal,
+  comment: EuiIconComment,
+  controls: EuiIconControls,
   copy: EuiIconCopy,
   copyClipboard: EuiIconCopyClipboard,
   cross: EuiIconCross,
   cut: EuiIconCut,
-  discuss: EuiIconDiscuss,
   documentation: EuiIconDocumentation,
   dot: EuiIconDot,
   download: EuiIconDownload,
