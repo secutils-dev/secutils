@@ -1,6 +1,5 @@
 use crate::{
     api::Api,
-    logging::JobLogContext,
     network::{DnsResolver, EmailTransport},
     scheduler::{
         database_ext::RawSchedulerJobStoredData, job_ext::JobExt, scheduler_job::SchedulerJob,
@@ -9,6 +8,7 @@ use crate::{
 };
 use std::sync::Arc;
 use tokio_cron_scheduler::Job;
+use tracing::{debug, error, warn};
 
 /// The job that is executed for every web page tracker with automatic tracking enabled. The
 /// job doesn't do anything except logging, and updating its internal state. This job is supposed to
@@ -35,8 +35,8 @@ impl WebPageTrackersTriggerJob {
                 .await?
                 .map(|tracker| (tracker.id, tracker.settings, tracker.job_config)),
         }) else {
-            log::warn!(
-                job:serde = JobLogContext::new(existing_job_data.id);
+            warn!(
+                job.id = %existing_job_data.id,
                 "Web page tracker job reference doesn't exist, the job will be removed."
             );
             return Ok(None);
@@ -44,10 +44,9 @@ impl WebPageTrackersTriggerJob {
 
         // Then, check if the tracker can support revisions.
         if tracker_settings.revisions == 0 {
-            log::warn!(
+            warn!(
                 "Web page tracker ('{}') no cannot store revisions, the job ('{}') will be removed.",
-                tracker_id,
-                existing_job_data.id
+                tracker_id, existing_job_data.id
             );
             web_scraping_system
                 .update_web_page_tracker_job(tracker_id, None)
@@ -57,10 +56,9 @@ impl WebPageTrackersTriggerJob {
 
         // Then, check if the tracker still has a schedule.
         let Some(job_config) = tracker_job_config else {
-            log::warn!(
+            warn!(
                 "Web page tracker ('{}') no longer has a job config, the job ('{}') will be removed.",
-                tracker_id,
-                existing_job_data.id
+                tracker_id, existing_job_data.id
             );
             web_scraping_system
                 .update_web_page_tracker_job(tracker_id, None)
@@ -96,15 +94,12 @@ impl WebPageTrackersTriggerJob {
                 // serving as a pending processing flag. Eventually we might need to add a separate
                 // table for pending jobs.
                 if let Err(err) = db.reset_scheduler_job_state(uuid, true).await {
-                    log::error!(
-                        job:serde = JobLogContext::new(uuid);
+                    error!(
+                        job.id = %uuid,
                         "Error marking web page tracker trigger job as pending: {err:?}"
                     );
                 } else {
-                    log::debug!(
-                        job:serde = JobLogContext::new(uuid);
-                        "Successfully run the job."
-                    );
+                    debug!(job.id = %uuid, "Successfully run the job.");
                 }
             })
         })?;

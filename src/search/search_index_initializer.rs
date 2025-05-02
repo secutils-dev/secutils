@@ -6,6 +6,7 @@ use crate::{
 };
 use std::collections::HashMap;
 use time::OffsetDateTime;
+use tracing::{debug, error};
 
 const UTIL_SEARCH_CATEGORY: &str = "Utils";
 
@@ -72,7 +73,7 @@ pub async fn populate_search_index<DR: DnsResolver, ET: EmailTransport>(
     let mut utils = HashMap::new();
     flatten_utils_tree(api.utils().get_all().await?, &mut utils);
 
-    log::debug!("Found {} utils.", utils.len());
+    debug!("Found {} utils.", utils.len());
 
     let search_api = api.search();
     let searchable_utils =
@@ -87,7 +88,7 @@ pub async fn populate_search_index<DR: DnsResolver, ET: EmailTransport>(
             Some(Ok(util_id)) => utils.remove(&util_id),
             None | Some(_) => {
                 // Util has invalid definition and must be deleted.
-                log::error!(
+                error!(
                     "Invalid search item found for util and will be removed: {:?}",
                     searchable_util
                 );
@@ -103,17 +104,16 @@ pub async fn populate_search_index<DR: DnsResolver, ET: EmailTransport>(
                 if is_update_needed(&util, &searchable_util) {
                     let updated_searchable_util =
                         util_to_search_item(util, OffsetDateTime::now_utc());
-                    log::debug!(
+                    debug!(
                         "Search item for util needs to be updated: from {:?} to {:?}",
-                        searchable_util,
-                        updated_searchable_util
+                        searchable_util, updated_searchable_util
                     );
                     search_api.upsert(updated_searchable_util)?;
                 }
                 utils_indexed += 1;
             }
             Some(_) | None => {
-                log::debug!(
+                debug!(
                     "Non-existent search item found for util and will be removed: {:?}",
                     searchable_util
                 );
@@ -128,7 +128,7 @@ pub async fn populate_search_index<DR: DnsResolver, ET: EmailTransport>(
         utils_indexed += 1;
     }
 
-    log::debug!("Indexed {} utils.", utils_indexed);
+    debug!("Indexed {} utils.", utils_indexed);
 
     Ok(())
 }

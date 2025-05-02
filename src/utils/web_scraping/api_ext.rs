@@ -33,6 +33,7 @@ use croner::Cron;
 use futures::Stream;
 use std::time::Duration;
 use time::OffsetDateTime;
+use tracing::debug;
 use uuid::Uuid;
 
 /// Defines a maximum number of jobs that can be retrieved from the database at once.
@@ -712,7 +713,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         web_scraping.update_web_page_tracker(&tracker).await?;
 
         if changed_url {
-            log::debug!("Web page tracker ('{id}') changed URL, clearing web resources history.");
+            debug!("Web page tracker ('{id}') changed URL, clearing web resources history.");
             web_scraping.clear_web_page_tracker_history(id).await?;
         }
 

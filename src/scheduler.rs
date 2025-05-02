@@ -9,15 +9,6 @@ mod scheduler_job_retry_state;
 mod scheduler_job_retry_strategy;
 mod scheduler_jobs;
 
-use anyhow::anyhow;
-use futures::{StreamExt, pin_mut};
-use std::{collections::HashSet, sync::Arc};
-use tokio::sync::RwLock;
-use tokio_cron_scheduler::{
-    JobScheduler, PostgresMetadataStore, PostgresNotificationStore, PostgresStore, SimpleJobCode,
-    SimpleNotificationCode,
-};
-
 pub use self::{
     cron_ext::CronExt, scheduler_job::SchedulerJob, scheduler_job_config::SchedulerJobConfig,
     scheduler_job_metadata::SchedulerJobMetadata,
@@ -32,6 +23,15 @@ use crate::{
         WebPageTrackersTriggerJob,
     },
 };
+use anyhow::anyhow;
+use futures::{StreamExt, pin_mut};
+use std::{collections::HashSet, sync::Arc};
+use tokio::sync::RwLock;
+use tokio_cron_scheduler::{
+    JobScheduler, PostgresMetadataStore, PostgresNotificationStore, PostgresStore, SimpleJobCode,
+    SimpleNotificationCode,
+};
+use tracing::{debug, error, warn};
 
 /// Defines a maximum number of jobs that can be retrieved from the database at once.
 const MAX_JOBS_PAGE_SIZE: usize = 1000;
@@ -139,7 +139,7 @@ where
                 Ok(job_meta) if unique_resumed_jobs.contains(&job_meta.job_type) => {
                     // There can only be one job of each type. If we detect that there are multiple, we log
                     // a warning and remove the job, keeping only the first one.
-                    log::error!(
+                    error!(
                         "Found multiple jobs of type `{:?}`. All duplicated jobs except for the first one will be removed.",
                         job_meta.job_type
                     );
@@ -148,7 +148,7 @@ where
                 }
                 Err(err) => {
                     // We don't fail here, because we want to gracefully handle the legacy jobs.
-                    log::error!(
+                    error!(
                         "Failed to deserialize job type for job `{job_data:?}`: {err:?}. The job will be removed."
                     );
                     self.inner_scheduler.remove(&job_id).await?;
@@ -176,7 +176,7 @@ where
 
             match job {
                 Some(job) => {
-                    log::debug!("Resumed job (`{:?}`): {}.", job_meta.job_type, job_id);
+                    debug!("Resumed job (`{:?}`): {}.", job_meta.job_type, job_id);
                     self.inner_scheduler.add(job).await?;
 
                     if job_meta.job_type.is_unique() {
@@ -184,7 +184,7 @@ where
                     }
                 }
                 None => {
-                    log::warn!(
+                    warn!(
                         "Failed to resume job (`{:?}`): {job_id}. The job will be removed and re-scheduled if needed.",
                         job_meta.job_type
                     );

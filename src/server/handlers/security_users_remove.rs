@@ -1,11 +1,11 @@
 use crate::{
-    logging::UserLogContext,
     security::Operator,
     server::{app_state::AppState, http_errors::generic_internal_server_error},
 };
 use actix_web::{Error, HttpResponse, Responder, web};
 use serde::Deserialize;
 use serde_json::json;
+use tracing::{error, info, warn};
 
 #[derive(Deserialize)]
 pub struct RemoveParams {
@@ -27,17 +27,17 @@ pub async fn security_users_remove(
     let api = state.api.security();
     match api.terminate(&body_params.email).await {
         Ok(Some(user_id)) => {
-            log::info!(
-                operator:serde = operator.id(),
-                user:serde = UserLogContext::new(user_id);
+            info!(
+                operator = operator.id(),
+                user.id = %user_id,
                 "Successfully removed user.",
             );
         }
         Ok(None) => {
-            log::warn!(operator:serde = operator.id(); "Cannot remove non-existent user.");
+            warn!(operator = operator.id(), "Cannot remove non-existent user.");
         }
         Err(err) => {
-            log::error!(operator:serde = operator.id(); "Failed to remove user: {err:?}");
+            error!(operator = operator.id(), "Failed to remove user: {err:?}");
             return Ok(generic_internal_server_error());
         }
     }

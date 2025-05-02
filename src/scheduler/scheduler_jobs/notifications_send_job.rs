@@ -7,6 +7,7 @@ use crate::{
 };
 use std::{sync::Arc, time::Instant};
 use tokio_cron_scheduler::{Job, JobScheduler};
+use tracing::{error, info, trace};
 
 /// Defines a maximum number of notifications that can be send during a single job tick.
 const MAX_NOTIFICATIONS_TO_SEND: usize = 100;
@@ -45,7 +46,7 @@ impl NotificationsSendJob {
                 let api = api.clone();
                 Box::pin(async move {
                     if let Err(err) = Self::execute(api, scheduler).await {
-                        log::error!("Failed to execute notifications send job: {:?}", err);
+                        error!("Failed to execute notifications send job: {err:?}");
                     }
                 })
             },
@@ -71,23 +72,21 @@ impl NotificationsSendJob {
             .await
         {
             Ok(sent_notification_count) if sent_notification_count > 0 => {
-                log::info!(
-                    "Sent {} notifications ({} elapsed).",
-                    sent_notification_count,
+                info!(
+                    "Sent {sent_notification_count} notifications ({} elapsed).",
                     humantime::format_duration(execute_start.elapsed())
                 );
             }
             Ok(_) => {
-                log::trace!(
+                trace!(
                     "No pending notifications to send ({} elapsed).",
                     humantime::format_duration(execute_start.elapsed())
                 );
             }
             Err(err) => {
-                log::error!(
-                    "Failed to send pending notifications ({} elapsed): {:?}",
-                    humantime::format_duration(execute_start.elapsed()),
-                    err
+                error!(
+                    "Failed to send pending notifications ({} elapsed): {err:?}",
+                    humantime::format_duration(execute_start.elapsed())
                 );
             }
         }

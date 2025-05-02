@@ -7,6 +7,7 @@ use actix_web::{
 };
 use anyhow::anyhow;
 use std::{future::Future, pin::Pin};
+use tracing::error;
 
 impl FromRequest for User {
     type Error = Error;
@@ -21,7 +22,7 @@ impl FromRequest for User {
                 Ok(Some(user)) => Ok(user),
                 Ok(None) => Err(ErrorUnauthorized(anyhow!("Unauthorized"))),
                 Err(err) => {
-                    log::error!("Failed to extract user information due to: {err:?}");
+                    error!("Failed to extract user information due to: {err:?}");
                     Err(ErrorInternalServerError(anyhow!("Internal server error")))
                 }
             }

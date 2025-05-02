@@ -16,6 +16,7 @@ use tantivy::{
     tokenizer::{LowerCaser, NgramTokenizer, RawTokenizer, TextAnalyzer},
 };
 use time::OffsetDateTime;
+use tracing::warn;
 
 fn entity_to_document(
     entity: &SearchItem,
@@ -74,7 +75,7 @@ impl SearchIndex {
             let index = if Index::exists(&index_directory)? {
                 Index::open_in_dir(&index_path)?
             } else {
-                log::warn!(
+                warn!(
                     "Search index data folder doesn't exist and will be created: {:?}.",
                     index_path.as_ref()
                 );
@@ -203,10 +204,9 @@ impl SearchIndex {
         });
         let keywords_query = if let Some((keywords_query, errors)) = keywords_query {
             if !errors.is_empty() {
-                log::warn!(
+                warn!(
                     "Parsed search query with errors ({:?}): {:?}",
-                    search_filter.query,
-                    errors
+                    search_filter.query, errors
                 );
             }
 
@@ -240,7 +240,7 @@ impl SearchIndex {
             match self.index.writer(15_000_000) {
                 Ok(writer) => break Ok(writer),
                 Err(TantivyError::LockFailure(LockError::LockBusy, reason)) => {
-                    log::warn!(
+                    warn!(
                         "Failed to get user index writer lock, will re-try in 50ms: {:?}",
                         reason
                     );

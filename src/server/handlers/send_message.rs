@@ -8,6 +8,7 @@ use crate::{
 use actix_web::{HttpResponse, web};
 use serde::Deserialize;
 use time::OffsetDateTime;
+use tracing::{error, info};
 
 #[derive(Deserialize)]
 pub struct SendMessageParams {
@@ -35,14 +36,14 @@ pub async fn send_message(
     {
         Some(recipient) => recipient,
         None => {
-            log::error!("SMTP isn't configured.");
+            error!("SMTP isn't configured.");
             return Err(SecutilsError::access_forbidden());
         }
     };
 
-    log::info!(
-        operator:serde = operator.as_ref().map(|operator| operator.id()),
-        user:serde = user.as_ref().map(|user| user.log_context());
+    info!(
+        operator = operator.as_ref().map(|operator| operator.id()),
+        user.id = user.as_ref().map(|user| user.id.to_string()),
         "Sending a message `{body}`."
     );
 
@@ -58,9 +59,9 @@ pub async fn send_message(
         )
         .await?;
 
-    log::info!(
-        operator:serde = operator.as_ref().map(|operator| operator.id()),
-        user:serde = user.as_ref().map(|user| user.log_context());
+    info!(
+        operator = operator.as_ref().map(|operator| operator.id()),
+        user.id = user.as_ref().map(|user| user.id.to_string()),
         "Successfully sent message."
     );
     Ok(HttpResponse::NoContent().finish())

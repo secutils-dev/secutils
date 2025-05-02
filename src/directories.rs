@@ -4,6 +4,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+use tracing::error;
 
 pub struct Directories;
 impl Directories {
@@ -22,7 +23,7 @@ impl Directories {
     pub fn ensure_dir_exists<P: AsRef<Path>>(absolute_path: P) -> anyhow::Result<()> {
         fs::create_dir_all(absolute_path.as_ref())
             .map_err(|err| {
-                log::error!("Cannot create {:?} dir: {:?}", absolute_path.as_ref(), err);
+                error!("Cannot create {:?} dir: {err:?}", absolute_path.as_ref());
                 err
             })
             .with_context(|| format!("Cannot create {:?} dir.", absolute_path.as_ref()))

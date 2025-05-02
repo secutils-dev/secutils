@@ -28,6 +28,7 @@ use anyhow::{anyhow, bail};
 use content_security_policy::{Policy, PolicyDisposition, PolicySource};
 use reqwest::redirect::Policy as RedirectPolicy;
 use time::OffsetDateTime;
+use tracing::{debug, error, warn};
 use uuid::Uuid;
 
 /// API extension to work with web security utilities.
@@ -77,7 +78,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
             ContentSecurityPolicyContent::Directives(directives) => directives,
             ContentSecurityPolicyContent::Serialized(policy_text) => {
                 let directives = Self::deserialize_directives(&policy_text);
-                log::debug!(
+                debug!(
                     "Deserialized {} content security policy directives: {policy_text}",
                     directives.len()
                 );
@@ -99,11 +100,11 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
                         let host_url = url.host_str().map(|host| host.to_string());
                         RedirectPolicy::custom(move |attempt| {
                             if attempt.previous().len() > 10 {
-                                log::error!("Too many redirects for host ({host_url:?}).");
+                                error!("Too many redirects for host ({host_url:?}).");
                                 attempt
                                     .error(format!("Too many redirects for host ({host_url:?})."))
                             } else if attempt.url().host_str() != host_url.as_deref() {
-                                log::error!(
+                                error!(
                                     "Redirected from host ({host_url:?}) to different host: {:?}.",
                                     attempt.url().host_str()
                                 );
@@ -153,7 +154,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
                                 "{header_name} header is missing for URL ({url})."
                             )));
                         } else if header_values.len() > 1 {
-                            log::warn!(
+                            warn!(
                                 "{header_name} header has {} values for URL ({url}), only the last will be imported: {header_values:?}",
                                 header_values.len()
                             );
@@ -179,7 +180,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
                                 "CSP `<meta>` tag is missing for URL ({url})."
                             )));
                         } else if header_values.len() > 1 {
-                            log::warn!(
+                            warn!(
                                 "CSP `<meta>` tag has {} values for URL ({url}), only the last will be imported: {header_values:?}",
                                 header_values.len()
                             );
@@ -190,7 +191,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
                 };
 
                 let directives = Self::deserialize_directives(&policy_text);
-                log::debug!(
+                debug!(
                     "Fetched and deserialized {} content security policy directives from URL ({url}): {policy_text}",
                     directives.len()
                 );
@@ -408,7 +409,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
         ).directive_set.into_iter().filter_map(|directive| match ContentSecurityPolicyDirective::try_from(&directive) {
             Ok(directive) => Some(directive),
             Err(err) => {
-                log::error!("Failed to process parsed content security policy directive ({directive}) due to an error, skipping…: {err}");
+                error!("Failed to process parsed content security policy directive ({directive}) due to an error, skipping…: {err}");
                 None
             }
         }).collect::<Vec<_>>()

@@ -5,6 +5,7 @@ use crate::{
 };
 use std::ops::Add;
 use time::OffsetDateTime;
+use tracing::{debug, warn};
 use uuid::Uuid;
 
 pub struct SchedulerApiExt<'a, DR: DnsResolver, ET: EmailTransport> {
@@ -37,14 +38,11 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> SchedulerApiExt<'a, DR, ET> {
             .unwrap_or_default();
         // Check if retry is possible.
         let retry_state = if retry_attempts >= retry_strategy.max_attempts() {
-            log::warn!(
-                "Retry limit reached ('{}') for a scheduler job ('{job_id}').",
-                retry_attempts
-            );
+            warn!("Retry limit reached ('{retry_attempts}') for a scheduler job ('{job_id}').");
             None
         } else {
             let retry_interval = retry_strategy.interval(retry_attempts);
-            log::debug!(
+            debug!(
                 "Scheduling a retry for job ('{job_id}') in {}.",
                 humantime::format_duration(retry_interval),
             );

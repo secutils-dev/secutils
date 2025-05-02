@@ -2,6 +2,7 @@ use crate::{error::Error as SecutilsError, server::app_state::AppState};
 use actix_web::{HttpResponse, web};
 use anyhow::anyhow;
 use std::ops::Deref;
+use tracing::error;
 
 pub async fn status_get(state: web::Data<AppState>) -> Result<HttpResponse, SecutilsError> {
     state
@@ -9,7 +10,7 @@ pub async fn status_get(state: web::Data<AppState>) -> Result<HttpResponse, Secu
         .read()
         .map(|status| HttpResponse::Ok().json(status.deref()))
         .map_err(|err| {
-            log::error!("Failed to read status: {err}");
+            error!("Failed to read status: {err}");
             SecutilsError::from(anyhow!("Status is not available."))
         })
 }

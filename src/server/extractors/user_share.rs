@@ -11,6 +11,7 @@ use actix_web::{
 };
 use anyhow::anyhow;
 use std::{future::Future, pin::Pin};
+use tracing::error;
 
 pub static USER_SHARE_ID_HEADER_NAME: HeaderName = HeaderName::from_static("x-user-share-id");
 
@@ -35,10 +36,9 @@ impl FromRequest for UserShare {
 
             // 2. Make sure that the header value is a valid `UserShareId` (UUIDv4).
             let user_share_id: UserShareId = header_value.parse().map_err(|err| {
-                log::error!(
+                error!(
                     "Invalid X-User-Share-ID header `{}`: {:?}",
-                    header_value,
-                    err
+                    header_value, err
                 );
                 ErrorBadRequest(anyhow!("Invalid X-User-Share-ID header."))
             })?;
@@ -47,17 +47,16 @@ impl FromRequest for UserShare {
             let state = web::Data::<AppState>::extract(&req).await?;
             let users = state.api.users();
             let user_share = users.get_user_share(user_share_id).await.map_err(|err| {
-                log::error!(
+                error!(
                     "Cannot retrieve user share ({}) due to unexpected error: {:?}.",
-                    *user_share_id,
-                    err
+                    *user_share_id, err
                 );
                 ErrorInternalServerError(anyhow!("Internal server error"))
             })?;
 
             // 4. Make sure that the `UserShare` is still available, otherwise fail with an error.
             user_share.ok_or_else(|| {
-                log::error!(
+                error!(
                     "Tried to access unavailable user share ({}).",
                     *user_share_id
                 );

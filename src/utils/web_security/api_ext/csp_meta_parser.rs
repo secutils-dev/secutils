@@ -9,6 +9,7 @@ use html5ever::{
     },
 };
 use std::cell::Cell;
+use tracing::error;
 
 /// Parses content security policies from a `<meta>` HTML tags.
 pub struct CspMetaParser;
@@ -90,7 +91,7 @@ impl TokenSink for &mut CspMetaTokenSink {
                         csp_values.push(csp_meta_content);
                         self.csp_values.set(csp_values);
                     } else {
-                        log::error!(
+                        error!(
                             "Found `<meta http-equiv='Content-Security-Policy'>` tag without `content` attribute."
                         );
                     }

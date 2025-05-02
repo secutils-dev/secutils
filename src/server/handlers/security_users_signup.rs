@@ -7,6 +7,7 @@ use actix_web::{HttpResponse, Responder, web};
 use serde::Deserialize;
 use serde_json::json;
 use std::ops::Add;
+use tracing::{error, info};
 
 #[derive(Deserialize)]
 pub struct SignupParams {
@@ -43,7 +44,10 @@ pub async fn security_users_signup(
             match security_api.generate_user_handle().await {
                 Ok(handle) => handle,
                 Err(err) => {
-                    log::error!(operator:serde = operator.id(); "Failed to generate user handle: {err:?}");
+                    error!(
+                        operator = operator.id(),
+                        "Failed to generate user handle: {err:?}"
+                    );
                     return generic_internal_server_error();
                 }
             },
@@ -70,11 +74,19 @@ pub async fn security_users_signup(
 
     match security_api.signup(&user).await {
         Ok(_) => {
-            log::info!(operator:serde = operator.id(), user:serde = user.log_context(); "Successfully signed up a new user.");
+            info!(
+                operator = operator.id(),
+                user.id = %user.id,
+                "Successfully signed up a new user."
+            );
             HttpResponse::Ok().finish()
         }
         Err(err) => {
-            log::error!(operator:serde = operator.id(), user:serde = user.log_context(); "Failed to signup a user: {err:?}");
+            error!(
+                operator = operator.id(),
+                user.id = %user.id,
+                "Failed to signup a user: {err:?}"
+            );
             match err.downcast_ref::<UserSignupError>() {
                 Some(err) => match err {
                     UserSignupError::EmailAlreadyRegistered => HttpResponse::BadRequest().json(

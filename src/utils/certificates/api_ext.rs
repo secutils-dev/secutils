@@ -46,6 +46,7 @@ use std::{
     time::Instant,
 };
 use time::OffsetDateTime;
+use tracing::debug;
 use uuid::Uuid;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
@@ -489,7 +490,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
             PrivateKeyAlgorithm::Ed25519 => PKey::generate_ed25519()?,
         };
 
-        log::debug!(
+        debug!(
             "Generated a private key with {alg:?} parameters ({} elapsed).",
             humantime::format_duration(execute_start.elapsed())
         );

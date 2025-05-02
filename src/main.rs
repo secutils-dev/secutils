@@ -6,7 +6,6 @@ mod database;
 mod directories;
 mod error;
 mod js_runtime;
-mod logging;
 mod network;
 mod notifications;
 mod scheduler;
@@ -20,10 +19,17 @@ mod utils;
 use crate::config::{Config, RawConfig};
 use anyhow::anyhow;
 use clap::{Arg, Command, crate_authors, crate_description, crate_version, value_parser};
+use std::env;
+use tracing::info;
 
 fn main() -> Result<(), anyhow::Error> {
     dotenvy::dotenv().ok();
-    structured_logger::Builder::new().init();
+
+    if env::var("RUST_LOG_FORMAT").is_ok_and(|format| format == "json") {
+        tracing_subscriber::fmt().json().flatten_event(true).init();
+    } else {
+        tracing_subscriber::fmt::init();
+    }
 
     let matches = Command::new("Secutils.dev API server")
         .version(crate_version!())
@@ -53,7 +59,7 @@ fn main() -> Result<(), anyhow::Error> {
             .ok_or_else(|| anyhow!("<CONFIG> argument is not provided."))?,
     )?;
 
-    log::info!("Secutils.dev raw configuration: {raw_config:?}.");
+    info!("Secutils.dev raw configuration: {raw_config:?}.");
 
     // CLI argument takes precedence.
     let http_port = matches

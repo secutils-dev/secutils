@@ -26,7 +26,7 @@ pub async fn compile_to_email<DR: DnsResolver, ET: EmailTransport>(
         "{}activate?code={}&flow={}",
         api.config.public_url.as_str(),
         encoded_code,
-        urlencoding::encode(&flow_id.as_hyphenated().to_string())
+        urlencoding::encode(&flow_id.to_string())
     );
 
     Ok(EmailNotificationContent::html_with_attachments(

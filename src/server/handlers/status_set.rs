@@ -5,6 +5,7 @@ use crate::{
 use actix_web::{HttpResponse, Responder, error::ErrorInternalServerError, web};
 use anyhow::anyhow;
 use serde::Deserialize;
+use tracing::error;
 
 #[derive(Deserialize)]
 pub struct SetStatusAPIParams {
@@ -24,7 +25,10 @@ pub async fn status_set(
             HttpResponse::NoContent().finish()
         })
         .map_err(|err| {
-            log::error!(operator:serde = operator.id(); "Failed to set server status: {err:?}.");
+            error!(
+                operator = operator.id(),
+                "Failed to set server status: {err:?}."
+            );
             ErrorInternalServerError(anyhow!("Failed to set server status: {:?}.", err))
         })
 }

@@ -6,6 +6,7 @@ use crate::{
 use actix_web::{HttpResponse, web};
 use anyhow::anyhow;
 use std::ops::Deref;
+use tracing::error;
 
 pub async fn ui_state_get(
     state: web::Data<AppState>,
@@ -32,7 +33,7 @@ pub async fn ui_state_get(
     };
 
     let status = state.status.read().map_err(|err| {
-        log::error!("Failed to read status: {err}");
+        error!("Failed to read status: {err}");
         SecutilsError::from(anyhow!("Status is not available."))
     })?;
 

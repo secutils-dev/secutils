@@ -2,7 +2,6 @@ use crate::{
     config::Config,
     error::Error as SecutilsError,
     js_runtime::{JsRuntime, JsRuntimeConfig},
-    logging::{MetricsContext, UtilsResourceLogContext},
     server::app_state::AppState,
     utils::{
         UtilsResource,
@@ -22,6 +21,7 @@ use anyhow::bail;
 use bytes::Bytes;
 use serde::Deserialize;
 use std::{borrow::Cow, collections::HashMap};
+use tracing::{error, info};
 
 const X_REPLACED_PATH_HEADER_NAME: &str = "x-replaced-path";
 
@@ -52,7 +52,7 @@ pub async fn webhooks_responders(
         match parse_webhook_host(&state.config, &request_host) {
             Ok((user_handle, subdomain_prefix)) => (user_handle, subdomain_prefix),
             Err(err) => {
-                log::error!(
+                error!(
                     "Failed to extract user handle and subdomain prefix from the request host ({:?}): {err:?}",
                     request_host
                 );
@@ -73,14 +73,14 @@ pub async fn webhooks_responders(
         match replaced_path {
             Ok(Some(replaced_path)) => replaced_path.to_string(),
             Ok(None) => {
-                log::error!(
+                error!(
                     "Failed to extract responder path from the headers and path ({}).",
                     request.path()
                 );
                 return Ok(HttpResponse::NotFound().finish());
             }
             Err(err) => {
-                log::error!("Failed to parse responder path from headers: {err:?}");
+                error!("Failed to parse responder path from headers: {err:?}");
                 return Ok(HttpResponse::InternalServerError().finish());
             }
         }
@@ -90,11 +90,11 @@ pub async fn webhooks_responders(
     let user = match state.api.users().get_by_handle(user_handle).await {
         Ok(Some(user)) => user,
         Ok(None) => {
-            log::error!("Failed to find user by the handle ({user_handle}).");
+            error!("Failed to find user by the handle ({user_handle}).");
             return Ok(HttpResponse::NotFound().finish());
         }
         Err(err) => {
-            log::error!(
+            error!(
                 "Failed to retrieve user by handle ({user_handle}) due to unexpected error: {err:?}"
             );
             return Ok(HttpResponse::InternalServerError().finish());
@@ -109,8 +109,8 @@ pub async fn webhooks_responders(
     let responder_method = match request.method().try_into() {
         Ok(responder_method) => responder_method,
         Err(err) => {
-            log::error!(
-                user:serde = user.log_context();
+            error!(
+                user.id = %user.id,
                 "Failed to parse HTTP method ({}) into responder method: {err:?}",
                 request.method()
             );
@@ -126,16 +126,16 @@ pub async fn webhooks_responders(
     {
         Ok(Some(responder)) => responder,
         Ok(None) => {
-            log::error!(
-                user:serde = user.log_context();
-               "User doesn't have an HTTP responder ({} {subdomain_prefix:?} {responder_path}) configured.",
+            error!(
+                user.id = %user.id,
+                "User doesn't have an HTTP responder ({} {subdomain_prefix:?} {responder_path}) configured.",
                 request.method().as_str()
             );
             return Ok(HttpResponse::NotFound().finish());
         }
         Err(err) => {
-            log::error!(
-                user:serde = user.log_context();
+            error!(
+                user.id = %user.id,
                 "Failed to retrieve HTTP responder ({} {subdomain_prefix:?} {responder_path}): {err:?}.",
                 request.method().as_str()
             );
@@ -144,10 +144,14 @@ pub async fn webhooks_responders(
     };
 
     if !responder.enabled {
-        log::error!(
-            user:serde = user.log_context(),
-            util:serde = responder.log_context();
-             "User has an HTTP responder ({} {subdomain_prefix:?} {responder_path}) configured, but it is disabled.",
+        let (resource, resource_group) = UtilsResource::WebhooksResponders.into();
+        error!(
+            user.id = %user.id,
+            util.resource = resource,
+            util.resource_group = resource_group,
+            util.resource_id = %responder.id,
+            util.resource_name = responder.name,
+            "User has an HTTP responder ({} {subdomain_prefix:?} {responder_path}) configured, but it is disabled.",
             request.method().as_str(),
         );
         return Ok(HttpResponse::NotFound().finish());
@@ -189,12 +193,9 @@ pub async fn webhooks_responders(
         .await?;
 
     // Extract logging context before consuming responder to enrich logs.
+    let responder_id = responder.id;
     let responder_name = responder.name;
-    let responder_log_context = UtilsResourceLogContext {
-        resource: UtilsResource::WebhooksResponders,
-        resource_id: responder.id,
-        resource_name: responder_name.as_str(),
-    };
+    let (resource, resource_group) = UtilsResource::WebhooksResponders.into();
 
     // Check if body is supposed to be a JavaScript code.
     let (status_code, headers, body) = match &responder.settings.script {
@@ -236,18 +237,24 @@ pub async fn webhooks_responders(
                 .await
             {
                 Ok((override_result, execution_time)) => {
-                    log::info!(
-                        user:serde = user.log_context(),
-                        util:serde = responder_log_context,
-                        metrics:serde = MetricsContext::default().with_script_execution_time(execution_time);
+                    info!(
+                        user.id = %user.id,
+                        util.resource = resource,
+                        util.resource_group = resource_group,
+                        util.resource_id = %responder_id,
+                        util.resource_name = responder_name,
+                        metrics.script_execution_time = execution_time.as_nanos() as u64,
                         "Executed responder user script in {execution_time:.2?}.",
                     );
                     override_result.unwrap_or_default()
                 }
                 Err(err) => {
-                    log::error!(
-                        user:serde = user.log_context(),
-                        util:serde = responder_log_context;
+                    error!(
+                        user.id = %user.id,
+                        util.resource = resource,
+                        util.resource_group = resource_group,
+                        util.resource_id = %responder_id,
+                        util.resource_name = responder_name,
                         "Failed to execute responder user script: {err:?}"
                     );
                     return Ok(HttpResponse::InternalServerError().body(err.to_string()));
@@ -279,9 +286,12 @@ pub async fn webhooks_responders(
     let status_code = match StatusCode::from_u16(status_code) {
         Ok(status_code) => status_code,
         Err(err) => {
-            log::error!(
-                user:serde = user.log_context(),
-                util:serde = responder_log_context;
+            error!(
+                user.id = %user.id,
+                util.resource = resource,
+                util.resource_group = resource_group,
+                util.resource_id = %responder_id,
+                util.resource_name = responder_name,
                 "Failed to parse status code for the HTTP responder: {err:?}",
             );
             return Ok(HttpResponse::InternalServerError().finish());
@@ -299,17 +309,23 @@ pub async fn webhooks_responders(
                 response.headers_mut().insert(header_name, header_value);
             }
             (Err(err), _) => {
-                log::error!(
-                    user:serde = user.log_context(),
-                    util:serde = responder_log_context;
+                error!(
+                    user.id = %user.id,
+                    util.resource = resource,
+                    util.resource_group = resource_group,
+                    util.resource_id = %responder_id,
+                    util.resource_name = responder_name,
                     "Failed to parse header name `{header_name}` for the HTTP responder: {err:?}"
                 );
                 return Ok(HttpResponse::InternalServerError().finish());
             }
             (_, Err(err)) => {
-                log::error!(
-                    user:serde = user.log_context(),
-                    util:serde = responder_log_context;
+                error!(
+                    user.id = %user.id,
+                    util.resource = resource,
+                    util.resource_group = resource_group,
+                    util.resource_id = %responder_id,
+                    util.resource_name = responder_name,
                     "Failed to parse header value `{header_value}` for the HTTP responder: {err:?}"
                 );
                 return Ok(HttpResponse::InternalServerError().finish());

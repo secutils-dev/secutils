@@ -7,14 +7,12 @@ use actix_web::{HttpResponse, web};
 use serde_derive::Deserialize;
 use std::{collections::HashMap, str::FromStr};
 
-use crate::{
-    logging::UserLogContext,
-    security::{
-        Operator,
-        kratos::{EmailTemplateType, Identity},
-    },
+use crate::security::{
+    Operator,
+    kratos::{EmailTemplateType, Identity},
 };
 use time::OffsetDateTime;
+use tracing::{error, info};
 use url::Url;
 use uuid::Uuid;
 
@@ -38,12 +36,12 @@ pub async fn security_users_email(
     let identity_context = kratos_email
         .identity
         .as_ref()
-        .map(|identity| UserLogContext::new(identity.id.into()));
+        .map(|identity| identity.id.to_string());
     let (destination, content) = match parse_email_params(&kratos_email) {
         Ok(content) => {
-            log::info!(
-                operator:serde = operator.id(),
-                user:serde = identity_context;
+            info!(
+                operator = operator.id(),
+                user.id = identity_context,
                 "Received Kratos {} email request for {}.",
                 kratos_email.template_type,
                 kratos_email.recipient,
@@ -54,9 +52,9 @@ pub async fn security_users_email(
             )
         }
         Err(err) => {
-            log::error!(
-                operator:serde = operator.id(),
-                user:serde = identity_context;
+            error!(
+                operator = operator.id(),
+                user.id = identity_context,
                 "Received unsupported ({}) Kratos email request for {}: {err:?}.",
                 kratos_email.template_type,
                 kratos_email.recipient,
@@ -84,7 +82,10 @@ pub async fn security_users_email(
         .schedule_notification(destination, content, OffsetDateTime::now_utc())
         .await
     {
-        log::error!(operator:serde = operator.id(); "Failed to schedule Kratos email notification: {err:?}");
+        error!(
+            operator = operator.id(),
+            "Failed to schedule Kratos email notification: {err:?}"
+        );
     }
 
     Ok(HttpResponse::NoContent().finish())

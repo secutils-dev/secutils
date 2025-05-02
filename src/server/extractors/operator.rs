@@ -10,6 +10,7 @@ use actix_web::{
 };
 use anyhow::anyhow;
 use std::{future::Future, pin::Pin};
+use tracing::{error, warn};
 
 impl FromRequest for Operator {
     type Error = Error;
@@ -23,11 +24,17 @@ impl FromRequest for Operator {
             match state.api.security().get_operator(credentials).await {
                 Ok(Some(user)) => Ok(user),
                 Ok(None) => {
-                    log::warn!(request_path:serde = req.path(); "Non-operator tried to access protected endpoint.");
+                    warn!(
+                        request_path = req.path(),
+                        "Non-operator tried to access protected endpoint."
+                    );
                     Err(ErrorUnauthorized(anyhow!("Unauthorized")))
                 }
                 Err(err) => {
-                    log::error!(request_path:serde = req.path(); "Failed to extract operator information due to: {err:?}");
+                    error!(
+                        request_path = req.path(),
+                        "Failed to extract operator information due to: {err:?}"
+                    );
                     Err(ErrorInternalServerError(anyhow!("Internal server error")))
                 }
             }

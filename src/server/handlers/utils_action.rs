@@ -12,6 +12,7 @@ use crate::{
 };
 use actix_web::{HttpRequest, HttpResponse, http::Method, web};
 use serde_json::Value as JsonValue;
+use tracing::error;
 use uuid::Uuid;
 
 fn extract_resource(req: &HttpRequest) -> Option<UtilsResource> {
@@ -173,7 +174,7 @@ pub async fn utils_action(
             }
         }),
         Err(err) => {
-            log::error!(
+            error!(
                 "User ({}) failed to perform utility action: {err:?}",
                 *user_id
             );

@@ -29,7 +29,7 @@ pub struct WebPageTracker<Tag: WebPageTrackerTag> {
     pub job_config: Option<SchedulerJobConfig>,
     /// Settings of the web page tracker.
     pub settings: WebPageTrackerSettings,
-    /// Optional meta data of the web page tracker.
+    /// Optional metadata of the web page tracker.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub meta: Option<Tag::TrackerMeta>,
     /// Date and time when the web page tracker was created.

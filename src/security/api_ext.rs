@@ -1,6 +1,5 @@
 use crate::{
     api::Api,
-    logging::UserLogContext,
     network::{DnsResolver, EmailTransport, EmailTransportError},
     security::{
         Operator,
@@ -16,6 +15,7 @@ use hex::ToHex;
 use jsonwebtoken::{DecodingKey, Validation, decode};
 use rand_core::{OsRng, TryRngCore};
 use reqwest::StatusCode;
+use tracing::{error, warn};
 use uuid::Uuid;
 
 pub const USER_HANDLE_LENGTH_BYTES: usize = 8;
@@ -50,7 +50,7 @@ where
             .await
             .with_context(|| "Failed to check if user already exists.")?
         {
-            log::error!(user:serde = user.log_context(); "User is already registered.");
+            error!(user.id = %user.id, "User is already registered.");
             return Err(UserSignupError::EmailAlreadyRegistered.into());
         }
 
@@ -76,7 +76,7 @@ where
         }?;
 
         let Some(identity) = identity else {
-            log::error!(
+            error!(
                 "Couldn't retrieve user identity with `{}` credentials.",
                 match credentials {
                     Credentials::SessionCookie(_) => "session",
@@ -87,10 +87,7 @@ where
         };
 
         let Some(user) = self.api.users().get(UserId::from(identity.id)).await? else {
-            log::error!(
-                user:serde = UserLogContext::new(UserId::from(identity.id));
-                "User doesn't exist."
-            );
+            error!(user.id = %identity.id, "User doesn't exist.");
             return Ok(None);
         };
 
@@ -115,7 +112,7 @@ where
             self.delete_identity(identity.id).await?;
             Some(UserId::from(identity.id))
         } else {
-            log::warn!("User with email `{}` doesn't exist.", user_email);
+            warn!("User with email `{}` doesn't exist.", user_email);
             None
         };
 
@@ -173,7 +170,7 @@ where
         let request = match request_builder.build() {
             Ok(client) => client,
             Err(err) => {
-                log::error!("Cannot build Kratos request: {err:?}");
+                error!("Cannot build Kratos request: {err:?}");
                 return Err(anyhow!(err));
             }
         };
@@ -181,7 +178,7 @@ where
         let response = match client.execute(request).await {
             Ok(response) => response,
             Err(err) => {
-                log::error!("Cannot execute Kratos request: {err:?}");
+                error!("Cannot execute Kratos request: {err:?}");
                 return Err(anyhow!(err));
             }
         };
@@ -191,11 +188,11 @@ where
             let error_text = response.text().await.unwrap_or_default();
             return match response_status {
                 StatusCode::UNAUTHORIZED => {
-                    log::error!("Kratos request couldn't be authenticated: {error_text}");
+                    error!("Kratos request couldn't be authenticated: {error_text}");
                     Ok(None)
                 }
                 _ => {
-                    log::error!(
+                    error!(
                         "Kratos request failed with the status code `{response_status}` and body: {error_text}"
                     );
                     Err(anyhow!(
@@ -226,7 +223,7 @@ where
         let request = match request_builder.build() {
             Ok(client) => client,
             Err(err) => {
-                log::error!("Cannot build Kratos request: {err:?}");
+                error!("Cannot build Kratos request: {err:?}");
                 return Err(anyhow!(err));
             }
         };
@@ -234,7 +231,7 @@ where
         let response = match client.execute(request).await {
             Ok(response) => response,
             Err(err) => {
-                log::error!("Cannot execute Kratos request: {err:?}");
+                error!("Cannot execute Kratos request: {err:?}");
                 return Err(anyhow!(err));
             }
         };
@@ -244,11 +241,11 @@ where
             let error_text = response.text().await.unwrap_or_default();
             return match response_status {
                 StatusCode::UNAUTHORIZED => {
-                    log::error!("Kratos request couldn't be authenticated: {error_text}");
+                    error!("Kratos request couldn't be authenticated: {error_text}");
                     Ok(None)
                 }
                 _ => {
-                    log::error!(
+                    error!(
                         "Kratos request failed with the status code `{response_status}` and body: {error_text}"
                     );
                     Err(anyhow!(
@@ -278,7 +275,7 @@ where
         let request = match request_builder.build() {
             Ok(client) => client,
             Err(err) => {
-                log::error!("Cannot build Kratos DELETE identity request: {err:?}");
+                error!("Cannot build Kratos DELETE identity request: {err:?}");
                 return Err(anyhow!(err));
             }
         };
@@ -286,7 +283,7 @@ where
         let response = match client.execute(request).await {
             Ok(response) => response,
             Err(err) => {
-                log::error!("Cannot execute Kratos DELETE identity request: {err:?}");
+                error!("Cannot execute Kratos DELETE identity request: {err:?}");
                 return Err(anyhow!(err));
             }
         };
@@ -294,7 +291,7 @@ where
         let response_status = response.status();
         if !response_status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            log::error!(
+            error!(
                 "Kratos DELETE identity request failed with the status code `{response_status}` and body: {error_text}"
             );
             return Err(anyhow!(

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{ops::Deref, str::FromStr};
+use std::{fmt, ops::Deref, str::FromStr};
 use uuid::Uuid;
 
 /// Represents unique identifier of the user.
@@ -22,6 +22,12 @@ impl From<Uuid> for UserId {
 impl From<&UserId> for Uuid {
     fn from(value: &UserId) -> Self {
         value.0
+    }
+}
+
+impl fmt::Display for UserId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

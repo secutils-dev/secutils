@@ -5,6 +5,7 @@ use crate::{
 use actix_web::{HttpResponse, Responder, web};
 use serde::Deserialize;
 use std::collections::BTreeMap;
+use tracing::error;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,11 +29,9 @@ pub async fn user_data_get(
             .collect::<BTreeMap<_, Option<serde_json::Value>>>(),
         ),
         Err(err) => {
-            log::error!(
+            error!(
                 "Failed to retrieve data ({:?}) for user ({}): {:?}.",
-                query_params.namespace,
-                *user.id,
-                err
+                query_params.namespace, *user.id, err
             );
             generic_internal_server_error()
         }

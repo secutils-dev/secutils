@@ -4,6 +4,7 @@ use crate::{
 };
 use actix_web::{Error, HttpResponse, Responder, web};
 use serde::Deserialize;
+use tracing::error;
 
 #[derive(Deserialize)]
 pub struct Query {
@@ -19,7 +20,10 @@ pub async fn security_users_get_by_email(
         Ok(Some(user_to_retrieve)) => HttpResponse::Ok().json(user_to_retrieve),
         Ok(None) => HttpResponse::NotFound().finish(),
         Err(err) => {
-            log::error!(operator:serde = operator.id(); "Failed to retrieve user by email: {err:?}");
+            error!(
+                operator = operator.id(),
+                "Failed to retrieve user by email: {err:?}"
+            );
             generic_internal_server_error()
         }
     })

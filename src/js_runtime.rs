@@ -1,6 +1,7 @@
 mod js_runtime_config;
 mod script_termination_reason;
 
+pub use self::js_runtime_config::JsRuntimeConfig;
 use crate::js_runtime::script_termination_reason::ScriptTerminationReason;
 use anyhow::{Context, bail};
 use deno_core::{PollEventLoopOptions, RuntimeOptions, serde_v8, v8};
@@ -12,8 +13,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
-
-pub use self::js_runtime_config::JsRuntimeConfig;
+use tracing::error;
 
 /// Defines a maximum interval on which script is checked for timeout.
 const SCRIPT_TIMEOUT_CHECK_INTERVAL: Duration = Duration::from_secs(2);
@@ -63,9 +63,7 @@ impl JsRuntime {
         let timeout_token_clone = timeout_token.clone();
         self.inner_runtime
             .add_near_heap_limit_callback(move |current_value, _| {
-                log::error!(
-                    "Approaching the memory limit of ({current_value}), terminating execution."
-                );
+                error!("Approaching the memory limit of ({current_value}), terminating execution.");
 
                 // Define termination reason and terminate execution.
                 isolate_handle_clone.terminate_execution();

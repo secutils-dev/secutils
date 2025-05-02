@@ -7,6 +7,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeMap;
 use time::OffsetDateTime;
+use tracing::{debug, error};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,14 +41,13 @@ pub async fn user_data_set(
         )
         .await
     {
-        log::error!("Failed to update data for user ({}): {:?}.", *user.id, err);
+        error!("Failed to update data for user ({}): {:?}.", *user.id, err);
         return generic_internal_server_error();
     }
 
-    log::debug!(
+    debug!(
         "Updated data ({:?}) for the user ({}). Retrieving the latest value...",
-        query_params.namespace,
-        *user.id
+        query_params.namespace, *user.id
     );
 
     match users_api.get_data(user.id, query_params.namespace).await {
@@ -60,11 +60,9 @@ pub async fn user_data_set(
             .collect::<BTreeMap<_, Option<serde_json::Value>>>(),
         ),
         Err(err) => {
-            log::error!(
+            error!(
                 "Failed to retrieve data ({:?}) for user ({}): {:?}.",
-                query_params.namespace,
-                *user.id,
-                err
+                query_params.namespace, *user.id, err
             );
             generic_internal_server_error()
         }

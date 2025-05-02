@@ -4,8 +4,11 @@ mod handlers;
 mod http_errors;
 mod ui_state;
 
+#[cfg(test)]
+pub use self::app_state::tests;
 use crate::{
     api::Api,
+    config::Config,
     database::Database,
     directories::Directories,
     js_runtime::JsRuntime,
@@ -17,24 +20,21 @@ use crate::{
 use actix_cors::Cors;
 use actix_web::{App, HttpServer, Result, middleware, web};
 use anyhow::Context;
+pub use app_state::AppState;
 use lettre::{
     AsyncSmtpTransport, Tokio1Executor, message::Mailbox,
     transport::smtp::authentication::Credentials,
 };
 use sqlx::postgres::PgPoolOptions;
 use std::{str::FromStr, sync::Arc};
-
-#[cfg(test)]
-pub use self::app_state::tests;
-
-use crate::config::Config;
-pub use app_state::AppState;
+use tracing::info;
+use tracing_actix_web::TracingLogger;
 pub use ui_state::{Status, StatusLevel, SubscriptionState, UiState, WebhookUrlType};
 
 #[tokio::main]
 pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
     let datastore_dir = Directories::ensure_data_dir_exists()?;
-    log::info!("Data is available at {}", datastore_dir.as_path().display());
+    info!("Data is available at {}", datastore_dir.as_path().display());
     let search_index = SearchIndex::open_path(datastore_dir.join(format!(
         "search_index_v{}",
         config.components.search_index_version
@@ -96,6 +96,7 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
     let state = web::Data::new(AppState::new(config, api.clone()));
     let http_server = HttpServer::new(move || {
         App::new()
+            .wrap(middleware::Compat::new(TracingLogger::default()))
             .wrap(middleware::Compat::new(middleware::Compress::default()))
             .wrap(middleware::NormalizePath::trim())
             .app_data(state.clone())
@@ -155,7 +156,7 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
         .bind(&http_server_url)
         .with_context(|| format!("Failed to bind to {}.", &http_server_url))?;
 
-    log::info!(
+    info!(
         "Secutils.dev API server is available at http://{}",
         http_server_url
     );

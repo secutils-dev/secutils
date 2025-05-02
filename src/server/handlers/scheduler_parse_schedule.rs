@@ -6,6 +6,7 @@ use serde_derive::{Deserialize, Serialize};
 use serde_with::{DurationMilliSeconds, TimestampSeconds, serde_as};
 use std::time::Duration;
 use time::OffsetDateTime;
+use tracing::error;
 
 #[derive(Deserialize)]
 pub struct SchedulerParseScheduleParams {
@@ -35,7 +36,7 @@ pub async fn scheduler_parse_schedule(
     let schedule = match Cron::parse_pattern(&body_params.schedule) {
         Ok(schedule) => schedule,
         Err(err) => {
-            log::error!(user:serde = user.log_context(); "Failed to parse schedule: {err}");
+            error!(user.id = %user.id, "Failed to parse schedule: {err}");
             return Ok(HttpResponse::BadRequest().body(err.to_string()));
         }
     };
@@ -43,8 +44,8 @@ pub async fn scheduler_parse_schedule(
     let features = user.subscription.get_features(&state.config);
     let min_interval = schedule.min_interval()?;
     if min_interval < features.config.web_scraping.min_schedule_interval {
-        log::error!(
-            user:serde = user.log_context();
+        error!(
+            user.id = %user.id,
             "The minimum interval between occurrences should be greater than {}, but got {}",
             humantime::format_duration(features.config.web_scraping.min_schedule_interval),
             humantime::format_duration(min_interval)

@@ -1,6 +1,5 @@
 use crate::{
     api::Api,
-    logging::UserLogContext,
     network::{DnsResolver, EmailTransport},
     scheduler::{
         database_ext::RawSchedulerJobStoredData, job_ext::JobExt, scheduler_job::SchedulerJob,
@@ -10,6 +9,7 @@ use crate::{
 };
 use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
+use tracing::{debug, error};
 
 /// The job executes every minute by default to check if there are any trackers to schedule jobs for.
 pub(crate) struct WebPageTrackersScheduleJob;
@@ -39,7 +39,7 @@ impl WebPageTrackersScheduleJob {
                 let api = api.clone();
                 Box::pin(async move {
                     if let Err(err) = Self::execute(api, scheduler).await {
-                        log::error!("Failed to execute resources trackers schedule job: {err:?}");
+                        error!("Failed to execute resources trackers schedule job: {err:?}");
                     }
                 })
             },
@@ -83,7 +83,7 @@ impl WebPageTrackersScheduleJob {
         unscheduled_trackers: Vec<WebPageTracker<Tag>>,
     ) -> anyhow::Result<()> {
         if !unscheduled_trackers.is_empty() {
-            log::debug!(
+            debug!(
                 "Found {} unscheduled trackers ({:?}).",
                 unscheduled_trackers.len(),
                 Tag::KIND
@@ -92,9 +92,13 @@ impl WebPageTrackersScheduleJob {
 
         for tracker in unscheduled_trackers {
             if tracker.settings.revisions == 0 {
-                log::error!(
-                    user:serde = UserLogContext::new(tracker.user_id),
-                    util:serde = tracker.log_context();
+                let (resource, resource_group) = Tag::KIND.into();
+                error!(
+                    user.id = %tracker.user_id,
+                    util.resource = resource,
+                    util.resource_group = resource_group,
+                    util.resource_id = %tracker.id,
+                    util.resource_name = tracker.name,
                     "Found an unscheduled tracker that doesn't support tracking, skipping…"
                 );
                 continue;
@@ -103,9 +107,13 @@ impl WebPageTrackersScheduleJob {
             let schedule = if let Some(job_config) = tracker.job_config {
                 job_config.schedule
             } else {
-                log::error!(
-                    user:serde = UserLogContext::new(tracker.user_id),
-                    util:serde = tracker.log_context();
+                let (resource, resource_group) = Tag::KIND.into();
+                error!(
+                    user.id = %tracker.user_id,
+                    util.resource = resource,
+                    util.resource_group = resource_group,
+                    util.resource_id = %tracker.id,
+                    util.resource_name = tracker.name,
                     "Found an unscheduled tracker that doesn't have tracking schedule, skipping…"
                 );
                 continue;

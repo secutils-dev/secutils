@@ -6,6 +6,7 @@ use anyhow::anyhow;
 use itertools::{EitherOrBoth, Itertools};
 use std::{collections::HashMap, str::FromStr};
 use tlsh2::Tlsh;
+use tracing::warn;
 
 /// Parameters used by the Web Scraper: checksum length - 1, TLS hash length - 72 bytes, and code
 /// size - 32 bytes.
@@ -201,7 +202,7 @@ fn web_page_resources_to_map(resources: Vec<WebPageResource>) -> WebPageResource
                 content.data.value().to_string()
             }
             _ => {
-                log::warn!("Resource is missing both URL and content: {:?}", resource);
+                warn!("Resource is missing both URL and content: {:?}", resource);
                 continue;
             }
         };

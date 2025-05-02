@@ -1,10 +1,10 @@
 use crate::{
-    logging::UserLogContext,
     security::Operator,
     server::{AppState, http_errors::generic_internal_server_error},
     users::UserId,
 };
 use actix_web::{Error, HttpResponse, Responder, web};
+use tracing::error;
 
 pub async fn security_users_get(
     state: web::Data<AppState>,
@@ -15,9 +15,9 @@ pub async fn security_users_get(
         Ok(Some(user_to_retrieve)) => HttpResponse::Ok().json(user_to_retrieve),
         Ok(None) => HttpResponse::NotFound().finish(),
         Err(err) => {
-            log::error!(
-                operator:serde = operator.id(),
-                user:serde = UserLogContext::new(*user_id);
+            error!(
+                operator = operator.id(),
+                user.id = %user_id,
                 "Failed to retrieve user by ID: {err:?}"
             );
             generic_internal_server_error()

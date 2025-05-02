@@ -5,6 +5,7 @@ use crate::{
 };
 use actix_web::{HttpResponse, Responder, web};
 use serde::Deserialize;
+use tracing::error;
 
 #[derive(Deserialize)]
 pub struct SearchParams {
@@ -22,7 +23,7 @@ pub async fn search(
     match state.api.search().search(search_filter) {
         Ok(search_items) => HttpResponse::Ok().json(search_items),
         Err(err) => {
-            log::error!("Failed to perform search: {:?}", err);
+            error!("Failed to perform search: {err:?}");
             generic_internal_server_error()
         }
     }

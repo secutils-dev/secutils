@@ -8,6 +8,7 @@ pub use self::{
     ip_addr_ext::IpAddrExt,
 };
 use std::net::IpAddr;
+use tracing::error;
 use url::{Host, Url};
 
 /// Network utilities.
@@ -37,7 +38,7 @@ impl<DR: DnsResolver, ET: EmailTransport> Network<DR, ET> {
             Some(Host::Domain(domain)) => match self.resolver.lookup_ip(domain).await {
                 Ok(lookup) => lookup.iter().all(|ip| IpAddrExt::is_global(&ip)),
                 Err(err) => {
-                    log::error!("Cannot resolve domain ({domain}) to IP: {err}");
+                    error!("Cannot resolve domain ({domain}) to IP: {err}");
                     false
                 }
             },

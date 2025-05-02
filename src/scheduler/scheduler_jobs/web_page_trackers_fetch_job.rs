@@ -1,18 +1,21 @@
 use crate::{
     api::Api,
     error::Error as SecutilsError,
-    logging::{JobLogContext, MetricsContext, UserLogContext},
     network::{DnsResolver, EmailTransport, EmailTransportError},
     notifications::{NotificationContent, NotificationContentTemplate, NotificationDestination},
     scheduler::{
         database_ext::RawSchedulerJobStoredData, job_ext::JobExt, scheduler_job::SchedulerJob,
     },
-    utils::web_scraping::{WebPageTracker, WebPageTrackerTag},
+    utils::{
+        UtilsResource,
+        web_scraping::{WebPageTracker, WebPageTrackerTag},
+    },
 };
 use futures::{StreamExt, pin_mut};
 use std::{sync::Arc, time::Instant};
 use time::OffsetDateTime;
 use tokio_cron_scheduler::{Job, JobScheduler};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 /// The job executes every minute by default to check if there are any trackers to fetch resources for.
@@ -49,7 +52,7 @@ impl WebPageTrackersFetchJob {
                 let api = api.clone();
                 Box::pin(async move {
                     if let Err(err) = Self::execute(api, scheduler).await {
-                        log::error!("Failed to execute trackers fetch job: {:?}", err);
+                        error!("Failed to execute trackers fetch job: {err:?}");
                     }
                 })
             },
@@ -81,6 +84,8 @@ impl WebPageTrackersFetchJob {
     where
         ET::Error: EmailTransportError,
     {
+        let (resource, resource_group) = UtilsResource::WebScrapingResources.into();
+
         // Fetch all resources trackers jobs that are pending processing.
         let web_scraping_system = api.web_scraping_system();
         let pending_trackers = web_scraping_system.get_pending_resources_trackers();
@@ -96,9 +101,12 @@ impl WebPageTrackersFetchJob {
             // Check if resources has changed, comparing new revision to the latest existing one.
             let fetch_start = Instant::now();
             let Some(user) = api.users().get(tracker.user_id).await? else {
-                log::error!(
-                    user:serde = UserLogContext::new(tracker.user_id),
-                    util:serde = tracker.log_context();
+                error!(
+                    user.id = %tracker.user_id,
+                    util.resource = resource,
+                    util.resource_group = resource_group,
+                    util.resource_id = %tracker.id,
+                    util.resource_name = tracker.name,
                     "Cannot find the user for the tracker."
                 );
                 continue;
@@ -114,11 +122,13 @@ impl WebPageTrackersFetchJob {
             {
                 Ok(new_revision_with_diff) => new_revision_with_diff,
                 Err(err) => {
-                    let execution_time = fetch_start.elapsed();
-                    log::error!(
-                        user:serde = UserLogContext::new(tracker.user_id),
-                        util:serde = tracker.log_context(),
-                        metrics:serde = MetricsContext::default().with_job_execution_time(execution_time);
+                    error!(
+                        user.id = %tracker.user_id,
+                        util.resource = resource,
+                        util.resource_group = resource_group,
+                        util.resource_id = %tracker.id,
+                        util.resource_name = tracker.name,
+                        metrics.job_execution_time = fetch_start.elapsed().as_nanos() as u64,
                         "Failed to create web page tracker history revision: {err:?}"
                     );
 
@@ -136,10 +146,13 @@ impl WebPageTrackersFetchJob {
                     };
 
                     if let Some(retry) = retry_state {
-                        log::warn!(
-                            user:serde = UserLogContext::new(tracker.user_id),
-                            util:serde = tracker.log_context(),
-                            metrics:serde = MetricsContext::default().with_job_retries(retry.attempts);
+                        warn!(
+                            user.id = %tracker.user_id,
+                            util.resource = resource,
+                            util.resource_group = resource_group,
+                            util.resource_id = %tracker.id,
+                            util.resource_name = tracker.name,
+                            metrics.job_retries = retry.attempts,
                             "Scheduled a retry to create web page resources tracker history revision at {}.",
                             retry.next_at,
                         );
@@ -166,10 +179,13 @@ impl WebPageTrackersFetchJob {
             };
 
             let execution_time = fetch_start.elapsed();
-            log::info!(
-                user:serde = UserLogContext::new(tracker.user_id),
-                util:serde = tracker.log_context(),
-                metrics:serde = MetricsContext::default().with_job_execution_time(execution_time);
+            info!(
+                user.id = %tracker.user_id,
+                util.resource = resource,
+                util.resource_group = resource_group,
+                util.resource_id = %tracker.id,
+                util.resource_name = tracker.name,
+                metrics.job_execution_time = execution_time.as_nanos() as u64,
                 "Successfully created web page tracker history revision in {}.",
                 humantime::format_duration(execution_time)
             );
@@ -220,6 +236,8 @@ impl WebPageTrackersFetchJob {
     where
         ET::Error: EmailTransportError,
     {
+        let (resource, resource_group) = UtilsResource::WebScrapingContent.into();
+
         // Fetch all content trackers jobs that are pending processing.
         let web_scraping_system = api.web_scraping_system();
         let pending_trackers = web_scraping_system.get_pending_content_trackers();
@@ -236,9 +254,12 @@ impl WebPageTrackersFetchJob {
             // detected changes.
             let fetch_start = Instant::now();
             let Some(user) = api.users().get(tracker.user_id).await? else {
-                log::error!(
-                    user:serde = UserLogContext::new(tracker.user_id),
-                    util:serde = tracker.log_context();
+                error!(
+                    user.id = %tracker.user_id,
+                    util.resource = resource,
+                    util.resource_group = resource_group,
+                    util.resource_id = %tracker.id,
+                    util.resource_name = tracker.name,
                     "Cannot find the user for the tracker."
                 );
                 continue;
@@ -251,11 +272,13 @@ impl WebPageTrackersFetchJob {
             {
                 Ok(new_revision) => new_revision,
                 Err(err) => {
-                    let execution_time = fetch_start.elapsed();
-                    log::error!(
-                        user:serde = UserLogContext::new(tracker.user_id),
-                        util:serde = tracker.log_context(),
-                        metrics:serde = MetricsContext::default().with_job_execution_time(execution_time);
+                    error!(
+                        user.id = %tracker.user_id,
+                        util.resource = resource,
+                        util.resource_group = resource_group,
+                        util.resource_id = %tracker.id,
+                        util.resource_name = tracker.name,
+                        metrics.job_execution_time = fetch_start.elapsed().as_nanos() as u64,
                         "Failed to create web page tracker history revision: {err:?}"
                     );
 
@@ -273,10 +296,13 @@ impl WebPageTrackersFetchJob {
                     };
 
                     if let Some(retry) = retry_state {
-                        log::warn!(
-                            user:serde = UserLogContext::new(tracker.user_id),
-                            util:serde = tracker.log_context(),
-                            metrics:serde = MetricsContext::default().with_job_retries(retry.attempts);
+                        warn!(
+                            user.id = %tracker.user_id,
+                            util.resource = resource,
+                            util.resource_group = resource_group,
+                            util.resource_id = %tracker.id,
+                            util.resource_name = tracker.name,
+                            metrics.job_retries = retry.attempts,
                             "Scheduled a retry to create web page content tracker history revision at {}.",
                             retry.next_at,
                         );
@@ -303,10 +329,13 @@ impl WebPageTrackersFetchJob {
             };
 
             let execution_time = fetch_start.elapsed();
-            log::info!(
-                user:serde = UserLogContext::new(tracker.user_id),
-                util:serde = tracker.log_context(),
-                metrics:serde = MetricsContext::default().with_job_execution_time(execution_time);
+            info!(
+                user.id = %tracker.user_id,
+                util.resource = resource,
+                util.resource_group = resource_group,
+                util.resource_id = %tracker.id,
+                util.resource_name = tracker.name,
+                metrics.job_execution_tim = execution_time.as_nanos() as u64,
                 "Successfully created web page tracker history revision in {}.",
                 humantime::format_duration(execution_time)
             );
@@ -339,19 +368,27 @@ impl WebPageTrackersFetchJob {
         ET::Error: EmailTransportError,
     {
         let Some(job_id) = tracker.job_id else {
-            log::error!(
-                user:serde = UserLogContext::new(tracker.user_id),
-                util:serde = tracker.log_context();
+            let (resource, resource_group) = Tag::KIND.into();
+            error!(
+                user.id = %tracker.user_id,
+                util.resource = resource,
+                util.resource_group = resource_group,
+                util.resource_id = %tracker.id,
+                util.resource_name = tracker.name,
                 "Could not find a job for a pending web page tracker, skipping."
             );
             return Ok(None);
         };
 
         if tracker.settings.revisions == 0 || tracker.job_config.is_none() {
-            log::warn!(
-                user:serde = UserLogContext::new(tracker.user_id),
-                util:serde = tracker.log_context(),
-                job:serde = JobLogContext::new(job_id);
+            let (resource, resource_group) = Tag::KIND.into();
+            warn!(
+                user.id = %tracker.user_id,
+                util.resource = resource,
+                util.resource_group = resource_group,
+                util.resource_id = %tracker.id,
+                util.resource_name = tracker.name,
+                job.id = %job_id,
                 "Found a pending web page tracker that doesn't support tracking, the job will be removed."
             );
 
@@ -390,9 +427,13 @@ impl WebPageTrackersFetchJob {
             )
             .await;
         if let Err(err) = notification_schedule_result {
-            log::error!(
-                user:serde = UserLogContext::new(tracker.user_id),
-                util:serde = tracker.log_context();
+            let (resource, resource_group) = Tag::KIND.into();
+            error!(
+                user.id = %tracker.user_id,
+                util.resource = resource,
+                util.resource_group = resource_group,
+                util.resource_id = %tracker.id,
+                util.resource_name = tracker.name,
                 "Failed to schedule a notification for web page tracker: {err:?}."
             );
         }

@@ -14,6 +14,7 @@ use lettre::{
 };
 use std::cmp;
 use time::OffsetDateTime;
+use tracing::{error, info};
 
 /// Defines a maximum number of notifications that can be retrieved from the database at once.
 const MAX_NOTIFICATIONS_PAGE_SIZE: usize = 100;
@@ -58,11 +59,7 @@ where
             if let Some(notification) = self.api.db.get_notification(notification_id?).await? {
                 let notification_id = notification.id;
                 if let Err(err) = self.send_notification(notification).await {
-                    log::error!(
-                        "Failed to send notification {}: {:?}",
-                        *notification_id,
-                        err
-                    );
+                    error!("Failed to send notification {}: {err:?}", *notification_id);
                 } else {
                     sent_notifications += 1;
                     self.api.db.remove_notification(notification_id).await?;
@@ -103,7 +100,7 @@ where
                 .await?;
             }
             NotificationDestination::ServerLog => {
-                log::info!("Sending notification: {:?}", notification);
+                info!("Sending notification: {notification:?}");
             }
         }
 

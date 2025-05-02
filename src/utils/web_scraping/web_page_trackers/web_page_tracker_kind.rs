@@ -1,3 +1,4 @@
+use crate::utils::UtilsResource;
 use serde::{Deserialize, Serialize};
 
 /// Represents type of the web page tracker (e.g. resources, content, etc.).
@@ -12,6 +13,15 @@ impl TryFrom<WebPageTrackerKind> for Vec<u8> {
 
     fn try_from(value: WebPageTrackerKind) -> Result<Self, Self::Error> {
         Ok(postcard::to_stdvec(&value)?)
+    }
+}
+
+impl From<WebPageTrackerKind> for (&str, &str) {
+    fn from(value: WebPageTrackerKind) -> Self {
+        match value {
+            WebPageTrackerKind::WebPageResources => UtilsResource::WebScrapingResources.into(),
+            WebPageTrackerKind::WebPageContent => UtilsResource::WebScrapingContent.into(),
+        }
     }
 }
 

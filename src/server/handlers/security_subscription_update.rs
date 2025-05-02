@@ -5,6 +5,7 @@ use crate::{
 };
 use actix_web::{Error, HttpResponse, Responder, web};
 use serde::Deserialize;
+use tracing::{error, info};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -29,19 +30,25 @@ pub async fn security_subscription_update(
         .await
     {
         Ok(Some(updated_user)) => {
-            log::info!(
-                operator:serde = operator.id(),
-                user:serde = updated_user.log_context();
+            info!(
+                operator = operator.id(),
+                user.id = %updated_user.id,
                 "Successfully updated user subscription."
             );
             Ok::<HttpResponse, Error>(HttpResponse::NoContent().finish())
         }
         Ok(None) => {
-            log::error!(operator:serde = operator.id(); "Failed to find user by email (`{user_email}`).");
+            error!(
+                operator = operator.id(),
+                "Failed to find user by email (`{user_email}`)."
+            );
             Ok(HttpResponse::NotFound().finish())
         }
         Err(err) => {
-            log::error!(operator:serde = operator.id(); "Failed to update user's tier by email (`{user_email}`): {err:?}");
+            error!(
+                operator = operator.id(),
+                "Failed to update user's tier by email (`{user_email}`): {err:?}"
+            );
             Ok(generic_internal_server_error())
         }
     }
