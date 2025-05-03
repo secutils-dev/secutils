@@ -10,8 +10,8 @@ pub enum UtilsResourceOperation {
     WebhooksRespondersGetHistory,
     WebhooksRespondersClearHistory,
     WebhooksRespondersGetStats,
-    WebScrapingGetHistory,
-    WebScrapingClearHistory,
+    WebScrapingPageGetHistory,
+    WebScrapingPageClearHistory,
     WebSecurityContentSecurityPolicySerialize,
 }
 
@@ -22,7 +22,7 @@ impl UtilsResourceOperation {
             self,
             Self::CertificatesTemplateGenerate
                 | Self::CertificatesPrivateKeyExport
-                | Self::WebScrapingGetHistory
+                | Self::WebScrapingPageGetHistory
                 | Self::WebSecurityContentSecurityPolicySerialize
         )
     }
@@ -57,15 +57,11 @@ impl TryFrom<(&UtilsResource, &str, &Method)> for UtilsResourceOperation {
             }
 
             // Web scraping custom actions.
-            UtilsResource::WebScrapingResources | UtilsResource::WebScrapingContent
-                if operation == "history" =>
-            {
-                Ok(UtilsResourceOperation::WebScrapingGetHistory)
+            UtilsResource::WebScrapingPage if operation == "history" => {
+                Ok(UtilsResourceOperation::WebScrapingPageGetHistory)
             }
-            UtilsResource::WebScrapingResources | UtilsResource::WebScrapingContent
-                if operation == "clear" =>
-            {
-                Ok(UtilsResourceOperation::WebScrapingClearHistory)
+            UtilsResource::WebScrapingPage if operation == "clear" => {
+                Ok(UtilsResourceOperation::WebScrapingPageClearHistory)
             }
 
             // Web security custom actions.
@@ -94,8 +90,8 @@ mod tests {
         assert!(!UtilsResourceOperation::WebhooksRespondersClearHistory.requires_params());
         assert!(!UtilsResourceOperation::WebhooksRespondersGetStats.requires_params());
 
-        assert!(UtilsResourceOperation::WebScrapingGetHistory.requires_params());
-        assert!(!UtilsResourceOperation::WebScrapingClearHistory.requires_params());
+        assert!(UtilsResourceOperation::WebScrapingPageGetHistory.requires_params());
+        assert!(!UtilsResourceOperation::WebScrapingPageClearHistory.requires_params());
 
         assert!(
             UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize.requires_params()
@@ -183,35 +179,19 @@ mod tests {
 
         assert_eq!(
             UtilsResourceOperation::try_from((
-                &UtilsResource::WebScrapingResources,
+                &UtilsResource::WebScrapingPage,
                 "history",
                 &Method::POST
             )),
-            Ok(UtilsResourceOperation::WebScrapingGetHistory)
+            Ok(UtilsResourceOperation::WebScrapingPageGetHistory)
         );
         assert_eq!(
             UtilsResourceOperation::try_from((
-                &UtilsResource::WebScrapingResources,
+                &UtilsResource::WebScrapingPage,
                 "clear",
                 &Method::POST
             )),
-            Ok(UtilsResourceOperation::WebScrapingClearHistory)
-        );
-        assert_eq!(
-            UtilsResourceOperation::try_from((
-                &UtilsResource::WebScrapingContent,
-                "history",
-                &Method::POST
-            )),
-            Ok(UtilsResourceOperation::WebScrapingGetHistory)
-        );
-        assert_eq!(
-            UtilsResourceOperation::try_from((
-                &UtilsResource::WebScrapingContent,
-                "clear",
-                &Method::POST
-            )),
-            Ok(UtilsResourceOperation::WebScrapingClearHistory)
+            Ok(UtilsResourceOperation::WebScrapingPageClearHistory)
         );
         assert!(
             UtilsResourceOperation::try_from((

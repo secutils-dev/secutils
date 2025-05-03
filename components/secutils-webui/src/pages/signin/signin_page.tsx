@@ -25,7 +25,7 @@ import { Page } from '../page';
 async function getSigninFlow(api: FrontendApi, searchParams: URLSearchParams) {
   const flowId = searchParams.get('flow');
   if (flowId) {
-    // Try to retrieve existing flow first, otherwise create a new one.
+    // Try to retrieve the existing flow first, otherwise create a new one.
     try {
       return await api.getLoginFlow({ id: flowId });
     } catch (err) {
@@ -73,7 +73,7 @@ export function SigninPage() {
         setSigninStatus({ status: 'failed', error: originalErrorMessage ?? 'Unknown error' });
 
         addToast({
-          id: 'signin-toast',
+          id: `signin-toast-${Math.floor(Math.random() * 100)}`,
           color: 'danger',
           title: 'Failed to sign in',
           text: (

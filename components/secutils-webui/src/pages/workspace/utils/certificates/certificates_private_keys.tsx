@@ -241,7 +241,7 @@ export default function CertificatesPrivateKeys() {
               name: (
                 <EuiToolTip content="A unique name of the private key">
                   <span>
-                    Name <EuiIcon size="s" color="subdued" type="questionInCircle" className="eui-alignTop" />
+                    Name <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
                   </span>
                 </EuiToolTip>
               ),
@@ -254,7 +254,7 @@ export default function CertificatesPrivateKeys() {
               name: (
                 <EuiToolTip content="Algorithm used to generate a private key.">
                   <span>
-                    Type <EuiIcon size="s" color="subdued" type="questionInCircle" className="eui-alignTop" />
+                    Type <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
                   </span>
                 </EuiToolTip>
               ),
@@ -269,7 +269,7 @@ export default function CertificatesPrivateKeys() {
               name: (
                 <EuiToolTip content="Indicates whether the private key is encrypted with a passphrase or not.">
                   <span>
-                    Encryption <EuiIcon size="s" color="subdued" type="questionInCircle" className="eui-alignTop" />
+                    Encryption <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
                   </span>
                 </EuiToolTip>
               ),

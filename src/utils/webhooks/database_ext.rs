@@ -168,7 +168,7 @@ ORDER BY r.updated_at
         INSERT INTO user_data_webhooks_responders (user_id, id, name, location, method, enabled, settings, created_at, updated_at)
         SELECT * FROM new_responder
         WHERE NOT EXISTS(
-            SELECT id FROM user_data_webhooks_responders 
+            SELECT id FROM user_data_webhooks_responders
             WHERE user_id = $1 AND location = $4 AND (method = $10 OR $5 = $10)
         )
                 "#,
@@ -234,7 +234,7 @@ ORDER BY r.updated_at
     UPDATE user_data_webhooks_responders
     SET name = $3, location = $4, method = $5, enabled = $6, settings = $7, updated_at = $8
     WHERE user_id = $1 AND id = $2 AND NOT EXISTS(
-        SELECT id FROM user_data_webhooks_responders 
+        SELECT id FROM user_data_webhooks_responders
         WHERE user_id = $1 AND id != $2 AND location = $4 AND (method = $9 OR method = $5 OR $5 = $9)
     )
             "#,
@@ -404,7 +404,7 @@ ORDER BY r.updated_at
 
 impl Database {
     /// Returns a database extension for the webhooks utility-related operations.
-    pub fn webhooks(&self) -> WebhooksDatabaseExt {
+    pub fn webhooks(&self) -> WebhooksDatabaseExt<'_> {
         WebhooksDatabaseExt::new(&self.pool)
     }
 }

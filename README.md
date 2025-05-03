@@ -70,11 +70,10 @@ port = 5432
 username = 'postgres'
 password = 'password'
 
-# Connection details for Ory Kratos and Web Scraper services.
+# Connection details for Ory Kratos services.
 [components]
 kratos_url = 'http://localhost:4433/'
 kratos_admin_url = 'http://localhost:4434/'
-web_scraper_url = 'http://localhost:7272/'
 
 # A list of preconfigured users. Once a user with the specified email signs up, 
 # the server will automatically assign the user the specified handle and tier.
@@ -126,7 +125,7 @@ COURIER_HTTP_REQUEST_CONFIG_AUTH_CONFIG_VALUE="Bearer eyJ0eXAiOiJKV1QiLCJhbGciOi
 
 ### Web UI
 
-Install all the required dependencies with `npm install` and run the UI in watch mode with `npm run watch -w components/secutils-webui`. The UI should be accessible at http://localhost:7171.
+Install all the required dependencies with `npm --prefix components/secutils-webui i` and run the UI in watch mode with `npm --prefix components/secutils-webui run watch`. The UI should be accessible at http://localhost:7171.
 
 ### Usage
 

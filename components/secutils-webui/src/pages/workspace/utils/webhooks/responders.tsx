@@ -247,7 +247,7 @@ export default function Responders() {
             name: (
               <EuiToolTip content="Name of the responder">
                 <span>
-                  Name <EuiIcon size="s" color="subdued" type="questionInCircle" className="eui-alignTop" />
+                  Name <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
                 </span>
               </EuiToolTip>
             ),
@@ -260,7 +260,7 @@ export default function Responders() {
             name: (
               <EuiToolTip content="A unique URL of the responder endpoint">
                 <span>
-                  URL <EuiIcon size="s" color="subdued" type="questionInCircle" className="eui-alignTop" />
+                  URL <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
                 </span>
               </EuiToolTip>
             ),

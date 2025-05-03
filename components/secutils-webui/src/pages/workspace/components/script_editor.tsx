@@ -99,9 +99,14 @@ export function ScriptEditor({ onChange, defaultValue }: Props) {
 
   return (
     <Editor
-      height="15vh"
+      height="25vh"
       defaultLanguage="javascript"
-      options={{ mouseWheelZoom: true }}
+      options={{
+        mouseWheelZoom: true,
+        scrollbar: { verticalScrollbarSize: 14, horizontal: 'hidden' },
+        wordWrap: 'on',
+        minimap: { enabled: false },
+      }}
       defaultValue={defaultValue}
       onChange={(value) => onChange(value)}
       theme={'euiTheme'}

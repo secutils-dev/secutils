@@ -113,7 +113,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> UsersApi<'a, DR, ET> {
 
 impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
     /// Returns an API to work with users.
-    pub fn users(&self) -> UsersApi<DR, ET> {
+    pub fn users(&self) -> UsersApi<'_, DR, ET> {
         UsersApi::new(self)
     }
 }

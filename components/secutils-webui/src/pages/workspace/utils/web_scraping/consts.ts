@@ -1,14 +1,14 @@
-import type { SchedulerJobRetryStrategy } from './web_page_tracker';
+import type { SchedulerJobRetryStrategy } from './page_tracker';
 
-export const WEB_PAGE_TRACKER_MANUAL_SCHEDULE = '@';
-export const WEB_PAGE_TRACKER_CUSTOM_SCHEDULE = '@@';
-export const WEB_PAGE_TRACKER_SCHEDULES = [
-  { value: WEB_PAGE_TRACKER_MANUAL_SCHEDULE, text: 'Manually' },
+export const PAGE_TRACKER_MANUAL_SCHEDULE = '@';
+export const PAGE_TRACKER_CUSTOM_SCHEDULE = '@@';
+export const PAGE_TRACKER_SCHEDULES = [
+  { value: PAGE_TRACKER_MANUAL_SCHEDULE, text: 'Manually' },
   { value: '@hourly', text: 'Hourly' },
   { value: '@daily', text: 'Daily' },
   { value: '@weekly', text: 'Weekly' },
   { value: '@monthly', text: 'Monthly' },
-  { value: WEB_PAGE_TRACKER_CUSTOM_SCHEDULE, text: 'Custom' },
+  { value: PAGE_TRACKER_CUSTOM_SCHEDULE, text: 'Custom' },
 ];
 
 export function getScheduleMinInterval(schedule: string) {

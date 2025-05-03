@@ -21,7 +21,7 @@ impl FromRequest for Operator {
         Box::pin(async move {
             let state = web::Data::<AppState>::extract(&req).await?;
             let credentials = Credentials::extract(&req).await?;
-            match state.api.security().get_operator(credentials).await {
+            match state.api.security().get_operator(&credentials).await {
                 Ok(Some(user)) => Ok(user),
                 Ok(None) => {
                     warn!(

@@ -249,7 +249,7 @@ export default function WebSecurityContentSecurityPolicies() {
             name: (
               <EuiToolTip content="Content security policy name">
                 <span>
-                  Name <EuiIcon size="s" color="subdued" type="questionInCircle" className="eui-alignTop" />
+                  Name <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
                 </span>
               </EuiToolTip>
             ),
@@ -262,7 +262,7 @@ export default function WebSecurityContentSecurityPolicies() {
             name: (
               <EuiToolTip content="Content security policy as it should appear in HTTP header or <meta> tag.">
                 <span>
-                  Policy <EuiIcon size="s" color="subdued" type="questionInCircle" className="eui-alignTop" />
+                  Policy <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
                 </span>
               </EuiToolTip>
             ),

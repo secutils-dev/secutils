@@ -63,7 +63,7 @@ pub async fn webhooks_responders(
 
     // Extract responder path either from path or from the request headers.
     let mut responder_path = if let Some(responder_path) = path_params.responder_path {
-        format!("/{}", responder_path)
+        format!("/{responder_path}")
     } else {
         let replaced_path = request
             .headers()
@@ -353,7 +353,7 @@ pub fn parse_webhook_host<'s>(
     };
 
     // First remove the public URL host from the request host to keep only user-specific part.
-    let Some(webhook_subdomain) = webhook_host.strip_suffix(&format!(".webhooks.{}", public_host))
+    let Some(webhook_subdomain) = webhook_host.strip_suffix(&format!(".webhooks.{public_host}"))
     else {
         bail!(SecutilsError::client(format!(
             "Failed to extract base host from the webhook host ({webhook_host})."

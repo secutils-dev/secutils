@@ -18,7 +18,7 @@ impl FromRequest for User {
         Box::pin(async move {
             let state = web::Data::<AppState>::extract(&req).await?;
             let credentials = Credentials::extract(&req).await?;
-            match state.api.security().authenticate(credentials).await {
+            match state.api.security().authenticate(&credentials).await {
                 Ok(Some(user)) => Ok(user),
                 Ok(None) => Err(ErrorUnauthorized(anyhow!("Unauthorized"))),
                 Err(err) => {

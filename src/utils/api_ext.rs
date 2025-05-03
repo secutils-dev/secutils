@@ -26,7 +26,7 @@ impl<'a> UtilsApiExt<'a> {
 
 impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
     /// Returns an API to retrieve available utils.
-    pub fn utils(&self) -> UtilsApiExt {
+    pub fn utils(&self) -> UtilsApiExt<'_> {
         UtilsApiExt::new(&self.db)
     }
 }
@@ -139,19 +139,10 @@ mod tests {
                     [
                         Util {
                             id: 11,
-                            handle: "web_scraping__content",
-                            name: "Content trackers",
+                            handle: "web_scraping__page",
+                            name: "Page trackers",
                             keywords: Some(
-                                "web scraping crawl spider scraper scrape content tracker track",
-                            ),
-                            utils: None,
-                        },
-                        Util {
-                            id: 12,
-                            handle: "web_scraping__resources",
-                            name: "Resources trackers",
-                            keywords: Some(
-                                "web scraping crawl spider scraper scrape resources tracker track javascript css",
+                                "web scraping crawl spider scraper scrape web page content tracker track",
                             ),
                             utils: None,
                         },

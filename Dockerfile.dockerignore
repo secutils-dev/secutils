@@ -6,6 +6,7 @@ dev
 .parcel-cache
 target
 dist
+build
 .env
 .nvmrc
 .github

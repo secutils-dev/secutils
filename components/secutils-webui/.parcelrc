@@ -9,8 +9,7 @@
   },
   "transformers": {
     "favicon.ico": ["@parcel/transformer-raw"],
-    "*.{mp4,webm}": ["@parcel/transformer-raw"],
-    "*.{ts,tsx}": ["@parcel/transformer-typescript-tsc"]
+    "*.{mp4,webm}": ["@parcel/transformer-raw"]
   },
   "validators": {
     "*.{ts,tsx}": ["@parcel/validator-typescript"]

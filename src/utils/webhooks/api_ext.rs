@@ -258,15 +258,13 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
 
         if responder.name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
             bail!(SecutilsError::client(format!(
-                "Responder name cannot be longer than {} characters.",
-                MAX_UTILS_ENTITY_NAME_LENGTH
+                "Responder name cannot be longer than {MAX_UTILS_ENTITY_NAME_LENGTH} characters."
             )));
         }
 
         if responder.location.path.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
             bail!(SecutilsError::client(format!(
-                "Responder location path cannot be longer than {} characters.",
-                MAX_UTILS_ENTITY_NAME_LENGTH
+                "Responder location path cannot be longer than {MAX_UTILS_ENTITY_NAME_LENGTH} characters."
             )));
         }
 
@@ -315,10 +313,10 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
             )));
         }
 
-        if let Some(ref script) = responder.settings.script {
-            if script.is_empty() {
-                bail!(SecutilsError::client("Responder script cannot be empty."));
-            }
+        if let Some(ref script) = responder.settings.script
+            && script.is_empty()
+        {
+            bail!(SecutilsError::client("Responder script cannot be empty."));
         }
 
         Ok(())
@@ -404,10 +402,10 @@ mod tests {
     };
     use insta::assert_debug_snapshot;
     use sqlx::PgPool;
-    use std::borrow::Cow;
+    use std::{borrow::Cow, slice};
     use uuid::uuid;
 
-    fn get_request_create_params(url: &str) -> RespondersRequestCreateParams {
+    fn get_request_create_params(url: &str) -> RespondersRequestCreateParams<'_> {
         RespondersRequestCreateParams {
             client_address: None,
             method: Cow::Borrowed("POST"),
@@ -1345,7 +1343,10 @@ mod tests {
         );
 
         webhooks.remove_responder(responder_one.id).await?;
-        assert_eq!(webhooks.get_responders().await?, [responder_two.clone()]);
+        assert_eq!(
+            webhooks.get_responders().await?,
+            slice::from_ref(&responder_two)
+        );
 
         webhooks.remove_responder(responder_two.id).await?;
         assert!(webhooks.get_responders().await?.is_empty());

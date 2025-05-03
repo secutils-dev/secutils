@@ -117,8 +117,8 @@ mod tests {
     fn can_create_id() -> anyhow::Result<()> {
         assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", None, None), @"9401142304413078507");
         assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", Some("some-sub-category"), None), @"1596497830688235325");
-        assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", None, Some(uuid!("00000000-0000-0000-0000-000000000001").into())), @"15620247599751410876");
-        assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", Some("some-sub-category"), Some(uuid!("00000000-0000-0000-0000-000000000001").into())), @"5842154758832312172");
+        assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", None, Some(uuid!("00000000-0000-0000-0000-000000000001").into())), @"12198784850714205533");
+        assert_debug_snapshot!(SearchItem::create_id("some-label", "some-category", Some("some-sub-category"), Some(uuid!("00000000-0000-0000-0000-000000000001").into())), @"7522693773249480917");
 
         Ok(())
     }

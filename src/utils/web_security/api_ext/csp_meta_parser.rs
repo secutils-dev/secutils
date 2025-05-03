@@ -2,7 +2,7 @@ use crate::utils::web_security::ContentSecurityPolicySource;
 use anyhow::anyhow;
 use bytes::Bytes;
 use html5ever::{
-    LocalName, QualName, namespace_url, ns,
+    LocalName, QualName, ns,
     tendril::{ByteTendril, ReadExt, fmt, fmt::Slice},
     tokenizer::{
         BufferQueue, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,

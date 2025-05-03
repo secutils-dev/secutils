@@ -18,10 +18,10 @@ impl TryFrom<RawUtil> for Util {
             bail!("Malformed raw utility: {:?}", raw_util);
         }
 
-        if let Some(parent_id) = raw_util.parent_id {
-            if parent_id <= 0 {
-                bail!("Invalid raw utility parent id: {}", parent_id);
-            }
+        if let Some(parent_id) = raw_util.parent_id
+            && parent_id <= 0
+        {
+            bail!("Invalid raw utility parent id: {}", parent_id);
         }
 
         Ok(Util {

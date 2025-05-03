@@ -71,14 +71,6 @@ mod tests {
         let original_job_data = job.job_data()?;
         assert!(original_job_data.extra.is_empty());
 
-        job.set_job_type(SchedulerJob::WebPageTrackersSchedule)?;
-
-        let job_data = job.job_data()?;
-        assert_eq!(
-            SchedulerJobMetadata::try_from(job_data.extra.as_slice())?,
-            SchedulerJobMetadata::new(SchedulerJob::WebPageTrackersSchedule)
-        );
-
         job.set_job_type(SchedulerJob::NotificationsSend)?;
 
         let mut job_data = job.job_data()?;

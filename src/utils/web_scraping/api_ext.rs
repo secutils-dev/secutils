@@ -1,61 +1,50 @@
-mod web_page_content_tracker_get_history_params;
-mod web_page_resources_tracker_get_history_params;
-mod web_page_tracker_create_params;
-mod web_page_tracker_update_params;
+mod page_tracker_create_params;
+mod page_tracker_get_history_params;
+mod page_tracker_update_params;
 
 pub use self::{
-    web_page_content_tracker_get_history_params::WebPageContentTrackerGetHistoryParams,
-    web_page_resources_tracker_get_history_params::WebPageResourcesTrackerGetHistoryParams,
-    web_page_tracker_create_params::WebPageTrackerCreateParams,
-    web_page_tracker_update_params::WebPageTrackerUpdateParams,
+    page_tracker_create_params::PageTrackerCreateParams,
+    page_tracker_get_history_params::PageTrackerGetHistoryParams,
+    page_tracker_update_params::PageTrackerUpdateParams,
 };
 use crate::{
     api::Api,
     error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
-    scheduler::{CronExt, SchedulerJobRetryStrategy},
+    retrack::{
+        RetrackTracker,
+        tags::{
+            RETRACK_NOTIFICATIONS_TAG, RETRACK_RESOURCE_ID_TAG, RETRACK_RESOURCE_TAG,
+            RETRACK_USER_TAG, get_tag_value, prepare_tags,
+        },
+    },
+    scheduler::CronExt,
     users::User,
     utils::{
+        UtilsResource,
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
-        web_scraping::{
-            WebPageContentTrackerTag, WebPageDataRevision, WebPageResource, WebPageResourcesData,
-            WebPageResourcesTrackerInternalTag, WebPageResourcesTrackerTag, WebPageTracker,
-            WebPageTrackerTag, WebScraperContentRequest, WebScraperContentRequestScripts,
-            WebScraperContentResponse, WebScraperErrorResponse, WebScraperResource,
-            WebScraperResourcesRequest, WebScraperResourcesRequestScripts,
-            WebScraperResourcesResponse, database_ext::WebScrapingDatabaseSystemExt,
-            web_page_content_revisions_diff, web_page_resources_revisions_diff,
-        },
+        web_scraping::{PageTracker, PageTrackerConfig, PageTrackerTarget},
     },
 };
 use anyhow::{anyhow, bail};
 use croner::Cron;
-use futures::Stream;
+use retrack_types::trackers::{
+    PageTarget, TrackerConfig, TrackerCreateParams, TrackerDataRevision,
+    TrackerListRevisionsParams, TrackerTarget, TrackerUpdateParams,
+};
 use std::time::Duration;
 use time::OffsetDateTime;
-use tracing::debug;
+use tracing::error;
 use uuid::Uuid;
 
-/// Defines a maximum number of jobs that can be retrieved from the database at once.
-const MAX_JOBS_PAGE_SIZE: usize = 1000;
-
-/// Script used to `filter_map` resource that needs to be tracked.
-pub const WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME: &str = "resourceFilterMap";
-
-/// Script used to extract web page content that needs to be tracked.
-pub const WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME: &str = "extractContent";
-
-/// We currently wait up to 60 seconds before starting to track web page.
-const MAX_WEB_PAGE_TRACKER_DELAY: Duration = Duration::from_secs(60);
-
 /// We currently support up to 10 retry attempts for the web page tracker.
-const MAX_WEB_PAGE_TRACKER_RETRY_ATTEMPTS: u32 = 10;
+const MAX_PAGE_TRACKER_RETRY_ATTEMPTS: u32 = 10;
 
-/// We currently support minimum 60 seconds between retry attempts for the web page tracker.
-const MIN_WEB_PAGE_TRACKER_RETRY_INTERVAL: Duration = Duration::from_secs(60);
+/// We currently support a minimum 60 seconds between retry attempts for the web page tracker.
+const MIN_PAGE_TRACKER_RETRY_INTERVAL: Duration = Duration::from_secs(60);
 
-/// We currently support maximum 12 hours between retry attempts for the web page tracker.
-const MAX_WEB_PAGE_TRACKER_RETRY_INTERVAL: Duration = Duration::from_secs(12 * 3600);
+/// We currently support the maximum 12 hours between retry attempts for the web page tracker.
+const MAX_PAGE_TRACKER_RETRY_INTERVAL: Duration = Duration::from_secs(12 * 3600);
 
 pub struct WebScrapingApiExt<'a, 'u, DR: DnsResolver, ET: EmailTransport> {
     api: &'a Api<DR, ET>,
@@ -68,635 +57,248 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         Self { api, user }
     }
 
-    /// Returns all web page resources trackers.
-    pub async fn get_resources_trackers(
-        &self,
-    ) -> anyhow::Result<Vec<WebPageTracker<WebPageResourcesTrackerTag>>> {
-        self.get_web_page_trackers().await
-    }
+    /// Returns all page trackers.
+    pub async fn get_page_trackers(&self) -> anyhow::Result<Vec<PageTracker>> {
+        // Fetch trackers from the database and Retrack.
+        let web_scraping = self.api.db.web_scraping(self.user.id);
+        let retrack = self.api.retrack();
+        let utils_resource = UtilsResource::WebScrapingPage;
+        let tags = [
+            format!("{RETRACK_USER_TAG}:{}", self.user.id),
+            format!("{RETRACK_RESOURCE_TAG}:{utils_resource}"),
+        ];
+        let (mut trackers, retrack_trackers) = tokio::try_join!(
+            web_scraping.get_page_trackers(),
+            retrack.list_trackers(&tags)
+        )?;
 
-    /// Returns all web page content trackers.
-    pub async fn get_content_trackers(
-        &self,
-    ) -> anyhow::Result<Vec<WebPageTracker<WebPageContentTrackerTag>>> {
-        self.get_web_page_trackers().await
-    }
-
-    /// Returns web page resources tracker by its ID.
-    pub async fn get_resources_tracker(
-        &self,
-        id: Uuid,
-    ) -> anyhow::Result<Option<WebPageTracker<WebPageResourcesTrackerTag>>> {
-        self.get_web_page_tracker(id).await
-    }
-
-    /// Returns web page content tracker by its ID.
-    #[allow(dead_code)]
-    pub async fn get_content_tracker(
-        &self,
-        id: Uuid,
-    ) -> anyhow::Result<Option<WebPageTracker<WebPageContentTrackerTag>>> {
-        self.get_web_page_tracker(id).await
-    }
-
-    /// Creates a new web page resources tracker.
-    pub async fn create_resources_tracker(
-        &self,
-        params: WebPageTrackerCreateParams,
-    ) -> anyhow::Result<WebPageTracker<WebPageResourcesTrackerTag>> {
-        self.create_web_page_tracker(
-            params,
-            Some(|tracker: &WebPageTracker<WebPageResourcesTrackerTag>| {
-                self.validate_web_page_resources_tracker(tracker)
-            }),
-        )
-        .await
-    }
-
-    /// Creates a new web page content tracker.
-    pub async fn create_content_tracker(
-        &self,
-        params: WebPageTrackerCreateParams,
-    ) -> anyhow::Result<WebPageTracker<WebPageContentTrackerTag>> {
-        self.create_web_page_tracker(
-            params,
-            Some(|tracker: &WebPageTracker<WebPageContentTrackerTag>| {
-                self.validate_web_page_content_tracker(tracker)
-            }),
-        )
-        .await
-    }
-
-    /// Updates existing web page resources tracker.
-    pub async fn update_resources_tracker(
-        &self,
-        id: Uuid,
-        params: WebPageTrackerUpdateParams,
-    ) -> anyhow::Result<WebPageTracker<WebPageResourcesTrackerTag>> {
-        self.update_web_page_tracker(
-            id,
-            params,
-            Some(|tracker: &WebPageTracker<WebPageResourcesTrackerTag>| {
-                self.validate_web_page_resources_tracker(tracker)
-            }),
-        )
-        .await
-    }
-
-    /// Updates existing web page content tracker.
-    pub async fn update_content_tracker(
-        &self,
-        id: Uuid,
-        params: WebPageTrackerUpdateParams,
-    ) -> anyhow::Result<WebPageTracker<WebPageContentTrackerTag>> {
-        self.update_web_page_tracker(
-            id,
-            params,
-            Some(|tracker: &WebPageTracker<WebPageContentTrackerTag>| {
-                self.validate_web_page_content_tracker(tracker)
-            }),
-        )
-        .await
-    }
-
-    /// Removes existing web page resources tracker and all history.
-    pub async fn remove_web_page_tracker(&self, id: Uuid) -> anyhow::Result<()> {
-        self.api
-            .db
-            .web_scraping(self.user.id)
-            .remove_web_page_tracker(id)
-            .await
-    }
-
-    /// Persists history for the specified web page resources tracker.
-    pub async fn create_resources_tracker_revision(
-        &self,
-        tracker_id: Uuid,
-    ) -> anyhow::Result<Option<WebPageDataRevision<WebPageResourcesTrackerTag>>> {
-        let Some(tracker) = self.get_resources_tracker(tracker_id).await? else {
-            bail!(SecutilsError::client(format!(
-                "Web page tracker ('{tracker_id}') is not found."
-            )));
-        };
-
-        let features = self.user.subscription.get_features(&self.api.config);
-        let max_revisions = std::cmp::min(
-            tracker.settings.revisions,
-            features.config.web_scraping.tracker_revisions,
-        );
-        if max_revisions == 0 {
-            return Ok(None);
-        }
-
-        let convert_to_web_page_resources =
-            |resources: Vec<WebScraperResource>| -> Vec<WebPageResource> {
-                resources
-                    .into_iter()
-                    .map(|resource| resource.into())
-                    .collect()
-            };
-
-        let scraper_request = WebScraperResourcesRequest::with_default_parameters(&tracker.url)
-            .set_delay(tracker.settings.delay);
-        let resources_filter_map_script = tracker
-            .settings
-            .scripts
-            .as_ref()
-            .and_then(|scripts| scripts.get(WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME));
-        let scraper_request = if let Some(resources_filter_map) = resources_filter_map_script {
-            scraper_request.set_scripts(WebScraperResourcesRequestScripts {
-                resource_filter_map: Some(resources_filter_map),
-            })
-        } else {
-            scraper_request
-        };
-
-        let scraper_request = if let Some(headers) = tracker.settings.headers.as_ref() {
-            scraper_request.set_headers(headers)
-        } else {
-            scraper_request
-        };
-
-        let scraper_response = reqwest::Client::new()
-            .post(format!(
-                "{}api/web_page/resources",
-                self.api.config.as_ref().components.web_scraper_url.as_str()
-            ))
-            .json(&scraper_request)
-            .send()
-            .await
-            .map_err(|err| {
-                anyhow!(
-                    "Could not connect to the web scraper service to extract resources for the web tracker ('{}'): {:?}",
-                    tracker.id,
-                    err
-                )
-            })?;
-
-        if !scraper_response.status().is_success() {
-            let is_client_error = scraper_response.status().is_client_error();
-            let scraper_error_response = scraper_response
-                .json::<WebScraperErrorResponse>()
-                .await
-                .map_err(|err| {
-                anyhow!(
-                    "Could not deserialize scraper error response for the web tracker ('{}'): {:?}",
-                    tracker.id,
-                    err
-                )
-            })?;
-            if is_client_error {
-                bail!(SecutilsError::client(scraper_error_response.message));
+        // Enhance trackers with Retrack data.
+        let (resource, resource_group) = utils_resource.into();
+        let mut retrack_trackers_map = retrack_trackers
+            .into_iter()
+            .map(|tracker| (tracker.id, tracker))
+            .collect::<std::collections::HashMap<_, _>>();
+        for tracker in trackers.iter_mut() {
+            if let Some(retrack_tracker) = retrack_trackers_map.remove(&tracker.retrack.id()) {
+                tracker.retrack = RetrackTracker::from_value(retrack_tracker);
             } else {
-                bail!(
-                    "Unexpected scraper error for the web tracker ('{}'): {:?}",
-                    tracker.id,
-                    scraper_error_response.message
+                error!(
+                    user.id = %self.user.id,
+                    util.resource_id = %tracker.id,
+                    util.resource_name = tracker.name,
+                    util.resource = resource,
+                    util.resource_group = resource_group,
+                    retrack.id = %tracker.retrack.id(),
+                    "Page tracker is not found in Retrack."
                 );
             }
         }
 
-        let scraper_response = scraper_response
-            .json::<WebScraperResourcesResponse>()
-            .await
-            .map_err(|err| {
-                anyhow!(
-                    "Could not deserialize scraper response for the web tracker ('{}'): {:?}",
-                    tracker.id,
-                    err
-                )
-            })?;
-
-        // Check if there is a revision with the same timestamp. If so, drop newly fetched revision.
-        let web_scraping = self.api.db.web_scraping(self.user.id);
-        let revisions = web_scraping
-            .get_web_page_tracker_history(tracker.id)
-            .await?;
-        if revisions
-            .iter()
-            .any(|revision| revision.created_at == scraper_response.timestamp)
-        {
-            return Ok(None);
+        // Iterate through retrack trackers that aren't in the database and them to the error log.
+        for retrack_tracker in retrack_trackers_map.values() {
+            error!(
+                user.id = %self.user.id,
+                util.resource_id = get_tag_value(&retrack_tracker.tags, RETRACK_RESOURCE_ID_TAG),
+                util.resource_name = retrack_tracker.name,
+                util.resource = resource,
+                util.resource_group = resource_group,
+                retrack.id = %retrack_tracker.id,
+                "Found a dangling Retrack tracker that needs to be removed."
+            );
         }
 
-        let new_revision = WebPageDataRevision {
-            id: Uuid::now_v7(),
-            tracker_id: tracker.id,
-            data: WebPageResourcesData {
-                scripts: convert_to_web_page_resources(scraper_response.scripts),
-                styles: convert_to_web_page_resources(scraper_response.styles),
-            },
-            created_at: scraper_response.timestamp,
-        };
+        Ok(trackers)
+    }
 
-        // Get the latest revision and check if it's different from the new one. If so, we need to
-        // save a new revision, otherwise drop it.
-        let new_revision_with_diff = if let Some(latest_revision) = revisions.last() {
-            let mut revisions_with_diff = web_page_resources_revisions_diff(vec![
-                latest_revision.clone(),
-                new_revision.clone(),
-            ])?;
-            let new_revision_with_diff = revisions_with_diff
-                .pop()
-                .ok_or_else(|| anyhow!("Invalid revisions diff result."))?;
-
-            // Return the latest revision back to the queue if it's different from the new one.
-            if !new_revision_with_diff.data.has_diff() {
-                return Ok(None);
+    /// Returns a page tracker by its ID.
+    pub async fn get_page_tracker(&self, id: Uuid) -> anyhow::Result<Option<PageTracker>> {
+        let web_scraping = self.api.db.web_scraping(self.user.id);
+        let tracker = if let Some(mut tracker) = web_scraping.get_page_tracker(id).await? {
+            if let Some(retrack_tracker) =
+                self.api.retrack().get_tracker(tracker.retrack.id()).await?
+            {
+                tracker.retrack = RetrackTracker::from_value(retrack_tracker);
+            } else {
+                let (resource, resource_group) = UtilsResource::WebScrapingPage.into();
+                error!(
+                    user.id = %self.user.id,
+                    util.resource_id = %tracker.id,
+                    util.resource_name = tracker.name,
+                    util.resource = resource,
+                    util.resource_group = resource_group,
+                    retrack.id = %tracker.retrack.id(),
+                    "Page tracker is not found in Retrack."
+                );
             }
 
-            Some(new_revision_with_diff)
+            Some(tracker)
         } else {
             None
         };
-
-        // Insert new revision.
-        web_scraping
-            .insert_web_page_tracker_history_revision::<WebPageResourcesTrackerInternalTag>(
-                &WebPageDataRevision {
-                    id: new_revision.id,
-                    tracker_id: new_revision.tracker_id,
-                    data: WebPageResourcesData {
-                        scripts: new_revision
-                            .data
-                            .scripts
-                            .into_iter()
-                            .map(Into::into)
-                            .collect(),
-                        styles: new_revision
-                            .data
-                            .styles
-                            .into_iter()
-                            .map(Into::into)
-                            .collect(),
-                    },
-                    created_at: new_revision.created_at,
-                },
-            )
-            .await?;
-
-        // Enforce revisions limit and displace old ones.
-        if revisions.len() >= max_revisions {
-            let revisions_to_remove = revisions.len() - max_revisions + 1;
-            for revision in revisions.iter().take(revisions_to_remove) {
-                web_scraping
-                    .remove_web_page_tracker_history_revision(tracker.id, revision.id)
-                    .await?;
-            }
-        }
-
-        Ok(new_revision_with_diff)
-    }
-
-    /// Persists history for the specified web page content tracker.
-    pub async fn create_content_tracker_revision(
-        &self,
-        tracker_id: Uuid,
-    ) -> anyhow::Result<Option<WebPageDataRevision<WebPageContentTrackerTag>>> {
-        let Some(tracker) = self.get_content_tracker(tracker_id).await? else {
-            bail!(SecutilsError::client(format!(
-                "Web page tracker ('{tracker_id}') is not found."
-            )));
-        };
-
-        // Enforce revisions limit and displace old ones.
-        let features = self.user.subscription.get_features(&self.api.config);
-        let max_revisions = std::cmp::min(
-            tracker.settings.revisions,
-            features.config.web_scraping.tracker_revisions,
-        );
-        if max_revisions == 0 {
-            return Ok(None);
-        }
-
-        let web_scraping = self.api.db.web_scraping(self.user.id);
-        let revisions = web_scraping
-            .get_web_page_tracker_history::<WebPageContentTrackerTag>(tracker.id)
-            .await?;
-
-        let scraper_request = WebScraperContentRequest::with_default_parameters(&tracker.url)
-            .set_delay(tracker.settings.delay);
-        let scraper_request = if let Some(revision) = revisions.last() {
-            scraper_request.set_previous_content(&revision.data)
-        } else {
-            scraper_request
-        };
-
-        let extract_content_script = tracker
-            .settings
-            .scripts
-            .as_ref()
-            .and_then(|scripts| scripts.get(WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME));
-        let scraper_request = if let Some(extract_content) = extract_content_script {
-            scraper_request.set_scripts(WebScraperContentRequestScripts {
-                extract_content: Some(extract_content),
-            })
-        } else {
-            scraper_request
-        };
-
-        let scraper_request = if let Some(headers) = tracker.settings.headers.as_ref() {
-            scraper_request.set_headers(headers)
-        } else {
-            scraper_request
-        };
-
-        let scraper_response = reqwest::Client::new()
-            .post(format!(
-                "{}api/web_page/content",
-                self.api.config.as_ref().components.web_scraper_url.as_str()
-            ))
-            .json(&scraper_request)
-            .send()
-            .await
-            .map_err(|err| {
-                anyhow!(
-                    "Could not connect to the web scraper service to extract content for the web tracker ('{}'): {:?}",
-                    tracker.id,
-                    err
-                )
-            })?;
-
-        if !scraper_response.status().is_success() {
-            let is_client_error = scraper_response.status().is_client_error();
-            let scraper_error_response = scraper_response
-                .json::<WebScraperErrorResponse>()
-                .await
-                .map_err(|err| {
-                anyhow!(
-                    "Could not deserialize scraper error response for the web tracker ('{}'): {:?}",
-                    tracker.id,
-                    err
-                )
-            })?;
-            if is_client_error {
-                bail!(SecutilsError::client(scraper_error_response.message));
-            } else {
-                bail!(
-                    "Unexpected scraper error for the web tracker ('{}'): {:?}",
-                    tracker.id,
-                    scraper_error_response.message
-                );
-            }
-        }
-
-        let scraper_response = scraper_response
-            .json::<WebScraperContentResponse>()
-            .await
-            .map_err(|err| {
-                anyhow!(
-                    "Could not deserialize scraper response for the web tracker ('{}'): {:?}",
-                    tracker.id,
-                    err
-                )
-            })?;
-
-        // Check if there is a revision with the same timestamp. If so, drop newly fetched revision.
-        if revisions
-            .iter()
-            .any(|revision| revision.created_at == scraper_response.timestamp)
-        {
-            return Ok(None);
-        }
-
-        // Check if content has changed.
-        if let Some(revision) = revisions.last() {
-            if revision.data == scraper_response.content {
-                return Ok(None);
-            }
-        }
-
-        let new_revision = WebPageDataRevision {
-            id: Uuid::now_v7(),
-            tracker_id: tracker.id,
-            data: scraper_response.content,
-            created_at: scraper_response.timestamp,
-        };
-
-        // Insert new revision.
-        web_scraping
-            .insert_web_page_tracker_history_revision::<WebPageContentTrackerTag>(&new_revision)
-            .await?;
-
-        // Enforce revisions limit and displace old ones.
-        if revisions.len() >= max_revisions {
-            let revisions_to_remove = revisions.len() - max_revisions + 1;
-            for revision in revisions.iter().take(revisions_to_remove) {
-                web_scraping
-                    .remove_web_page_tracker_history_revision(tracker.id, revision.id)
-                    .await?;
-            }
-        }
-
-        Ok(Some(new_revision))
-    }
-
-    /// Returns all stored webpage resources tracker history.
-    pub async fn get_resources_tracker_history(
-        &self,
-        tracker_id: Uuid,
-        params: WebPageResourcesTrackerGetHistoryParams,
-    ) -> anyhow::Result<Vec<WebPageDataRevision<WebPageResourcesTrackerTag>>> {
-        if params.refresh {
-            self.create_resources_tracker_revision(tracker_id).await?;
-        } else if self.get_resources_tracker(tracker_id).await?.is_none() {
-            bail!(SecutilsError::client(format!(
-                "Web page tracker ('{tracker_id}') is not found."
-            )));
-        }
-
-        let revisions = self
-            .api
-            .db
-            .web_scraping(self.user.id)
-            .get_web_page_tracker_history::<WebPageResourcesTrackerInternalTag>(tracker_id)
-            .await?
-            .into_iter()
-            .map(|revision| WebPageDataRevision {
-                id: revision.id,
-                tracker_id: revision.tracker_id,
-                data: WebPageResourcesData {
-                    scripts: revision.data.scripts.into_iter().map(Into::into).collect(),
-                    styles: revision.data.styles.into_iter().map(Into::into).collect(),
-                },
-                created_at: revision.created_at,
-            })
-            .collect::<Vec<_>>();
-        if params.calculate_diff {
-            web_page_resources_revisions_diff(revisions)
-        } else {
-            Ok(revisions)
-        }
-    }
-
-    /// Returns all stored webpage content tracker history.
-    pub async fn get_content_tracker_history(
-        &self,
-        tracker_id: Uuid,
-        params: WebPageContentTrackerGetHistoryParams,
-    ) -> anyhow::Result<Vec<WebPageDataRevision<WebPageContentTrackerTag>>> {
-        if params.refresh {
-            self.create_content_tracker_revision(tracker_id).await?;
-        } else if self.get_content_tracker(tracker_id).await?.is_none() {
-            bail!(SecutilsError::client(format!(
-                "Web page tracker ('{tracker_id}') is not found."
-            )));
-        }
-
-        let revisions = self
-            .api
-            .db
-            .web_scraping(self.user.id)
-            .get_web_page_tracker_history::<WebPageContentTrackerTag>(tracker_id)
-            .await?;
-        if params.calculate_diff {
-            web_page_content_revisions_diff(revisions)
-        } else {
-            Ok(revisions)
-        }
-    }
-
-    /// Removes all persisted resources for the specified web page resources tracker.
-    pub async fn clear_web_page_tracker_history(&self, tracker_id: Uuid) -> anyhow::Result<()> {
-        self.api
-            .db
-            .web_scraping(self.user.id)
-            .clear_web_page_tracker_history(tracker_id)
-            .await
-    }
-
-    /// Returns all web page trackers.
-    async fn get_web_page_trackers<Tag: WebPageTrackerTag>(
-        &self,
-    ) -> anyhow::Result<Vec<WebPageTracker<Tag>>> {
-        self.api
-            .db
-            .web_scraping(self.user.id)
-            .get_web_page_trackers()
-            .await
-    }
-
-    /// Returns web page tracker by its ID.
-    async fn get_web_page_tracker<Tag: WebPageTrackerTag>(
-        &self,
-        id: Uuid,
-    ) -> anyhow::Result<Option<WebPageTracker<Tag>>> {
-        self.api
-            .db
-            .web_scraping(self.user.id)
-            .get_web_page_tracker(id)
-            .await
-    }
-
-    /// Creates a new web page tracker.
-    async fn create_web_page_tracker<Tag: WebPageTrackerTag, V>(
-        &self,
-        params: WebPageTrackerCreateParams,
-        validator: Option<V>,
-    ) -> anyhow::Result<WebPageTracker<Tag>>
-    where
-        V: Fn(&WebPageTracker<Tag>) -> anyhow::Result<()>,
-    {
-        // Preserve timestamp only up to seconds.
-        let created_at =
-            OffsetDateTime::from_unix_timestamp(OffsetDateTime::now_utc().unix_timestamp())?;
-        let tracker = WebPageTracker {
-            id: Uuid::now_v7(),
-            name: params.name,
-            url: params.url,
-            settings: params.settings,
-            user_id: self.user.id,
-            job_id: None,
-            job_config: params.job_config,
-            created_at,
-            updated_at: created_at,
-            meta: None,
-        };
-
-        self.validate_web_page_tracker(&tracker).await?;
-        // Run custom validator if specified.
-        if let Some(validator) = validator {
-            validator(&tracker)?;
-        }
-
-        self.api
-            .db
-            .web_scraping(self.user.id)
-            .insert_web_page_tracker(&tracker)
-            .await?;
 
         Ok(tracker)
     }
 
-    /// Updates existing web page tracker.
-    async fn update_web_page_tracker<Tag: WebPageTrackerTag, V>(
+    /// Creates a new page tracker.
+    pub async fn create_page_tracker(
         &self,
-        id: Uuid,
-        params: WebPageTrackerUpdateParams,
-        validator: Option<V>,
-    ) -> anyhow::Result<WebPageTracker<Tag>>
-    where
-        V: Fn(&WebPageTracker<Tag>) -> anyhow::Result<()>,
-    {
-        if params.name.is_none()
-            && params.url.is_none()
-            && params.settings.is_none()
-            && params.job_config.is_none()
-        {
-            bail!(SecutilsError::client(format!(
-                "Either new name, url, settings, or job config should be provided ({id})."
-            )));
+        params: PageTrackerCreateParams,
+    ) -> anyhow::Result<PageTracker> {
+        // 1. Perform validation.
+        self.validate_page_tracker_name(&params.name)?;
+        self.validate_page_tracker_config(&params.config)?;
+        self.validate_page_tracker_target(&params.target)?;
+
+        // 2. Create a new Retrack tracker.
+        let id = Uuid::now_v7();
+        let retrack = self.api.retrack();
+        let utils_resource = UtilsResource::WebScrapingPage;
+        let retrack_tracker = retrack
+            .create_tracker(&TrackerCreateParams {
+                enabled: true,
+                name: params.name.clone(),
+                target: TrackerTarget::Page(PageTarget {
+                    extractor: params.target.extractor,
+                    params: None,
+                    engine: None,
+                    user_agent: None,
+                    accept_invalid_certificates: false,
+                }),
+                config: TrackerConfig {
+                    revisions: params.config.revisions,
+                    timeout: None,
+                    job: params.config.job,
+                },
+                tags: prepare_tags(&[
+                    format!("{RETRACK_USER_TAG}:{}", self.user.id),
+                    format!("{RETRACK_NOTIFICATIONS_TAG}:{}", params.notifications),
+                    format!("{RETRACK_RESOURCE_TAG}:{utils_resource}"),
+                    format!("{RETRACK_RESOURCE_ID_TAG}:{id}"),
+                ]),
+                actions: vec![],
+            })
+            .await?;
+
+        // Preserve timestamp only up to seconds.
+        let created_at =
+            OffsetDateTime::from_unix_timestamp(OffsetDateTime::now_utc().unix_timestamp())?;
+
+        // 3. Create a new page tracker in the database.
+        let tracker = PageTracker {
+            id,
+            name: params.name,
+            user_id: self.user.id,
+            retrack: RetrackTracker::from_value(retrack_tracker),
+            created_at,
+            updated_at: created_at,
+        };
+
+        let web_scraping = self.api.db.web_scraping(self.user.id);
+        if let Err(err) = web_scraping.insert_page_tracker(&tracker).await {
+            // If the tracker creation failed, remove it from Retrack.
+            if let Err(err) = retrack.remove_tracker(tracker.retrack.id()).await {
+                let (resource, resource_group) = utils_resource.into();
+                error!(
+                    util.resource = resource,
+                    util.resource_group = resource_group,
+                    util.resource_id = %tracker.id,
+                    util.resource_name = tracker.name,
+                    retrack.id = %tracker.retrack.id(),
+                    "Failed to remove tracker from Retrack: {err:?}"
+                );
+            }
+
+            return Err(err);
         }
 
-        let Some(existing_tracker) = self
-            .api
-            .db
-            .web_scraping(self.user.id)
-            .get_web_page_tracker(id)
-            .await?
-        else {
+        Ok(tracker)
+    }
+
+    /// Updates existing page tracker.
+    pub async fn update_page_tracker(
+        &self,
+        id: Uuid,
+        params: PageTrackerUpdateParams,
+    ) -> anyhow::Result<PageTracker> {
+        let utils_resource = UtilsResource::WebScrapingPage;
+        let (resource, resource_group) = utils_resource.into();
+        let web_scraping = self.api.db.web_scraping(self.user.id);
+        let Some(existing_tracker) = web_scraping.get_page_tracker(id).await? else {
+            error!(
+                user.id = %self.user.id,
+                util.resource_id = %id,
+                util.resource = resource,
+                util.resource_group = resource_group,
+                "Page tracker is not found."
+            );
             bail!(SecutilsError::client(format!(
-                "Web page tracker ('{id}') is not found."
+                "Page tracker ('{id}') is not found."
             )));
         };
 
-        let changed_url = params
-            .url
-            .as_ref()
-            .map(|url| url != &existing_tracker.url)
-            .unwrap_or_default();
+        // 1. Perform validation.
+        if let Some(ref name) = params.name {
+            self.validate_page_tracker_name(name)?;
+        }
+        if let Some(ref config) = params.config {
+            self.validate_page_tracker_config(config)?;
+        }
+        if let Some(ref target) = params.target {
+            self.validate_page_tracker_target(target)?;
+        }
 
-        let disabled_revisions = params
-            .settings
-            .as_ref()
-            .map(|settings| settings.revisions == 0)
-            .unwrap_or_default();
-
-        let changed_schedule = params
-            .job_config
-            .as_ref()
-            .map(
-                |job_config| match (&existing_tracker.job_config, job_config) {
-                    (Some(existing_job_config), Some(job_config)) => {
-                        job_config.schedule != existing_job_config.schedule
-                    }
-                    _ => true,
-                },
-            )
-            .unwrap_or_default();
-
-        let job_id = if disabled_revisions || changed_schedule {
-            None
-        } else {
-            existing_tracker.job_id
+        // 2. Retrieve the existing tracker from Retrack.
+        let retrack = self.api.retrack();
+        let Some(retrack_tracker) = retrack.get_tracker(existing_tracker.retrack.id()).await?
+        else {
+            error!(
+                user.id = %existing_tracker.user_id,
+                util.resource_id = %existing_tracker.id,
+                util.resource_name = existing_tracker.name,
+                util.resource = resource,
+                util.resource_group = resource_group,
+                retrack.id = %existing_tracker.retrack.id(),
+                "Page tracker is not found in Retrack."
+            );
+            bail!(SecutilsError::client(format!(
+                "Page tracker ('{id}') is not found in Retrack."
+            )));
         };
 
-        let tracker = WebPageTracker {
+        // 3. Update tracker in Retrack.
+        let retrack_tracker = retrack
+            .update_tracker(
+                retrack_tracker.id,
+                &TrackerUpdateParams {
+                    name: params.name.clone(),
+                    config: params.config.map(|config| TrackerConfig {
+                        revisions: config.revisions,
+                        timeout: None,
+                        job: config.job,
+                    }),
+                    target: params.target.map(|target| {
+                        TrackerTarget::Page(PageTarget {
+                            extractor: target.extractor,
+                            params: None,
+                            engine: None,
+                            user_agent: None,
+                            accept_invalid_certificates: false,
+                        })
+                    }),
+                    tags: Some(prepare_tags(&[
+                        format!("{RETRACK_USER_TAG}:{}", self.user.id),
+                        format!("{RETRACK_NOTIFICATIONS_TAG}:{}", params.notifications),
+                        format!("{RETRACK_RESOURCE_TAG}:{utils_resource}"),
+                        format!("{RETRACK_RESOURCE_ID_TAG}:{id}"),
+                    ])),
+                    ..Default::default()
+                },
+            )
+            .await?;
+
+        let tracker = PageTracker {
             name: params.name.unwrap_or(existing_tracker.name),
-            url: params.url.unwrap_or(existing_tracker.url),
-            settings: params.settings.unwrap_or(existing_tracker.settings),
-            job_id,
-            job_config: params.job_config.unwrap_or(existing_tracker.job_config),
+            retrack: RetrackTracker::from_value(retrack_tracker),
             // Preserve timestamp only up to seconds.
             updated_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
@@ -704,175 +306,253 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             ..existing_tracker
         };
 
-        self.validate_web_page_tracker(&tracker).await?;
-        if let Some(validator) = validator {
-            validator(&tracker)?;
-        }
-
-        let web_scraping = self.api.db.web_scraping(self.user.id);
-        web_scraping.update_web_page_tracker(&tracker).await?;
-
-        if changed_url {
-            debug!("Web page tracker ('{id}') changed URL, clearing web resources history.");
-            web_scraping.clear_web_page_tracker_history(id).await?;
-        }
+        web_scraping.update_page_tracker(&tracker).await?;
 
         Ok(tracker)
     }
 
-    async fn validate_web_page_tracker<Tag: WebPageTrackerTag>(
+    /// Removes existing page tracker and all history.
+    pub async fn remove_page_tracker(&self, id: Uuid) -> anyhow::Result<()> {
+        let web_scraping = self.api.db.web_scraping(self.user.id);
+        let (resource, resource_group) = UtilsResource::WebScrapingPage.into();
+
+        // 1. Retrieve the existing tracker from the database.
+        let Some(tracker) = web_scraping.get_page_tracker(id).await? else {
+            error!(
+                user.id = %self.user.id,
+                util.resource_id = %id,
+                util.resource = resource,
+                util.resource_group = resource_group,
+                "Page tracker is not found."
+            );
+            bail!(SecutilsError::client(format!(
+                "Page tracker ('{id}') is not found."
+            )));
+        };
+
+        // 2. Retrieve the existing tracker from Retrack.
+        let retrack = self.api.retrack();
+        if let Some(retrack_tracker) = retrack.get_tracker(tracker.retrack.id()).await? {
+            retrack.remove_tracker(retrack_tracker.id).await?;
+        } else {
+            error!(
+                user.id = %tracker.user_id,
+                util.resource_id = %tracker.id,
+                util.resource_name = tracker.name,
+                util.resource = resource,
+                util.resource_group = resource_group,
+                retrack.id = %tracker.retrack.id(),
+                "Page tracker is not found in Retrack, removing will be skipped."
+            );
+        };
+
+        web_scraping.remove_page_tracker(id).await
+    }
+
+    /// Persists history for the specified page tracker.
+    pub async fn create_page_tracker_revision(
         &self,
-        tracker: &WebPageTracker<Tag>,
-    ) -> anyhow::Result<()> {
-        if tracker.name.is_empty() {
-            bail!(SecutilsError::client(
-                "Web page tracker name cannot be empty.",
-            ));
+        tracker_id: Uuid,
+    ) -> anyhow::Result<Option<TrackerDataRevision>> {
+        let (resource, resource_group) = UtilsResource::WebScrapingPage.into();
+        let Some(tracker) = self.get_page_tracker(tracker_id).await? else {
+            error!(
+                user.id = %self.user.id,
+                util.resource_id = %tracker_id,
+                util.resource = resource,
+                util.resource_group = resource_group,
+                "Page tracker is not found."
+            );
+            bail!(SecutilsError::client(format!(
+                "Page tracker ('{tracker_id}') is not found."
+            )));
+        };
+
+        let RetrackTracker::Value(retrack) = tracker.retrack else {
+            error!(
+                user.id = %tracker.user_id,
+                util.resource_id = %tracker.id,
+                util.resource_name = tracker.name,
+                util.resource = resource,
+                util.resource_group = resource_group,
+                retrack.id = %tracker.retrack.id(),
+                "Page tracker is not found in Retrack."
+            );
+            bail!(SecutilsError::client(format!(
+                "Page tracker ('{tracker_id}') is not found in Retrack."
+            )));
+        };
+
+        // Enforce revisions limit and displace old ones.
+        let features = self.user.subscription.get_features(&self.api.config);
+        let max_revisions = std::cmp::min(
+            retrack.config.revisions,
+            features.config.web_scraping.tracker_revisions,
+        );
+        if max_revisions > 0 {
+            self.api
+                .retrack()
+                .create_revision(retrack.id)
+                .await
+                .map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Returns all stored page tracker revisions.
+    pub async fn get_page_tracker_history(
+        &self,
+        tracker_id: Uuid,
+        params: PageTrackerGetHistoryParams,
+    ) -> anyhow::Result<Vec<TrackerDataRevision>> {
+        if params.refresh {
+            self.create_page_tracker_revision(tracker_id).await?;
         }
 
-        if tracker.name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
+        let Some(tracker) = self.get_page_tracker(tracker_id).await? else {
             bail!(SecutilsError::client(format!(
-                "Web page tracker name cannot be longer than {} characters.",
-                MAX_UTILS_ENTITY_NAME_LENGTH
+                "Page tracker ('{tracker_id}') is not found."
+            )));
+        };
+
+        self.api
+            .retrack()
+            .list_tracker_revisions(
+                tracker.retrack.id(),
+                TrackerListRevisionsParams {
+                    calculate_diff: params.calculate_diff,
+                    ..Default::default()
+                },
+            )
+            .await
+    }
+
+    /// Removes all persisted revisions for the specified page tracker.
+    pub async fn clear_page_tracker_history(&self, tracker_id: Uuid) -> anyhow::Result<()> {
+        let Some(tracker) = self.get_page_tracker(tracker_id).await? else {
+            bail!(SecutilsError::client(format!(
+                "Page tracker ('{tracker_id}') is not found."
+            )));
+        };
+
+        self.api
+            .retrack()
+            .clear_tracker_revisions(tracker.retrack.id())
+            .await
+    }
+
+    fn validate_page_tracker_name(&self, name: &str) -> anyhow::Result<()> {
+        if name.is_empty() {
+            bail!(SecutilsError::client("Page tracker name cannot be empty."));
+        }
+
+        if name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
+            bail!(SecutilsError::client(format!(
+                "Page tracker name cannot be longer than {MAX_UTILS_ENTITY_NAME_LENGTH} characters.",
             )));
         }
 
+        Ok(())
+    }
+
+    fn validate_page_tracker_config(&self, config: &PageTrackerConfig) -> anyhow::Result<()> {
         let features = self.user.subscription.get_features(&self.api.config);
-        if tracker.settings.revisions > features.config.web_scraping.tracker_revisions {
+        if config.revisions > features.config.web_scraping.tracker_revisions {
             bail!(SecutilsError::client(format!(
-                "Web page tracker revisions count cannot be greater than {}.",
+                "Page tracker revisions count cannot be greater than {}.",
                 features.config.web_scraping.tracker_revisions
             )));
         }
 
-        if tracker.settings.delay > MAX_WEB_PAGE_TRACKER_DELAY {
+        let Some(ref job_config) = config.job else {
+            return Ok(());
+        };
+
+        // Validate that the schedule is a valid cron expression.
+        let schedule = match Cron::parse_pattern(job_config.schedule.as_str()) {
+            Ok(schedule) => schedule,
+            Err(err) => {
+                bail!(SecutilsError::client_with_root_cause(
+                    anyhow!(
+                        "Failed to parse schedule `{}`: {err:?}",
+                        job_config.schedule
+                    )
+                    .context("Page tracker schedule must be a valid cron expression.")
+                ));
+            }
+        };
+
+        // Check if the interval between next occurrences is greater or equal to a minimum
+        // interval defined by the subscription.
+        let features = self.user.subscription.get_features(&self.api.config);
+        let min_schedule_interval = schedule.min_interval()?;
+        if min_schedule_interval < features.config.web_scraping.min_schedule_interval {
             bail!(SecutilsError::client(format!(
-                "Web page tracker delay cannot be greater than {}ms.",
-                MAX_WEB_PAGE_TRACKER_DELAY.as_millis()
+                "Page tracker schedule must have at least {} between occurrences, but detected {}.",
+                humantime::format_duration(features.config.web_scraping.min_schedule_interval),
+                humantime::format_duration(min_schedule_interval)
             )));
         }
 
-        if let Some(ref scripts) = tracker.settings.scripts {
-            if scripts
-                .iter()
-                .any(|(name, script)| name.is_empty() || script.is_empty())
-            {
-                bail!(SecutilsError::client(
-                    "Web page tracker scripts cannot be empty or have an empty name."
-                ));
-            }
-        }
-
-        if let Some(job_config) = &tracker.job_config {
-            // Validate that the schedule is a valid cron expression.
-            let schedule = match Cron::parse_pattern(job_config.schedule.as_str()) {
-                Ok(schedule) => schedule,
-                Err(err) => {
-                    bail!(SecutilsError::client_with_root_cause(
-                        anyhow!(
-                            "Failed to parse schedule `{}`: {err:?}",
-                            job_config.schedule
-                        )
-                        .context("Web page tracker schedule must be a valid cron expression.")
-                    ));
-                }
-            };
-
-            // Check if the interval between next occurrences is greater or equal to minimum
-            // interval defined by the subscription.
-            let min_schedule_interval = schedule.min_interval()?;
-            if min_schedule_interval < features.config.web_scraping.min_schedule_interval {
+        // Validate retry strategy.
+        if let Some(retry_strategy) = &job_config.retry_strategy {
+            let max_attempts = retry_strategy.max_attempts();
+            if max_attempts == 0 || max_attempts > MAX_PAGE_TRACKER_RETRY_ATTEMPTS {
                 bail!(SecutilsError::client(format!(
-                    "Web page tracker schedule must have at least {} between occurrences, but detected {}.",
-                    humantime::format_duration(features.config.web_scraping.min_schedule_interval),
-                    humantime::format_duration(min_schedule_interval)
+                    "Page tracker max retry attempts cannot be zero or greater than {MAX_PAGE_TRACKER_RETRY_ATTEMPTS}, but received {max_attempts}."
                 )));
             }
 
-            // Validate retry strategy.
-            if let Some(retry_strategy) = &job_config.retry_strategy {
-                let max_attempts = retry_strategy.max_attempts();
-                if max_attempts == 0 || max_attempts > MAX_WEB_PAGE_TRACKER_RETRY_ATTEMPTS {
+            let min_interval = *retry_strategy.min_interval();
+            if min_interval < MIN_PAGE_TRACKER_RETRY_INTERVAL {
+                bail!(SecutilsError::client(format!(
+                    "Page tracker min retry interval cannot be less than {}, but received {}.",
+                    humantime::format_duration(MIN_PAGE_TRACKER_RETRY_INTERVAL),
+                    humantime::format_duration(min_interval)
+                )));
+            }
+
+            if let retrack_types::scheduler::SchedulerJobRetryStrategy::Linear {
+                max_interval,
+                ..
+            }
+            | retrack_types::scheduler::SchedulerJobRetryStrategy::Exponential {
+                max_interval,
+                ..
+            } = retry_strategy
+            {
+                let max_interval = *max_interval;
+                if max_interval < MIN_PAGE_TRACKER_RETRY_INTERVAL {
                     bail!(SecutilsError::client(format!(
-                        "Web page tracker max retry attempts cannot be zero or greater than {MAX_WEB_PAGE_TRACKER_RETRY_ATTEMPTS}, but received {max_attempts}."
+                        "Page tracker retry strategy max interval cannot be less than {}, but received {}.",
+                        humantime::format_duration(MIN_PAGE_TRACKER_RETRY_INTERVAL),
+                        humantime::format_duration(max_interval)
                     )));
                 }
 
-                let min_interval = *retry_strategy.min_interval();
-                if min_interval < MIN_WEB_PAGE_TRACKER_RETRY_INTERVAL {
-                    bail!(SecutilsError::client(format!(
-                        "Web page tracker min retry interval cannot be less than {}, but received {}.",
-                        humantime::format_duration(MIN_WEB_PAGE_TRACKER_RETRY_INTERVAL),
-                        humantime::format_duration(min_interval)
-                    )));
-                }
-
-                if let SchedulerJobRetryStrategy::Linear { max_interval, .. }
-                | SchedulerJobRetryStrategy::Exponential { max_interval, .. } = retry_strategy
+                if max_interval > MAX_PAGE_TRACKER_RETRY_INTERVAL
+                    || max_interval > min_schedule_interval
                 {
-                    let max_interval = *max_interval;
-                    if max_interval < MIN_WEB_PAGE_TRACKER_RETRY_INTERVAL {
-                        bail!(SecutilsError::client(format!(
-                            "Web page tracker retry strategy max interval cannot be less than {}, but received {}.",
-                            humantime::format_duration(MIN_WEB_PAGE_TRACKER_RETRY_INTERVAL),
-                            humantime::format_duration(max_interval)
-                        )));
-                    }
-
-                    if max_interval > MAX_WEB_PAGE_TRACKER_RETRY_INTERVAL
-                        || max_interval > min_schedule_interval
-                    {
-                        bail!(SecutilsError::client(format!(
-                            "Web page tracker retry strategy max interval cannot be greater than {}, but received {}.",
-                            humantime::format_duration(
-                                MAX_WEB_PAGE_TRACKER_RETRY_INTERVAL.min(min_schedule_interval)
-                            ),
-                            humantime::format_duration(max_interval)
-                        )));
-                    }
+                    bail!(SecutilsError::client(format!(
+                        "Page tracker retry strategy max interval cannot be greater than {}, but received {}.",
+                        humantime::format_duration(
+                            MAX_PAGE_TRACKER_RETRY_INTERVAL.min(min_schedule_interval)
+                        ),
+                        humantime::format_duration(max_interval)
+                    )));
                 }
             }
         }
 
-        if !self.api.network.is_public_web_url(&tracker.url).await {
-            bail!(SecutilsError::client(format!(
-                "Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received {}.",
-                tracker.url
-            )));
-        }
-
         Ok(())
     }
 
-    fn validate_web_page_resources_tracker(
-        &self,
-        tracker: &WebPageTracker<WebPageResourcesTrackerTag>,
-    ) -> anyhow::Result<()> {
-        if let Some(ref scripts) = tracker.settings.scripts {
-            if !scripts.is_empty()
-                && !scripts.contains_key(WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME)
-            {
-                bail!(SecutilsError::client(
-                    "Web page tracker contains unrecognized scripts."
-                ));
-            }
-        }
-
-        Ok(())
-    }
-
-    fn validate_web_page_content_tracker(
-        &self,
-        tracker: &WebPageTracker<WebPageContentTrackerTag>,
-    ) -> anyhow::Result<()> {
-        if let Some(ref scripts) = tracker.settings.scripts {
-            if !scripts.is_empty()
-                && !scripts.contains_key(WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME)
-            {
-                bail!(SecutilsError::client(
-                    "Web page tracker contains unrecognized scripts."
-                ));
-            }
+    fn validate_page_tracker_target(&self, target: &PageTrackerTarget) -> anyhow::Result<()> {
+        if target.extractor.is_empty() {
+            bail!(SecutilsError::client(
+                "Page tracker extractor script cannot be empty."
+            ));
         }
 
         Ok(())
@@ -886,257 +566,168 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
     }
 }
 
-pub struct WebScrapingSystemApiExt<'a> {
-    web_scraping_system: WebScrapingDatabaseSystemExt<'a>,
-}
-
-impl<'a> WebScrapingSystemApiExt<'a> {
-    /// Creates WebScraping System API.
-    pub fn new<DR: DnsResolver, ET: EmailTransport>(api: &'a Api<DR, ET>) -> Self {
-        Self {
-            web_scraping_system: api.db.web_scraping_system(),
-        }
-    }
-
-    /// Returns all web page resources tracker job references that have jobs that need to be scheduled.
-    pub async fn get_unscheduled_resources_trackers(
-        &self,
-    ) -> anyhow::Result<Vec<WebPageTracker<WebPageResourcesTrackerTag>>> {
-        self.get_unscheduled_web_page_trackers().await
-    }
-
-    /// Returns all web page content tracker job references that have jobs that need to be scheduled.
-    pub async fn get_unscheduled_content_trackers(
-        &self,
-    ) -> anyhow::Result<Vec<WebPageTracker<WebPageContentTrackerTag>>> {
-        self.get_unscheduled_web_page_trackers().await
-    }
-
-    /// Returns all web page resources trackers that have pending jobs.
-    pub fn get_pending_resources_trackers(
-        &self,
-    ) -> impl Stream<Item = anyhow::Result<WebPageTracker<WebPageResourcesTrackerTag>>> + '_ {
-        self.web_scraping_system
-            .get_pending_web_page_trackers(MAX_JOBS_PAGE_SIZE)
-    }
-
-    /// Returns all web page resources trackers that have pending jobs.
-    pub fn get_pending_content_trackers(
-        &self,
-    ) -> impl Stream<Item = anyhow::Result<WebPageTracker<WebPageContentTrackerTag>>> + '_ {
-        self.web_scraping_system
-            .get_pending_web_page_trackers(MAX_JOBS_PAGE_SIZE)
-    }
-
-    /// Returns web page resources tracker by the corresponding job ID.
-    pub async fn get_resources_tracker_by_job_id(
-        &self,
-        job_id: Uuid,
-    ) -> anyhow::Result<Option<WebPageTracker<WebPageResourcesTrackerTag>>> {
-        self.get_web_page_tracker_by_job_id(job_id).await
-    }
-
-    /// Returns web page content tracker by the corresponding job ID.
-    pub async fn get_content_tracker_by_job_id(
-        &self,
-        job_id: Uuid,
-    ) -> anyhow::Result<Option<WebPageTracker<WebPageContentTrackerTag>>> {
-        self.get_web_page_tracker_by_job_id(job_id).await
-    }
-
-    /// Update resources tracker job ID reference (link or unlink).
-    pub async fn update_web_page_tracker_job(
-        &self,
-        id: Uuid,
-        job_id: Option<Uuid>,
-    ) -> anyhow::Result<()> {
-        self.web_scraping_system
-            .update_web_page_tracker_job(id, job_id)
-            .await
-    }
-
-    /// Returns all web page tracker job references that have jobs that need to be scheduled.
-    async fn get_unscheduled_web_page_trackers<Tag: WebPageTrackerTag>(
-        &self,
-    ) -> anyhow::Result<Vec<WebPageTracker<Tag>>> {
-        self.web_scraping_system
-            .get_unscheduled_web_page_trackers()
-            .await
-    }
-
-    /// Returns web page tracker by the corresponding job ID.
-    async fn get_web_page_tracker_by_job_id<Tag: WebPageTrackerTag>(
-        &self,
-        job_id: Uuid,
-    ) -> anyhow::Result<Option<WebPageTracker<Tag>>> {
-        self.web_scraping_system
-            .get_web_page_tracker_by_job_id(job_id)
-            .await
-    }
-}
-
-impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
-    /// Returns an API to work with web scraping data (as system user).
-    pub fn web_scraping_system(&self) -> WebScrapingSystemApiExt {
-        WebScrapingSystemApiExt::new(self)
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use super::{
+        PageTrackerGetHistoryParams, PageTrackerUpdateParams, RETRACK_NOTIFICATIONS_TAG,
+        RETRACK_RESOURCE_ID_TAG, RETRACK_RESOURCE_TAG, RETRACK_USER_TAG,
+    };
     use crate::{
         error::Error as SecutilsError,
-        scheduler::{SchedulerJob, SchedulerJobConfig, SchedulerJobRetryStrategy},
-        tests::{
-            RawSchedulerJobStoredData, mock_api, mock_api_with_config, mock_api_with_network,
-            mock_config, mock_network_with_records, mock_scheduler_job, mock_upsert_scheduler_job,
-            mock_user,
+        retrack::{
+            RetrackTracker,
+            tags::prepare_tags,
+            tests::{RetrackTrackerValue, mock_retrack_tracker},
         },
-        utils::web_scraping::{
-            WebPageContentTrackerTag, WebPageResource, WebPageResourceDiffStatus,
-            WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings,
-            WebScraperContentRequest, WebScraperContentResponse, WebScraperErrorResponse,
-            WebScraperResource, WebScraperResourcesRequest, WebScraperResourcesResponse,
-            api_ext::{
-                WebPageContentTrackerGetHistoryParams, WebPageResourcesTrackerGetHistoryParams,
-                WebPageTrackerUpdateParams,
-            },
-            tests::{
-                WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
-                WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME, WebPageTrackerCreateParams,
+        tests::{mock_api, mock_api_with_config, mock_config, mock_user},
+        utils::{
+            UtilsResource,
+            web_scraping::{
+                PageTracker, PageTrackerConfig, PageTrackerTarget, api_ext::PageTrackerCreateParams,
             },
         },
     };
     use actix_web::ResponseError;
-    use futures::StreamExt;
     use httpmock::MockServer;
     use insta::assert_debug_snapshot;
-    use sqlx::PgPool;
-    use std::{net::Ipv4Addr, time::Duration};
-    use time::OffsetDateTime;
-    use trust_dns_resolver::{
-        Name,
-        proto::rr::{RData, Record, rdata::A},
+    use retrack_types::{
+        scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
+        trackers::{
+            PageTarget, Tracker, TrackerConfig, TrackerCreateParams, TrackerDataRevision,
+            TrackerDataValue, TrackerTarget, TrackerUpdateParams,
+        },
     };
+    use serde_json::json;
+    use sqlx::PgPool;
+    use std::time::Duration;
+    use time::OffsetDateTime;
     use url::Url;
-    use uuid::{Uuid, uuid};
-
-    fn get_resources(timestamp: i64, label: &str) -> anyhow::Result<WebScraperResourcesResponse> {
-        Ok(WebScraperResourcesResponse {
-            timestamp: OffsetDateTime::from_unix_timestamp(timestamp)?,
-            scripts: vec![WebScraperResource {
-                url: Some(Url::parse(&format!(
-                    "http://localhost:1234/script_{label}.js"
-                ))?),
-                content: None,
-            }],
-            styles: vec![WebScraperResource {
-                url: Some(Url::parse(&format!(
-                    "http://localhost:1234/style_{label}.css"
-                ))?),
-                content: None,
-            }],
-        })
-    }
-
-    fn get_content(timestamp: i64, label: &str) -> anyhow::Result<WebScraperContentResponse> {
-        Ok(WebScraperContentResponse {
-            timestamp: OffsetDateTime::from_unix_timestamp(timestamp)?,
-            content: label.to_string(),
-        })
-    }
+    use uuid::uuid;
 
     #[sqlx::test]
-    async fn properly_creates_new_web_page_resources_tracker(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
+    async fn properly_creates_new_page_tracker(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
         let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let retrack_tracker = mock_retrack_tracker()?;
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            // Use partial body match due to a non-deterministic tag with new tracker ID.
+            when.method(httpmock::Method::POST)
+                .path("/api/trackers")
+                .json_body_partial(
+                    serde_json::to_string_pretty(&TrackerCreateParams {
+                        name: "name_one".to_string(),
+                        enabled: true,
+                        target: TrackerTarget::Page(PageTarget {
+                            extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                            params: None,
+                            engine: None,
+                            user_agent: None,
+                            accept_invalid_certificates: false,
+                        }),
+                        config: TrackerConfig {
+                            revisions: 3,
+                            timeout: None,
+                            job: Some(SchedulerJobConfig {
+                                schedule: "@hourly".to_string(),
+                                retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                                    interval: Duration::from_secs(120),
+                                    max_attempts: 5,
+                                }),
+                            }),
+                        },
+                        tags: prepare_tags(&[
+                            format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+                            format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
+                            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage)
+                        ]),
+                        actions: vec![],
+                    })
+                    .unwrap(),
+                );
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+        let retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+
+        // Insert a new user to the database.
+        let api = mock_api_with_config(pool, config).await?;
         api.db.insert_user(&mock_user).await?;
 
-        let web_scraper = api.web_scraping(&mock_user);
-
-        let tracker = web_scraper
-            .create_resources_tracker(WebPageTrackerCreateParams {
+        let web_scraping = api.web_scraping(&mock_user);
+        let tracker = web_scraping
+            .create_page_tracker(PageTrackerCreateParams {
                 name: "name_one".to_string(),
-                url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                settings: WebPageTrackerSettings {
+                config: PageTrackerConfig {
                     revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "@hourly".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(120),
-                        max_attempts: 5,
+                    job: Some(SchedulerJobConfig {
+                        schedule: "@hourly".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 5,
+                        }),
                     }),
-                    notifications: false,
-                }),
+                },
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                },
+                notifications: false,
             })
             .await?;
+        retrack_create_api_mock.assert();
 
         assert_eq!(
             tracker,
-            web_scraper
-                .get_resources_tracker(tracker.id)
-                .await?
-                .unwrap()
+            web_scraping.get_page_tracker(tracker.id).await?.unwrap()
+        );
+        retrack_get_api_mock.assert();
+
+        assert_eq!(
+            tracker.retrack,
+            RetrackTracker::Value(Box::new(RetrackTrackerValue {
+                id: retrack_tracker.id,
+                enabled: retrack_tracker.enabled,
+                config: retrack_tracker.config.clone(),
+                target: retrack_tracker.target.clone(),
+                notifications: false,
+            }))
         );
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn properly_creates_new_web_page_content_tracker(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
+    async fn properly_validates_page_tracker_at_creation(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool.clone()).await?;
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
         let api = api.web_scraping(&mock_user);
 
-        let tracker = api
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "@hourly".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(120),
-                        max_attempts: 5,
-                    }),
-                    notifications: false,
-                }),
-            })
-            .await?;
-
-        assert_eq!(tracker, api.get_content_tracker(tracker.id).await?.unwrap());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_validates_web_page_resources_tracker_at_creation(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let api = mock_api(pool.clone()).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-
-        let settings = WebPageTrackerSettings {
-            revisions: 3,
-            delay: Duration::from_millis(2000),
-            scripts: Default::default(),
-            headers: Default::default(),
+        let job_config = SchedulerJobConfig {
+            schedule: "@hourly".to_string(),
+            retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                interval: Duration::from_secs(120),
+                max_attempts: 5,
+            }),
         };
-        let url = Url::parse("https://secutils.dev")?;
+        let config = PageTrackerConfig {
+            revisions: 3,
+            job: Some(job_config.clone()),
+        };
+        let target = PageTrackerTarget {
+            extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+        };
 
         let create_and_fail = |result: anyhow::Result<_>| -> SecutilsError {
             result.unwrap_err().downcast::<SecutilsError>().unwrap()
@@ -1144,109 +735,57 @@ mod tests {
 
         // Empty name.
         assert_debug_snapshot!(
-            create_and_fail(web_scraping.create_resources_tracker(WebPageTrackerCreateParams {
+            create_and_fail(api.create_page_tracker(PageTrackerCreateParams {
                 name: "".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: None
+                config: config.clone(),
+                target: target.clone(),
+                notifications: false
             }).await),
-            @r###""Web page tracker name cannot be empty.""###
+            @r###""Page tracker name cannot be empty.""###
         );
 
         // Very long name.
         assert_debug_snapshot!(
-            create_and_fail(web_scraping.create_resources_tracker(WebPageTrackerCreateParams {
+            create_and_fail(api.create_page_tracker(PageTrackerCreateParams {
                 name: "a".repeat(101),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: None
+                config: config.clone(),
+                target: target.clone(),
+                notifications: false
             }).await),
-            @r###""Web page tracker name cannot be longer than 100 characters.""###
+            @r###""Page tracker name cannot be longer than 100 characters.""###
         );
 
         // Too many revisions.
         assert_debug_snapshot!(
-            create_and_fail(web_scraping.create_resources_tracker(WebPageTrackerCreateParams {
+            create_and_fail(api.create_page_tracker(PageTrackerCreateParams {
                 name: "name".to_string(),
-                url: url.clone(),
-                settings: WebPageTrackerSettings {
+                config: PageTrackerConfig {
                     revisions: 31,
-                    ..settings.clone()
+                    ..config.clone()
                 },
-                job_config: None
+                target: target.clone(),
+                notifications: false
             }).await),
-            @r###""Web page tracker revisions count cannot be greater than 30.""###
-        );
-
-        // Too long delay.
-        assert_debug_snapshot!(
-            create_and_fail(web_scraping.create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: url.clone(),
-                settings: WebPageTrackerSettings {
-                    delay: Duration::from_secs(61),
-                    ..settings.clone()
-                },
-                job_config: None
-            }).await),
-            @r###""Web page tracker delay cannot be greater than 60000ms.""###
-        );
-
-        // Empty resource filter.
-        assert_debug_snapshot!(
-            create_and_fail(web_scraping.create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: url.clone(),
-                settings: WebPageTrackerSettings {
-                    scripts: Some([(
-                        WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME.to_string(),
-                            "".to_string()
-                        )]
-                        .into_iter()
-                        .collect()
-                    ),
-                    ..settings.clone()
-                },
-                job_config: None
-            }).await),
-            @r###""Web page tracker scripts cannot be empty or have an empty name.""###
-        );
-
-        // Empty resource filter.
-        assert_debug_snapshot!(
-            create_and_fail(web_scraping.create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: url.clone(),
-                settings: WebPageTrackerSettings {
-                    scripts: Some([(
-                        "someScript".to_string(),
-                            "return resource;".to_string()
-                        )]
-                        .into_iter()
-                        .collect()
-                    ),
-                    ..settings.clone()
-                },
-                job_config: None
-            }).await),
-            @r###""Web page tracker contains unrecognized scripts.""###
+            @r###""Page tracker revisions count cannot be greater than 30.""###
         );
 
         // Invalid schedule.
         assert_debug_snapshot!(
-            create_and_fail(web_scraping.create_resources_tracker(WebPageTrackerCreateParams {
+            create_and_fail(api.create_page_tracker(PageTrackerCreateParams {
                 name: "name".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "-".to_string(),
-                    retry_strategy: None,
-                    notifications: false,
-                }),
+                config: PageTrackerConfig {
+                    job: Some(SchedulerJobConfig {
+                        schedule: "-".to_string(),
+                        ..job_config.clone()
+                    }),
+                    ..config.clone()
+                },
+                target: target.clone(),
+                notifications: false
             }).await),
             @r###"
         Error {
-            context: "Web page tracker schedule must be a valid cron expression.",
+            context: "Page tracker schedule must be a valid cron expression.",
             source: "Failed to parse schedule `-`: Invalid pattern: Pattern must consist of five or six fields (minute, hour, day, month, day of week, and optional second).",
         }
         "###
@@ -1254,1162 +793,662 @@ mod tests {
 
         // Invalid schedule interval.
         assert_debug_snapshot!(
-            create_and_fail(web_scraping.create_resources_tracker(WebPageTrackerCreateParams {
+            create_and_fail(api.create_page_tracker(PageTrackerCreateParams {
                 name: "name".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0/5 * * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: false,
-                }),
+                config: PageTrackerConfig {
+                    job: Some(SchedulerJobConfig {
+                        schedule: "0/5 * * * * *".to_string(),
+                        ..job_config.clone()
+                    }),
+                    ..config.clone()
+                },
+                target: target.clone(),
+                notifications: false
             }).await),
-            @r###""Web page tracker schedule must have at least 10s between occurrences, but detected 5s.""###
+            @r###""Page tracker schedule must have at least 10s between occurrences, but detected 5s.""###
         );
 
         // Too few retry attempts.
         assert_debug_snapshot!(
-            create_and_fail(web_scraping.create_resources_tracker(WebPageTrackerCreateParams {
+            create_and_fail(api.create_page_tracker(PageTrackerCreateParams {
                 name: "name".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "@daily".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(120),
-                        max_attempts: 0,
+                config: PageTrackerConfig {
+                    job: Some(SchedulerJobConfig {
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 0,
+                        }),
+                        ..job_config.clone()
                     }),
-                    notifications: false,
-                }),
+                    ..config.clone()
+                },
+                target: target.clone(),
+                notifications: false
             }).await),
-            @r###""Web page tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
+            @r###""Page tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
         );
 
         // Too many retry attempts.
         assert_debug_snapshot!(
-            create_and_fail(web_scraping.create_resources_tracker(WebPageTrackerCreateParams {
+            create_and_fail(api.create_page_tracker(PageTrackerCreateParams {
                 name: "name".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "@daily".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(120),
-                        max_attempts: 11,
+                config: PageTrackerConfig {
+                    job: Some(SchedulerJobConfig {
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 11,
+                        }),
+                        ..job_config.clone()
                     }),
-                    notifications: false,
-                }),
+                    ..config.clone()
+                },
+                target: target.clone(),
+                notifications: false
             }).await),
-            @r###""Web page tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
+            @r###""Page tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
         );
 
         // Too low retry interval.
         assert_debug_snapshot!(
-            create_and_fail(web_scraping.create_resources_tracker(WebPageTrackerCreateParams {
+            create_and_fail(api.create_page_tracker(PageTrackerCreateParams {
                 name: "name".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "@daily".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(30),
-                        max_attempts: 5,
+                config: PageTrackerConfig {
+                    job: Some(SchedulerJobConfig {
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(30),
+                            max_attempts: 5,
+                        }),
+                        ..job_config.clone()
                     }),
-                    notifications: false,
-                }),
+                    ..config.clone()
+                },
+                target: target.clone(),
+                notifications: false
             }).await),
-            @r###""Web page tracker min retry interval cannot be less than 1m, but received 30s.""###
+            @r###""Page tracker min retry interval cannot be less than 1m, but received 30s.""###
         );
 
         // Too low max retry interval.
         assert_debug_snapshot!(
-            create_and_fail(web_scraping.create_resources_tracker(WebPageTrackerCreateParams {
+            create_and_fail(api.create_page_tracker(PageTrackerCreateParams {
                 name: "name".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "@daily".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
-                        initial_interval: Duration::from_secs(120),
-                        increment: Duration::from_secs(10),
-                        max_interval: Duration::from_secs(30),
-                        max_attempts: 5,
+                config: PageTrackerConfig {
+                    job: Some(SchedulerJobConfig {
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                            initial_interval: Duration::from_secs(120),
+                            increment: Duration::from_secs(10),
+                            max_interval: Duration::from_secs(30),
+                            max_attempts: 5,
+                        }),
+                        ..job_config.clone()
                     }),
-                    notifications: false,
-                }),
+                    ..config.clone()
+                },
+                target: target.clone(),
+                notifications: false
             }).await),
-            @r###""Web page tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
+            @r###""Page tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
         );
 
         // Too high max retry interval.
         assert_debug_snapshot!(
-            create_and_fail(web_scraping.create_resources_tracker(WebPageTrackerCreateParams {
+            create_and_fail(api.create_page_tracker(PageTrackerCreateParams {
                 name: "name".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "@monthly".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
-                        initial_interval: Duration::from_secs(120),
-                        increment: Duration::from_secs(10),
-                        max_interval: Duration::from_secs(13 * 3600),
-                        max_attempts: 5,
+                config: PageTrackerConfig {
+                    job: Some(SchedulerJobConfig {
+                        schedule: "@monthly".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                            initial_interval: Duration::from_secs(120),
+                            increment: Duration::from_secs(10),
+                            max_interval: Duration::from_secs(13 * 3600),
+                            max_attempts: 5,
+                        }),
                     }),
-                    notifications: false,
-                }),
+                    ..config.clone()
+                },
+                target: target.clone(),
+                notifications: false
             }).await),
-            @r###""Web page tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
+            @r###""Page tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
         );
 
         assert_debug_snapshot!(
-            create_and_fail(web_scraping.create_resources_tracker(WebPageTrackerCreateParams {
+            create_and_fail(api.create_page_tracker(PageTrackerCreateParams {
                 name: "name".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "@hourly".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
-                        initial_interval: Duration::from_secs(120),
-                        increment: Duration::from_secs(10),
-                        max_interval: Duration::from_secs(2 * 3600),
-                        max_attempts: 5,
+                config: PageTrackerConfig {
+                    job: Some(SchedulerJobConfig {
+                        schedule: "@hourly".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                            initial_interval: Duration::from_secs(120),
+                            increment: Duration::from_secs(10),
+                            max_interval: Duration::from_secs(2 * 3600),
+                            max_attempts: 5,
+                        }),
                     }),
-                    notifications: false,
-                }),
+                    ..config.clone()
+                },
+                target: target.clone(),
+                notifications: false
             }).await),
-            @r###""Web page tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
+            @r###""Page tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
         );
 
-        // Invalid URL schema.
+        // Empty extractor.
         assert_debug_snapshot!(
-            create_and_fail(web_scraping.create_resources_tracker(WebPageTrackerCreateParams {
+            create_and_fail(api.create_page_tracker(PageTrackerCreateParams {
                 name: "name".to_string(),
-                url: Url::parse("ftp://secutils.dev")?,
-                settings: settings.clone(),
-                job_config: None
+                config: config.clone(),
+                target: PageTrackerTarget {
+                    extractor: "".to_string(),
+                },
+                notifications: false
             }).await),
-            @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received ftp://secutils.dev/.""###
-        );
-
-        let api_with_local_network = mock_api_with_network(
-            pool,
-            mock_network_with_records::<1>(vec![Record::from_rdata(
-                Name::new(),
-                300,
-                RData::A(A(Ipv4Addr::new(127, 0, 0, 1))),
-            )]),
-        )
-        .await?;
-
-        // Non-public URL.
-        assert_debug_snapshot!(
-            create_and_fail(api_with_local_network.web_scraping(&mock_user).create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: Url::parse("https://127.0.0.1")?,
-                settings: settings.clone(),
-                job_config: None
-            }).await),
-            @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received https://127.0.0.1/.""###
+            @r###""Page tracker extractor script cannot be empty.""###
         );
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn properly_validates_web_page_content_tracker_at_creation(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let api = mock_api(pool.clone()).await?;
+    async fn properly_updates_page_tracker(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
         let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let retrack_tracker = mock_retrack_tracker()?;
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            // Use partial body match due to a non-deterministic tag with new tracker ID.
+            when.method(httpmock::Method::POST)
+                .path("/api/trackers")
+                .json_body_partial(
+                    serde_json::to_string_pretty(&TrackerCreateParams {
+                        name: "name_one".to_string(),
+                        enabled: true,
+                        target: TrackerTarget::Page(PageTarget {
+                            extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                            params: None,
+                            engine: None,
+                            user_agent: None,
+                            accept_invalid_certificates: false,
+                        }),
+                        config: TrackerConfig {
+                            revisions: 3,
+                            timeout: None,
+                            job: None,
+                        },
+                        tags: prepare_tags(&[
+                            format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+                            format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
+                            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage)
+                        ]),
+                        actions: vec![],
+                    })
+                        .unwrap(),
+                );
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+
+        // Insert a new user to the database.
+        let api = mock_api_with_config(pool, config).await?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = api.web_scraping(&mock_user);
+        let web_scraping = api.web_scraping(&mock_user);
+        let tracker = web_scraping
+            .create_page_tracker(PageTrackerCreateParams {
+                name: "name_one".to_string(),
+                config: PageTrackerConfig {
+                    revisions: 3,
+                    job: None,
+                },
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                },
+                notifications: false,
+            })
+            .await?;
+        retrack_create_api_mock.assert();
 
-        let settings = WebPageTrackerSettings {
+        // Update name.
+        let updated_retrack_tracker = Tracker {
+            name: "name_two".to_string(),
+            ..retrack_tracker.clone()
+        };
+        let mut retrack_update_api_mock = retrack_server.mock(|when, then| {
+            // Use partial body match due to a non-deterministic tag with new tracker ID.
+            when.method(httpmock::Method::PUT)
+                .path(format!("/api/trackers/{}", retrack_tracker.id))
+                .json_body_obj(&TrackerUpdateParams {
+                    name: Some("name_two".to_string()),
+                    tags: Some(prepare_tags(&[
+                        format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+                        format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
+                        format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                        format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+                    ])),
+                    ..Default::default()
+                });
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&updated_retrack_tracker);
+        });
+        let mut retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&updated_retrack_tracker);
+        });
+        let updated_tracker = web_scraping
+            .update_page_tracker(
+                tracker.id,
+                PageTrackerUpdateParams {
+                    name: Some("name_two".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        retrack_update_api_mock.assert();
+        retrack_update_api_mock.delete();
+
+        let expected_tracker = PageTracker {
+            name: "name_two".to_string(),
+            updated_at: updated_tracker.updated_at,
+            ..tracker.clone()
+        };
+        assert_eq!(expected_tracker, updated_tracker);
+
+        assert_eq!(
+            expected_tracker,
+            web_scraping.get_page_tracker(tracker.id).await?.unwrap()
+        );
+        retrack_get_api_mock.assert_hits(2);
+        retrack_get_api_mock.delete();
+
+        // Update config.
+        let updated_retrack_tracker = Tracker {
+            config: TrackerConfig {
+                revisions: 4,
+                timeout: None,
+                job: None,
+            },
+            ..retrack_tracker.clone()
+        };
+        let mut retrack_update_api_mock = retrack_server.mock(|when, then| {
+            // Use partial body match due to a non-deterministic tag with new tracker ID.
+            when.method(httpmock::Method::PUT)
+                .path(format!("/api/trackers/{}", retrack_tracker.id))
+                .json_body_obj(&TrackerUpdateParams {
+                    config: Some(updated_retrack_tracker.config.clone()),
+                    tags: Some(prepare_tags(&[
+                        format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+                        format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
+                        format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                        format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+                    ])),
+                    ..Default::default()
+                });
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&updated_retrack_tracker);
+        });
+        let mut retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&updated_retrack_tracker);
+        });
+        let updated_tracker = web_scraping
+            .update_page_tracker(
+                tracker.id,
+                PageTrackerUpdateParams {
+                    config: Some(PageTrackerConfig {
+                        revisions: 4,
+                        job: None,
+                    }),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        retrack_update_api_mock.assert();
+        retrack_update_api_mock.delete();
+
+        let expected_tracker = PageTracker {
+            name: "name_two".to_string(),
+            retrack: RetrackTracker::Value(Box::new(RetrackTrackerValue {
+                id: updated_retrack_tracker.id,
+                enabled: updated_retrack_tracker.enabled,
+                config: updated_retrack_tracker.config.clone(),
+                target: updated_retrack_tracker.target.clone(),
+                notifications: false,
+            })),
+            updated_at: updated_tracker.updated_at,
+            ..tracker.clone()
+        };
+        assert_eq!(expected_tracker, updated_tracker);
+        assert_eq!(
+            expected_tracker,
+            web_scraping.get_page_tracker(tracker.id).await?.unwrap()
+        );
+        retrack_get_api_mock.assert_hits(2);
+        retrack_get_api_mock.delete();
+
+        // Update job config.
+        let updated_retrack_tracker = Tracker {
+            config: TrackerConfig {
+                revisions: 4,
+                timeout: None,
+                job: Some(SchedulerJobConfig {
+                    schedule: "@hourly".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                        interval: Duration::from_secs(120),
+                        max_attempts: 5,
+                    }),
+                }),
+            },
+            ..retrack_tracker.clone()
+        };
+        let mut retrack_update_api_mock = retrack_server.mock(|when, then| {
+            // Use partial body match due to a non-deterministic tag with new tracker ID.
+            when.method(httpmock::Method::PUT)
+                .path(format!("/api/trackers/{}", retrack_tracker.id))
+                .json_body_obj(&TrackerUpdateParams {
+                    config: Some(updated_retrack_tracker.config.clone()),
+                    tags: Some(prepare_tags(&[
+                        format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+                        format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
+                        format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                        format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+                    ])),
+                    ..Default::default()
+                });
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&updated_retrack_tracker);
+        });
+        let mut retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&updated_retrack_tracker);
+        });
+        let updated_tracker = web_scraping
+            .update_page_tracker(
+                tracker.id,
+                PageTrackerUpdateParams {
+                    config: Some(PageTrackerConfig {
+                        revisions: 4,
+                        job: Some(SchedulerJobConfig {
+                            schedule: "@hourly".to_string(),
+                            retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                                interval: Duration::from_secs(120),
+                                max_attempts: 5,
+                            }),
+                        }),
+                    }),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        retrack_update_api_mock.assert();
+        retrack_update_api_mock.delete();
+
+        let expected_tracker = PageTracker {
+            name: "name_two".to_string(),
+            retrack: RetrackTracker::Value(Box::new(RetrackTrackerValue {
+                id: updated_retrack_tracker.id,
+                enabled: updated_retrack_tracker.enabled,
+                config: updated_retrack_tracker.config.clone(),
+                target: updated_retrack_tracker.target.clone(),
+                notifications: false,
+            })),
+            updated_at: updated_tracker.updated_at,
+            ..tracker.clone()
+        };
+        assert_eq!(expected_tracker, updated_tracker);
+        assert_eq!(
+            expected_tracker,
+            web_scraping.get_page_tracker(tracker.id).await?.unwrap()
+        );
+        retrack_get_api_mock.assert_hits(2);
+        retrack_get_api_mock.delete();
+
+        // Update target.
+        let updated_retrack_tracker = Tracker {
+            target: TrackerTarget::Page(PageTarget {
+                extractor: "export async function execute(p) { await p.goto('http://localhost:1234/my/app?q=3'); return await p.content(); }".to_string(),
+                params: None,
+                engine: None,
+                user_agent: None,
+                accept_invalid_certificates: false,
+            }),
+            ..retrack_tracker.clone()
+        };
+        let mut retrack_update_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::PUT)
+                .path(format!("/api/trackers/{}", retrack_tracker.id))
+                .json_body_obj(&TrackerUpdateParams {
+                    target: Some(updated_retrack_tracker.target.clone()),
+                    tags: Some(prepare_tags(&[
+                        format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+                        format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
+                        format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                        format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+                    ])),
+                    ..Default::default()
+                });
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&updated_retrack_tracker);
+        });
+        let mut retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&updated_retrack_tracker);
+        });
+        let updated_tracker = web_scraping
+            .update_page_tracker(
+                tracker.id,
+                PageTrackerUpdateParams {
+                    target: Some(PageTrackerTarget {
+                        extractor: "export async function execute(p) { await p.goto('http://localhost:1234/my/app?q=3'); return await p.content(); }".to_string(),
+                    }),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        retrack_update_api_mock.assert();
+        retrack_update_api_mock.delete();
+
+        let expected_tracker = PageTracker {
+            name: "name_two".to_string(),
+            retrack: RetrackTracker::Value(Box::new(RetrackTrackerValue {
+                id: updated_retrack_tracker.id,
+                enabled: updated_retrack_tracker.enabled,
+                config: updated_retrack_tracker.config.clone(),
+                target: updated_retrack_tracker.target.clone(),
+                notifications: false,
+            })),
+            updated_at: updated_tracker.updated_at,
+            ..tracker.clone()
+        };
+        assert_eq!(expected_tracker, updated_tracker);
+        assert_eq!(
+            expected_tracker,
+            web_scraping.get_page_tracker(tracker.id).await?.unwrap()
+        );
+        retrack_get_api_mock.assert_hits(2);
+        retrack_get_api_mock.delete();
+
+        // Update notifications settings.
+        let updated_retrack_tracker = Tracker {
+            tags: prepare_tags(&[
+                format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+                format!("{RETRACK_NOTIFICATIONS_TAG}:{}", true),
+                format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+            ]),
+            ..retrack_tracker.clone()
+        };
+        let retrack_update_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::PUT)
+                .path(format!("/api/trackers/{}", retrack_tracker.id))
+                .json_body_obj(&TrackerUpdateParams {
+                    tags: Some(prepare_tags(&[
+                        format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+                        format!("{RETRACK_NOTIFICATIONS_TAG}:{}", true),
+                        format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                        format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+                    ])),
+                    ..Default::default()
+                });
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&updated_retrack_tracker);
+        });
+        let retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&updated_retrack_tracker);
+        });
+        let updated_tracker = web_scraping
+            .update_page_tracker(
+                tracker.id,
+                PageTrackerUpdateParams {
+                    notifications: true,
+                    ..Default::default()
+                },
+            )
+            .await?;
+        retrack_update_api_mock.assert();
+
+        let expected_tracker = PageTracker {
+            retrack: RetrackTracker::Value(Box::new(RetrackTrackerValue {
+                id: updated_retrack_tracker.id,
+                enabled: updated_retrack_tracker.enabled,
+                config: updated_retrack_tracker.config.clone(),
+                target: updated_retrack_tracker.target.clone(),
+                notifications: true,
+            })),
+            updated_at: updated_tracker.updated_at,
+            ..expected_tracker.clone()
+        };
+        assert_eq!(expected_tracker, updated_tracker);
+        assert_eq!(
+            expected_tracker,
+            web_scraping.get_page_tracker(tracker.id).await?.unwrap()
+        );
+        retrack_get_api_mock.assert_hits(2);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn properly_validates_page_tracker_at_update(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let retrack_tracker = mock_retrack_tracker()?;
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            // Use partial body match due to a non-deterministic tag with new tracker ID.
+            when.method(httpmock::Method::POST)
+                .path("/api/trackers")
+                .json_body_partial(
+                    serde_json::to_string_pretty(&TrackerCreateParams {
+                        name: "name_one".to_string(),
+                        enabled: true,
+                        target: TrackerTarget::Page(PageTarget {
+                            extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                            params: None,
+                            engine: None,
+                            user_agent: None,
+                            accept_invalid_certificates: false,
+                        }),
+                        config: TrackerConfig {
+                            revisions: 3,
+                            timeout: None,
+                            job: Some(SchedulerJobConfig {
+                                schedule: "@hourly".to_string(),
+                                retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                                    interval: Duration::from_secs(120),
+                                    max_attempts: 5,
+                                }),
+                            }),
+                        },
+                        tags: prepare_tags(&[
+                            format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+                            format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
+                            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage)
+                        ]),
+                        actions: vec![],
+                    })
+                        .unwrap(),
+                );
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+
+        // Insert a new user to the database.
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let job_config = SchedulerJobConfig {
+            schedule: "@hourly".to_string(),
+            retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                interval: Duration::from_secs(120),
+                max_attempts: 5,
+            }),
+        };
+        let config = PageTrackerConfig {
             revisions: 3,
-            delay: Duration::from_millis(2000),
-            scripts: Default::default(),
-            headers: Default::default(),
+            job: Some(job_config.clone()),
         };
-        let url = Url::parse("https://secutils.dev")?;
-
-        let create_and_fail = |result: anyhow::Result<_>| -> SecutilsError {
-            result.unwrap_err().downcast::<SecutilsError>().unwrap()
-        };
-
-        // Empty name.
-        assert_debug_snapshot!(
-            create_and_fail(api.create_content_tracker(WebPageTrackerCreateParams {
-                name: "".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: None
-            }).await),
-            @r###""Web page tracker name cannot be empty.""###
-        );
-
-        // Very long name.
-        assert_debug_snapshot!(
-            create_and_fail(api.create_content_tracker(WebPageTrackerCreateParams {
-                name: "a".repeat(101),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: None
-            }).await),
-            @r###""Web page tracker name cannot be longer than 100 characters.""###
-        );
-
-        // Too many revisions.
-        assert_debug_snapshot!(
-            create_and_fail(api.create_content_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: url.clone(),
-                settings: WebPageTrackerSettings {
-                    revisions: 31,
-                    ..settings.clone()
-                },
-                job_config: None
-            }).await),
-            @r###""Web page tracker revisions count cannot be greater than 30.""###
-        );
-
-        // Too long delay.
-        assert_debug_snapshot!(
-            create_and_fail(api.create_content_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: url.clone(),
-                settings: WebPageTrackerSettings {
-                    delay: Duration::from_secs(61),
-                    ..settings.clone()
-                },
-                job_config: None
-            }).await),
-            @r###""Web page tracker delay cannot be greater than 60000ms.""###
-        );
-
-        // Empty resource filter.
-        assert_debug_snapshot!(
-            create_and_fail(api.create_content_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: url.clone(),
-                settings: WebPageTrackerSettings {
-                    scripts: Some([(
-                        WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME.to_string(),
-                            "".to_string()
-                        )]
-                        .into_iter()
-                        .collect()
-                    ),
-                    ..settings.clone()
-                },
-                job_config: None
-            }).await),
-            @r###""Web page tracker scripts cannot be empty or have an empty name.""###
-        );
-
-        // Empty resource filter.
-        assert_debug_snapshot!(
-            create_and_fail(api.create_content_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: url.clone(),
-                settings: WebPageTrackerSettings {
-                    scripts: Some([(
-                        "someScript".to_string(),
-                            "return resource;".to_string()
-                        )]
-                        .into_iter()
-                        .collect()
-                    ),
-                    ..settings.clone()
-                },
-                job_config: None
-            }).await),
-            @r###""Web page tracker contains unrecognized scripts.""###
-        );
-
-        // Invalid schedule.
-        assert_debug_snapshot!(
-            create_and_fail(api.create_content_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "-".to_string(),
-                    retry_strategy: None,
-                    notifications: false,
-                }),
-            }).await),
-            @r###"
-        Error {
-            context: "Web page tracker schedule must be a valid cron expression.",
-            source: "Failed to parse schedule `-`: Invalid pattern: Pattern must consist of five or six fields (minute, hour, day, month, day of week, and optional second).",
-        }
-        "###
-        );
-
-        // Invalid schedule interval.
-        assert_debug_snapshot!(
-            create_and_fail(api.create_content_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0/5 * * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: false,
-                }),
-            }).await),
-            @r###""Web page tracker schedule must have at least 10s between occurrences, but detected 5s.""###
-        );
-
-        // Too few retry attempts.
-        assert_debug_snapshot!(
-            create_and_fail(api.create_content_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "@daily".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(120),
-                        max_attempts: 0,
-                    }),
-                    notifications: false,
-                }),
-            }).await),
-            @r###""Web page tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
-        );
-
-        // Too many retry attempts.
-        assert_debug_snapshot!(
-            create_and_fail(api.create_content_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "@daily".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(120),
-                        max_attempts: 11,
-                    }),
-                    notifications: false,
-                }),
-            }).await),
-            @r###""Web page tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
-        );
-
-        // Too low retry interval.
-        assert_debug_snapshot!(
-            create_and_fail(api.create_content_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "@daily".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(30),
-                        max_attempts: 5,
-                    }),
-                    notifications: false,
-                }),
-            }).await),
-            @r###""Web page tracker min retry interval cannot be less than 1m, but received 30s.""###
-        );
-
-        // Too low max retry interval.
-        assert_debug_snapshot!(
-            create_and_fail(api.create_content_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "@daily".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
-                        initial_interval: Duration::from_secs(120),
-                        increment: Duration::from_secs(10),
-                        max_interval: Duration::from_secs(30),
-                        max_attempts: 5,
-                    }),
-                    notifications: false,
-                }),
-            }).await),
-            @r###""Web page tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
-        );
-
-        // Too high max retry interval.
-        assert_debug_snapshot!(
-            create_and_fail(api.create_content_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "@monthly".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
-                        initial_interval: Duration::from_secs(120),
-                        increment: Duration::from_secs(10),
-                        max_interval: Duration::from_secs(13 * 3600),
-                        max_attempts: 5,
-                    }),
-                    notifications: false,
-                }),
-            }).await),
-            @r###""Web page tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
-        );
-
-        assert_debug_snapshot!(
-            create_and_fail(api.create_content_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: url.clone(),
-                settings: settings.clone(),
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "@hourly".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
-                        initial_interval: Duration::from_secs(120),
-                        increment: Duration::from_secs(10),
-                        max_interval: Duration::from_secs(2 * 3600),
-                        max_attempts: 5,
-                    }),
-                    notifications: false,
-                }),
-            }).await),
-            @r###""Web page tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
-        );
-
-        // Invalid URL schema.
-        assert_debug_snapshot!(
-            create_and_fail(api.create_content_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: Url::parse("ftp://secutils.dev")?,
-                settings: settings.clone(),
-                job_config: None
-            }).await),
-            @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received ftp://secutils.dev/.""###
-        );
-
-        let api_with_local_network = mock_api_with_network(
-            pool,
-            mock_network_with_records::<1>(vec![Record::from_rdata(
-                Name::new(),
-                300,
-                RData::A(A(Ipv4Addr::new(127, 0, 0, 1))),
-            )]),
-        )
-        .await?;
-
-        // Non-public URL.
-        assert_debug_snapshot!(
-            create_and_fail(api_with_local_network.web_scraping(&mock_user).create_content_tracker(WebPageTrackerCreateParams {
-                name: "name".to_string(),
-                url: Url::parse("https://127.0.0.1")?,
-                settings: settings.clone(),
-                job_config: None
-            }).await),
-            @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received https://127.0.0.1/.""###
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_updates_web_page_resources_tracker(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
 
         let web_scraping = api.web_scraping(&mock_user);
         let tracker = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
+            .create_page_tracker(PageTrackerCreateParams {
                 name: "name_one".to_string(),
-                url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                settings: WebPageTrackerSettings {
+                config: PageTrackerConfig {
                     revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: None,
-            })
-            .await?;
-
-        // Update name.
-        let updated_tracker = web_scraping
-            .update_resources_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    name: Some("name_two".to_string()),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        let expected_tracker = WebPageTracker {
-            name: "name_two".to_string(),
-            updated_at: updated_tracker.updated_at,
-            ..tracker.clone()
-        };
-        assert_eq!(expected_tracker, updated_tracker);
-        assert_eq!(
-            expected_tracker,
-            web_scraping
-                .get_resources_tracker(tracker.id)
-                .await?
-                .unwrap()
-        );
-
-        // Update URL.
-        let updated_tracker = web_scraping
-            .update_resources_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    url: Some("http://localhost:1234/my/app?q=3".parse()?),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        let expected_tracker = WebPageTracker {
-            name: "name_two".to_string(),
-            url: "http://localhost:1234/my/app?q=3".parse()?,
-            updated_at: updated_tracker.updated_at,
-            ..tracker.clone()
-        };
-        assert_eq!(expected_tracker, updated_tracker);
-        assert_eq!(
-            expected_tracker,
-            web_scraping
-                .get_resources_tracker(tracker.id)
-                .await?
-                .unwrap()
-        );
-
-        // Update settings.
-        let updated_tracker = web_scraping
-            .update_resources_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    settings: Some(WebPageTrackerSettings {
-                        revisions: 4,
-                        ..tracker.settings.clone()
-                    }),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        let expected_tracker = WebPageTracker {
-            name: "name_two".to_string(),
-            url: "http://localhost:1234/my/app?q=3".parse()?,
-            settings: WebPageTrackerSettings {
-                revisions: 4,
-                ..tracker.settings.clone()
-            },
-            updated_at: updated_tracker.updated_at,
-            ..tracker.clone()
-        };
-        assert_eq!(expected_tracker, updated_tracker);
-        assert_eq!(
-            expected_tracker,
-            web_scraping
-                .get_resources_tracker(tracker.id)
-                .await?
-                .unwrap()
-        );
-
-        // Update job config.
-        let updated_tracker = web_scraping
-            .update_resources_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    job_config: Some(Some(SchedulerJobConfig {
+                    job: Some(SchedulerJobConfig {
                         schedule: "@hourly".to_string(),
                         retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                             interval: Duration::from_secs(120),
                             max_attempts: 5,
                         }),
-                        notifications: false,
-                    })),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        let expected_tracker = WebPageTracker {
-            name: "name_two".to_string(),
-            url: "http://localhost:1234/my/app?q=3".parse()?,
-            settings: WebPageTrackerSettings {
-                revisions: 4,
-                ..tracker.settings.clone()
-            },
-            job_config: Some(SchedulerJobConfig {
-                schedule: "@hourly".to_string(),
-                retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                    interval: Duration::from_secs(120),
-                    max_attempts: 5,
-                }),
-                notifications: false,
-            }),
-            updated_at: updated_tracker.updated_at,
-            ..tracker.clone()
-        };
-        assert_eq!(expected_tracker, updated_tracker);
-        assert_eq!(
-            expected_tracker,
-            web_scraping
-                .get_resources_tracker(tracker.id)
-                .await?
-                .unwrap()
-        );
-
-        // Remove job config.
-        let updated_tracker = web_scraping
-            .update_resources_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    job_config: Some(None),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        let expected_tracker = WebPageTracker {
-            name: "name_two".to_string(),
-            url: "http://localhost:1234/my/app?q=3".parse()?,
-            settings: WebPageTrackerSettings {
-                revisions: 4,
-                ..tracker.settings.clone()
-            },
-            job_config: None,
-            updated_at: updated_tracker.updated_at,
-            ..tracker.clone()
-        };
-        assert_eq!(expected_tracker, updated_tracker);
-        assert_eq!(
-            expected_tracker,
-            web_scraping
-                .get_resources_tracker(tracker.id)
-                .await?
-                .unwrap()
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_validates_web_page_resources_tracker_at_update(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let api = mock_api(pool.clone()).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let api = api.web_scraping(&mock_user);
-        let tracker = api
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "@hourly".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(120),
-                        max_attempts: 5,
                     }),
-                    notifications: false,
-                }),
+                },
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                },
+                notifications: false
             })
             .await?;
+        retrack_create_api_mock.assert();
 
         let update_and_fail = |result: anyhow::Result<_>| -> SecutilsError {
             result.unwrap_err().downcast::<SecutilsError>().unwrap()
         };
 
-        // Empty parameters.
-        let update_result = update_and_fail(
-            api.update_resources_tracker(tracker.id, Default::default())
-                .await,
-        );
-        assert_eq!(
-            update_result.to_string(),
-            format!(
-                "Either new name, url, settings, or job config should be provided ({}).",
-                tracker.id
-            )
-        );
-
-        // Non-existent tracker.
-        let update_result = update_and_fail(
-            api.update_resources_tracker(
-                uuid!("00000000-0000-0000-0000-000000000002"),
-                WebPageTrackerUpdateParams {
-                    name: Some("name".to_string()),
-                    ..Default::default()
-                },
-            )
-            .await,
-        );
-        assert_eq!(
-            update_result.to_string(),
-            "Web page tracker ('00000000-0000-0000-0000-000000000002') is not found."
-        );
-
-        // Empty name.
-        assert_debug_snapshot!(
-            update_and_fail(api.update_resources_tracker(tracker.id, WebPageTrackerUpdateParams {
-                name: Some("".to_string()),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker name cannot be empty.""###
-        );
-
-        // Very long name.
-        assert_debug_snapshot!(
-            update_and_fail(api.update_resources_tracker(tracker.id, WebPageTrackerUpdateParams {
-                name: Some("a".repeat(101)),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker name cannot be longer than 100 characters.""###
-        );
-
-        // Too many revisions.
-        assert_debug_snapshot!(
-            update_and_fail(api.update_resources_tracker(tracker.id, WebPageTrackerUpdateParams {
-                settings: Some(WebPageTrackerSettings {
-                    revisions: 31,
-                    ..tracker.settings.clone()
-                }),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker revisions count cannot be greater than 30.""###
-        );
-
-        // Too long delay.
-        assert_debug_snapshot!(
-            update_and_fail(api.update_resources_tracker(tracker.id, WebPageTrackerUpdateParams {
-                settings: Some(WebPageTrackerSettings {
-                    delay: Duration::from_secs(61),
-                    ..tracker.settings.clone()
-                }),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker delay cannot be greater than 60000ms.""###
-        );
-
-        // Empty resource filter.
-        assert_debug_snapshot!(
-            update_and_fail(api.update_resources_tracker(tracker.id, WebPageTrackerUpdateParams {
-                settings: Some(WebPageTrackerSettings {
-                    scripts: Some([(
-                        WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME.to_string(),
-                        "".to_string()
-                    )]
-                    .into_iter()
-                    .collect()),
-                   ..tracker.settings.clone()
-                }),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker scripts cannot be empty or have an empty name.""###
-        );
-
-        // Unknown script.
-        assert_debug_snapshot!(
-            update_and_fail(api.update_resources_tracker(tracker.id, WebPageTrackerUpdateParams {
-                settings: Some(WebPageTrackerSettings {
-                    scripts: Some([(
-                        "someScript".to_string(),
-                        "return resource;".to_string()
-                    )]
-                    .into_iter()
-                    .collect()),
-                   ..tracker.settings.clone()
-                }),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker contains unrecognized scripts.""###
-        );
-
-        // Invalid schedule.
-        assert_debug_snapshot!(
-            update_and_fail(api.update_resources_tracker(tracker.id, WebPageTrackerUpdateParams {
-                job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "-".to_string(),
-                    retry_strategy: None,
-                    notifications: false,
-                })),
-                ..Default::default()
-            }).await),
-            @r###"
-        Error {
-            context: "Web page tracker schedule must be a valid cron expression.",
-            source: "Failed to parse schedule `-`: Invalid pattern: Pattern must consist of five or six fields (minute, hour, day, month, day of week, and optional second).",
-        }
-        "###
-        );
-
-        // Invalid schedule interval.
-        assert_debug_snapshot!(
-            update_and_fail(api.update_resources_tracker(tracker.id, WebPageTrackerUpdateParams {
-                job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "0/5 * * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: false,
-                })),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker schedule must have at least 10s between occurrences, but detected 5s.""###
-        );
-
-        // Too few retry attempts.
-        assert_debug_snapshot!(
-            update_and_fail(api.update_resources_tracker(tracker.id, WebPageTrackerUpdateParams {
-                job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "@daily".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(120),
-                        max_attempts: 0,
-                    }),
-                    notifications: false,
-                })),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
-        );
-
-        // Too many retry attempts.
-        assert_debug_snapshot!(
-            update_and_fail(api.update_resources_tracker(tracker.id, WebPageTrackerUpdateParams {
-                job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "@daily".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(120),
-                        max_attempts: 11,
-                    }),
-                    notifications: false,
-                })),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
-        );
-
-        // Too low retry interval.
-        assert_debug_snapshot!(
-           update_and_fail(api.update_resources_tracker(tracker.id, WebPageTrackerUpdateParams {
-                job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "@daily".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(30),
-                        max_attempts: 5,
-                    }),
-                    notifications: false,
-                })),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker min retry interval cannot be less than 1m, but received 30s.""###
-        );
-
-        // Too low max retry interval.
-        assert_debug_snapshot!(
-            update_and_fail(api.update_resources_tracker(tracker.id, WebPageTrackerUpdateParams {
-                job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "@daily".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
-                        initial_interval: Duration::from_secs(120),
-                        increment: Duration::from_secs(10),
-                        max_interval: Duration::from_secs(30),
-                        max_attempts: 5,
-                    }),
-                    notifications: false,
-                })),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
-        );
-
-        // Too high max retry interval.
-        assert_debug_snapshot!(
-            update_and_fail(api.update_resources_tracker(tracker.id, WebPageTrackerUpdateParams {
-                job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "@monthly".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
-                        initial_interval: Duration::from_secs(120),
-                        increment: Duration::from_secs(10),
-                        max_interval: Duration::from_secs(13 * 3600),
-                        max_attempts: 5,
-                    }),
-                    notifications: false,
-                })),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
-        );
-
-        assert_debug_snapshot!(
-            update_and_fail(api.update_resources_tracker(tracker.id, WebPageTrackerUpdateParams {
-                job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "@hourly".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
-                        initial_interval: Duration::from_secs(120),
-                        increment: Duration::from_secs(10),
-                        max_interval: Duration::from_secs(2 * 3600),
-                        max_attempts: 5,
-                    }),
-                    notifications: false,
-                })),
-               ..Default::default()
-            }).await),
-            @r###""Web page tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
-        );
-
-        // Invalid URL schema.
-        assert_debug_snapshot!(
-            update_and_fail(api.update_resources_tracker(tracker.id, WebPageTrackerUpdateParams {
-                url: Some(Url::parse("ftp://secutils.dev")?),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received ftp://secutils.dev/.""###
-        );
-
-        let api_with_local_network = mock_api_with_network(
-            pool,
-            mock_network_with_records::<1>(vec![Record::from_rdata(
-                Name::new(),
-                300,
-                RData::A(A(Ipv4Addr::new(127, 0, 0, 1))),
-            )]),
-        )
-        .await?;
-
-        // Non-public URL.
-        let web_scraping = api_with_local_network.web_scraping(&mock_user);
-        assert_debug_snapshot!(
-            update_and_fail(web_scraping.update_resources_tracker(tracker.id, WebPageTrackerUpdateParams {
-                url: Some(Url::parse("https://127.0.0.1")?),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received https://127.0.0.1/.""###
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_updates_web_page_content_tracker(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let api = api.web_scraping(&mock_user);
-        let tracker = api
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("http://localhost:1234/my/app?q=2")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: None,
-            })
-            .await?;
-
-        // Update name.
-        let updated_tracker = api
-            .update_content_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    name: Some("name_two".to_string()),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        let expected_tracker = WebPageTracker {
-            name: "name_two".to_string(),
-            updated_at: updated_tracker.updated_at,
-            ..tracker.clone()
-        };
-        assert_eq!(expected_tracker, updated_tracker);
-        assert_eq!(
-            expected_tracker,
-            api.get_content_tracker(tracker.id).await?.unwrap()
-        );
-
-        // Update URL.
-        let updated_tracker = api
-            .update_content_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    url: Some("http://localhost:1234/my/app?q=3".parse()?),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        let expected_tracker = WebPageTracker {
-            name: "name_two".to_string(),
-            url: "http://localhost:1234/my/app?q=3".parse()?,
-            updated_at: updated_tracker.updated_at,
-            ..tracker.clone()
-        };
-        assert_eq!(expected_tracker, updated_tracker);
-        assert_eq!(
-            expected_tracker,
-            api.get_content_tracker(tracker.id).await?.unwrap()
-        );
-
-        // Update settings.
-        let updated_tracker = api
-            .update_content_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    settings: Some(WebPageTrackerSettings {
-                        revisions: 4,
-                        ..tracker.settings.clone()
-                    }),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        let expected_tracker = WebPageTracker {
-            name: "name_two".to_string(),
-            url: "http://localhost:1234/my/app?q=3".parse()?,
-            settings: WebPageTrackerSettings {
-                revisions: 4,
-                ..tracker.settings.clone()
-            },
-            updated_at: updated_tracker.updated_at,
-            ..tracker.clone()
-        };
-        assert_eq!(expected_tracker, updated_tracker);
-        assert_eq!(
-            expected_tracker,
-            api.get_content_tracker(tracker.id).await?.unwrap()
-        );
-
-        // Update job config.
-        let updated_tracker = api
-            .update_content_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    job_config: Some(Some(SchedulerJobConfig {
-                        schedule: "@hourly".to_string(),
-                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                            interval: Duration::from_secs(120),
-                            max_attempts: 5,
-                        }),
-                        notifications: false,
-                    })),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        let expected_tracker = WebPageTracker {
-            name: "name_two".to_string(),
-            url: "http://localhost:1234/my/app?q=3".parse()?,
-            settings: WebPageTrackerSettings {
-                revisions: 4,
-                ..tracker.settings.clone()
-            },
-            job_config: Some(SchedulerJobConfig {
-                schedule: "@hourly".to_string(),
-                retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                    interval: Duration::from_secs(120),
-                    max_attempts: 5,
-                }),
-                notifications: false,
-            }),
-            updated_at: updated_tracker.updated_at,
-            ..tracker.clone()
-        };
-        assert_eq!(expected_tracker, updated_tracker);
-        assert_eq!(
-            expected_tracker,
-            api.get_content_tracker(tracker.id).await?.unwrap()
-        );
-
-        // Remove job config.
-        let updated_tracker = api
-            .update_content_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    job_config: Some(None),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        let expected_tracker = WebPageTracker {
-            name: "name_two".to_string(),
-            url: "http://localhost:1234/my/app?q=3".parse()?,
-            settings: WebPageTrackerSettings {
-                revisions: 4,
-                ..tracker.settings.clone()
-            },
-            job_config: None,
-            updated_at: updated_tracker.updated_at,
-            ..tracker.clone()
-        };
-        assert_eq!(expected_tracker, updated_tracker);
-        assert_eq!(
-            expected_tracker,
-            api.get_content_tracker(tracker.id).await?.unwrap()
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_validates_web_page_content_tracker_at_update(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let api = mock_api(pool.clone()).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "@hourly".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(120),
-                        max_attempts: 5,
-                    }),
-                    notifications: false,
-                }),
-            })
-            .await?;
-
-        let update_and_fail = |result: anyhow::Result<_>| -> SecutilsError {
-            result.unwrap_err().downcast::<SecutilsError>().unwrap()
-        };
-
-        // Empty parameters.
-        let update_result = update_and_fail(
-            web_scraping
-                .update_content_tracker(tracker.id, Default::default())
-                .await,
-        );
-        assert_eq!(
-            update_result.to_string(),
-            format!(
-                "Either new name, url, settings, or job config should be provided ({}).",
-                tracker.id
-            )
-        );
-
         // Non-existent tracker.
         let update_result = update_and_fail(
             web_scraping
-                .update_content_tracker(
+                .update_page_tracker(
                     uuid!("00000000-0000-0000-0000-000000000002"),
-                    WebPageTrackerUpdateParams {
+                    PageTrackerUpdateParams {
                         name: Some("name".to_string()),
                         ..Default::default()
                     },
@@ -2418,98 +1457,54 @@ mod tests {
         );
         assert_eq!(
             update_result.to_string(),
-            "Web page tracker ('00000000-0000-0000-0000-000000000002') is not found."
+            "Page tracker ('00000000-0000-0000-0000-000000000002') is not found."
         );
 
         // Empty name.
         assert_debug_snapshot!(
-            update_and_fail(web_scraping.update_content_tracker(tracker.id, WebPageTrackerUpdateParams {
+            update_and_fail(web_scraping.update_page_tracker(tracker.id, PageTrackerUpdateParams {
                 name: Some("".to_string()),
                 ..Default::default()
             }).await),
-            @r###""Web page tracker name cannot be empty.""###
+            @r###""Page tracker name cannot be empty.""###
         );
 
         // Very long name.
         assert_debug_snapshot!(
-            update_and_fail(web_scraping.update_content_tracker(tracker.id, WebPageTrackerUpdateParams {
+            update_and_fail(web_scraping.update_page_tracker(tracker.id, PageTrackerUpdateParams {
                 name: Some("a".repeat(101)),
                 ..Default::default()
             }).await),
-            @r###""Web page tracker name cannot be longer than 100 characters.""###
+            @r###""Page tracker name cannot be longer than 100 characters.""###
         );
 
         // Too many revisions.
         assert_debug_snapshot!(
-            update_and_fail(web_scraping.update_content_tracker(tracker.id, WebPageTrackerUpdateParams {
-                settings: Some(WebPageTrackerSettings {
+            update_and_fail(web_scraping.update_page_tracker(tracker.id, PageTrackerUpdateParams {
+                config: Some(PageTrackerConfig {
                     revisions: 31,
-                    ..tracker.settings.clone()
+                    ..config.clone()
                 }),
                 ..Default::default()
             }).await),
-            @r###""Web page tracker revisions count cannot be greater than 30.""###
-        );
-
-        // Too long delay.
-        assert_debug_snapshot!(
-            update_and_fail(web_scraping.update_content_tracker(tracker.id, WebPageTrackerUpdateParams {
-                settings: Some(WebPageTrackerSettings {
-                    delay: Duration::from_secs(61),
-                    ..tracker.settings.clone()
-                }),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker delay cannot be greater than 60000ms.""###
-        );
-
-        // Empty resource filter.
-        assert_debug_snapshot!(
-            update_and_fail(web_scraping.update_content_tracker(tracker.id, WebPageTrackerUpdateParams {
-                settings: Some(WebPageTrackerSettings {
-                    scripts: Some([(
-                        WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME.to_string(),
-                        "".to_string()
-                    )]
-                    .into_iter()
-                    .collect()),
-                   ..tracker.settings.clone()
-                }),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker scripts cannot be empty or have an empty name.""###
-        );
-
-        // Unknown script.
-        assert_debug_snapshot!(
-            update_and_fail(web_scraping.update_content_tracker(tracker.id, WebPageTrackerUpdateParams {
-                settings: Some(WebPageTrackerSettings {
-                    scripts: Some([(
-                        "someScript".to_string(),
-                        "return resource;".to_string()
-                    )]
-                    .into_iter()
-                    .collect()),
-                   ..tracker.settings.clone()
-                }),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker contains unrecognized scripts.""###
+            @r###""Page tracker revisions count cannot be greater than 30.""###
         );
 
         // Invalid schedule.
         assert_debug_snapshot!(
-            update_and_fail(web_scraping.update_content_tracker(tracker.id, WebPageTrackerUpdateParams {
-                job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "-".to_string(),
-                    retry_strategy: None,
-                    notifications: false,
-                })),
+            update_and_fail(web_scraping.update_page_tracker(tracker.id, PageTrackerUpdateParams {
+                config: Some(PageTrackerConfig {
+                    job: Some(SchedulerJobConfig {
+                        schedule: "-".to_string(),
+                        ..job_config.clone()
+                    }),
+                    ..config.clone()
+                }),
                 ..Default::default()
             }).await),
             @r###"
         Error {
-            context: "Web page tracker schedule must be a valid cron expression.",
+            context: "Page tracker schedule must be a valid cron expression.",
             source: "Failed to parse schedule `-`: Invalid pattern: Pattern must consist of five or six fields (minute, hour, day, month, day of week, and optional second).",
         }
         "###
@@ -2517,2736 +1512,704 @@ mod tests {
 
         // Invalid schedule interval.
         assert_debug_snapshot!(
-            update_and_fail(web_scraping.update_content_tracker(tracker.id, WebPageTrackerUpdateParams {
-                job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "0/5 * * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: false,
-                })),
+            update_and_fail(web_scraping.update_page_tracker(tracker.id, PageTrackerUpdateParams {
+                config: Some(PageTrackerConfig {
+                    job: Some(SchedulerJobConfig {
+                        schedule: "0/5 * * * * *".to_string(),
+                        ..job_config.clone()
+                    }),
+                    ..config.clone()
+                }),
                 ..Default::default()
             }).await),
-            @r###""Web page tracker schedule must have at least 10s between occurrences, but detected 5s.""###
+            @r###""Page tracker schedule must have at least 10s between occurrences, but detected 5s.""###
         );
 
         // Too few retry attempts.
         assert_debug_snapshot!(
-            update_and_fail(web_scraping.update_content_tracker(tracker.id, WebPageTrackerUpdateParams {
-                job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "@daily".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(120),
-                        max_attempts: 0,
+            update_and_fail(web_scraping.update_page_tracker(tracker.id, PageTrackerUpdateParams {
+                config: Some(PageTrackerConfig {
+                    job: Some(SchedulerJobConfig {
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 0,
+                        }),
+                        ..job_config.clone()
                     }),
-                    notifications: false,
-                })),
+                    ..config.clone()
+                }),
                 ..Default::default()
             }).await),
-            @r###""Web page tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
+            @r###""Page tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
         );
 
         // Too many retry attempts.
         assert_debug_snapshot!(
-            update_and_fail(web_scraping.update_content_tracker(tracker.id, WebPageTrackerUpdateParams {
-                job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "@daily".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(120),
-                        max_attempts: 11,
+            update_and_fail(web_scraping.update_page_tracker(tracker.id, PageTrackerUpdateParams {
+                 config: Some(PageTrackerConfig {
+                    job: Some(SchedulerJobConfig {
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 11,
+                        }),
+                        ..job_config.clone()
                     }),
-                    notifications: false,
-                })),
+                    ..config.clone()
+                }),
                 ..Default::default()
             }).await),
-            @r###""Web page tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
+            @r###""Page tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
         );
 
         // Too low retry interval.
         assert_debug_snapshot!(
-           update_and_fail(web_scraping.update_content_tracker(tracker.id, WebPageTrackerUpdateParams {
-                job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "@daily".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(30),
-                        max_attempts: 5,
+           update_and_fail(web_scraping.update_page_tracker(tracker.id, PageTrackerUpdateParams {
+                config: Some(PageTrackerConfig {
+                    job: Some(SchedulerJobConfig {
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(30),
+                            max_attempts: 5,
+                        }),
+                        ..job_config.clone()
                     }),
-                    notifications: false,
-                })),
+                    ..config.clone()
+                }),
                 ..Default::default()
             }).await),
-            @r###""Web page tracker min retry interval cannot be less than 1m, but received 30s.""###
+            @r###""Page tracker min retry interval cannot be less than 1m, but received 30s.""###
         );
 
         // Too low max retry interval.
         assert_debug_snapshot!(
-            update_and_fail(web_scraping.update_content_tracker(tracker.id, WebPageTrackerUpdateParams {
-                job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "@daily".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
-                        initial_interval: Duration::from_secs(120),
-                        increment: Duration::from_secs(10),
-                        max_interval: Duration::from_secs(30),
-                        max_attempts: 5,
+            update_and_fail(web_scraping.update_page_tracker(tracker.id, PageTrackerUpdateParams {
+                config: Some(PageTrackerConfig {
+                    job: Some(SchedulerJobConfig {
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                            initial_interval: Duration::from_secs(120),
+                            increment: Duration::from_secs(10),
+                            max_interval: Duration::from_secs(30),
+                            max_attempts: 5,
+                        }),
+                        ..job_config.clone()
                     }),
-                    notifications: false,
-                })),
+                    ..config.clone()
+                }),
                 ..Default::default()
             }).await),
-            @r###""Web page tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
+            @r###""Page tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
         );
 
         // Too high max retry interval.
         assert_debug_snapshot!(
-            update_and_fail(web_scraping.update_content_tracker(tracker.id, WebPageTrackerUpdateParams {
-                job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "@monthly".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
-                        initial_interval: Duration::from_secs(120),
-                        increment: Duration::from_secs(10),
-                        max_interval: Duration::from_secs(13 * 3600),
-                        max_attempts: 5,
+            update_and_fail(web_scraping.update_page_tracker(tracker.id, PageTrackerUpdateParams {
+                config: Some(PageTrackerConfig {
+                    job: Some(SchedulerJobConfig {
+                        schedule: "@monthly".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                            initial_interval: Duration::from_secs(120),
+                            increment: Duration::from_secs(10),
+                            max_interval: Duration::from_secs(13 * 3600),
+                            max_attempts: 5,
+                        }),
                     }),
-                    notifications: false,
-                })),
+                    ..config.clone()
+                }),
                 ..Default::default()
             }).await),
-            @r###""Web page tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
+            @r###""Page tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
         );
 
         assert_debug_snapshot!(
-            update_and_fail(web_scraping.update_content_tracker(tracker.id, WebPageTrackerUpdateParams {
-                job_config: Some(Some(SchedulerJobConfig {
-                    schedule: "@hourly".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
-                        initial_interval: Duration::from_secs(120),
-                        increment: Duration::from_secs(10),
-                        max_interval: Duration::from_secs(2 * 3600),
-                        max_attempts: 5,
+            update_and_fail(web_scraping.update_page_tracker(tracker.id, PageTrackerUpdateParams {
+                 config: Some(PageTrackerConfig {
+                    job: Some(SchedulerJobConfig {
+                        schedule: "@hourly".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
+                            initial_interval: Duration::from_secs(120),
+                            increment: Duration::from_secs(10),
+                            max_interval: Duration::from_secs(2 * 3600),
+                            max_attempts: 5,
+                        }),
                     }),
-                    notifications: false,
-                })),
+                    ..config.clone()
+                }),
                ..Default::default()
             }).await),
-            @r###""Web page tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
+            @r###""Page tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
         );
 
-        // Invalid URL schema.
+        // Empty extractor.
         assert_debug_snapshot!(
-            update_and_fail(web_scraping.update_content_tracker(tracker.id, WebPageTrackerUpdateParams {
-                url: Some(Url::parse("ftp://secutils.dev")?),
+            update_and_fail(web_scraping.update_page_tracker(tracker.id, PageTrackerUpdateParams {
+                target: Some(PageTrackerTarget {
+                    extractor: "".to_string(),
+                }),
                 ..Default::default()
             }).await),
-            @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received ftp://secutils.dev/.""###
+            @r###""Page tracker extractor script cannot be empty.""###
         );
 
-        let api_with_local_network = mock_api_with_network(
-            pool,
-            mock_network_with_records::<1>(vec![Record::from_rdata(
-                Name::new(),
-                300,
-                RData::A(A(Ipv4Addr::new(127, 0, 0, 1))),
-            )]),
-        )
-        .await?;
-
-        // Non-public URL.
-        let web_scraping = api_with_local_network.web_scraping(&mock_user);
-        assert_debug_snapshot!(
-            update_and_fail(web_scraping.update_content_tracker(tracker.id, WebPageTrackerUpdateParams {
-                url: Some(Url::parse("https://127.0.0.1")?),
-                ..Default::default()
-            }).await),
-            @r###""Web page tracker URL must be either `http` or `https` and have a valid public reachable domain name, but received https://127.0.0.1/.""###
+        // Non-existent retrack tracker.
+        let retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(404);
+        });
+        let update_result = update_and_fail(
+            web_scraping
+                .update_page_tracker(tracker.id, Default::default())
+                .await,
         );
+        assert_eq!(
+            update_result.to_string(),
+            format!("Page tracker ('{}') is not found in Retrack.", tracker.id)
+        );
+        retrack_get_api_mock.assert();
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn properly_updates_web_page_resources_job_id_at_update(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
+    async fn properly_removes_page_trackers(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
         let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        // Insert a new user to the database.
+        let api = mock_api_with_config(pool, config).await?;
         api.db.insert_user(&mock_user).await?;
 
         let web_scraping = api.web_scraping(&mock_user);
-        let tracker = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
 
-        // Set job ID.
-        api.web_scraping_system()
-            .update_web_page_tracker_job(
-                tracker.id,
-                Some(uuid!("00000000-0000-0000-0000-000000000001")),
-            )
-            .await?;
-        assert_eq!(
-            Some(uuid!("00000000-0000-0000-0000-000000000001")),
-            web_scraping
-                .get_resources_tracker(tracker.id)
-                .await?
-                .unwrap()
-                .job_id
-        );
-
-        let updated_tracker = web_scraping
-            .update_resources_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    name: Some("name_two".to_string()),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        let expected_tracker = WebPageTracker {
-            name: "name_two".to_string(),
-            job_id: Some(uuid!("00000000-0000-0000-0000-000000000001")),
-            updated_at: updated_tracker.updated_at,
-            ..tracker.clone()
-        };
-        assert_eq!(expected_tracker, updated_tracker);
-        assert_eq!(
-            expected_tracker,
-            web_scraping
-                .get_resources_tracker(tracker.id)
-                .await?
-                .unwrap()
-        );
-
-        // Change in schedule will reset job ID.
-        let updated_tracker = web_scraping
-            .update_resources_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    job_config: Some(Some(SchedulerJobConfig {
-                        schedule: "0 1 * * * *".to_string(),
-                        retry_strategy: None,
-                        notifications: true,
-                    })),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        let expected_tracker = WebPageTracker {
-            name: "name_two".to_string(),
-            job_id: None,
-            job_config: Some(SchedulerJobConfig {
-                schedule: "0 1 * * * *".to_string(),
-                retry_strategy: None,
-                notifications: true,
-            }),
-            updated_at: updated_tracker.updated_at,
-            ..tracker.clone()
-        };
-        assert_eq!(expected_tracker, updated_tracker);
-        assert_eq!(
-            expected_tracker,
-            web_scraping
-                .get_resources_tracker(tracker.id)
-                .await?
-                .unwrap()
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_updates_web_page_content_job_id_at_update(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-
-        // Set job ID.
-        api.web_scraping_system()
-            .update_web_page_tracker_job(
-                tracker.id,
-                Some(uuid!("00000000-0000-0000-0000-000000000001")),
-            )
-            .await?;
-        assert_eq!(
-            Some(uuid!("00000000-0000-0000-0000-000000000001")),
-            web_scraping
-                .get_content_tracker(tracker.id)
-                .await?
-                .unwrap()
-                .job_id
-        );
-
-        let updated_tracker = web_scraping
-            .update_content_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    name: Some("name_two".to_string()),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        let expected_tracker = WebPageTracker {
-            name: "name_two".to_string(),
-            job_id: Some(uuid!("00000000-0000-0000-0000-000000000001")),
-            updated_at: updated_tracker.updated_at,
-            ..tracker.clone()
-        };
-        assert_eq!(expected_tracker, updated_tracker);
-        assert_eq!(
-            expected_tracker,
-            web_scraping.get_content_tracker(tracker.id).await?.unwrap()
-        );
-
-        // Change in schedule will reset job ID.
-        let updated_tracker = web_scraping
-            .update_content_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    job_config: Some(Some(SchedulerJobConfig {
-                        schedule: "0 1 * * * *".to_string(),
-                        retry_strategy: None,
-                        notifications: true,
-                    })),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        let expected_tracker = WebPageTracker {
-            name: "name_two".to_string(),
-            job_id: None,
-            job_config: Some(SchedulerJobConfig {
-                schedule: "0 1 * * * *".to_string(),
-                retry_strategy: None,
-                notifications: true,
-            }),
-            updated_at: updated_tracker.updated_at,
-            ..tracker.clone()
-        };
-        assert_eq!(expected_tracker, updated_tracker);
-        assert_eq!(
-            expected_tracker,
-            web_scraping.get_content_tracker(tracker.id).await?.unwrap()
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_removes_web_page_trackers(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
+        let retrack_tracker_one = mock_retrack_tracker()?;
+        let mut retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker_one);
+        });
         let tracker_one = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
+            .create_page_tracker(PageTrackerCreateParams {
                 name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
+                config: PageTrackerConfig {
                     revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
+                    job: None,
                 },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                },
+                notifications: false,
             })
             .await?;
-        let tracker_two = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_two".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: tracker_one.settings.clone(),
-                job_config: tracker_one.job_config.clone(),
-            })
-            .await?;
+        retrack_create_api_mock.assert();
+        retrack_create_api_mock.delete();
 
+        let mut retrack_tracker_two = mock_retrack_tracker()?;
+        retrack_tracker_two.id = uuid!("00000000-0000-0000-0000-000000000020");
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker_two);
+        });
+        let tracker_two = web_scraping
+            .create_page_tracker(PageTrackerCreateParams {
+                name: "name_two".to_string(),
+                config: PageTrackerConfig {
+                    revisions: 3,
+                    job: None,
+                },
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                },
+                notifications: false,
+            })
+            .await?;
+        retrack_create_api_mock.assert();
+
+        let mut retrack_list_api_mock = retrack_server.mock(|when, then| {
+            let tags = prepare_tags(&[
+                format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+                format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+            ])
+            .into_iter()
+            .collect::<Vec<_>>();
+            when.method(httpmock::Method::GET)
+                .path("/api/trackers")
+                .query_param("tag", &tags[0])
+                .query_param("tag", &tags[1])
+                .query_param("tag", &tags[2]);
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&[retrack_tracker_one.clone(), retrack_tracker_two.clone()]);
+        });
         assert_eq!(
-            web_scraping.get_resources_trackers().await?,
+            web_scraping.get_page_trackers().await?,
             vec![tracker_one.clone(), tracker_two.clone()],
         );
+        retrack_list_api_mock.assert();
+        retrack_list_api_mock.delete();
 
-        web_scraping.remove_web_page_tracker(tracker_one.id).await?;
-
+        let mut retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker_one.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker_one);
+        });
+        let mut retrack_delete_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::DELETE)
+                .path(format!("/api/trackers/{}", retrack_tracker_one.id));
+            then.status(200).header("Content-Type", "application/json");
+        });
+        let mut retrack_list_api_mock = retrack_server.mock(|when, then| {
+            let tags = prepare_tags(&[
+                format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+                format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+            ])
+            .into_iter()
+            .collect::<Vec<_>>();
+            when.method(httpmock::Method::GET)
+                .path("/api/trackers")
+                .query_param("tag", &tags[0])
+                .query_param("tag", &tags[1])
+                .query_param("tag", &tags[2]);
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&[retrack_tracker_two.clone()]);
+        });
+        web_scraping.remove_page_tracker(tracker_one.id).await?;
         assert_eq!(
-            web_scraping.get_resources_trackers().await?,
+            web_scraping.get_page_trackers().await?,
             vec![tracker_two.clone()],
         );
+        retrack_get_api_mock.assert();
+        retrack_get_api_mock.delete();
+        retrack_delete_api_mock.assert();
+        retrack_delete_api_mock.delete();
+        retrack_list_api_mock.assert();
+        retrack_list_api_mock.delete();
 
-        web_scraping.remove_web_page_tracker(tracker_two.id).await?;
-
-        assert!(web_scraping.get_resources_trackers().await?.is_empty());
+        let retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker_two.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker_two);
+        });
+        let retrack_delete_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::DELETE)
+                .path(format!("/api/trackers/{}", retrack_tracker_two.id));
+            then.status(200).header("Content-Type", "application/json");
+        });
+        let retrack_list_api_mock = retrack_server.mock(|when, then| {
+            let tags = prepare_tags(&[
+                format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+                format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+            ])
+            .into_iter()
+            .collect::<Vec<_>>();
+            when.method(httpmock::Method::GET)
+                .path("/api/trackers")
+                .query_param("tag", &tags[0])
+                .query_param("tag", &tags[1])
+                .query_param("tag", &tags[2]);
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&Vec::<Tracker>::new());
+        });
+        web_scraping.remove_page_tracker(tracker_two.id).await?;
+        assert!(web_scraping.get_page_trackers().await?.is_empty());
+        retrack_get_api_mock.assert();
+        retrack_delete_api_mock.assert();
+        retrack_list_api_mock.assert();
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn properly_returns_resources_trackers_by_id(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
+    async fn properly_returns_page_trackers_by_id(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
         let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        // Insert a new user to the database.
+        let api = mock_api_with_config(pool, config).await?;
         api.db.insert_user(&mock_user).await?;
 
         let web_scraping = api.web_scraping(&mock_user);
         assert!(
             web_scraping
-                .get_resources_tracker(uuid!("00000000-0000-0000-0000-000000000001"))
+                .get_page_tracker(uuid!("00000000-0000-0000-0000-000000000001"))
                 .await?
                 .is_none()
         );
 
-        let tracker_one = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
+        let retrack_tracker = mock_retrack_tracker()?;
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+        let tracker = web_scraping
+            .create_page_tracker(PageTrackerCreateParams {
                 name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
+                config: PageTrackerConfig {
                     revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
+                    job: None,
                 },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                },
+                notifications: false,
             })
             .await?;
-        assert_eq!(
-            web_scraping.get_resources_tracker(tracker_one.id).await?,
-            Some(tracker_one.clone()),
-        );
+        retrack_create_api_mock.assert();
 
-        let tracker_two = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_two".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: tracker_one.settings.clone(),
-                job_config: tracker_one.job_config.clone(),
-            })
-            .await?;
-
+        let retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
         assert_eq!(
-            web_scraping.get_resources_tracker(tracker_two.id).await?,
-            Some(tracker_two.clone()),
+            web_scraping.get_page_tracker(tracker.id).await?,
+            Some(tracker.clone()),
         );
+        retrack_get_api_mock.assert();
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn properly_returns_content_trackers_by_id(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
+    async fn properly_returns_all_page_trackers(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
         let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        // Insert a new user to the database.
+        let api = mock_api_with_config(pool, config).await?;
         api.db.insert_user(&mock_user).await?;
 
         let web_scraping = api.web_scraping(&mock_user);
-        assert!(
-            web_scraping
-                .get_content_tracker(uuid!("00000000-0000-0000-0000-000000000001"))
-                .await?
-                .is_none()
-        );
 
+        let retrack_tracker_one = mock_retrack_tracker()?;
+        let mut retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker_one);
+        });
         let tracker_one = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
+            .create_page_tracker(PageTrackerCreateParams {
                 name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
+                config: PageTrackerConfig {
                     revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
+                    job: None,
                 },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                },
+                notifications: false,
             })
             .await?;
-        assert_eq!(
-            web_scraping.get_content_tracker(tracker_one.id).await?,
-            Some(tracker_one.clone()),
-        );
+        retrack_create_api_mock.assert();
+        retrack_create_api_mock.delete();
 
+        let mut retrack_tracker_two = mock_retrack_tracker()?;
+        retrack_tracker_two.id = uuid!("00000000-0000-0000-0000-000000000020");
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker_two);
+        });
         let tracker_two = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
+            .create_page_tracker(PageTrackerCreateParams {
                 name: "name_two".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: tracker_one.settings.clone(),
-                job_config: tracker_one.job_config.clone(),
-            })
-            .await?;
-
-        assert_eq!(
-            web_scraping.get_content_tracker(tracker_two.id).await?,
-            Some(tracker_two.clone()),
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_returns_all_resources_trackers(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        assert!(web_scraping.get_resources_trackers().await?.is_empty(),);
-
-        let tracker_one = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
+                config: PageTrackerConfig {
                     revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
+                    job: None,
                 },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                },
+                notifications: false,
             })
             .await?;
-        assert_eq!(
-            web_scraping.get_resources_trackers().await?,
-            vec![tracker_one.clone()],
-        );
-        let tracker_two = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_two".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: tracker_one.settings.clone(),
-                job_config: tracker_one.job_config.clone(),
-            })
-            .await?;
+        retrack_create_api_mock.assert();
 
+        let retrack_list_api_mock = retrack_server.mock(|when, then| {
+            let tags = prepare_tags(&[
+                format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+                format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+            ])
+            .into_iter()
+            .collect::<Vec<_>>();
+            when.method(httpmock::Method::GET)
+                .path("/api/trackers")
+                .query_param("tag", &tags[0])
+                .query_param("tag", &tags[1])
+                .query_param("tag", &tags[2]);
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&[retrack_tracker_one.clone(), retrack_tracker_two.clone()]);
+        });
         assert_eq!(
-            web_scraping.get_resources_trackers().await?,
+            web_scraping.get_page_trackers().await?,
             vec![tracker_one.clone(), tracker_two.clone()],
         );
+        retrack_list_api_mock.assert();
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn properly_returns_all_content_trackers(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        assert!(web_scraping.get_content_trackers().await?.is_empty(),);
-
-        let tracker_one = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-        assert_eq!(
-            web_scraping.get_content_trackers().await?,
-            vec![tracker_one.clone()],
-        );
-        let tracker_two = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_two".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: tracker_one.settings.clone(),
-                job_config: tracker_one.job_config.clone(),
-            })
-            .await?;
-
-        assert_eq!(
-            web_scraping.get_content_trackers().await?,
-            vec![tracker_one.clone(), tracker_two.clone()],
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_saves_web_page_resources(pool: PgPool) -> anyhow::Result<()> {
-        let server = MockServer::start();
+    async fn properly_saves_page_revision(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.components.web_scraper_url = Url::parse(&server.base_url())?;
-
-        let api = mock_api_with_config(pool, config).await?;
         let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        // Insert a new user to the database.
+        let api = mock_api_with_config(pool, config).await?;
         api.db.insert_user(&mock_user).await?;
 
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker_one = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-        let tracker_two = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_two".to_string(),
-                url: Url::parse("https://secutils.dev/two")?,
-                settings: tracker_one.settings.clone(),
-                job_config: tracker_one.job_config.clone(),
-            })
-            .await?;
-
-        let tracker_one_resources = web_scraping
-            .get_resources_tracker_history(tracker_one.id, Default::default())
-            .await?;
-        let tracker_two_resources = web_scraping
-            .get_resources_tracker_history(tracker_two.id, Default::default())
-            .await?;
-        assert!(tracker_one_resources.is_empty());
-        assert!(tracker_two_resources.is_empty());
-
-        let resources_one = get_resources(946720800, "rev_1")?;
-        let mut resources_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/resources")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperResourcesRequest::with_default_parameters(&tracker_one.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
+        let retrack_tracker = mock_retrack_tracker()?;
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&resources_one);
+                .json_body_obj(&retrack_tracker);
         });
-
-        let diff = web_scraping
-            .create_resources_tracker_revision(tracker_one.id)
-            .await?;
-        assert!(diff.is_none());
-        resources_mock.assert();
-        resources_mock.delete();
-
-        let tracker_one_resources = web_scraping
-            .get_resources_tracker_history(tracker_one.id, Default::default())
-            .await?;
-        let tracker_two_resources = web_scraping
-            .get_resources_tracker_history(tracker_two.id, Default::default())
-            .await?;
-        assert_eq!(tracker_one_resources.len(), 1);
-        assert_eq!(tracker_one_resources[0].tracker_id, tracker_one.id);
-        assert_eq!(
-            tracker_one_resources[0].data.scripts,
-            resources_one
-                .scripts
-                .into_iter()
-                .map(WebPageResource::from)
-                .collect::<Vec<_>>()
-        );
-        assert_eq!(
-            tracker_one_resources[0].data.styles,
-            resources_one
-                .styles
-                .into_iter()
-                .map(WebPageResource::from)
-                .collect::<Vec<_>>()
-        );
-        assert!(tracker_two_resources.is_empty());
-
-        let resources_two = get_resources(946720900, "rev_2")?;
-        let mut resources_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/resources")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperResourcesRequest::with_default_parameters(&tracker_one.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
+        let retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&resources_two);
+                .json_body_obj(&retrack_tracker);
         });
-        let diff = web_scraping
-            .create_resources_tracker_revision(tracker_one.id)
-            .await?
-            .unwrap();
-        assert_eq!(
-            diff.created_at,
-            OffsetDateTime::from_unix_timestamp(946720900)?
-        );
-        assert_eq!(
-            diff.data.scripts,
-            vec![
-                WebPageResource {
-                    url: Some(Url::parse("http://localhost:1234/script_rev_2.js")?),
-                    content: None,
-                    diff_status: Some(WebPageResourceDiffStatus::Added),
-                },
-                WebPageResource {
-                    url: Some(Url::parse("http://localhost:1234/script_rev_1.js")?),
-                    content: None,
-                    diff_status: Some(WebPageResourceDiffStatus::Removed),
-                },
-            ]
-        );
-        resources_mock.assert();
-        resources_mock.delete();
-
-        let tracker_one_resources = web_scraping
-            .get_resources_tracker_history(tracker_one.id, Default::default())
-            .await?;
-        let tracker_two_resources = web_scraping
-            .get_resources_tracker_history(tracker_two.id, Default::default())
-            .await?;
-        assert_eq!(tracker_one_resources.len(), 2);
-        assert!(tracker_two_resources.is_empty());
-
-        let resources_two = get_resources(946720900, "rev_3")?;
-        let resources_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/resources")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperResourcesRequest::with_default_parameters(&tracker_two.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body_obj(&resources_two);
-        });
-        let diff = web_scraping
-            .create_resources_tracker_revision(tracker_two.id)
-            .await?;
-        assert!(diff.is_none());
-        resources_mock.assert();
-
-        let tracker_one_resources = web_scraping
-            .get_resources_tracker_history(tracker_one.id, Default::default())
-            .await?;
-        let tracker_two_resources = web_scraping
-            .get_resources_tracker_history(tracker_two.id, Default::default())
-            .await?;
-        assert_eq!(tracker_one_resources.len(), 2);
-        assert_eq!(tracker_two_resources.len(), 1);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_forwards_error_if_web_page_resources_extraction_fails(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let server = MockServer::start();
-        let mut config = mock_config()?;
-        config.components.web_scraper_url = Url::parse(&server.base_url())?;
-
-        let api = mock_api_with_config(pool, config).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
 
         let web_scraping = api.web_scraping(&mock_user);
         let tracker = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
+            .create_page_tracker(PageTrackerCreateParams {
                 name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
+                config: PageTrackerConfig {
                     revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
+                    job: None,
                 },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                },
+                notifications: false,
             })
             .await?;
+        retrack_create_api_mock.assert();
 
-        let web_scraper_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/resources")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperResourcesRequest::with_default_parameters(&tracker.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
-            then.status(400)
+        let mut retrack_list_revisions_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}/revisions", retrack_tracker.id))
+                .query_param("calculateDiff", "false");
+            then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&WebScraperErrorResponse {
-                    message: "some client-error".to_string(),
+                .json_body_obj(&Vec::<TrackerDataRevision>::new());
+        });
+        let tracker_history = web_scraping
+            .get_page_tracker_history(tracker.id, Default::default())
+            .await?;
+        assert!(tracker_history.is_empty());
+        retrack_list_revisions_api_mock.assert();
+        retrack_list_revisions_api_mock.delete();
+
+        let retrack_create_revision_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path(format!("/api/trackers/{}/revisions", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&TrackerDataRevision {
+                    id: uuid!("00000000-0000-0000-0000-000000000100"),
+                    tracker_id: retrack_tracker.id,
+                    created_at: OffsetDateTime::from_unix_timestamp(946720800).unwrap(),
+                    data: TrackerDataValue::new(json!({ "one": 1 })),
                 });
         });
-
-        let scraper_error = web_scraping
-            .get_resources_tracker_history(
+        let retrack_list_revisions_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}/revisions", retrack_tracker.id))
+                .query_param("calculateDiff", "false");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&[TrackerDataRevision {
+                    id: uuid!("00000000-0000-0000-0000-000000000100"),
+                    tracker_id: retrack_tracker.id,
+                    created_at: OffsetDateTime::from_unix_timestamp(946720800).unwrap(),
+                    data: TrackerDataValue::new(json!({ "one": 1 })),
+                }]);
+        });
+        let tracker_history = web_scraping
+            .get_page_tracker_history(
                 tracker.id,
-                WebPageResourcesTrackerGetHistoryParams {
+                PageTrackerGetHistoryParams {
+                    refresh: true,
+                    calculate_diff: false,
+                },
+            )
+            .await?;
+        assert_eq!(
+            tracker_history,
+            vec![TrackerDataRevision {
+                id: uuid!("00000000-0000-0000-0000-000000000100"),
+                tracker_id: retrack_tracker.id,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                data: TrackerDataValue::new(json!({ "one": 1 })),
+            }]
+        );
+        retrack_get_api_mock.assert_hits(3);
+        retrack_create_revision_api_mock.assert();
+        retrack_list_revisions_api_mock.assert();
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn properly_forwards_error_if_page_content_extraction_fails(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        // Insert a new user to the database.
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let retrack_tracker = mock_retrack_tracker()?;
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+        let retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+
+        let web_scraping = api.web_scraping(&mock_user);
+        let tracker = web_scraping
+            .create_page_tracker(PageTrackerCreateParams {
+                name: "name_one".to_string(),
+                config: PageTrackerConfig {
+                    revisions: 3,
+                    job: None,
+                },
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                },
+                notifications: false,
+            })
+            .await?;
+        retrack_create_api_mock.assert();
+
+        let retrack_create_revision_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path(format!("/api/trackers/{}/revisions", retrack_tracker.id));
+            then.status(400)
+                .header("Content-Type", "application/json")
+                .json_body(json!({ "message": "some client-error".to_string() }));
+        });
+        let scraper_error = web_scraping
+            .get_page_tracker_history(
+                tracker.id,
+                PageTrackerGetHistoryParams {
                     refresh: true,
                     calculate_diff: false,
                 },
             )
             .await
             .unwrap_err()
-            .downcast::<SecutilsError>()
-            .unwrap();
+            .downcast::<SecutilsError>()?;
+
+        retrack_get_api_mock.assert();
+        retrack_create_revision_api_mock.assert();
+
         assert_eq!(scraper_error.status_code(), 400);
         assert_debug_snapshot!(
             scraper_error,
-            @r###""some client-error""###
+            @r###""{\"message\":\"some client-error\"}""###
         );
-
-        let tracker_resources = web_scraping
-            .get_resources_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert!(tracker_resources.is_empty());
-        web_scraper_mock.assert();
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn properly_saves_web_page_content(pool: PgPool) -> anyhow::Result<()> {
-        let server = MockServer::start();
+    async fn properly_clears_page_tracker_revision_history(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
-        config.components.web_scraper_url = Url::parse(&server.base_url())?;
+        let mock_user = mock_user()?;
 
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        // Insert a new user to the database.
         let api = mock_api_with_config(pool, config).await?;
-        let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker_one = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-        let tracker_two = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_two".to_string(),
-                url: Url::parse("https://secutils.dev/two")?,
-                settings: tracker_one.settings.clone(),
-                job_config: tracker_one.job_config.clone(),
-            })
-            .await?;
-
-        let tracker_one_history = web_scraping
-            .get_content_tracker_history(tracker_one.id, Default::default())
-            .await?;
-        let tracker_two_history = web_scraping
-            .get_content_tracker_history(tracker_two.id, Default::default())
-            .await?;
-        assert!(tracker_one_history.is_empty());
-        assert!(tracker_two_history.is_empty());
-
-        let content_one = get_content(946720800, "\"rev_1\"")?;
-        let mut content_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/content")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperContentRequest::with_default_parameters(&tracker_one.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
+        let retrack_tracker = mock_retrack_tracker()?;
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&content_one);
+                .json_body_obj(&retrack_tracker);
         });
-
-        let tracker_one_history = web_scraping
-            .get_content_tracker_history(
-                tracker_one.id,
-                WebPageContentTrackerGetHistoryParams {
-                    refresh: true,
-                    calculate_diff: false,
-                },
-            )
-            .await?;
-        let tracker_two_content = web_scraping
-            .get_content_tracker_history(tracker_two.id, Default::default())
-            .await?;
-        assert_eq!(tracker_one_history.len(), 1);
-        assert_eq!(tracker_one_history[0].tracker_id, tracker_one.id);
-        assert_eq!(tracker_one_history[0].data, content_one.content);
-        assert!(tracker_two_content.is_empty());
-
-        content_mock.assert();
-        content_mock.delete();
-
-        let content_two = get_content(946720900, "\"rev_2\"")?;
-        let mut content_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/content")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperContentRequest::with_default_parameters(&tracker_one.url)
-                            .set_delay(Duration::from_millis(2000))
-                            .set_previous_content("\"rev_1\""),
-                    )
-                    .unwrap(),
-                );
+        let retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&content_two);
+                .json_body_obj(&retrack_tracker);
         });
-        let revision = web_scraping
-            .create_content_tracker_revision(tracker_one.id)
-            .await?
-            .unwrap();
-        assert_eq!(
-            revision.created_at,
-            OffsetDateTime::from_unix_timestamp(946720900)?
-        );
-        assert_eq!(revision.data, "\"rev_2\"");
-        content_mock.assert();
-        content_mock.delete();
-
-        let tracker_one_content = web_scraping
-            .get_content_tracker_history(tracker_one.id, Default::default())
-            .await?;
-        let tracker_two_content = web_scraping
-            .get_content_tracker_history(tracker_two.id, Default::default())
-            .await?;
-        assert_eq!(tracker_one_content.len(), 2);
-        assert!(tracker_two_content.is_empty());
-
-        let content_two = get_content(946720900, "\"rev_3\"")?;
-        let content_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/content")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperContentRequest::with_default_parameters(&tracker_two.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body_obj(&content_two);
-        });
-        let revision = web_scraping
-            .create_content_tracker_revision(tracker_two.id)
-            .await?;
-        assert_eq!(revision.unwrap().data, "\"rev_3\"");
-        content_mock.assert();
-
-        let tracker_one_content = web_scraping
-            .get_content_tracker_history(
-                tracker_one.id,
-                WebPageContentTrackerGetHistoryParams {
-                    refresh: false,
-                    calculate_diff: true,
-                },
-            )
-            .await?;
-        let tracker_two_content = web_scraping
-            .get_content_tracker_history(tracker_two.id, Default::default())
-            .await?;
-        assert_eq!(tracker_one_content.len(), 2);
-        assert_eq!(tracker_two_content.len(), 1);
-
-        assert_debug_snapshot!(
-            tracker_one_content.into_iter().map(|rev| rev.data).collect::<Vec<_>>(),
-            @r###"
-        [
-            "\"rev_1\"",
-            "@@ -1 +1 @@\n-rev_1\n+rev_2\n",
-        ]
-        "###
-        );
-        assert_debug_snapshot!(
-            tracker_two_content.into_iter().map(|rev| rev.data).collect::<Vec<_>>(),
-            @r###"
-        [
-            "\"rev_3\"",
-        ]
-        "###
-        );
-
-        let tracker_one_content = web_scraping
-            .get_content_tracker_history(
-                tracker_one.id,
-                WebPageContentTrackerGetHistoryParams {
-                    refresh: false,
-                    calculate_diff: false,
-                },
-            )
-            .await?;
-        assert_debug_snapshot!(
-            tracker_one_content.into_iter().map(|rev| rev.data).collect::<Vec<_>>(),
-            @r###"
-        [
-            "\"rev_1\"",
-            "\"rev_2\"",
-        ]
-        "###
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_forwards_error_if_web_page_content_extraction_fails(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let server = MockServer::start();
-        let mut config = mock_config()?;
-        config.components.web_scraper_url = Url::parse(&server.base_url())?;
-
-        let api = mock_api_with_config(pool, config).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
 
         let web_scraping = api.web_scraping(&mock_user);
         let tracker = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
+            .create_page_tracker(PageTrackerCreateParams {
                 name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
+                config: PageTrackerConfig {
                     revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
+                    job: None,
                 },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                },
+                notifications: false,
             })
             .await?;
+        retrack_create_api_mock.assert();
 
-        let content_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/content")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperContentRequest::with_default_parameters(&tracker.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
-            then.status(400)
-                .header("Content-Type", "application/json")
-                .json_body_obj(&WebScraperErrorResponse {
-                    message: "some client-error".to_string(),
-                });
+        let retrack_clear_revisions_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::DELETE)
+                .path(format!("/api/trackers/{}/revisions", retrack_tracker.id));
+            then.status(204).header("Content-Type", "application/json");
         });
 
-        let scraper_error = web_scraping
-            .get_content_tracker_history(
-                tracker.id,
-                WebPageContentTrackerGetHistoryParams {
-                    refresh: true,
-                    calculate_diff: false,
-                },
-            )
-            .await
-            .unwrap_err()
-            .downcast::<SecutilsError>()
-            .unwrap();
-        assert_eq!(scraper_error.status_code(), 400);
-        assert_debug_snapshot!(
-            scraper_error,
-            @r###""some client-error""###
-        );
-
-        let tracker_content = web_scraping
-            .get_content_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert!(tracker_content.is_empty());
-        content_mock.assert();
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_ignores_web_page_resources_with_the_same_timestamp(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let server = MockServer::start();
-        let mut config = mock_config()?;
-        config.components.web_scraper_url = Url::parse(&server.base_url())?;
-
-        let api = mock_api_with_config(pool, config).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-
-        let tracker_resources = web_scraping
-            .get_resources_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert!(tracker_resources.is_empty());
-
-        let resources_one = get_resources(946720800, "rev_1")?;
-        let resources_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/resources")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperResourcesRequest::with_default_parameters(&tracker.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body_obj(&resources_one);
-        });
-
-        let diff = web_scraping
-            .create_resources_tracker_revision(tracker.id)
-            .await?;
-        assert!(diff.is_none());
-        resources_mock.assert_hits(1);
-
-        let diff = web_scraping
-            .create_resources_tracker_revision(tracker.id)
-            .await?;
-        assert!(diff.is_none());
-        resources_mock.assert_hits(2);
-
-        let tracker_resources = web_scraping
-            .get_resources_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert_eq!(tracker_resources.len(), 1);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_ignores_web_page_content_with_the_same_timestamp(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let server = MockServer::start();
-        let mut config = mock_config()?;
-        config.components.web_scraper_url = Url::parse(&server.base_url())?;
-
-        let api = mock_api_with_config(pool, config).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-
-        let tracker_content = web_scraping
-            .get_content_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert!(tracker_content.is_empty());
-
-        let content_one = get_content(946720800, "\"rev_1\"")?;
-        let mut content_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/content")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperContentRequest::with_default_parameters(&tracker.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body_obj(&content_one);
-        });
-
-        let revision = web_scraping
-            .create_content_tracker_revision(tracker.id)
-            .await?;
-        assert_eq!(revision.unwrap().data, "\"rev_1\"");
-        content_mock.assert_hits(1);
-
-        content_mock.delete();
-        let content_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/content")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperContentRequest::with_default_parameters(&tracker.url)
-                            .set_delay(Duration::from_millis(2000))
-                            .set_previous_content("\"rev_1\""),
-                    )
-                    .unwrap(),
-                );
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body_obj(&content_one);
-        });
-
-        let revision = web_scraping
-            .create_content_tracker_revision(tracker.id)
-            .await?;
-        assert!(revision.is_none());
-        content_mock.assert_hits(1);
-
-        let tracker_content = web_scraping
-            .get_content_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert_eq!(tracker_content.len(), 1);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_ignores_web_page_resources_with_no_diff(pool: PgPool) -> anyhow::Result<()> {
-        let server = MockServer::start();
-        let mut config = mock_config()?;
-        config.components.web_scraper_url = Url::parse(&server.base_url())?;
-
-        let api = mock_api_with_config(pool, config).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-
-        let tracker_resources = web_scraping
-            .get_resources_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert!(tracker_resources.is_empty());
-
-        let resources_one = get_resources(946720800, "rev_1")?;
-        let mut resources_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/resources")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperResourcesRequest::with_default_parameters(&tracker.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body_obj(&resources_one);
-        });
-
-        let diff = web_scraping
-            .create_resources_tracker_revision(tracker.id)
-            .await?;
-        assert!(diff.is_none());
-        resources_mock.assert();
-        resources_mock.delete();
-
-        let resources_two = get_resources(946720900, "rev_1")?;
-        let resources_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/resources")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperResourcesRequest::with_default_parameters(&tracker.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body_obj(&resources_two);
-        });
-
-        let diff = web_scraping
-            .create_resources_tracker_revision(tracker.id)
-            .await?;
-        assert!(diff.is_none());
-        resources_mock.assert();
-
-        let tracker_resources = web_scraping
-            .get_resources_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert_eq!(tracker_resources.len(), 1);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_ignores_web_page_content_with_no_diff(pool: PgPool) -> anyhow::Result<()> {
-        let server = MockServer::start();
-        let mut config = mock_config()?;
-        config.components.web_scraper_url = Url::parse(&server.base_url())?;
-
-        let api = mock_api_with_config(pool, config).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-
-        let tracker_content = web_scraping
-            .get_content_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert!(tracker_content.is_empty());
-
-        let content_one = get_content(946720800, "\"rev_1\"")?;
-        let mut content_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/content")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperContentRequest::with_default_parameters(&tracker.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body_obj(&content_one);
-        });
-
-        let revision = web_scraping
-            .create_content_tracker_revision(tracker.id)
-            .await?;
-        assert_eq!(revision.unwrap().data, "\"rev_1\"");
-        content_mock.assert();
-        content_mock.delete();
-
-        let content_two = get_content(946720900, "\"rev_1\"")?;
-        let content_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/content")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperContentRequest::with_default_parameters(&tracker.url)
-                            .set_delay(Duration::from_millis(2000))
-                            .set_previous_content("\"rev_1\""),
-                    )
-                    .unwrap(),
-                );
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body_obj(&content_two);
-        });
-
-        let revision = web_scraping
-            .create_content_tracker_revision(tracker.id)
-            .await?;
-        assert!(revision.is_none());
-        content_mock.assert();
-
-        let tracker_content = web_scraping
-            .get_content_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert_eq!(tracker_content.len(), 1);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_removes_web_page_resources(pool: PgPool) -> anyhow::Result<()> {
-        let server = MockServer::start();
-        let mut config = mock_config()?;
-        config.components.web_scraper_url = Url::parse(&server.base_url())?;
-
-        let api = mock_api_with_config(pool, config).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-
-        let tracker_resources = web_scraping
-            .get_resources_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert!(tracker_resources.is_empty());
-
-        let resources = get_resources(946720800, "rev_1")?;
-        let resources_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/resources")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperResourcesRequest::with_default_parameters(&tracker.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body_obj(&resources);
-        });
-
-        let diff = web_scraping
-            .create_resources_tracker_revision(tracker.id)
-            .await?;
-        assert!(diff.is_none());
-        let tracker_resources = web_scraping
-            .get_resources_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert_eq!(tracker_resources.len(), 1);
-        resources_mock.assert();
-
-        web_scraping
-            .clear_web_page_tracker_history(tracker.id)
-            .await?;
-
-        let tracker_resources = web_scraping
-            .get_resources_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert!(tracker_resources.is_empty());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_removes_web_page_content(pool: PgPool) -> anyhow::Result<()> {
-        let server = MockServer::start();
-        let mut config = mock_config()?;
-        config.components.web_scraper_url = Url::parse(&server.base_url())?;
-
-        let api = mock_api_with_config(pool, config).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-
-        let tracker_content = web_scraping
-            .get_content_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert!(tracker_content.is_empty());
-
-        let content = get_content(946720800, "\"rev_1\"")?;
-        let content_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/content")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperContentRequest::with_default_parameters(&tracker.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body_obj(&content);
-        });
-
-        let revision = web_scraping
-            .create_content_tracker_revision(tracker.id)
-            .await?;
-        assert!(revision.is_some());
-        let tracker_content = web_scraping
-            .get_content_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert_eq!(tracker_content.len(), 1);
-        content_mock.assert();
-
-        web_scraping
-            .clear_web_page_tracker_history(tracker.id)
-            .await?;
-
-        let tracker_content = web_scraping
-            .get_content_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert!(tracker_content.is_empty());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_removes_web_page_resources_when_tracker_is_removed(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let server = MockServer::start();
-        let mut config = mock_config()?;
-        config.components.web_scraper_url = Url::parse(&server.base_url())?;
-
-        let api = mock_api_with_config(pool, config).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-
-        let tracker_resources = web_scraping
-            .get_resources_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert!(tracker_resources.is_empty());
-
-        let resources = get_resources(946720800, "rev_1")?;
-        let resources_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/resources")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperResourcesRequest::with_default_parameters(&tracker.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body_obj(&resources);
-        });
-
-        let diff = web_scraping
-            .create_resources_tracker_revision(tracker.id)
-            .await?;
-        assert!(diff.is_none());
-        let tracker_resources = web_scraping
-            .get_resources_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert_eq!(tracker_resources.len(), 1);
-        resources_mock.assert();
-
-        web_scraping.remove_web_page_tracker(tracker.id).await?;
-
-        let tracker_resources = api
-            .db
-            .web_scraping(mock_user.id)
-            .get_web_page_tracker_history::<WebPageResourcesTrackerTag>(tracker.id)
-            .await?;
-        assert!(tracker_resources.is_empty());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_removes_web_page_content_when_tracker_is_removed(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let server = MockServer::start();
-        let mut config = mock_config()?;
-        config.components.web_scraper_url = Url::parse(&server.base_url())?;
-
-        let api = mock_api_with_config(pool, config).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-
-        let tracker_content = web_scraping
-            .get_content_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert!(tracker_content.is_empty());
-
-        let content = get_content(946720800, "\"rev_1\"")?;
-        let content_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/content")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperContentRequest::with_default_parameters(&tracker.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body_obj(&content);
-        });
-
-        let revision = web_scraping
-            .create_content_tracker_revision(tracker.id)
-            .await?;
-        assert!(revision.is_some());
-        let tracker_content = web_scraping
-            .get_content_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert_eq!(tracker_content.len(), 1);
-        content_mock.assert();
-
-        web_scraping.remove_web_page_tracker(tracker.id).await?;
-
-        let tracker_content = api
-            .db
-            .web_scraping(mock_user.id)
-            .get_web_page_tracker_history::<WebPageContentTrackerTag>(tracker.id)
-            .await?;
-        assert!(tracker_content.is_empty());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_removes_web_page_resources_when_tracker_url_changed(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let server = MockServer::start();
-        let mut config = mock_config()?;
-        config.components.web_scraper_url = Url::parse(&server.base_url())?;
-
-        let api = mock_api_with_config(pool, config).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-
-        let tracker_resources = web_scraping
-            .get_resources_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert!(tracker_resources.is_empty());
-
-        let resources = get_resources(946720800, "rev_1")?;
-        let resources_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/resources")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperResourcesRequest::with_default_parameters(&tracker.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body_obj(&resources);
-        });
-
-        let diff = web_scraping
-            .create_resources_tracker_revision(tracker.id)
-            .await?;
-        assert!(diff.is_none());
-        let tracker_resources = web_scraping
-            .get_resources_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert_eq!(tracker_resources.len(), 1);
-        resources_mock.assert();
-
-        // Update name (resources shouldn't be touched).
-        web_scraping
-            .update_resources_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    name: Some("name_one_new".to_string()),
-                    ..Default::default()
-                },
-            )
-            .await?;
-
-        let tracker_resources = web_scraping
-            .get_resources_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert_eq!(tracker_resources.len(), 1);
-
-        // Update URL.
-        web_scraping
-            .update_resources_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    url: Some("https://secutils.dev/two".parse()?),
-                    ..Default::default()
-                },
-            )
-            .await?;
-
-        let tracker_resources = web_scraping
-            .get_resources_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert!(tracker_resources.is_empty());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_removes_web_page_content_when_tracker_url_changed(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let server = MockServer::start();
-        let mut config = mock_config()?;
-        config.components.web_scraper_url = Url::parse(&server.base_url())?;
-
-        let api = mock_api_with_config(pool, config).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-
-        let tracker_content = web_scraping
-            .get_content_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert!(tracker_content.is_empty());
-
-        let content = get_content(946720800, "\"rev_1\"")?;
-        let content_mock = server.mock(|when, then| {
-            when.method(httpmock::Method::POST)
-                .path("/api/web_page/content")
-                .json_body(
-                    serde_json::to_value(
-                        WebScraperContentRequest::with_default_parameters(&tracker.url)
-                            .set_delay(Duration::from_millis(2000)),
-                    )
-                    .unwrap(),
-                );
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body_obj(&content);
-        });
-
-        let revision = web_scraping
-            .create_content_tracker_revision(tracker.id)
-            .await?;
-        assert!(revision.is_some());
-        let tracker_content = web_scraping
-            .get_content_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert_eq!(tracker_content.len(), 1);
-        content_mock.assert();
-
-        // Update name (content shouldn't be touched).
-        web_scraping
-            .update_content_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    name: Some("name_one_new".to_string()),
-                    ..Default::default()
-                },
-            )
-            .await?;
-
-        let tracker_content = web_scraping
-            .get_content_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert_eq!(tracker_content.len(), 1);
-
-        // Update URL.
-        web_scraping
-            .update_content_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    url: Some("https://secutils.dev/two".parse()?),
-                    ..Default::default()
-                },
-            )
-            .await?;
-
-        let tracker_content = web_scraping
-            .get_content_tracker_history(tracker.id, Default::default())
-            .await?;
-        assert!(tracker_content.is_empty());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_resets_web_page_resources_job_id_when_tracker_schedule_changed(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-        api.web_scraping_system()
-            .update_web_page_tracker_job(
-                tracker.id,
-                Some(uuid!("00000000-0000-0000-0000-000000000001")),
-            )
-            .await?;
-        assert_eq!(
-            web_scraping
-                .get_resources_tracker(tracker.id)
-                .await?
-                .unwrap()
-                .job_id,
-            Some(uuid!("00000000-0000-0000-0000-000000000001")),
-        );
-
-        // Update everything except schedule (job ID shouldn't be touched).
-        web_scraping
-            .update_resources_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    name: Some("name_one_new".to_string()),
-                    url: Some(Url::parse("https://secutils.dev/two")?),
-                    settings: Some(WebPageTrackerSettings {
-                        revisions: 4,
-                        delay: Duration::from_millis(3000),
-                        scripts: Some(
-                            [(
-                                WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME.to_string(),
-                                "some".to_string(),
-                            )]
-                            .into_iter()
-                            .collect(),
-                        ),
-                        ..tracker.settings.clone()
-                    }),
-                    job_config: Some(Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                            interval: Duration::from_secs(120),
-                            max_attempts: 5,
-                        }),
-                        notifications: false,
-                    })),
-                },
-            )
-            .await?;
-
-        assert_eq!(
-            web_scraping
-                .get_resources_tracker(tracker.id)
-                .await?
-                .unwrap()
-                .job_id,
-            Some(uuid!("00000000-0000-0000-0000-000000000001")),
-        );
-
-        // Update schedule.
-        web_scraping
-            .update_resources_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    job_config: Some(Some(SchedulerJobConfig {
-                        schedule: "0 1 * * * *".to_string(),
-                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                            interval: Duration::from_secs(120),
-                            max_attempts: 5,
-                        }),
-                        notifications: false,
-                    })),
-                    ..Default::default()
-                },
-            )
-            .await?;
-
-        assert_eq!(
-            web_scraping
-                .get_resources_tracker(tracker.id)
-                .await?
-                .unwrap()
-                .job_id,
-            None,
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_resets_web_page_content_job_id_when_tracker_schedule_changed(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-        api.web_scraping_system()
-            .update_web_page_tracker_job(
-                tracker.id,
-                Some(uuid!("00000000-0000-0000-0000-000000000001")),
-            )
-            .await?;
-        assert_eq!(
-            web_scraping
-                .get_content_tracker(tracker.id)
-                .await?
-                .unwrap()
-                .job_id,
-            Some(uuid!("00000000-0000-0000-0000-000000000001")),
-        );
-
-        // Update everything except schedule (job ID shouldn't be touched).
-        web_scraping
-            .update_content_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    name: Some("name_one_new".to_string()),
-                    url: Some(Url::parse("https://secutils.dev/two")?),
-                    settings: Some(WebPageTrackerSettings {
-                        revisions: 4,
-                        delay: Duration::from_millis(3000),
-                        scripts: Some(
-                            [(
-                                WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME.to_string(),
-                                "some".to_string(),
-                            )]
-                            .into_iter()
-                            .collect(),
-                        ),
-                        ..tracker.settings.clone()
-                    }),
-                    job_config: Some(Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                            interval: Duration::from_secs(120),
-                            max_attempts: 5,
-                        }),
-                        notifications: false,
-                    })),
-                },
-            )
-            .await?;
-
-        assert_eq!(
-            web_scraping
-                .get_content_tracker(tracker.id)
-                .await?
-                .unwrap()
-                .job_id,
-            Some(uuid!("00000000-0000-0000-0000-000000000001")),
-        );
-
-        // Update schedule.
-        web_scraping
-            .update_content_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    job_config: Some(Some(SchedulerJobConfig {
-                        schedule: "0 1 * * * *".to_string(),
-                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                            interval: Duration::from_secs(120),
-                            max_attempts: 5,
-                        }),
-                        notifications: false,
-                    })),
-                    ..Default::default()
-                },
-            )
-            .await?;
-
-        assert_eq!(
-            web_scraping
-                .get_content_tracker(tracker.id)
-                .await?
-                .unwrap()
-                .job_id,
-            None,
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_removes_web_page_resources_job_id_when_tracker_revisions_disabled(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-        api.web_scraping_system()
-            .update_web_page_tracker_job(
-                tracker.id,
-                Some(uuid!("00000000-0000-0000-0000-000000000001")),
-            )
-            .await?;
-        assert_eq!(
-            web_scraping
-                .get_resources_tracker(tracker.id)
-                .await?
-                .unwrap()
-                .job_id,
-            Some(uuid!("00000000-0000-0000-0000-000000000001")),
-        );
-
-        // Update everything except schedule and keep revisions enabled (job ID shouldn't be touched).
-        web_scraping
-            .update_resources_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    name: Some("name_one_new".to_string()),
-                    url: Some(Url::parse("https://secutils.dev/two")?),
-                    settings: Some(WebPageTrackerSettings {
-                        revisions: 4,
-                        delay: Duration::from_millis(3000),
-                        scripts: Some(
-                            [(
-                                WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME.to_string(),
-                                "some".to_string(),
-                            )]
-                            .into_iter()
-                            .collect(),
-                        ),
-                        ..tracker.settings.clone()
-                    }),
-                    job_config: Some(Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                            interval: Duration::from_secs(120),
-                            max_attempts: 5,
-                        }),
-                        notifications: false,
-                    })),
-                },
-            )
-            .await?;
-
-        assert_eq!(
-            web_scraping
-                .get_resources_tracker(tracker.id)
-                .await?
-                .unwrap()
-                .job_id,
-            Some(uuid!("00000000-0000-0000-0000-000000000001")),
-        );
-
-        // Disable revisions.
-        web_scraping
-            .update_resources_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    settings: Some(WebPageTrackerSettings {
-                        revisions: 0,
-                        ..tracker.settings.clone()
-                    }),
-                    ..Default::default()
-                },
-            )
-            .await?;
-
-        assert_eq!(
-            web_scraping
-                .get_resources_tracker(tracker.id)
-                .await?
-                .unwrap()
-                .job_id,
-            None,
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_removes_web_page_content_job_id_when_tracker_revisions_disabled(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-        let tracker = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev/one")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-        api.web_scraping_system()
-            .update_web_page_tracker_job(
-                tracker.id,
-                Some(uuid!("00000000-0000-0000-0000-000000000001")),
-            )
-            .await?;
-        assert_eq!(
-            web_scraping
-                .get_content_tracker(tracker.id)
-                .await?
-                .unwrap()
-                .job_id,
-            Some(uuid!("00000000-0000-0000-0000-000000000001")),
-        );
-
-        // Update everything except schedule and keep revisions enabled (job ID shouldn't be touched).
-        web_scraping
-            .update_content_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    name: Some("name_one_new".to_string()),
-                    url: Some(Url::parse("https://secutils.dev/two")?),
-                    settings: Some(WebPageTrackerSettings {
-                        revisions: 4,
-                        delay: Duration::from_millis(3000),
-                        scripts: Some(
-                            [(
-                                WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME.to_string(),
-                                "some".to_string(),
-                            )]
-                            .into_iter()
-                            .collect(),
-                        ),
-                        ..tracker.settings.clone()
-                    }),
-                    job_config: Some(Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                            interval: Duration::from_secs(120),
-                            max_attempts: 5,
-                        }),
-                        notifications: false,
-                    })),
-                },
-            )
-            .await?;
-
-        assert_eq!(
-            web_scraping
-                .get_content_tracker(tracker.id)
-                .await?
-                .unwrap()
-                .job_id,
-            Some(uuid!("00000000-0000-0000-0000-000000000001")),
-        );
-
-        // Disable revisions.
-        web_scraping
-            .update_content_tracker(
-                tracker.id,
-                WebPageTrackerUpdateParams {
-                    settings: Some(WebPageTrackerSettings {
-                        revisions: 0,
-                        ..tracker.settings.clone()
-                    }),
-                    ..Default::default()
-                },
-            )
-            .await?;
-
-        assert_eq!(
-            web_scraping
-                .get_content_tracker(tracker.id)
-                .await?
-                .unwrap()
-                .job_id,
-            None,
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn can_manipulate_tracker_jobs(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-
-        let unscheduled_trackers = api
-            .web_scraping_system()
-            .get_unscheduled_resources_trackers()
-            .await?;
-        assert!(unscheduled_trackers.is_empty());
-        let unscheduled_trackers = api
-            .web_scraping_system()
-            .get_unscheduled_content_trackers()
-            .await?;
-        assert!(unscheduled_trackers.is_empty());
-
-        let resources_tracker = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-        let content_tracker = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-
-        let unscheduled_trackers = api
-            .web_scraping_system()
-            .get_unscheduled_resources_trackers()
-            .await?;
-        assert_eq!(unscheduled_trackers, vec![resources_tracker.clone()]);
-        let unscheduled_trackers = api
-            .web_scraping_system()
-            .get_unscheduled_content_trackers()
-            .await?;
-        assert_eq!(unscheduled_trackers, vec![content_tracker.clone()]);
-
-        api.web_scraping_system()
-            .update_web_page_tracker_job(
-                resources_tracker.id,
-                Some(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c8")),
-            )
-            .await?;
-        api.web_scraping_system()
-            .update_web_page_tracker_job(
-                content_tracker.id,
-                Some(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c9")),
-            )
-            .await?;
-
-        let unscheduled_trackers = api
-            .web_scraping_system()
-            .get_unscheduled_resources_trackers()
-            .await?;
-        assert!(unscheduled_trackers.is_empty());
-        let unscheduled_trackers = api
-            .web_scraping_system()
-            .get_unscheduled_content_trackers()
-            .await?;
-        assert!(unscheduled_trackers.is_empty());
-
-        let scheduled_tracker = api
-            .web_scraping_system()
-            .get_resources_tracker_by_job_id(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c8"))
-            .await?;
-        assert_eq!(
-            scheduled_tracker,
-            Some(WebPageTracker {
-                job_id: Some(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c8")),
-                ..resources_tracker.clone()
-            })
-        );
-
-        let scheduled_tracker = api
-            .web_scraping_system()
-            .get_content_tracker_by_job_id(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c9"))
-            .await?;
-        assert_eq!(
-            scheduled_tracker,
-            Some(WebPageTracker {
-                job_id: Some(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c9")),
-                ..content_tracker.clone()
-            })
-        );
-
-        // Remove schedule to make sure that job is removed.
-        web_scraping
-            .update_resources_tracker(
-                resources_tracker.id,
-                WebPageTrackerUpdateParams {
-                    job_config: Some(None),
-                    ..Default::default()
-                },
-            )
-            .await?;
-        web_scraping
-            .update_content_tracker(
-                content_tracker.id,
-                WebPageTrackerUpdateParams {
-                    job_config: Some(None),
-                    ..Default::default()
-                },
-            )
-            .await?;
-
-        let unscheduled_trackers = api
-            .web_scraping_system()
-            .get_unscheduled_resources_trackers()
-            .await?;
-        assert!(unscheduled_trackers.is_empty());
-        let unscheduled_trackers = api
-            .web_scraping_system()
-            .get_unscheduled_content_trackers()
-            .await?;
-        assert!(unscheduled_trackers.is_empty());
-
-        let scheduled_tracker = api
-            .web_scraping_system()
-            .get_resources_tracker_by_job_id(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c8"))
-            .await?;
-        assert!(scheduled_tracker.is_none());
-
-        let scheduled_tracker = api
-            .web_scraping_system()
-            .get_content_tracker_by_job_id(uuid!("11e55044-10b1-426f-9247-bb680e5fe0c9"))
-            .await?;
-        assert!(scheduled_tracker.is_none());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn can_return_pending_resources_tracker_jobs(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-
-        let pending_trackers = api
-            .web_scraping_system()
-            .get_pending_resources_trackers()
-            .collect::<Vec<_>>()
-            .await;
-        assert!(pending_trackers.is_empty());
-
-        for n in 0..=2 {
-            let job = RawSchedulerJobStoredData {
-                last_updated: Some(946720800 + n),
-                last_tick: Some(946720700),
-                next_tick: Some(946720900),
-                ran: Some(true),
-                stopped: Some(n != 1),
-                ..mock_scheduler_job(
-                    Uuid::parse_str(&format!("67e55044-10b1-426f-9247-bb680e5fe0c{}", n))?,
-                    SchedulerJob::WebPageTrackersTrigger {
-                        kind: WebPageTrackerKind::WebPageResources,
-                    },
-                    format!("{} 0 0 1 1 * *", n),
-                )
-            };
-
-            mock_upsert_scheduler_job(&api.db, &job).await?;
-        }
-
-        for n in 0..=2 {
-            web_scraping
-                .create_resources_tracker(WebPageTrackerCreateParams {
-                    name: format!("name_{}", n),
-                    url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageTrackerSettings {
-                        revisions: 3,
-                        delay: Duration::from_millis(2000),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
-                    job_config: Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: None,
-                        notifications: true,
-                    }),
-                })
-                .await?;
-        }
-
-        let pending_trackers = api
-            .web_scraping_system()
-            .get_pending_resources_trackers()
-            .collect::<Vec<_>>()
-            .await;
-        assert!(pending_trackers.is_empty());
-
-        // Assign job IDs to trackers.
-        let all_trackers = web_scraping.get_resources_trackers().await?;
-        for (n, tracker) in all_trackers.iter().enumerate() {
-            api.web_scraping_system()
-                .update_web_page_tracker_job(
-                    tracker.id,
-                    Some(uuid::Uuid::parse_str(&format!(
-                        "67e55044-10b1-426f-9247-bb680e5fe0c{}",
-                        n
-                    ))?),
-                )
-                .await?;
-        }
-
-        let pending_trackers = api
-            .web_scraping_system()
-            .get_pending_resources_trackers()
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .collect::<anyhow::Result<Vec<_>, _>>()?;
-        assert_eq!(pending_trackers.len(), 2);
-
-        let all_trackers = web_scraping.get_resources_trackers().await?;
-        assert_eq!(
-            vec![all_trackers[0].clone(), all_trackers[2].clone()],
-            pending_trackers,
-        );
-
-        let all_trackers = web_scraping.get_resources_trackers().await?;
-        assert_eq!(all_trackers.len(), 3);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn can_return_pending_content_tracker_jobs(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let web_scraping = api.web_scraping(&mock_user);
-
-        let pending_trackers = api
-            .web_scraping_system()
-            .get_pending_content_trackers()
-            .collect::<Vec<_>>()
-            .await;
-        assert!(pending_trackers.is_empty());
-
-        for n in 0..=2 {
-            let job = RawSchedulerJobStoredData {
-                last_updated: Some(946720800 + n),
-                last_tick: Some(946720700),
-                next_tick: Some(946720900),
-                ran: Some(true),
-                stopped: Some(n != 1),
-                ..mock_scheduler_job(
-                    Uuid::parse_str(&format!("67e55044-10b1-426f-9247-bb680e5fe0c{}", n))?,
-                    SchedulerJob::WebPageTrackersTrigger {
-                        kind: WebPageTrackerKind::WebPageContent,
-                    },
-                    format!("{} 0 0 1 1 * *", n),
-                )
-            };
-
-            mock_upsert_scheduler_job(&api.db, &job).await?;
-        }
-
-        for n in 0..=2 {
-            web_scraping
-                .create_content_tracker(WebPageTrackerCreateParams {
-                    name: format!("name_{}", n),
-                    url: Url::parse("https://secutils.dev")?,
-                    settings: WebPageTrackerSettings {
-                        revisions: 3,
-                        delay: Duration::from_millis(2000),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
-                    job_config: Some(SchedulerJobConfig {
-                        schedule: "0 0 * * * *".to_string(),
-                        retry_strategy: None,
-                        notifications: true,
-                    }),
-                })
-                .await?;
-        }
-
-        let pending_trackers = api
-            .web_scraping_system()
-            .get_pending_content_trackers()
-            .collect::<Vec<_>>()
-            .await;
-        assert!(pending_trackers.is_empty());
-
-        // Assign job IDs to trackers.
-        let all_trackers = web_scraping.get_content_trackers().await?;
-        for (n, tracker) in all_trackers.iter().enumerate() {
-            api.web_scraping_system()
-                .update_web_page_tracker_job(
-                    tracker.id,
-                    Some(uuid::Uuid::parse_str(&format!(
-                        "67e55044-10b1-426f-9247-bb680e5fe0c{}",
-                        n
-                    ))?),
-                )
-                .await?;
-        }
-
-        let pending_trackers = api
-            .web_scraping_system()
-            .get_pending_content_trackers()
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .collect::<anyhow::Result<Vec<_>, _>>()?;
-        assert_eq!(pending_trackers.len(), 2);
-
-        let all_trackers = web_scraping.get_content_trackers().await?;
-        assert_eq!(
-            vec![all_trackers[0].clone(), all_trackers[2].clone()],
-            pending_trackers,
-        );
-
-        let all_trackers = web_scraping.get_content_trackers().await?;
-        assert_eq!(all_trackers.len(), 3);
+        web_scraping.clear_page_tracker_history(tracker.id).await?;
+
+        retrack_create_api_mock.assert();
+        retrack_get_api_mock.assert();
+        retrack_clear_revisions_api_mock.assert();
 
         Ok(())
     }

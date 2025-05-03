@@ -1,23 +1,8 @@
 {
   "compilerOptions": {
-    "jsx": "react",
-    "jsxImportSource": "@emotion/react",
-    "allowSyntheticDefaultImports": true,
-    "isolatedModules": true,
     "noEmit": true,
-    "skipLibCheck": true,
     "strict": true,
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "es5",
-      "es2015",
-      "es2019",
-      "es2020",
-    ],
-    "typeRoots": ["./src/assets.d.ts"]
+    "jsx": "react",
+    "jsxImportSource": "@emotion/react"
   },
-  "include": [
-    "src/**/*"
-  ]
 }

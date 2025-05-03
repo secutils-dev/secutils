@@ -280,10 +280,10 @@ impl SearchIndex {
                         id.replace(field_value_content);
                     }
                 } else if field == self.schema_fields.user_id {
-                    if let OwnedValue::Str(field_value_content) = value {
-                        if !field_value_content.is_empty() {
-                            user_id.replace(field_value_content.parse()?);
-                        }
+                    if let OwnedValue::Str(field_value_content) = value
+                        && !field_value_content.is_empty()
+                    {
+                        user_id.replace(field_value_content.parse()?);
                     }
                 } else if field == self.schema_fields.label {
                     if let OwnedValue::Str(field_value_content) = value {
@@ -307,10 +307,10 @@ impl SearchIndex {
                             &field_value_content,
                         )?);
                     }
-                } else if field == self.schema_fields.timestamp {
-                    if let OwnedValue::Date(field_value_content) = value {
-                        timestamp.replace(field_value_content.into_utc());
-                    }
+                } else if field == self.schema_fields.timestamp
+                    && let OwnedValue::Date(field_value_content) = value
+                {
+                    timestamp.replace(field_value_content.into_utc());
                 }
             }
 

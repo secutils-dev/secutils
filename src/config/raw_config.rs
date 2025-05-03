@@ -1,6 +1,7 @@
 use crate::config::{
-    ComponentsConfig, SchedulerJobsConfig, SecurityConfig, SmtpConfig, SubscriptionsConfig,
-    database_config::DatabaseConfig, utils_config::UtilsConfig,
+    ComponentsConfig, RetrackConfig, SchedulerJobsConfig, SecurityConfig, SmtpConfig,
+    SubscriptionsConfig, database_config::DatabaseConfig, http_config::HttpConfig,
+    utils_config::UtilsConfig,
 };
 use figment::{Figment, Metadata, Profile, Provider, providers, providers::Format, value};
 use serde_derive::{Deserialize, Serialize};
@@ -11,11 +12,11 @@ use url::Url;
 pub struct RawConfig {
     /// Defines a TCP port to listen on.
     pub port: u16,
-    /// External/public URL through which service is being accessed.
+    /// External/public URL through which the service is being accessed.
     pub public_url: Url,
     /// Database configuration.
     pub db: DatabaseConfig,
-    /// Security configuration (session, built-in users etc.).
+    /// Security configuration (session, built-in users, etc.).
     pub security: SecurityConfig,
     /// Configuration for the components that are deployed separately.
     pub components: ComponentsConfig,
@@ -27,6 +28,10 @@ pub struct RawConfig {
     pub utils: UtilsConfig,
     /// Configuration for the SMTP functionality.
     pub smtp: Option<SmtpConfig>,
+    /// Configuration for the HTTP functionality.
+    pub http: HttpConfig,
+    /// Configuration for the Retrack service.
+    pub retrack: RetrackConfig,
 }
 
 impl RawConfig {
@@ -53,6 +58,8 @@ impl Default for RawConfig {
             subscriptions: SubscriptionsConfig::default(),
             utils: UtilsConfig::default(),
             smtp: None,
+            http: HttpConfig::default(),
+            retrack: RetrackConfig::default(),
         }
     }
 }
@@ -95,12 +102,9 @@ mod tests {
         [components]
         kratos_url = 'http://localhost:4433/'
         kratos_admin_url = 'http://localhost:4434/'
-        web_scraper_url = 'http://localhost:7272/'
         search_index_version = 4
 
         [scheduler]
-        web_page_trackers_schedule = '0 * * * * *'
-        web_page_trackers_fetch = '0 * * * * *'
         notifications_send = '0/30 * * * * *'
 
         [subscriptions]
@@ -184,6 +188,14 @@ mod tests {
 
         [utils]
         webhook_url_type = 'subdomain'
+        [http.client]
+        timeout = 30000
+        pool_idle_timeout = 5000
+        max_retries = 3
+        verbose = false
+
+        [retrack]
+        host = 'http://localhost:7676/'
         "###);
     }
 
@@ -201,6 +213,15 @@ mod tests {
         host = 'localhost'
         port = 5432
 
+        [http.client]
+        timeout = 60000
+        pool_idle_timeout = 6000
+        max_retries = 6
+        verbose = true
+
+        [retrack]
+        host = 'http://localhost:7777/'
+
         [security]
         session_cookie_name = 'id2'
 
@@ -211,12 +232,9 @@ mod tests {
         [components]
         kratos_url = 'http://localhost:4433/'
         kratos_admin_url = 'http://localhost:4434/'
-        web_scraper_url = 'http://localhost:7272/'
         search_index_version = 3
 
         [scheduler]
-        web_page_trackers_schedule = '0 * * * * * *'
-        web_page_trackers_fetch = '0 * * * * * *'
         notifications_send = '0/30 * * * * * *'
 
         [subscriptions]
@@ -388,28 +406,9 @@ mod tests {
                     query: None,
                     fragment: None,
                 },
-                web_scraper_url: Url {
-                    scheme: "http",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: Some(
-                        Domain(
-                            "localhost",
-                        ),
-                    ),
-                    port: Some(
-                        7272,
-                    ),
-                    path: "/",
-                    query: None,
-                    fragment: None,
-                },
                 search_index_version: 3,
             },
             scheduler: SchedulerJobsConfig {
-                web_page_trackers_schedule: "0 * * * * * *",
-                web_page_trackers_fetch: "0 * * * * * *",
                 notifications_send: "0/30 * * * * * *",
             },
             subscriptions: SubscriptionsConfig {
@@ -546,6 +545,33 @@ mod tests {
                 webhook_url_type: Subdomain,
             },
             smtp: None,
+            http: HttpConfig {
+                client: HttpClientConfig {
+                    timeout: 60s,
+                    pool_idle_timeout: 6s,
+                    max_retries: 6,
+                    verbose: true,
+                },
+            },
+            retrack: RetrackConfig {
+                host: Url {
+                    scheme: "http",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: Some(
+                        Domain(
+                            "localhost",
+                        ),
+                    ),
+                    port: Some(
+                        7777,
+                    ),
+                    path: "/",
+                    query: None,
+                    fragment: None,
+                },
+            },
         }
         "###);
     }

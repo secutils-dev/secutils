@@ -31,7 +31,7 @@ enum FormState {
 async function getSignupFlow(api: FrontendApi, searchParams: URLSearchParams) {
   const flowId = searchParams.get('flow');
   if (flowId) {
-    // Try to retrieve existing flow first, otherwise create a new one.
+    // Try to retrieve the existing flow first, otherwise create a new one.
     try {
       return await api.getRegistrationFlow({ id: flowId });
     } catch (err) {
@@ -86,7 +86,7 @@ export function SignupPage() {
         setSignupStatus({ status: 'failed', error: originalErrorMessage ?? 'Unknown error' });
 
         addToast({
-          id: 'signup-toast',
+          id: `signup-toast-${Math.floor(Math.random() * 100)}`,
           color: 'danger',
           title: 'Failed to sign up',
           text: (

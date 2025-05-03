@@ -741,10 +741,10 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
             return Ok(());
         }
 
-        if let Some(attribute_value) = attribute_value {
-            if !attribute_value.is_empty() {
-                x509_name.append_entry_by_text(attribute_key, attribute_value)?;
-            }
+        if let Some(attribute_value) = attribute_value
+            && !attribute_value.is_empty()
+        {
+            x509_name.append_entry_by_text(attribute_key, attribute_value)?;
         }
 
         Ok(())
@@ -757,8 +757,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
 
         if name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
             return Err(SecutilsError::client(format!(
-                "Private key name cannot be longer than {} characters.",
-                MAX_UTILS_ENTITY_NAME_LENGTH
+                "Private key name cannot be longer than {MAX_UTILS_ENTITY_NAME_LENGTH} characters."
             )));
         }
 
@@ -774,8 +773,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
 
         if name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
             return Err(SecutilsError::client(format!(
-                "Certificate template name cannot be longer than {} characters.",
-                MAX_UTILS_ENTITY_NAME_LENGTH
+                "Certificate template name cannot be longer than {MAX_UTILS_ENTITY_NAME_LENGTH} characters."
             )));
         }
 
@@ -784,8 +782,8 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
 }
 
 impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
-    /// Returns an API to work with certificates utility.
-    pub fn certificates(&self) -> CertificatesApiExt<DR, ET> {
+    /// Returns an API to work with the certificate utility.
+    pub fn certificates(&self) -> CertificatesApiExt<'_, DR, ET> {
         CertificatesApiExt::new(self)
     }
 }

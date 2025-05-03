@@ -41,6 +41,8 @@ pub mod tests {
         tests::{mock_config, mock_search_index},
     };
     use lettre::{AsyncSmtpTransport, Tokio1Executor};
+    use reqwest::Client;
+    use reqwest_middleware::ClientBuilder;
     use sqlx::PgPool;
     use std::sync::Arc;
 
@@ -61,6 +63,7 @@ pub mod tests {
             Network::new(
                 TokioDnsResolver::create(),
                 AsyncSmtpTransport::<Tokio1Executor>::unencrypted_localhost(),
+                ClientBuilder::new(Client::builder().build()?).build(),
             ),
             create_templates()?,
         ));

@@ -1,21 +1,19 @@
 # syntax=docker/dockerfile:1
 
-FROM --platform=$BUILDPLATFORM node:22-alpine3.21 AS builder
+FROM --platform=$BUILDPLATFORM node:22-alpine3.22 AS builder
 WORKDIR /app
 
 # See, https://github.com/nodejs/docker-node/blob/main/docs/BestPractices.md#node-gyp-alpine
 RUN apk add --no-cache python3 make g++
 
-# Copy workspace root `package.json` and `package-lock.json` files,
-# and `package.json` file from the component, to just install dependencies.
-COPY ["./*.json", "./"]
-COPY ["./components/secutils-webui/package.json", "./components/secutils-webui/"]
-RUN set -x && npm ci --ws
+# Copy `package.json` file from the component, to just install dependencies.
+COPY ["components/secutils-webui/*.json", "./"]
+RUN set -x && npm ci
 
 # Now copy the rest of the component files and build it.
-COPY ["./components/secutils-webui", "./components/secutils-webui"]
-RUN set -x && npm run build --ws
+COPY ["components/secutils-webui", "./"]
+RUN set -x && npm run build
 
-FROM nginxinc/nginx-unprivileged:alpine3.21-slim
-COPY --from=builder ["/app/components/secutils-webui/dist/", "/usr/share/nginx/html/"]
-COPY ["./components/secutils-webui/config/nginx.conf", "/etc/nginx/conf.d/default.conf"]
+FROM nginxinc/nginx-unprivileged:alpine3.22-slim
+COPY --from=builder ["/app/dist/", "/usr/share/nginx/html/"]
+COPY ["components/secutils-webui/config/nginx.conf", "/etc/nginx/conf.d/default.conf"]

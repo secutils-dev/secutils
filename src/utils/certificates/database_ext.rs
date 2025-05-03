@@ -356,7 +356,7 @@ ORDER BY updated_at
 
 impl Database {
     /// Returns a database extension for the certificate utility-related operations.
-    pub fn certificates(&self) -> CertificatesDatabaseExt {
+    pub fn certificates(&self) -> CertificatesDatabaseExt<'_> {
         CertificatesDatabaseExt::new(&self.pool)
     }
 }

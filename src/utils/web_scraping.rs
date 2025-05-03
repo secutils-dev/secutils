@@ -1,17 +1,8 @@
 mod api_ext;
 mod database_ext;
-mod web_page_trackers;
+mod page_trackers;
 
-pub use self::web_page_trackers::{
-    WebPageContentTrackerTag, WebPageDataRevision, WebPageResource, WebPageResourceContent,
-    WebPageResourceContentData, WebPageResourceDiffStatus, WebPageResourcesData,
-    WebPageResourcesTrackerTag, WebPageTracker, WebPageTrackerKind, WebPageTrackerSettings,
-    WebPageTrackerTag, WebScraperContentRequest, WebScraperContentRequestScripts,
-    WebScraperContentResponse, WebScraperErrorResponse, WebScraperResource,
-    WebScraperResourcesRequest, WebScraperResourcesRequestScripts, WebScraperResourcesResponse,
-    web_page_content_revisions_diff, web_page_resources_revisions_diff,
-};
-use self::web_page_trackers::{WebPageResourceInternal, WebPageResourcesTrackerInternalTag};
+pub use self::page_trackers::{PageTracker, PageTrackerConfig, PageTrackerTarget};
 use crate::{
     api::Api,
     error::Error as SecutilsError,
@@ -40,73 +31,43 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
 ) -> anyhow::Result<UtilsActionResult> {
     let web_scraping = api.web_scraping(&user);
     match (resource, action) {
-        (UtilsResource::WebScrapingResources, UtilsAction::List) => {
-            UtilsActionResult::json(web_scraping.get_resources_trackers().await?)
+        (UtilsResource::WebScrapingPage, UtilsAction::List) => {
+            UtilsActionResult::json(web_scraping.get_page_trackers().await?)
         }
-        (UtilsResource::WebScrapingContent, UtilsAction::List) => {
-            UtilsActionResult::json(web_scraping.get_content_trackers().await?)
-        }
-        (UtilsResource::WebScrapingResources, UtilsAction::Create) => UtilsActionResult::json(
+        (UtilsResource::WebScrapingPage, UtilsAction::Create) => UtilsActionResult::json(
             web_scraping
-                .create_resources_tracker(extract_params(params)?)
+                .create_page_tracker(extract_params(params)?)
                 .await?,
         ),
-        (UtilsResource::WebScrapingContent, UtilsAction::Create) => UtilsActionResult::json(
+        (UtilsResource::WebScrapingPage, UtilsAction::Update { resource_id }) => {
             web_scraping
-                .create_content_tracker(extract_params(params)?)
-                .await?,
-        ),
-        (UtilsResource::WebScrapingResources, UtilsAction::Update { resource_id }) => {
-            web_scraping
-                .update_resources_tracker(resource_id, extract_params(params)?)
+                .update_page_tracker(resource_id, extract_params(params)?)
                 .await?;
             Ok(UtilsActionResult::empty())
         }
-        (UtilsResource::WebScrapingContent, UtilsAction::Update { resource_id }) => {
-            web_scraping
-                .update_content_tracker(resource_id, extract_params(params)?)
-                .await?;
+        (UtilsResource::WebScrapingPage, UtilsAction::Delete { resource_id }) => {
+            web_scraping.remove_page_tracker(resource_id).await?;
             Ok(UtilsActionResult::empty())
         }
         (
-            UtilsResource::WebScrapingResources | UtilsResource::WebScrapingContent,
-            UtilsAction::Delete { resource_id },
-        ) => {
-            web_scraping.remove_web_page_tracker(resource_id).await?;
-            Ok(UtilsActionResult::empty())
-        }
-        (
-            UtilsResource::WebScrapingResources,
+            UtilsResource::WebScrapingPage,
             UtilsAction::Execute {
                 resource_id: Some(resource_id),
-                operation: UtilsResourceOperation::WebScrapingGetHistory,
+                operation: UtilsResourceOperation::WebScrapingPageGetHistory,
             },
         ) => UtilsActionResult::json(
             web_scraping
-                .get_resources_tracker_history(resource_id, extract_params(params)?)
+                .get_page_tracker_history(resource_id, extract_params(params)?)
                 .await?,
         ),
         (
-            UtilsResource::WebScrapingContent,
+            UtilsResource::WebScrapingPage,
             UtilsAction::Execute {
                 resource_id: Some(resource_id),
-                operation: UtilsResourceOperation::WebScrapingGetHistory,
-            },
-        ) => UtilsActionResult::json(
-            web_scraping
-                .get_content_tracker_history(resource_id, extract_params(params)?)
-                .await?,
-        ),
-        (
-            UtilsResource::WebScrapingResources | UtilsResource::WebScrapingContent,
-            UtilsAction::Execute {
-                resource_id: Some(resource_id),
-                operation: UtilsResourceOperation::WebScrapingClearHistory,
+                operation: UtilsResourceOperation::WebScrapingPageClearHistory,
             },
         ) => {
-            web_scraping
-                .clear_web_page_tracker_history(resource_id)
-                .await?;
+            web_scraping.clear_page_tracker_history(resource_id).await?;
             Ok(UtilsActionResult::empty())
         }
         _ => Err(SecutilsError::client("Invalid resource or action.").into()),
@@ -115,271 +76,238 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
 
 #[cfg(test)]
 pub mod tests {
-    pub use crate::utils::web_scraping::api_ext::{
-        WEB_PAGE_CONTENT_TRACKER_EXTRACT_SCRIPT_NAME,
-        WEB_PAGE_RESOURCES_TRACKER_FILTER_SCRIPT_NAME, WebPageTrackerCreateParams,
-    };
     use crate::{
-        scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
-        tests::{mock_api, mock_user},
+        retrack::{
+            RetrackTracker,
+            tags::{
+                RETRACK_NOTIFICATIONS_TAG, RETRACK_RESOURCE_ID_TAG, RETRACK_RESOURCE_TAG,
+                RETRACK_USER_TAG, prepare_tags,
+            },
+            tests::{RetrackTrackerValue, mock_retrack_tracker},
+        },
+        tests::{mock_api_with_config, mock_config, mock_user},
         utils::{
             UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
             web_scraping::{
-                WebPageContentTrackerTag, WebPageDataRevision, WebPageResourceInternal,
-                WebPageResourcesData, WebPageResourcesTrackerInternalTag, WebPageTracker,
-                WebPageTrackerSettings, WebPageTrackerTag,
-                api_ext::{
-                    WebPageContentTrackerGetHistoryParams, WebPageResourcesTrackerGetHistoryParams,
-                },
-                web_scraping_handle_action,
+                PageTracker, PageTrackerConfig, PageTrackerTarget,
+                api_ext::PageTrackerCreateParams, web_scraping_handle_action,
             },
         },
     };
+    use httpmock::MockServer;
     use insta::assert_json_snapshot;
+    use retrack_types::{
+        scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
+        trackers::{
+            PageTarget, Tracker, TrackerConfig, TrackerCreateParams, TrackerDataRevision,
+            TrackerDataValue, TrackerTarget, TrackerUpdateParams,
+        },
+    };
     use serde_json::json;
     use sqlx::PgPool;
-    use std::{collections::HashMap, time::Duration};
+    use std::{slice, time::Duration};
     use time::OffsetDateTime;
     use url::Url;
     use uuid::{Uuid, uuid};
 
-    pub struct MockWebPageTrackerBuilder<Tag: WebPageTrackerTag> {
-        tracker: WebPageTracker<Tag>,
+    pub struct MockPageTrackerBuilder {
+        tracker: PageTracker,
     }
 
-    impl<Tag: WebPageTrackerTag> MockWebPageTrackerBuilder<Tag> {
+    impl MockPageTrackerBuilder {
         pub fn create<N: Into<String>>(
             id: Uuid,
             name: N,
-            url: &str,
-            revisions: usize,
+            retrack: RetrackTracker,
         ) -> anyhow::Result<Self> {
             Ok(Self {
-                tracker: WebPageTracker {
+                tracker: PageTracker {
                     id,
                     name: name.into(),
                     user_id: mock_user()?.id,
-                    job_id: None,
-                    job_config: None,
-                    url: Url::parse(url)?,
-                    settings: WebPageTrackerSettings {
-                        revisions,
-                        delay: Duration::from_millis(2000),
-                        scripts: Default::default(),
-                        headers: Default::default(),
-                    },
+                    retrack,
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
-                    meta: None,
                 },
             })
         }
 
-        pub fn with_schedule<S: Into<String>>(mut self, schedule: S) -> Self {
-            self.tracker.job_config = Some(SchedulerJobConfig {
-                schedule: schedule.into(),
-                retry_strategy: None,
-                notifications: false,
-            });
-            self
-        }
-
-        pub fn with_job_config(mut self, job_config: SchedulerJobConfig) -> Self {
-            self.tracker.job_config = Some(job_config);
-            self
-        }
-
-        pub fn with_job_id(mut self, job_id: Uuid) -> Self {
-            self.tracker.job_id = Some(job_id);
-            self
-        }
-
-        pub fn with_delay_millis(mut self, millis: u64) -> Self {
-            self.tracker.settings.delay = Duration::from_millis(millis);
-            self
-        }
-
-        pub fn with_scripts(mut self, scripts: HashMap<String, String>) -> Self {
-            self.tracker.settings.scripts = Some(scripts);
-            self
-        }
-
-        pub fn build(self) -> WebPageTracker<Tag> {
+        pub fn build(self) -> PageTracker {
             self.tracker
         }
     }
 
     #[sqlx::test]
-    async fn properly_handles_resources_list_operation(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
+    async fn properly_handles_page_tracker_list_operation(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
         let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
 
-        let action_result = web_scraping_handle_action(
-            mock_user.clone(),
-            &api,
-            UtilsAction::List,
-            UtilsResource::WebScrapingResources,
-            None,
-        )
-        .await?;
-        assert_json_snapshot!(action_result.into_inner().unwrap(), @"[]");
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
 
-        let tracker_one = api
-            .web_scraping(&mock_user)
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-        let tracker_two = api
-            .web_scraping(&mock_user)
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_two".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: tracker_one.settings.clone(),
-                job_config: tracker_one.job_config.clone(),
-            })
-            .await?;
-        let action_result = web_scraping_handle_action(
-            mock_user.clone(),
-            &api,
-            UtilsAction::List,
-            UtilsResource::WebScrapingResources,
-            None,
-        )
-        .await?;
-        let mut settings = insta::Settings::clone_current();
-        for tracker in [tracker_one, tracker_two] {
-            settings.add_filter(&tracker.id.to_string(), "[UUID]");
-            settings.add_filter(
-                &tracker.created_at.unix_timestamp().to_string(),
-                "[TIMESTAMP]",
-            );
-        }
-        settings.bind(|| {
-            assert_json_snapshot!(
-                serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP],\"updatedAt\":[TIMESTAMP]},{\"id\":\"[UUID]\",\"name\":\"name_two\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP],\"updatedAt\":[TIMESTAMP]}]""###
-            );
+        let mut retrack_list_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&Vec::<Tracker>::new());
         });
 
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_handles_content_list_operation(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
+        // Insert a new user to the database.
+        let api = mock_api_with_config(pool, config).await?;
         api.db.insert_user(&mock_user).await?;
 
         let action_result = web_scraping_handle_action(
             mock_user.clone(),
             &api,
             UtilsAction::List,
-            UtilsResource::WebScrapingContent,
+            UtilsResource::WebScrapingPage,
             None,
         )
         .await?;
         assert_json_snapshot!(action_result.into_inner().unwrap(), @"[]");
+        retrack_list_api_mock.assert();
+        retrack_list_api_mock.delete();
 
-        let tracker_one = api
-            .web_scraping(&mock_user)
-            .create_content_tracker(WebPageTrackerCreateParams {
+        let retrack_tracker = mock_retrack_tracker()?;
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+        let retrack_list_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(serde_json::to_value(slice::from_ref(&retrack_tracker)).unwrap());
+        });
+
+        let web_scraping = api.web_scraping(&mock_user);
+        let tracker = web_scraping
+            .create_page_tracker(PageTrackerCreateParams {
                 name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
+                config: PageTrackerConfig {
                     revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(1000),
-                        max_attempts: 5,
+                    job: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(1000),
+                            max_attempts: 5,
+                        }),
                     }),
-                    notifications: true,
-                }),
+                },
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                },
+                notifications: true,
             })
             .await?;
-        let tracker_two = api
-            .web_scraping(&mock_user)
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_two".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: tracker_one.settings.clone(),
-                job_config: tracker_one.job_config.clone(),
-            })
-            .await?;
+
         let action_result = web_scraping_handle_action(
             mock_user.clone(),
             &api,
             UtilsAction::List,
-            UtilsResource::WebScrapingContent,
+            UtilsResource::WebScrapingPage,
             None,
         )
         .await?;
         let mut settings = insta::Settings::clone_current();
-        for tracker in [tracker_one, tracker_two] {
-            settings.add_filter(&tracker.id.to_string(), "[UUID]");
-            settings.add_filter(
-                &tracker.created_at.unix_timestamp().to_string(),
-                "[TIMESTAMP]",
-            );
-        }
+        settings.add_filter(&tracker.id.to_string(), "[UUID]");
+        settings.add_filter(
+            &tracker.created_at.unix_timestamp().to_string(),
+            "[TIMESTAMP]",
+        );
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"retryStrategy\":{\"type\":\"constant\",\"interval\":1000000,\"maxAttempts\":5},\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP],\"updatedAt\":[TIMESTAMP]},{\"id\":\"[UUID]\",\"name\":\"name_two\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"retryStrategy\":{\"type\":\"constant\",\"interval\":1000000,\"maxAttempts\":5},\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP],\"updatedAt\":[TIMESTAMP]}]""###
+                @r###""[{\"id\":\"[UUID]\",\"name\":\"name_one\",\"retrack\":{\"id\":\"00000000-0000-0000-0000-000000000010\",\"enabled\":true,\"config\":{\"revisions\":3,\"job\":{\"schedule\":\"@hourly\",\"retryStrategy\":{\"type\":\"constant\",\"interval\":120000,\"maxAttempts\":5}}},\"target\":{\"type\":\"page\",\"extractor\":\"export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }\"},\"notifications\":false},\"createdAt\":[TIMESTAMP],\"updatedAt\":[TIMESTAMP]}]""###
             );
         });
+        retrack_create_api_mock.assert();
+        retrack_list_api_mock.assert();
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn properly_handles_resources_create_operation(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
+    async fn properly_handles_page_tracker_create_operation(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
         let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let retrack_tracker = mock_retrack_tracker()?;
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            // Use partial body match due to a non-deterministic tag with new tracker ID.
+            when.method(httpmock::Method::POST)
+                .path("/api/trackers")
+                .json_body_partial(
+                    serde_json::to_string_pretty(&TrackerCreateParams {
+                        name: "name_one".to_string(),
+                        enabled: true,
+                        target: TrackerTarget::Page(PageTarget {
+                            extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                            params: None,
+                            engine: None,
+                            user_agent: None,
+                            accept_invalid_certificates: false,
+                        }),
+                        config: TrackerConfig {
+                            revisions: 3,
+                            timeout: None,
+                            job: Some(SchedulerJobConfig {
+                                schedule: "@hourly".to_string(),
+                                retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                                    interval: Duration::from_secs(120),
+                                    max_attempts: 5,
+                                }),
+                            }),
+                        },
+                        tags: prepare_tags(&[
+                            format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+                            format!("{RETRACK_NOTIFICATIONS_TAG}:{}", true),
+                            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage)
+                        ]),
+                        actions: vec![],
+                    }).unwrap(),
+                );
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+        let retrack_list_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(serde_json::to_value(slice::from_ref(&retrack_tracker)).unwrap());
+        });
+
+        // Insert a new user to the database.
+        let api = mock_api_with_config(pool, config).await?;
         api.db.insert_user(&mock_user).await?;
 
         let action_result = web_scraping_handle_action(
             mock_user.clone(),
             &api,
             UtilsAction::Create,
-            UtilsResource::WebScrapingResources,
+            UtilsResource::WebScrapingPage,
             Some(UtilsActionParams::json(json!({
                 "name": "name_one",
-                "url": "https://secutils.dev",
-                "settings": WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                "jobConfig": SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
-                        initial_interval: Duration::from_secs(120),
-                        increment: Duration::from_secs(1),
-                        max_interval: Duration::from_secs(200),
-                        max_attempts: 10,
+                "config": {
+                    "revisions": 3,
+                    "job": Some(SchedulerJobConfig {
+                        schedule: "@hourly".to_string(),
+                        retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                            interval: Duration::from_secs(120),
+                            max_attempts: 5,
+                        }),
                     }),
-                    notifications: true,
-                }
+                },
+                "target": {
+                    "extractor": "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                },
+                "notifications": true
             }))),
         )
         .await?;
@@ -387,7 +315,7 @@ pub mod tests {
         // Extract tracker to make sure it has been saved.
         let tracker = api
             .web_scraping(&mock_user)
-            .get_resources_trackers()
+            .get_page_trackers()
             .await?
             .pop()
             .unwrap();
@@ -401,473 +329,316 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"retryStrategy\":{\"type\":\"linear\",\"initialInterval\":120000,\"increment\":1000,\"maxInterval\":200000,\"maxAttempts\":10},\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP],\"updatedAt\":[TIMESTAMP]}""###
+                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"retrack\":{\"id\":\"00000000-0000-0000-0000-000000000010\",\"enabled\":true,\"config\":{\"revisions\":3,\"job\":{\"schedule\":\"@hourly\",\"retryStrategy\":{\"type\":\"constant\",\"interval\":120000,\"maxAttempts\":5}}},\"target\":{\"type\":\"page\",\"extractor\":\"export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }\"},\"notifications\":false},\"createdAt\":[TIMESTAMP],\"updatedAt\":[TIMESTAMP]}""###
             );
         });
+
+        retrack_create_api_mock.assert();
+        retrack_list_api_mock.assert();
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn properly_handles_content_create_operation(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
+    async fn properly_handles_page_tracker_update_operation(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
         let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let retrack_tracker = mock_retrack_tracker()?;
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+
+        // Insert a new user to the database.
+        let api = mock_api_with_config(pool, config).await?;
         api.db.insert_user(&mock_user).await?;
 
-        let action_result = web_scraping_handle_action(
-            mock_user.clone(),
-            &api,
-            UtilsAction::Create,
-            UtilsResource::WebScrapingContent,
-            Some(UtilsActionParams::json(json!({
-                "name": "name_one",
-                "url": "https://secutils.dev",
-                "settings": WebPageTrackerSettings {
+        let web_scraping = api.web_scraping(&mock_user);
+        let tracker = web_scraping
+            .create_page_tracker(PageTrackerCreateParams {
+                name: "name_one".to_string(),
+                config: PageTrackerConfig {
                     revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                 "jobConfig": SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                     retry_strategy: Some(SchedulerJobRetryStrategy::Exponential {
-                        initial_interval: Duration::from_secs(120),
-                        multiplier: 2,
-                        max_interval: Duration::from_secs(200),
-                        max_attempts: 10,
+                    job: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
                     }),
-                    notifications: true,
-                }
+                },
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                },
+                notifications: true,
+            })
+            .await?;
+        retrack_create_api_mock.assert();
+
+        let updated_retrack_tracker = Tracker {
+            name: "name_one_updated".to_string(),
+            config: TrackerConfig {
+                revisions: 10,
+                timeout: None,
+                job: Some(SchedulerJobConfig {
+                    schedule: "0 1 * * * *".to_string(),
+                    retry_strategy: None,
+                }),
+            },
+            target: TrackerTarget::Page(PageTarget {
+                extractor: "export async function execute(p) { await p.goto('https://secutils.dev/update'); return await p.content(); }".to_string(),
+                engine: None,
+                params: None,
+                user_agent: None,
+                accept_invalid_certificates: false,
+            }),
+            tags: prepare_tags(&[
+                format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+                format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
+                format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+            ]),
+            ..retrack_tracker
+        };
+        let retrack_update_api_mock = retrack_server.mock(|when, then| {
+            // Use partial body match due to a non-deterministic tag with new tracker ID.
+            when.method(httpmock::Method::PUT)
+                .path(format!("/api/trackers/{}", retrack_tracker.id))
+                .json_body_obj(&TrackerUpdateParams {
+                    name: Some("name_one_updated".to_string()),
+                    config: Some(TrackerConfig {
+                        revisions: 10,
+                        timeout: None,
+                        job: Some(SchedulerJobConfig {
+                            schedule: "0 1 * * * *".to_string(),
+                            retry_strategy: None,
+                        }),
+                    }),
+                    target: Some(TrackerTarget::Page(PageTarget {
+                        extractor: "export async function execute(p) { await p.goto('https://secutils.dev/update'); return await p.content(); }".to_string(),
+                        engine: None,
+                        params: None,
+                        user_agent: None,
+                        accept_invalid_certificates: false,
+                    })),
+                    tags: Some(prepare_tags(&[
+                        format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+                        format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
+                        format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                        format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+                    ])),
+                    ..Default::default()
+                });
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&updated_retrack_tracker);
+        });
+        let retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&updated_retrack_tracker);
+        });
+        let action_result = web_scraping_handle_action(
+            mock_user.clone(),
+            &api,
+            UtilsAction::Update {
+                resource_id: tracker.id,
+            },
+            UtilsResource::WebScrapingPage,
+            Some(UtilsActionParams::json(json!({
+                "name": "name_one_updated",
+                "config": {
+                    "revisions": 10,
+                    "job": Some(SchedulerJobConfig {
+                        schedule: "0 1 * * * *".to_string(),
+                        retry_strategy: None,
+                    }),
+                },
+                "target": {
+                    "extractor": "export async function execute(p) { await p.goto('https://secutils.dev/update'); return await p.content(); }".to_string(),
+                },
+                "notifications": false
             }))),
         )
         .await?;
+        assert!(action_result.into_inner().is_none());
 
-        // Extract tracker to make sure it has been saved.
-        let tracker = api
+        // Extract tracker to make sure it has been updated.
+        let updated_tracker = api
             .web_scraping(&mock_user)
-            .get_content_trackers()
+            .get_page_tracker(tracker.id)
             .await?
-            .pop()
             .unwrap();
-        let mut settings = insta::Settings::clone_current();
-        settings.add_filter(&tracker.id.to_string(), "[UUID]");
-        settings.add_filter(
-            &tracker.created_at.unix_timestamp().to_string(),
-            "[TIMESTAMP]",
+        assert_eq!(
+            updated_tracker,
+            PageTracker {
+                id: tracker.id,
+                name: "name_one_updated".to_string(),
+                user_id: mock_user.id,
+                retrack: RetrackTracker::Value(Box::new(RetrackTrackerValue {
+                    id: updated_retrack_tracker.id,
+                    enabled: updated_retrack_tracker.enabled,
+                    config: updated_retrack_tracker.config,
+                    target: updated_retrack_tracker.target,
+                    notifications: false,
+                })),
+                created_at: tracker.created_at,
+                updated_at: tracker.updated_at
+            }
         );
+        retrack_update_api_mock.assert();
+        retrack_get_api_mock.assert_hits(2);
 
-        settings.bind(|| {
-            assert_json_snapshot!(
-                serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""{\"id\":\"[UUID]\",\"name\":\"name_one\",\"url\":\"https://secutils.dev/\",\"jobConfig\":{\"schedule\":\"0 0 * * * *\",\"retryStrategy\":{\"type\":\"exponential\",\"initialInterval\":120000,\"multiplier\":2,\"maxInterval\":200000,\"maxAttempts\":10},\"notifications\":true},\"settings\":{\"revisions\":3,\"delay\":2000},\"createdAt\":[TIMESTAMP],\"updatedAt\":[TIMESTAMP]}""###
-            );
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn properly_handles_page_tracker_delete_operation(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let retrack_tracker = mock_retrack_tracker()?;
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
         });
 
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_handles_resources_update_operation(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
+        // Insert a new user to the database.
+        let api = mock_api_with_config(pool, config).await?;
         api.db.insert_user(&mock_user).await?;
 
-        let tracker = api
-            .web_scraping(&mock_user)
-            .create_resources_tracker(WebPageTrackerCreateParams {
+        let web_scraping = api.web_scraping(&mock_user);
+        let tracker = web_scraping
+            .create_page_tracker(PageTrackerCreateParams {
                 name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
+                config: PageTrackerConfig {
                     revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
+                    job: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                    }),
                 },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                },
+                notifications: true,
             })
             .await?;
+        retrack_create_api_mock.assert();
 
-        // Pause to make sure updated_at is later than created_at.
-        tokio::time::sleep(Duration::from_millis(1000)).await;
-
-        let action_result = web_scraping_handle_action(
-            mock_user.clone(),
-            &api,
-            UtilsAction::Update {
-                resource_id: tracker.id,
-            },
-            UtilsResource::WebScrapingResources,
-            Some(UtilsActionParams::json(json!({
-                "name": "name_one_updated",
-                "url": "https://secutils.dev/update",
-                "settings": WebPageTrackerSettings {
-                    revisions: 10,
-                    delay: Duration::from_millis(3000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                "jobConfig": SchedulerJobConfig {
-                    schedule: "0 1 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: false,
-                }
-            }))),
-        )
-        .await?;
-        assert!(action_result.into_inner().is_none());
-
-        // Extract tracker to make sure it has been updated.
-        let updated_tracker = api
-            .web_scraping(&mock_user)
-            .get_resources_tracker(tracker.id)
-            .await?
-            .unwrap();
-        assert_eq!(
-            updated_tracker,
-            WebPageTracker {
-                id: tracker.id,
-                name: "name_one_updated".to_string(),
-                url: "https://secutils.dev/update".parse()?,
-                user_id: mock_user.id,
-                job_id: None,
-                settings: WebPageTrackerSettings {
-                    revisions: 10,
-                    delay: Duration::from_millis(3000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 1 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: false,
-                }),
-                created_at: tracker.created_at,
-                updated_at: updated_tracker.updated_at,
-                meta: None
-            }
-        );
-        assert!(updated_tracker.updated_at > tracker.updated_at);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_handles_content_update_operation(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let tracker = api
-            .web_scraping(&mock_user)
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-
-        let action_result = web_scraping_handle_action(
-            mock_user.clone(),
-            &api,
-            UtilsAction::Update {
-                resource_id: tracker.id,
-            },
-            UtilsResource::WebScrapingContent,
-            Some(UtilsActionParams::json(json!({
-                "name": "name_one_updated",
-                "url": "https://secutils.dev/update",
-                "settings": WebPageTrackerSettings {
-                    revisions: 10,
-                    delay: Duration::from_millis(3000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                "jobConfig": SchedulerJobConfig {
-                    schedule: "0 1 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: false,
-                },
-            }))),
-        )
-        .await?;
-        assert!(action_result.into_inner().is_none());
-
-        // Extract tracker to make sure it has been updated.
-        let updated_tracker = api
-            .web_scraping(&mock_user)
-            .get_content_tracker(tracker.id)
-            .await?
-            .unwrap();
-        assert_eq!(
-            updated_tracker,
-            WebPageTracker {
-                id: tracker.id,
-                name: "name_one_updated".to_string(),
-                url: "https://secutils.dev/update".parse()?,
-                user_id: mock_user.id,
-                job_id: None,
-                settings: WebPageTrackerSettings {
-                    revisions: 10,
-                    delay: Duration::from_millis(3000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 1 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: false,
-                }),
-                created_at: tracker.created_at,
-                updated_at: tracker.updated_at,
-                meta: None
-            }
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_handles_resources_delete_operation(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        let tracker = api
-            .web_scraping(&mock_user)
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-
+        let retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+        let retrack_delete_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::DELETE)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200).header("Content-Type", "application/json");
+        });
         let action_result = web_scraping_handle_action(
             mock_user.clone(),
             &api,
             UtilsAction::Delete {
                 resource_id: tracker.id,
             },
-            UtilsResource::WebScrapingResources,
+            UtilsResource::WebScrapingPage,
             None,
         )
         .await?;
         assert!(action_result.into_inner().is_none());
 
         // Extract tracker to make sure it has been updated.
-        let deleted_tracker = api
-            .web_scraping(&mock_user)
-            .get_resources_tracker(tracker.id)
-            .await?;
+        let deleted_tracker = web_scraping.get_page_tracker(tracker.id).await?;
         assert!(deleted_tracker.is_none());
+
+        retrack_get_api_mock.assert();
+        retrack_delete_api_mock.assert();
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn properly_handles_content_delete_operation(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
+    async fn properly_handles_get_page_tracker_history_operation(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
         let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let retrack_tracker = mock_retrack_tracker()?;
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+
+        // Insert a new user to the database.
+        let api = mock_api_with_config(pool, config).await?;
         api.db.insert_user(&mock_user).await?;
 
-        let tracker = api
-            .web_scraping(&mock_user)
-            .create_content_tracker(WebPageTrackerCreateParams {
+        let web_scraping = api.web_scraping(&mock_user);
+        let tracker = web_scraping
+            .create_page_tracker(PageTrackerCreateParams {
                 name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
+                config: PageTrackerConfig {
                     revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
+                    job: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                    }),
                 },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                },
+                notifications: true,
             })
             .await?;
+        retrack_create_api_mock.assert();
 
-        let action_result = web_scraping_handle_action(
-            mock_user.clone(),
-            &api,
-            UtilsAction::Delete {
-                resource_id: tracker.id,
-            },
-            UtilsResource::WebScrapingContent,
-            None,
-        )
-        .await?;
-        assert!(action_result.into_inner().is_none());
-
-        // Extract tracker to make sure it has been updated.
-        let deleted_tracker = api
-            .web_scraping(&mock_user)
-            .get_content_tracker(tracker.id)
-            .await?;
-        assert!(deleted_tracker.is_none());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn properly_handles_get_history_operation(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
-        let mock_user = mock_user()?;
-        api.db.insert_user(&mock_user).await?;
-
-        // Insert trackers and history.
-        let resources_tracker = api
-            .web_scraping(&mock_user)
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-        let content_tracker = api
-            .web_scraping(&mock_user)
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-        api.db
-            .web_scraping(mock_user.id)
-            .insert_web_page_tracker_history_revision::<WebPageResourcesTrackerInternalTag>(
-                &WebPageDataRevision {
-                    id: uuid!("00000000-0000-0000-0000-000000000001"),
-                    tracker_id: resources_tracker.id,
-                    data: WebPageResourcesData {
-                        scripts: vec![WebPageResourceInternal {
-                            url: Some(Url::parse("http://localhost:1234/script_one.js")?),
-                            content: None,
-                        }],
-                        styles: vec![WebPageResourceInternal {
-                            url: Some(Url::parse("http://localhost:1234/style_one.css")?),
-                            content: None,
-                        }],
-                    },
-                    created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
-                },
-            )
-            .await?;
-        api.db
-            .web_scraping(mock_user.id)
-            .insert_web_page_tracker_history_revision::<WebPageResourcesTrackerInternalTag>(
-                &WebPageDataRevision {
-                    id: uuid!("00000000-0000-0000-0000-000000000002"),
-                    tracker_id: resources_tracker.id,
-                    data: WebPageResourcesData {
-                        scripts: vec![WebPageResourceInternal {
-                            url: Some(Url::parse("http://localhost:1234/script_two.js")?),
-                            content: None,
-                        }],
-                        styles: vec![WebPageResourceInternal {
-                            url: Some(Url::parse("http://localhost:1234/style_two.css")?),
-                            content: None,
-                        }],
-                    },
-                    created_at: OffsetDateTime::from_unix_timestamp(946720900)?,
-                },
-            )
-            .await?;
-        api.db
-            .web_scraping(mock_user.id)
-            .insert_web_page_tracker_history_revision::<WebPageContentTrackerTag>(
-                &WebPageDataRevision {
-                    id: uuid!("00000000-0000-0000-0000-000000000003"),
-                    tracker_id: content_tracker.id,
-                    data: "some-data".to_string(),
-                    created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
-                },
-            )
-            .await?;
-        api.db
-            .web_scraping(mock_user.id)
-            .insert_web_page_tracker_history_revision::<WebPageContentTrackerTag>(
-                &WebPageDataRevision {
-                    id: uuid!("00000000-0000-0000-0000-000000000004"),
-                    tracker_id: content_tracker.id,
-                    data: "other-data".to_string(),
-                    created_at: OffsetDateTime::from_unix_timestamp(946720900)?,
-                },
-            )
-            .await?;
-
+        let retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+        let retrack_list_revisions_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}/revisions", retrack_tracker.id))
+                .query_param("calculateDiff", "false");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&[TrackerDataRevision {
+                    id: uuid!("00000000-0000-0000-0000-000000000100"),
+                    tracker_id: retrack_tracker.id,
+                    created_at: OffsetDateTime::from_unix_timestamp(946720800).unwrap(),
+                    data: TrackerDataValue::new(json!({ "one": 1 })),
+                }]);
+        });
         let action_result = web_scraping_handle_action(
             mock_user.clone(),
             &api,
             UtilsAction::Execute {
-                resource_id: Some(resources_tracker.id),
-                operation: UtilsResourceOperation::WebScrapingGetHistory,
+                resource_id: Some(tracker.id),
+                operation: UtilsResourceOperation::WebScrapingPageGetHistory,
             },
-            UtilsResource::WebScrapingResources,
-            Some(UtilsActionParams::json(json!({
-                "refresh": false,
-                "calculateDiff": true
-            }))),
-        )
-        .await?;
-
-        assert_json_snapshot!(
-            serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-            @r###""[{\"id\":\"00000000-0000-0000-0000-000000000001\",\"data\":{\"scripts\":[{\"url\":\"http://localhost:1234/script_one.js\"}],\"styles\":[{\"url\":\"http://localhost:1234/style_one.css\"}]},\"createdAt\":946720800},{\"id\":\"00000000-0000-0000-0000-000000000002\",\"data\":{\"scripts\":[{\"url\":\"http://localhost:1234/script_two.js\",\"diffStatus\":\"added\"},{\"url\":\"http://localhost:1234/script_one.js\",\"diffStatus\":\"removed\"}],\"styles\":[{\"url\":\"http://localhost:1234/style_two.css\",\"diffStatus\":\"added\"},{\"url\":\"http://localhost:1234/style_one.css\",\"diffStatus\":\"removed\"}]},\"createdAt\":946720900}]""###
-        );
-
-        let action_result = web_scraping_handle_action(
-            mock_user.clone(),
-            &api,
-            UtilsAction::Execute {
-                resource_id: Some(content_tracker.id),
-                operation: UtilsResourceOperation::WebScrapingGetHistory,
-            },
-            UtilsResource::WebScrapingContent,
+            UtilsResource::WebScrapingPage,
             Some(UtilsActionParams::json(json!({
                 "refresh": false
             }))),
@@ -875,195 +646,84 @@ pub mod tests {
         .await?;
 
         assert_json_snapshot!(
-            serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-            @r###""[{\"id\":\"00000000-0000-0000-0000-000000000003\",\"data\":\"some-data\",\"createdAt\":946720800},{\"id\":\"00000000-0000-0000-0000-000000000004\",\"data\":\"other-data\",\"createdAt\":946720900}]""###
+            serde_json::to_string(&action_result.into_inner().unwrap())?,
+            @r###""[{\"id\":\"00000000-0000-0000-0000-000000000100\",\"trackerId\":\"00000000-0000-0000-0000-000000000010\",\"data\":{\"original\":{\"one\":1}},\"createdAt\":946720800}]""###
         );
+
+        retrack_get_api_mock.assert();
+        retrack_list_revisions_api_mock.assert();
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn properly_handles_clear_history_operation(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api(pool).await?;
+    async fn properly_handles_clear_page_tracker_history_operation(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
         let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let retrack_tracker = mock_retrack_tracker()?;
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+
+        // Insert a new user to the database.
+        let api = mock_api_with_config(pool, config).await?;
         api.db.insert_user(&mock_user).await?;
 
-        // Insert tracker and history.
         let web_scraping = api.web_scraping(&mock_user);
-        let resources_tracker = web_scraping
-            .create_resources_tracker(WebPageTrackerCreateParams {
+        let tracker = web_scraping
+            .create_page_tracker(PageTrackerCreateParams {
                 name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
+                config: PageTrackerConfig {
                     revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
+                    job: Some(SchedulerJobConfig {
+                        schedule: "0 0 * * * *".to_string(),
+                        retry_strategy: None,
+                    }),
                 },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                },
+                notifications: true,
             })
             .await?;
-        let content_tracker = web_scraping
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "name_one".to_string(),
-                url: Url::parse("https://secutils.dev")?,
-                settings: WebPageTrackerSettings {
-                    revisions: 3,
-                    delay: Duration::from_millis(2000),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-        api.db
-            .web_scraping(mock_user.id)
-            .insert_web_page_tracker_history_revision::<WebPageResourcesTrackerInternalTag>(
-                &WebPageDataRevision {
-                    id: uuid!("00000000-0000-0000-0000-000000000001"),
-                    tracker_id: resources_tracker.id,
-                    data: WebPageResourcesData {
-                        scripts: vec![WebPageResourceInternal {
-                            url: Some(Url::parse("http://localhost:1234/script_one.js")?),
-                            content: None,
-                        }],
-                        styles: vec![WebPageResourceInternal {
-                            url: Some(Url::parse("http://localhost:1234/style_one.css")?),
-                            content: None,
-                        }],
-                    },
-                    created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
-                },
-            )
-            .await?;
-        api.db
-            .web_scraping(mock_user.id)
-            .insert_web_page_tracker_history_revision::<WebPageResourcesTrackerInternalTag>(
-                &WebPageDataRevision {
-                    id: uuid!("00000000-0000-0000-0000-000000000002"),
-                    tracker_id: resources_tracker.id,
-                    data: WebPageResourcesData {
-                        scripts: vec![WebPageResourceInternal {
-                            url: Some(Url::parse("http://localhost:1234/script_two.js")?),
-                            content: None,
-                        }],
-                        styles: vec![WebPageResourceInternal {
-                            url: Some(Url::parse("http://localhost:1234/style_two.css")?),
-                            content: None,
-                        }],
-                    },
-                    created_at: OffsetDateTime::from_unix_timestamp(946720900)?,
-                },
-            )
-            .await?;
-        api.db
-            .web_scraping(mock_user.id)
-            .insert_web_page_tracker_history_revision::<WebPageContentTrackerTag>(
-                &WebPageDataRevision {
-                    id: uuid!("00000000-0000-0000-0000-000000000003"),
-                    tracker_id: content_tracker.id,
-                    data: "some-data".to_string(),
-                    created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
-                },
-            )
-            .await?;
-        api.db
-            .web_scraping(mock_user.id)
-            .insert_web_page_tracker_history_revision::<WebPageContentTrackerTag>(
-                &WebPageDataRevision {
-                    id: uuid!("00000000-0000-0000-0000-000000000004"),
-                    tracker_id: content_tracker.id,
-                    data: "some-other-data".to_string(),
-                    created_at: OffsetDateTime::from_unix_timestamp(946720900)?,
-                },
-            )
-            .await?;
+        retrack_create_api_mock.assert();
 
-        assert_eq!(
-            api.web_scraping(&mock_user)
-                .get_resources_tracker_history(
-                    resources_tracker.id,
-                    WebPageResourcesTrackerGetHistoryParams {
-                        refresh: false,
-                        calculate_diff: false,
-                    }
-                )
-                .await?
-                .len(),
-            2
-        );
-        assert_eq!(
-            api.web_scraping(&mock_user)
-                .get_content_tracker_history(
-                    content_tracker.id,
-                    WebPageContentTrackerGetHistoryParams {
-                        refresh: false,
-                        calculate_diff: false
-                    }
-                )
-                .await?
-                .len(),
-            2
-        );
+        let retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+        let retrack_clear_revisions_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::DELETE)
+                .path(format!("/api/trackers/{}/revisions", retrack_tracker.id));
+            then.status(204).header("Content-Type", "application/json");
+        });
 
         let action_result = web_scraping_handle_action(
             mock_user.clone(),
             &api,
             UtilsAction::Execute {
-                resource_id: Some(resources_tracker.id),
-                operation: UtilsResourceOperation::WebScrapingClearHistory,
+                resource_id: Some(tracker.id),
+                operation: UtilsResourceOperation::WebScrapingPageClearHistory,
             },
-            UtilsResource::WebScrapingResources,
+            UtilsResource::WebScrapingPage,
             None,
         )
         .await?;
         assert!(action_result.into_inner().is_none());
-
-        let action_result = web_scraping_handle_action(
-            mock_user.clone(),
-            &api,
-            UtilsAction::Execute {
-                resource_id: Some(content_tracker.id),
-                operation: UtilsResourceOperation::WebScrapingClearHistory,
-            },
-            UtilsResource::WebScrapingContent,
-            None,
-        )
-        .await?;
-        assert!(action_result.into_inner().is_none());
-
-        assert!(
-            api.web_scraping(&mock_user)
-                .get_resources_tracker_history(
-                    resources_tracker.id,
-                    WebPageResourcesTrackerGetHistoryParams {
-                        refresh: false,
-                        calculate_diff: false,
-                    }
-                )
-                .await?
-                .is_empty()
-        );
-        assert!(
-            api.web_scraping(&mock_user)
-                .get_content_tracker_history(
-                    content_tracker.id,
-                    WebPageContentTrackerGetHistoryParams {
-                        refresh: false,
-                        calculate_diff: false
-                    }
-                )
-                .await?
-                .is_empty()
-        );
+        retrack_get_api_mock.assert();
+        retrack_clear_revisions_api_mock.assert();
 
         Ok(())
     }

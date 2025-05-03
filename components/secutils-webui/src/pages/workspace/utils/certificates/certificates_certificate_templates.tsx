@@ -244,7 +244,7 @@ export default function CertificatesCertificateTemplates() {
               name: (
                 <EuiToolTip content="A unique name of the certificate template">
                   <span>
-                    Name <EuiIcon size="s" color="subdued" type="questionInCircle" className="eui-alignTop" />
+                    Name <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
                   </span>
                 </EuiToolTip>
               ),
@@ -257,7 +257,7 @@ export default function CertificatesCertificateTemplates() {
               name: (
                 <EuiToolTip content="Specifies whether the certificate can be used to sign other certificates (Certification Authority) or not.">
                   <span>
-                    Type <EuiIcon size="s" color="subdued" type="questionInCircle" className="eui-alignTop" />
+                    Type <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
                   </span>
                 </EuiToolTip>
               ),

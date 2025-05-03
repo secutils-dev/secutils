@@ -6,7 +6,7 @@ use raw_util::RawUtil;
 use sqlx::query_as;
 use std::collections::HashMap;
 
-/// Extends primary database with the utility-related methods.
+/// Extends the primary database with the utility-related methods.
 impl Database {
     /// Retrieves all utils from the `Utils` table.
     pub async fn get_utils(&self) -> anyhow::Result<Vec<Util>> {

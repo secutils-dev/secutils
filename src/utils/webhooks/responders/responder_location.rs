@@ -58,17 +58,17 @@ impl FromStr for ResponderLocation {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = s.splitn(3, ':').collect();
-        if parts.len() == 3 {
-            if let Ok(path_type) = parts[1].parse() {
-                return Ok(ResponderLocation {
-                    subdomain_prefix: match parts[0] {
-                        "" => None,
-                        subdomain_prefix => Some(subdomain_prefix.to_ascii_lowercase()),
-                    },
-                    path_type,
-                    path: parts[2].to_ascii_lowercase(),
-                });
-            }
+        if parts.len() == 3
+            && let Ok(path_type) = parts[1].parse()
+        {
+            return Ok(ResponderLocation {
+                subdomain_prefix: match parts[0] {
+                    "" => None,
+                    subdomain_prefix => Some(subdomain_prefix.to_ascii_lowercase()),
+                },
+                path_type,
+                path: parts[2].to_ascii_lowercase(),
+            });
         }
         Err(anyhow::anyhow!("Invalid location format: {s}"))
     }

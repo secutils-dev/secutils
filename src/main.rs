@@ -8,6 +8,7 @@ mod error;
 mod js_runtime;
 mod network;
 mod notifications;
+mod retrack;
 mod scheduler;
 mod search;
 mod security;
@@ -73,14 +74,11 @@ fn main() -> Result<(), anyhow::Error> {
 mod tests {
     use crate::{
         api::Api,
-        config::{ComponentsConfig, Config, SchedulerJobsConfig, SmtpConfig, SubscriptionsConfig},
+        config::{Config, SchedulerJobsConfig, SmtpConfig, SubscriptionsConfig},
         database::Database,
         network::{DnsResolver, Network},
         search::SearchItem,
         users::{User, UserId},
-        utils::web_scraping::{
-            WebPageResource, WebPageResourceContent, WebPageResourceContentData,
-        },
     };
     use lettre::transport::stub::AsyncStubTransport;
     use std::{collections::HashMap, ops::Add, time::Duration};
@@ -90,13 +88,15 @@ mod tests {
     use url::Url;
 
     use crate::{
-        config::{DatabaseConfig, SecurityConfig, SubscriptionConfig, UtilsConfig},
+        config::SubscriptionConfig,
         search::SearchIndex,
         templates::create_templates,
         users::{SubscriptionTier, UserSubscription},
     };
     pub use crate::{network::tests::*, scheduler::tests::*, server::tests::*, utils::tests::*};
     use ctor::ctor;
+    use reqwest::Client;
+    use reqwest_middleware::ClientBuilder;
     use sqlx::{PgPool, postgres::PgDatabaseError};
     use uuid::uuid;
 
@@ -197,41 +197,6 @@ mod tests {
         }
     }
 
-    pub struct MockWebPageResourceBuilder {
-        resource: WebPageResource,
-    }
-
-    impl MockWebPageResourceBuilder {
-        pub fn with_content(data: WebPageResourceContentData, size: usize) -> Self {
-            Self {
-                resource: WebPageResource {
-                    content: Some(WebPageResourceContent { data, size }),
-                    url: None,
-                    diff_status: None,
-                },
-            }
-        }
-
-        pub fn with_url(url: Url) -> Self {
-            Self {
-                resource: WebPageResource {
-                    content: None,
-                    url: Some(url),
-                    diff_status: None,
-                },
-            }
-        }
-
-        pub fn set_content(mut self, data: WebPageResourceContentData, size: usize) -> Self {
-            self.resource.content = Some(WebPageResourceContent { data, size });
-            self
-        }
-
-        pub fn build(self) -> WebPageResource {
-            self.resource
-        }
-    }
-
     pub fn to_database_error(err: anyhow::Error) -> anyhow::Result<Box<PgDatabaseError>> {
         Ok(err
             .downcast::<sqlx::Error>()?
@@ -263,21 +228,20 @@ mod tests {
     pub fn mock_config() -> anyhow::Result<Config> {
         Ok(Config {
             public_url: Url::parse("https://secutils.dev")?,
-            db: DatabaseConfig::default(),
-            utils: UtilsConfig::default(),
+            db: Default::default(),
+            http: Default::default(),
+            utils: Default::default(),
             smtp: Some(SmtpConfig {
                 username: "dev@secutils.dev".to_string(),
                 password: "password".to_string(),
                 address: "localhost".to_string(),
                 catch_all: None,
             }),
-            components: ComponentsConfig::default(),
+            components: Default::default(),
             scheduler: SchedulerJobsConfig {
-                web_page_trackers_schedule: "0 * 0 * * *".to_string(),
-                web_page_trackers_fetch: "0 * 1 * * *".to_string(),
                 notifications_send: "0 * 2 * * *".to_string(),
             },
-            security: SecurityConfig::default(),
+            security: Default::default(),
             subscriptions: SubscriptionsConfig {
                 manage_url: Some(Url::parse("http://localhost:1234/subscription")?),
                 feature_overview_url: Some(Url::parse("http://localhost:1234/features")?),
@@ -286,11 +250,16 @@ mod tests {
                 professional: SubscriptionConfig::default(),
                 ultimate: SubscriptionConfig::default(),
             },
+            retrack: Default::default(),
         })
     }
 
     pub fn mock_network() -> Network<MockResolver, AsyncStubTransport> {
-        Network::new(MockResolver::new(), AsyncStubTransport::new_ok())
+        Network::new(
+            MockResolver::new(),
+            AsyncStubTransport::new_ok(),
+            ClientBuilder::new(Client::builder().build().unwrap()).build(),
+        )
     }
 
     pub fn mock_network_with_records<const N: usize>(
@@ -299,6 +268,7 @@ mod tests {
         Network::new(
             MockResolver::new_with_records::<N>(records),
             AsyncStubTransport::new_ok(),
+            ClientBuilder::new(Client::builder().build().unwrap()).build(),
         )
     }
 
@@ -338,21 +308,6 @@ mod tests {
             OffsetDateTime::now_utc()
                 .add(Duration::from_secs(secs))
                 .second()
-        )
-    }
-
-    pub fn mock_schedule_in_secs(secs: &[u64]) -> String {
-        format!(
-            "{} * * * * *",
-            secs.iter()
-                .map(|secs| {
-                    OffsetDateTime::now_utc()
-                        .add(Duration::from_secs(*secs))
-                        .second()
-                        .to_string()
-                })
-                .collect::<Vec<_>>()
-                .join(",")
         )
     }
 

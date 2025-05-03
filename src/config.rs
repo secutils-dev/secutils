@@ -1,6 +1,8 @@
 mod components_config;
 mod database_config;
+mod http_config;
 mod raw_config;
+mod retrack_config;
 mod scheduler_jobs_config;
 mod security_config;
 mod smtp_catch_all_config;
@@ -13,7 +15,9 @@ use url::Url;
 pub use self::{
     components_config::ComponentsConfig,
     database_config::DatabaseConfig,
+    http_config::HttpConfig,
     raw_config::RawConfig,
+    retrack_config::RetrackConfig,
     scheduler_jobs_config::SchedulerJobsConfig,
     security_config::SecurityConfig,
     smtp_catch_all_config::SmtpCatchAllConfig,
@@ -42,12 +46,16 @@ pub struct Config {
     pub utils: UtilsConfig,
     /// Configuration for the SMTP functionality.
     pub smtp: Option<SmtpConfig>,
+    /// Configuration for the HTTP functionality.
+    pub http: HttpConfig,
     /// Configuration for the components that are deployed separately.
     pub components: ComponentsConfig,
     /// Configuration for the scheduler jobs.
     pub scheduler: SchedulerJobsConfig,
     /// Configuration related to the Secutils.dev subscriptions.
     pub subscriptions: SubscriptionsConfig,
+    /// Configuration for the Retrack service.
+    pub retrack: RetrackConfig,
 }
 
 impl AsRef<Config> for Config {
@@ -63,10 +71,12 @@ impl From<RawConfig> for Config {
             db: raw_config.db,
             security: raw_config.security,
             smtp: raw_config.smtp,
+            http: raw_config.http,
             components: raw_config.components,
             subscriptions: raw_config.subscriptions,
             utils: raw_config.utils,
             scheduler: raw_config.scheduler,
+            retrack: raw_config.retrack,
         }
     }
 }
@@ -143,6 +153,14 @@ mod tests {
                     ),
                 },
             ),
+            http: HttpConfig {
+                client: HttpClientConfig {
+                    timeout: 30s,
+                    pool_idle_timeout: 5s,
+                    max_retries: 3,
+                    verbose: false,
+                },
+            },
             components: ComponentsConfig {
                 kratos_url: Url {
                     scheme: "http",
@@ -178,28 +196,9 @@ mod tests {
                     query: None,
                     fragment: None,
                 },
-                web_scraper_url: Url {
-                    scheme: "http",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: Some(
-                        Domain(
-                            "localhost",
-                        ),
-                    ),
-                    port: Some(
-                        7272,
-                    ),
-                    path: "/",
-                    query: None,
-                    fragment: None,
-                },
                 search_index_version: 4,
             },
             scheduler: SchedulerJobsConfig {
-                web_page_trackers_schedule: "0 * * * * *",
-                web_page_trackers_fetch: "0 * * * * *",
                 notifications_send: "0/30 * * * * *",
             },
             subscriptions: SubscriptionsConfig {
@@ -318,6 +317,25 @@ mod tests {
                         policies: 1000,
                         import_policy_from_url: true,
                     },
+                },
+            },
+            retrack: RetrackConfig {
+                host: Url {
+                    scheme: "http",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: Some(
+                        Domain(
+                            "localhost",
+                        ),
+                    ),
+                    port: Some(
+                        7676,
+                    ),
+                    path: "/",
+                    query: None,
+                    fragment: None,
                 },
             },
         }

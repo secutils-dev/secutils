@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.2
 
-FROM --platform=$BUILDPLATFORM rust:1.86-slim-bookworm AS server_builder
+FROM --platform=$BUILDPLATFORM rust:1.88-slim-bookworm AS server_builder
 ARG TARGETPLATFORM
 
 ## Statically link binary to OpenSSL libraries.

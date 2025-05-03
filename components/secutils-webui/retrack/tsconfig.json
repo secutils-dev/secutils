@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["es2024", "ESNext.Array", "ESNext.Collection", "dom"],
+    "module": "nodenext",
+    "target": "es2022",
+    "esModuleInterop": true,
+    "moduleResolution": "node16",
+    "types": ["node"]
+  },
+  "include": [
+    "*"
+  ]
+}

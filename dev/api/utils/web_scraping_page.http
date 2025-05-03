@@ -1,0 +1,21 @@
+@user_id = 0d9e379f-c7b8-439e-910b-31b2af7b7cd7
+@tracker_id = 0196d4ee-176a-7710-9a55-4cd0ae0dfb87
+@revision_id = 0196d504-67a2-7590-9a2e-ce6a1e05a911
+
+### Call webhook
+POST {{tunnel-host}}/api/webhooks/retrack
+Authorization: {{retrack-operator-credentials}}
+Accept: application/json
+Content-Type: application/json
+
+{
+  "payload": "Some payload",
+  "revision": {
+    "id": "{{revision_id}}",
+    "trackerId": "{{tracker_id}}",
+    "data": {
+      "original": "Some payload"
+    },
+    "createdAt": 1697059200
+  }
+}

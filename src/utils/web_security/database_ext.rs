@@ -189,7 +189,7 @@ WHERE user_id = $1 AND id = $2
 
 impl Database {
     /// Returns a database extension for the web security utility-related operations.
-    pub fn web_security(&self) -> WebSecurityDatabaseExt {
+    pub fn web_security(&self) -> WebSecurityDatabaseExt<'_> {
         WebSecurityDatabaseExt::new(&self.pool)
     }
 }

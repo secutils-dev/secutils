@@ -1,27 +1,18 @@
-mod api_ext;
 mod cron_ext;
 mod database_ext;
 mod job_ext;
 mod scheduler_job;
 mod scheduler_job_config;
 mod scheduler_job_metadata;
-mod scheduler_job_retry_state;
-mod scheduler_job_retry_strategy;
 mod scheduler_jobs;
 
 pub use self::{
-    cron_ext::CronExt, scheduler_job::SchedulerJob, scheduler_job_config::SchedulerJobConfig,
-    scheduler_job_metadata::SchedulerJobMetadata,
-    scheduler_job_retry_state::SchedulerJobRetryState,
-    scheduler_job_retry_strategy::SchedulerJobRetryStrategy,
+    cron_ext::CronExt, scheduler_job::SchedulerJob, scheduler_job_metadata::SchedulerJobMetadata,
 };
 use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport, EmailTransportError},
-    scheduler::scheduler_jobs::{
-        NotificationsSendJob, WebPageTrackersFetchJob, WebPageTrackersScheduleJob,
-        WebPageTrackersTriggerJob,
-    },
+    scheduler::scheduler_jobs::NotificationsSendJob,
 };
 use anyhow::anyhow;
 use futures::{StreamExt, pin_mut};
@@ -94,20 +85,6 @@ where
 
         // First, try to resume existing jobs.
         let resumed_unique_jobs = scheduler.resume().await?;
-        if !resumed_unique_jobs.contains(&SchedulerJob::WebPageTrackersSchedule) {
-            scheduler
-                .inner_scheduler
-                .add(WebPageTrackersScheduleJob::create(scheduler.api.clone()).await?)
-                .await?;
-        }
-
-        if !resumed_unique_jobs.contains(&SchedulerJob::WebPageTrackersFetch) {
-            scheduler
-                .inner_scheduler
-                .add(WebPageTrackersFetchJob::create(scheduler.api.clone()).await?)
-                .await?;
-        }
-
         if !resumed_unique_jobs.contains(&SchedulerJob::NotificationsSend) {
             scheduler
                 .inner_scheduler
@@ -137,8 +114,8 @@ where
                 .and_then(|extra| SchedulerJobMetadata::try_from(extra.as_ref()));
             let job_meta = match job_meta {
                 Ok(job_meta) if unique_resumed_jobs.contains(&job_meta.job_type) => {
-                    // There can only be one job of each type. If we detect that there are multiple, we log
-                    // a warning and remove the job, keeping only the first one.
+                    // There can only be one job of each type. If we detect that there are multiple jobs,
+                    // we log a warning and remove the job, keeping only the first one.
                     error!(
                         "Found multiple jobs of type `{:?}`. All duplicated jobs except for the first one will be removed.",
                         job_meta.job_type
@@ -147,7 +124,7 @@ where
                     continue;
                 }
                 Err(err) => {
-                    // We don't fail here, because we want to gracefully handle the legacy jobs.
+                    // We don't fail here because we want to gracefully handle the legacy jobs.
                     error!(
                         "Failed to deserialize job type for job `{job_data:?}`: {err:?}. The job will be removed."
                     );
@@ -157,18 +134,9 @@ where
                 Ok(job_meta) => job_meta,
             };
 
-            // First try to resume the job, and if it's not possible, the job will be removed and
+            // First, try to resume the job, and if it's not possible, the job will be removed and
             // re-scheduled at a later step if needed.
             let job = match &job_meta.job_type {
-                SchedulerJob::WebPageTrackersTrigger { kind } => {
-                    WebPageTrackersTriggerJob::try_resume(self.api.clone(), job_data, *kind).await?
-                }
-                SchedulerJob::WebPageTrackersSchedule => {
-                    WebPageTrackersScheduleJob::try_resume(self.api.clone(), job_data).await?
-                }
-                SchedulerJob::WebPageTrackersFetch => {
-                    WebPageTrackersFetchJob::try_resume(self.api.clone(), job_data).await?
-                }
                 SchedulerJob::NotificationsSend => {
                     NotificationsSendJob::try_resume(self.api.clone(), job_data).await?
                 }
@@ -201,13 +169,8 @@ where
 pub mod tests {
     use crate::{
         config::{Config, DatabaseConfig},
-        scheduler::{
-            Scheduler, SchedulerJobConfig, SchedulerJobMetadata, scheduler_job::SchedulerJob,
-        },
-        tests::{mock_api_with_config, mock_config, mock_user},
-        utils::web_scraping::{
-            WebPageTrackerKind, WebPageTrackerSettings, tests::WebPageTrackerCreateParams,
-        },
+        scheduler::{Scheduler, SchedulerJobMetadata, scheduler_job::SchedulerJob},
+        tests::{mock_api_with_config, mock_config},
     };
     use anyhow::anyhow;
     use futures::StreamExt;
@@ -307,91 +270,11 @@ pub mod tests {
     #[sqlx::test]
     async fn can_resume_jobs(pool: PgPool) -> anyhow::Result<()> {
         let mock_config = mock_scheduler_config(&pool).await?;
-        let user = mock_user()?;
         let api = Arc::new(mock_api_with_config(pool, mock_config).await?);
 
-        let resources_trigger_job_id = uuid!("00000000-0000-0000-0000-000000000001");
-        let content_trigger_job_id = uuid!("00000000-0000-0000-0000-000000000002");
-        let schedule_job_id = uuid!("00000000-0000-0000-0000-000000000003");
-        let notifications_send_job_id = uuid!("00000000-0000-0000-0000-000000000004");
+        let notifications_send_job_id = uuid!("00000000-0000-0000-0000-000000000001");
 
-        // Create user, trackers and tracker jobs.
-        api.db.upsert_user(user.clone()).await?;
-        let resources_tracker = api
-            .web_scraping(&user)
-            .create_resources_tracker(WebPageTrackerCreateParams {
-                name: "tracker-one".to_string(),
-                url: "https://localhost:1234/my/app?q=2".parse()?,
-                settings: WebPageTrackerSettings {
-                    revisions: 1,
-                    delay: Default::default(),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "1 2 3 4 5 6".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-        let content_tracker = api
-            .web_scraping(&user)
-            .create_content_tracker(WebPageTrackerCreateParams {
-                name: "tracker-one".to_string(),
-                url: "https://localhost:1234/my/app?q=2".parse()?,
-                settings: WebPageTrackerSettings {
-                    revisions: 1,
-                    delay: Default::default(),
-                    scripts: Default::default(),
-                    headers: Default::default(),
-                },
-                job_config: Some(SchedulerJobConfig {
-                    schedule: "1 2 3 4 5 6".to_string(),
-                    retry_strategy: None,
-                    notifications: true,
-                }),
-            })
-            .await?;
-        api.web_scraping_system()
-            .update_web_page_tracker_job(resources_tracker.id, Some(resources_trigger_job_id))
-            .await?;
-        api.web_scraping_system()
-            .update_web_page_tracker_job(content_tracker.id, Some(content_trigger_job_id))
-            .await?;
-
-        // Add job registrations.
-        mock_upsert_scheduler_job(
-            &api.db,
-            &mock_scheduler_job(
-                resources_trigger_job_id,
-                SchedulerJob::WebPageTrackersTrigger {
-                    kind: WebPageTrackerKind::WebPageResources,
-                },
-                "1 2 3 4 5 6",
-            ),
-        )
-        .await?;
-        mock_upsert_scheduler_job(
-            &api.db,
-            &mock_scheduler_job(
-                content_trigger_job_id,
-                SchedulerJob::WebPageTrackersTrigger {
-                    kind: WebPageTrackerKind::WebPageContent,
-                },
-                "1 2 3 4 5 6",
-            ),
-        )
-        .await?;
-        mock_upsert_scheduler_job(
-            &api.db,
-            &mock_scheduler_job(
-                schedule_job_id,
-                SchedulerJob::WebPageTrackersSchedule,
-                "0 * 0 * * *",
-            ),
-        )
-        .await?;
+        // Insert a job that should be resumed.
         mock_upsert_scheduler_job(
             &api.db,
             &mock_scheduler_job(
@@ -403,31 +286,6 @@ pub mod tests {
         .await?;
 
         let mut scheduler = Scheduler::start(api.clone()).await?;
-
-        assert!(
-            scheduler
-                .inner_scheduler
-                .next_tick_for_job(resources_trigger_job_id)
-                .await?
-                .is_some()
-        );
-
-        assert!(
-            scheduler
-                .inner_scheduler
-                .next_tick_for_job(content_trigger_job_id)
-                .await?
-                .is_some()
-        );
-
-        assert!(
-            scheduler
-                .inner_scheduler
-                .next_tick_for_job(schedule_job_id)
-                .await?
-                .is_some()
-        );
-
         assert!(
             scheduler
                 .inner_scheduler
@@ -446,7 +304,7 @@ pub mod tests {
         Scheduler::start(api.clone()).await?;
 
         let jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
-        assert_eq!(jobs.len(), 3);
+        assert_eq!(jobs.len(), 1);
 
         let mut jobs = jobs
             .into_iter()
@@ -460,31 +318,6 @@ pub mod tests {
                 0,
                 Some(
                     [
-                        1,
-                        0,
-                    ],
-                ),
-                Some(
-                    "0 * 0 * * *",
-                ),
-            ),
-            (
-                0,
-                Some(
-                    [
-                        2,
-                        0,
-                    ],
-                ),
-                Some(
-                    "0 * 1 * * *",
-                ),
-            ),
-            (
-                0,
-                Some(
-                    [
-                        3,
                         0,
                     ],
                 ),
@@ -503,31 +336,9 @@ pub mod tests {
         let mock_config = mock_scheduler_config(&pool).await?;
         let api = Arc::new(mock_api_with_config(pool, mock_config).await?);
 
-        let schedule_job_id = uuid!("00000000-0000-0000-0000-000000000001");
-        let fetch_job_id = uuid!("00000000-0000-0000-0000-000000000002");
-        let notifications_send_job_id = uuid!("00000000-0000-0000-0000-000000000003");
+        let notifications_send_job_id = uuid!("00000000-0000-0000-0000-000000000001");
 
         // Add job registration.
-        mock_upsert_scheduler_job(
-            &api.db,
-            &mock_scheduler_job(
-                schedule_job_id,
-                SchedulerJob::WebPageTrackersSchedule,
-                // Different schedule - every hour, not every minute.
-                "0 0 * * * * *",
-            ),
-        )
-        .await?;
-        mock_upsert_scheduler_job(
-            &api.db,
-            &mock_scheduler_job(
-                fetch_job_id,
-                SchedulerJob::WebPageTrackersFetch,
-                // Different schedule - every day, not every minute.
-                "0 0 0 * * * *",
-            ),
-        )
-        .await?;
         mock_upsert_scheduler_job(
             &api.db,
             &mock_scheduler_job(
@@ -543,23 +354,13 @@ pub mod tests {
 
         // Old jobs should have been removed.
         assert!(
-            mock_get_scheduler_job(&api.db, schedule_job_id)
-                .await?
-                .is_none()
-        );
-        assert!(
-            mock_get_scheduler_job(&api.db, fetch_job_id)
-                .await?
-                .is_none()
-        );
-        assert!(
             mock_get_scheduler_job(&api.db, notifications_send_job_id)
                 .await?
                 .is_none()
         );
 
         let jobs = api.db.get_scheduler_jobs(10).collect::<Vec<_>>().await;
-        assert_eq!(jobs.len(), 3);
+        assert_eq!(jobs.len(), 1);
 
         let mut jobs = jobs
             .into_iter()
@@ -573,31 +374,6 @@ pub mod tests {
                 0,
                 Some(
                     [
-                        1,
-                        0,
-                    ],
-                ),
-                Some(
-                    "0 * 0 * * *",
-                ),
-            ),
-            (
-                0,
-                Some(
-                    [
-                        2,
-                        0,
-                    ],
-                ),
-                Some(
-                    "0 * 1 * * *",
-                ),
-            ),
-            (
-                0,
-                Some(
-                    [
-                        3,
                         0,
                     ],
                 ),

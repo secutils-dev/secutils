@@ -386,8 +386,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
 
         if policy.name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
             bail!(SecutilsError::client(format!(
-                "Content security policy name cannot be longer than {} characters.",
-                MAX_UTILS_ENTITY_NAME_LENGTH
+                "Content security policy name cannot be longer than {MAX_UTILS_ENTITY_NAME_LENGTH} characters."
             )));
         }
 
@@ -452,7 +451,7 @@ mod tests {
     use httpmock::MockServer;
     use insta::assert_debug_snapshot;
     use sqlx::PgPool;
-    use std::net::Ipv4Addr;
+    use std::{net::Ipv4Addr, slice};
     use trust_dns_resolver::{
         Name,
         proto::rr::{RData, Record, rdata::A},
@@ -1676,7 +1675,7 @@ mod tests {
             web_security
                 .get_content_security_policies(mock_user.id)
                 .await?,
-            [policy_two.clone()]
+            slice::from_ref(&policy_two)
         );
 
         web_security

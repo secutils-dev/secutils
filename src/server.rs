@@ -6,13 +6,15 @@ mod ui_state;
 
 #[cfg(test)]
 pub use self::app_state::tests;
+pub use self::ui_state::{Status, StatusLevel, SubscriptionState, UiState, WebhookUrlType};
+
 use crate::{
     api::Api,
     config::Config,
     database::Database,
     directories::Directories,
     js_runtime::JsRuntime,
-    network::{Network, TokioDnsResolver},
+    network::Network,
     scheduler::Scheduler,
     search::{SearchIndex, populate_search_index},
     templates::create_templates,
@@ -21,15 +23,10 @@ use actix_cors::Cors;
 use actix_web::{App, HttpServer, Result, middleware, web};
 use anyhow::Context;
 pub use app_state::AppState;
-use lettre::{
-    AsyncSmtpTransport, Tokio1Executor, message::Mailbox,
-    transport::smtp::authentication::Credentials,
-};
 use sqlx::postgres::PgPoolOptions;
-use std::{str::FromStr, sync::Arc};
+use std::sync::Arc;
 use tracing::info;
 use tracing_actix_web::TracingLogger;
-pub use ui_state::{Status, StatusLevel, SubscriptionState, UiState, WebhookUrlType};
 
 #[tokio::main]
 pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
@@ -63,27 +60,11 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
     )
     .await?;
 
-    let email_transport = if let Some(ref smtp_config) = config.smtp {
-        if let Some(ref catch_all_config) = smtp_config.catch_all {
-            Mailbox::from_str(catch_all_config.recipient.as_str())
-                .with_context(|| "Cannot parse SMTP catch-all recipient.")?;
-        }
-
-        AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp_config.address)?
-            .credentials(Credentials::new(
-                smtp_config.username.clone(),
-                smtp_config.password.clone(),
-            ))
-            .build()
-    } else {
-        AsyncSmtpTransport::<Tokio1Executor>::unencrypted_localhost()
-    };
-
     let api = Arc::new(Api::new(
         config.clone(),
         database,
         search_index,
-        Network::new(TokioDnsResolver::create(), email_transport),
+        Network::create(&config)?,
         create_templates()?,
     ));
 
@@ -111,6 +92,10 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
                     .route(
                         "/user/subscription",
                         web::post().to(handlers::security_subscription_update),
+                    )
+                    .route(
+                        "/webhooks/retrack",
+                        web::post().to(handlers::webhooks_retrack),
                     )
                     .route(
                         "/webhooks/{user_handle}/{responder_path:.*}",
@@ -151,7 +136,7 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
             )
     });
 
-    let http_server_url = format!("0.0.0.0:{}", http_port);
+    let http_server_url = format!("0.0.0.0:{http_port}");
     let http_server = http_server
         .bind(&http_server_url)
         .with_context(|| format!("Failed to bind to {}.", &http_server_url))?;

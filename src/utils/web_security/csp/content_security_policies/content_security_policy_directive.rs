@@ -120,7 +120,7 @@ impl TryFrom<ContentSecurityPolicyDirective> for String {
 
                 let directive_name = directive.get("name")?.as_str()?;
                 Some(if let Some(directive_value) = directive_value {
-                    format!("{} {}", directive_name, directive_value)
+                    format!("{directive_name} {directive_value}")
                 } else {
                     directive_name.to_string()
                 })

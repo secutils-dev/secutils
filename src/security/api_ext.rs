@@ -10,7 +10,7 @@ use crate::{
     users::{User, UserId, UserSignupError, UserSubscription},
 };
 use actix_web::cookie::Cookie;
-use anyhow::{Context, anyhow};
+use anyhow::{Context, anyhow, bail};
 use hex::ToHex;
 use jsonwebtoken::{DecodingKey, Validation, decode};
 use rand_core::{OsRng, TryRngCore};
@@ -37,8 +37,8 @@ where
     /// Signs up a user with the specified email and credentials. If the user with such email is
     /// already registered, this method throws.
     /// NOTE: User isn't required to activate profile right away and can use application without
-    /// activation. After signup, we'll send email with the activation code, and will re-send it
-    /// after 7 days, then after 14 days, and after 30 days we'll terminate account with a large
+    /// activation. After signup, we'll send an email with the activation code, and will re-send it
+    /// after 7 days, then after 14 days, and after 30 days we'll terminate the account with a large
     /// warning in the application. Users will be able to request another activation link from their
     /// profile page.
     pub async fn signup(&self, user: &User) -> anyhow::Result<()> {
@@ -66,7 +66,7 @@ where
     }
 
     /// Authenticates user with the specified credentials.
-    pub async fn authenticate(&self, credentials: Credentials) -> anyhow::Result<Option<User>> {
+    pub async fn authenticate(&self, credentials: &Credentials) -> anyhow::Result<Option<User>> {
         let identity = match &credentials {
             Credentials::Jwt(token) => {
                 self.get_identity_by_email(&self.get_jwt_claims(token).await?.sub)
@@ -101,7 +101,7 @@ where
     }
 
     /// Terminates user's subscription, removes Kratos identity, and user information. If the user
-    /// or Kratos identity were found, returns the user ID.
+    /// or Kratos identity is found, return the user ID.
     pub async fn terminate(&self, user_email: &str) -> anyhow::Result<Option<UserId>> {
         // Check if the identity for the user with specified email exists.
         let identity = self
@@ -112,7 +112,7 @@ where
             self.delete_identity(identity.id).await?;
             Some(UserId::from(identity.id))
         } else {
-            warn!("User with email `{}` doesn't exist.", user_email);
+            warn!("User with email `{user_email}` doesn't exist.");
             None
         };
 
@@ -126,8 +126,11 @@ where
     }
 
     /// Checks if the user or service account with specified credentials is an operator.
-    pub async fn get_operator(&self, credentials: Credentials) -> anyhow::Result<Option<Operator>> {
-        let operator_id = match &credentials {
+    pub async fn get_operator(
+        &self,
+        credentials: &Credentials,
+    ) -> anyhow::Result<Option<Operator>> {
+        let operator_id = match credentials {
             // If the user is authenticated with a session cookie, user's email is used as an
             // operator identifier.
             Credentials::SessionCookie(cooke) => {
@@ -154,8 +157,10 @@ where
         &self,
         cookie: &Cookie<'_>,
     ) -> anyhow::Result<Option<Identity>> {
-        let client = reqwest::Client::new();
-        let request_builder = client
+        let request_builder = self
+            .api
+            .network
+            .http_client
             .request(
                 reqwest::Method::GET,
                 format!(
@@ -175,7 +180,7 @@ where
             }
         };
 
-        let response = match client.execute(request).await {
+        let response = match self.api.network.http_client.execute(request).await {
             Ok(response) => response,
             Err(err) => {
                 error!("Cannot execute Kratos request: {err:?}");
@@ -208,10 +213,9 @@ where
             .map(|session| session.identity)?)
     }
 
-    /// Tries to retrieve user identity from Kratos using specified email.
+    /// Tries to retrieve user identity from Kratos using the specified email.
     async fn get_identity_by_email(&self, email: &str) -> anyhow::Result<Option<Identity>> {
-        let client = reqwest::Client::new();
-        let request_builder = client.request(
+        let request_builder = self.api.network.http_client.request(
             reqwest::Method::GET,
             format!(
                 "{}admin/identities?credentials_identifier={}",
@@ -224,15 +228,15 @@ where
             Ok(client) => client,
             Err(err) => {
                 error!("Cannot build Kratos request: {err:?}");
-                return Err(anyhow!(err));
+                bail!(err);
             }
         };
 
-        let response = match client.execute(request).await {
+        let response = match self.api.network.http_client.execute(request).await {
             Ok(response) => response,
             Err(err) => {
                 error!("Cannot execute Kratos request: {err:?}");
-                return Err(anyhow!(err));
+                bail!(err);
             }
         };
 
@@ -263,8 +267,7 @@ where
 
     /// Deletes user identity from Kratos.
     async fn delete_identity(&self, id: Uuid) -> anyhow::Result<()> {
-        let client = reqwest::Client::new();
-        let request_builder = client.request(
+        let request_builder = self.api.network.http_client.request(
             reqwest::Method::DELETE,
             format!(
                 "{}admin/identities/{id}",
@@ -276,15 +279,15 @@ where
             Ok(client) => client,
             Err(err) => {
                 error!("Cannot build Kratos DELETE identity request: {err:?}");
-                return Err(anyhow!(err));
+                bail!(err);
             }
         };
 
-        let response = match client.execute(request).await {
+        let response = match self.api.network.http_client.execute(request).await {
             Ok(response) => response,
             Err(err) => {
                 error!("Cannot execute Kratos DELETE identity request: {err:?}");
-                return Err(anyhow!(err));
+                bail!(err);
             }
         };
 
@@ -362,7 +365,7 @@ where
     ET::Error: EmailTransportError,
 {
     /// Returns an API to work with security related tasks.
-    pub fn security(&self) -> SecurityApiExt<DR, ET> {
+    pub fn security(&self) -> SecurityApiExt<'_, DR, ET> {
         SecurityApiExt::new(self)
     }
 }

@@ -1,0 +1,110 @@
+@tracker_id = 01977f9e-204d-7952-b354-da8c5e636125
+@revision_id = 0196334b-9150-7612-ab6f-6a099832247a
+
+### GET ALL TRACKERS
+GET {{retrackHost}}/api/trackers?tag=secutils
+Accept: application/json
+
+> {%
+  client.log(`Trackers (total): ${response.body.length}.`);
+%}
+
+### GET TRACKER
+GET {{retrackHost}}/api/trackers/{{tracker_id}}
+Accept: application/json
+
+### GET SINGLE TRACKER REVISION
+GET {{retrackHost}}/api/trackers/{{tracker_id}}/revisions/{{revision_id}}
+Accept: application/json
+
+### GET TRACKER REVISIONS
+GET {{retrackHost}}/api/trackers/{{tracker_id}}/revisions?size=4
+Accept: application/json
+
+> {%
+  client.log(`Revisions: ${response.body.length}.`);
+
+  let index = 0;
+  for (const rev of response.body) {
+    client.log(`Data (rev ${index++}, ${rev.id}, ${new Date(rev.createdAt * 1000).toISOString()}, ${rev.data.original.length} bytes): ${rev.data.original.slice(0, 10)}${rev.data.original.length > 10 ? "…" : ""}`);
+  }
+%}
+
+### CREATE TRACKER
+< {%
+    const extractor = `
+    export async function execute(page, previousContent) {
+      await page.goto('https://demo.webhooks.dev.secutils.dev/deno-apis');
+
+      const cells = await Promise.all(
+        (await page.getByRole('cell').all()).map(cell => cell.textContent())
+      );
+
+      return cells.map(cell => cell.trim()).join(String.fromCharCode(10));
+    };
+  `;
+    request.variables.set("extractor", extractor.replaceAll('\n', '').trim())
+%}
+POST {{retrackHost}}/api/trackers
+Content-Type: application/json
+Accept: application/json
+
+{
+  "name": "[Monitoring] Deno APIs",
+  "target": {
+    "type": "page",
+    "extractor": "{{extractor}}"
+  },
+  "actions": [{ "type": "log" }],
+  "config": {
+    "revisions": 15,
+    "timeout": 300000
+  },
+  "tags": [
+    "secutils",
+    "secutils:type:web_scraping_content",
+    "secutils:user:1"
+  ]
+}
+
+### CREATE NEW TRACKER REVISION
+# @timeout 600
+POST {{retrackHost}}/api/trackers/{{tracker_id}}/revisions
+Accept: application/json
+
+### UPDATE TRACKER
+PUT {{retrackHost}}/api/trackers/{{tracker_id}}
+Content-Type: application/json
+Accept: application/json
+
+{
+  "name": "Demo (resources)",
+  "target": {
+    "type": "page",
+    "extractor": "https://ui-local.secutils.dev/retrack/resources_extractor.js?v=26",
+    "params": {
+      "url": "https://demo.webhooks.secutils.dev/track-me.html",
+      "filterMap": "export function filterMap(resource) { return resource.url.includes('change') ? resource : null; }"
+    }
+  }
+}
+
+### DISABLE TRACKER
+PUT {{retrackHost}}/api/trackers/{{tracker_id}}
+Content-Type: application/json
+Accept: application/json
+
+{
+  "enabled": false
+}
+
+### DELETE TRACKER
+DELETE {{retrackHost}}/api/trackers/{{tracker_id}}
+
+### DELETE TRACKER REVISIONS
+DELETE {{retrackHost}}/api/trackers/{{tracker_id}}/revisions
+Accept: application/json
+
+### DELETE SINGLE TRACKER REVISION
+DELETE {{retrackHost}}/api/trackers/{{tracker_id}}/revisions/{{revision_id}}
+Accept: application/json

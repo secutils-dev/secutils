@@ -355,7 +355,7 @@ pub mod tests {
                     headers: None,
                 },
                 created_at: responder.created_at,
-                updated_at: responder.updated_at
+                updated_at: updated_responder.updated_at
             }
         );
 

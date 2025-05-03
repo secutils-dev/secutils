@@ -1,92 +1,111 @@
 {
   "name": "secutils-webui",
   "private": true,
+  "type": "module",
   "author": {
     "name": "Secutils.dev",
     "email": "dev@secutils.dev"
   },
   "version": "1.0.0-beta.2",
-  "engines": {
-    "node": "22.x"
-  },
-  "browserslist": [
-    "last 2 versions",
-    "Firefox ESR",
-    "not dead"
-  ],
   "alias": {
     "process": "process/browser.js"
   },
-  "source": [
-    "src/index.html",
-    "src/favicon.ico",
-    "src/tools/monaco/*"
-  ],
+  "targets": {
+    "src": {
+      "source": [
+        "src/index.html",
+        "src/favicon.ico",
+        "src/tools/monaco/*"
+      ],
+      "distDir": "./dist",
+      "engines": {
+        "browsers": [
+          "last 2 versions",
+          "Firefox ESR",
+          "not dead"
+        ]
+      }
+    },
+    "retrack": {
+      "source":  "./retrack/*.ts",
+      "distDir": "./dist/retrack",
+      "outputFormat": "esmodule",
+      "sourceMap": false,
+      "optimize": true,
+      "engines": {
+        "node": "22.x"
+      }
+    }
+  },
   "dependencies": {
-    "@babel/runtime": "^7.27.0",
+    "@babel/runtime": "^7.27.6",
     "@elastic/datemath": "^5.0.3",
-    "@elastic/eui": "^101.4.0",
+    "@elastic/eui": "^105.0.0",
     "@emotion/css": "^11.13.5",
     "@emotion/react": "^11.14.0",
     "@monaco-editor/react": "^4.7.0",
-    "@ory/client": "^1.20.8",
-    "axios": "^1.8.4",
+    "@ory/client": "^1.20.22",
+    "axios": "^1.10.0",
     "moment": "^2.30.1",
+    "monaco-editor": "^0.52.2",
     "nanoid": "^5.1.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router": "^7.5.1"
+    "react-router": "^7.6.3"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
-    "@eslint/js": "^9.25.1",
-    "@parcel/compressor-brotli": "^2.14.4",
-    "@parcel/compressor-gzip": "^2.14.4",
-    "@parcel/config-default": "^2.14.4",
-    "@parcel/core": "^2.14.4",
-    "@parcel/packager-raw-url": "^2.14.4",
-    "@parcel/reporter-bundle-buddy": "^2.14.4",
-    "@parcel/transformer-image": "^2.14.4",
-    "@parcel/transformer-js": "^2.14.4",
-    "@parcel/transformer-raw": "^2.14.4",
-    "@parcel/transformer-typescript-tsc": "^2.14.4",
-    "@parcel/transformer-webmanifest": "^2.14.4",
-    "@parcel/validator-typescript": "^2.14.4",
-    "@types/react": "^18.3.20",
-    "@types/react-dom": "^18.3.6",
+    "@eslint/js": "^9.31.0",
+    "@parcel/compressor-brotli": "^2.15.4",
+    "@parcel/compressor-gzip": "^2.15.4",
+    "@parcel/config-default": "^2.15.4",
+    "@parcel/core": "^2.15.4",
+    "@parcel/packager-raw-url": "^2.15.4",
+    "@parcel/reporter-bundle-buddy": "^2.15.4",
+    "@parcel/transformer-image": "^2.15.4",
+    "@parcel/transformer-js": "^2.15.4",
+    "@parcel/transformer-raw": "^2.15.4",
+    "@parcel/transformer-typescript-tsc": "^2.15.4",
+    "@parcel/transformer-webmanifest": "^2.15.4",
+    "@parcel/validator-typescript": "^2.15.4",
+    "@types/node": "^22.16.3",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
     "buffer": "^6.0.3",
-    "eslint": "^9.25.1",
-    "eslint-config-prettier": "^10.1.2",
-    "eslint-plugin-import": "^2.31.0",
-    "eslint-plugin-prettier": "^5.2.6",
+    "eslint": "^9.31.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-prettier": "^5.5.1",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
-    "globals": "^16.0.0",
+    "globals": "^16.3.0",
     "monaco-editor": "^0.52.2",
-    "parcel": "^2.14.4",
-    "prettier": "^3.5.3",
+    "parcel": "^2.15.4",
+    "playwright-core": "1.52.0",
+    "prettier": "^3.6.2",
     "process": "^0.11.10",
-    "svgo": "^3.3.2",
+    "svgo": "^4.0.0",
     "typescript": "^5.8.3",
-    "typescript-eslint": "^8.31.0",
+    "typescript-eslint": "^8.36.0",
     "url": "^0.11.4"
   },
   "optionalDependencies": {
     "@parcel/watcher-linux-arm64-musl": "^2.5.1",
     "@parcel/watcher-linux-x64-glibc": "^2.5.1",
-    "@lmdb/lmdb-linux-arm64": "^3.2.6",
-    "@swc/core-linux-arm64-musl": "^1.11.22",
-    "lightningcss-linux-arm64-musl": "^1.29.3",
-    "lightningcss-linux-x64-gnu": "^1.29.3"
+    "@lmdb/lmdb-linux-arm64": "^3.4.1",
+    "@swc/core-linux-arm64-musl": "^1.12.11",
+    "lightningcss-linux-arm64-musl": "^1.30.1",
+    "lightningcss-linux-x64-gnu": "^1.30.1"
   },
   "overrides": {
     "typescript": "^5.8.3"
   },
   "scripts": {
-    "prebuild": "eslint . && rm -rf dist",
+    "prebuild": "eslint .",
     "build": "parcel build --no-source-maps",
     "watch": "parcel --port 7171",
     "perf": "parcel build --reporter @parcel/reporter-bundle-buddy",
-    "lint": "eslint . --fix"
+    "lint": "eslint . --fix",
+    "clean": "rm -rf dist .parcel-cache"
   }
 }

@@ -7,7 +7,17 @@ pub use self::{
     email_transport::{EmailTransport, EmailTransportError},
     ip_addr_ext::IpAddrExt,
 };
-use std::net::IpAddr;
+use crate::config::{Config, SECUTILS_USER_AGENT};
+use anyhow::Context;
+use lettre::{
+    AsyncSmtpTransport, Tokio1Executor, message::Mailbox,
+    transport::smtp::authentication::Credentials,
+};
+use reqwest::Client;
+use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
+use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
+use reqwest_tracing::{SpanBackendWithUrl, TracingMiddleware};
+use std::{net::IpAddr, str::FromStr};
 use tracing::error;
 use url::{Host, Url};
 
@@ -16,18 +26,20 @@ use url::{Host, Url};
 pub struct Network<DR: DnsResolver, ET: EmailTransport> {
     pub resolver: DR,
     pub email_transport: ET,
+    pub http_client: ClientWithMiddleware,
 }
 
 impl<DR: DnsResolver, ET: EmailTransport> Network<DR, ET> {
     /// Creates a new `Network` instance.
-    pub fn new(resolver: DR, email_transport: ET) -> Self {
+    pub fn new(resolver: DR, email_transport: ET, http_client: ClientWithMiddleware) -> Self {
         Self {
             resolver,
             email_transport,
+            http_client,
         }
     }
 
-    /// Checks if provided URL is a publicly accessible web URL.
+    /// Checks if the provided URL is a publicly accessible web URL.
     pub async fn is_public_web_url(&self, url: &Url) -> bool {
         if url.scheme() != "http" && url.scheme() != "https" {
             return false;
@@ -49,10 +61,59 @@ impl<DR: DnsResolver, ET: EmailTransport> Network<DR, ET> {
     }
 }
 
+impl Network<TokioDnsResolver, AsyncSmtpTransport<Tokio1Executor>> {
+    pub fn create(config: &Config) -> anyhow::Result<Self> {
+        let email_transport = if let Some(ref smtp_config) = config.smtp {
+            if let Some(ref catch_all_config) = smtp_config.catch_all {
+                Mailbox::from_str(catch_all_config.recipient.as_str())
+                    .with_context(|| "Cannot parse SMTP catch-all recipient.")?;
+            }
+
+            AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp_config.address)?
+                .credentials(Credentials::new(
+                    smtp_config.username.clone(),
+                    smtp_config.password.clone(),
+                ))
+                .build()
+        } else {
+            AsyncSmtpTransport::<Tokio1Executor>::unencrypted_localhost()
+        };
+
+        let http_client_builder = ClientBuilder::new(
+            Client::builder()
+                .user_agent(SECUTILS_USER_AGENT)
+                .pool_idle_timeout(Some(config.http.client.pool_idle_timeout))
+                .timeout(config.http.client.timeout)
+                .connection_verbose(config.http.client.verbose)
+                .build()
+                .with_context(|| "Cannot build HTTP client.")?,
+        )
+        .with(TracingMiddleware::<SpanBackendWithUrl>::new());
+
+        let http_client = if config.http.client.max_retries > 0 {
+            http_client_builder
+                .with(RetryTransientMiddleware::new_with_policy(
+                    ExponentialBackoff::builder()
+                        .build_with_max_retries(config.http.client.max_retries),
+                ))
+                .build()
+        } else {
+            http_client_builder.build()
+        };
+
+        Ok(Self::new(
+            TokioDnsResolver::create(),
+            email_transport,
+            http_client,
+        ))
+    }
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::Network;
     use lettre::transport::stub::AsyncStubTransport;
+    use reqwest::Client;
     use std::net::Ipv4Addr;
     use trust_dns_resolver::{
         Name,
@@ -72,6 +133,7 @@ pub mod tests {
                 RData::A(A(Ipv4Addr::new(172, 32, 0, 2))),
             )]),
             AsyncStubTransport::new_ok(),
+            Client::new().into(),
         );
 
         // Only `http` and `https` should be supported.
@@ -94,6 +156,7 @@ pub mod tests {
                 RData::A(A(Ipv4Addr::new(127, 0, 0, 1))),
             )]),
             AsyncStubTransport::new_ok(),
+            Client::new().into(),
         );
         for (network, is_supported) in [(public_network, true), (local_network, false)] {
             assert_eq!(network.is_public_web_url(&url).await, is_supported);
@@ -105,6 +168,7 @@ pub mod tests {
                 "can not lookup IPs",
             ))),
             AsyncStubTransport::new_ok(),
+            Client::new().into(),
         );
         assert!(!broken_network.is_public_web_url(&url).await);
 
@@ -113,7 +177,11 @@ pub mod tests {
 
     #[tokio::test]
     async fn correctly_checks_public_ips() -> anyhow::Result<()> {
-        let network = Network::new(MockResolver::new(), AsyncStubTransport::new_ok());
+        let network = Network::new(
+            MockResolver::new(),
+            AsyncStubTransport::new_ok(),
+            Client::new().into(),
+        );
         for (ip, is_supported) in [
             ("127.0.0.1", false),
             ("10.254.0.0", false),

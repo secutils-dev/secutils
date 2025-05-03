@@ -22,7 +22,6 @@ pub use self::{
 #[cfg(test)]
 pub mod tests {
     pub use super::{
-        certificates::tests::MockCertificateAttributes,
-        web_scraping::tests::MockWebPageTrackerBuilder, webhooks::tests::MockResponderBuilder,
+        certificates::tests::MockCertificateAttributes, webhooks::tests::MockResponderBuilder,
     };
 }

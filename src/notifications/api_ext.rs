@@ -131,12 +131,12 @@ where
 
         let recipient = if let Some(catch_all_recipient) = catch_all_recipient {
             catch_all_recipient.parse().with_context(|| {
-                format!("Cannot parse catch-all TO address: {}", catch_all_recipient)
+                format!("Cannot parse catch-all TO address: {catch_all_recipient}")
             })?
         } else {
             recipient
                 .parse()
-                .with_context(|| format!("Cannot parse TO address: {}", recipient))?
+                .with_context(|| format!("Cannot parse TO address: {recipient}"))?
         };
 
         let message_builder = Message::builder()

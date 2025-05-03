@@ -27,6 +27,7 @@ import { icon as EuiIconDownload } from '@elastic/eui/es/components/icon/assets/
 import { icon as EuiIconEmail } from '@elastic/eui/es/components/icon/assets/email';
 import { icon as EuiIconEmpty } from '@elastic/eui/es/components/icon/assets/empty';
 import { icon as EuiIconExit } from '@elastic/eui/es/components/icon/assets/exit';
+import { icon as EuiIconExpand } from '@elastic/eui/es/components/icon/assets/expand';
 import { icon as EuiIconExpandMini } from '@elastic/eui/es/components/icon/assets/expandMini';
 import { icon as EuiIconEyeClosed } from '@elastic/eui/es/components/icon/assets/eye_closed';
 import { icon as EuiIconFullScreen } from '@elastic/eui/es/components/icon/assets/full_screen';
@@ -50,7 +51,7 @@ import { icon as EuiIconPayment } from '@elastic/eui/es/components/icon/assets/p
 import { icon as EuiIconPencil } from '@elastic/eui/es/components/icon/assets/pencil';
 import { icon as EuiIconPlusInCircle } from '@elastic/eui/es/components/icon/assets/plus_in_circle';
 import { icon as EuiIconPopout } from '@elastic/eui/es/components/icon/assets/popout';
-import { icon as EuiIconQuestionInCircle } from '@elastic/eui/es/components/icon/assets/question_in_circle';
+import { icon as EuiIconQuestion } from '@elastic/eui/es/components/icon/assets/question';
 import { icon as EuiIconRefresh } from '@elastic/eui/es/components/icon/assets/refresh';
 import { icon as EuiIconReturnKey } from '@elastic/eui/es/components/icon/assets/return_key';
 import { icon as EuiIconSearch } from '@elastic/eui/es/components/icon/assets/search';
@@ -115,6 +116,7 @@ appendIconComponentCache({
   email: EuiIconEmail,
   exit: EuiIconExit,
   eyeClosed: EuiIconEyeClosed,
+  expand: EuiIconExpand,
   expandMini: EuiIconExpandMini,
   fullScreen: EuiIconFullScreen,
   fullScreenExit: EuiIconFullScreenExit,
@@ -137,7 +139,7 @@ appendIconComponentCache({
   pencil: EuiIconPencil,
   plusInCircle: EuiIconPlusInCircle,
   popout: EuiIconPopout,
-  questionInCircle: EuiIconQuestionInCircle,
+  question: EuiIconQuestion,
   refresh: EuiIconRefresh,
   returnKey: EuiIconReturnKey,
   search: EuiIconSearch,

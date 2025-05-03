@@ -7,7 +7,7 @@ use std::borrow::Cow;
 
 impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
     /// Returns an API to perform application-wide search.
-    pub fn search(&self) -> SearchApi {
+    pub fn search(&self) -> SearchApi<'_> {
         SearchApi::new(&self.search_index)
     }
 }
