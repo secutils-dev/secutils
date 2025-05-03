@@ -8,7 +8,7 @@ loader.config({ monaco });
 // See https://github.com/microsoft/monaco-editor/blob/main/docs/integrate-esm.md#using-parcel
 self.MonacoEnvironment = {
   getWorkerUrl: (_, label) =>
-    label === 'javascript' ? '/tools/monaco/ts.worker.js' : '/tools/monaco/editor.worker.js',
+    label === 'javascript' || label === 'typescript' ? '/tools/monaco/ts.worker.js' : '/tools/monaco/editor.worker.js',
 };
 
 export function createTheme({ euiTheme }: UseEuiTheme, backgroundColor?: string): monaco.editor.IStandaloneThemeData {
