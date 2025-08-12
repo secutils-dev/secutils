@@ -246,7 +246,7 @@ As I explained earlier in this post, I set limits on how much time (30 seconds) 
 
 ### Overall memory consumption
 
-As I integrate the Deno JavaScript runtime into a Secutils.dev API server application, I want to monitor the overall memory consumption of the API server. As shown in the following screenshot, the API server's memory consumption remains consistently low most of the time, especially when compared to the memory required by the [**Web Scraper**](/guides/web_scraping/content).
+As I integrate the Deno JavaScript runtime into a Secutils.dev API server application, I want to monitor the overall memory consumption of the API server. As shown in the following screenshot, the API server's memory consumption remains consistently low most of the time, especially when compared to the memory required by the [**Web Scraper**](/guides/web_scraping/page).
 
 ![Script terminations and crashes](/img/blog/2024-01-24_rust_application_with_js_extensions_memory.png)
 

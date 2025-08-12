@@ -8,7 +8,7 @@ tags: [thoughts, overview, technology]
 ---
 Hello!
 
-As you might have learned from the [**"A Plan for the Q3 2023 Iteration"**](https://secutils.dev/docs/blog/q3-2023-iteration) post, my focus for this iteration is on adding support for automatic scheduled resource checks for the [**"Web Scraping → Resources trackers"**](https://secutils.dev/docs/guides/web_scraping/resources) utility in [**Secutils.dev**](https://secutils.dev). This work is already in progress, and in this post, I'd like to share more details about how I'm designing the scheduler for Secutils.dev. If you're building a scheduler for your application, hopefully, you can learn a useful thing or two.
+As you might have learned from the [**"A Plan for the Q3 2023 Iteration"**](https://secutils.dev/docs/blog/q3-2023-iteration) post, my focus for this iteration is on adding support for automatic scheduled resource checks for the [**"Web Scraping → Page trackers"**](https://secutils.dev/docs/guides/web_scraping/page) utility in [**Secutils.dev**](https://secutils.dev). This work is already in progress, and in this post, I'd like to share more details about how I'm designing the scheduler for Secutils.dev. If you're building a scheduler for your application, hopefully, you can learn a useful thing or two.
 
 <!--truncate-->
 
@@ -18,8 +18,7 @@ The scheduler is going to be one of the most important components of Secutils.de
 
 Since the initial version of this post, I've successfully integrated the scheduler into [**Secutils.dev**](https://secutils.dev) components:
 
-- [**Web Scraping → Resources trackers**](/docs/guides/web_scraping/resources) utility that gives developers the ability to detect and track resources of any web page
-- [**Web Scraping → Content trackers**](/docs/guides/web_scraping/content) utility that allows developers to detect and monitor the content of **any** web page
+- [**Web Scraping → Page trackers**](/docs/guides/web_scraping/page) utility that allows developers to detect and monitor the content or resources of **any** web page
 - **Platform → Notifications** component that handles all notifications sent by Secutils.dev
 
 Everything seems to be functioning smoothly!
@@ -70,7 +69,7 @@ Here are a few diagrams from the project repository that explain how it works:
 **Job activity**
 ![Job activity](https://secutils.dev/docs/img/blog/2023-08-08_scheduler_component_job_activity.png)
 
-Tokio cron scheduler ticked all the boxes for me! Its architecture is simple, and if I need to tweak it, I can do it without much trouble. Right now, I've already added an SQLite storage provider and started hooking up the scheduler with the [**"Web Scraping → Resources trackers"**](https://secutils.dev/docs/guides/web_scraping/resources) utility. Everything is going smoothly, and I hope to finish up the scheduled resources checks functionality in the next few weeks.
+Tokio cron scheduler ticked all the boxes for me! Its architecture is simple, and if I need to tweak it, I can do it without much trouble. Right now, I've already added an SQLite storage provider and started hooking up the scheduler with the [**"Web Scraping → Page trackers"**](https://secutils.dev/docs/guides/web_scraping/page) utility. Everything is going smoothly, and I hope to finish up the scheduled resources checks functionality in the next few weeks.
 
 That wraps up today's post, thanks for taking the time to read it!
 

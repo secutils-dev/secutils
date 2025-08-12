@@ -9,15 +9,15 @@ tags: [announcement, release, thoughts]
 
 Hello!
 
-This weekend, I finally wrapped up the "Q2 2023 – Apr-Jun" iteration and cut a new 1.0.0-alpha.2 release of [**Secutils.dev**](https://secutils.dev). Admittedly, this release was delayed "a bit" (well, almost 3 weeks delay, that happens) since I needed slightly more time to prepare the [**"Resources tracker"**](https://secutils.dev/docs/guides/web_scraping/resources) functionality for the general public. I tried to explain why it wasn't a trivial task in the "Detecting changes in JavaScript and CSS isn't an easy task" series of posts ([**part 1**](https://secutils.dev/docs/blog/detecting-changes-in-js-css-part-1), [**part 2**](https://secutils.dev/docs/blog/detecting-changes-in-js-css-part-2), [**part 3**](https://secutils.dev/docs/blog/detecting-changes-in-js-css-part-3)). Check them out!
+This weekend, I finally wrapped up the "Q2 2023 – Apr-Jun" iteration and cut a new 1.0.0-alpha.2 release of [**Secutils.dev**](https://secutils.dev). Admittedly, this release was delayed "a bit" (well, almost 3 weeks delay, that happens) since I needed slightly more time to prepare the [**"Page tracker"**](https://secutils.dev/docs/guides/web_scraping/page) functionality for the general public. I tried to explain why it wasn't a trivial task in the "Detecting changes in JavaScript and CSS isn't an easy task" series of posts ([**part 1**](https://secutils.dev/docs/blog/detecting-changes-in-js-css-part-1), [**part 2**](https://secutils.dev/docs/blog/detecting-changes-in-js-css-part-2), [**part 3**](https://secutils.dev/docs/blog/detecting-changes-in-js-css-part-3)). Check them out!
 
-If you want to learn more about the "Resources tracker" functionality, I encourage you to start from [**this guide**](https://secutils.dev/docs/guides/web_scraping/resources). For your convenience, I'm also attaching a short video clip here demonstrating how it works using a "fake" HTML page backed by the [**"Responders" feature**](https://secutils.dev/docs/guides/webhooks). For the rest of the changes included in this release, please refer to the full changelog at [**secutils@v1.0.0-alpha.2**](https://github.com/secutils-dev/secutils/releases/tag/v1.0.0-alpha.2).
+If you want to learn more about the "Page tracker" functionality, I encourage you to start from [**this guide**](https://secutils.dev/docs/guides/web_scraping/page). For your convenience, I'm also attaching a short video clip here demonstrating how it works using a "fake" HTML page backed by the [**"Responders" feature**](https://secutils.dev/docs/guides/webhooks). For the rest of the changes included in this release, please refer to the full changelog at [**secutils@v1.0.0-alpha.2**](https://github.com/secutils-dev/secutils/releases/tag/v1.0.0-alpha.2).
 
 <!--truncate-->
 
 <video controls preload="metadata" width="100%">
-  <source src="../video/guides/web_scraping_resources_tracker_diff.webm" type="video/webm" />
-  <source src="../video/guides/web_scraping_resources_tracker_diff.mp4" type="video/mp4" />
+  <source src="../video/guides/web_scraping_page_resources_tracker.webm" type="video/webm" />
+  <source src="../video/guides/web_scraping_page_resources_tracker.mp4" type="video/mp4" />
 </video>
 
 Okay, I hope you'll find "Resources tracker" useful. Next, I'm going to share my thoughts about Secutils.dev releases and the type of work I'm currently prioritizing.

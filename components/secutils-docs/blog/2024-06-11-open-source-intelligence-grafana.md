@@ -12,7 +12,7 @@ Before getting to the main topic of this blog post, I’d like to take a moment 
 Preparing the tool for GA is what has been keeping me busy for the last couple of months. I’d encourage you to quickly skim through the video guides to learn what Secutils.dev is capable of today:
 
 - [**Quickly deploy and program webhooks**](https://secutils.dev/docs/guides/webhooks)
-- [**Track changes in any part of a web application**](https://secutils.dev/docs/guides/web_scraping/content)
+- [**Track changes in any part of a web application**](https://secutils.dev/docs/guides/web_scraping/page)
 - [**Easily generate development certificates and keys**](https://secutils.dev/docs/guides/digital_certificates/certificate_templates)
 - [**Slice and dice content security policies (CSP)**](https://secutils.dev/docs/guides/web_security/csp)
 
@@ -66,7 +66,7 @@ Let’s assume you have a slightly better understanding of Grafana’s security 
 
 ## Automating change tracking
 
-Of course, you can periodically manually scan the `CODEOWNERS` file for newly introduced domains or write a dedicated tool for that, but it’s a very laborious task that makes the approach somewhat unsustainable in the long term, especially if you have multiple applications to work with and multiple angles to look at. That’s where tools like [**Secutils.dev**](https://secutils.dev) can be helpful! Let me show you how you can use the [**“Content Tracker”**](https://secutils.dev/docs/guides/web_scraping/content) utility to watch the content of the `CODEOWNERS` file on a specific schedule. I won’t be covering what this utility is for and how to use it. You can spend a couple of minutes and watch [**a video guide**](https://secutils.dev/docs/guides/web_scraping/content). I’ll just provide tracker settings you can use for your tracker:
+Of course, you can periodically manually scan the `CODEOWNERS` file for newly introduced domains or write a dedicated tool for that, but it’s a very laborious task that makes the approach somewhat unsustainable in the long term, especially if you have multiple applications to work with and multiple angles to look at. That’s where tools like [**Secutils.dev**](https://secutils.dev) can be helpful! Let me show you how you can use the [**“Page Tracker”**](https://secutils.dev/docs/guides/web_scraping/page) utility to watch the content of the `CODEOWNERS` file on a specific schedule. I won’t be covering what this utility is for and how to use it. You can spend a couple of minutes and watch [**a video guide**](https://secutils.dev/docs/guides/web_scraping/page). I’ll just provide tracker settings you can use for your tracker:
 
 <table class="su-table">
 <tbody>

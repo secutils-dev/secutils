@@ -14,7 +14,7 @@ Earlier this week, I wrapped up the [**"Q3 2023 – Jul-Sep"**](https://github.c
 
 ## Scheduled resources checks
 
-If you’ve read my previous posts or tried Secutils.dev [**web page resources tracker**](https://secutils.dev/docs/guides/web_scraping/resources) functionality, you might recall that users were required to manually trigger resource checks. With this release, you have an option to schedule automatic resources checks to be performed hourly, daily, weekly, or monthly! When you configure the web page resource tracker, you define how many resource revisions Secutils.dev should store so that you can view the diff between two consecutive revisions. Once the limit is reached, the next revision will displace the oldest one.
+If you’ve read my previous posts or tried Secutils.dev [**web page resources tracker**](https://secutils.dev/docs/guides/web_scraping/page) functionality, you might recall that users were required to manually trigger resource checks. With this release, you have an option to schedule automatic resources checks to be performed hourly, daily, weekly, or monthly! When you configure the web page resource tracker, you define how many resource revisions Secutils.dev should store so that you can view the diff between two consecutive revisions. Once the limit is reached, the next revision will displace the oldest one.
 
 ![Scheduled resources checks](/img/blog/2023-10-04_scheduled_resource_checks.png)
 

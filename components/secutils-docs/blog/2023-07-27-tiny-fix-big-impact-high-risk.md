@@ -8,7 +8,7 @@ tags: [thoughts, overview, technology]
 ---
 Hello!
 
-In [**my previous post**](https://secutils.dev/docs/blog/alpha2-release), I briefly touched on the latest `1.0.0-alpha.2` release of [**Secutils.dev**](https://secutils.dev). While the [**"Resources tracker"**](https://secutils.dev/docs/guides/web_scraping/resources) was the central part of this release, I want to highlight one tiny fix that makes a huge difference in user experience but can also be quite risky if not done right: [**“Recover original URL after sign-in”**](https://github.com/secutils-dev/secutils/issues/9).
+In [**my previous post**](https://secutils.dev/docs/blog/alpha2-release), I briefly touched on the latest `1.0.0-alpha.2` release of [**Secutils.dev**](https://secutils.dev). While the [**"Page tracker"**](https://secutils.dev/docs/guides/web_scraping/page) was the central part of this release, I want to highlight one tiny fix that makes a huge difference in user experience but can also be quite risky if not done right: [**“Recover original URL after sign-in”**](https://github.com/secutils-dev/secutils/issues/9).
 
 <!--truncate-->
 
