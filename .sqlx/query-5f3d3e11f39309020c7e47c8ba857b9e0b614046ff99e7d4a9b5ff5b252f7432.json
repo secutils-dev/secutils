@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH new_responder(user_id, id, name, location, method, enabled, settings, created_at, updated_at) AS (\n            VALUES ( $1::uuid, $2::uuid, $3, $4, $5::bytea, $6::bool, $7::bytea, $8::timestamptz, $9::timestamptz )\n        )\n        INSERT INTO user_data_webhooks_responders (user_id, id, name, location, method, enabled, settings, created_at, updated_at)\n        SELECT * FROM new_responder\n        WHERE NOT EXISTS(\n            SELECT id FROM user_data_webhooks_responders\n            WHERE user_id = $1 AND location = $4 AND (method = $10 OR $5 = $10)\n        )\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Bytea",
+        "Bool",
+        "Bytea",
+        "Timestamptz",
+        "Timestamptz",
+        "Bytea"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5f3d3e11f39309020c7e47c8ba857b9e0b614046ff99e7d4a9b5ff5b252f7432"
+}

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    DELETE FROM user_data_web_scraping_page_trackers\n    WHERE user_id = $1 AND id = $2\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cd0f20ff038102ea4e91c93b6a271f8cd456406860d0590ef0053dca93a73d2a"
+}
