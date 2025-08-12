@@ -15,3 +15,8 @@ Dockerfile
 LICENSE
 secutils.toml
 rustfmt.toml
+
+# Path that should be ignored by WebUI Docker image
+/src
+/components/secutils-docs
+/components/secutils-jwt-tools
