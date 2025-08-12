@@ -163,7 +163,7 @@ impl JsRuntime {
 #[cfg(test)]
 pub mod tests {
     use super::{JsRuntime, JsRuntimeConfig};
-    use deno_core::error::CoreError;
+    use deno_core::error::{CoreError, CoreErrorKind};
     use serde::{Deserialize, Serialize};
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -215,7 +215,7 @@ pub mod tests {
             .await
             .unwrap_err()
             .downcast::<CoreError>()?;
-        if let CoreError::Js(ref js_error) = result {
+        if let CoreErrorKind::Js(ref js_error) = *result.0 {
             assert_eq!(
                 js_error.exception_message,
                 "Uncaught (in promise) Error: Uh oh."
