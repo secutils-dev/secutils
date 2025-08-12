@@ -1,25 +1,25 @@
 # syntax=docker/dockerfile:1.2
 
-FROM --platform=$BUILDPLATFORM rust:1.88-slim-bookworm AS server_builder
-ARG TARGETPLATFORM
+FROM rust:1.89-slim-trixie AS server_builder
+
+ARG TARGETARCH
+ARG UPX_VERSION=5.0.2
 
 ## Statically link binary to OpenSSL libraries.
-ENV OPENSSL_STATIC=yes \
-    AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu \
-    AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR=/usr/include/aarch64-linux-gnu \
-    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
-    CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
-    CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++ \
-    PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig/:${PKG_CONFIG_PATH}"
+ENV OPENSSL_STATIC=yes
 
 WORKDIR /app
 
-# Install dependencies (including cross-compilation toolchain).
+# Install dependencies.
 RUN set -x && \
-    dpkg --add-architecture arm64 && \
     apt-get update && \
-    apt-get install -y pkg-config curl libssl-dev cmake libssl-dev:arm64 g++-aarch64-linux-gnu libc6-dev-arm64-cross protobuf-compiler ca-certificates && \
-    rustup target add aarch64-unknown-linux-gnu
+    apt-get install -y pkg-config curl libssl-dev cmake g++ protobuf-compiler curl xz-utils ca-certificates
+
+# Download and install UPX.
+RUN curl -LO https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-${TARGETARCH}_linux.tar.xz && \
+    tar -xf upx-${UPX_VERSION}-${TARGETARCH}_linux.tar.xz && \
+    mv upx-${UPX_VERSION}-${TARGETARCH}_linux/upx /usr/local/bin/ && \
+    rm -rf upx-${UPX_VERSION}-${TARGETARCH}_linux.tar.xz upx-${UPX_VERSION}-${TARGETARCH}_linux
 
 # Copy assets, member crates, and manifest.
 COPY ["./assets", "./assets"]
@@ -31,29 +31,15 @@ RUN set -x && cargo fetch
 
 # Copy source code and build.
 COPY [".", "./"]
-RUN --mount=type=cache,target=/app/target if [ "$TARGETPLATFORM" = "linux/arm64" ]; \
-    then set -x && \
-        cargo build --release --target=aarch64-unknown-linux-gnu && \
-        cp ./target/aarch64-unknown-linux-gnu/release/secutils ./; \
-    else set -x && \
-        cargo build --release && \
-        cp ./target/release/secutils ./; \
-    fi
+RUN --mount=type=cache,target=/app/target set -x && cargo build --release && \
+    cp ./target/release/secutils ./ && \
+    upx --best --lzma ./secutils
 
-FROM debian:bookworm-slim
+# Check out https://gcr.io/distroless/cc-debian12:nonroot
+FROM gcr.io/distroless/cc-debian12:nonroot
 EXPOSE 7070
-
-ENV APP_USER=secutils
-ENV APP_USER_UID=1001
 
 WORKDIR /app
 COPY --from=server_builder ["/app/secutils", "./"]
-COPY --from=server_builder ["/etc/ssl/certs/ca-certificates.crt", "/etc/ssl/certs/"]
-
-# Configure group and user.
-RUN addgroup --system --gid $APP_USER_UID $APP_USER \
-    && adduser --system --uid $APP_USER_UID --ingroup $APP_USER $APP_USER
-RUN chown -R $APP_USER:$APP_USER ./
-USER $APP_USER
 
 CMD [ "./secutils" ]
