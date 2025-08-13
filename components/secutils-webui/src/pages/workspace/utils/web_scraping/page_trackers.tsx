@@ -44,7 +44,7 @@ export default function PageTrackers() {
         title="Track content for a web page"
         onClick={() => setTrackerToEdit(undefined)}
       >
-        Track content
+        Track page
       </EuiButton>
     ),
     [],

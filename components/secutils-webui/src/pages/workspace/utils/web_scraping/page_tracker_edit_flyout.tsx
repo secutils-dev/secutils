@@ -256,10 +256,7 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
                   <b>valid markdown-style content</b>
                 </EuiLink>
                 . Refer to the{' '}
-                <EuiLink
-                  target="_blank"
-                  href="/docs/guides/web_scraping/content#annex-content-extractor-script-examples"
-                >
+                <EuiLink target="_blank" href="/docs/guides/web_scraping/page#annex-content-extractor-script-examples">
                   <b>documentation</b>
                 </EuiLink>{' '}
                 for a list of script examples and properties available in the &quot;context&quot; object argument.

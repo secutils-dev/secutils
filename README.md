@@ -19,7 +19,7 @@ Secutils.dev adheres to [open security principles](https://en.wikipedia.org/wiki
   cryptographic security protocols
 * [Content Security Policy (CSP) management](https://secutils.dev/docs/guides/web_security/csp), enabling the import and
   creation of policies from scratch
-* Tools for [web page resource scraping](https://secutils.dev/docs/guides/web_scraping/resources), content tracking, and
+* Tools for [web page content and resource tracking](https://secutils.dev/docs/guides/web_scraping/page), content tracking, and
   more
 
 ![Secutils.dev Webhooks](https://github.com/secutils-dev/.github/blob/main/profile/webhooks.png?raw=true)
