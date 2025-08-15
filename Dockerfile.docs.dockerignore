@@ -1,5 +1,4 @@
 # Paths that should be ignored by all Docker images
-node_modules
 *.md
 .DS_Store
 .env
@@ -7,18 +6,16 @@ node_modules
 .husky
 .idea
 .nvmrc
-.parcel-cache
 Dockerfile
-Dockerfile.webui
 LICENSE
-build
 dev
 dist
+node_modules
 rustfmt.toml
 secutils.toml
 target
 
-# Path that should be ignored by api Docker image
-/components/secutils-docs
+# Path that should be ignored by WebUI Docker image
+/src
 /components/secutils-webui
-*.json
+/components/secutils-jwt-tools

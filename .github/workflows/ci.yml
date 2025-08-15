@@ -4,13 +4,17 @@ on:
   push:
     branches: [ main ]
     paths-ignore:
-      - 'dev/**'
-      - 'Dockerfile'
-      - 'Dockerfile.webui'
-      - 'Dockerfile.aarch64-unknown-linux-musl'
-      - 'LICENSE'
       - '*.md'
       - '.husky/**'
+      - 'Dockerfile'
+      - 'Dockerfile.aarch64-unknown-linux-musl'
+      - 'Dockerfile.dockerignore'
+      - 'Dockerfile.docs'
+      - 'Dockerfile.docs.dockerignore'
+      - 'Dockerfile.webui'
+      - 'Dockerfile.webui.dockerignore'
+      - 'LICENSE'
+      - 'dev/**'
 
 env:
   CARGO_TERM_COLOR: always
@@ -78,10 +82,10 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci --ws
+        run: npm --prefix components/secutils-webui ci
 
       - name: Build
-        run: npm run build -w components/secutils-webui
+        run: npm --prefix components/secutils-webui run build
 
   ci-docs:
     name: Build Docs (Linux)
@@ -95,7 +99,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci --ws
+        run: npm --prefix components/secutils-docs ci
 
       - name: Build
-        run: npm run build -w components/secutils-docs
+        run: npm --prefix components/secutils-docs run build

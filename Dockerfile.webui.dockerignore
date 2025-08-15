@@ -1,20 +1,20 @@
 # Paths that should be ignored by all Docker images
-node_modules
-.idea
+*.md
 .DS_Store
-dev
-.parcel-cache
-target
-dist
 .env
-.nvmrc
 .github
 .husky
+.idea
+.nvmrc
+.parcel-cache
 Dockerfile
-*.md
 LICENSE
-secutils.toml
+dev
+dist
+node_modules
 rustfmt.toml
+secutils.toml
+target
 
 # Path that should be ignored by WebUI Docker image
 /src
