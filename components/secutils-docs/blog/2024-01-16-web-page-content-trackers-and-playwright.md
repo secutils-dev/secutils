@@ -72,12 +72,12 @@ With Markdown and a bit of creativity, one can create a nice personalized versio
 
 I won't dive into the UI, HTTP APIs, or storage layer used for this functionality, as it's all standard tech. I'd better focus on the content extraction part, the core of this functionality.
 
-To begin, all functionality related to browser automation and web scraping lives in a dedicated service — [**Web Scraper**](https://github.com/secutils-dev/secutils-web-scraper). The primary rationale is that dealing with browsers and arbitrary user scripts is tricky from a security standpoint, and it's always a good idea to isolate such functionality as much as possible. You can read more about the security aspects of web scraping in the [**"Running web scraping service securely"**](./2023-09-12-running-web-scraping-service-securely.md) post.
+To begin, all functionality related to browser automation and web scraping lives in a dedicated service — [**Retrack**](https://github.com/secutils-dev/retrack). The primary rationale is that dealing with browsers and arbitrary user scripts is tricky from a security standpoint, and it's always a good idea to isolate such functionality as much as possible. You can read more about the security aspects of web scraping in the [**"Running web scraping service securely"**](./2023-09-12-running-web-scraping-service-securely.md) post.
 
 As the post title suggests, at the heart of Web Scraper lies [**Playwright**](https://playwright.dev/) with an additional HTTP API layer on top. Playwright is an exceptional tool that manages all interactions with the headless browser and abstracts away a considerable amount of complexity. Let me show you how I use Playwright to extract content from web pages:
 
 :::info NOTE
-I've omitted some non-essential details for brevity, you can find the full source code at the [**Web Scraper GitHub repository**](https://github.com/secutils-dev/secutils-web-scraper/).
+I've omitted some non-essential details for brevity, you can find the full source code at the [**Retrack GitHub repository**](https://github.com/secutils-dev/retrack/).
 :::
 
 ```javascript
@@ -170,7 +170,7 @@ async function extractContent(page: Page, context: WebPageContext<string>) {
 }
 ```
 
-As you can see, Playwright is a very powerful tool, and working with it is straightforward. I omitted a few pieces that rely on the Chrome DevTools Protocol (e.g., collecting all external requests with responses and clearing browser cache) that aren't strictly relevant for this post, but you can check out the [**Web Scraper GitHub repository**](https://github.com/secutils-dev/secutils-web-scraper/) to see the full source code if you're curious.
+As you can see, Playwright is a very powerful tool, and working with it is straightforward. I omitted a few pieces that rely on the Chrome DevTools Protocol (e.g., collecting all external requests with responses and clearing browser cache) that aren't strictly relevant for this post, but you can check out the [**Retrack GitHub repository**](https://github.com/secutils-dev/retrack/) to see the full source code if you're curious.
 
 ## What's next
 

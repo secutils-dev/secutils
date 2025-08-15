@@ -127,6 +127,12 @@ COURIER_HTTP_REQUEST_CONFIG_AUTH_CONFIG_VALUE="Bearer eyJ0eXAiOiJKV1QiLCJhbGciOi
 
 Install all the required dependencies with `npm --prefix components/secutils-webui i` and run the UI in watch mode with `npm --prefix components/secutils-webui run watch`. The UI should be accessible at http://localhost:7171.
 
+## Documentation
+
+Install all the required dependencies with `npm --prefix components/secutils-docs i` and run the docs UI in watch mode with `npm --prefix components/secutils-docs run watch`. The docs UI should be accessible at http://localhost:7373.
+
+The documentation for Secutils.dev is also hosted at [secutils.dev/docs](https://secutils.dev/docs).
+
 ### Usage
 
 At this point, it is recommended to use the Secutils.dev APIs through the Web UI, but you can also generate a JSON Web Token and use the 
@@ -167,20 +173,16 @@ Build images with the following commands:
 # Host architecture
 docker build --tag secutils-api:latest .
 docker build --tag secutils-webui:latest -f Dockerfile.webui .
+docker build --tag secutils-docs:latest -f Dockerfile.docs .
 
 # Cross-compile to ARM64 architecture
 docker build --platform linux/arm64 --tag secutils-api:latest .
 docker build --platform linux/arm64 --tag secutils-webui:latest -f Dockerfile.webui .
+docker build --platform linux/arm64 --tag secutils-docs:latest -f Dockerfile.docs .
 
 # Cross-compile to ARM64 musl architecture
 docker build --platform linux/arm64 --tag secutils-api:latest -f Dockerfile.aarch64-unknown-linux-musl .
 ```
-
-## Documentation
-
-The documentation for Secutils.dev is located
-in [github.com/secutils-dev/secutils-docs](https://github.com/secutils-dev/secutils-docs/) and hosted
-at [secutils.dev/docs](https://secutils.dev/docs).
 
 ## Shoutouts
 

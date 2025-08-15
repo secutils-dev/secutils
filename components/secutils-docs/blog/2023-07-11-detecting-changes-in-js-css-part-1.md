@@ -47,7 +47,7 @@ Parsing a static HTML page and fetching external resources may not be overly com
 
 Accounting for dynamically loaded resources significantly increases the complexity of the problem we are addressing. It is no longer sufficient to simply parse HTML and fetch external resources. Now we need to **interpret or evaluate** these resources, similar to what web browsers do. Fortunately, there are mature and robust libraries that provide high-level APIs for automating web browsers in tasks like these. Two popular options are [**Puppeteer**](https://pptr.dev/) and [**Playwright**](https://playwright.dev/).
 
-While both Puppeteer and Playwright have their own advantages and disadvantages, I have chosen Playwright for Secutils.dev. Playwright not only allows us to access all browser APIs within the web page context to easily detect and extract inline resources, but also enables us to **intercept** all external dynamically loaded web page resources. Here's an example of the code (full code can be found [**here**](https://github.com/secutils-dev/secutils-web-scraper/blob/main/src/api/web_page/resources/list.ts)):
+While both Puppeteer and Playwright have their own advantages and disadvantages, I have chosen Playwright for Secutils.dev. Playwright not only allows us to access all browser APIs within the web page context to easily detect and extract inline resources, but also enables us to **intercept** all external dynamically loaded web page resources. Here's an example of the code (full code can be found [**here**](https://github.com/secutils-dev/retrack/blob/main/components/retrack-web-scraper/src/api/web_page/execute.ts)):
 
 ```ts
 const page = await browser.newPage();
@@ -81,7 +81,7 @@ const inlineResources = await page.evaluate(async () => {
 It doesn't appear overly complex, which is great!
 
 :::tip NOTE
-Running a full-blown browser is a resource-intensive task, and parsing external web pages can also have potential [**security concerns**](https://www.scmagazine.com/news/vulnerability-management/google-critical-rce-bug-chrome-browser). That is why I have chosen to run the Secutils.dev [**Web Scraper component**](https://github.com/secutils-dev/secutils-web-scraper) separately from the main Secutils.dev server, as a dedicated Kubernetes deployment. This allows me to scale it independently and isolate it from the main server.
+Running a full-blown browser is a resource-intensive task, and parsing external web pages can also have potential [**security concerns**](https://www.scmagazine.com/news/vulnerability-management/google-critical-rce-bug-chrome-browser). That is why I have chosen to run the Secutils.dev [**Retrack component**](https://github.com/secutils-dev/retrack) separately from the main Secutils.dev server, as a dedicated Kubernetes deployment. This allows me to scale it independently and isolate it from the main server.
 :::
 
 ## Challenge #3: Large resources
