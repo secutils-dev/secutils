@@ -14,8 +14,8 @@ use crate::{
     retrack::{
         RetrackTracker,
         tags::{
-            RETRACK_NOTIFICATIONS_TAG, RETRACK_RESOURCE_ID_TAG, RETRACK_RESOURCE_TAG,
-            RETRACK_USER_TAG, get_tag_value, prepare_tags,
+            RETRACK_NOTIFICATIONS_TAG, RETRACK_RESOURCE_ID_TAG, RETRACK_RESOURCE_NAME_TAG,
+            RETRACK_RESOURCE_TAG, RETRACK_USER_TAG, get_tag_value, prepare_tags,
         },
     },
     scheduler::CronExt,
@@ -174,6 +174,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                     format!("{RETRACK_NOTIFICATIONS_TAG}:{}", params.notifications),
                     format!("{RETRACK_RESOURCE_TAG}:{utils_resource}"),
                     format!("{RETRACK_RESOURCE_ID_TAG}:{id}"),
+                    format!("{RETRACK_RESOURCE_NAME_TAG}:{}", params.name),
                 ]),
                 actions: vec![],
             })
@@ -290,6 +291,10 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", params.notifications),
                         format!("{RETRACK_RESOURCE_TAG}:{utils_resource}"),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{id}"),
+                        format!(
+                            "{RETRACK_RESOURCE_NAME_TAG}:{}",
+                            params.name.as_ref().unwrap_or(&existing_tracker.name)
+                        ),
                     ])),
                     ..Default::default()
                 },
@@ -570,7 +575,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 mod tests {
     use super::{
         PageTrackerGetHistoryParams, PageTrackerUpdateParams, RETRACK_NOTIFICATIONS_TAG,
-        RETRACK_RESOURCE_ID_TAG, RETRACK_RESOURCE_TAG, RETRACK_USER_TAG,
+        RETRACK_RESOURCE_ID_TAG, RETRACK_RESOURCE_NAME_TAG, RETRACK_RESOURCE_TAG, RETRACK_USER_TAG,
     };
     use crate::{
         error::Error as SecutilsError,
@@ -1028,6 +1033,7 @@ mod tests {
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
                         format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+                        format!("{RETRACK_RESOURCE_NAME_TAG}:name_two"),
                     ])),
                     ..Default::default()
                 });
@@ -1088,6 +1094,7 @@ mod tests {
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
                         format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+                        format!("{RETRACK_RESOURCE_NAME_TAG}:name_two"),
                     ])),
                     ..Default::default()
                 });
@@ -1163,6 +1170,7 @@ mod tests {
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
                         format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+                        format!("{RETRACK_RESOURCE_NAME_TAG}:name_two"),
                     ])),
                     ..Default::default()
                 });
@@ -1239,6 +1247,7 @@ mod tests {
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
                         format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+                        format!("{RETRACK_RESOURCE_NAME_TAG}:name_two"),
                     ])),
                     ..Default::default()
                 });
@@ -1294,6 +1303,7 @@ mod tests {
                 format!("{RETRACK_NOTIFICATIONS_TAG}:{}", true),
                 format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
                 format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+                format!("{RETRACK_RESOURCE_NAME_TAG}:{}", expected_tracker.name),
             ]),
             ..retrack_tracker.clone()
         };
@@ -1306,6 +1316,7 @@ mod tests {
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", true),
                         format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+                        format!("{RETRACK_RESOURCE_NAME_TAG}:name_two"),
                     ])),
                     ..Default::default()
                 });

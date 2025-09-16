@@ -750,6 +750,7 @@ mod tests {
             .await?;
         let expected_responder = Responder {
             enabled: false,
+            updated_at: updated_responder.updated_at,
             ..responder.clone()
         };
         assert_eq!(expected_responder, updated_responder);

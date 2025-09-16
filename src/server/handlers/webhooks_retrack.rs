@@ -197,8 +197,8 @@ mod tests {
         retrack::{
             RetrackTracker,
             tags::{
-                RETRACK_NOTIFICATIONS_TAG, RETRACK_RESOURCE_ID_TAG, RETRACK_RESOURCE_TAG,
-                RETRACK_USER_TAG, prepare_tags,
+                RETRACK_NOTIFICATIONS_TAG, RETRACK_RESOURCE_ID_TAG, RETRACK_RESOURCE_NAME_TAG,
+                RETRACK_RESOURCE_TAG, RETRACK_USER_TAG, prepare_tags,
             },
             tests::mock_retrack_tracker,
         },
@@ -503,6 +503,7 @@ mod tests {
                 "{RETRACK_RESOURCE_ID_TAG}:{}",
                 uuid!("00000000-0000-0000-0000-000000000001")
             ),
+            format!("{RETRACK_RESOURCE_NAME_TAG}:{}", retrack_tracker.name),
             format!("{RETRACK_NOTIFICATIONS_TAG}:false"),
         ]);
         let retrack_get_api_mock = retrack_server.mock(|when, then| {
@@ -568,6 +569,7 @@ mod tests {
                 "{RETRACK_RESOURCE_ID_TAG}:{}",
                 uuid!("00000000-0000-0000-0000-000000000001")
             ),
+            format!("{RETRACK_RESOURCE_NAME_TAG}:{}", retrack_tracker.name),
             format!("{RETRACK_NOTIFICATIONS_TAG}:true"),
         ]);
         let retrack_get_api_mock = retrack_server.mock(|when, then| {
@@ -634,6 +636,7 @@ mod tests {
                 "{RETRACK_RESOURCE_ID_TAG}:{}",
                 uuid!("00000000-0000-0000-0000-000000000001")
             ),
+            format!("{RETRACK_RESOURCE_NAME_TAG}:{}", retrack_tracker.name),
             format!("{RETRACK_NOTIFICATIONS_TAG}:true"),
         ]);
         let retrack_get_api_mock = retrack_server.mock(|when, then| {
@@ -699,6 +702,7 @@ mod tests {
             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
             format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
             format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+            format!("{RETRACK_RESOURCE_NAME_TAG}:{}", tracker.name),
             format!("{RETRACK_NOTIFICATIONS_TAG}:true"),
         ]);
         let retrack_get_api_mock = retrack_server.mock(|when, then| {
@@ -793,6 +797,7 @@ mod tests {
             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
             format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
             format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+            format!("{RETRACK_RESOURCE_NAME_TAG}:{}", tracker.name),
             format!("{RETRACK_NOTIFICATIONS_TAG}:true"),
         ]);
         let retrack_get_api_mock = retrack_server.mock(|when, then| {

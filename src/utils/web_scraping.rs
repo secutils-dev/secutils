@@ -80,8 +80,8 @@ pub mod tests {
         retrack::{
             RetrackTracker,
             tags::{
-                RETRACK_NOTIFICATIONS_TAG, RETRACK_RESOURCE_ID_TAG, RETRACK_RESOURCE_TAG,
-                RETRACK_USER_TAG, prepare_tags,
+                RETRACK_NOTIFICATIONS_TAG, RETRACK_RESOURCE_ID_TAG, RETRACK_RESOURCE_NAME_TAG,
+                RETRACK_RESOURCE_TAG, RETRACK_USER_TAG, prepare_tags,
             },
             tests::{RetrackTrackerValue, mock_retrack_tracker},
         },
@@ -400,6 +400,7 @@ pub mod tests {
                 format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
                 format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
                 format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+                format!("{RETRACK_RESOURCE_NAME_TAG}:name_one_updated"),
             ]),
             ..retrack_tracker
         };
@@ -429,6 +430,7 @@ pub mod tests {
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
                         format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+                        format!("{RETRACK_RESOURCE_NAME_TAG}:name_one_updated"),
                     ])),
                     ..Default::default()
                 });

@@ -16,6 +16,9 @@ pub const RETRACK_RESOURCE_TAG: &str = "resource";
 /// Defines a tag that stores the resource ID.
 pub const RETRACK_RESOURCE_ID_TAG: &str = "resource_id";
 
+/// Defines a tag that stores the resource name.
+pub const RETRACK_RESOURCE_NAME_TAG: &str = "resource_name";
+
 /// Prepares tags for the Retrack API by prefixing them with the `secutils`.
 pub fn prepare_tags<Tag: AsRef<str>>(tags: &[Tag]) -> Vec<String> {
     once(RETRACK_APP_TAG.to_string())
