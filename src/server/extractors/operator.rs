@@ -2,12 +2,7 @@ use crate::{
     security::{Credentials, Operator},
     server::app_state::AppState,
 };
-use actix_web::{
-    Error, FromRequest, HttpRequest,
-    dev::Payload,
-    error::{ErrorInternalServerError, ErrorUnauthorized},
-    web,
-};
+use actix_web::{Error, FromRequest, HttpRequest, dev::Payload, error::ErrorUnauthorized, web};
 use anyhow::anyhow;
 use std::{future::Future, pin::Pin};
 use tracing::{error, warn};
@@ -35,7 +30,7 @@ impl FromRequest for Operator {
                         request_path = req.path(),
                         "Failed to extract operator information due to: {err:?}"
                     );
-                    Err(ErrorInternalServerError(anyhow!("Internal server error")))
+                    Err(ErrorUnauthorized(anyhow!("Unauthorized")))
                 }
             }
         })
