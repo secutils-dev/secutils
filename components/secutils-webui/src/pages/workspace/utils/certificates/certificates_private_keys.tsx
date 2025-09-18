@@ -14,7 +14,6 @@ import {
   EuiText,
   EuiToolTip,
 } from '@elastic/eui';
-import axios from 'axios';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { PRIVATE_KEYS_PROD_WARNING_USER_SETTINGS_KEY } from './consts';
@@ -23,8 +22,7 @@ import { privateKeyAlgString } from './private_key_alg';
 import { PrivateKeyExportModal } from './private_key_export_modal';
 import { SavePrivateKeyFlyout } from './save_private_key_flyout';
 import { PageErrorState, PageLoadingState } from '../../../../components';
-import type { AsyncData } from '../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage } from '../../../../model';
+import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -63,15 +61,17 @@ export default function CertificatesPrivateKeys() {
   );
 
   const loadPrivateKeys = useCallback(() => {
-    axios.get<PrivateKey[]>(getApiUrl('/api/utils/certificates/private_keys'), getApiRequestConfig()).then(
-      (response) => {
-        setPrivateKeys({ status: 'succeeded', data: response.data });
-        setTitleActions(response.data.length === 0 ? null : createButton);
-      },
-      (err: Error) => {
-        setPrivateKeys({ status: 'failed', error: getErrorMessage(err) });
-      },
-    );
+    fetch(getApiUrl('/api/utils/certificates/private_keys'), getApiRequestConfig())
+      .then(async (res) => {
+        if (!res.ok) {
+          throw await ResponseError.fromResponse(res);
+        }
+
+        const privateKeys = (await res.json()) as PrivateKey[];
+        setPrivateKeys({ status: 'succeeded', data: privateKeys });
+        setTitleActions(privateKeys.length === 0 ? null : createButton);
+      })
+      .catch((err: Error) => setPrivateKeys({ status: 'failed', error: getErrorMessage(err) }));
   }, [setTitleActions, createButton]);
 
   useEffect(() => {
@@ -106,17 +106,19 @@ export default function CertificatesPrivateKeys() {
       onConfirm={() => {
         setPrivateKeyToRemove(null);
 
-        axios
-          .delete(
-            getApiUrl(`/api/utils/certificates/private_keys/${encodeURIComponent(privateKeyToRemove?.id)}`),
-            getApiRequestConfig(),
-          )
-          .then(
-            () => loadPrivateKeys(),
-            (err: Error) => {
-              console.error(`Failed to remove private key: ${getErrorMessage(err)}`);
-            },
-          );
+        fetch(
+          getApiUrl(`/api/utils/certificates/private_keys/${encodeURIComponent(privateKeyToRemove?.id)}`),
+          getApiRequestConfig('DELETE'),
+        )
+          .then(async (res) => {
+            if (!res.ok) {
+              throw await ResponseError.fromResponse(res);
+            }
+            loadPrivateKeys();
+          })
+          .catch((err: Error) => {
+            console.error(`Failed to remove private key: ${getErrorMessage(err)}`);
+          });
       }}
       cancelButtonText="Cancel"
       confirmButtonText="Remove"

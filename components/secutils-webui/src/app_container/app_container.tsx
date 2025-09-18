@@ -1,7 +1,6 @@
 import type { EuiThemeColorMode } from '@elastic/eui';
 import { EuiGlobalToastList, EuiProvider } from '@elastic/eui';
 import type { Toast } from '@elastic/eui/src/components/toast/global_toast_list';
-import axios from 'axios';
 import { useCallback, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 
@@ -14,6 +13,7 @@ import {
   getErrorMessage,
   getUserShareId,
   removeUserShareId,
+  ResponseError,
   setUserData,
   USER_SETTINGS_KEY_COMMON_UI_THEME,
   USER_SETTINGS_USER_DATA_TYPE,
@@ -34,8 +34,13 @@ export function AppContainer() {
     webhookUrlType: 'path',
   });
   const refreshUiState = useCallback(() => {
-    axios.get(getApiUrl('/api/ui/state'), getApiRequestConfig()).then(
-      ({ data }: { data: UiState }) => {
+    fetch(getApiUrl('/api/ui/state'), getApiRequestConfig())
+      .then(async (res) => {
+        if (!res.ok) {
+          throw await ResponseError.fromResponse(res);
+        }
+
+        const data = (await res.json()) as UiState;
         setUiState({ ...data, synced: true });
 
         if (data.settings) {
@@ -47,11 +52,10 @@ export function AppContainer() {
         if (!data.userShare) {
           removeUserShareId();
         }
-      },
-      () => {
-        setUiState((currentUiState) => ({ ...currentUiState, status: { level: 'unavailable' }, synced: true }));
-      },
-    );
+      })
+      .catch(() =>
+        setUiState((currentUiState) => ({ ...currentUiState, status: { level: 'unavailable' }, synced: true })),
+      );
   }, [setLocalSettings]);
   useEffect(refreshUiState, [refreshUiState]);
 

@@ -1,11 +1,16 @@
-import axios from 'axios';
 import moment from 'moment';
 import { useState } from 'react';
 
 import type { CertificateTemplate } from './certificate_template';
 import { CertificateTemplateForm } from './certificate_template_form';
-import type { AsyncData } from '../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage, isClientError } from '../../../../model';
+import {
+  type AsyncData,
+  getApiRequestConfig,
+  getApiUrl,
+  getErrorMessage,
+  isClientError,
+  ResponseError,
+} from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -52,28 +57,29 @@ export function SaveCertificateTemplateFlyout({ onClose, template }: SaveCertifi
 
         const [requestPromise, successMessage, errorMessage] = templateToSave.id
           ? [
-              axios.put(
-                getApiUrl(`/api/utils/certificates/templates/${templateToSave.id}`),
-                {
+              fetch(getApiUrl(`/api/utils/certificates/templates/${templateToSave.id}`), {
+                ...getApiRequestConfig('PUT'),
+                body: JSON.stringify({
                   templateName: templateToSave.name !== template?.name ? templateToSave.name : null,
                   attributes: templateToSave.attributes,
-                },
-                getApiRequestConfig(),
-              ),
+                }),
+              }),
               `Successfully updated "${templateToSave.name}" certificate template`,
               `Unable to update "${templateToSave.name}" certificate template, please try again later`,
             ]
           : [
-              axios.post(
-                getApiUrl('/api/utils/certificates/templates'),
-                { templateName: templateToSave.name, attributes: templateToSave.attributes },
-                getApiRequestConfig(),
-              ),
+              fetch(getApiUrl('/api/utils/certificates/templates'), {
+                ...getApiRequestConfig('POST'),
+                body: JSON.stringify({ templateName: templateToSave.name, attributes: templateToSave.attributes }),
+              }),
               `Successfully saved "${templateToSave.name}" certificate template`,
               `Unable to save "${templateToSave.name}" certificate template, please try again later`,
             ];
-        requestPromise.then(
-          () => {
+        requestPromise
+          .then(async (res) => {
+            if (!res.ok) {
+              throw await ResponseError.fromResponse(res);
+            }
             setUpdatingStatus({ status: 'succeeded', data: undefined });
 
             addToast({
@@ -84,8 +90,8 @@ export function SaveCertificateTemplateFlyout({ onClose, template }: SaveCertifi
             });
 
             onClose(true);
-          },
-          (err: Error) => {
+          })
+          .catch((err: Error) => {
             const remoteErrorMessage = getErrorMessage(err);
             setUpdatingStatus({ status: 'failed', error: remoteErrorMessage });
 
@@ -95,8 +101,7 @@ export function SaveCertificateTemplateFlyout({ onClose, template }: SaveCertifi
               color: 'danger',
               title: isClientError(err) ? remoteErrorMessage : errorMessage,
             });
-          },
-        );
+          });
       }}
       canSave={templateToSave.name.length > 0}
       saveInProgress={updatingStatus?.status === 'pending'}

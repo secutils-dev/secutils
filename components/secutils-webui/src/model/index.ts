@@ -1,7 +1,7 @@
 export type { ServerStatus } from './server_status';
 export type { UiState, WebhookUrlType } from './ui_state';
 export type { AsyncData } from './async_data';
-export { isAbortError } from './errors';
+export { isAbortError, ResponseError, getErrorMessage, isClientError, getErrorStatus } from './errors';
 export { getUserData, setUserData } from './user';
 export { getUserShareId, removeUserShareId, USER_SHARE_ID_HEADER_NAME } from './user_share';
 export type { User } from './user';
@@ -16,7 +16,6 @@ export type { UserSettings } from './user_settings';
 export { getApiUrl, getApiRequestConfig } from './urls';
 export type { SerializedSearchItem, SearchItem } from './search_item';
 export { deserializeSearchItem } from './search_item';
-export { getErrorMessage, isClientError } from './errors';
 export type { UserSubscription } from './user_subscription';
 export { getCsrfToken, getSecurityErrorMessage } from './security_flows';
 export type {

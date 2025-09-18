@@ -12,15 +12,13 @@ import {
   EuiSelect,
   EuiTitle,
 } from '@elastic/eui';
-import axios from 'axios';
 import type { ChangeEvent } from 'react';
 import { useCallback, useState } from 'react';
 
 import type { EncryptionMode } from './encryption_mode';
 import { EncryptionModeSelector } from './encryption_mode_selector';
 import type { PrivateKey } from './private_key';
-import type { AsyncData } from '../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage } from '../../../../model';
+import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
 import { Downloader } from '../../../../tools/downloader';
 
 export interface PrivateKeyExportModalProps {
@@ -110,35 +108,35 @@ export function PrivateKeyExportModal({ privateKey, onClose }: PrivateKeyExportM
 
             setExportStatus({ status: 'pending' });
 
-            axios
-              .post<number[]>(
-                getApiUrl(`/api/utils/certificates/private_keys/${encodeURIComponent(privateKey.id)}/export`),
-                {
-                  format,
-                  passphrase: privateKey.encrypted ? currentPassphrase : null,
-                  exportPassphrase: exportEncryptionMode === 'passphrase' ? exportPassphrase : null,
-                },
-                getApiRequestConfig(),
-              )
-              .then(
-                (response) => {
-                  const keyContent = new Uint8Array(response.data);
-                  if (format === 'pem') {
-                    Downloader.download(`${privateKey.name}.pem`, keyContent, 'application/x-pem-file');
-                  } else if (format === 'pkcs8') {
-                    Downloader.download(`${privateKey.name}.p8`, keyContent, 'application/pkcs8');
-                  } else {
-                    Downloader.download(`${privateKey.name}.pfx`, keyContent, 'application/x-pkcs12');
-                  }
+            fetch(getApiUrl(`/api/utils/certificates/private_keys/${encodeURIComponent(privateKey.id)}/export`), {
+              ...getApiRequestConfig('POST'),
+              body: JSON.stringify({
+                format,
+                passphrase: privateKey.encrypted ? currentPassphrase : null,
+                exportPassphrase: exportEncryptionMode === 'passphrase' ? exportPassphrase : null,
+              }),
+            })
+              .then(async (res) => {
+                if (!res.ok) {
+                  throw await ResponseError.fromResponse(res);
+                }
 
-                  setExportStatus({ status: 'succeeded', data: undefined });
+                const keyContent = new Uint8Array((await res.json()) as number[]);
+                if (format === 'pem') {
+                  Downloader.download(`${privateKey.name}.pem`, keyContent, 'application/x-pem-file');
+                } else if (format === 'pkcs8') {
+                  Downloader.download(`${privateKey.name}.p8`, keyContent, 'application/pkcs8');
+                } else {
+                  Downloader.download(`${privateKey.name}.pfx`, keyContent, 'application/x-pkcs12');
+                }
 
-                  onClose();
-                },
-                (err: Error) => {
-                  setExportStatus({ status: 'failed', error: getErrorMessage(err) });
-                },
-              );
+                setExportStatus({ status: 'succeeded', data: undefined });
+
+                onClose();
+              })
+              .catch((err: Error) => {
+                setExportStatus({ status: 'failed', error: getErrorMessage(err) });
+              });
           }}
           isDisabled={exportEncryptionMode === 'passphrase' && exportPassphrase === null}
           isLoading={exportStatus?.status === 'pending'}

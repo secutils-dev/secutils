@@ -68,7 +68,7 @@ export function SigninPage() {
 
         refreshUiState();
       })
-      .catch((err: Error) => {
+      .catch((err) => {
         const originalErrorMessage = getSecurityErrorMessage(err);
         setSigninStatus({ status: 'failed', error: originalErrorMessage ?? 'Unknown error' });
 
@@ -183,7 +183,7 @@ export function SigninPage() {
 
                     setSigninStatus({ status: 'pending', state: { isPasskey: true } });
                     startSigninFlow(async (api, flow) => {
-                      const axiosResponse = await api.updateLoginFlow(
+                      const response = await api.updateLoginFlow(
                         {
                           flow: flow.id,
                           updateLoginFlowBody: {
@@ -201,7 +201,7 @@ export function SigninPage() {
                           node.attributes.node_type === 'input' && node.attributes.name === 'webauthn_login_trigger',
                       );
                       if (!publicKeyNode) {
-                        throw axiosResponse;
+                        throw response;
                       }
 
                       const publicKey = (

@@ -17,15 +17,20 @@ import {
   EuiTextArea,
   EuiTitle,
 } from '@elastic/eui';
-import axios from 'axios';
 import { customAlphabet, urlAlphabet } from 'nanoid';
 import { useCallback, useMemo, useState } from 'react';
 import type { ChangeEvent } from 'react';
 
 import type { Responder } from './responder';
 import { useRangeTicks } from '../../../../hooks';
-import type { AsyncData } from '../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage, isClientError } from '../../../../model';
+import {
+  type AsyncData,
+  getApiRequestConfig,
+  getApiUrl,
+  getErrorMessage,
+  isClientError,
+  ResponseError,
+} from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
 import { ScriptEditor } from '../../components/script_editor';
 import { useWorkspaceContext } from '../../hooks';
@@ -214,21 +219,27 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
 
     const [requestPromise, successMessage, errorMessage] = responder
       ? [
-          axios.put(
-            getApiUrl(`/api/utils/webhooks/responders/${responder.id}`),
-            responderToUpdate,
-            getApiRequestConfig(),
-          ),
+          fetch(getApiUrl(`/api/utils/webhooks/responders/${responder.id}`), {
+            ...getApiRequestConfig('PUT'),
+            body: JSON.stringify(responderToUpdate),
+          }),
           `Successfully updated "${name}" responder`,
           `Unable to update "${name}" responder, please try again later`,
         ]
       : [
-          axios.post(getApiUrl('/api/utils/webhooks/responders'), responderToUpdate, getApiRequestConfig()),
+          fetch(getApiUrl('/api/utils/webhooks/responders'), {
+            ...getApiRequestConfig('POST'),
+            body: JSON.stringify(responderToUpdate),
+          }),
           `Successfully saved "${name}" responder`,
           `Unable to save "${name}" responder, please try again later`,
         ];
-    requestPromise.then(
-      () => {
+    requestPromise
+      .then(async (res) => {
+        if (!res.ok) {
+          throw await ResponseError.fromResponse(res);
+        }
+
         setUpdatingStatus({ status: 'succeeded', data: undefined });
 
         addToast({
@@ -239,8 +250,8 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
         });
 
         onClose(true);
-      },
-      (err: Error) => {
+      })
+      .catch((err: Error) => {
         const remoteErrorMessage = getErrorMessage(err);
         setUpdatingStatus({ status: 'failed', error: remoteErrorMessage });
 
@@ -250,8 +261,7 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
           color: 'danger',
           title: isClientError(err) ? remoteErrorMessage : errorMessage,
         });
-      },
-    );
+      });
   }, [
     name,
     method,

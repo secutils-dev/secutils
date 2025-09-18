@@ -7,13 +7,12 @@ import {
   EuiText,
   useIsWithinMaxBreakpoint,
 } from '@elastic/eui';
-import axios from 'axios';
 import type { KeyboardEvent } from 'react';
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 import type { AsyncData, SearchItem, SerializedSearchItem } from '../../../model';
-import { deserializeSearchItem, getApiUrl, getErrorMessage } from '../../../model';
+import { deserializeSearchItem, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../model';
 import { getUtilIcon } from '../utils';
 
 function debounce(callback: (searchQuery: string) => void) {
@@ -39,11 +38,19 @@ export function SiteSearchBar() {
         return;
       }
 
-      axios.post<SerializedSearchItem[]>(getApiUrl('/api/search'), { query: searchQuery }).then(
-        (response) => {
+      fetch(getApiUrl('/api/search'), {
+        ...getApiRequestConfig('POST'),
+        body: JSON.stringify({ query: searchQuery }),
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            throw await ResponseError.fromResponse(res);
+          }
+
+          const searchItems = (await res.json()) as SerializedSearchItem[];
           setSearchItems({
             status: 'succeeded',
-            data: response.data.map((serializedSearchItem) => {
+            data: searchItems.map((serializedSearchItem) => {
               const searchItem = deserializeSearchItem(serializedSearchItem);
               const icon =
                 searchItem.category === 'Utils' ? getUtilIcon(searchItem.meta?.handle ?? '', 'search') : undefined;
@@ -55,11 +62,10 @@ export function SiteSearchBar() {
               };
             }),
           });
-        },
-        (err: Error) => {
+        })
+        .catch((err: Error) => {
           setSearchItems({ status: 'failed', error: getErrorMessage(err) });
-        },
-      );
+        });
     }),
     [],
   );

@@ -1,5 +1,4 @@
 import { EuiDescribedFormGroup, EuiFieldText, EuiForm, EuiFormRow, EuiLink, EuiSelect } from '@elastic/eui';
-import axios from 'axios';
 import type { ChangeEvent } from 'react';
 import { useCallback, useState } from 'react';
 
@@ -8,8 +7,14 @@ import { EncryptionModeSelector } from './encryption_mode_selector';
 import type { PrivateKey } from './private_key';
 import type { PrivateKeyAlgorithm, PrivateKeyCurveName, PrivateKeySize } from './private_key_alg';
 import { privateKeyCurveNameString } from './private_key_alg';
-import type { AsyncData } from '../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage, isClientError } from '../../../../model';
+import {
+  type AsyncData,
+  getApiRequestConfig,
+  getApiUrl,
+  getErrorMessage,
+  isClientError,
+  ResponseError,
+} from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -96,30 +101,32 @@ export function SavePrivateKeyFlyout({ onClose, privateKey }: SavePrivateKeyFlyo
         const currentPassphraseToSend = privateKey?.encrypted ? currentPassphrase : null;
         const [requestPromise, successMessage, errorMessage] = privateKey
           ? [
-              axios.put(
-                getApiUrl(`/api/utils/certificates/private_keys/${privateKey.id}`),
-                {
+              fetch(getApiUrl(`/api/utils/certificates/private_keys/${privateKey.id}`), {
+                ...getApiRequestConfig('PUT'),
+                body: JSON.stringify({
                   keyName: privateKey.name !== name ? name.trim() : null,
                   ...(!privateKey.encrypted || newPassphraseToSend !== currentPassphraseToSend
                     ? { passphrase: currentPassphraseToSend, newPassphrase: newPassphraseToSend }
                     : {}),
-                },
-                getApiRequestConfig(),
-              ),
+                }),
+              }),
               `Successfully updated "${name}" private key`,
               `Unable to update "${name}" private key, please try again later`,
             ]
           : [
-              axios.post(
-                getApiUrl('/api/utils/certificates/private_keys'),
-                { keyName: name, alg: keyAlgorithm, passphrase: newPassphraseToSend },
-                getApiRequestConfig(),
-              ),
+              fetch(getApiUrl('/api/utils/certificates/private_keys'), {
+                ...getApiRequestConfig('POST'),
+                body: JSON.stringify({ keyName: name, alg: keyAlgorithm, passphrase: newPassphraseToSend }),
+              }),
               `Successfully saved "${name}" private key`,
               `Unable to save "${name}" private key, please try again later`,
             ];
-        requestPromise.then(
-          () => {
+        requestPromise
+          .then(async (res) => {
+            if (!res.ok) {
+              throw await ResponseError.fromResponse(res);
+            }
+
             setUpdatingStatus({ status: 'succeeded', data: undefined });
 
             addToast({
@@ -130,8 +137,8 @@ export function SavePrivateKeyFlyout({ onClose, privateKey }: SavePrivateKeyFlyo
             });
 
             onClose(true);
-          },
-          (err: Error) => {
+          })
+          .catch((err: Error) => {
             const remoteErrorMessage = getErrorMessage(err);
             setUpdatingStatus({ status: 'failed', error: remoteErrorMessage });
 
@@ -141,8 +148,7 @@ export function SavePrivateKeyFlyout({ onClose, privateKey }: SavePrivateKeyFlyo
               color: 'danger',
               title: isClientError(err) ? remoteErrorMessage : errorMessage,
             });
-          },
-        );
+          });
       }}
       canSave={canSave()}
       saveInProgress={updatingStatus?.status === 'pending'}

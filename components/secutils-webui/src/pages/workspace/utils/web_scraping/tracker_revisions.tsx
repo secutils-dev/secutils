@@ -10,7 +10,6 @@ import {
   EuiSelect,
 } from '@elastic/eui';
 import { css } from '@emotion/react';
-import axios from 'axios';
 import { unix } from 'moment';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useState } from 'react';
@@ -18,7 +17,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { PageTracker } from './page_tracker';
 import type { TrackerDataRevision } from './tracker_data_revision';
 import { PageErrorState, PageLoadingState } from '../../../../components';
-import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage } from '../../../../model';
+import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
 import { useWorkspaceContext } from '../../hooks';
 
 export interface TrackerRevisionsProps {
@@ -58,36 +57,39 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
       );
 
       const historyUrl = getApiUrl(`/api/utils/web_scraping/${kind}/${encodeURIComponent(tracker.id)}/history`);
-      axios
-        .post<
-          TrackerDataRevision[]
-        >(historyUrl, { refresh, calculateDiff: forceMode === 'diff' }, getApiRequestConfig())
-        .then(
-          (response) => {
-            setRevisions({ status: 'succeeded', data: response.data });
+      fetch(historyUrl, {
+        ...getApiRequestConfig('POST'),
+        body: JSON.stringify({ refresh, calculateDiff: forceMode === 'diff' }),
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            throw await ResponseError.fromResponse(res);
+          }
 
-            // Reset a revision index only if it's not set or doesn't exist in the new data.
-            setRevisionIndex((prevRevisionIndex) =>
-              refresh || prevRevisionIndex === null || prevRevisionIndex >= response.data.length
-                ? response.data.length > 0
-                  ? 0
-                  : null
-                : prevRevisionIndex,
-            );
+          const revisions = (await res.json()) as TrackerDataRevision[];
+          setRevisions({ status: 'succeeded', data: revisions });
 
-            if (response.data.length < 2) {
-              setMode('default');
-            }
-          },
-          (err: Error) => {
-            setRevisions((currentRevisions) => ({
-              status: 'failed',
-              error: getErrorMessage(err),
-              state: currentRevisions.state,
-            }));
-            setRevisionIndex(null);
-          },
-        );
+          // Reset a revision index only if it's not set or doesn't exist in the new data.
+          setRevisionIndex((prevRevisionIndex) =>
+            refresh || prevRevisionIndex === null || prevRevisionIndex >= revisions.length
+              ? revisions.length > 0
+                ? 0
+                : null
+              : prevRevisionIndex,
+          );
+
+          if (revisions.length < 2) {
+            setMode('default');
+          }
+        })
+        .catch((err: Error) => {
+          setRevisions((currentRevisions) => ({
+            status: 'failed',
+            error: getErrorMessage(err),
+            state: currentRevisions.state,
+          }));
+          setRevisionIndex(null);
+        });
     },
     [kind, tracker.id],
   );
@@ -122,36 +124,36 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
       onConfirm={() => {
         setClearHistoryStatus((currentStatus) => ({ ...currentStatus, isInProgress: true }));
 
-        axios
-          .post(
-            getApiUrl(`/api/utils/web_scraping/${kind}/${encodeURIComponent(tracker.id)}/clear`),
-            undefined,
-            getApiRequestConfig(),
-          )
-          .then(
-            () => {
-              setRevisions({ status: 'succeeded', data: [] });
-              setRevisionIndex(null);
+        fetch(
+          getApiUrl(`/api/utils/web_scraping/${kind}/${encodeURIComponent(tracker.id)}/clear`),
+          getApiRequestConfig('POST'),
+        )
+          .then(async (res) => {
+            if (!res.ok) {
+              throw await ResponseError.fromResponse(res);
+            }
 
-              addToast({
-                id: `success-clear-tracker-history-${tracker.name}`,
-                iconType: 'check',
-                color: 'success',
-                title: `Successfully cleared page tracker history`,
-              });
+            setRevisions({ status: 'succeeded', data: [] });
+            setRevisionIndex(null);
 
-              setClearHistoryStatus({ isModalVisible: false, isInProgress: false });
-            },
-            () => {
-              addToast({
-                id: `failed-clear-tracker-history-${tracker.name}`,
-                iconType: 'warning',
-                color: 'danger',
-                title: `Unable to clear page tracker history, please try again later`,
-              });
-              setClearHistoryStatus((currentStatus) => ({ ...currentStatus, isInProgress: false }));
-            },
-          );
+            addToast({
+              id: `success-clear-tracker-history-${tracker.name}`,
+              iconType: 'check',
+              color: 'success',
+              title: `Successfully cleared page tracker history`,
+            });
+
+            setClearHistoryStatus({ isModalVisible: false, isInProgress: false });
+          })
+          .catch(() => {
+            addToast({
+              id: `failed-clear-tracker-history-${tracker.name}`,
+              iconType: 'warning',
+              color: 'danger',
+              title: `Unable to clear page tracker history, please try again later`,
+            });
+            setClearHistoryStatus((currentStatus) => ({ ...currentStatus, isInProgress: false }));
+          });
       }}
       cancelButtonText="Cancel"
       confirmButtonText="Clear"

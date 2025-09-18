@@ -13,7 +13,6 @@ import {
   EuiSpacer,
   EuiToolTip,
 } from '@elastic/eui';
-import axios from 'axios';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -24,7 +23,7 @@ import type { TrackerDataRevision } from './tracker_data_revision';
 import { TrackerName } from './tracker_name';
 import { TrackerRevisions } from './tracker_revisions';
 import { PageErrorState, PageLoadingState } from '../../../../components';
-import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage } from '../../../../model';
+import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -62,15 +61,17 @@ export default function PageTrackers() {
   );
 
   const loadTrackers = useCallback(() => {
-    axios.get<PageTracker[]>(getApiUrl('/api/utils/web_scraping/page'), getApiRequestConfig()).then(
-      (response) => {
-        setTrackers({ status: 'succeeded', data: response.data });
-        setTitleActions(response.data.length === 0 ? null : createButton);
-      },
-      (err: Error) => {
-        setTrackers({ status: 'failed', error: getErrorMessage(err) });
-      },
-    );
+    fetch(getApiUrl('/api/utils/web_scraping/page'), getApiRequestConfig())
+      .then(async (res) => {
+        if (!res.ok) {
+          throw await ResponseError.fromResponse(res);
+        }
+
+        const trackers = (await res.json()) as PageTracker[];
+        setTrackers({ status: 'succeeded', data: trackers });
+        setTitleActions(trackers.length === 0 ? null : createButton);
+      })
+      .catch((err: Error) => setTrackers({ status: 'failed', error: getErrorMessage(err) }));
   }, [createButton, setTitleActions]);
 
   useEffect(() => {
@@ -103,17 +104,20 @@ export default function PageTrackers() {
       onConfirm={() => {
         setTrackerToRemove(null);
 
-        axios
-          .delete(
-            getApiUrl(`/api/utils/web_scraping/page/${encodeURIComponent(trackerToRemove?.id)}`),
-            getApiRequestConfig(),
-          )
-          .then(
-            () => loadTrackers(),
-            (err: Error) => {
-              console.error(`Failed to remove the page tracker: ${getErrorMessage(err)}`);
-            },
-          );
+        fetch(
+          getApiUrl(`/api/utils/web_scraping/page/${encodeURIComponent(trackerToRemove?.id)}`),
+          getApiRequestConfig('DELETE'),
+        )
+          .then(async (res) => {
+            if (!res.ok) {
+              throw await ResponseError.fromResponse(res);
+            }
+
+            loadTrackers();
+          })
+          .catch((err: Error) => {
+            console.error(`Failed to remove the page tracker: ${getErrorMessage(err)}`);
+          });
       }}
       cancelButtonText="Cancel"
       confirmButtonText="Remove"

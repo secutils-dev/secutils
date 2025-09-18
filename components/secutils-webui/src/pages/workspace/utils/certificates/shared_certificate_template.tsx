@@ -1,13 +1,11 @@
 import { EuiButton, EuiFlexGroup, EuiFlexItem } from '@elastic/eui';
-import axios from 'axios';
 import { useEffect, useState } from 'react';
 
 import type { CertificateTemplate } from './certificate_template';
 import { CertificateTemplateForm } from './certificate_template_form';
 import { CertificateTemplateGenerateModal } from './certificate_template_generate_modal';
 import { PageErrorState, PageLoadingState } from '../../../../components';
-import type { AsyncData } from '../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage } from '../../../../model';
+import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
 import { useWorkspaceContext } from '../../hooks';
 
 type GetTemplateResponse = { template?: CertificateTemplate };
@@ -30,35 +28,37 @@ export default function SharedCertificateTemplate() {
       return;
     }
 
-    axios
-      .get<GetTemplateResponse>(
-        getApiUrl(`/api/utils/certificates/templates/${encodeURIComponent(uiState.userShare.resource.templateId)}`),
-        getApiRequestConfig(),
-      )
-      .then(
-        (res) => {
-          const loadedTemplate = res.data.template ?? null;
-          if (loadedTemplate) {
-            setTitle(`"${loadedTemplate.name}" certificate template`);
-            setTitleActions(
-              <EuiButton
-                fill
-                iconType={'download'}
-                title="Generate private key and certificate"
-                onClick={() => setTemplateToGenerate(loadedTemplate)}
-              >
-                Generate certificate
-              </EuiButton>,
-            );
-            setTemplate({ status: 'succeeded', data: loadedTemplate });
-          } else {
-            setTemplate({ status: 'failed', error: 'Failed to load shared certificate template.' });
-          }
-        },
-        (err: Error) => {
-          setTemplate({ status: 'failed', error: getErrorMessage(err) });
-        },
-      );
+    fetch(
+      getApiUrl(`/api/utils/certificates/templates/${encodeURIComponent(uiState.userShare.resource.templateId)}`),
+      getApiRequestConfig(),
+    )
+      .then(async (res) => {
+        if (!res.ok) {
+          throw await ResponseError.fromResponse(res);
+        }
+
+        const templateResponse = (await res.json()) as GetTemplateResponse;
+        const loadedTemplate = templateResponse.template ?? null;
+        if (loadedTemplate) {
+          setTitle(`"${loadedTemplate.name}" certificate template`);
+          setTitleActions(
+            <EuiButton
+              fill
+              iconType={'download'}
+              title="Generate private key and certificate"
+              onClick={() => setTemplateToGenerate(loadedTemplate)}
+            >
+              Generate certificate
+            </EuiButton>,
+          );
+          setTemplate({ status: 'succeeded', data: loadedTemplate });
+        } else {
+          setTemplate({ status: 'failed', error: 'Failed to load shared certificate template.' });
+        }
+      })
+      .catch((err: Error) => {
+        setTemplate({ status: 'failed', error: getErrorMessage(err) });
+      });
   }, [uiState, setTitle, setTitleActions]);
 
   if (template.status === 'pending') {

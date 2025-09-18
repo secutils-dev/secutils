@@ -11,15 +11,13 @@ import {
   EuiIcon,
   EuiPanel,
 } from '@elastic/eui';
-import axios from 'axios';
 import { unix } from 'moment';
 import { useCallback, useEffect, useState } from 'react';
 
 import type { Responder } from './responder';
 import type { ResponderRequest } from './responder_request';
 import { PageErrorState, PageLoadingState } from '../../../../components';
-import type { AsyncData } from '../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage } from '../../../../model';
+import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
 import { useWorkspaceContext } from '../../hooks';
 
 export interface ResponderRequestsTableProps {
@@ -61,22 +59,23 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
       return;
     }
 
-    axios
-      .post<
-        ResponderRequest[]
-      >(getApiUrl(`/api/utils/webhooks/responders/${encodeURIComponent(responder.id)}/history`), getApiRequestConfig())
-      .then(
-        (response) => {
-          setRequests({ status: 'succeeded', data: response.data });
-        },
-        (err: Error) => {
-          setRequests((currentRevisions) => ({
-            status: 'failed',
-            error: getErrorMessage(err),
-            state: currentRevisions.state,
-          }));
-        },
-      );
+    fetch(
+      getApiUrl(`/api/utils/webhooks/responders/${encodeURIComponent(responder.id)}/history`),
+      getApiRequestConfig('POST'),
+    )
+      .then(async (res) => {
+        if (!res.ok) {
+          throw await ResponseError.fromResponse(res);
+        }
+        setRequests({ status: 'succeeded', data: (await res.json()) as ResponderRequest[] });
+      })
+      .catch((err: Error) => {
+        setRequests((currentRevisions) => ({
+          status: 'failed',
+          error: getErrorMessage(err),
+          state: currentRevisions.state,
+        }));
+      });
   }, [uiState, responder]);
 
   const columns: EuiDataGridColumn[] = [
@@ -231,35 +230,35 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
       onConfirm={() => {
         setClearHistoryStatus((currentStatus) => ({ ...currentStatus, isInProgress: true }));
 
-        axios
-          .post(
-            getApiUrl(`/api/utils/webhooks/responders/${encodeURIComponent(responder.id)}/clear`),
-            undefined,
-            getApiRequestConfig(),
-          )
-          .then(
-            () => {
-              setRequests({ status: 'succeeded', data: [] });
+        fetch(
+          getApiUrl(`/api/utils/webhooks/responders/${encodeURIComponent(responder.id)}/clear`),
+          getApiRequestConfig('POST'),
+        )
+          .then(async (res) => {
+            if (!res.ok) {
+              throw await ResponseError.fromResponse(res);
+            }
 
-              addToast({
-                id: `success-clear-responder-history-${responder.name}`,
-                iconType: 'check',
-                color: 'success',
-                title: `Successfully cleared request history for "${responder.name}" responder`,
-              });
+            setRequests({ status: 'succeeded', data: [] });
 
-              setClearHistoryStatus({ isModalVisible: false, isInProgress: false });
-            },
-            () => {
-              addToast({
-                id: `failed-clear-responder-history-${responder.name}`,
-                iconType: 'warning',
-                color: 'danger',
-                title: `Unable to clear request history for "${responder.name}" responder, please try again later`,
-              });
-              setClearHistoryStatus((currentStatus) => ({ ...currentStatus, isInProgress: false }));
-            },
-          );
+            addToast({
+              id: `success-clear-responder-history-${responder.name}`,
+              iconType: 'check',
+              color: 'success',
+              title: `Successfully cleared request history for "${responder.name}" responder`,
+            });
+
+            setClearHistoryStatus({ isModalVisible: false, isInProgress: false });
+          })
+          .catch(() => {
+            addToast({
+              id: `failed-clear-responder-history-${responder.name}`,
+              iconType: 'warning',
+              color: 'danger',
+              title: `Unable to clear request history for "${responder.name}" responder, please try again later`,
+            });
+            setClearHistoryStatus((currentStatus) => ({ ...currentStatus, isInProgress: false }));
+          });
       }}
       cancelButtonText="Cancel"
       confirmButtonText="Clear"

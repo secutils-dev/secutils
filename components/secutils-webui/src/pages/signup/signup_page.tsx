@@ -81,7 +81,7 @@ export function SignupPage() {
 
         refreshUiState();
       })
-      .catch((err: Error) => {
+      .catch((err) => {
         const originalErrorMessage = getSecurityErrorMessage(err);
         setSignupStatus({ status: 'failed', error: originalErrorMessage ?? 'Unknown error' });
 
@@ -226,7 +226,7 @@ export function SignupPage() {
 
                     setSignupStatus({ status: 'pending', state: { isPasskey: true } });
                     startSignupFlow(async (api, flow) => {
-                      const axiosResponse = await api.updateRegistrationFlow(
+                      const response = await api.updateRegistrationFlow(
                         {
                           flow: flow.id,
                           updateRegistrationFlowBody: {
@@ -238,13 +238,13 @@ export function SignupPage() {
                         { validateStatus: (status) => status < 500 },
                       );
 
-                      const updatedFlow = axiosResponse.data as unknown as RegistrationFlow;
+                      const updatedFlow = response.data as unknown as RegistrationFlow;
                       const publicKeyNode = updatedFlow?.ui?.nodes?.find(
                         (node) =>
                           node.attributes.node_type === 'input' && node.attributes.name === 'webauthn_register_trigger',
                       );
                       if (!publicKeyNode) {
-                        throw axiosResponse;
+                        throw response;
                       }
 
                       const { publicKey } = JSON.parse(

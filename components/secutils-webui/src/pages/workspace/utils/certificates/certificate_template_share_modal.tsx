@@ -14,12 +14,17 @@ import {
   EuiSwitch,
   EuiTitle,
 } from '@elastic/eui';
-import axios from 'axios';
 import { useCallback, useEffect, useState } from 'react';
 
 import type { CertificateTemplate } from './certificate_template';
-import type { AsyncData } from '../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage, USER_SHARE_ID_HEADER_NAME } from '../../../../model';
+import {
+  type AsyncData,
+  getApiRequestConfig,
+  getApiUrl,
+  getErrorMessage,
+  ResponseError,
+  USER_SHARE_ID_HEADER_NAME,
+} from '../../../../model';
 import type { UserShare } from '../../../../model/user_share';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -44,21 +49,25 @@ export function CertificateTemplateShareModal({ template, onClose }: Certificate
 
       setUserShare({ status: 'pending' });
 
-      axios
-        .post<UserShare | null>(
-          getApiUrl(
-            `/api/utils/certificates/templates/${encodeURIComponent(template.id)}/${share ? 'share' : 'unshare'}`,
-          ),
-          getApiRequestConfig(),
-        )
-        .then(
-          (res) => {
-            setUserShare({ status: 'succeeded', data: share ? (res.data ?? null) : null });
-          },
-          (err: Error) => {
-            setUserShare({ status: 'failed', error: getErrorMessage(err) });
-          },
-        );
+      fetch(
+        getApiUrl(
+          `/api/utils/certificates/templates/${encodeURIComponent(template.id)}/${share ? 'share' : 'unshare'}`,
+        ),
+        getApiRequestConfig('POST'),
+      )
+        .then(async (res) => {
+          if (!res.ok) {
+            throw await ResponseError.fromResponse(res);
+          }
+
+          setUserShare({
+            status: 'succeeded',
+            data: share ? (((await res.json()) as UserShare | null) ?? null) : null,
+          });
+        })
+        .catch((err: Error) => {
+          setUserShare({ status: 'failed', error: getErrorMessage(err) });
+        });
     },
     [template, userShare],
   );
@@ -68,21 +77,19 @@ export function CertificateTemplateShareModal({ template, onClose }: Certificate
       return;
     }
 
-    axios
-      .get<GetCertificateTemplateResponse>(
-        getApiUrl(`/api/utils/certificates/templates/${encodeURIComponent(template.id)}`),
-        getApiRequestConfig(),
-      )
-      .then(
-        (res) => {
-          const userShare = res.data.userShare ?? null;
-          setUserShare({ status: 'succeeded', data: userShare });
-          setIsTemplateShared(!!userShare);
-        },
-        (err: Error) => {
-          setUserShare({ status: 'failed', error: getErrorMessage(err) });
-        },
-      );
+    fetch(getApiUrl(`/api/utils/certificates/templates/${encodeURIComponent(template.id)}`), getApiRequestConfig())
+      .then(async (res) => {
+        if (!res.ok) {
+          throw await ResponseError.fromResponse(res);
+        }
+
+        const userShare = ((await res.json()) as GetCertificateTemplateResponse).userShare ?? null;
+        setUserShare({ status: 'succeeded', data: userShare });
+        setIsTemplateShared(!!userShare);
+      })
+      .catch((err: Error) => {
+        setUserShare({ status: 'failed', error: getErrorMessage(err) });
+      });
   }, [uiState, template]);
 
   const statusCallout =

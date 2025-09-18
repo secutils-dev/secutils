@@ -13,12 +13,10 @@ import {
   EuiTextArea,
   EuiTitle,
 } from '@elastic/eui';
-import axios from 'axios';
 import type { ChangeEvent, MouseEventHandler } from 'react';
 import { useCallback, useState } from 'react';
 
-import type { AsyncData } from '../model';
-import { getApiUrl, getErrorMessage } from '../model';
+import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../model';
 
 export interface ContactFormModalProps {
   onClose: () => void;
@@ -45,16 +43,23 @@ export function ContactFormModal({ onClose }: ContactFormModalProps) {
       }
 
       setSendingStatus({ status: 'pending' });
-      axios.post(getApiUrl('/api/send_message'), email ? { message, email } : { message }).then(
-        () => {
+
+      fetch(getApiUrl('/api/send_message'), {
+        ...getApiRequestConfig('POST'),
+        body: JSON.stringify(email ? { message, email } : { message }),
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            throw await ResponseError.fromResponse(res);
+          }
+
           setSendingStatus({ status: 'succeeded', data: null });
           setMessage('');
           setEmail('');
-        },
-        (err: Error) => {
+        })
+        .catch((err: Error) => {
           setSendingStatus({ status: 'failed', error: getErrorMessage(err) });
-        },
-      );
+        });
     },
     [email, message, sendingStatus],
   );

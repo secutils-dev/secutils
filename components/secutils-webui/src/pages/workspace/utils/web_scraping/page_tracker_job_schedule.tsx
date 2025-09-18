@@ -9,8 +9,7 @@ import {
   PAGE_TRACKER_MANUAL_SCHEDULE,
   PAGE_TRACKER_SCHEDULES,
 } from './consts';
-import type { AsyncData } from '../../../../model';
-import { getErrorMessage } from '../../../../model';
+import { type AsyncData, getErrorMessage, ResponseError } from '../../../../model';
 import { useWorkspaceContext } from '../../hooks';
 
 export interface PageTrackerJobScheduleProps {
@@ -62,11 +61,15 @@ export function PageTrackerJobSchedule({ schedule, onChange }: PageTrackerJobSch
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ schedule: customSchedule }),
     })
-      .then((response) => response.json())
-      .then((data: CustomScheduleCheck) => {
-        setCustomScheduleCheck({ status: 'succeeded', data });
+      .then(async (res) => {
+        if (!res.ok) {
+          throw await ResponseError.fromResponse(res);
+        }
+
+        const checkResult = (await res.json()) as CustomScheduleCheck;
+        setCustomScheduleCheck({ status: 'succeeded', data: checkResult });
         setCustomScheduleValidated(true);
-        onChange(customSchedule, getRetryIntervals(data.minInterval));
+        onChange(customSchedule, getRetryIntervals(checkResult.minInterval));
       })
       .catch((e) => {
         setCustomScheduleCheck({ status: 'failed', error: getErrorMessage(e) });

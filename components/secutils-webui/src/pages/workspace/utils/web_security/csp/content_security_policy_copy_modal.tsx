@@ -13,12 +13,10 @@ import {
   EuiSelect,
   EuiTitle,
 } from '@elastic/eui';
-import axios from 'axios';
 import { useCallback, useEffect, useState } from 'react';
 
 import type { ContentSecurityPolicy } from './content_security_policy';
-import type { AsyncData } from '../../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage } from '../../../../../model';
+import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../../model';
 import { useWorkspaceContext } from '../../../hooks';
 
 export interface ContentSecurityPolicyCopyModalProps {
@@ -42,48 +40,50 @@ export function ContentSecurityPolicyCopyModal({ policy, onClose }: ContentSecur
       setSerializingStatus({ status: 'pending' });
 
       const sourceToUse = currentSource ?? source;
-      axios
-        .post<string>(
-          getApiUrl(`/api/utils/web_security/csp/${encodeURIComponent(policy.id)}/serialize`),
-          { source: sourceToUse },
-          getApiRequestConfig(),
-        )
-        .then(
-          (res) => {
-            if (sourceToUse === 'meta') {
-              setSnippet(`<meta http-equiv="Content-Security-Policy" content="${res.data}">`);
-            } else {
-              const endpointGroup = policy.directives.get('report-to')?.[0];
-              const reportToHeader = endpointGroup
-                ? `## Define reporting endpoints
+      fetch(
+        getApiUrl(`/api/utils/web_security/csp/${encodeURIComponent(policy.id)}/serialize`),
+
+        { ...getApiRequestConfig('POST'), body: JSON.stringify({ source: sourceToUse }) },
+      )
+        .then(async (res) => {
+          if (!res.ok) {
+            throw await ResponseError.fromResponse(res);
+          }
+
+          const policyContent = (await res.json()) as string;
+          if (sourceToUse === 'meta') {
+            setSnippet(`<meta http-equiv="Content-Security-Policy" content="${policyContent}">`);
+          } else {
+            const endpointGroup = policy.directives.get('report-to')?.[0];
+            const reportToHeader = endpointGroup
+              ? `## Define reporting endpoints
 Reporting-Endpoints: default="https://secutils.dev/csp_reports/default
 
 `
-                : '';
+              : '';
 
-              setSnippet(
-                `${reportToHeader}## Policy header
-${sourceToUse === 'enforcingHeader' ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only'}: ${res.data}`,
-              );
-            }
+            setSnippet(
+              `${reportToHeader}## Policy header
+${sourceToUse === 'enforcingHeader' ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only'}: ${policyContent}`,
+            );
+          }
 
-            setSerializingStatus({ status: 'succeeded', data: undefined });
-          },
-          (err: Error) => {
-            setSerializingStatus({ status: 'failed', error: getErrorMessage(err) });
-          },
-        );
+          setSerializingStatus({ status: 'succeeded', data: undefined });
+        })
+        .catch((err: Error) => {
+          setSerializingStatus({ status: 'failed', error: getErrorMessage(err) });
+        });
     },
     [source, policy, serializingStatus],
   );
 
   useEffect(() => {
-    if (!uiState.synced) {
+    if (!uiState.synced || serializingStatus !== null) {
       return;
     }
 
     onSerializePolicy();
-  }, [uiState, onSerializePolicy]);
+  }, [uiState, serializingStatus, onSerializePolicy]);
 
   const copyStatusCallout =
     serializingStatus?.status === 'failed' ? (

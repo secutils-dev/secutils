@@ -20,14 +20,19 @@ import {
 } from '@elastic/eui';
 import { css } from '@emotion/react';
 import type { UiNodeInputAttributes } from '@ory/client';
-import type { AxiosError } from 'axios';
 import { unix, utc } from 'moment/moment';
 import type { ChangeEvent } from 'react';
 import { lazy, useCallback, useState } from 'react';
 
 import { useAppContext } from '../hooks';
 import type { AsyncData, SerializedPublicKeyCredentialCreationOptions } from '../model';
-import { getCsrfToken, getSecurityErrorMessage, isClientError, USER_SETTINGS_KEY_COMMON_UI_THEME } from '../model';
+import {
+  getCsrfToken,
+  getErrorStatus,
+  getSecurityErrorMessage,
+  isClientError,
+  USER_SETTINGS_KEY_COMMON_UI_THEME,
+} from '../model';
 import { signupWithPasskey } from '../model/webauthn';
 import { getOryApi } from '../tools/ory';
 import { isWebAuthnSupported } from '../tools/webauthn';
@@ -110,7 +115,7 @@ export function SettingsFlyout({ onClose }: Props) {
                     },
                   });
                 } catch (err) {
-                  if ((err as AxiosError).response?.status !== 403) {
+                  if (getErrorStatus(err) !== 403) {
                     throw err;
                   }
 
@@ -241,7 +246,7 @@ export function SettingsFlyout({ onClose }: Props) {
                           },
                         });
                       } catch (err) {
-                        if ((err as AxiosError).response?.status !== 403) {
+                        if (getErrorStatus(err) !== 403) {
                           throw err;
                         }
 

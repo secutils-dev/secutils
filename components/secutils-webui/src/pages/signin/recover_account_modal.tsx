@@ -18,9 +18,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 import { useAppContext } from '../../hooks';
-import type { AsyncData } from '../../model';
-import { getCsrfToken, getErrorMessage, getSecurityErrorMessage } from '../../model';
-import { getErrorStatus } from '../../model/errors';
+import { type AsyncData, getCsrfToken, getErrorMessage, getErrorStatus, getSecurityErrorMessage } from '../../model';
 import { getOryApi } from '../../tools/ory';
 
 export interface RecoverAccountModalProps {
@@ -30,7 +28,7 @@ export interface RecoverAccountModalProps {
 
 async function getRecoverFlow(api: FrontendApi, flowId?: string) {
   if (flowId) {
-    // Try to retrieve existing flow first, otherwise create a new one.
+    // Try to retrieve the existing flow first, otherwise create a new one.
     try {
       return (await api.getRecoveryFlow({ id: flowId })).data;
     } catch (err) {

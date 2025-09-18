@@ -14,12 +14,17 @@ import {
   EuiSwitch,
   EuiTitle,
 } from '@elastic/eui';
-import axios from 'axios';
 import { useCallback, useEffect, useState } from 'react';
 
 import type { ContentSecurityPolicy } from './content_security_policy';
-import type { AsyncData } from '../../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage, USER_SHARE_ID_HEADER_NAME } from '../../../../../model';
+import {
+  type AsyncData,
+  getApiRequestConfig,
+  getApiUrl,
+  getErrorMessage,
+  ResponseError,
+  USER_SHARE_ID_HEADER_NAME,
+} from '../../../../../model';
 import type { UserShare } from '../../../../../model/user_share';
 import { useWorkspaceContext } from '../../../hooks';
 
@@ -44,19 +49,21 @@ export function ContentSecurityPolicyShareModal({ policy, onClose }: ContentSecu
 
       setUserShare({ status: 'pending' });
 
-      axios
-        .post<UserShare | null>(
-          getApiUrl(`/api/utils/web_security/csp/${encodeURIComponent(policy.id)}/${share ? 'share' : 'unshare'}`),
-          getApiRequestConfig(),
-        )
-        .then(
-          (res) => {
-            setUserShare({ status: 'succeeded', data: share ? (res.data ?? null) : null });
-          },
-          (err: Error) => {
-            setUserShare({ status: 'failed', error: getErrorMessage(err) });
-          },
-        );
+      fetch(
+        getApiUrl(`/api/utils/web_security/csp/${encodeURIComponent(policy.id)}/${share ? 'share' : 'unshare'}`),
+        getApiRequestConfig('POST'),
+      )
+        .then(async (res) => {
+          if (!res.ok) {
+            throw await ResponseError.fromResponse(res);
+          }
+
+          const shareResult = (await res.json()) as UserShare | null;
+          setUserShare({ status: 'succeeded', data: share ? (shareResult ?? null) : null });
+        })
+        .catch((err: Error) => {
+          setUserShare({ status: 'failed', error: getErrorMessage(err) });
+        });
     },
     [policy, userShare],
   );
@@ -66,21 +73,19 @@ export function ContentSecurityPolicyShareModal({ policy, onClose }: ContentSecu
       return;
     }
 
-    axios
-      .get<GetContentSecurityPolicyResponse>(
-        getApiUrl(`/api/utils/web_security/csp/${encodeURIComponent(policy.id)}`),
-        getApiRequestConfig(),
-      )
-      .then(
-        (res) => {
-          const userShare = res.data.userShare ?? null;
-          setUserShare({ status: 'succeeded', data: userShare });
-          setIsPolicyShared(!!userShare);
-        },
-        (err: Error) => {
-          setUserShare({ status: 'failed', error: getErrorMessage(err) });
-        },
-      );
+    fetch(getApiUrl(`/api/utils/web_security/csp/${encodeURIComponent(policy.id)}`), getApiRequestConfig())
+      .then(async (res) => {
+        if (!res.ok) {
+          throw await ResponseError.fromResponse(res);
+        }
+
+        const userShare = ((await res.json()) as GetContentSecurityPolicyResponse).userShare ?? null;
+        setUserShare({ status: 'succeeded', data: userShare });
+        setIsPolicyShared(!!userShare);
+      })
+      .catch((err: Error) => {
+        setUserShare({ status: 'failed', error: getErrorMessage(err) });
+      });
   }, [uiState, policy]);
 
   const statusCallout =

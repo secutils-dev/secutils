@@ -6,7 +6,8 @@ import type {
   UiNodeInputAttributes,
   VerificationFlow,
 } from '@ory/client';
-import type { AxiosError, AxiosResponse } from 'axios';
+
+import type { OryError } from '../tools/ory';
 
 export function getCsrfToken(flow: LoginFlow | RegistrationFlow | SettingsFlow | VerificationFlow) {
   const csrfNode = flow.ui.nodes.find(
@@ -16,12 +17,12 @@ export function getCsrfToken(flow: LoginFlow | RegistrationFlow | SettingsFlow |
 }
 
 export function getSecurityErrorMessage(err: unknown) {
-  const response = isKratosUiError(err) ? err.response : isKratosResponse(err) ? err : undefined;
+  const response = isOryUiError(err) ? err.response : isOryResponse(err) ? err : undefined;
   if (!response) {
-    return isKratosGenericError(err) ? err.response?.data.reason || err.response?.data.message : undefined;
+    return isOryGenericError(err) ? err.response?.data?.reason || err.response?.data?.message : undefined;
   }
 
-  for (const node of response.data.ui.nodes ?? []) {
+  for (const node of response.data?.ui.nodes ?? []) {
     for (const message of node.messages) {
       if (message.type === 'error') {
         return message.text;
@@ -29,20 +30,20 @@ export function getSecurityErrorMessage(err: unknown) {
     }
   }
 
-  return response.data.ui.messages?.find((message) => message.type === 'error')?.text;
+  return response.data?.ui.messages?.find((message) => message.type === 'error')?.text;
 }
 
-function isKratosUiError(err: unknown): err is AxiosError<LoginFlow | RegistrationFlow> {
-  const forceCastedError = err as AxiosError<LoginFlow | RegistrationFlow>;
+function isOryUiError(err: unknown): err is OryError<LoginFlow | RegistrationFlow> {
+  const forceCastedError = err as OryError<LoginFlow | RegistrationFlow>;
   return forceCastedError.isAxiosError && Array.isArray(forceCastedError.response?.data?.ui?.nodes);
 }
 
-function isKratosGenericError(err: unknown): err is AxiosError<GenericError> {
-  const forceCastedError = err as AxiosError<GenericError>;
+function isOryGenericError(err: unknown): err is OryError<GenericError> {
+  const forceCastedError = err as OryError<GenericError>;
   return forceCastedError.isAxiosError && !!forceCastedError.response?.data?.message;
 }
 
-function isKratosResponse(err: unknown): err is AxiosResponse<LoginFlow | RegistrationFlow> {
-  const forceCastedError = err as AxiosResponse<LoginFlow | RegistrationFlow>;
+function isOryResponse(err: unknown): err is OryError<LoginFlow | RegistrationFlow> {
+  const forceCastedError = err as { data?: LoginFlow | RegistrationFlow };
   return Array.isArray(forceCastedError.data?.ui?.nodes);
 }

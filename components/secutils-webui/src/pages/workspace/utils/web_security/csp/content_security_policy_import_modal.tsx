@@ -19,11 +19,16 @@ import {
   EuiTitle,
   htmlIdGenerator,
 } from '@elastic/eui';
-import axios from 'axios';
 import { useState } from 'react';
 
-import type { AsyncData } from '../../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage, isClientError } from '../../../../../model';
+import {
+  type AsyncData,
+  getApiRequestConfig,
+  getApiUrl,
+  getErrorMessage,
+  isClientError,
+  ResponseError,
+} from '../../../../../model';
 import { isValidURL } from '../../../../../tools/url';
 import { useWorkspaceContext } from '../../../hooks';
 
@@ -156,42 +161,42 @@ export function ContentSecurityPolicyImportModal({ onClose }: ContentSecurityPol
 
             setImportStatus({ status: 'pending' });
 
-            axios
-              .post(
-                getApiUrl('/api/utils/web_security/csp'),
-                {
-                  name,
-                  content: { type: importType, value: importType === 'serialized' ? serializedPolicy : remotePolicy },
-                },
-                getApiRequestConfig(),
-              )
-              .then(
-                () => {
-                  addToast({
-                    id: `success-import-policy-${name}`,
-                    iconType: 'check',
-                    color: 'success',
-                    title: `Successfully imported "${name}" content security policy`,
-                  });
+            fetch(getApiUrl('/api/utils/web_security/csp'), {
+              ...getApiRequestConfig('POST'),
+              body: JSON.stringify({
+                name,
+                content: { type: importType, value: importType === 'serialized' ? serializedPolicy : remotePolicy },
+              }),
+            })
+              .then(async (res) => {
+                if (!res.ok) {
+                  throw await ResponseError.fromResponse(res);
+                }
 
-                  setImportStatus({ status: 'succeeded', data: undefined });
+                addToast({
+                  id: `success-import-policy-${name}`,
+                  iconType: 'check',
+                  color: 'success',
+                  title: `Successfully imported "${name}" content security policy`,
+                });
 
-                  onClose(true /** success **/);
-                },
-                (err: Error) => {
-                  const remoteErrorMessage = getErrorMessage(err);
-                  setImportStatus({ status: 'failed', error: remoteErrorMessage });
+                setImportStatus({ status: 'succeeded', data: undefined });
 
-                  addToast({
-                    id: htmlIdGenerator('failed-import-policy')(),
-                    iconType: 'warning',
-                    color: 'danger',
-                    title: isClientError(err)
-                      ? remoteErrorMessage
-                      : `Unable to import "${name}" policy, please try again later`,
-                  });
-                },
-              );
+                onClose(true /** success **/);
+              })
+              .catch((err: Error) => {
+                const remoteErrorMessage = getErrorMessage(err);
+                setImportStatus({ status: 'failed', error: remoteErrorMessage });
+
+                addToast({
+                  id: htmlIdGenerator('failed-import-policy')(),
+                  iconType: 'warning',
+                  color: 'danger',
+                  title: isClientError(err)
+                    ? remoteErrorMessage
+                    : `Unable to import "${name}" policy, please try again later`,
+                });
+              });
           }}
         >
           <EuiTabs>

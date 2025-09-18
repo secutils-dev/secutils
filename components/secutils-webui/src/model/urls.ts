@@ -1,5 +1,3 @@
-import type { AxiosRequestConfig } from 'axios';
-
 import { getUserShareId, USER_SHARE_ID_HEADER_NAME } from './user_share';
 
 /**
@@ -10,7 +8,9 @@ export function getApiUrl(path: string) {
   return path;
 }
 
-export function getApiRequestConfig(): AxiosRequestConfig | undefined {
+export function getApiRequestConfig(method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET'): Partial<RequestInit> {
   const shareId = getUserShareId();
-  return shareId ? { headers: { [USER_SHARE_ID_HEADER_NAME]: shareId } } : undefined;
+  return shareId
+    ? { method, headers: { [USER_SHARE_ID_HEADER_NAME]: shareId, 'Content-Type': 'application/json' } }
+    : { method, headers: { 'Content-Type': 'application/json' } };
 }

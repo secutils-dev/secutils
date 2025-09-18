@@ -1,5 +1,4 @@
 import { EuiDescribedFormGroup, EuiFieldText, EuiForm, EuiFormRow, EuiLink, EuiRange, EuiSwitch } from '@elastic/eui';
-import axios from 'axios';
 import type { ChangeEvent } from 'react';
 import { useCallback, useState } from 'react';
 
@@ -15,7 +14,14 @@ import { areSchedulerJobsEqual } from './page_tracker';
 import { PageTrackerJobSchedule } from './page_tracker_job_schedule';
 import { PageTrackerRetryStrategy } from './page_tracker_retry_strategy';
 import { useRangeTicks } from '../../../../hooks';
-import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, isClientError } from '../../../../model';
+import {
+  type AsyncData,
+  getApiRequestConfig,
+  getApiUrl,
+  getErrorMessage,
+  isClientError,
+  ResponseError,
+} from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
 import { ScriptEditor } from '../../components/script_editor';
 import { useWorkspaceContext } from '../../hooks';
@@ -78,19 +84,24 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
       notifications: notifications,
     };
 
+    const requestInit = { ...getApiRequestConfig(), body: JSON.stringify(trackerToUpdate) };
     const [requestPromise, successMessage, errorMessage] = tracker
       ? [
-          axios.put(getApiUrl(`/api/utils/web_scraping/page/${tracker.id}`), trackerToUpdate, getApiRequestConfig()),
+          fetch(getApiUrl(`/api/utils/web_scraping/page/${tracker.id}`), { ...requestInit, method: 'PUT' }),
           `Successfully updated "${name}" page tracker`,
           `Unable to update "${name}" page tracker, please try again later`,
         ]
       : [
-          axios.post(getApiUrl('/api/utils/web_scraping/page'), trackerToUpdate, getApiRequestConfig()),
+          fetch(getApiUrl('/api/utils/web_scraping/page'), { ...requestInit, method: 'POST' }),
           `Successfully saved "${name}" page tracker`,
           `Unable to save "${name}" page tracker, please try again later`,
         ];
-    requestPromise.then(
-      () => {
+    requestPromise
+      .then(async (res) => {
+        if (!res.ok) {
+          throw await ResponseError.fromResponse(res);
+        }
+
         setUpdatingStatus({ status: 'succeeded', data: undefined });
 
         addToast({
@@ -101,8 +112,8 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
         });
 
         onClose(true);
-      },
-      (err: Error) => {
+      })
+      .catch((err: Error) => {
         const remoteErrorMessage = getErrorMessage(err);
         setUpdatingStatus({ status: 'failed', error: remoteErrorMessage });
 
@@ -112,8 +123,7 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
           color: 'danger',
           title: isClientError(err) ? remoteErrorMessage : errorMessage,
         });
-      },
-    );
+      });
   }, [name, revisions, extractorScript, jobConfig, tracker, updatingStatus, addToast, notifications, onClose]);
 
   const notificationsRow = jobConfig ? (

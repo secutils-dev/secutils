@@ -13,13 +13,11 @@ import {
   EuiSelect,
   EuiTitle,
 } from '@elastic/eui';
-import axios from 'axios';
 import type { ChangeEvent } from 'react';
 import { useCallback, useState } from 'react';
 
 import type { CertificateTemplate } from './certificate_template';
-import type { AsyncData } from '../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage } from '../../../../model';
+import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
 import { Downloader } from '../../../../tools/downloader';
 
 export interface CertificateTemplateGenerateModalProps {
@@ -103,12 +101,16 @@ export function CertificateTemplateGenerateModal({ template, onClose }: Certific
 
             setGeneratingStatus({ status: 'pending' });
 
-            const generateUrl = getApiUrl(
-              `/api/utils/certificates/templates/${encodeURIComponent(template.id)}/generate`,
-            );
-            axios.post<number[]>(generateUrl, { format, passphrase: passphrase || null }, getApiRequestConfig()).then(
-              (res) => {
-                const content = new Uint8Array(res.data);
+            fetch(getApiUrl(`/api/utils/certificates/templates/${encodeURIComponent(template.id)}/generate`), {
+              ...getApiRequestConfig('POST'),
+              body: JSON.stringify({ format, passphrase: passphrase || null }),
+            })
+              .then(async (res) => {
+                if (!res.ok) {
+                  throw await ResponseError.fromResponse(res);
+                }
+
+                const content = new Uint8Array((await res.json()) as number[]);
                 if (format === 'pem') {
                   Downloader.download(`${template.name}.zip`, content, 'application/zip');
                 } else if (format === 'pkcs8') {
@@ -120,11 +122,10 @@ export function CertificateTemplateGenerateModal({ template, onClose }: Certific
                 setGeneratingStatus({ status: 'succeeded', data: undefined });
 
                 onClose();
-              },
-              (err: Error) => {
+              })
+              .catch((err: Error) => {
                 setGeneratingStatus({ status: 'failed', error: getErrorMessage(err) });
-              },
-            );
+              });
           }}
           isLoading={generatingStatus?.status === 'pending'}
         >

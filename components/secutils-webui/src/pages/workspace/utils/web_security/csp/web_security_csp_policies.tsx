@@ -11,7 +11,6 @@ import {
   EuiSpacer,
   EuiToolTip,
 } from '@elastic/eui';
-import axios from 'axios';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { ContentSecurityPolicy, SerializedContentSecurityPolicyDirectives } from './content_security_policy';
@@ -21,7 +20,7 @@ import { ContentSecurityPolicyImportModal } from './content_security_policy_impo
 import { ContentSecurityPolicyShareModal } from './content_security_policy_share_modal';
 import { SaveContentSecurityPolicyFlyout } from './save_content_security_policy_flyout';
 import { PageErrorState, PageLoadingState } from '../../../../../components';
-import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage } from '../../../../../model';
+import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../../model';
 import { TimestampTableCell } from '../../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../../hooks';
 
@@ -74,25 +73,23 @@ export default function WebSecurityContentSecurityPolicies() {
   );
 
   const loadPolicies = useCallback(() => {
-    axios
-      .get<
-        ContentSecurityPolicy<SerializedContentSecurityPolicyDirectives>[]
-      >(getApiUrl('/api/utils/web_security/csp'), getApiRequestConfig())
-      .then(
-        (res) => {
-          setPolicies({
-            status: 'succeeded',
-            data: res.data.map((policy) => ({
-              ...policy,
-              directives: deserializeContentSecurityPolicyDirectives(policy.directives),
-            })),
-          });
-          setTitleActions(res.data.length === 0 ? null : createButton);
-        },
-        (err: Error) => {
-          setPolicies({ status: 'failed', error: getErrorMessage(err) });
-        },
-      );
+    fetch(getApiUrl('/api/utils/web_security/csp'), getApiRequestConfig())
+      .then(async (res) => {
+        if (!res.ok) {
+          throw await ResponseError.fromResponse(res);
+        }
+
+        const policies = (await res.json()) as ContentSecurityPolicy<SerializedContentSecurityPolicyDirectives>[];
+        setPolicies({
+          status: 'succeeded',
+          data: policies.map((policy) => ({
+            ...policy,
+            directives: deserializeContentSecurityPolicyDirectives(policy.directives),
+          })),
+        });
+        setTitleActions(policies.length === 0 ? null : createButton);
+      })
+      .catch((err) => setPolicies({ status: 'failed', error: getErrorMessage(err) }));
   }, [createButton, setTitleActions]);
 
   useEffect(() => {
@@ -144,17 +141,18 @@ export default function WebSecurityContentSecurityPolicies() {
       onConfirm={() => {
         setPolicyToRemove(null);
 
-        axios
-          .delete(
-            getApiUrl(`/api/utils/web_security/csp/${encodeURIComponent(policyToRemove.id)}`),
-            getApiRequestConfig(),
-          )
-          .then(
-            () => loadPolicies(),
-            (err: Error) => {
-              console.error(`Failed to remove content security policy: ${getErrorMessage(err)}`);
-            },
-          );
+        fetch(
+          getApiUrl(`/api/utils/web_security/csp/${encodeURIComponent(policyToRemove.id)}`),
+          getApiRequestConfig('DELETE'),
+        )
+          .then(async (res) => {
+            if (!res.ok) {
+              throw await ResponseError.fromResponse(res);
+            }
+
+            loadPolicies();
+          })
+          .catch((err: Error) => console.error(`Failed to remove content security policy: ${getErrorMessage(err)}`));
       }}
       cancelButtonText="Cancel"
       confirmButtonText="Remove"

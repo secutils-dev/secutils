@@ -13,7 +13,6 @@ import {
   EuiSpacer,
   EuiToolTip,
 } from '@elastic/eui';
-import axios from 'axios';
 import { unix } from 'moment';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -25,7 +24,7 @@ import { SELF_SIGNED_PROD_WARNING_USER_SETTINGS_KEY } from './consts';
 import { privateKeyAlgString } from './private_key_alg';
 import { SaveCertificateTemplateFlyout } from './save_certificate_template_flyout';
 import { PageErrorState, PageLoadingState } from '../../../../components';
-import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage } from '../../../../model';
+import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
 import { useWorkspaceContext } from '../../hooks';
 
 export default function CertificatesCertificateTemplates() {
@@ -64,15 +63,17 @@ export default function CertificatesCertificateTemplates() {
   );
 
   const loadCertificateTemplates = useCallback(() => {
-    axios.get<CertificateTemplate[]>(getApiUrl('/api/utils/certificates/templates'), getApiRequestConfig()).then(
-      (res) => {
-        setTemplates({ status: 'succeeded', data: res.data });
-        setTitleActions(res.data.length === 0 ? null : createButton);
-      },
-      (err: Error) => {
-        setTemplates({ status: 'failed', error: getErrorMessage(err) });
-      },
-    );
+    fetch(getApiUrl('/api/utils/certificates/templates'), getApiRequestConfig())
+      .then(async (res) => {
+        if (!res.ok) {
+          throw await ResponseError.fromResponse(res);
+        }
+
+        const templates = (await res.json()) as CertificateTemplate[];
+        setTemplates({ status: 'succeeded', data: templates });
+        setTitleActions(templates.length === 0 ? null : createButton);
+      })
+      .catch((err: Error) => setTemplates({ status: 'failed', error: getErrorMessage(err) }));
   }, [setTitleActions, createButton]);
 
   useEffect(() => {
@@ -110,17 +111,19 @@ export default function CertificatesCertificateTemplates() {
       onCancel={() => setTemplateToRemove(null)}
       onConfirm={() => {
         setTemplateToRemove(null);
-        axios
-          .delete(
-            getApiUrl(`/api/utils/certificates/templates/${encodeURIComponent(templateToRemove.id)}`),
-            getApiRequestConfig(),
-          )
-          .then(
-            () => loadCertificateTemplates(),
-            (err: Error) => {
-              console.error(`Failed to remove certificate template: ${getErrorMessage(err)}`);
-            },
-          );
+        fetch(
+          getApiUrl(`/api/utils/certificates/templates/${encodeURIComponent(templateToRemove.id)}`),
+          getApiRequestConfig('DELETE'),
+        )
+          .then(async (res) => {
+            if (!res.ok) {
+              throw await ResponseError.fromResponse(res);
+            }
+            loadCertificateTemplates();
+          })
+          .catch((err: Error) => {
+            console.error(`Failed to remove certificate template: ${getErrorMessage(err)}`);
+          });
       }}
       cancelButtonText="Cancel"
       confirmButtonText="Remove"

@@ -1,5 +1,4 @@
 import { EuiButton, EuiFlexGroup, EuiFlexItem } from '@elastic/eui';
-import axios from 'axios';
 import { useCallback, useEffect, useState } from 'react';
 
 import type { ContentSecurityPolicy, SerializedContentSecurityPolicyDirectives } from './content_security_policy';
@@ -7,8 +6,7 @@ import { deserializeContentSecurityPolicyDirectives } from './content_security_p
 import { ContentSecurityPolicyCopyModal } from './content_security_policy_copy_modal';
 import { ContentSecurityPolicyForm } from './content_security_policy_form';
 import { PageErrorState, PageLoadingState } from '../../../../../components';
-import type { AsyncData } from '../../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage } from '../../../../../model';
+import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../../model';
 import { useWorkspaceContext } from '../../../hooks';
 
 type GetContentSecurityPolicyResponse = { policy?: ContentSecurityPolicy<SerializedContentSecurityPolicyDirectives> };
@@ -35,32 +33,35 @@ export default function WebSecuritySharedContentSecurityPolicy() {
       return;
     }
 
-    axios
-      .get<GetContentSecurityPolicyResponse>(
-        getApiUrl(`/api/utils/web_security/csp/${encodeURIComponent(uiState.userShare.resource.policyId)}`),
-        getApiRequestConfig(),
-      )
-      .then(
-        (res) => {
-          const loadedPolicy = res.data.policy
-            ? { ...res.data.policy, directives: deserializeContentSecurityPolicyDirectives(res.data.policy.directives) }
-            : null;
-          if (loadedPolicy) {
-            setTitle(`"${loadedPolicy.name}" content security policy`);
-            setTitleActions(
-              <EuiButton fill iconType={'copy'} title="Copy policy" onClick={() => setPolicyToCopy(loadedPolicy)}>
-                Copy policy
-              </EuiButton>,
-            );
-            setPolicy({ status: 'succeeded', data: loadedPolicy });
-          } else {
-            setPolicy({ status: 'failed', error: 'Failed to load shared content security policy.' });
-          }
-        },
-        (err: Error) => {
-          setPolicy({ status: 'failed', error: getErrorMessage(err) });
-        },
-      );
+    fetch(
+      getApiUrl(`/api/utils/web_security/csp/${encodeURIComponent(uiState.userShare.resource.policyId)}`),
+      getApiRequestConfig(),
+    )
+      .then(async (res) => {
+        if (!res.ok) {
+          throw await ResponseError.fromResponse(res);
+        }
+
+        const getPolicyResult = (await res.json()) as GetContentSecurityPolicyResponse;
+        const loadedPolicy = getPolicyResult.policy
+          ? {
+              ...getPolicyResult.policy,
+              directives: deserializeContentSecurityPolicyDirectives(getPolicyResult.policy.directives),
+            }
+          : null;
+        if (loadedPolicy) {
+          setTitle(`"${loadedPolicy.name}" content security policy`);
+          setTitleActions(
+            <EuiButton fill iconType={'copy'} title="Copy policy" onClick={() => setPolicyToCopy(loadedPolicy)}>
+              Copy policy
+            </EuiButton>,
+          );
+          setPolicy({ status: 'succeeded', data: loadedPolicy });
+        } else {
+          setPolicy({ status: 'failed', error: 'Failed to load shared content security policy.' });
+        }
+      })
+      .catch((err: Error) => setPolicy({ status: 'failed', error: getErrorMessage(err) }));
   }, [uiState, setTitle, setTitleActions]);
 
   if (policy.status === 'pending') {

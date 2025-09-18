@@ -16,7 +16,6 @@ import {
   EuiToolTip,
   useEuiTheme,
 } from '@elastic/eui';
-import axios from 'axios';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -26,7 +25,7 @@ import { ResponderName } from './responder_name';
 import { ResponderRequestsTable } from './responder_requests_table';
 import type { ResponderStats } from './responder_stats';
 import { PageErrorState, PageLoadingState } from '../../../../components';
-import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage } from '../../../../model';
+import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -67,23 +66,30 @@ export default function Responders() {
 
   const loadResponders = useCallback(() => {
     Promise.all([
-      axios.get<Responder[]>(getApiUrl('/api/utils/webhooks/responders'), getApiRequestConfig()),
-      axios.get<ResponderStats[]>(getApiUrl('/api/utils/webhooks/responders/stats'), getApiRequestConfig()),
-    ]).then(
-      ([respondersRes, respondersStatsRes]) => {
+      fetch(getApiUrl('/api/utils/webhooks/responders'), getApiRequestConfig()),
+      fetch(getApiUrl('/api/utils/webhooks/responders/stats'), getApiRequestConfig()),
+    ])
+      .then(async ([respondersRes, respondersStatsRes]) => {
+        if (!respondersRes.ok) {
+          throw await ResponseError.fromResponse(respondersRes);
+        }
+
+        if (!respondersStatsRes.ok) {
+          throw await ResponseError.fromResponse(respondersStatsRes);
+        }
+
+        const responders = (await respondersRes.json()) as Responder[];
+        const respondersStat = (await respondersStatsRes.json()) as ResponderStats[];
         setResponders({
           status: 'succeeded',
           data: {
-            responders: respondersRes.data,
-            stats: new Map(respondersStatsRes.data.map((stats) => [stats.responderId, stats])),
+            responders,
+            stats: new Map(respondersStat.map((stats) => [stats.responderId, stats])),
           },
         });
-        setTitleActions(respondersRes.data.length === 0 ? null : createButton);
-      },
-      (err: Error) => {
-        setResponders({ status: 'failed', error: getErrorMessage(err) });
-      },
-    );
+        setTitleActions(responders.length === 0 ? null : createButton);
+      })
+      .catch((err) => setResponders({ status: 'failed', error: getErrorMessage(err) }));
   }, [createButton, setTitleActions]);
 
   useEffect(() => {
@@ -130,17 +136,17 @@ export default function Responders() {
       onConfirm={() => {
         setResponderToRemove(null);
 
-        axios
-          .delete(
-            getApiUrl(`/api/utils/webhooks/responders/${encodeURIComponent(responderToRemove?.id)}`),
-            getApiRequestConfig(),
-          )
-          .then(
-            () => loadResponders(),
-            (err: Error) => {
-              console.error(`Failed to remove responder: ${getErrorMessage(err)}`);
-            },
-          );
+        fetch(
+          getApiUrl(`/api/utils/webhooks/responders/${encodeURIComponent(responderToRemove?.id)}`),
+          getApiRequestConfig('DELETE'),
+        )
+          .then(async (res) => {
+            if (!res.ok) {
+              throw await ResponseError.fromResponse(res);
+            }
+            loadResponders();
+          })
+          .catch((err) => console.error(`Failed to remove responder: ${getErrorMessage(err)}`));
       }}
       cancelButtonText="Cancel"
       confirmButtonText="Remove"
