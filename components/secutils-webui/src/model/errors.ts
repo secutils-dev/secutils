@@ -1,4 +1,4 @@
-import type { OryError } from '../tools/ory';
+import { isOryError } from './security_flows';
 
 export function isAbortError(err: unknown) {
   return (
@@ -7,7 +7,11 @@ export function isAbortError(err: unknown) {
 }
 
 export function getErrorMessage(err: unknown) {
-  return (isOryError(err) ? err.response?.data?.message : undefined) ?? (err as Error).message ?? 'Unknown error';
+  return (
+    (isOryError(err) ? err.response?.data?.error?.reason || err.response?.data?.error?.message : undefined) ||
+    (err as Error).message ||
+    'Unknown error'
+  );
 }
 
 export function isClientError(err: unknown) {
@@ -23,11 +27,6 @@ export function getErrorStatus(err: unknown) {
   if (isOryError(err)) {
     return err.response?.status;
   }
-}
-
-function isOryError(err: unknown): err is OryError {
-  const forceCastedError = err as OryError;
-  return forceCastedError.isAxiosError && !!forceCastedError.response?.data?.message;
 }
 
 export class ResponseError extends Error {

@@ -4,9 +4,13 @@ export async function getOryApi() {
   );
 }
 
-export interface OryError<T = { message: string }> {
+export interface OryError<TData> {
   name?: string;
-  data?: T;
-  response?: { status: number; data?: T };
+  message?: string;
+  response?: { status: number; data?: TData };
   isAxiosError: boolean;
+}
+
+export interface OryResponse<T> {
+  data?: T;
 }

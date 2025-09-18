@@ -7,7 +7,7 @@ import type {
   VerificationFlow,
 } from '@ory/client';
 
-import type { OryError } from '../tools/ory';
+import type { OryError, OryResponse } from '../tools/ory';
 
 export function getCsrfToken(flow: LoginFlow | RegistrationFlow | SettingsFlow | VerificationFlow) {
   const csrfNode = flow.ui.nodes.find(
@@ -16,10 +16,12 @@ export function getCsrfToken(flow: LoginFlow | RegistrationFlow | SettingsFlow |
   return csrfNode ? ((csrfNode.attributes as UiNodeInputAttributes).value as string) : undefined;
 }
 
-export function getSecurityErrorMessage(err: unknown) {
-  const response = isOryUiError(err) ? err.response : isOryResponse(err) ? err : undefined;
+export function getSecurityErrorMessage(resOrErr: unknown) {
+  const response = isOryUiError(resOrErr) ? resOrErr.response : isOryResponse(resOrErr) ? resOrErr : undefined;
   if (!response) {
-    return isOryGenericError(err) ? err.response?.data?.reason || err.response?.data?.message : undefined;
+    return isOryGenericError(resOrErr)
+      ? resOrErr.response?.data?.reason || resOrErr.response?.data?.message
+      : undefined;
   }
 
   for (const node of response.data?.ui.nodes ?? []) {
@@ -33,17 +35,21 @@ export function getSecurityErrorMessage(err: unknown) {
   return response.data?.ui.messages?.find((message) => message.type === 'error')?.text;
 }
 
+function isOryResponse(res: unknown): res is OryResponse<LoginFlow | RegistrationFlow> {
+  const forceCastedRes = res as { data?: LoginFlow | RegistrationFlow };
+  return Array.isArray(forceCastedRes.data?.ui?.nodes);
+}
+
+export function isOryError<TData = { error?: { id: string; message: string; reason: string } }>(
+  err: unknown,
+): err is OryError<TData> {
+  return !!err && typeof err === 'object' && 'isAxiosError' in err;
+}
+
 function isOryUiError(err: unknown): err is OryError<LoginFlow | RegistrationFlow> {
-  const forceCastedError = err as OryError<LoginFlow | RegistrationFlow>;
-  return forceCastedError.isAxiosError && Array.isArray(forceCastedError.response?.data?.ui?.nodes);
+  return isOryError<LoginFlow | RegistrationFlow>(err) && Array.isArray(err.response?.data?.ui?.nodes);
 }
 
 function isOryGenericError(err: unknown): err is OryError<GenericError> {
-  const forceCastedError = err as OryError<GenericError>;
-  return forceCastedError.isAxiosError && !!forceCastedError.response?.data?.message;
-}
-
-function isOryResponse(err: unknown): err is OryError<LoginFlow | RegistrationFlow> {
-  const forceCastedError = err as { data?: LoginFlow | RegistrationFlow };
-  return Array.isArray(forceCastedError.data?.ui?.nodes);
+  return isOryError<GenericError>(err) && !!err.response?.data?.message;
 }
