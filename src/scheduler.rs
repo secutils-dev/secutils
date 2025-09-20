@@ -2,7 +2,6 @@ mod cron_ext;
 mod database_ext;
 mod job_ext;
 mod scheduler_job;
-mod scheduler_job_config;
 mod scheduler_job_metadata;
 mod scheduler_jobs;
 

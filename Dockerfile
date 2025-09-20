@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.2
 
-FROM rust:1.89-slim-trixie AS server_builder
+FROM rust:1.90-slim-trixie AS server_builder
 
 ARG TARGETARCH
 ARG UPX_VERSION=5.0.2
