@@ -6,7 +6,6 @@ import * as monaco from 'monaco-editor';
 loader.config({ monaco });
 
 // See https://github.com/microsoft/monaco-editor/blob/main/docs/integrate-esm.md#using-parcel
-// @ts-expect-error This doesn't exist on `window`.
 self.MonacoEnvironment = {
   getWorkerUrl: (_: string, label: string) =>
     label === 'javascript' || label === 'typescript' ? '/tools/monaco/ts.worker.js' : '/tools/monaco/editor.worker.js',
