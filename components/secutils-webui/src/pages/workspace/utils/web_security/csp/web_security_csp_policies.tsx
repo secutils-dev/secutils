@@ -16,11 +16,18 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ContentSecurityPolicy, SerializedContentSecurityPolicyDirectives } from './content_security_policy';
 import { deserializeContentSecurityPolicyDirectives, getContentSecurityPolicyString } from './content_security_policy';
 import { ContentSecurityPolicyCopyModal } from './content_security_policy_copy_modal';
+import { ContentSecurityPolicyEditFlyout } from './content_security_policy_edit_flyout';
 import { ContentSecurityPolicyImportModal } from './content_security_policy_import_modal';
 import { ContentSecurityPolicyShareModal } from './content_security_policy_share_modal';
-import { SaveContentSecurityPolicyFlyout } from './save_content_security_policy_flyout';
 import { PageErrorState, PageLoadingState } from '../../../../../components';
-import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../../model';
+import {
+  type AsyncData,
+  getApiRequestConfig,
+  getApiUrl,
+  getCopyName,
+  getErrorMessage,
+  ResponseError,
+} from '../../../../../model';
 import { TimestampTableCell } from '../../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../../hooks';
 
@@ -30,7 +37,7 @@ export default function WebSecurityContentSecurityPolicies() {
   const [policyToCopy, setPolicyToCopy] = useState<ContentSecurityPolicy | null>(null);
   const [policyToShare, setPolicyToShare] = useState<ContentSecurityPolicy | null>(null);
   const [policyToRemove, setPolicyToRemove] = useState<ContentSecurityPolicy | null>(null);
-  const [policyToEdit, setPolicyToEdit] = useState<ContentSecurityPolicy | null | undefined>(null);
+  const [policyToEdit, setPolicyToEdit] = useState<Partial<ContentSecurityPolicy> | null | undefined>(null);
 
   const [policies, setPolicies] = useState<AsyncData<ContentSecurityPolicy[]>>({ status: 'pending' });
 
@@ -102,7 +109,7 @@ export default function WebSecurityContentSecurityPolicies() {
 
   const editFlyout =
     policyToEdit !== null ? (
-      <SaveContentSecurityPolicyFlyout
+      <ContentSecurityPolicyEditFlyout
         onClose={(success) => {
           if (success) {
             loadPolicies();
@@ -265,6 +272,7 @@ export default function WebSecurityContentSecurityPolicies() {
               </EuiToolTip>
             ),
             field: 'directives',
+            width: '80%',
             render: (_, policy: ContentSecurityPolicy) => getContentSecurityPolicyString(policy),
           },
           {
@@ -281,31 +289,41 @@ export default function WebSecurityContentSecurityPolicies() {
             width: '105px',
             actions: [
               {
-                name: 'Copy policy',
+                name: 'Copy',
                 description: 'Copy policy',
-                icon: 'copy',
+                icon: 'copyClipboard',
                 type: 'icon',
-                isPrimary: true,
                 onClick: setPolicyToCopy,
               },
               {
-                name: 'Share policy',
+                name: 'Share',
                 description: 'Share policy',
                 icon: 'share',
                 type: 'icon',
                 onClick: setPolicyToShare,
               },
               {
-                name: 'Edit policy',
+                name: 'Edit',
                 description: 'Edit policy',
                 icon: 'pencil',
                 type: 'icon',
+                isPrimary: true,
                 onClick: setPolicyToEdit,
               },
               {
-                name: 'Remove policy',
+                name: 'Duplicate',
+                description: 'Duplicate policy',
+                icon: 'copy',
+                type: 'icon',
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                onClick: ({ id, createdAt, updatedAt, name, ...rest }: ContentSecurityPolicy) =>
+                  setPolicyToEdit({ ...rest, name: getCopyName(name) }),
+              },
+              {
+                name: 'Remove',
                 description: 'Remove policy',
-                icon: 'minusInCircle',
+                icon: 'trash',
+                color: 'danger',
                 type: 'icon',
                 isPrimary: true,
                 onClick: setPolicyToRemove,

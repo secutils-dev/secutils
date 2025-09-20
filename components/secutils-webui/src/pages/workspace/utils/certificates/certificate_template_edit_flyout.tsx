@@ -2,6 +2,7 @@ import moment from 'moment';
 import { useState } from 'react';
 
 import type { CertificateTemplate } from './certificate_template';
+import type { CertificateTemplateProps } from './certificate_template_form';
 import { CertificateTemplateForm } from './certificate_template_form';
 import {
   type AsyncData,
@@ -14,39 +15,34 @@ import {
 import { EditorFlyout } from '../../components/editor_flyout';
 import { useWorkspaceContext } from '../../hooks';
 
-export interface SaveCertificateTemplateFlyoutProps {
-  template?: CertificateTemplate;
+export interface CertificateTemplateEditFlyoutProps {
+  template?: Partial<CertificateTemplate>;
   onClose: (success?: boolean) => void;
 }
 
-export function SaveCertificateTemplateFlyout({ onClose, template }: SaveCertificateTemplateFlyoutProps) {
+export function CertificateTemplateEditFlyout({ onClose, template }: CertificateTemplateEditFlyoutProps) {
   const { addToast } = useWorkspaceContext();
 
-  const [templateToSave, setTemplateToSave] = useState<CertificateTemplate>(
-    template ?? {
-      id: '',
-      createdAt: 0,
-      updatedAt: 0,
-      name: '',
-      attributes: {
-        commonName: 'CA Issuer',
-        country: 'US',
-        stateOrProvince: 'California',
-        locality: 'San Francisco',
-        organization: 'CA Issuer, Inc',
-        keyAlgorithm: { keyType: 'ed25519' },
-        signatureAlgorithm: 'ed25519',
-        notValidBefore: moment().unix(),
-        notValidAfter: moment().add(1, 'years').unix(),
-        isCa: false,
-      },
+  const [templateToSave, setTemplateToSave] = useState<CertificateTemplateProps>({
+    name: template?.name ?? '',
+    attributes: template?.attributes ?? {
+      commonName: 'CA Issuer',
+      country: 'US',
+      stateOrProvince: 'California',
+      locality: 'San Francisco',
+      organization: 'CA Issuer, Inc',
+      keyAlgorithm: { keyType: 'ed25519' },
+      signatureAlgorithm: 'ed25519',
+      notValidBefore: moment().unix(),
+      notValidAfter: moment().add(1, 'years').unix(),
+      isCa: false,
     },
-  );
+  });
 
   const [updatingStatus, setUpdatingStatus] = useState<AsyncData<void>>();
   return (
     <EditorFlyout
-      title={`${template ? 'Edit' : 'Add'} certificate template`}
+      title={`${template?.id ? 'Edit' : 'Add'} certificate template`}
       onClose={() => onClose()}
       onSave={() => {
         if (updatingStatus?.status === 'pending') {
@@ -55,9 +51,9 @@ export function SaveCertificateTemplateFlyout({ onClose, template }: SaveCertifi
 
         setUpdatingStatus({ status: 'pending' });
 
-        const [requestPromise, successMessage, errorMessage] = templateToSave.id
+        const [requestPromise, successMessage, errorMessage] = template?.id
           ? [
-              fetch(getApiUrl(`/api/utils/certificates/templates/${templateToSave.id}`), {
+              fetch(getApiUrl(`/api/utils/certificates/templates/${template.id}`), {
                 ...getApiRequestConfig('PUT'),
                 body: JSON.stringify({
                   templateName: templateToSave.name !== template?.name ? templateToSave.name : null,

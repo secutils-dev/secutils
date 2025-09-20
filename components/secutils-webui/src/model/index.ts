@@ -22,3 +22,4 @@ export type {
   SerializedPublicKeyCredentialCreationOptions,
   SerializedPublicKeyCredentialRequestOptions,
 } from './webauthn';
+export { getCopyName } from './strings';

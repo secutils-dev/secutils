@@ -18,12 +18,12 @@ import {
 import { EditorFlyout } from '../../components/editor_flyout';
 import { useWorkspaceContext } from '../../hooks';
 
-export interface SavePrivateKeyFlyoutProps {
-  privateKey?: PrivateKey;
+export interface PrivateKeyEditFlyoutProps {
+  privateKey?: Partial<PrivateKey>;
   onClose: (success?: boolean) => void;
 }
 
-export function SavePrivateKeyFlyout({ onClose, privateKey }: SavePrivateKeyFlyoutProps) {
+export function PrivateKeyEditFlyout({ onClose, privateKey }: PrivateKeyEditFlyoutProps) {
   const { addToast } = useWorkspaceContext();
 
   const [name, setName] = useState<string>(privateKey?.name ?? '');
@@ -71,7 +71,7 @@ export function SavePrivateKeyFlyout({ onClose, privateKey }: SavePrivateKeyFlyo
     }
 
     // If it's a new key, just make sure passphrase is either not needed or set correctly.
-    if (!privateKey) {
+    if (!privateKey?.id) {
       return encryptionMode === 'none' || passphrase !== null;
     }
 
@@ -87,7 +87,7 @@ export function SavePrivateKeyFlyout({ onClose, privateKey }: SavePrivateKeyFlyo
 
   return (
     <EditorFlyout
-      title={`${privateKey ? 'Edit' : 'Add'} private key`}
+      title={`${privateKey?.id ? 'Edit' : 'Add'} private key`}
       onClose={() => onClose()}
       onSave={() => {
         if (updatingStatus?.status === 'pending') {
@@ -99,7 +99,7 @@ export function SavePrivateKeyFlyout({ onClose, privateKey }: SavePrivateKeyFlyo
         // Only passphrase and name change are allowed for existing private keys.
         const newPassphraseToSend = encryptionMode === 'passphrase' ? passphrase : null;
         const currentPassphraseToSend = privateKey?.encrypted ? currentPassphrase : null;
-        const [requestPromise, successMessage, errorMessage] = privateKey
+        const [requestPromise, successMessage, errorMessage] = privateKey?.id
           ? [
               fetch(getApiUrl(`/api/utils/certificates/private_keys/${privateKey.id}`), {
                 ...getApiRequestConfig('PUT'),
@@ -158,7 +158,7 @@ export function SavePrivateKeyFlyout({ onClose, privateKey }: SavePrivateKeyFlyo
           <EuiFormRow label="Name" helpText="Unique name of the private key.">
             <EuiFieldText value={name} required type={'text'} onChange={onNameChange} />
           </EuiFormRow>
-          <EuiFormRow label="Key algorithm" helpText="Private key algorithm." isDisabled={!!privateKey}>
+          <EuiFormRow label="Key algorithm" helpText="Private key algorithm." isDisabled={!!privateKey?.id}>
             <EuiSelect
               options={[
                 { value: 'rsa', text: 'RSA' },
@@ -171,7 +171,7 @@ export function SavePrivateKeyFlyout({ onClose, privateKey }: SavePrivateKeyFlyo
             />
           </EuiFormRow>
           {'keySize' in keyAlgorithm ? (
-            <EuiFormRow label="Key size" helpText="Private key size." isDisabled={!!privateKey}>
+            <EuiFormRow label="Key size" helpText="Private key size." isDisabled={!!privateKey?.id}>
               <EuiSelect
                 options={[
                   { value: '1024', text: '1024 bit' },
@@ -195,7 +195,7 @@ export function SavePrivateKeyFlyout({ onClose, privateKey }: SavePrivateKeyFlyo
                   used for cryptographic operations.
                 </span>
               }
-              isDisabled={!!privateKey}
+              isDisabled={!!privateKey?.id}
             >
               <EuiSelect
                 options={[
@@ -212,9 +212,9 @@ export function SavePrivateKeyFlyout({ onClose, privateKey }: SavePrivateKeyFlyo
         <EuiDescribedFormGroup title={<h3>Security</h3>} description={'Security properties of the private key'}>
           <EncryptionModeSelector
             initialMode={privateKey?.encrypted === false ? 'none' : 'passphrase'}
-            requireCurrentPassphrase={!!privateKey?.encrypted}
-            passphraseLabel={privateKey ? 'New passphrase' : undefined}
-            repeatPassphraseLabel={privateKey ? 'Repeat new passphrase' : undefined}
+            requireCurrentPassphrase={!!privateKey?.id && !!privateKey?.encrypted}
+            passphraseLabel={privateKey?.id ? 'New passphrase' : undefined}
+            repeatPassphraseLabel={privateKey?.id ? 'Repeat new passphrase' : undefined}
             onChange={(mode, passphrase, currentPassphrase) => {
               setEncryptionMode(mode);
               setPassphrase(passphrase);

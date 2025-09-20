@@ -36,7 +36,7 @@ import { ScriptEditor } from '../../components/script_editor';
 import { useWorkspaceContext } from '../../hooks';
 
 export interface ResponderEditFlyoutProps {
-  responder?: Responder;
+  responder?: Partial<Responder>;
   onClose: (success?: boolean) => void;
 }
 
@@ -76,9 +76,11 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
   const { addToast, uiState } = useWorkspaceContext();
   const maxTicks = useRangeTicks();
 
+  const newResponder = !responder?.id;
+
   const httpMethods = useMemo(() => HTTP_METHODS.map((method) => ({ value: method, text: method })), []);
 
-  const [isAdvancedMode, setIsAdvancedMode] = useState(!!responder);
+  const [isAdvancedMode, setIsAdvancedMode] = useState(!newResponder);
 
   const [name, setName] = useState<string>(responder?.name ?? '');
   const onNameChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
@@ -89,7 +91,7 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
   const supportsCustomSubdomainPrefixes =
     uiState.webhookUrlType === 'subdomain' && !!uiState.subscription?.features?.webhooks.responderCustomSubdomainPrefix;
   const [subdomainPrefix, setSubdomainPrefix] = useState<string>(
-    responder?.location.subdomainPrefix ?? (supportsCustomSubdomainPrefixes ? defaultRandom : ''),
+    responder?.location?.subdomainPrefix ?? (supportsCustomSubdomainPrefixes ? defaultRandom : ''),
   );
   const onSubdomainPrefixChange = (e: ChangeEvent<HTMLInputElement>) => {
     setSubdomainPrefix(e.target.value.toLowerCase());
@@ -98,7 +100,7 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
   const [path, setPath] = useState<string>(
     // If custom subdomain prefixes are supported, then when a creating a new responder a random prefix will be
     // generated, so we safely default path to `/` (prefix).
-    responder?.location.path ?? (supportsCustomSubdomainPrefixes ? '/' : `/${defaultRandom}`),
+    responder?.location?.path ?? (supportsCustomSubdomainPrefixes ? '/' : `/${defaultRandom}`),
   );
   const onPathChange = (e: ChangeEvent<HTMLInputElement>) => {
     setPath(e.target.value.toLowerCase());
@@ -106,18 +108,18 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
   const isPathValid = path.startsWith('/') && (path.length === 1 || !path.endsWith('/'));
 
   const [pathType, setPathType] = useState<string>(
-    responder?.location.pathType ?? (supportsCustomSubdomainPrefixes ? '^' : '='),
+    responder?.location?.pathType ?? (supportsCustomSubdomainPrefixes ? '^' : '='),
   );
   const onPathTypeChange = (e: ChangeEvent<HTMLSelectElement>) => {
     setPathType(e.target.value);
   };
 
   const [requestsToTrack, setRequestsToTrack] = useState<number>(
-    responder?.settings.requestsToTrack ??
+    responder?.settings?.requestsToTrack ??
       Math.min(uiState.subscription?.features?.webhooks.responderRequests ?? 0, 10),
   );
 
-  const [statusCode, setStatusCode] = useState<number>(responder?.settings.statusCode ?? 200);
+  const [statusCode, setStatusCode] = useState<number>(responder?.settings?.statusCode ?? 200);
   const onStatusCodeChange = (e: ChangeEvent<HTMLInputElement>) => {
     setStatusCode(+e.target.value);
   };
@@ -133,13 +135,13 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
   }, []);
 
   const [headers, setHeaders] = useState<Array<{ label: string }>>(
-    responder?.settings.headers?.map(([header, value]) => ({ label: `${header}: ${value}` })) ?? [
+    responder?.settings?.headers?.map(([header, value]) => ({ label: `${header}: ${value}` })) ?? [
       { label: 'Content-Type: text/html; charset=utf-8' },
     ],
   );
   const [areHeadersInvalid, setAreHeadersInvalid] = useState(false);
 
-  const [script, setScript] = useState<string | undefined>(responder?.settings.script);
+  const [script, setScript] = useState<string | undefined>(responder?.settings?.script);
   const onUserScriptChange = useCallback((value?: string) => {
     setScript(value);
   }, []);
@@ -167,7 +169,7 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
   };
 
   const [body, setBody] = useState<string>(
-    responder?.settings.body ?? 'Hello from <a href="https://secutils.dev">Secutils.dev</a>!',
+    responder?.settings?.body ?? 'Hello from <a href="https://secutils.dev">Secutils.dev</a>!',
   );
   const onBodyChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
     setBody(e.target.value);
@@ -183,11 +185,11 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
 
     const locationSubdomainPrefix = supportsCustomSubdomainPrefixes ? subdomainPrefix || undefined : undefined;
     let location;
-    if (responder) {
+    if (!newResponder) {
       location =
-        responder.location.path !== path ||
-        responder.location.pathType !== pathType ||
-        responder.location.subdomainPrefix !== locationSubdomainPrefix
+        responder.location?.path !== path ||
+        responder.location?.pathType !== pathType ||
+        responder.location?.subdomainPrefix !== locationSubdomainPrefix
           ? { pathType, path: path.trim(), subdomainPrefix: locationSubdomainPrefix }
           : null;
     } else {
@@ -195,10 +197,10 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
     }
 
     const responderToUpdate = {
-      name: responder ? (responder.name !== name ? name.trim() : null) : name.trim(),
+      name: newResponder ? name.trim() : responder.name !== name ? name.trim() : null,
       location,
-      method: responder ? (responder.method !== method ? method : null) : method,
-      enabled: responder ? (responder.enabled !== isEnabled ? isEnabled : null) : isEnabled,
+      method: newResponder ? method : responder.method !== method ? method : null,
+      enabled: newResponder ? isEnabled : responder.enabled !== isEnabled ? isEnabled : null,
       settings: {
         requestsToTrack,
         statusCode,
@@ -217,7 +219,7 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
       },
     };
 
-    const [requestPromise, successMessage, errorMessage] = responder
+    const [requestPromise, successMessage, errorMessage] = !newResponder
       ? [
           fetch(getApiUrl(`/api/utils/webhooks/responders/${responder.id}`), {
             ...getApiRequestConfig('PUT'),
@@ -277,6 +279,7 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
     responder,
     updatingStatus,
     supportsCustomSubdomainPrefixes,
+    newResponder,
     addToast,
     onClose,
   ]);

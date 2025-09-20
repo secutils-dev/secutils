@@ -23,7 +23,14 @@ import type { TrackerDataRevision } from './tracker_data_revision';
 import { TrackerName } from './tracker_name';
 import { TrackerRevisions } from './tracker_revisions';
 import { PageErrorState, PageLoadingState } from '../../../../components';
-import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
+import {
+  type AsyncData,
+  getApiRequestConfig,
+  getApiUrl,
+  getCopyName,
+  getErrorMessage,
+  ResponseError,
+} from '../../../../model';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -33,7 +40,7 @@ export default function PageTrackers() {
   const [trackers, setTrackers] = useState<AsyncData<PageTracker[]>>({ status: 'pending' });
 
   const [trackerToRemove, setTrackerToRemove] = useState<PageTracker | null>(null);
-  const [trackerToEdit, setTrackerToEdit] = useState<PageTracker | null | undefined>(null);
+  const [trackerToEdit, setTrackerToEdit] = useState<Partial<PageTracker> | null | undefined>(null);
 
   const createButton = useMemo(
     () => (
@@ -91,7 +98,7 @@ export default function PageTrackers() {
           }
           setTrackerToEdit(null);
         }}
-        tracker={trackerToEdit as PageTracker}
+        tracker={trackerToEdit}
       />
     ) : null;
 
@@ -245,23 +252,41 @@ export default function PageTrackers() {
             sortable: (tracker) => tracker.updatedAt,
             render: (_, tracker: PageTracker) => <TimestampTableCell timestamp={tracker.updatedAt} />,
           },
+          // Just a padding column to increase the height of the table row in responsive mode.
+          {
+            name: <></>,
+            render: () => <EuiSpacer size={'xxl'} />,
+            mobileOptions: { only: true },
+          },
           {
             name: 'Actions',
             field: 'headers',
-            width: '75px',
+            width: '105px',
             actions: [
               {
-                name: 'Edit tracker',
+                name: 'Edit',
                 description: 'Edit tracker',
                 icon: 'pencil',
                 type: 'icon',
+                isPrimary: true,
                 onClick: setTrackerToEdit,
               },
               {
-                name: 'Remove tracker',
-                description: 'Remove tracker',
-                icon: 'minusInCircle',
+                name: 'Duplicate',
+                description: 'Duplicate tracker',
+                icon: 'copy',
                 type: 'icon',
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                onClick: ({ id, createdAt, updatedAt, name, ...rest }: PageTracker) =>
+                  setTrackerToEdit({ ...rest, name: getCopyName(name) }),
+              },
+              {
+                name: 'Remove',
+                description: 'Remove tracker',
+                icon: 'trash',
+                color: 'danger',
+                type: 'icon',
+                isPrimary: true,
                 onClick: setTrackerToRemove,
               },
             ],

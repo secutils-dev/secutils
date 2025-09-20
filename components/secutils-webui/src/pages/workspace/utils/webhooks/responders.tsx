@@ -25,7 +25,14 @@ import { ResponderName } from './responder_name';
 import { ResponderRequestsTable } from './responder_requests_table';
 import type { ResponderStats } from './responder_stats';
 import { PageErrorState, PageLoadingState } from '../../../../components';
-import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
+import {
+  type AsyncData,
+  getApiRequestConfig,
+  getApiUrl,
+  getCopyName,
+  getErrorMessage,
+  ResponseError,
+} from '../../../../model';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -37,7 +44,7 @@ export default function Responders() {
     AsyncData<{ responders: Responder[]; stats: Map<string, ResponderStats> }>
   >({ status: 'pending' });
   const [responderToRemove, setResponderToRemove] = useState<Responder | null>(null);
-  const [responderToEdit, setResponderToEdit] = useState<Responder | null | undefined>(null);
+  const [responderToEdit, setResponderToEdit] = useState<Partial<Responder> | null | undefined>(null);
 
   const createButton = useMemo(
     () => (
@@ -279,11 +286,11 @@ export default function Responders() {
                   {url}
                 </EuiLink>
               ) : url ? (
-                <EuiText size={'s'} color={theme.euiTheme.colors.disabledText}>
+                <EuiText size={'s'} color={theme.euiTheme.colors.textDisabled}>
                   {url}
                 </EuiText>
               ) : (
-                <EuiIcon type="minus" color={responder.enabled ? undefined : theme.euiTheme.colors.disabledText} />
+                <EuiIcon type="minus" color={responder.enabled ? undefined : theme.euiTheme.colors.textDisabled} />
               );
             },
           },
@@ -292,7 +299,7 @@ export default function Responders() {
             field: 'method',
             width: '100px',
             render: (_, { enabled, method }: Responder) => (
-              <EuiText size={'s'} color={enabled ? undefined : theme.euiTheme.colors.disabledText}>
+              <EuiText size={'s'} color={enabled ? undefined : theme.euiTheme.colors.textDisabled}>
                 <b>{method}</b>
               </EuiText>
             ),
@@ -310,10 +317,10 @@ export default function Responders() {
                 <TimestampTableCell
                   timestamp={stats.lastRequestedAt}
                   highlightRecent
-                  color={responder.enabled ? undefined : theme.euiTheme.colors.disabledText}
+                  color={responder.enabled ? undefined : theme.euiTheme.colors.textDisabled}
                 />
               ) : (
-                <EuiText size={'s'} color={responder.enabled ? undefined : theme.euiTheme.colors.disabledText}>
+                <EuiText size={'s'} color={responder.enabled ? undefined : theme.euiTheme.colors.textDisabled}>
                   <b>-</b>
                 </EuiText>
               );
@@ -328,27 +335,39 @@ export default function Responders() {
             render: (_, responder: Responder) => (
               <TimestampTableCell
                 timestamp={responder.updatedAt}
-                color={responder.enabled ? undefined : theme.euiTheme.colors.disabledText}
+                color={responder.enabled ? undefined : theme.euiTheme.colors.textDisabled}
               />
             ),
           },
           {
             name: 'Actions',
             field: 'headers',
-            width: '75px',
+            width: '105px',
             actions: [
               {
-                name: 'Edit responder',
+                name: 'Edit',
                 description: 'Edit responder',
                 icon: 'pencil',
                 type: 'icon',
+                isPrimary: true,
                 onClick: setResponderToEdit,
               },
               {
-                name: 'Remove responder',
-                description: 'Remove responder',
-                icon: 'minusInCircle',
+                name: 'Duplicate',
+                description: 'Duplicate responder',
+                icon: 'copy',
                 type: 'icon',
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                onClick: ({ id, createdAt, updatedAt, name, ...rest }: Responder) =>
+                  setResponderToEdit({ ...rest, name: getCopyName(name) }),
+              },
+              {
+                name: 'Remove',
+                description: 'Remove responder',
+                icon: 'trash',
+                color: 'danger',
+                type: 'icon',
+                isPrimary: true,
                 onClick: setResponderToRemove,
               },
             ],

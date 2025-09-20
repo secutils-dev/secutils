@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import type { ContentSecurityPolicy } from './content_security_policy';
 import { serializeContentSecurityPolicyDirectives } from './content_security_policy';
+import type { ContentSecurityPolicyProps } from './content_security_policy_form';
 import { ContentSecurityPolicyForm } from './content_security_policy_form';
 import {
   type AsyncData,
@@ -14,34 +15,35 @@ import {
 import { EditorFlyout } from '../../../components/editor_flyout';
 import { useWorkspaceContext } from '../../../hooks';
 
-export interface Props {
+export interface ContentSecurityPolicyEditFlyoutProps {
+  policy?: Partial<ContentSecurityPolicy>;
   onClose: (success?: boolean) => void;
-  policy?: ContentSecurityPolicy;
 }
 
-export function SaveContentSecurityPolicyFlyout({ onClose, policy }: Props) {
+export function ContentSecurityPolicyEditFlyout({ onClose, policy }: ContentSecurityPolicyEditFlyoutProps) {
   const { addToast } = useWorkspaceContext();
 
-  const [policyToSave, setPolicyToSave] = useState<ContentSecurityPolicy>(
-    policy ?? { id: '', createdAt: 0, updatedAt: 0, name: '', directives: new Map() },
-  );
+  const [policyToSave, setPolicyToSave] = useState<ContentSecurityPolicyProps>({
+    name: policy?.name ?? '',
+    directives: policy?.directives ?? new Map(),
+  });
 
   const [updatingStatus, setUpdatingStatus] = useState<AsyncData<void>>();
 
   return (
     <EditorFlyout
-      title={`${policy ? 'Edit' : 'Add'} policy`}
+      title={`${policy?.id ? 'Edit' : 'Add'} policy`}
       onClose={() => onClose()}
       onSave={() => {
-        if (updatingStatus?.status === 'pending' || !policyToSave) {
+        if (updatingStatus?.status === 'pending') {
           return;
         }
 
         setUpdatingStatus({ status: 'pending' });
 
-        const [requestPromise, successMessage, errorMessage] = policyToSave.id
+        const [requestPromise, successMessage, errorMessage] = policy?.id
           ? [
-              fetch(getApiUrl(`/api/utils/web_security/csp/${policyToSave.id}`), {
+              fetch(getApiUrl(`/api/utils/web_security/csp/${policy.id}`), {
                 ...getApiRequestConfig('PUT'),
                 body: JSON.stringify({
                   name: policyToSave.name !== policy?.name ? policyToSave.name : null,

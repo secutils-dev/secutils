@@ -17,9 +17,11 @@ import { ContentSecurityPolicySandboxCombobox } from './content_security_policy_
 import { ContentSecurityPolicySourcesCombobox } from './content_security_policy_sources_combobox';
 import { ContentSecurityPolicyTrustedTypesCombobox } from './content_security_policy_trusted_types_combobox';
 
+export type ContentSecurityPolicyProps = Pick<ContentSecurityPolicy, 'name' | 'directives'>;
+
 export interface ContentSecurityPolicyFormProps {
-  policy: ContentSecurityPolicy;
-  onChange?: (policy: ContentSecurityPolicy) => void;
+  policy: ContentSecurityPolicyProps;
+  onChange?: (policy: ContentSecurityPolicyProps) => void;
   isReadOnly?: boolean;
 }
 

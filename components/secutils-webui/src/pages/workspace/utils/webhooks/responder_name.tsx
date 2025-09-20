@@ -16,14 +16,14 @@ export function ResponderName({ responder }: { responder: Responder }) {
         {responder.name} {scriptIcon}
       </EuiText>
     ) : (
-      <EuiText size="s" color={theme.euiTheme.colors.disabledText}>
+      <EuiText size="s" color={theme.euiTheme.colors.textDisabled}>
         {responder.name} {scriptIcon} {disabledIcon}
       </EuiText>
     );
   }
 
   return (
-    <EuiText size="s" color={theme.euiTheme.colors.disabledText}>
+    <EuiText size="s" color={theme.euiTheme.colors.textDisabled}>
       {responder.name} {disabledIcon}
     </EuiText>
   );

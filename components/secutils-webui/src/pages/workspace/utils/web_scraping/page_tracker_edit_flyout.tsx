@@ -28,24 +28,27 @@ import { useWorkspaceContext } from '../../hooks';
 
 export interface Props {
   onClose: (success?: boolean) => void;
-  tracker?: PageTracker;
+  tracker?: Partial<PageTracker>;
 }
 
 export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
   const { addToast, uiState } = useWorkspaceContext();
   const maxTicks = useRangeTicks();
 
+  const newTracker = !tracker?.id;
+
   const [name, setName] = useState<string>(tracker?.name ?? '');
   const onNameChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     setName(e.target.value);
   }, []);
-  const needsToSaveName = !!name && tracker?.name !== name;
+  const needsToSaveName = !!name && (newTracker || tracker?.name !== name);
 
-  const [jobConfig, setJobConfig] = useState<SchedulerJobConfig | null>(tracker?.retrack.config?.job ?? null);
+  const [jobConfig, setJobConfig] = useState<SchedulerJobConfig | null>(tracker?.retrack?.config?.job ?? null);
   const [retryIntervals, setRetryIntervals] = useState<RetryInterval[]>(
     jobConfig?.schedule ? getRetryIntervals(getScheduleMinInterval(jobConfig.schedule)) : [],
   );
-  const needsToSaveJobConfig = !tracker || !areSchedulerJobsEqual(tracker?.retrack.config?.job, jobConfig);
+  const needsToSaveJobConfig =
+    !tracker || newTracker || !areSchedulerJobsEqual(tracker?.retrack?.config?.job, jobConfig);
 
   const [extractorScript, setExtractorScript] = useState<string>(
     tracker?.retrack?.target?.extractor ??
@@ -54,13 +57,14 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
   const onExtractContentScriptChange = useCallback((value?: string) => {
     setExtractorScript(value ?? '');
   }, []);
-  const needsToSaveExtractorScript = !!extractorScript && tracker?.retrack.target?.extractor !== extractorScript;
+  const needsToSaveExtractorScript =
+    !!extractorScript && (newTracker || tracker?.retrack?.target?.extractor !== extractorScript);
 
-  const [revisions, setRevisions] = useState<number>(tracker ? (tracker.retrack.config?.revisions ?? 0) : 3);
-  const needsToSaveRevisions = tracker?.retrack.config?.revisions !== revisions;
+  const [revisions, setRevisions] = useState<number>(tracker ? (tracker.retrack?.config?.revisions ?? 0) : 3);
+  const needsToSaveRevisions = newTracker || tracker?.retrack?.config?.revisions !== revisions;
 
-  const [notifications, setNotifications] = useState<boolean>(tracker ? !!tracker.retrack.notifications : false);
-  const needsToSaveNotifications = tracker?.retrack.notifications !== notifications;
+  const [notifications, setNotifications] = useState<boolean>(tracker ? !!tracker.retrack?.notifications : false);
+  const needsToSaveNotifications = newTracker || tracker?.retrack?.notifications !== notifications;
 
   const [updatingStatus, setUpdatingStatus] = useState<AsyncData<void>>();
   const onSave = useCallback(() => {
@@ -71,21 +75,22 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
     setUpdatingStatus({ status: 'pending' });
 
     const trackerToUpdate = {
-      name: !!name && tracker?.name !== name ? name : null,
+      name: !!name && (newTracker || tracker?.name !== name) ? name : null,
       config:
-        revisions !== tracker?.retrack.config?.revisions ||
+        newTracker ||
+        revisions !== tracker?.retrack?.config?.revisions ||
         !areSchedulerJobsEqual(tracker?.retrack.config.job, jobConfig)
           ? { revisions, job: jobConfig }
           : null,
       target:
-        !!extractorScript && tracker?.retrack.target?.extractor !== extractorScript
+        !!extractorScript && (newTracker || tracker?.retrack?.target?.extractor !== extractorScript)
           ? { extractor: extractorScript }
           : null,
-      notifications: notifications,
+      notifications,
     };
 
     const requestInit = { ...getApiRequestConfig(), body: JSON.stringify(trackerToUpdate) };
-    const [requestPromise, successMessage, errorMessage] = tracker
+    const [requestPromise, successMessage, errorMessage] = tracker?.id
       ? [
           fetch(getApiUrl(`/api/utils/web_scraping/page/${tracker.id}`), { ...requestInit, method: 'PUT' }),
           `Successfully updated "${name}" page tracker`,
@@ -124,7 +129,18 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
           title: isClientError(err) ? remoteErrorMessage : errorMessage,
         });
       });
-  }, [name, revisions, extractorScript, jobConfig, tracker, updatingStatus, addToast, notifications, onClose]);
+  }, [
+    name,
+    revisions,
+    extractorScript,
+    jobConfig,
+    tracker,
+    updatingStatus,
+    addToast,
+    notifications,
+    onClose,
+    newTracker,
+  ]);
 
   const notificationsRow = jobConfig ? (
     <EuiFormRow

@@ -18,13 +18,20 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { certificateTypeString, getDistinguishedNameString, signatureAlgorithmString } from './certificate_attributes';
 import type { CertificateTemplate } from './certificate_template';
+import { CertificateTemplateEditFlyout } from './certificate_template_edit_flyout';
 import { CertificateTemplateGenerateModal } from './certificate_template_generate_modal';
 import { CertificateTemplateShareModal } from './certificate_template_share_modal';
 import { SELF_SIGNED_PROD_WARNING_USER_SETTINGS_KEY } from './consts';
 import { privateKeyAlgString } from './private_key_alg';
-import { SaveCertificateTemplateFlyout } from './save_certificate_template_flyout';
 import { PageErrorState, PageLoadingState } from '../../../../components';
-import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
+import {
+  type AsyncData,
+  getApiRequestConfig,
+  getApiUrl,
+  getCopyName,
+  getErrorMessage,
+  ResponseError,
+} from '../../../../model';
 import { useWorkspaceContext } from '../../hooks';
 
 export default function CertificatesCertificateTemplates() {
@@ -34,7 +41,7 @@ export default function CertificatesCertificateTemplates() {
 
   const [templateToGenerate, setTemplateToGenerate] = useState<CertificateTemplate | null>(null);
   const [templateToShare, setTemplateToShare] = useState<CertificateTemplate | null>(null);
-  const [templateToEdit, setTemplateToEdit] = useState<CertificateTemplate | null | undefined>(null);
+  const [templateToEdit, setTemplateToEdit] = useState<Partial<CertificateTemplate> | null | undefined>(null);
   const [templateToRemove, setTemplateToRemove] = useState<CertificateTemplate | null>(null);
 
   const docsButton = (
@@ -86,7 +93,7 @@ export default function CertificatesCertificateTemplates() {
 
   const editFlyout =
     templateToEdit !== null ? (
-      <SaveCertificateTemplateFlyout
+      <CertificateTemplateEditFlyout
         onClose={(success) => {
           if (success) {
             loadCertificateTemplates();
@@ -308,18 +315,17 @@ export default function CertificatesCertificateTemplates() {
                   description: 'Generate',
                   icon: 'download',
                   type: 'icon',
-                  isPrimary: true,
                   onClick: setTemplateToGenerate,
                 },
                 {
-                  name: 'Share template',
+                  name: 'Share',
                   description: 'Share template',
                   icon: 'share',
                   type: 'icon',
                   onClick: setTemplateToShare,
                 },
                 {
-                  name: 'Edit template',
+                  name: 'Edit',
                   description: 'Edit template',
                   icon: 'pencil',
                   type: 'icon',
@@ -327,10 +333,21 @@ export default function CertificatesCertificateTemplates() {
                   onClick: setTemplateToEdit,
                 },
                 {
-                  name: 'Remove template',
-                  description: 'Remove template',
-                  icon: 'minusInCircle',
+                  name: 'Duplicate',
+                  description: 'Duplicate template',
+                  icon: 'copy',
                   type: 'icon',
+                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                  onClick: ({ id, createdAt, updatedAt, name, ...rest }: CertificateTemplate) =>
+                    setTemplateToEdit({ ...rest, name: getCopyName(name) }),
+                },
+                {
+                  name: 'Remove',
+                  description: 'Remove template',
+                  icon: 'trash',
+                  color: 'danger',
+                  type: 'icon',
+                  isPrimary: true,
                   onClick: setTemplateToRemove,
                 },
               ],

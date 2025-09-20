@@ -19,10 +19,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PRIVATE_KEYS_PROD_WARNING_USER_SETTINGS_KEY } from './consts';
 import type { PrivateKey } from './private_key';
 import { privateKeyAlgString } from './private_key_alg';
+import { PrivateKeyEditFlyout } from './private_key_edit_flyout';
 import { PrivateKeyExportModal } from './private_key_export_modal';
-import { SavePrivateKeyFlyout } from './save_private_key_flyout';
 import { PageErrorState, PageLoadingState } from '../../../../components';
-import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
+import {
+  type AsyncData,
+  getApiRequestConfig,
+  getApiUrl,
+  getCopyName,
+  getErrorMessage,
+  ResponseError,
+} from '../../../../model';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -33,7 +40,7 @@ export default function CertificatesPrivateKeys() {
 
   const [privateKeyToRemove, setPrivateKeyToRemove] = useState<PrivateKey | null>(null);
   const [privateKeyToExport, setPrivateKeyToExport] = useState<PrivateKey | null>(null);
-  const [privateKeyToEdit, setPrivateKeyToEdit] = useState<PrivateKey | null | undefined>(null);
+  const [privateKeyToEdit, setPrivateKeyToEdit] = useState<Partial<PrivateKey> | null | undefined>(null);
 
   const createButton = useMemo(
     () => (
@@ -84,7 +91,7 @@ export default function CertificatesPrivateKeys() {
 
   const editFlyout =
     privateKeyToEdit !== null ? (
-      <SavePrivateKeyFlyout
+      <PrivateKeyEditFlyout
         onClose={(success) => {
           if (success) {
             loadPrivateKeys();
@@ -303,7 +310,6 @@ export default function CertificatesPrivateKeys() {
                   description: 'Export private key',
                   icon: 'download',
                   type: 'icon',
-                  isPrimary: true,
                   onClick: setPrivateKeyToExport,
                 },
                 {
@@ -315,10 +321,21 @@ export default function CertificatesPrivateKeys() {
                   onClick: setPrivateKeyToEdit,
                 },
                 {
+                  name: 'Duplicate',
+                  description: 'Duplicate private key',
+                  icon: 'copy',
+                  type: 'icon',
+                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                  onClick: ({ id, createdAt, updatedAt, name, ...rest }: PrivateKey) =>
+                    setPrivateKeyToEdit({ ...rest, name: getCopyName(name) }),
+                },
+                {
                   name: 'Remove',
                   description: 'Remove private key',
-                  icon: 'minusInCircle',
+                  icon: 'trash',
+                  color: 'danger',
                   type: 'icon',
+                  isPrimary: true,
                   onClick: setPrivateKeyToRemove,
                 },
               ],

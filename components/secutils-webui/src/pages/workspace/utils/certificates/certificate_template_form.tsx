@@ -16,9 +16,11 @@ import type { CertificateTemplate } from './certificate_template';
 import type { PrivateKeyAlgorithm, PrivateKeyCurveName, PrivateKeySize } from './private_key_alg';
 import { privateKeyCurveNameString } from './private_key_alg';
 
+export type CertificateTemplateProps = Pick<CertificateTemplate, 'name' | 'attributes'>;
+
 export interface CertificateTemplateFormProps {
-  template: CertificateTemplate;
-  onChange?: (template: CertificateTemplate) => void;
+  template: CertificateTemplateProps;
+  onChange?: (template: CertificateTemplateProps) => void;
   isReadOnly?: boolean;
 }
 
