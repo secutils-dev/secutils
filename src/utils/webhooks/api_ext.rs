@@ -775,6 +775,7 @@ mod tests {
         let expected_responder = Responder {
             name: "name_two".to_string(),
             enabled: false,
+            updated_at: updated_responder.updated_at,
             ..responder.clone()
         };
         assert_eq!(expected_responder, updated_responder);
@@ -808,6 +809,7 @@ mod tests {
                 subdomain_prefix: None,
             },
             enabled: false,
+            updated_at: updated_responder.updated_at,
             ..responder.clone()
         };
         assert_eq!(expected_responder, updated_responder);
@@ -841,6 +843,7 @@ mod tests {
                 subdomain_prefix: Some("sub".to_string()),
             },
             enabled: false,
+            updated_at: updated_responder.updated_at,
             ..responder.clone()
         };
         assert_eq!(expected_responder, updated_responder);
@@ -871,6 +874,7 @@ mod tests {
             },
             method: ResponderMethod::Post,
             enabled: false,
+            updated_at: updated_responder.updated_at,
             ..responder.clone()
         };
         assert_eq!(expected_responder, updated_responder);
@@ -914,6 +918,7 @@ mod tests {
                 headers: Some(vec![("new-key".to_string(), "value".to_string())]),
                 script: Some("return { body: `custom body` };".to_string()),
             },
+            updated_at: updated_responder.updated_at,
             ..responder.clone()
         };
         assert_eq!(expected_responder, updated_responder);

@@ -490,7 +490,7 @@ pub mod tests {
                     notifications: false,
                 })),
                 created_at: tracker.created_at,
-                updated_at: tracker.updated_at
+                updated_at: updated_tracker.updated_at
             }
         );
         retrack_update_api_mock.assert();

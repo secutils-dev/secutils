@@ -98,7 +98,7 @@ pub mod tests {
     use insta::assert_json_snapshot;
     use serde_json::json;
     use sqlx::PgPool;
-    use std::borrow::Cow;
+    use std::{borrow::Cow, time::Duration};
     use time::OffsetDateTime;
     use uuid::Uuid;
 
@@ -448,6 +448,7 @@ pub mod tests {
             )
             .await?
             .unwrap();
+        tokio::time::sleep(Duration::from_millis(1000)).await;
         let request_two = webhooks
             .create_responder_request(
                 responder.id,
@@ -489,7 +490,7 @@ pub mod tests {
         settings.bind(|| {
             assert_json_snapshot!(
                 serde_json::to_string(&action_result.into_inner().unwrap()).unwrap(),
-                @r###""[{\"id\":\"[UUID-1]\",\"method\":\"POST\",\"url\":\"/?query=value\",\"createdAt\":[TIMESTAMP-1]},{\"id\":\"[UUID-2]\",\"method\":\"POST\",\"url\":\"/?query=other-value\",\"createdAt\":[TIMESTAMP-1]}]""###
+                @r###""[{\"id\":\"[UUID-1]\",\"method\":\"POST\",\"url\":\"/?query=value\",\"createdAt\":[TIMESTAMP-1]},{\"id\":\"[UUID-2]\",\"method\":\"POST\",\"url\":\"/?query=other-value\",\"createdAt\":[TIMESTAMP-2]}]""###
             );
         });
 

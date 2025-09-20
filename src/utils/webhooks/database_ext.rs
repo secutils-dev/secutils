@@ -196,7 +196,7 @@ ORDER BY r.updated_at
             }
             Err(err) => match err.as_database_error() {
                 Some(database_error) if database_error.is_unique_violation() => {
-                    let error_message = if database_error.message().contains(".location") {
+                    let error_message = if database_error.message().contains("_method_") {
                         format!(
                             "Responder with such location ('{:?}') and method ('{:?}') already exists.",
                             &responder.location, responder.method
@@ -261,7 +261,7 @@ ORDER BY r.updated_at
             }
             Err(err) => match err.as_database_error() {
                 Some(database_error) if database_error.is_unique_violation() => {
-                    let error_message = if database_error.message().contains(".location") {
+                    let error_message = if database_error.message().contains("_method_") {
                         format!(
                             "Responder with such location ('{:?}') and method ('{:?}') already exists.",
                             &responder.location, responder.method
@@ -521,8 +521,7 @@ mod tests {
             )
             .await
             .unwrap_err()
-            .downcast::<SecutilsError>()
-            .unwrap();
+            .downcast::<SecutilsError>()?;
         assert_debug_snapshot!(
             insert_error.root_cause.to_string(),
             @r###""Responder with such name ('some-name') already exists.""###
@@ -546,11 +545,10 @@ mod tests {
             )
             .await
             .unwrap_err()
-            .downcast::<SecutilsError>()
-            .unwrap();
+            .downcast::<SecutilsError>()?;
         assert_debug_snapshot!(
             insert_error.root_cause.to_string(),
-            @r###""Responder with such name ('some-name-2') already exists.""###
+            @r###""Responder with such location ('/ (Exact)') and method ('Post') already exists.""###
         );
         assert_debug_snapshot!(
             to_database_error(insert_error.root_cause)?.message(),
@@ -571,8 +569,7 @@ mod tests {
             )
             .await
             .unwrap_err()
-            .downcast::<SecutilsError>()
-            .unwrap();
+            .downcast::<SecutilsError>()?;
         assert_debug_snapshot!(
             insert_error,
             @r###""Responder with such location ('/ (Exact)') and method ('Any') conflicts with another responder.""###
@@ -604,8 +601,7 @@ mod tests {
             )
             .await
             .unwrap_err()
-            .downcast::<SecutilsError>()
-            .unwrap();
+            .downcast::<SecutilsError>()?;
         assert_debug_snapshot!(
             insert_error,
             @r###""Responder with such location ('/path (Exact)') and method ('Get') conflicts with another responder.""###
