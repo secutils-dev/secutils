@@ -89,6 +89,7 @@
     "url": "^0.11.4"
   },
   "optionalDependencies": {
+    "@parcel/rust-linux-arm64-musl": "^2.16.0",
     "@parcel/watcher-linux-arm64-musl": "^2.5.1",
     "@parcel/watcher-linux-x64-glibc": "^2.5.1",
     "@lmdb/lmdb-linux-arm64": "^3.4.2",
