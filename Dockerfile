@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.2
 
-FROM rust:1.90-slim-trixie AS server_builder
+FROM rust:1.92-slim-trixie AS server_builder
 
 ARG TARGETARCH
 ARG UPX_VERSION=5.0.2
@@ -35,8 +35,8 @@ RUN --mount=type=cache,target=/app/target set -x && cargo build --release && \
     cp ./target/release/secutils ./ && \
     upx --best --lzma ./secutils
 
-# Check out https://gcr.io/distroless/cc-debian12:nonroot
-FROM gcr.io/distroless/cc-debian12:nonroot
+# Check out https://gcr.io/distroless/cc-debian13:nonroot
+FROM gcr.io/distroless/cc-debian13:nonroot
 EXPOSE 7070
 
 WORKDIR /app
