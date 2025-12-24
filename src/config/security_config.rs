@@ -69,9 +69,7 @@ mod tests {
         session_cookie_name = 'id'
         jwt_secret = '3024bf8975b03b84e405f36a7bacd1c1'
         operators = ['test@secutils.dev']
-        [preconfigured_users."test@secutils.dev"]
-        handle = 'test-handle'
-        tier = 'basic'
+        preconfigured_users = { "test@secutils.dev" = { handle = 'test-handle', tier = 'basic' } }
         "###);
     }
 

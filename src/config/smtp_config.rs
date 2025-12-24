@@ -47,10 +47,7 @@ mod tests {
         username = 'test@secutils.dev'
         password = 'password'
         address = 'smtp.secutils.dev'
-
-        [catch_all]
-        recipient = 'test@secutils.dev'
-        text_matcher = 'test'
+        catch_all = { recipient = 'test@secutils.dev', text_matcher = 'test' }
         "###);
     }
 

@@ -89,113 +89,14 @@ mod tests {
         assert_toml_snapshot!(default_config, @r###"
         port = 7070
         public_url = 'http://localhost:7070/'
-
-        [db]
-        name = 'secutils'
-        host = 'localhost'
-        port = 5432
-        username = 'postgres'
-
-        [security]
-        session_cookie_name = 'id'
-
-        [components]
-        kratos_url = 'http://localhost:4433/'
-        kratos_admin_url = 'http://localhost:4434/'
-        search_index_version = 4
-
-        [scheduler]
-        notifications_send = '0/30 * * * * *'
-
-        [subscriptions]
-        feature_overview_url = 'http://localhost:7272/'
-        [subscriptions.basic.webhooks]
-        responders = 100
-        responder_requests = 30
-        responder_custom_subdomain_prefix = true
-        js_runtime_heap_size = 10485760
-        js_runtime_script_execution_time = 30000
-
-        [subscriptions.basic.web_scraping]
-        trackers = 100
-        tracker_revisions = 30
-        min_schedule_interval = 10000
-
-        [subscriptions.basic.certificates]
-        private_keys = 100
-        templates = 1000
-
-        [subscriptions.basic.web_security]
-        policies = 1000
-        import_policy_from_url = true
-        [subscriptions.standard.webhooks]
-        responders = 100
-        responder_requests = 30
-        responder_custom_subdomain_prefix = true
-        js_runtime_heap_size = 10485760
-        js_runtime_script_execution_time = 30000
-
-        [subscriptions.standard.web_scraping]
-        trackers = 100
-        tracker_revisions = 30
-        min_schedule_interval = 10000
-
-        [subscriptions.standard.certificates]
-        private_keys = 100
-        templates = 1000
-
-        [subscriptions.standard.web_security]
-        policies = 1000
-        import_policy_from_url = true
-        [subscriptions.professional.webhooks]
-        responders = 100
-        responder_requests = 30
-        responder_custom_subdomain_prefix = true
-        js_runtime_heap_size = 10485760
-        js_runtime_script_execution_time = 30000
-
-        [subscriptions.professional.web_scraping]
-        trackers = 100
-        tracker_revisions = 30
-        min_schedule_interval = 10000
-
-        [subscriptions.professional.certificates]
-        private_keys = 100
-        templates = 1000
-
-        [subscriptions.professional.web_security]
-        policies = 1000
-        import_policy_from_url = true
-        [subscriptions.ultimate.webhooks]
-        responders = 100
-        responder_requests = 30
-        responder_custom_subdomain_prefix = true
-        js_runtime_heap_size = 10485760
-        js_runtime_script_execution_time = 30000
-
-        [subscriptions.ultimate.web_scraping]
-        trackers = 100
-        tracker_revisions = 30
-        min_schedule_interval = 10000
-
-        [subscriptions.ultimate.certificates]
-        private_keys = 100
-        templates = 1000
-
-        [subscriptions.ultimate.web_security]
-        policies = 1000
-        import_policy_from_url = true
-
-        [utils]
-        webhook_url_type = 'subdomain'
-        [http.client]
-        timeout = 30000
-        pool_idle_timeout = 5000
-        max_retries = 3
-        verbose = false
-
-        [retrack]
-        host = 'http://localhost:7676/'
+        db = { name = 'secutils', host = 'localhost', port = 5432, username = 'postgres' }
+        security = { session_cookie_name = 'id' }
+        components = { kratos_url = 'http://localhost:4433/', kratos_admin_url = 'http://localhost:4434/', search_index_version = 4 }
+        scheduler = { notifications_send = '0/30 * * * * *' }
+        subscriptions = { feature_overview_url = 'http://localhost:7272/', basic = { webhooks = { responders = 100, responder_requests = 30, responder_custom_subdomain_prefix = true, js_runtime_heap_size = 10485760, js_runtime_script_execution_time = 30000 }, web_scraping = { trackers = 100, tracker_revisions = 30, min_schedule_interval = 10000 }, certificates = { private_keys = 100, templates = 1000 }, web_security = { policies = 1000, import_policy_from_url = true } }, standard = { webhooks = { responders = 100, responder_requests = 30, responder_custom_subdomain_prefix = true, js_runtime_heap_size = 10485760, js_runtime_script_execution_time = 30000 }, web_scraping = { trackers = 100, tracker_revisions = 30, min_schedule_interval = 10000 }, certificates = { private_keys = 100, templates = 1000 }, web_security = { policies = 1000, import_policy_from_url = true } }, professional = { webhooks = { responders = 100, responder_requests = 30, responder_custom_subdomain_prefix = true, js_runtime_heap_size = 10485760, js_runtime_script_execution_time = 30000 }, web_scraping = { trackers = 100, tracker_revisions = 30, min_schedule_interval = 10000 }, certificates = { private_keys = 100, templates = 1000 }, web_security = { policies = 1000, import_policy_from_url = true } }, ultimate = { webhooks = { responders = 100, responder_requests = 30, responder_custom_subdomain_prefix = true, js_runtime_heap_size = 10485760, js_runtime_script_execution_time = 30000 }, web_scraping = { trackers = 100, tracker_revisions = 30, min_schedule_interval = 10000 }, certificates = { private_keys = 100, templates = 1000 }, web_security = { policies = 1000, import_policy_from_url = true } } }
+        utils = { webhook_url_type = 'subdomain' }
+        http = { client = { timeout = 30000, pool_idle_timeout = 5000, max_retries = 3, verbose = false } }
+        retrack = { host = 'http://localhost:7676/' }
         "###);
     }
 

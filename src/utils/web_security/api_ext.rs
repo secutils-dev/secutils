@@ -1389,7 +1389,7 @@ mod tests {
         );
 
         redirect_mock.assert();
-        assert_eq!(web_page_mock.hits(), 0);
+        assert_eq!(web_page_mock.calls(), 0);
 
         assert!(
             web_security
@@ -1488,7 +1488,7 @@ mod tests {
             )
         );
 
-        web_page_mock_head.assert_hits(2);
+        web_page_mock_head.assert_calls(2);
 
         let import_result = web_security
             .create_content_security_policy(

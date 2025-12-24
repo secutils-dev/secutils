@@ -20,7 +20,7 @@ impl Database {
             r#"
 SELECT id, email, handle, created_at, s.tier as subscription_tier,
        s.started_at as subscription_started_at, s.ends_at as subscription_ends_at,
-       s.trial_started_at as subscription_trial_started_at, 
+       s.trial_started_at as subscription_trial_started_at,
        s.trial_ends_at as subscription_trial_ends_at
 FROM users as u
 INNER JOIN user_subscriptions as s
@@ -43,7 +43,7 @@ WHERE u.id = $1
             r#"
 SELECT id, email, handle, created_at, s.tier as subscription_tier,
        s.started_at as subscription_started_at, s.ends_at as subscription_ends_at,
-       s.trial_started_at as subscription_trial_started_at, 
+       s.trial_started_at as subscription_trial_started_at,
        s.trial_ends_at as subscription_trial_ends_at
 FROM users as u
 INNER JOIN user_subscriptions as s
@@ -69,7 +69,7 @@ WHERE u.email = $1
             r#"
 SELECT id, email, handle, created_at, s.tier as subscription_tier,
        s.started_at as subscription_started_at, s.ends_at as subscription_ends_at,
-       s.trial_started_at as subscription_trial_started_at, 
+       s.trial_started_at as subscription_trial_started_at,
        s.trial_ends_at as subscription_trial_ends_at
 FROM users as u
 INNER JOIN user_subscriptions as s
@@ -88,7 +88,7 @@ WHERE u.handle = $1
         if raw_users.len() > 1 {
             bail!(
                 "Founds {} users for the same handle {}.",
-                raw_users.len().to_string(),
+                raw_users.len(),
                 handle
             );
         }

@@ -1,7 +1,7 @@
 use crate::{error::Error as SecutilsError, scheduler::CronExt, server::AppState, users::User};
 use actix_web::{HttpResponse, web};
 use anyhow::anyhow;
-use croner::Cron;
+use croner::{Cron, Direction};
 use serde_derive::{Deserialize, Serialize};
 use serde_with::{DurationMilliSeconds, TimestampSeconds, serde_as};
 use std::time::Duration;
@@ -60,7 +60,7 @@ pub async fn scheduler_parse_schedule(
     Ok(HttpResponse::Ok().json(SchedulerParseScheduleResult {
         min_interval,
         next_occurrences: schedule
-            .iter_from(chrono::Utc::now())
+            .iter_from(chrono::Utc::now(), Direction::Forward)
             .take(5)
             .map(|ts| {
                 OffsetDateTime::from_unix_timestamp(ts.timestamp())
@@ -106,7 +106,7 @@ mod tests {
         assert_eq!(
             response.into_body().try_into_bytes().unwrap(),
             Bytes::from_static(
-                b"Invalid pattern: Pattern must consist of six fields, seconds can not be omitted."
+                b"Invalid pattern: Pattern must have 6 or 7 fields when seconds are required and years are optional."
             )
         );
 

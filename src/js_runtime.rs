@@ -4,7 +4,7 @@ mod script_termination_reason;
 pub use self::js_runtime_config::JsRuntimeConfig;
 use crate::js_runtime::script_termination_reason::ScriptTerminationReason;
 use anyhow::{Context, bail};
-use deno_core::{PollEventLoopOptions, RuntimeOptions, serde_v8, v8};
+use deno_core::{PollEventLoopOptions, RuntimeOptions, scope, serde_v8, v8};
 use serde::{Deserialize, Serialize};
 use std::{
     sync::{
@@ -80,7 +80,8 @@ impl JsRuntime {
 
         // Set script context on a global scope if provided.
         if let Some(script_context) = js_script_context {
-            let scope = &mut self.inner_runtime.handle_scope();
+            scope!(scope, self.inner_runtime);
+
             let context = scope.get_current_context();
             let scope = &mut v8::ContextScope::new(scope, context);
 
@@ -153,7 +154,8 @@ impl JsRuntime {
         // Abort termination thread, if script managed to complete.
         timeout_token.swap(true, Ordering::Relaxed);
 
-        let scope = &mut self.inner_runtime.handle_scope();
+        scope!(scope, self.inner_runtime);
+
         let local = v8::Local::new(scope, script_result);
         serde_v8::from_v8(scope, local)
             .map(|result| (result, now.elapsed()))

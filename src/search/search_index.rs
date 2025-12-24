@@ -129,11 +129,7 @@ impl SearchIndex {
             }
 
             if entities.len() > 1 {
-                bail!(
-                    "Founds {} items for the same id {}.",
-                    entities.len().to_string(),
-                    id
-                );
+                bail!("Founds {} items for the same id {}.", entities.len(), id);
             }
 
             Ok(Some(entities.remove(0)))

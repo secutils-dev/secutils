@@ -900,7 +900,7 @@ mod tests {
         let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
-        let responders = vec![
+        let responders = [
             MockResponderBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",
@@ -964,7 +964,7 @@ mod tests {
         let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
-        let responders = vec![
+        let responders = [
             MockResponderBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",
@@ -1067,7 +1067,7 @@ mod tests {
         let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
-        let responders = vec![
+        let responders = [
             MockResponderBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",
@@ -1179,7 +1179,7 @@ mod tests {
         let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
-        let responders = vec![
+        let responders = [
             MockResponderBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",
@@ -1274,7 +1274,7 @@ mod tests {
         let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
-        let responders = vec![
+        let responders = [
             MockResponderBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",
@@ -1348,7 +1348,7 @@ mod tests {
         let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
-        let responders = vec![
+        let responders = [
             MockResponderBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",
@@ -1368,7 +1368,7 @@ mod tests {
             webhooks.insert_responder(user.id, responder).await?;
         }
 
-        let requests = vec![
+        let requests = [
             create_request(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 responders[0].id,
@@ -1441,7 +1441,7 @@ mod tests {
         let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
-        let responders = vec![
+        let responders = [
             MockResponderBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",
@@ -1461,7 +1461,7 @@ mod tests {
             webhooks.insert_responder(user.id, responder).await?;
         }
 
-        let requests = vec![
+        let requests = [
             create_request(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 responders[0].id,

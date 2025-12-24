@@ -622,7 +622,7 @@ mod tests {
             // Use partial body match due to a non-deterministic tag with new tracker ID.
             when.method(httpmock::Method::POST)
                 .path("/api/trackers")
-                .json_body_partial(
+                .json_body_includes(
                     serde_json::to_string_pretty(&TrackerCreateParams {
                         name: "name_one".to_string(),
                         enabled: true,
@@ -791,7 +791,7 @@ mod tests {
             @r###"
         Error {
             context: "Page tracker schedule must be a valid cron expression.",
-            source: "Failed to parse schedule `-`: Invalid pattern: Pattern must consist of five or six fields (minute, hour, day, month, day of week, and optional second).",
+            source: "Failed to parse schedule `-`: Invalid pattern: Pattern must have 6 or 7 fields when seconds are required and years are optional.",
         }
         "###
         );
@@ -967,7 +967,7 @@ mod tests {
             // Use partial body match due to a non-deterministic tag with new tracker ID.
             when.method(httpmock::Method::POST)
                 .path("/api/trackers")
-                .json_body_partial(
+                .json_body_includes(
                     serde_json::to_string_pretty(&TrackerCreateParams {
                         name: "name_one".to_string(),
                         enabled: true,
@@ -1071,7 +1071,7 @@ mod tests {
             expected_tracker,
             web_scraping.get_page_tracker(tracker.id).await?.unwrap()
         );
-        retrack_get_api_mock.assert_hits(2);
+        retrack_get_api_mock.assert_calls(2);
         retrack_get_api_mock.delete();
 
         // Update config.
@@ -1141,7 +1141,7 @@ mod tests {
             expected_tracker,
             web_scraping.get_page_tracker(tracker.id).await?.unwrap()
         );
-        retrack_get_api_mock.assert_hits(2);
+        retrack_get_api_mock.assert_calls(2);
         retrack_get_api_mock.delete();
 
         // Update job config.
@@ -1223,7 +1223,7 @@ mod tests {
             expected_tracker,
             web_scraping.get_page_tracker(tracker.id).await?.unwrap()
         );
-        retrack_get_api_mock.assert_hits(2);
+        retrack_get_api_mock.assert_calls(2);
         retrack_get_api_mock.delete();
 
         // Update target.
@@ -1293,7 +1293,7 @@ mod tests {
             expected_tracker,
             web_scraping.get_page_tracker(tracker.id).await?.unwrap()
         );
-        retrack_get_api_mock.assert_hits(2);
+        retrack_get_api_mock.assert_calls(2);
         retrack_get_api_mock.delete();
 
         // Update notifications settings.
@@ -1358,7 +1358,7 @@ mod tests {
             expected_tracker,
             web_scraping.get_page_tracker(tracker.id).await?.unwrap()
         );
-        retrack_get_api_mock.assert_hits(2);
+        retrack_get_api_mock.assert_calls(2);
 
         Ok(())
     }
@@ -1376,7 +1376,7 @@ mod tests {
             // Use partial body match due to a non-deterministic tag with new tracker ID.
             when.method(httpmock::Method::POST)
                 .path("/api/trackers")
-                .json_body_partial(
+                .json_body_includes(
                     serde_json::to_string_pretty(&TrackerCreateParams {
                         name: "name_one".to_string(),
                         enabled: true,
@@ -1516,7 +1516,7 @@ mod tests {
             @r###"
         Error {
             context: "Page tracker schedule must be a valid cron expression.",
-            source: "Failed to parse schedule `-`: Invalid pattern: Pattern must consist of five or six fields (minute, hour, day, month, day of week, and optional second).",
+            source: "Failed to parse schedule `-`: Invalid pattern: Pattern must have 6 or 7 fields when seconds are required and years are optional.",
         }
         "###
         );
@@ -2084,7 +2084,7 @@ mod tests {
                 data: TrackerDataValue::new(json!({ "one": 1 })),
             }]
         );
-        retrack_get_api_mock.assert_hits(3);
+        retrack_get_api_mock.assert_calls(3);
         retrack_create_revision_api_mock.assert();
         retrack_list_revisions_api_mock.assert();
 

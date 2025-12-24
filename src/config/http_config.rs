@@ -58,13 +58,7 @@ mod tests {
 
     #[test]
     fn serialization_and_default() {
-        assert_toml_snapshot!(HttpConfig::default(), @r###"
-        [client]
-        timeout = 30000
-        pool_idle_timeout = 5000
-        max_retries = 3
-        verbose = false
-        "###);
+        assert_toml_snapshot!(HttpConfig::default(), @"client = { timeout = 30000, pool_idle_timeout = 5000, max_retries = 3, verbose = false }");
 
         let config = HttpConfig {
             client: HttpClientConfig {
@@ -75,13 +69,7 @@ mod tests {
             },
         };
 
-        assert_toml_snapshot!(config, @r###"
-        [client]
-        timeout = 60000
-        pool_idle_timeout = 10000
-        max_retries = 5
-        verbose = true
-        "###);
+        assert_toml_snapshot!(config, @"client = { timeout = 60000, pool_idle_timeout = 10000, max_retries = 5, verbose = true }");
     }
 
     #[test]

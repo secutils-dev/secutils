@@ -1,4 +1,7 @@
-use croner::Cron;
+use croner::{
+    Cron, Direction,
+    parser::{CronParser, Seconds},
+};
 use std::time::Duration;
 
 pub trait CronExt {
@@ -16,7 +19,7 @@ impl CronExt for Cron {
     fn min_interval(&self) -> anyhow::Result<Duration> {
         let mut minimum_interval = Duration::MAX;
         let next_occurrences = self
-            .iter_from(chrono::Utc::now())
+            .iter_from(chrono::Utc::now(), Direction::Forward)
             .take(100)
             .collect::<Vec<_>>();
         for (index, occurrence) in next_occurrences.iter().enumerate().skip(1) {
@@ -29,12 +32,15 @@ impl CronExt for Cron {
         Ok(minimum_interval)
     }
 
-    /// Converts string cron pattern to `Cron` instance.
+    /// Converts a string cron pattern to `Cron` instance.
     fn parse_pattern(pattern: impl AsRef<str>) -> anyhow::Result<Cron> {
-        Ok(Cron::new(pattern.as_ref())
-            .with_seconds_required()
-            .with_dom_and_dow()
-            .parse()?)
+        Ok(CronParser::builder()
+            // Only allow 5-part patterns
+            .seconds(Seconds::Required)
+            // require both day-of-month and day-of-week to match (Quartz Mode)
+            .dom_and_dow(true)
+            .build()
+            .parse(pattern.as_ref())?)
     }
 }
 

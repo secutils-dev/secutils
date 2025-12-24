@@ -242,7 +242,7 @@ pub mod tests {
             // Use partial body match due to a non-deterministic tag with new tracker ID.
             when.method(httpmock::Method::POST)
                 .path("/api/trackers")
-                .json_body_partial(
+                .json_body_includes(
                     serde_json::to_string_pretty(&TrackerCreateParams {
                         name: "name_one".to_string(),
                         enabled: true,
@@ -494,7 +494,7 @@ pub mod tests {
             }
         );
         retrack_update_api_mock.assert();
-        retrack_get_api_mock.assert_hits(2);
+        retrack_get_api_mock.assert_calls(2);
 
         Ok(())
     }

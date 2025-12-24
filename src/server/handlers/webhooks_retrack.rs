@@ -729,7 +729,7 @@ mod tests {
             }),
         )
         .await?;
-        retrack_get_api_mock.assert_hits(2);
+        retrack_get_api_mock.assert_calls(2);
 
         assert_debug_snapshot!(response, @r###"
         HttpResponse {
@@ -824,7 +824,7 @@ mod tests {
             }),
         )
         .await?;
-        retrack_get_api_mock.assert_hits(2);
+        retrack_get_api_mock.assert_calls(2);
 
         assert_debug_snapshot!(response, @r###"
         HttpResponse {
