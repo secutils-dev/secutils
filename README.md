@@ -150,7 +150,7 @@ curl -XGET --header \
   http://localhost:7070/api/status
 ```
 
-### Re-initialize local database
+### Re-initialize a local database
 
 To manage **development** database, you need to install
 the [SQLx's command-line utility](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli):
@@ -190,7 +190,6 @@ Secutils.dev wouldn't be possible without the following amazing projects and too
 
 | Name                                                                                                  | Description                                                                                                                                                                                                                                                               |
 |-------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| ![JetBrains logo](https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.png) | JetBrains develops fantastic developer tools that I use daily to build Secutils.dev. While the products aren't open-source or free by default, they provide a generous free license for open-source project maintainers. [Check it out!](https://jb.gg/OpenSourceSupport) |
 | ![Ory Kratos logo](https://raw.githubusercontent.com/ory/meta/master/static/logos/logo-kratos.svg)    | [Ory Kratos](https://github.com/ory/kratos) is an open-source alternative to Auth0, Okta, or Firebase with hardened security and PassKeys, SMS, OIDC, Social Sign In, MFA, FIDO, TOTP and OTP, WebAuthn, passwordless and much more.                                      |
 | To be continued...                                                                                    |                                                                                                                                                                                                                                                                           |
 

@@ -15,22 +15,20 @@ services:
       - net
 
   kratos_migrate:
-    # Custom image with UV required: https://github.com/ory/kratos/compare/v1.3.1...secutils-dev:kratos:v1.3.1-uv-required?expand=1
-    image: oryd/kratos:v1.3.1-uv-required
+    image: oryd/kratos:v25.4.0
     depends_on:
       - secutils_db
     volumes:
       - type: bind
         source: ./kratos.toml
         target: /etc/config/kratos/kratos.toml
-    command: -c /etc/config/kratos/kratos.toml migrate sql -e --yes
+    command: -c /etc/config/kratos/kratos.toml migrate sql up -e --yes
     restart: on-failure
     networks:
       - net
 
   kratos:
-    # Custom image with UV required: https://github.com/ory/kratos/compare/v1.3.1...secutils-dev:kratos:v1.3.1-uv-required?expand=1
-    image: oryd/kratos:v1.3.1-uv-required
+    image: oryd/kratos:v25.4.0
     environment:
       - SECRETS_COOKIE=${SECRETS_COOKIE:-some_very_very_secure_cookie_key}
       - SECRETS_CIPHER=${SECRETS_CIPHER:-some_very_very_secure_cipher_key}
