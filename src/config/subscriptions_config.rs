@@ -62,10 +62,70 @@ mod tests {
     #[test]
     fn serialization_and_default() {
         assert_toml_snapshot!(SubscriptionsConfig::default(), @r###"
-        basic = { webhooks = { responders = 100, responder_requests = 30, responder_custom_subdomain_prefix = true, js_runtime_heap_size = 10485760, js_runtime_script_execution_time = 30000 }, web_scraping = { trackers = 100, tracker_revisions = 30, min_schedule_interval = 10000 }, certificates = { private_keys = 100, templates = 1000 }, web_security = { policies = 1000, import_policy_from_url = true } }
-        standard = { webhooks = { responders = 100, responder_requests = 30, responder_custom_subdomain_prefix = true, js_runtime_heap_size = 10485760, js_runtime_script_execution_time = 30000 }, web_scraping = { trackers = 100, tracker_revisions = 30, min_schedule_interval = 10000 }, certificates = { private_keys = 100, templates = 1000 }, web_security = { policies = 1000, import_policy_from_url = true } }
-        professional = { webhooks = { responders = 100, responder_requests = 30, responder_custom_subdomain_prefix = true, js_runtime_heap_size = 10485760, js_runtime_script_execution_time = 30000 }, web_scraping = { trackers = 100, tracker_revisions = 30, min_schedule_interval = 10000 }, certificates = { private_keys = 100, templates = 1000 }, web_security = { policies = 1000, import_policy_from_url = true } }
-        ultimate = { webhooks = { responders = 100, responder_requests = 30, responder_custom_subdomain_prefix = true, js_runtime_heap_size = 10485760, js_runtime_script_execution_time = 30000 }, web_scraping = { trackers = 100, tracker_revisions = 30, min_schedule_interval = 10000 }, certificates = { private_keys = 100, templates = 1000 }, web_security = { policies = 1000, import_policy_from_url = true } }
+        [basic.webhooks]
+        responders = 100
+        responder_requests = 30
+        responder_custom_subdomain_prefix = true
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
+        [basic.web_scraping]
+        trackers = 100
+        tracker_revisions = 30
+        min_schedule_interval = 10000
+        [basic.certificates]
+        private_keys = 100
+        templates = 1000
+        [basic.web_security]
+        policies = 1000
+        import_policy_from_url = true
+        [standard.webhooks]
+        responders = 100
+        responder_requests = 30
+        responder_custom_subdomain_prefix = true
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
+        [standard.web_scraping]
+        trackers = 100
+        tracker_revisions = 30
+        min_schedule_interval = 10000
+        [standard.certificates]
+        private_keys = 100
+        templates = 1000
+        [standard.web_security]
+        policies = 1000
+        import_policy_from_url = true
+        [professional.webhooks]
+        responders = 100
+        responder_requests = 30
+        responder_custom_subdomain_prefix = true
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
+        [professional.web_scraping]
+        trackers = 100
+        tracker_revisions = 30
+        min_schedule_interval = 10000
+        [professional.certificates]
+        private_keys = 100
+        templates = 1000
+        [professional.web_security]
+        policies = 1000
+        import_policy_from_url = true
+        [ultimate.webhooks]
+        responders = 100
+        responder_requests = 30
+        responder_custom_subdomain_prefix = true
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
+        [ultimate.web_scraping]
+        trackers = 100
+        tracker_revisions = 30
+        min_schedule_interval = 10000
+        [ultimate.certificates]
+        private_keys = 100
+        templates = 1000
+        [ultimate.web_security]
+        policies = 1000
+        import_policy_from_url = true
         "###);
 
         let config = SubscriptionsConfig {
@@ -79,10 +139,70 @@ mod tests {
         assert_toml_snapshot!(config, @r###"
         manage_url = 'http://localhost:7272/'
         feature_overview_url = 'http://localhost:7272/'
-        basic = { webhooks = { responders = 100, responder_requests = 30, responder_custom_subdomain_prefix = true, js_runtime_heap_size = 10485760, js_runtime_script_execution_time = 30000 }, web_scraping = { trackers = 100, tracker_revisions = 30, min_schedule_interval = 10000 }, certificates = { private_keys = 100, templates = 1000 }, web_security = { policies = 1000, import_policy_from_url = true } }
-        standard = { webhooks = { responders = 100, responder_requests = 30, responder_custom_subdomain_prefix = true, js_runtime_heap_size = 10485760, js_runtime_script_execution_time = 30000 }, web_scraping = { trackers = 100, tracker_revisions = 30, min_schedule_interval = 10000 }, certificates = { private_keys = 100, templates = 1000 }, web_security = { policies = 1000, import_policy_from_url = true } }
-        professional = { webhooks = { responders = 100, responder_requests = 30, responder_custom_subdomain_prefix = true, js_runtime_heap_size = 10485760, js_runtime_script_execution_time = 30000 }, web_scraping = { trackers = 100, tracker_revisions = 30, min_schedule_interval = 10000 }, certificates = { private_keys = 100, templates = 1000 }, web_security = { policies = 1000, import_policy_from_url = true } }
-        ultimate = { webhooks = { responders = 100, responder_requests = 30, responder_custom_subdomain_prefix = true, js_runtime_heap_size = 10485760, js_runtime_script_execution_time = 30000 }, web_scraping = { trackers = 100, tracker_revisions = 30, min_schedule_interval = 10000 }, certificates = { private_keys = 100, templates = 1000 }, web_security = { policies = 1000, import_policy_from_url = true } }
+        [basic.webhooks]
+        responders = 100
+        responder_requests = 30
+        responder_custom_subdomain_prefix = true
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
+        [basic.web_scraping]
+        trackers = 100
+        tracker_revisions = 30
+        min_schedule_interval = 10000
+        [basic.certificates]
+        private_keys = 100
+        templates = 1000
+        [basic.web_security]
+        policies = 1000
+        import_policy_from_url = true
+        [standard.webhooks]
+        responders = 100
+        responder_requests = 30
+        responder_custom_subdomain_prefix = true
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
+        [standard.web_scraping]
+        trackers = 100
+        tracker_revisions = 30
+        min_schedule_interval = 10000
+        [standard.certificates]
+        private_keys = 100
+        templates = 1000
+        [standard.web_security]
+        policies = 1000
+        import_policy_from_url = true
+        [professional.webhooks]
+        responders = 100
+        responder_requests = 30
+        responder_custom_subdomain_prefix = true
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
+        [professional.web_scraping]
+        trackers = 100
+        tracker_revisions = 30
+        min_schedule_interval = 10000
+        [professional.certificates]
+        private_keys = 100
+        templates = 1000
+        [professional.web_security]
+        policies = 1000
+        import_policy_from_url = true
+        [ultimate.webhooks]
+        responders = 100
+        responder_requests = 30
+        responder_custom_subdomain_prefix = true
+        js_runtime_heap_size = 10485760
+        js_runtime_script_execution_time = 30000
+        [ultimate.web_scraping]
+        trackers = 100
+        tracker_revisions = 30
+        min_schedule_interval = 10000
+        [ultimate.certificates]
+        private_keys = 100
+        templates = 1000
+        [ultimate.web_security]
+        policies = 1000
+        import_policy_from_url = true
         "###);
     }
 

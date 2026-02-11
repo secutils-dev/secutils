@@ -13,7 +13,6 @@ use actix_web::cookie::Cookie;
 use anyhow::{Context, anyhow, bail};
 use hex::ToHex;
 use jsonwebtoken::{DecodingKey, Validation, decode};
-use rand_core::{OsRng, TryRngCore};
 use reqwest::StatusCode;
 use tracing::{error, warn};
 use uuid::Uuid;
@@ -351,7 +350,7 @@ where
     pub async fn generate_user_handle(&self) -> anyhow::Result<String> {
         let mut bytes = [0u8; USER_HANDLE_LENGTH_BYTES];
         loop {
-            OsRng.try_fill_bytes(&mut bytes)?;
+            getrandom::fill(&mut bytes)?;
             let handle = bytes.encode_hex::<String>();
             if self.api.users().get_by_handle(&handle).await?.is_none() {
                 return Ok(handle);
