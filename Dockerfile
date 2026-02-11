@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.2
 
-FROM rust:1.92-slim-trixie AS server_builder
+FROM rust:1.93-slim-trixie AS server_builder
 
 ARG TARGETARCH
-ARG UPX_VERSION=5.0.2
+ARG UPX_VERSION=5.1.0
 
 ## Statically link binary to OpenSSL libraries.
 ENV OPENSSL_STATIC=yes
