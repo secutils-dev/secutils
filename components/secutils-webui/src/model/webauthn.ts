@@ -8,15 +8,19 @@ interface SerializedPublicKeyCredentialUserEntity extends Omit<PublicKeyCredenti
   id: string;
 }
 
-export interface SerializedPublicKeyCredentialCreationOptions
-  extends Omit<PublicKeyCredentialCreationOptions, 'challenge' | 'excludeCredentials' | 'user'> {
+export interface SerializedPublicKeyCredentialCreationOptions extends Omit<
+  PublicKeyCredentialCreationOptions,
+  'challenge' | 'excludeCredentials' | 'user'
+> {
   challenge: string;
   excludeCredentials?: SerializedPublicKeyCredentialDescriptor[];
   user: SerializedPublicKeyCredentialUserEntity;
 }
 
-export interface SerializedPublicKeyCredentialRequestOptions
-  extends Omit<PublicKeyCredentialRequestOptions, 'challenge' | 'allowCredentials'> {
+export interface SerializedPublicKeyCredentialRequestOptions extends Omit<
+  PublicKeyCredentialRequestOptions,
+  'challenge' | 'allowCredentials'
+> {
   challenge: string;
   allowCredentials?: SerializedPublicKeyCredentialDescriptor[];
 }

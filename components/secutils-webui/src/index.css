@@ -20,6 +20,18 @@
     block-size: 12px;
 }
 
+/* Bug fix for 109.2.0 */
+/* https://github.com/elastic/eui/pull/9224/changes#diff-bdc5caa1fe7261bb6cb76a4a8d967e02bcaf3a7083276a83d00147c08f566ddbL107 */
+.root .euiTableRowCell--isExpander {
+    inset-block-end: 0;
+}
+
+/* Bug fix for 109.1.0 */
+/* https://github.com/elastic/eui/pull/9115/changes#diff-94fe0817d4294ace9f97d5146cecf6a6389cc1ec4488534bfcd9a07f56977d53R164 */
+.root .euiTableRow-isExpandedRow {
+    clip-path: unset;
+}
+
 .signin-form, .signup-form, .password-form {
     width: 280px;
 }

@@ -1,6 +1,8 @@
-import { EuiDataGrid, type EuiDataGridCellValueElementProps, EuiText, type Pagination } from '@elastic/eui';
+import type { EuiDataGridCellValueElementProps, Pagination } from '@elastic/eui';
+import { EuiText } from '@elastic/eui';
 import { useCallback, useState } from 'react';
 
+import { DataGrid } from '../../../../../components';
 import type { TrackerRevisionsViewMode } from '../tracker_revisions';
 
 export interface PageTrackerRevisionTableViewProps {
@@ -53,7 +55,8 @@ export function PageTrackerRevisionTableView({ data }: PageTrackerRevisionTableV
   const onChangePage = useCallback((pageIndex: number) => setPagination({ ...pagination, pageIndex }), [pagination]);
 
   return (
-    <EuiDataGrid
+    <DataGrid
+      width="100%"
       aria-label="Page tracker data table"
       columns={data.columns.map((column) => ({
         id: column.id,

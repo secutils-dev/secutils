@@ -27,6 +27,9 @@ export default tsEsLint.config(
       'react/no-unknown-property': ['error', { ignore: ['css'] }],
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
+      // Disable overly strict rules that produce false positives for legitimate patterns
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/immutability': 'off',
     },
     settings: { react: { version: 'detect' } },
   },

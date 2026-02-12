@@ -1,6 +1,7 @@
 import {
   EuiButton,
   EuiButtonGroup,
+  EuiButtonIcon,
   EuiConfirmModal,
   EuiEmptyPrompt,
   EuiFlexGroup,
@@ -8,6 +9,7 @@ import {
   EuiIcon,
   EuiPanel,
   EuiSelect,
+  EuiToolTip,
 } from '@elastic/eui';
 import { css } from '@emotion/react';
 import { unix } from 'moment';
@@ -240,7 +242,7 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
     (revisions.status === 'succeeded' && revisions.data.length > 0) || (revisions.state?.length ?? 0 > 0);
   const controlPanel = shouldDisplayControlPanel ? (
     <EuiFlexItem>
-      <EuiFlexGroup alignItems={'center'}>
+      <EuiFlexGroup alignItems={'center'} responsive={false}>
         <EuiFlexItem
           css={css`
             min-width: 200px;
@@ -276,23 +278,25 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
           />
         </EuiFlexItem>
         <EuiFlexItem grow={false}>
-          <EuiButton
-            iconType="refresh"
-            isDisabled={revisions.status === 'pending'}
-            onClick={() => fetchHistory({ forceMode: mode, refresh: true })}
-          >
-            Update
-          </EuiButton>
+          <EuiToolTip content="Update">
+            <EuiButtonIcon
+              iconType="refresh"
+              aria-label="Update"
+              isDisabled={revisions.status === 'pending'}
+              onClick={() => fetchHistory({ forceMode: mode, refresh: true })}
+            />
+          </EuiToolTip>
         </EuiFlexItem>
         <EuiFlexItem grow={false}>
-          <EuiButton
-            iconType="cross"
-            color={'danger'}
-            isDisabled={revisions.status === 'pending'}
-            onClick={() => setClearHistoryStatus({ isModalVisible: true, isInProgress: false })}
-          >
-            Clear
-          </EuiButton>
+          <EuiToolTip content="Clear history">
+            <EuiButtonIcon
+              iconType="cross"
+              color="danger"
+              aria-label="Clear history"
+              isDisabled={revisions.status === 'pending'}
+              onClick={() => setClearHistoryStatus({ isModalVisible: true, isInProgress: false })}
+            />
+          </EuiToolTip>
         </EuiFlexItem>
       </EuiFlexGroup>
     </EuiFlexItem>

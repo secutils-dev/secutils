@@ -2,79 +2,75 @@ import './index.css';
 
 import { icon as EuiIconSecurityApp } from '@elastic/eui/es/components/icon/assets/app_security';
 import { icon as EuiIconApps } from '@elastic/eui/es/components/icon/assets/apps';
-import { icon as EuiIconArrowDown } from '@elastic/eui/es/components/icon/assets/arrow_down';
-import { icon as EuiIconArrowLeft } from '@elastic/eui/es/components/icon/assets/arrow_left';
-import { icon as EuiIconArrowRight } from '@elastic/eui/es/components/icon/assets/arrow_right';
-import { icon as EuiIconArrowUp } from '@elastic/eui/es/components/icon/assets/arrow_up';
-import { icon as EuiIconArrowEnd } from '@elastic/eui/es/components/icon/assets/arrowEnd';
-import { icon as EuiIconArrowStart } from '@elastic/eui/es/components/icon/assets/arrowStart';
 import { icon as EuiIconBell } from '@elastic/eui/es/components/icon/assets/bell';
-import { icon as EuiIconBoxesHorizontal } from '@elastic/eui/es/components/icon/assets/boxes_horizontal';
 import { icon as EuiIconBoxesVertical } from '@elastic/eui/es/components/icon/assets/boxes_vertical';
 import { icon as EuiIconCalendar } from '@elastic/eui/es/components/icon/assets/calendar';
 import { icon as EuiIconCheck } from '@elastic/eui/es/components/icon/assets/check';
-import { icon as EuiIconCheer } from '@elastic/eui/es/components/icon/assets/cheer';
+import { icon as EuiIconChevronLimitLeft } from '@elastic/eui/es/components/icon/assets/chevron_limit_left';
+import { icon as EuiIconChevronLimitRight } from '@elastic/eui/es/components/icon/assets/chevron_limit_right';
+import { icon as EuiIconChevronSingleDown } from '@elastic/eui/es/components/icon/assets/chevron_single_down';
+import { icon as EuiIconChevronSingleLeft } from '@elastic/eui/es/components/icon/assets/chevron_single_left';
+import { icon as EuiIconChevronSingleRight } from '@elastic/eui/es/components/icon/assets/chevron_single_right';
+import { icon as EuiIconChevronSingleUp } from '@elastic/eui/es/components/icon/assets/chevron_single_up';
 import { icon as EuiIconClock } from '@elastic/eui/es/components/icon/assets/clock';
 import { icon as EuiIconComment } from '@elastic/eui/es/components/icon/assets/comment';
 import { icon as EuiIconControls } from '@elastic/eui/es/components/icon/assets/controls';
 import { icon as EuiIconCopy } from '@elastic/eui/es/components/icon/assets/copy';
 import { icon as EuiIconCopyClipboard } from '@elastic/eui/es/components/icon/assets/copy_clipboard';
 import { icon as EuiIconCross } from '@elastic/eui/es/components/icon/assets/cross';
-import { icon as EuiIconCut } from '@elastic/eui/es/components/icon/assets/cut';
 import { icon as EuiIconDocumentation } from '@elastic/eui/es/components/icon/assets/documentation';
 import { icon as EuiIconDot } from '@elastic/eui/es/components/icon/assets/dot';
 import { icon as EuiIconDownload } from '@elastic/eui/es/components/icon/assets/download';
-import { icon as EuiIconEmail } from '@elastic/eui/es/components/icon/assets/email';
+import { icon as EuiIconDragVertical } from '@elastic/eui/es/components/icon/assets/drag_vertical';
 import { icon as EuiIconEmpty } from '@elastic/eui/es/components/icon/assets/empty';
-import { icon as EuiIconExit } from '@elastic/eui/es/components/icon/assets/exit';
-import { icon as EuiIconExpand } from '@elastic/eui/es/components/icon/assets/expand';
-import { icon as EuiIconExpandMini } from '@elastic/eui/es/components/icon/assets/expandMini';
-import { icon as EuiIconEyeClosed } from '@elastic/eui/es/components/icon/assets/eye_closed';
+import { icon as EuiIconExternal } from '@elastic/eui/es/components/icon/assets/external';
+import { icon as EuiIconEyeSlash } from '@elastic/eui/es/components/icon/assets/eye_slash';
 import { icon as EuiIconFullScreen } from '@elastic/eui/es/components/icon/assets/full_screen';
-import { icon as EuiIconFullScreenExit } from '@elastic/eui/es/components/icon/assets/fullScreenExit';
+import { icon as EuiIconFullScreenExit } from '@elastic/eui/es/components/icon/assets/full_screen_exit';
 import { icon as EuiIconFunction } from '@elastic/eui/es/components/icon/assets/function';
 import { icon as EuiIconGear } from '@elastic/eui/es/components/icon/assets/gear';
 import { icon as EuiIconGlobe } from '@elastic/eui/es/components/icon/assets/globe';
-import { icon as EuiIconGrab } from '@elastic/eui/es/components/icon/assets/grab';
 import { icon as EuiIconHelp } from '@elastic/eui/es/components/icon/assets/help';
 import { icon as EuiIconHome } from '@elastic/eui/es/components/icon/assets/home';
-import { icon as EuiIconImport } from '@elastic/eui/es/components/icon/assets/import';
-import { icon as EuiIconInputOutput } from '@elastic/eui/es/components/icon/assets/inputOutput';
+import { icon as EuiIconInputOutput } from '@elastic/eui/es/components/icon/assets/input_output';
 import { icon as EuiIconKeyboard } from '@elastic/eui/es/components/icon/assets/keyboard';
 import { icon as EuiIconLink } from '@elastic/eui/es/components/icon/assets/link';
-import { icon as EuiIconListAdd } from '@elastic/eui/es/components/icon/assets/list_add';
+import { icon as EuiIconLogOut } from '@elastic/eui/es/components/icon/assets/log_out';
+import { icon as EuiIconMagnify } from '@elastic/eui/es/components/icon/assets/magnify';
+import { icon as EuiIconMail } from '@elastic/eui/es/components/icon/assets/mail';
+import { icon as EuiIconMaximize } from '@elastic/eui/es/components/icon/assets/maximize';
 import { icon as EuiIconMinus } from '@elastic/eui/es/components/icon/assets/minus';
-import { icon as EuiIconMinusInCircle } from '@elastic/eui/es/components/icon/assets/minus_in_circle';
-import { icon as EuiIconNode } from '@elastic/eui/es/components/icon/assets/node';
-import { icon as EuiIconOffline } from '@elastic/eui/es/components/icon/assets/offline';
+import { icon as EuiIconMinusCircle } from '@elastic/eui/es/components/icon/assets/minus_circle';
 import { icon as EuiIconPayment } from '@elastic/eui/es/components/icon/assets/payment';
 import { icon as EuiIconPencil } from '@elastic/eui/es/components/icon/assets/pencil';
-import { icon as EuiIconPlusInCircle } from '@elastic/eui/es/components/icon/assets/plus_in_circle';
-import { icon as EuiIconPopout } from '@elastic/eui/es/components/icon/assets/popout';
+import { icon as EuiIconPlusCircle } from '@elastic/eui/es/components/icon/assets/plus_circle';
+import { icon as EuiIconPopper } from '@elastic/eui/es/components/icon/assets/popper';
+import { icon as EuiIconPresentation } from '@elastic/eui/es/components/icon/assets/presentation';
 import { icon as EuiIconQuestion } from '@elastic/eui/es/components/icon/assets/question';
+import { icon as EuiIconRadar } from '@elastic/eui/es/components/icon/assets/radar';
 import { icon as EuiIconRefresh } from '@elastic/eui/es/components/icon/assets/refresh';
-import { icon as EuiIconReturnKey } from '@elastic/eui/es/components/icon/assets/return_key';
-import { icon as EuiIconSearch } from '@elastic/eui/es/components/icon/assets/search';
-import { icon as EuiIconSecuritySignal } from '@elastic/eui/es/components/icon/assets/securitySignal';
-import { icon as EuiIconSecuritySignalDetected } from '@elastic/eui/es/components/icon/assets/securitySignalDetected';
+import { icon as EuiIconRefreshTime } from '@elastic/eui/es/components/icon/assets/refresh_time';
+import { icon as EuiIconReturn } from '@elastic/eui/es/components/icon/assets/return';
+import { icon as EuiIconScissors } from '@elastic/eui/es/components/icon/assets/scissors';
+import { icon as EuiIconSecuritySignalDetected } from '@elastic/eui/es/components/icon/assets/security_signal_detected';
 import { icon as EuiIconShare } from '@elastic/eui/es/components/icon/assets/share';
 import { icon as EuiIconSortDown } from '@elastic/eui/es/components/icon/assets/sort_down';
+import { icon as EuiIconSortLeft } from '@elastic/eui/es/components/icon/assets/sort_left';
+import { icon as EuiIconSortRight } from '@elastic/eui/es/components/icon/assets/sort_right';
 import { icon as EuiIconSortUp } from '@elastic/eui/es/components/icon/assets/sort_up';
 import { icon as EuiIconSortable } from '@elastic/eui/es/components/icon/assets/sortable';
-import { icon as EuiIconSortLeft } from '@elastic/eui/es/components/icon/assets/sortLeft';
-import { icon as EuiIconSortRight } from '@elastic/eui/es/components/icon/assets/sortRight';
-import { icon as EuiIconStarEmpty } from '@elastic/eui/es/components/icon/assets/star_empty';
-import { icon as EuiIconStarFilled } from '@elastic/eui/es/components/icon/assets/star_filled';
-import { icon as EuiIconTableDensityCompact } from '@elastic/eui/es/components/icon/assets/table_density_compact';
-import { icon as EuiIconTableDensityExpanded } from '@elastic/eui/es/components/icon/assets/table_density_expanded';
-import { icon as EuiIconTableDensityNormal } from '@elastic/eui/es/components/icon/assets/table_density_normal';
-import { icon as EuiIconTimeRefresh } from '@elastic/eui/es/components/icon/assets/timeRefresh';
-import { icon as EuiIconTokenNumber } from '@elastic/eui/es/components/icon/assets/tokenNumber';
-import { icon as EuiIconTokenString } from '@elastic/eui/es/components/icon/assets/tokenString';
-import { icon as EuiIconTraining } from '@elastic/eui/es/components/icon/assets/training';
+import { icon as EuiIconStar } from '@elastic/eui/es/components/icon/assets/star';
+import { icon as EuiIconStarFill } from '@elastic/eui/es/components/icon/assets/star_fill';
+import { icon as EuiIconTable } from '@elastic/eui/es/components/icon/assets/table';
+import { icon as EuiIconTableDensityHigh } from '@elastic/eui/es/components/icon/assets/table_density_high';
+import { icon as EuiIconTableDensityLow } from '@elastic/eui/es/components/icon/assets/table_density_low';
+import { icon as EuiIconTokenNumber } from '@elastic/eui/es/components/icon/assets/token_number';
+import { icon as EuiIconTokenString } from '@elastic/eui/es/components/icon/assets/token_string';
 import { icon as EuiIconTrash } from '@elastic/eui/es/components/icon/assets/trash';
 import { icon as EuiIconUser } from '@elastic/eui/es/components/icon/assets/user';
+import { icon as EuiIconVectorTriangle } from '@elastic/eui/es/components/icon/assets/vector_triangle';
 import { icon as EuiIconWarning } from '@elastic/eui/es/components/icon/assets/warning';
+import { icon as EuiIconWifiSlash } from '@elastic/eui/es/components/icon/assets/wifi_slash';
 import { appendIconComponentCache } from '@elastic/eui/es/components/icon/icon';
 import { lazy, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -90,61 +86,61 @@ const ActivatePage = lazy(() => import('./pages/activate'));
 
 appendIconComponentCache({
   apps: EuiIconApps,
-  arrowDown: EuiIconArrowDown,
-  arrowLeft: EuiIconArrowLeft,
-  arrowRight: EuiIconArrowRight,
-  arrowUp: EuiIconArrowUp,
-  arrowStart: EuiIconArrowStart,
-  arrowEnd: EuiIconArrowEnd,
+  arrowDown: EuiIconChevronSingleDown,
+  arrowLeft: EuiIconChevronSingleLeft,
+  arrowRight: EuiIconChevronSingleRight,
+  arrowUp: EuiIconChevronSingleUp,
+  arrowStart: EuiIconChevronLimitLeft,
+  arrowEnd: EuiIconChevronLimitRight,
   bell: EuiIconBell,
-  boxesHorizontal: EuiIconBoxesHorizontal,
+  boxesHorizontal: EuiIconBoxesVertical,
   boxesVertical: EuiIconBoxesVertical,
   calendar: EuiIconCalendar,
   check: EuiIconCheck,
-  cheer: EuiIconCheer,
+  cheer: EuiIconPopper,
   clock: EuiIconClock,
   comment: EuiIconComment,
   controls: EuiIconControls,
   copy: EuiIconCopy,
   copyClipboard: EuiIconCopyClipboard,
   cross: EuiIconCross,
-  cut: EuiIconCut,
+  cut: EuiIconScissors,
   documentation: EuiIconDocumentation,
   dot: EuiIconDot,
   download: EuiIconDownload,
   empty: EuiIconEmpty,
-  email: EuiIconEmail,
-  exit: EuiIconExit,
-  eyeClosed: EuiIconEyeClosed,
-  expand: EuiIconExpand,
-  expandMini: EuiIconExpandMini,
+  email: EuiIconMail,
+  exit: EuiIconLogOut,
+  eyeClosed: EuiIconEyeSlash,
+  expand: EuiIconMaximize,
+  expandMini: EuiIconMaximize,
   fullScreen: EuiIconFullScreen,
   fullScreenExit: EuiIconFullScreenExit,
   function: EuiIconFunction,
   gear: EuiIconGear,
   globe: EuiIconGlobe,
-  grab: EuiIconGrab,
+  grab: EuiIconDragVertical,
   help: EuiIconHelp,
   home: EuiIconHome,
-  importAction: EuiIconImport,
+  importAction: EuiIconDownload,
   inputOutput: EuiIconInputOutput,
   keyboard: EuiIconKeyboard,
   link: EuiIconLink,
-  listAdd: EuiIconListAdd,
+  listAdd: EuiIconPlusCircle,
   minus: EuiIconMinus,
-  minusInCircle: EuiIconMinusInCircle,
-  node: EuiIconNode,
-  offline: EuiIconOffline,
+  minusInCircle: EuiIconMinusCircle,
+  node: EuiIconVectorTriangle,
+  offline: EuiIconWifiSlash,
   payment: EuiIconPayment,
   pencil: EuiIconPencil,
-  plusInCircle: EuiIconPlusInCircle,
-  popout: EuiIconPopout,
+  plusInCircle: EuiIconPlusCircle,
+  popout: EuiIconExternal,
   question: EuiIconQuestion,
+  radar: EuiIconRadar,
   refresh: EuiIconRefresh,
-  returnKey: EuiIconReturnKey,
-  search: EuiIconSearch,
+  returnKey: EuiIconReturn,
+  search: EuiIconMagnify,
   securityApp: EuiIconSecurityApp,
-  securitySignal: EuiIconSecuritySignal,
   securitySignalDetected: EuiIconSecuritySignalDetected,
   share: EuiIconShare,
   sortable: EuiIconSortable,
@@ -152,15 +148,15 @@ appendIconComponentCache({
   sortDown: EuiIconSortDown,
   sortRight: EuiIconSortRight,
   sortLeft: EuiIconSortLeft,
-  starEmpty: EuiIconStarEmpty,
-  starFilled: EuiIconStarFilled,
-  tableDensityCompact: EuiIconTableDensityCompact,
-  tableDensityExpanded: EuiIconTableDensityExpanded,
-  tableDensityNormal: EuiIconTableDensityNormal,
-  timeRefresh: EuiIconTimeRefresh,
+  starEmpty: EuiIconStar,
+  starFilled: EuiIconStarFill,
+  tableDensityCompact: EuiIconTableDensityHigh,
+  tableDensityExpanded: EuiIconTableDensityLow,
+  tableDensityNormal: EuiIconTable,
+  timeRefresh: EuiIconRefreshTime,
   tokenNumber: EuiIconTokenNumber,
   tokenString: EuiIconTokenString,
-  training: EuiIconTraining,
+  training: EuiIconPresentation,
   trash: EuiIconTrash,
   user: EuiIconUser,
   warning: EuiIconWarning,

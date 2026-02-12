@@ -1,22 +1,21 @@
 import type { EuiDataGridCellValueElementProps, EuiDataGridColumn, Pagination } from '@elastic/eui';
 import {
-  EuiButton,
+  EuiButtonIcon,
   EuiCodeBlock,
   EuiConfirmModal,
-  EuiDataGrid,
   EuiEmptyPrompt,
   EuiFlexGroup,
   EuiFlexItem,
-  EuiFormRow,
   EuiIcon,
   EuiPanel,
+  EuiToolTip,
 } from '@elastic/eui';
 import { unix } from 'moment';
 import { useCallback, useEffect, useState } from 'react';
 
 import type { Responder } from './responder';
 import type { ResponderRequest } from './responder_request';
-import { PageErrorState, PageLoadingState } from '../../../../components';
+import { DataGrid, PageErrorState, PageLoadingState } from '../../../../components';
 import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -49,16 +48,9 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
   const [requests, setRequests] = useState<AsyncData<ResponderRequest[]>>(
     responder.settings.requestsToTrack > 0 ? { status: 'pending' } : { status: 'succeeded', data: [] },
   );
-  useEffect(() => {
-    if (!uiState.synced || !uiState.user) {
-      return;
-    }
 
-    if (responder.settings.requestsToTrack === 0) {
-      setRequests({ status: 'succeeded', data: [] });
-      return;
-    }
-
+  const loadRequests = useCallback(() => {
+    setRequests({ status: 'pending' });
     fetch(
       getApiUrl(`/api/utils/webhooks/responders/${encodeURIComponent(responder.id)}/history`),
       getApiRequestConfig('POST'),
@@ -76,7 +68,20 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
           state: currentRevisions.state,
         }));
       });
-  }, [uiState, responder]);
+  }, [responder.id]);
+
+  useEffect(() => {
+    if (!uiState.synced || !uiState.user) {
+      return;
+    }
+
+    if (responder.settings.requestsToTrack === 0) {
+      setRequests({ status: 'succeeded', data: [] });
+      return;
+    }
+
+    loadRequests();
+  }, [uiState, responder, loadRequests]);
 
   const columns: EuiDataGridColumn[] = [
     {
@@ -177,25 +182,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
     [requests],
   );
 
-  if (requests.status === 'pending') {
-    return <PageLoadingState title={`Loading requests for "${responder.name}" responder…`} />;
-  }
-
-  if (requests.status === 'failed') {
-    return (
-      <PageErrorState
-        title="Cannot load requests"
-        content={
-          <p>
-            Cannot load recorded requests for <strong>{responder.name}</strong> responder.
-          </p>
-        }
-      />
-    );
-  }
-
-  if (requests.data.length === 0) {
-    const tracksRequests = responder.settings.requestsToTrack > 0;
+  if (responder.settings.requestsToTrack == 0) {
     return (
       <EuiFlexGroup
         direction={'column'}
@@ -206,14 +193,8 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
       >
         <EuiFlexItem>
           <EuiEmptyPrompt
-            icon={<EuiIcon type={tracksRequests ? 'securitySignal' : 'securitySignalDetected'} size={'xl'} />}
-            title={
-              tracksRequests ? (
-                <h2>Still waiting for the first request to arrive</h2>
-              ) : (
-                <h2>Responder doesn&apos;t track requests</h2>
-              )
-            }
+            icon={<EuiIcon type={'securitySignalDetected'} size={'xl'} />}
+            title={<h2>Responder doesn&apos;t track requests</h2>}
             titleSize="s"
             style={{ maxWidth: '60em', display: 'flex' }}
           />
@@ -268,47 +249,85 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
     </EuiConfirmModal>
   ) : null;
 
-  const shouldDisplayControlPanel = requests.status === 'succeeded' && requests.data.length > 0;
-  const controlPanel = shouldDisplayControlPanel ? (
-    <EuiFlexItem>
-      <EuiFlexGroup justifyContent={'flexEnd'}>
+  const controlPanel = (
+    <EuiFlexItem grow={false}>
+      <EuiFlexGroup alignItems={'center'} justifyContent={'flexEnd'} responsive={false}>
         <EuiFlexItem grow={false}>
-          <EuiFormRow>
-            <EuiButton
+          <EuiToolTip content="Update">
+            <EuiButtonIcon
+              iconType="refresh"
+              aria-label="Update"
+              isDisabled={requests.status === 'pending' || !responder.enabled}
+              onClick={() => loadRequests()}
+            />
+          </EuiToolTip>
+        </EuiFlexItem>
+        <EuiFlexItem grow={false}>
+          <EuiToolTip content="Clear request history">
+            <EuiButtonIcon
               iconType="cross"
-              color={'danger'}
+              color="danger"
+              aria-label="Clear request history"
+              isDisabled={
+                requests.status === 'pending' || (requests.status === 'succeeded' && requests.data.length === 0)
+              }
               onClick={() => setClearHistoryStatus({ isModalVisible: true, isInProgress: false })}
-            >
-              Clear
-            </EuiButton>
-          </EuiFormRow>
+            />
+          </EuiToolTip>
         </EuiFlexItem>
       </EuiFlexGroup>
     </EuiFlexItem>
-  ) : null;
+  );
+
+  let content;
+  if (requests.status === 'pending') {
+    content = <PageLoadingState />;
+  } else if (requests.status === 'failed') {
+    content = (
+      <PageErrorState
+        title="Cannot load requests"
+        content={
+          <p>
+            Cannot load recorded requests for <strong>{responder.name}</strong> responder.
+          </p>
+        }
+      />
+    );
+  } else if (requests.data.length === 0) {
+    content = (
+      <EuiEmptyPrompt
+        icon={<EuiIcon type={'radar'} size={'xl'} />}
+        title={<h2>Still waiting for the first request to arrive</h2>}
+        titleSize="s"
+      />
+    );
+  } else {
+    content = (
+      <DataGrid
+        width="100%"
+        aria-label="Requests"
+        columns={columns}
+        columnVisibility={{ visibleColumns, setVisibleColumns }}
+        rowCount={requests.data.length}
+        renderCellValue={renderCellValue}
+        inMemory={{ level: 'sorting' }}
+        sorting={{ columns: sortingColumns, onSort: setSortingColumns }}
+        pagination={{
+          ...pagination,
+          onChangeItemsPerPage: onChangeItemsPerPage,
+          onChangePage: onChangePage,
+        }}
+        gridStyle={{ border: 'all', fontSize: 's', stripes: true }}
+      />
+    );
+  }
 
   return (
     <EuiFlexGroup direction={'column'} style={{ height: '100%' }} gutterSize={'s'}>
       {controlPanel}
       <EuiFlexItem>
         <EuiPanel hasShadow={false} hasBorder={true}>
-          <EuiDataGrid
-            width="100%"
-            aria-label="Requests"
-            columns={columns}
-            columnVisibility={{ visibleColumns, setVisibleColumns }}
-            rowCount={requests.data.length}
-            renderCellValue={renderCellValue}
-            inMemory={{ level: 'sorting' }}
-            sorting={{ columns: sortingColumns, onSort: setSortingColumns }}
-            pagination={{
-              ...pagination,
-              onChangeItemsPerPage: onChangeItemsPerPage,
-              onChangePage: onChangePage,
-            }}
-            gridStyle={{ border: 'all', fontSize: 's', stripes: true }}
-            toolbarVisibility
-          />
+          {content}
         </EuiPanel>
         {clearConfirmModal}
       </EuiFlexItem>

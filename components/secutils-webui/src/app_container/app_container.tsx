@@ -26,6 +26,8 @@ export function AppContainer() {
   // Settings aren't sensitive data, so we can duplicate them in the local storage to improve overall responsiveness.
   const [localSettings, setLocalSettings] = useLocalStorage<UserSettings | undefined>('settings', undefined);
 
+  const [settings, setSettings] = useState<UserSettings | undefined>(localSettings);
+
   const [uiState, setUiState] = useState<UiState>({
     synced: false,
     status: { level: 'available' },
@@ -73,7 +75,6 @@ export function AppContainer() {
     }
   }, [location.search, uiState, refreshUiState]);
 
-  const [settings, setSettings] = useState<UserSettings | undefined>(localSettings);
   const updateSettings = useCallback(
     (settingsToUpdate: Record<string, unknown>) => {
       setSettings((currentSettings) => ({ ...currentSettings, ...settingsToUpdate }));

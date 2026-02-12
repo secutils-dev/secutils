@@ -38,6 +38,7 @@ export default function WebSecurityContentSecurityPolicies() {
   const [policyToShare, setPolicyToShare] = useState<ContentSecurityPolicy | null>(null);
   const [policyToRemove, setPolicyToRemove] = useState<ContentSecurityPolicy | null>(null);
   const [policyToEdit, setPolicyToEdit] = useState<Partial<ContentSecurityPolicy> | null | undefined>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
 
   const [policies, setPolicies] = useState<AsyncData<ContentSecurityPolicy[]>>({ status: 'pending' });
 
@@ -119,8 +120,6 @@ export default function WebSecurityContentSecurityPolicies() {
         policy={policyToEdit}
       />
     ) : null;
-
-  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
 
   const copyModal = policyToCopy ? (
     <ContentSecurityPolicyCopyModal onClose={() => setPolicyToCopy(null)} policy={policyToCopy} />
