@@ -11,6 +11,7 @@ export {
   USER_SETTINGS_KEY_COMMON_SHOW_ONLY_FAVORITES,
   USER_SETTINGS_KEY_COMMON_FAVORITES,
   USER_SETTINGS_KEY_COMMON_UI_THEME,
+  USER_SETTINGS_KEY_COMMON_SIDEBAR_COLLAPSED,
 } from './user_settings';
 export type { UserSettings } from './user_settings';
 export { getApiUrl, getApiRequestConfig } from './urls';

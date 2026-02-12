@@ -54,11 +54,6 @@ export function WorkspacePage() {
     ];
   }, [settings]);
 
-  const [isSideNavOpenOnMobile, setIsSideNavOpenOnMobile] = useState<boolean>(false);
-  const toggleOpenOnMobile = useCallback(() => {
-    setIsSideNavOpenOnMobile(!isSideNavOpenOnMobile);
-  }, [isSideNavOpenOnMobile]);
-
   const getBreadcrumbs = useCallback(
     (util: Util, utilsMap: Map<string, Util>, deepLink?: string) => {
       const breadcrumbs: EuiBreadcrumbProps[] = [];
@@ -218,12 +213,7 @@ export function WorkspacePage() {
     <aside>
       <SiteSearchBar />
       <EuiSpacer size="m" />
-      <EuiSideNav
-        mobileTitle="All Utils"
-        toggleOpenOnMobile={toggleOpenOnMobile}
-        isOpenOnMobile={isSideNavOpenOnMobile}
-        items={sideNavItems}
-      />
+      <EuiSideNav items={sideNavItems} mobileBreakpoints={[]} />
     </aside>
   ) : null;
 

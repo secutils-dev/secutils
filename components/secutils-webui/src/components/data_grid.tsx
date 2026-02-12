@@ -3,35 +3,52 @@ import { EuiDataGrid } from '@elastic/eui';
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * Wrapper around EuiDataGrid that fixes the fullscreen restore bug by forcing
- * a re-render when exiting fullscreen mode.
+ * Wrapper around EuiDataGrid that fixes the fullscreen restore bug and sidebar
+ * expansion layout issues by forcing a re-render.
  */
 export function DataGrid(props: EuiDataGridProps) {
   const [gridKey, setGridKey] = useState(0);
   const gridRef = useRef<HTMLDivElement>(null);
+  const [isFullScreen, setIsFullScreen] = useState(false);
 
   useEffect(() => {
-    const grid = gridRef.current?.querySelector('.euiDataGrid');
-    if (!grid) {
+    const container = document.querySelector('.root');
+    if (!container) {
       return;
     }
 
-    let wasFullscreen = grid.classList.contains('euiDataGrid--fullScreen');
-    const observer = new MutationObserver(() => {
-      const isFullscreen = grid.classList.contains('euiDataGrid--fullScreen');
-      if (wasFullscreen && !isFullscreen) {
-        setGridKey((k) => k + 1);
-      }
-      wasFullscreen = isFullscreen;
-    });
+    // Observer for container resize (e.g., sidebar expansion).
+    let debounceTimerId = 0;
+    let width = container.clientWidth;
+    const resizeObserver = new ResizeObserver(() => {
+      clearTimeout(debounceTimerId);
 
-    observer.observe(grid, { attributes: true, attributeFilter: ['class'] });
-    return () => observer.disconnect();
-  }, [gridKey]);
+      const newWidth = container.clientWidth;
+      if (newWidth < width) {
+        debounceTimerId = setTimeout(() => setGridKey((k) => k + 1), 100);
+      }
+      width = newWidth;
+    });
+    resizeObserver.observe(container);
+
+    return () => {
+      clearTimeout(debounceTimerId);
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   return (
     <div ref={gridRef}>
-      <EuiDataGrid key={gridKey} {...props} />
+      <EuiDataGrid
+        key={gridKey}
+        onFullScreenChange={(newIsFullScreen) => {
+          if (isFullScreen && !newIsFullScreen) {
+            setGridKey((k) => k + 1);
+          }
+          setIsFullScreen(newIsFullScreen);
+        }}
+        {...props}
+      />
     </div>
   );
 }

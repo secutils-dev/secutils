@@ -7,7 +7,14 @@ export interface LogoWithNameProps {
 export function LogoWithName({ size = 24 }: LogoWithNameProps) {
   const theme = useEuiTheme();
   return (
-    <svg height={size} role="img" version="1.1" viewBox="0 0 98 16" xmlns="http://www.w3.org/2000/svg">
+    <svg
+      height={size}
+      role="img"
+      className="eui-alignMiddle"
+      version="1.1"
+      viewBox="0 0 98 16"
+      xmlns="http://www.w3.org/2000/svg"
+    >
       <path
         d="m3 0h10c1.662 0 3 1.338 3 3v10c0 1.662-1.338 3-3 3h-10c-1.662 0-3-1.338-3-3v-10c0-1.662 1.338-3 3-3z"
         fill="#fed047"

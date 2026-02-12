@@ -3,7 +3,20 @@
 .root {
     display: flex;
     height: 100vh;
-    padding-top: 48px;
+    padding-top: var(--euiFixedHeadersOffset);
+}
+
+.euiDataGrid__restrictBody .euiCollapsibleNav.euiFlyout,
+.euiDataGrid__restrictBody .euiHeader {
+    display: none;
+}
+
+.euiDataGrid__restrictBody .root {
+   padding-top: unset;
+}
+
+.su-topbar-logo {
+    margin-left: 4px;
 }
 
 .euiToastHeader {

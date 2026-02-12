@@ -1,15 +1,18 @@
 import {
+  EuiCollapsibleNav,
+  EuiFlexGroup,
+  EuiFlexItem,
   EuiHeader,
   EuiHeaderBreadcrumbs,
   EuiHeaderSection,
   EuiHeaderSectionItem,
+  EuiHeaderSectionItemButton,
   EuiHorizontalRule,
   EuiIcon,
   EuiLink,
   EuiPage,
   EuiPageBody,
   EuiPageSection,
-  EuiPageSidebar,
   EuiText,
 } from '@elastic/eui';
 import type { EuiPageSectionProps, IconType } from '@elastic/eui';
@@ -23,6 +26,7 @@ import { PageHeader } from './page_header';
 import { ContactFormModal } from '../app_container/contact_form_modal';
 import { LogoWithName, PageErrorState, PageLoadingState } from '../components';
 import { useAppContext } from '../hooks';
+import { USER_SETTINGS_KEY_COMMON_SIDEBAR_COLLAPSED } from '../model';
 
 export interface PageProps {
   children: ReactElement | ReactElement[];
@@ -55,9 +59,15 @@ export function Page({
   headerActions,
   pageTitle,
 }: PageProps) {
-  const { uiState } = useAppContext();
+  const { uiState, settings, setSettings } = useAppContext();
   const location = useLocation();
   const [searchParams] = useSearchParams();
+
+  const isNavOpen = settings?.[USER_SETTINGS_KEY_COMMON_SIDEBAR_COLLAPSED] !== true;
+  const onToggleNav = useCallback(
+    (open: boolean) => setSettings({ [USER_SETTINGS_KEY_COMMON_SIDEBAR_COLLAPSED]: !open }),
+    [setSettings],
+  );
 
   const [isContactFormOpen, setIsContactFormOpen] = useState<boolean>(false);
   const onToggleContactForm = useCallback(() => {
@@ -107,15 +117,19 @@ export function Page({
     <EuiPage grow direction={'row'}>
       <header aria-label="Top bar">
         <EuiHeader position="fixed">
-          <EuiHeaderSection
-            grow={false}
-            css={css`
-              line-height: 0.5rem;
-              margin-right: 0.5rem;
-            `}
-          >
+          <EuiHeaderSection grow={false}>
             <EuiHeaderSectionItem>
-              <EuiLink href="/">
+              {sideBar ? (
+                <EuiHeaderSectionItemButton
+                  aria-label={isNavOpen ? 'Close navigation' : 'Open navigation'}
+                  onClick={() => onToggleNav(!isNavOpen)}
+                >
+                  <EuiIcon type="menu" size="l" />
+                </EuiHeaderSectionItemButton>
+              ) : null}
+            </EuiHeaderSectionItem>
+            <EuiHeaderSectionItem>
+              <EuiLink className="su-topbar-logo" href="/">
                 <EuiIcon type={LogoWithName} size={'xl'} aria-label="Go to home page" />
               </EuiLink>
             </EuiHeaderSectionItem>
@@ -144,13 +158,28 @@ export function Page({
         </EuiHeader>
       </header>
 
-      {sideBar ? (
-        <EuiPageSidebar paddingSize="m" sticky={{ offset: 48 }} minWidth={300}>
-          {sideBar}
-        </EuiPageSidebar>
+      {sideBar && isNavOpen ? (
+        <EuiCollapsibleNav isOpen={true} isDocked={true} onClose={() => onToggleNav(false)} hideCloseButton={true}>
+          <EuiFlexGroup direction="column" gutterSize="none" style={{ height: '100%' }}>
+            <EuiFlexItem
+              css={css`
+                padding: 16px;
+                overflow-y: auto;
+              `}
+            >
+              {sideBar}
+            </EuiFlexItem>
+          </EuiFlexGroup>
+        </EuiCollapsibleNav>
       ) : null}
 
-      <EuiPageBody paddingSize="none" panelled>
+      <EuiPageBody
+        paddingSize="none"
+        panelled
+        css={css`
+          min-width: 0;
+        `}
+      >
         {header}
         <EuiPageSection color="plain" alignment={contentAlignment} contentProps={contentProps} grow>
           {children}
