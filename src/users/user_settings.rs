@@ -6,9 +6,13 @@ struct KnownUserSettingDescriptor {
     setting_value_validator: fn(&serde_json::Value) -> bool,
 }
 
-const KNOWN_USER_SETTINGS: [KnownUserSettingDescriptor; 5] = [
+const KNOWN_USER_SETTINGS: [KnownUserSettingDescriptor; 6] = [
     KnownUserSettingDescriptor {
         setting_key: "common.showOnlyFavorites",
+        setting_value_validator: |value| value.is_boolean(),
+    },
+    KnownUserSettingDescriptor {
+        setting_key: "common.sidebarCollapsed",
         setting_value_validator: |value| value.is_boolean(),
     },
     KnownUserSettingDescriptor {
