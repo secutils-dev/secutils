@@ -8,10 +8,11 @@ import {
   EuiFlexItem,
   EuiIcon,
   EuiPanel,
+  EuiSwitch,
   EuiToolTip,
 } from '@elastic/eui';
 import { unix } from 'moment';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { Responder } from './responder';
 import type { ResponderRequest } from './responder_request';
@@ -22,6 +23,8 @@ import { useWorkspaceContext } from '../../hooks';
 export interface ResponderRequestsTableProps {
   responder: Responder;
 }
+
+const AUTO_REFRESH_INTERVAL_MS = 3000;
 
 const TEXT_DECODER = new TextDecoder();
 function binaryToText(binary: number[]) {
@@ -48,27 +51,43 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
   const [requests, setRequests] = useState<AsyncData<ResponderRequest[]>>(
     responder.settings.requestsToTrack > 0 ? { status: 'pending' } : { status: 'succeeded', data: [] },
   );
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const isFetchingRef = useRef(false);
 
-  const loadRequests = useCallback(() => {
-    setRequests({ status: 'pending' });
-    fetch(
-      getApiUrl(`/api/utils/webhooks/responders/${encodeURIComponent(responder.id)}/history`),
-      getApiRequestConfig('POST'),
-    )
-      .then(async (res) => {
-        if (!res.ok) {
-          throw await ResponseError.fromResponse(res);
-        }
-        setRequests({ status: 'succeeded', data: (await res.json()) as ResponderRequest[] });
-      })
-      .catch((err: Error) => {
-        setRequests((currentRevisions) => ({
-          status: 'failed',
-          error: getErrorMessage(err),
-          state: currentRevisions.state,
-        }));
-      });
-  }, [responder.id]);
+  const loadRequests = useCallback(
+    (silent = false) => {
+      if (isFetchingRef.current) {
+        return;
+      }
+
+      isFetchingRef.current = true;
+      if (!silent) {
+        setRequests({ status: 'pending' });
+      }
+
+      fetch(
+        getApiUrl(`/api/utils/webhooks/responders/${encodeURIComponent(responder.id)}/history`),
+        getApiRequestConfig('POST'),
+      )
+        .then(async (res) => {
+          if (!res.ok) {
+            throw await ResponseError.fromResponse(res);
+          }
+          setRequests({ status: 'succeeded', data: (await res.json()) as ResponderRequest[] });
+        })
+        .catch((err: Error) => {
+          setRequests((currentRevisions) => ({
+            status: 'failed',
+            error: getErrorMessage(err),
+            state: currentRevisions.state,
+          }));
+        })
+        .finally(() => {
+          isFetchingRef.current = false;
+        });
+    },
+    [responder.id],
+  );
 
   useEffect(() => {
     if (!uiState.synced || !uiState.user) {
@@ -82,6 +101,15 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
 
     loadRequests();
   }, [uiState, responder, loadRequests]);
+
+  useEffect(() => {
+    if (!autoRefresh || !responder.enabled || responder.settings.requestsToTrack === 0) {
+      return;
+    }
+
+    const intervalId = setInterval(() => loadRequests(true), AUTO_REFRESH_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, [autoRefresh, responder.enabled, responder.settings.requestsToTrack, loadRequests]);
 
   const columns: EuiDataGridColumn[] = [
     {
@@ -251,29 +279,42 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
 
   const controlPanel = (
     <EuiFlexItem grow={false}>
-      <EuiFlexGroup alignItems={'center'} justifyContent={'flexEnd'} responsive={false}>
+      <EuiFlexGroup alignItems={'center'} justifyContent={'spaceBetween'} responsive={false}>
         <EuiFlexItem grow={false}>
-          <EuiToolTip content="Update">
-            <EuiButtonIcon
-              iconType="refresh"
-              aria-label="Update"
-              isDisabled={requests.status === 'pending' || !responder.enabled}
-              onClick={() => loadRequests()}
-            />
-          </EuiToolTip>
+          <EuiSwitch
+            label="Auto-refresh"
+            checked={autoRefresh}
+            onChange={(e) => setAutoRefresh(e.target.checked)}
+            disabled={!responder.enabled}
+            compressed
+          />
         </EuiFlexItem>
         <EuiFlexItem grow={false}>
-          <EuiToolTip content="Clear request history">
-            <EuiButtonIcon
-              iconType="cross"
-              color="danger"
-              aria-label="Clear request history"
-              isDisabled={
-                requests.status === 'pending' || (requests.status === 'succeeded' && requests.data.length === 0)
-              }
-              onClick={() => setClearHistoryStatus({ isModalVisible: true, isInProgress: false })}
-            />
-          </EuiToolTip>
+          <EuiFlexGroup alignItems={'center'} gutterSize={'s'} responsive={false}>
+            <EuiFlexItem grow={false}>
+              <EuiToolTip content="Update">
+                <EuiButtonIcon
+                  iconType="refresh"
+                  aria-label="Update"
+                  isDisabled={requests.status === 'pending' || !responder.enabled}
+                  onClick={() => loadRequests()}
+                />
+              </EuiToolTip>
+            </EuiFlexItem>
+            <EuiFlexItem grow={false}>
+              <EuiToolTip content="Clear request history">
+                <EuiButtonIcon
+                  iconType="cross"
+                  color="danger"
+                  aria-label="Clear request history"
+                  isDisabled={
+                    requests.status === 'pending' || (requests.status === 'succeeded' && requests.data.length === 0)
+                  }
+                  onClick={() => setClearHistoryStatus({ isModalVisible: true, isInProgress: false })}
+                />
+              </EuiToolTip>
+            </EuiFlexItem>
+          </EuiFlexGroup>
         </EuiFlexItem>
       </EuiFlexGroup>
     </EuiFlexItem>
