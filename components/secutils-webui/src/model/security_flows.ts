@@ -1,13 +1,14 @@
 import type {
   GenericError,
   LoginFlow,
+  RecoveryFlow,
   RegistrationFlow,
   SettingsFlow,
+  UiContainer,
   UiNodeInputAttributes,
   VerificationFlow,
-} from '@ory/client';
-
-import type { OryError, OryResponse } from '../tools/ory';
+} from '@ory/kratos-client-fetch';
+import { FetchError, ResponseError } from '@ory/kratos-client-fetch';
 
 export function getCsrfToken(flow: LoginFlow | RegistrationFlow | SettingsFlow | VerificationFlow) {
   const csrfNode = flow.ui.nodes.find(
@@ -16,15 +17,22 @@ export function getCsrfToken(flow: LoginFlow | RegistrationFlow | SettingsFlow |
   return csrfNode ? ((csrfNode.attributes as UiNodeInputAttributes).value as string) : undefined;
 }
 
-export function getSecurityErrorMessage(resOrErr: unknown) {
-  const response = isOryUiError(resOrErr) ? resOrErr.response : isOryResponse(resOrErr) ? resOrErr : undefined;
-  if (!response) {
-    return isOryGenericError(resOrErr)
-      ? resOrErr.response?.data?.reason || resOrErr.response?.data?.message
-      : undefined;
+export async function getSecurityErrorMessage(resOrErr: unknown) {
+  const error = resOrErr instanceof ResponseError ? await resOrErr.response.json() : resOrErr;
+  if (!isOryUiResponse(error)) {
+    if (error instanceof FetchError) {
+      return error.message ?? 'Network error occurred';
+    }
+
+    if (isOryGenericError(error)) {
+      return error.reason || error.message || 'Unknown error occurred';
+    }
+
+    return (error as Error)?.message || 'Unknown error occurred';
   }
 
-  for (const node of response.data?.ui.nodes ?? []) {
+  const uiContainer = (error as { ui?: UiContainer })?.ui;
+  for (const node of uiContainer?.nodes ?? []) {
     for (const message of node.messages) {
       if (message.type === 'error') {
         return message.text;
@@ -32,24 +40,16 @@ export function getSecurityErrorMessage(resOrErr: unknown) {
     }
   }
 
-  return response.data?.ui.messages?.find((message) => message.type === 'error')?.text;
+  return uiContainer?.messages?.find((message) => message.type === 'error')?.text;
 }
 
-function isOryResponse(res: unknown): res is OryResponse<LoginFlow | RegistrationFlow> {
-  const forceCastedRes = res as { data?: LoginFlow | RegistrationFlow };
-  return Array.isArray(forceCastedRes.data?.ui?.nodes);
+function isOryUiResponse(
+  res: unknown,
+): res is LoginFlow | RegistrationFlow | RecoveryFlow | VerificationFlow | SettingsFlow {
+  const forceCastedRes = res as { ui?: UiContainer };
+  return Array.isArray(forceCastedRes?.ui?.nodes);
 }
 
-export function isOryError<TData = { error?: { id: string; message: string; reason: string } }>(
-  err: unknown,
-): err is OryError<TData> {
-  return !!err && typeof err === 'object' && 'isAxiosError' in err;
-}
-
-function isOryUiError(err: unknown): err is OryError<LoginFlow | RegistrationFlow> {
-  return isOryError<LoginFlow | RegistrationFlow>(err) && Array.isArray(err.response?.data?.ui?.nodes);
-}
-
-function isOryGenericError(err: unknown): err is OryError<GenericError> {
-  return isOryError<GenericError>(err) && !!err.response?.data?.message;
+function isOryGenericError(err: unknown): err is GenericError {
+  return !!err && typeof err === 'object' && 'reason' in err;
 }

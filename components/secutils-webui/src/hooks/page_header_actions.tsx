@@ -80,7 +80,7 @@ export function usePageHeaderActions() {
                   getOryApi()
                     .then(async (api) => {
                       const flow = await api.createBrowserLogoutFlow();
-                      await api.updateLogoutFlow({ token: flow.data.logout_token });
+                      await api.updateLogoutFlow({ token: flow.logout_token });
 
                       window.location.replace('/signin');
                       setTimeout(() => window.location.reload(), 500);

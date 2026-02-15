@@ -10,7 +10,7 @@ import {
   useEuiTheme,
 } from '@elastic/eui';
 import { css } from '@emotion/react';
-import type { FrontendApi, RegistrationFlow, UiNodeInputAttributes } from '@ory/client';
+import type { FrontendApi, RegistrationFlow, UiNodeInputAttributes } from '@ory/kratos-client-fetch';
 import type { ChangeEvent, MouseEventHandler } from 'react';
 import { useCallback, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router';
@@ -74,15 +74,15 @@ export function SignupPage() {
     getOryApi()
       .then(async (api) => {
         // Start/retrieve a flow and remember it in the URL.
-        const { data: flow } = await getSignupFlow(api, searchParams);
+        const flow = await getSignupFlow(api, searchParams);
         setSearchParams({ flow: flow.id });
 
         await signupFunc(api, flow);
 
         refreshUiState();
       })
-      .catch((err) => {
-        const originalErrorMessage = getSecurityErrorMessage(err);
+      .catch(async (err) => {
+        const originalErrorMessage = await getSecurityErrorMessage(err);
         setSignupStatus({ status: 'failed', error: originalErrorMessage ?? 'Unknown error' });
 
         addToast({
@@ -226,25 +226,30 @@ export function SignupPage() {
 
                     setSignupStatus({ status: 'pending', state: { isPasskey: true } });
                     startSignupFlow(async (api, flow) => {
-                      const response = await api.updateRegistrationFlow(
-                        {
+                      let updateFlowError: unknown;
+                      try {
+                        await api.updateRegistrationFlow({
                           flow: flow.id,
                           updateRegistrationFlowBody: {
                             method: 'profile' as const,
                             csrf_token: getCsrfToken(flow),
                             traits: { email },
                           },
-                        },
-                        { validateStatus: (status) => status < 500 },
-                      );
+                        });
+                      } catch (err) {
+                        updateFlowError = err;
+                        if (!isClientError(err)) {
+                          throw err;
+                        }
+                      }
 
-                      const updatedFlow = response.data as unknown as RegistrationFlow;
+                      const updatedFlow = await api.getRegistrationFlow({ id: flow.id });
                       const publicKeyNode = updatedFlow?.ui?.nodes?.find(
                         (node) =>
                           node.attributes.node_type === 'input' && node.attributes.name === 'webauthn_register_trigger',
                       );
                       if (!publicKeyNode) {
-                        throw response;
+                        throw updateFlowError ?? new Error('Failed to initialize WebAuthn flow');
                       }
 
                       const { publicKey } = JSON.parse(

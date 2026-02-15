@@ -1,17 +1,7 @@
-import { isOryError } from './security_flows';
-
-export function isAbortError(err: unknown) {
-  return (
-    (err instanceof DOMException || isOryError(err)) && (err.name === 'AbortError' || err.name === 'CanceledError')
-  );
-}
+import { ResponseError as OryResponseError } from '@ory/kratos-client-fetch';
 
 export function getErrorMessage(err: unknown) {
-  return (
-    (isOryError(err) ? err.response?.data?.error?.reason || err.response?.data?.error?.message : undefined) ||
-    (err as Error).message ||
-    'Unknown error'
-  );
+  return (err as Error)?.message || 'Unknown error';
 }
 
 export function isClientError(err: unknown) {
@@ -24,8 +14,8 @@ export function getErrorStatus(err: unknown) {
     return err.status;
   }
 
-  if (isOryError(err)) {
-    return err.response?.status;
+  if (err instanceof OryResponseError) {
+    return err.response.status;
   }
 }
 

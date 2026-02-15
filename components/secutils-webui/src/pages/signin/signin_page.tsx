@@ -7,7 +7,7 @@ import {
   EuiHorizontalRule,
   EuiPanel,
 } from '@elastic/eui';
-import type { FrontendApi, LoginFlow, UiNodeInputAttributes } from '@ory/client';
+import type { FrontendApi, LoginFlow, UiNodeInputAttributes } from '@ory/kratos-client-fetch';
 import type { ChangeEvent } from 'react';
 import { useCallback, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router';
@@ -59,7 +59,7 @@ export function SigninPage() {
     getOryApi()
       .then(async (api) => {
         // Start/retrieve a flow and remember it in the URL.
-        const { data: flow } = await getSigninFlow(api, searchParams);
+        const flow = await getSigninFlow(api, searchParams);
 
         searchParams.set('flow', flow.id);
         setSearchParams(searchParams);
@@ -68,8 +68,8 @@ export function SigninPage() {
 
         refreshUiState();
       })
-      .catch((err) => {
-        const originalErrorMessage = getSecurityErrorMessage(err);
+      .catch(async (err) => {
+        const originalErrorMessage = await getSecurityErrorMessage(err);
         setSigninStatus({ status: 'failed', error: originalErrorMessage ?? 'Unknown error' });
 
         addToast({
@@ -183,25 +183,30 @@ export function SigninPage() {
 
                     setSigninStatus({ status: 'pending', state: { isPasskey: true } });
                     startSigninFlow(async (api, flow) => {
-                      const response = await api.updateLoginFlow(
-                        {
+                      let updateFlowError: unknown;
+                      try {
+                        await api.updateLoginFlow({
                           flow: flow.id,
                           updateLoginFlowBody: {
                             method: 'webauthn' as const,
                             csrf_token: getCsrfToken(flow),
                             identifier: email,
                           },
-                        },
-                        { validateStatus: (status) => status < 500 },
-                      );
+                        });
+                      } catch (err) {
+                        updateFlowError = err;
+                        if (!isClientError(err)) {
+                          throw err;
+                        }
+                      }
 
-                      const { data: updatedFlow } = await api.getLoginFlow({ id: flow.id });
+                      const updatedFlow = await api.getLoginFlow({ id: flow.id });
                       const publicKeyNode = updatedFlow?.ui?.nodes?.find(
                         (node) =>
                           node.attributes.node_type === 'input' && node.attributes.name === 'webauthn_login_trigger',
                       );
                       if (!publicKeyNode) {
-                        throw response;
+                        throw updateFlowError ?? new Error('Failed to initialize WebAuthn flow');
                       }
 
                       const publicKey = (

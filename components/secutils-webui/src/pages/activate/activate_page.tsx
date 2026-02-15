@@ -1,5 +1,5 @@
 import { EuiButton, EuiFieldText, EuiForm, EuiFormRow, EuiLink, EuiPanel } from '@elastic/eui';
-import type { FrontendApi, VerificationFlow } from '@ory/client';
+import type { FrontendApi, VerificationFlow } from '@ory/kratos-client-fetch';
 import type { ChangeEvent } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -16,13 +16,13 @@ async function getVerificationFlow(api: FrontendApi, flowId?: string) {
   if (flowId) {
     // Try to retrieve existing flow first, otherwise create a new one.
     try {
-      return (await api.getVerificationFlow({ id: flowId })).data;
+      return await api.getVerificationFlow({ id: flowId });
     } catch (err) {
       console.error('Failed to initialize verification flow.', err);
     }
   }
 
-  return (await api.createBrowserVerificationFlow()).data;
+  return await api.createBrowserVerificationFlow();
 }
 
 type VerificationProcess =
@@ -71,12 +71,12 @@ export function ActivatePage() {
         // If the code is available in the query parameters, try to verify the account straight away.
         const flow = await getVerificationFlow(api, flowId);
         if (code && flowId === flow.id) {
-          const successfullyActivated = !getSecurityErrorMessage(
+          const successfullyActivated = !(await getSecurityErrorMessage(
             await api.updateVerificationFlow({
               flow: flow.id,
               updateVerificationFlowBody: { method: 'code', code, csrf_token: getCsrfToken(flow) },
             }),
-          );
+          ));
           if (!successfullyActivated) {
             throw new Error('Verification failed.');
           }
@@ -108,12 +108,12 @@ export function ActivatePage() {
     setProcess({ status: 'succeeded', data: { step: 'awaiting_reactivation', flow, email, isLoading: true } });
     getOryApi()
       .then(async (api) => {
-        const successfullyActivated = !getSecurityErrorMessage(
+        const successfullyActivated = !(await getSecurityErrorMessage(
           await api.updateVerificationFlow({
             flow: flow.id,
             updateVerificationFlowBody: { method: 'code', csrf_token: getCsrfToken(flow), email },
           }),
-        );
+        ));
         if (successfullyActivated) {
           addToast({
             id: 'send-activation-link',
@@ -143,16 +143,16 @@ export function ActivatePage() {
     setProcess({ status: 'succeeded', data: { step: 'awaiting_activation_code', flow, email, isLoading: true } });
     getOryApi()
       .then(async (api) => {
-        const successfullyActivated = !getSecurityErrorMessage(
+        const activationErrorMessage = await getSecurityErrorMessage(
           await api.updateVerificationFlow({
             flow: flow.id,
             updateVerificationFlowBody: { method: 'code', csrf_token: getCsrfToken(flow), code },
           }),
         );
-        if (successfullyActivated) {
+        if (!activationErrorMessage) {
           setProcess({ status: 'succeeded', data: { step: 'activated' } });
         } else {
-          throw new Error('Verification failed.');
+          setProcess({ status: 'failed', error: activationErrorMessage });
         }
       })
       .catch((err: Error) => {

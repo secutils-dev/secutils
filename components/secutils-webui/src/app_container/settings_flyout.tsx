@@ -19,7 +19,7 @@ import {
   EuiTitle,
 } from '@elastic/eui';
 import { css } from '@emotion/react';
-import type { UiNodeInputAttributes } from '@ory/client';
+import type { UiNodeInputAttributes } from '@ory/kratos-client-fetch';
 import { unix, utc } from 'moment/moment';
 import type { ChangeEvent } from 'react';
 import { lazy, useCallback, useState } from 'react';
@@ -89,7 +89,7 @@ export function SettingsFlyout({ onClose }: Props) {
                   refreshUiState();
                 };
 
-                const { data: flow } = await api.createBrowserSettingsFlow();
+                const flow = await api.createBrowserSettingsFlow();
                 const publicKeyNode = flow?.ui?.nodes?.find(
                   (node) =>
                     node.attributes.node_type === 'input' && node.attributes.name === 'webauthn_register_trigger',
@@ -123,7 +123,7 @@ export function SettingsFlyout({ onClose }: Props) {
                   setIsReauthenticateModalVisible({
                     visible: true,
                     action: async () => {
-                      const { data: updatedFlow } = await api.getSettingsFlow({ id: flow.id });
+                      const updatedFlow = await api.getSettingsFlow({ id: flow.id });
                       await api.updateSettingsFlow({
                         flow: flow.id,
                         updateSettingsFlowBody: {
@@ -142,8 +142,8 @@ export function SettingsFlyout({ onClose }: Props) {
 
                 updateState();
               })
-              .catch((err: Error) => {
-                const originalErrorMessage = getSecurityErrorMessage(err);
+              .catch(async (err: Error) => {
+                const originalErrorMessage = await getSecurityErrorMessage(err);
                 setSetPasskeyStatus({ status: 'failed', error: originalErrorMessage ?? 'Unknown error' });
 
                 addToast({
@@ -235,7 +235,7 @@ export function SettingsFlyout({ onClose }: Props) {
                         refreshUiState();
                       };
 
-                      const { data: flow } = await api.createBrowserSettingsFlow();
+                      const flow = await api.createBrowserSettingsFlow();
                       try {
                         await api.updateSettingsFlow({
                           flow: flow.id,
@@ -254,7 +254,7 @@ export function SettingsFlyout({ onClose }: Props) {
                         setIsReauthenticateModalVisible({
                           visible: true,
                           action: async () => {
-                            const { data: updatedFlow } = await api.getSettingsFlow({ id: flow.id });
+                            const updatedFlow = await api.getSettingsFlow({ id: flow.id });
                             await api.updateSettingsFlow({
                               flow: flow.id,
                               updateSettingsFlowBody: {
@@ -272,8 +272,8 @@ export function SettingsFlyout({ onClose }: Props) {
 
                       updateState();
                     })
-                    .catch((err: Error) => {
-                      const originalErrorMessage = getSecurityErrorMessage(err);
+                    .catch(async (err: Error) => {
+                      const originalErrorMessage = await getSecurityErrorMessage(err);
                       setSetPasswordStatus({ status: 'failed', error: originalErrorMessage ?? 'Unknown error' });
 
                       addToast({
