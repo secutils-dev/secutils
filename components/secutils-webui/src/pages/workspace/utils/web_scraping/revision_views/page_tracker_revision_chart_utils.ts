@@ -74,18 +74,18 @@ export function formatChartValue(value: number): string {
     return value.toLocaleString();
   }
 
-  // For decimals, show up to 4 significant decimal places
+  // For decimals, show up to 6 significant decimal places
   const absValue = Math.abs(value);
   if (absValue >= 1000) {
-    return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  }
-
-  if (absValue >= 1) {
     return value.toLocaleString(undefined, { maximumFractionDigits: 4 });
   }
 
+  if (absValue >= 1) {
+    return value.toLocaleString(undefined, { maximumFractionDigits: 6 });
+  }
+
   // For very small numbers, show more precision
-  return value.toLocaleString(undefined, { maximumSignificantDigits: 4 });
+  return value.toLocaleString(undefined, { maximumSignificantDigits: 6 });
 }
 
 /**
