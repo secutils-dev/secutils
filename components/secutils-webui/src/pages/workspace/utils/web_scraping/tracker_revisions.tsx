@@ -17,6 +17,8 @@ import type { ReactNode } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 
 import type { PageTracker } from './page_tracker';
+import { isChartableData } from './revision_views/page_tracker_revision_chart_utils';
+import { PageTrackerRevisionChartView } from './revision_views/page_tracker_revision_chart_view';
 import type { TrackerDataRevision } from './tracker_data_revision';
 import { PageErrorState, PageLoadingState } from '../../../../components';
 import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
@@ -28,7 +30,7 @@ export interface TrackerRevisionsProps {
   children: (revision: TrackerDataRevision, mode: TrackerRevisionsViewMode) => ReactNode;
 }
 
-export type TrackerRevisionsViewMode = 'default' | 'diff' | 'source';
+export type TrackerRevisionsViewMode = 'default' | 'diff' | 'source' | 'chart';
 
 export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsProps) {
   const { uiState, addToast } = useWorkspaceContext();
@@ -39,6 +41,7 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
   });
   const [revisionIndex, setRevisionIndex] = useState<number | null>(null);
 
+  const isDataChartable = revisions.status === 'succeeded' && isChartableData(revisions.data);
   const modes = [
     { id: 'default' as const, label: 'Default', isDisabled: revisions.status !== 'succeeded' },
     {
@@ -47,6 +50,9 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
       isDisabled: revisions.status !== 'succeeded' || revisionIndex === revisions.data.length - 1,
     },
     { id: 'source' as const, label: 'Source', isDisabled: revisions.status !== 'succeeded' },
+    ...(isDataChartable
+      ? [{ id: 'chart' as const, label: 'Chart', isDisabled: revisions.status !== 'succeeded' }]
+      : []),
   ];
   const [mode, setMode] = useState<TrackerRevisionsViewMode>('default');
 
@@ -197,7 +203,12 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
       />
     );
   } else if (revisionIndex !== null) {
-    history = children(revisions.data[revisionIndex], mode);
+    history =
+      mode === 'chart' ? (
+        <PageTrackerRevisionChartView revisions={revisions.data} />
+      ) : (
+        children(revisions.data[revisionIndex], mode)
+      );
   } else {
     const updateButton = (
       <EuiButton
