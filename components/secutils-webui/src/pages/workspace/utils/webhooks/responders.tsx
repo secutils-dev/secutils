@@ -33,6 +33,7 @@ import {
   getErrorMessage,
   ResponseError,
 } from '../../../../model';
+import { ItemsTableFilter, useItemsTableFilter } from '../../components/items_table_filter';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -121,6 +122,18 @@ export default function Responders() {
     },
     [uiState],
   );
+
+  // Filter configuration: search by name, path, and ID
+  const getSearchFields = useCallback(
+    (responder: Responder) => [responder.name, responder.id, responder.location.path],
+    [],
+  );
+
+  // Use the filter hook with URL sync
+  const { filteredItems, query, setQuery } = useItemsTableFilter({
+    items: responders.status === 'succeeded' ? responders.data.responders : [],
+    getSearchFields,
+  });
 
   const [itemIdToExpandedRowMap, setItemIdToExpandedRowMap] = useState<Record<string, ReactNode>>({});
   const editFlyout =
@@ -246,153 +259,162 @@ export default function Responders() {
     );
   } else {
     content = (
-      <EuiInMemoryTable
-        pagination={pagination}
-        allowNeutralSort={false}
-        sorting={sorting}
-        onTableChange={onTableChange}
-        items={responders.data.responders}
-        itemId={(responder) => responder.id}
-        itemIdToExpandedRowMap={itemIdToExpandedRowMap}
-        tableLayout={'auto'}
-        columns={[
-          {
-            name: (
-              <EuiToolTip content="Name of the responder">
-                <span>
-                  Name <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
-                </span>
-              </EuiToolTip>
-            ),
-            field: 'name',
-            sortable: true,
-            textOnly: true,
-            render: (_, responder: Responder) => <ResponderName responder={responder} />,
-          },
-          {
-            name: (
-              <EuiToolTip content="A unique URL of the responder endpoint">
-                <span>
-                  URL <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
-                </span>
-              </EuiToolTip>
-            ),
-            field: 'path',
-            sortable: true,
-            render: (_, responder: Responder) => {
-              const url = getResponderUrl(responder);
-              return responder.enabled && url ? (
-                <EuiLink href={url} target="_blank">
-                  {url}
-                </EuiLink>
-              ) : url ? (
-                <EuiText size={'s'} color={theme.euiTheme.colors.textDisabled}>
-                  {url}
-                </EuiText>
-              ) : (
-                <EuiIcon type="minus" color={responder.enabled ? undefined : theme.euiTheme.colors.textDisabled} />
-              );
+      <>
+        <ItemsTableFilter
+          query={query}
+          onQueryChange={setQuery}
+          onRefresh={loadResponders}
+          placeholder="Search by name, path, or ID..."
+        />
+        <EuiSpacer size="m" />
+        <EuiInMemoryTable
+          pagination={pagination}
+          allowNeutralSort={false}
+          sorting={sorting}
+          onTableChange={onTableChange}
+          items={filteredItems}
+          itemId={(responder) => responder.id}
+          itemIdToExpandedRowMap={itemIdToExpandedRowMap}
+          tableLayout={'auto'}
+          columns={[
+            {
+              name: (
+                <EuiToolTip content="Name of the responder">
+                  <span>
+                    Name <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                  </span>
+                </EuiToolTip>
+              ),
+              field: 'name',
+              sortable: true,
+              textOnly: true,
+              render: (_, responder: Responder) => <ResponderName responder={responder} />,
             },
-          },
-          {
-            name: 'Method',
-            field: 'method',
-            width: '100px',
-            render: (_, { enabled, method }: Responder) => (
-              <EuiText size={'s'} color={enabled ? undefined : theme.euiTheme.colors.textDisabled}>
-                <b>{method}</b>
-              </EuiText>
-            ),
-            sortable: true,
-          },
-          {
-            name: 'Last requested',
-            field: 'createdAt',
-            width: '160px',
-            mobileOptions: { width: 'unset' },
-            sortable: (responder) => responders.data.stats.get(responder.id)?.lastRequestedAt ?? 0,
-            render: (_, responder: Responder) => {
-              const stats = responders.data.stats.get(responder.id);
-              return stats?.lastRequestedAt ? (
+            {
+              name: (
+                <EuiToolTip content="A unique URL of the responder endpoint">
+                  <span>
+                    URL <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                  </span>
+                </EuiToolTip>
+              ),
+              field: 'path',
+              sortable: true,
+              render: (_, responder: Responder) => {
+                const url = getResponderUrl(responder);
+                return responder.enabled && url ? (
+                  <EuiLink href={url} target="_blank">
+                    {url}
+                  </EuiLink>
+                ) : url ? (
+                  <EuiText size={'s'} color={theme.euiTheme.colors.textDisabled}>
+                    {url}
+                  </EuiText>
+                ) : (
+                  <EuiIcon type="minus" color={responder.enabled ? undefined : theme.euiTheme.colors.textDisabled} />
+                );
+              },
+            },
+            {
+              name: 'Method',
+              field: 'method',
+              width: '100px',
+              render: (_, { enabled, method }: Responder) => (
+                <EuiText size={'s'} color={enabled ? undefined : theme.euiTheme.colors.textDisabled}>
+                  <b>{method}</b>
+                </EuiText>
+              ),
+              sortable: true,
+            },
+            {
+              name: 'Last requested',
+              field: 'createdAt',
+              width: '160px',
+              mobileOptions: { width: 'unset' },
+              sortable: (responder) => responders.data.stats.get(responder.id)?.lastRequestedAt ?? 0,
+              render: (_, responder: Responder) => {
+                const stats = responders.data.stats.get(responder.id);
+                return stats?.lastRequestedAt ? (
+                  <TimestampTableCell
+                    timestamp={stats.lastRequestedAt}
+                    highlightRecent
+                    color={responder.enabled ? undefined : theme.euiTheme.colors.textDisabled}
+                  />
+                ) : (
+                  <EuiText size={'s'} color={responder.enabled ? undefined : theme.euiTheme.colors.textDisabled}>
+                    <b>-</b>
+                  </EuiText>
+                );
+              },
+            },
+            {
+              name: 'Last updated',
+              field: 'updatedAt',
+              width: '160px',
+              mobileOptions: { width: 'unset' },
+              sortable: (responder) => responder.updatedAt,
+              render: (_, responder: Responder) => (
                 <TimestampTableCell
-                  timestamp={stats.lastRequestedAt}
-                  highlightRecent
+                  timestamp={responder.updatedAt}
                   color={responder.enabled ? undefined : theme.euiTheme.colors.textDisabled}
                 />
-              ) : (
-                <EuiText size={'s'} color={responder.enabled ? undefined : theme.euiTheme.colors.textDisabled}>
-                  <b>-</b>
-                </EuiText>
-              );
+              ),
             },
-          },
-          {
-            name: 'Last updated',
-            field: 'updatedAt',
-            width: '160px',
-            mobileOptions: { width: 'unset' },
-            sortable: (responder) => responder.updatedAt,
-            render: (_, responder: Responder) => (
-              <TimestampTableCell
-                timestamp={responder.updatedAt}
-                color={responder.enabled ? undefined : theme.euiTheme.colors.textDisabled}
-              />
-            ),
-          },
-          {
-            name: 'Actions',
-            field: 'headers',
-            width: '105px',
-            actions: [
-              {
-                name: 'Edit',
-                description: 'Edit responder',
-                icon: 'pencil',
-                type: 'icon',
-                isPrimary: true,
-                onClick: setResponderToEdit,
-              },
-              {
-                name: 'Duplicate',
-                description: 'Duplicate responder',
-                icon: 'copy',
-                type: 'icon',
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                onClick: ({ id, createdAt, updatedAt, name, ...rest }: Responder) =>
-                  setResponderToEdit({ ...rest, name: getCopyName(name) }),
-              },
-              {
-                name: 'Remove',
-                description: 'Remove responder',
-                icon: 'trash',
-                color: 'danger',
-                type: 'icon',
-                isPrimary: true,
-                onClick: setResponderToRemove,
-              },
-            ],
-          },
-          {
-            align: 'right',
-            width: '40px',
-            isExpander: true,
-            name: (
-              <EuiScreenReaderOnly>
-                <span>Show requests</span>
-              </EuiScreenReaderOnly>
-            ),
-            render: (item: Responder) => {
-              return (
-                <EuiButtonIcon
-                  onClick={() => toggleResponderRequests(item)}
-                  aria-label={itemIdToExpandedRowMap[item.id] ? 'Hide requests' : 'Show requests'}
-                  iconType={itemIdToExpandedRowMap[item.id] ? 'arrowDown' : 'arrowRight'}
-                />
-              );
+            {
+              name: 'Actions',
+              field: 'headers',
+              width: '105px',
+              actions: [
+                {
+                  name: 'Edit',
+                  description: 'Edit responder',
+                  icon: 'pencil',
+                  type: 'icon',
+                  isPrimary: true,
+                  onClick: setResponderToEdit,
+                },
+                {
+                  name: 'Duplicate',
+                  description: 'Duplicate responder',
+                  icon: 'copy',
+                  type: 'icon',
+                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                  onClick: ({ id, createdAt, updatedAt, name, ...rest }: Responder) =>
+                    setResponderToEdit({ ...rest, name: getCopyName(name) }),
+                },
+                {
+                  name: 'Remove',
+                  description: 'Remove responder',
+                  icon: 'trash',
+                  color: 'danger',
+                  type: 'icon',
+                  isPrimary: true,
+                  onClick: setResponderToRemove,
+                },
+              ],
             },
-          },
-        ]}
-      />
+            {
+              align: 'right',
+              width: '40px',
+              isExpander: true,
+              name: (
+                <EuiScreenReaderOnly>
+                  <span>Show requests</span>
+                </EuiScreenReaderOnly>
+              ),
+              render: (item: Responder) => {
+                return (
+                  <EuiButtonIcon
+                    onClick={() => toggleResponderRequests(item)}
+                    aria-label={itemIdToExpandedRowMap[item.id] ? 'Hide requests' : 'Show requests'}
+                    iconType={itemIdToExpandedRowMap[item.id] ? 'arrowDown' : 'arrowRight'}
+                  />
+                );
+              },
+            },
+          ]}
+        />
+      </>
     );
   }
 

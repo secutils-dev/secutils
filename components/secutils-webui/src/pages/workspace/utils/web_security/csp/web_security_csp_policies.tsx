@@ -28,6 +28,7 @@ import {
   getErrorMessage,
   ResponseError,
 } from '../../../../../model';
+import { ItemsTableFilter, useItemsTableFilter } from '../../../components/items_table_filter';
 import { TimestampTableCell } from '../../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../../hooks';
 
@@ -168,6 +169,16 @@ export default function WebSecurityContentSecurityPolicies() {
     </EuiConfirmModal>
   ) : null;
 
+  // Filter configuration: search by name, ID, and policy content
+  const getSearchFields = useCallback(
+    (policy: ContentSecurityPolicy) => [policy.name, policy.id, getContentSecurityPolicyString(policy)],
+    [],
+  );
+  const { filteredItems, query, setQuery } = useItemsTableFilter({
+    items: policies.status === 'succeeded' ? policies.data : [],
+    getSearchFields,
+  });
+
   const [pagination, setPagination] = useState<Pagination>({
     pageIndex: 0,
     pageSize: 15,
@@ -240,97 +251,106 @@ export default function WebSecurityContentSecurityPolicies() {
     );
   } else {
     content = (
-      <EuiInMemoryTable
-        pagination={pagination}
-        allowNeutralSort={false}
-        sorting={sorting}
-        onTableChange={onTableChange}
-        items={policies.data}
-        itemId={(item) => item.id}
-        tableLayout={'auto'}
-        columns={[
-          {
-            name: (
-              <EuiToolTip content="Content security policy name">
-                <span>
-                  Name <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
-                </span>
-              </EuiToolTip>
-            ),
-            field: 'name',
-            sortable: true,
-            textOnly: true,
-            render: (_, item: ContentSecurityPolicy) => item.name,
-          },
-          {
-            name: (
-              <EuiToolTip content="Content security policy as it should appear in HTTP header or <meta> tag.">
-                <span>
-                  Policy <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
-                </span>
-              </EuiToolTip>
-            ),
-            field: 'directives',
-            width: '80%',
-            render: (_, policy: ContentSecurityPolicy) => getContentSecurityPolicyString(policy),
-          },
-          {
-            name: 'Last updated',
-            field: 'updatedAt',
-            width: '160px',
-            mobileOptions: { width: 'unset' },
-            sortable: (policy) => policy.updatedAt,
-            render: (_, policy: ContentSecurityPolicy) => <TimestampTableCell timestamp={policy.updatedAt} />,
-          },
-          {
-            name: 'Actions',
-            field: 'headers',
-            width: '105px',
-            actions: [
-              {
-                name: 'Copy',
-                description: 'Copy policy',
-                icon: 'copyClipboard',
-                type: 'icon',
-                onClick: setPolicyToCopy,
-              },
-              {
-                name: 'Share',
-                description: 'Share policy',
-                icon: 'share',
-                type: 'icon',
-                onClick: setPolicyToShare,
-              },
-              {
-                name: 'Edit',
-                description: 'Edit policy',
-                icon: 'pencil',
-                type: 'icon',
-                isPrimary: true,
-                onClick: setPolicyToEdit,
-              },
-              {
-                name: 'Duplicate',
-                description: 'Duplicate policy',
-                icon: 'copy',
-                type: 'icon',
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                onClick: ({ id, createdAt, updatedAt, name, ...rest }: ContentSecurityPolicy) =>
-                  setPolicyToEdit({ ...rest, name: getCopyName(name) }),
-              },
-              {
-                name: 'Remove',
-                description: 'Remove policy',
-                icon: 'trash',
-                color: 'danger',
-                type: 'icon',
-                isPrimary: true,
-                onClick: setPolicyToRemove,
-              },
-            ],
-          },
-        ]}
-      />
+      <>
+        <ItemsTableFilter
+          query={query}
+          onQueryChange={setQuery}
+          onRefresh={loadPolicies}
+          placeholder="Search by name, ID, or policy content..."
+        />
+        <EuiSpacer size="m" />
+        <EuiInMemoryTable
+          pagination={pagination}
+          allowNeutralSort={false}
+          sorting={sorting}
+          onTableChange={onTableChange}
+          items={filteredItems}
+          itemId={(item) => item.id}
+          tableLayout={'auto'}
+          columns={[
+            {
+              name: (
+                <EuiToolTip content="Content security policy name">
+                  <span>
+                    Name <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                  </span>
+                </EuiToolTip>
+              ),
+              field: 'name',
+              sortable: true,
+              textOnly: true,
+              render: (_, item: ContentSecurityPolicy) => item.name,
+            },
+            {
+              name: (
+                <EuiToolTip content="Content security policy as it should appear in HTTP header or <meta> tag.">
+                  <span>
+                    Policy <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                  </span>
+                </EuiToolTip>
+              ),
+              field: 'directives',
+              width: '80%',
+              render: (_, policy: ContentSecurityPolicy) => getContentSecurityPolicyString(policy),
+            },
+            {
+              name: 'Last updated',
+              field: 'updatedAt',
+              width: '160px',
+              mobileOptions: { width: 'unset' },
+              sortable: (policy) => policy.updatedAt,
+              render: (_, policy: ContentSecurityPolicy) => <TimestampTableCell timestamp={policy.updatedAt} />,
+            },
+            {
+              name: 'Actions',
+              field: 'headers',
+              width: '105px',
+              actions: [
+                {
+                  name: 'Copy',
+                  description: 'Copy policy',
+                  icon: 'copyClipboard',
+                  type: 'icon',
+                  onClick: setPolicyToCopy,
+                },
+                {
+                  name: 'Share',
+                  description: 'Share policy',
+                  icon: 'share',
+                  type: 'icon',
+                  onClick: setPolicyToShare,
+                },
+                {
+                  name: 'Edit',
+                  description: 'Edit policy',
+                  icon: 'pencil',
+                  type: 'icon',
+                  isPrimary: true,
+                  onClick: setPolicyToEdit,
+                },
+                {
+                  name: 'Duplicate',
+                  description: 'Duplicate policy',
+                  icon: 'copy',
+                  type: 'icon',
+                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                  onClick: ({ id, createdAt, updatedAt, name, ...rest }: ContentSecurityPolicy) =>
+                    setPolicyToEdit({ ...rest, name: getCopyName(name) }),
+                },
+                {
+                  name: 'Remove',
+                  description: 'Remove policy',
+                  icon: 'trash',
+                  color: 'danger',
+                  type: 'icon',
+                  isPrimary: true,
+                  onClick: setPolicyToRemove,
+                },
+              ],
+            },
+          ]}
+        />
+      </>
     );
   }
 

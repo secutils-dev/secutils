@@ -31,6 +31,7 @@ import {
   getErrorMessage,
   ResponseError,
 } from '../../../../model';
+import { ItemsTableFilter, useItemsTableFilter } from '../../components/items_table_filter';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -101,6 +102,15 @@ export default function PageTrackers() {
         tracker={trackerToEdit}
       />
     ) : null;
+
+  // Filter configuration: search by name and ID
+  const getSearchFields = useCallback((tracker: PageTracker) => [tracker.name, tracker.id], []);
+
+  // Use the filter hook with URL sync
+  const { filteredItems, query, setQuery } = useItemsTableFilter({
+    items: trackers.status === 'succeeded' ? trackers.data : [],
+    getSearchFields,
+  });
 
   const [itemIdToExpandedRowMap, setItemIdToExpandedRowMap] = useState<Record<string, ReactNode>>({});
 
@@ -221,97 +231,106 @@ export default function PageTrackers() {
     );
   } else {
     content = (
-      <EuiInMemoryTable
-        pagination={pagination}
-        allowNeutralSort={false}
-        sorting={sorting}
-        onTableChange={onTableChange}
-        items={trackers.data}
-        itemId={(item) => item.id}
-        itemIdToExpandedRowMap={itemIdToExpandedRowMap}
-        tableLayout={'auto'}
-        columns={[
-          {
-            name: (
-              <EuiToolTip content="Name of the page tracker">
-                <span>
-                  Name <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
-                </span>
-              </EuiToolTip>
-            ),
-            field: 'name',
-            sortable: true,
-            textOnly: true,
-            render: (_, tracker: PageTracker) => <TrackerName tracker={tracker} />,
-          },
-          {
-            name: 'Last updated',
-            field: 'updatedAt',
-            width: '160px',
-            mobileOptions: { width: 'unset' },
-            sortable: (tracker) => tracker.updatedAt,
-            render: (_, tracker: PageTracker) => <TimestampTableCell timestamp={tracker.updatedAt} />,
-          },
-          // Just a padding column to increase the height of the table row in responsive mode.
-          {
-            name: <></>,
-            render: () => <EuiSpacer size={'xxl'} />,
-            mobileOptions: { only: true },
-          },
-          {
-            name: 'Actions',
-            field: 'headers',
-            width: '105px',
-            actions: [
-              {
-                name: 'Edit',
-                description: 'Edit tracker',
-                icon: 'pencil',
-                type: 'icon',
-                isPrimary: true,
-                onClick: setTrackerToEdit,
-              },
-              {
-                name: 'Duplicate',
-                description: 'Duplicate tracker',
-                icon: 'copy',
-                type: 'icon',
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                onClick: ({ id, createdAt, updatedAt, name, ...rest }: PageTracker) =>
-                  setTrackerToEdit({ ...rest, name: getCopyName(name) }),
-              },
-              {
-                name: 'Remove',
-                description: 'Remove tracker',
-                icon: 'trash',
-                color: 'danger',
-                type: 'icon',
-                isPrimary: true,
-                onClick: setTrackerToRemove,
-              },
-            ],
-          },
-          {
-            align: 'right',
-            width: '40px',
-            isExpander: true,
-            name: (
-              <EuiScreenReaderOnly>
-                <span>Show history</span>
-              </EuiScreenReaderOnly>
-            ),
-            render: (tracker: PageTracker) => {
-              return (
-                <EuiButtonIcon
-                  onClick={() => toggleItemDetails(tracker)}
-                  aria-label={itemIdToExpandedRowMap[tracker.id] ? 'Hide history' : 'Show history'}
-                  iconType={itemIdToExpandedRowMap[tracker.id] ? 'arrowDown' : 'arrowRight'}
-                />
-              );
+      <>
+        <ItemsTableFilter
+          query={query}
+          onQueryChange={setQuery}
+          onRefresh={loadTrackers}
+          placeholder="Search by name or ID..."
+        />
+        <EuiSpacer size="m" />
+        <EuiInMemoryTable
+          pagination={pagination}
+          allowNeutralSort={false}
+          sorting={sorting}
+          onTableChange={onTableChange}
+          items={filteredItems}
+          itemId={(item) => item.id}
+          itemIdToExpandedRowMap={itemIdToExpandedRowMap}
+          tableLayout={'auto'}
+          columns={[
+            {
+              name: (
+                <EuiToolTip content="Name of the page tracker">
+                  <span>
+                    Name <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                  </span>
+                </EuiToolTip>
+              ),
+              field: 'name',
+              sortable: true,
+              textOnly: true,
+              render: (_, tracker: PageTracker) => <TrackerName tracker={tracker} />,
             },
-          },
-        ]}
-      />
+            {
+              name: 'Last updated',
+              field: 'updatedAt',
+              width: '160px',
+              mobileOptions: { width: 'unset' },
+              sortable: (tracker) => tracker.updatedAt,
+              render: (_, tracker: PageTracker) => <TimestampTableCell timestamp={tracker.updatedAt} />,
+            },
+            // Just a padding column to increase the height of the table row in responsive mode.
+            {
+              name: <></>,
+              render: () => <EuiSpacer size={'xxl'} />,
+              mobileOptions: { only: true },
+            },
+            {
+              name: 'Actions',
+              field: 'headers',
+              width: '105px',
+              actions: [
+                {
+                  name: 'Edit',
+                  description: 'Edit tracker',
+                  icon: 'pencil',
+                  type: 'icon',
+                  isPrimary: true,
+                  onClick: setTrackerToEdit,
+                },
+                {
+                  name: 'Duplicate',
+                  description: 'Duplicate tracker',
+                  icon: 'copy',
+                  type: 'icon',
+                  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                  onClick: ({ id, createdAt, updatedAt, name, ...rest }: PageTracker) =>
+                    setTrackerToEdit({ ...rest, name: getCopyName(name) }),
+                },
+                {
+                  name: 'Remove',
+                  description: 'Remove tracker',
+                  icon: 'trash',
+                  color: 'danger',
+                  type: 'icon',
+                  isPrimary: true,
+                  onClick: setTrackerToRemove,
+                },
+              ],
+            },
+            {
+              align: 'right',
+              width: '40px',
+              isExpander: true,
+              name: (
+                <EuiScreenReaderOnly>
+                  <span>Show history</span>
+                </EuiScreenReaderOnly>
+              ),
+              render: (tracker: PageTracker) => {
+                return (
+                  <EuiButtonIcon
+                    onClick={() => toggleItemDetails(tracker)}
+                    aria-label={itemIdToExpandedRowMap[tracker.id] ? 'Hide history' : 'Show history'}
+                    iconType={itemIdToExpandedRowMap[tracker.id] ? 'arrowDown' : 'arrowRight'}
+                  />
+                );
+              },
+            },
+          ]}
+        />
+      </>
     );
   }
 

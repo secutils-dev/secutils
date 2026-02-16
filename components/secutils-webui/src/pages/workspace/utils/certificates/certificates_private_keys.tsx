@@ -30,6 +30,7 @@ import {
   getErrorMessage,
   ResponseError,
 } from '../../../../model';
+import { ItemsTableFilter, useItemsTableFilter } from '../../components/items_table_filter';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -135,6 +136,13 @@ export default function CertificatesPrivateKeys() {
     </EuiConfirmModal>
   ) : null;
 
+  // Filter configuration: search by name and ID
+  const getSearchFields = useCallback((privateKey: PrivateKey) => [privateKey.name, privateKey.id], []);
+  const { filteredItems, query, setQuery } = useItemsTableFilter({
+    items: privateKeys.status === 'succeeded' ? privateKeys.data : [],
+    getSearchFields,
+  });
+
   const [pagination, setPagination] = useState<Pagination>({
     pageIndex: 0,
     pageSize: 15,
@@ -237,12 +245,19 @@ export default function CertificatesPrivateKeys() {
     content = (
       <>
         {privateKeysProdWarning}
+        <ItemsTableFilter
+          query={query}
+          onQueryChange={setQuery}
+          onRefresh={loadPrivateKeys}
+          placeholder="Search by name or ID..."
+        />
+        <EuiSpacer size="m" />
         <EuiInMemoryTable
           pagination={pagination}
           allowNeutralSort={false}
           sorting={sorting}
           onTableChange={onTableChange}
-          items={privateKeys.data}
+          items={filteredItems}
           itemId={(item) => item.id}
           tableLayout={'auto'}
           columns={[

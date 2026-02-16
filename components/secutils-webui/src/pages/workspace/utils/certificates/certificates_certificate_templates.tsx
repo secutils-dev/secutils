@@ -32,6 +32,7 @@ import {
   getErrorMessage,
   ResponseError,
 } from '../../../../model';
+import { ItemsTableFilter, useItemsTableFilter } from '../../components/items_table_filter';
 import { useWorkspaceContext } from '../../hooks';
 
 export default function CertificatesCertificateTemplates() {
@@ -140,6 +141,16 @@ export default function CertificatesCertificateTemplates() {
     </EuiConfirmModal>
   ) : null;
 
+  // Filter configuration: search by name and ID
+  const getSearchFields = useCallback(
+    (template: CertificateTemplate) => [template.name, template.id, getDistinguishedNameString(template.attributes)],
+    [],
+  );
+  const { filteredItems, query, setQuery } = useItemsTableFilter({
+    items: templates.status === 'succeeded' ? templates.data : [],
+    getSearchFields,
+  });
+
   const [pagination, setPagination] = useState<Pagination>({
     pageIndex: 0,
     pageSize: 15,
@@ -241,12 +252,19 @@ export default function CertificatesCertificateTemplates() {
     content = (
       <>
         {selfSignedCertificatesProdWarning}
+        <ItemsTableFilter
+          query={query}
+          onQueryChange={setQuery}
+          onRefresh={loadCertificateTemplates}
+          placeholder="Search by name or ID..."
+        />
+        <EuiSpacer size="m" />
         <EuiInMemoryTable
           pagination={pagination}
           allowNeutralSort={false}
           sorting={sorting}
           onTableChange={onTableChange}
-          items={templates.data}
+          items={filteredItems}
           itemId={(template) => template.id}
           tableLayout={'auto'}
           columns={[
