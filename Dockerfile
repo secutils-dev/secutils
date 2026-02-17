@@ -21,9 +21,10 @@ RUN curl -LO https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${
     mv upx-${UPX_VERSION}-${TARGETARCH}_linux/upx /usr/local/bin/ && \
     rm -rf upx-${UPX_VERSION}-${TARGETARCH}_linux.tar.xz upx-${UPX_VERSION}-${TARGETARCH}_linux
 
-# Copy assets, member crates, and manifest.
+# Copy assets, member crates, submodule crates, and manifest.
 COPY ["./assets", "./assets"]
 COPY ["./components/secutils-jwt-tools", "./components/secutils-jwt-tools"]
+COPY ["./components/retrack/components/retrack-types", "./components/retrack/components/retrack-types"]
 COPY ["./Cargo.lock", "./Cargo.toml", "./"]
 
 # Fetch dependencies if they change.

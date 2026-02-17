@@ -1,0 +1,48 @@
+# Secutils API configuration for e2e testing (all services running inside Docker).
+public_url = "http://localhost:7171"
+
+[components]
+kratos_url = 'http://kratos:4433/'
+kratos_admin_url = 'http://kratos:4434/'
+
+[db]
+host = "secutils_db"
+
+[retrack]
+host = 'http://retrack:7676/'
+
+[smtp]
+catch_all = { text_matcher = ".*" }
+
+[http.client]
+timeout = 60000
+
+[security]
+operators = ["@kratos", "@secutils", "@retrack"]
+
+[security.preconfigured_users]
+"test@secutils.dev" = { handle = "test", tier = "professional" }
+
+[scheduler]
+notifications_send = "0/15 * * * * *"
+
+[utils]
+webhook_url_type = "path"
+
+[subscriptions]
+manage_url = "http://localhost:7575/subscription"
+feature_overview_url = "http://localhost:7474/pricing"
+
+[subscriptions.basic]
+certificates = { private_keys = 5, templates = 5, private_key_algorithms = ["RSA-1024", "DSA-1024", "ECDSA-SECP256R1", "ECDSA-SECP384R1", "ECDSA-SECP521R1", "ED25519"] }
+webhooks = { responders = 3, responder_requests = 3, responder_custom_subdomain_prefix = false, js_runtime_heap_size = 5_242_880, js_runtime_script_execution_time = 10_000 }
+web_scraping = { trackers = 3, tracker_revisions = 3, tracker_schedules = ["@", "@daily", "@weekly", "@monthly"], min_schedule_interval = 86_400_000 }
+web_security = { policies = 10, import_policy_from_url = false }
+
+[subscriptions.standard]
+certificates = { private_keys = 10, templates = 1000, private_key_algorithms = ["RSA-1024", "RSA-2048", "DSA-1024", "DSA-2048", "ECDSA-SECP256R1", "ECDSA-SECP384R1", "ECDSA-SECP521R1", "ED25519"] }
+webhooks = { responders = 10, responder_requests = 15, js_runtime_heap_size = 7_340_032, js_runtime_script_execution_time = 20_000 }
+web_scraping = { trackers = 10, tracker_revisions = 10, tracker_schedules = ["@", "@hourly", "@daily", "@weekly", "@monthly"], min_schedule_interval = 3_600_000 }
+
+[subscriptions.professional]
+web_scraping = { tracker_schedules = ["@", "@hourly", "@daily", "@weekly", "@monthly", "@@"], min_schedule_interval = 600_000 }

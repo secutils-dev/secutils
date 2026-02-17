@@ -1,24 +1,36 @@
-# Paths that should be ignored by all Docker images
-node_modules
-*.md
-.DS_Store
-.env
+# Large VCS / IDE / OS metadata
+.git
+.gitmodules
 .github
 .husky
 .idea
-.nvmrc
-.parcel-cache
-Dockerfile
-Dockerfile.webui
-LICENSE
-build
-dev
+.DS_Store
+
+# Build artifacts and caches
+target
+node_modules
 dist
+build
+.parcel-cache
+
+# Files not needed in the API image
+*.md
+*.dockerignore
+.env
+.nvmrc
+Dockerfile*
+LICENSE
 rustfmt.toml
 secutils.toml
-target
+*.json
 
-# Path that should be ignored by api Docker image
+# Directories not needed in the API image
+dev
+/e2e
 /components/secutils-docs
 /components/secutils-webui
-*.json
+/components/retrack/src
+/components/retrack/migrations
+/components/retrack/dev
+/components/retrack/.sqlx
+/components/retrack/components/retrack-web-scraper

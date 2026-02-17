@@ -13,11 +13,17 @@ services:
         target: /docker-entrypoint-initdb.d/postgres_init.sql
     networks:
       - net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   kratos_migrate:
     image: oryd/kratos:v25.4.0
     depends_on:
-      - secutils_db
+      secutils_db:
+        condition: service_healthy
     volumes:
       - type: bind
         source: ./kratos.toml
@@ -40,8 +46,10 @@ services:
       - '4434:4434' # admin
     restart: unless-stopped
     depends_on:
-      - kratos_migrate
-      - secutils_db
+      secutils_db:
+        condition: service_healthy
+      kratos_migrate:
+        condition: service_completed_successfully
     volumes:
       - type: bind
         source: ./kratos.toml
@@ -54,6 +62,38 @@ services:
       - net
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  retrack:
+    build:
+      context: ../../components/retrack
+      dockerfile: Dockerfile
+    ports:
+      - "7676:7676"
+    environment:
+      - RETRACK_DB__HOST=secutils_db
+      - RETRACK_DB__NAME=retrack
+      - RETRACK_DB__USERNAME=postgres
+      - RETRACK_COMPONENTS__WEB_SCRAPER_URL=http://retrack_web_scraper:7272/
+    depends_on:
+      secutils_db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  retrack_web_scraper:
+    build:
+      context: ../../components/retrack
+      dockerfile: Dockerfile.web-scraper
+    ports:
+      - "7272:7272"
+    environment:
+      - RETRACK_WEB_SCRAPER_BROWSER_CHROMIUM_NO_SANDBOX=true
+    restart: unless-stopped
+    networks:
+      - net
 
 volumes:
   db_vol:

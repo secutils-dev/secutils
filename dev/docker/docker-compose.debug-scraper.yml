@@ -1,0 +1,20 @@
+# Override that disables the dockerized web scraper so you can run it on the
+# host in headed (visible browser) mode.
+#
+# Usage:
+#   make dev-debug-scraper    # start infra with host-routed scraper
+#   cd components/retrack && RETRACK_WEB_SCRAPER_BROWSER_CHROMIUM_NO_HEADLESS=true \
+#     npm run watch -w components/retrack-web-scraper
+services:
+  # Prevent the containerized web scraper from starting.
+  retrack_web_scraper:
+    profiles:
+      - disabled
+
+  # Point the Retrack API at the host-running web scraper.
+  retrack:
+    environment:
+      - RETRACK_DB__HOST=secutils_db
+      - RETRACK_DB__NAME=retrack
+      - RETRACK_DB__USERNAME=postgres
+      - RETRACK_COMPONENTS__WEB_SCRAPER_URL=http://host.docker.internal:7272/

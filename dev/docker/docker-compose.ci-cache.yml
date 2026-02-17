@@ -1,0 +1,28 @@
+services:
+  retrack:
+    build:
+      cache_from:
+        - type=gha,scope=retrack
+      cache_to:
+        - type=gha,mode=max,scope=retrack
+
+  retrack_web_scraper:
+    build:
+      cache_from:
+        - type=gha,scope=retrack-web-scraper
+      cache_to:
+        - type=gha,mode=max,scope=retrack-web-scraper
+
+  secutils_api:
+    build:
+      cache_from:
+        - type=gha,scope=secutils-api
+      cache_to:
+        - type=gha,mode=max,scope=secutils-api
+
+  secutils_webui:
+    build:
+      cache_from:
+        - type=gha,scope=secutils-webui
+      cache_to:
+        - type=gha,mode=max,scope=secutils-webui

@@ -30,35 +30,97 @@ Secutils.dev adheres to [open security principles](https://en.wikipedia.org/wiki
 
 ![Secutils.dev Web Security](https://github.com/secutils-dev/.github/blob/main/profile/web_security.png?raw=true)
 
-## Getting started
+## Prerequisites
 
-Before running the Secutils.dev server, you need to configure the database and [Ory Kratos](https://github.com/ory/kratos) connections. If you don't have a PostgreSQL
-and an Ory Kratos servers running, you [can run them locally with the following Docker Compose file:](https://docs.docker.com/language/rust/develop/)
+- [Rust](https://www.rust-lang.org/tools/install) (stable toolchain)
+- [Node.js](https://nodejs.org/) 22+ (see `.nvmrc`)
+- [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/)
 
-```shell
-docker-compose -f ./dev/docker/postgres-and-kratos.yml --env-file ./.env up --build --force-recreate
-```
+## Getting Started
 
-To remove everything and start from scratch, run:
-
-```shell
-docker-compose -f ./dev/docker/postgres-and-kratos.yml --env-file ./.env down --volumes --remove-orphans
-```
-
-Make sure to replace `POSTGRES_HOST_AUTH_METHOD=trust` in Docker Compose file with a more secure authentication method if you're
-planning to use a local database for an extended period. For the existing database, you'll need to provide connection details in the
-TOML configuration file as explained below.
-
-Once all services are configured, you can start the Secutils.dev server with `cargo run`. By default, the
-server will be accessible via http://localhost:7070. Use `curl` to verify that the server is up and running:
+### 1. Clone the repository with submodules
 
 ```shell
-curl -XGET http://localhost:7070/api/status
----
-{"version":"1.0.0-beta.1","level":"available"}
+git clone --recurse-submodules https://github.com/secutils-dev/secutils.git
+cd secutils
 ```
 
-The server can be configured with a TOML configuration file. See the example below for a basic configuration:
+If you already cloned without `--recurse-submodules`, initialize submodules with:
+
+```shell
+git submodule update --init --recursive
+```
+
+### 2. Set up the environment
+
+Copy the example environment file and customize it:
+
+```shell
+cp .env.example .env
+```
+
+Generate JWT tokens for Kratos webhook authentication:
+
+```shell
+# Replace the secret with your own (openssl rand -hex 16)
+cargo run -p secutils-jwt-tools -- generate \
+  --secret <your-jwt-secret> --sub @kratos --exp 1year
+```
+
+Update the `SELFSERVICE_FLOWS_*` and `COURIER_*` values in `.env` with the generated token.
+
+### 3. Start the infrastructure
+
+Start PostgreSQL, Ory Kratos, Retrack API, and Retrack Web Scraper with Docker Compose:
+
+```shell
+make dev-up
+```
+
+Or directly:
+
+```shell
+docker compose -f dev/docker/docker-compose.yml --env-file .env up --build
+```
+
+To tear everything down and start fresh:
+
+```shell
+make dev-down
+```
+
+### 4. Start the Secutils API
+
+```shell
+cargo run
+```
+
+> **Note:** The `.env.example` ships with `SQLX_OFFLINE=true`, which tells sqlx to use the cached
+> query metadata in `.sqlx/` instead of connecting to the database at compile time. This means you
+> can compile and run without any manual migration step -- the app applies migrations automatically
+> on startup. If you prefer live query validation during development, set `SQLX_OFFLINE=false` in
+> `.env` and run `sqlx migrate run` first (requires
+> [sqlx-cli](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli)).
+
+The API will be available at http://localhost:7070. Verify it is running:
+
+```shell
+curl -s http://localhost:7070/api/status
+# {"version":"1.0.0-beta.2","level":"available"}
+```
+
+### 5. Start the Web UI
+
+```shell
+npm --prefix components/secutils-webui i
+npm --prefix components/secutils-webui run watch
+```
+
+The UI will be available at http://localhost:7171.
+
+## Configuration
+
+The server is configured with a TOML file (`secutils.toml`). See the example below:
 
 ```toml
 port = 7070
@@ -70,22 +132,16 @@ port = 5432
 username = 'postgres'
 password = 'password'
 
-# Connection details for Ory Kratos services.
 [components]
 kratos_url = 'http://localhost:4433/'
 kratos_admin_url = 'http://localhost:4434/'
 
-# A list of preconfigured users. Once a user with the specified email signs up, 
-# the server will automatically assign the user the specified handle and tier.
+[retrack]
+host = 'http://localhost:7676/'
+
 [security.preconfigured_users]
 "admin@mydomain.dev" = { handle = "admin", tier = "ultimate" }
 
-# The configuration of the Deno runtime used to run responder scripts.
-[js_runtime]
-max_heap_size = 10_485_760 # 10 MB
-max_user_script_execution_time = 30_000 # 30 seconds
-
-# SMTP server configuration used to send emails (signup emails, notifications etc.).
 [smtp]
 address = "xxx"
 username = "xxx"
@@ -95,77 +151,100 @@ password = "xxx"
 webhook_url_type = "path"
 ```
 
-If you saved your configuration to a file named `secutils.toml`, you can start the server with the following command:
+You can also override configuration values via environment variables with the `SECUTILS_` prefix
+(nested keys use `__`, e.g. `SECUTILS_DB__HOST=localhost`).
+
+## Updating the Retrack submodule
+
+The [Retrack](https://github.com/secutils-dev/retrack) project is included as a git submodule at
+`components/retrack`. To update it to the latest commit:
 
 ```shell
-cargo run -- -c secutils.toml
+git submodule update --remote components/retrack
 ```
 
-You can also use `.env` file to specify the location of the configuration file and database connection details required
-for development and testing:
+Or to pin to a specific commit:
 
-```dotenv
-# Refer to https://github.com/launchbadge/sqlx for more details.
-DATABASE_URL=postgres://postgres@localhost/secutils
-
-# Path to the configuration file.
-SECUTILS_CONFIG=${PWD}/secutils.toml
-
-# Secret key used to sign and verify JSON Web Tokens for API access
-# openssl rand -hex 16
-SECUTILS_SECURITY__JWT_SECRET=8ffe0cc38d7ff1afa78b6cd5696f2e21
-
-# JWT used by Kratos to authenticate requests to the API.
-# Requires config: security.operators = ["@kratos"]
-# Generated with: cargo run -p secutils-jwt-tools generate --secret 8ffe0cc38d7ff1afa78b6cd5696f2e21 --sub @kratos --exp 1year
-SELFSERVICE_FLOWS_REGISTRATION_AFTER_PASSWORD_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE="Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NDcyMDExNTcsInN1YiI6IkBrcmF0b3MifQ.O506N__dZu7ZM6p-rEr_QkMn3jp0mRyBwKP7jstRHV8"
-SELFSERVICE_FLOWS_REGISTRATION_AFTER_WEBAUTHN_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE="Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NDcyMDExNTcsInN1YiI6IkBrcmF0b3MifQ.O506N__dZu7ZM6p-rEr_QkMn3jp0mRyBwKP7jstRHV8"
-COURIER_HTTP_REQUEST_CONFIG_AUTH_CONFIG_VALUE="Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3NDcyMDExNTcsInN1YiI6IkBrcmF0b3MifQ.O506N__dZu7ZM6p-rEr_QkMn3jp0mRyBwKP7jstRHV8"
+```shell
+cd components/retrack
+git checkout <commit-hash>
+cd ../..
+git add components/retrack
 ```
-
-### Web UI
-
-Install all the required dependencies with `npm --prefix components/secutils-webui i` and run the UI in watch mode with `npm --prefix components/secutils-webui run watch`. The UI should be accessible at http://localhost:7171.
 
 ## Documentation
 
-Install all the required dependencies with `npm --prefix components/secutils-docs i` and run the docs UI in watch mode with `npm --prefix components/secutils-docs run watch`. The docs UI should be accessible at http://localhost:7373.
-
-The documentation for Secutils.dev is also hosted at [secutils.dev/docs](https://secutils.dev/docs).
-
-### Usage
-
-At this point, it is recommended to use the Secutils.dev APIs through the Web UI, but you can also generate a JSON Web Token and use the 
-APIs directly with `curl` or any other HTTP client. To generate a token, run the following command:
+Install dependencies and run the docs UI in watch mode:
 
 ```shell
-cargo run -p secutils-jwt-tools generate \
-  --secret 8ffe0cc38d7ff1afa78b6cd5696f2e21 \
-  --sub user@secutils.dev --exp 30days
----
-eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3MTgyNjYxNTQsInN1YiI6InVzZXJAc2VjdXRpbHMuZGV2In0.e9sHurEyxhonOcR8dVVhmXdAWi287XReMiWUEVZuFwU
----
+npm --prefix components/secutils-docs i
+npm --prefix components/secutils-docs run watch
+```
+
+The docs UI will be available at http://localhost:7373. Documentation is also hosted at
+[secutils.dev/docs](https://secutils.dev/docs).
+
+## End-to-End Tests
+
+E2E tests use [Playwright](https://playwright.dev/) and run against the full stack in Docker.
+
+### Running locally
+
+```shell
+# Install Playwright and browsers (once)
+cd e2e && npm ci && npx playwright install --with-deps chromium && cd ..
+
+# Start the full stack
+make e2e-up
+
+# Wait for services to be ready, then run tests
+make e2e-test
+
+# Run in interactive UI mode
+make e2e-test ARGS="--ui"
+
+# Run in headed mode (visible browser)
+make e2e-test ARGS="--headed"
+
+# Run a specific test file
+make e2e-test ARGS="tests/app.spec.ts"
+
+# View the HTML report
+make e2e-report
+
+# Tear down
+make e2e-down
+```
+
+### Usage with the API
+
+Generate a JSON Web Token and use the APIs directly with `curl`:
+
+```shell
+cargo run -p secutils-jwt-tools -- generate \
+  --secret <your-jwt-secret> --sub user@secutils.dev --exp 30days
+
 curl -XGET --header \
-  "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3MTgyNjYxNTQsInN1YiI6InVzZXJAc2VjdXRpbHMuZGV2In0.e9sHurEyxhonOcR8dVVhmXdAWi287XReMiWUEVZuFwU" \
+  "Authorization: Bearer <generated-token>" \
   http://localhost:7070/api/status
 ```
 
-### Re-initialize a local database
+## Re-initialize a local database
 
-To manage **development** database, you need to install
-the [SQLx's command-line utility](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli):
+To manage the **development** database, install
+[SQLx's command-line utility](https://github.com/launchbadge/sqlx/tree/main/sqlx-cli):
 
 ```shell
 cargo install --force sqlx-cli
 
 # Drops, creates, and migrates the database referenced
-# in the `DATABASE_URL` from the `.env` file.
+# in the DATABASE_URL from the .env file.
 sqlx database drop
 sqlx database create
 sqlx migrate run
 ```
 
-### Docker
+## Docker
 
 Build images with the following commands:
 
@@ -183,6 +262,46 @@ docker build --platform linux/arm64 --tag secutils-docs:latest -f Dockerfile.doc
 # Cross-compile to ARM64 musl architecture
 docker build --platform linux/arm64 --tag secutils-api:latest -f Dockerfile.aarch64-unknown-linux-musl .
 ```
+
+## Available Make targets
+
+| Command                  | Description                                                           |
+|--------------------------|-----------------------------------------------------------------------|
+| `make dev-up`            | Start dev infrastructure (`BUILD=1` to rebuild images)                |
+| `make dev-down`          | Stop dev infrastructure and remove volumes                            |
+| `make dev-logs`          | Tail logs from dev infrastructure                                     |
+| `make api`               | Run the Secutils API (`cargo run`)                                    |
+| `make webui`             | Run the Web UI dev server                                             |
+| `make docs`              | Run the documentation dev server                                      |
+| `make dev-debug-scraper` | Start infra with web scraper routed to host (for headed browser)      |
+| `make scraper-setup`     | Install web scraper npm dependencies (run once)                       |
+| `make scraper`           | Run web scraper on host with visible browser (uses Chrome by default) |
+| `make e2e-up`            | Start the full e2e stack (`BUILD=1` to rebuild images)                |
+| `make e2e-down`          | Stop the e2e stack and remove volumes                                 |
+| `make e2e-test`          | Run Playwright e2e tests (`ARGS="--ui"` for interactive mode)         |
+| `make e2e-report`        | Open the Playwright HTML report                                       |
+| `make db-reset`          | Drop, create, and migrate the dev database                            |
+| `make clean`             | Remove build artifacts                                                |
+| `make help`              | Show all available targets                                            |
+
+### Debugging the web scraper with a visible browser
+
+To see Chromium while page trackers run, use the headed scraper mode instead of the
+Docker-based one:
+
+```shell
+make scraper-setup         # once: install npm dependencies
+make dev-debug-scraper     # start infra (scraper routed to host)
+make scraper               # run web scraper with visible Chrome
+```
+
+By default `make scraper` uses Google Chrome on macOS. Override with:
+
+```shell
+make scraper CHROME_PATH="/path/to/chromium"
+```
+
+To switch back to the normal all-Docker setup: `make dev-down && make dev-up`.
 
 ## Shoutouts
 

@@ -1,0 +1,69 @@
+include:
+  - docker-compose.yml
+
+services:
+  # Override Kratos services to use e2e config (internal Docker networking).
+  kratos_migrate:
+    volumes:
+      - type: bind
+        source: ./kratos-e2e.toml
+        target: /etc/config/kratos/kratos.toml
+    command: -c /etc/config/kratos/kratos.toml migrate sql up -e --yes
+
+  kratos:
+    environment:
+      - SELFSERVICE_FLOWS_REGISTRATION_AFTER_PASSWORD_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE=Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3Nzg4MTM4MjAsInN1YiI6IkBrcmF0b3MifQ.eT39Ih5JnwL5n-yrZFNQ644wPpQnRitqk1c2ekZuksc
+      - SELFSERVICE_FLOWS_REGISTRATION_AFTER_WEBAUTHN_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE=Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3Nzg4MTM4MjAsInN1YiI6IkBrcmF0b3MifQ.eT39Ih5JnwL5n-yrZFNQ644wPpQnRitqk1c2ekZuksc
+      - COURIER_HTTP_REQUEST_CONFIG_AUTH_CONFIG_VALUE=Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3Nzg4MTM4MjAsInN1YiI6IkBrcmF0b3MifQ.eT39Ih5JnwL5n-yrZFNQ644wPpQnRitqk1c2ekZuksc
+    volumes:
+      - type: bind
+        source: ./kratos-e2e.toml
+        target: /etc/config/kratos/kratos.toml
+      - type: bind
+        source: ./user_identity.schema.json
+        target: /etc/config/kratos/user_identity.schema.json
+    command: serve -c /etc/config/kratos/kratos.toml --dev --watch-courier --sqa-opt-out
+
+  secutils_api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    ports:
+      - "7070:7070"
+    environment:
+      - SECUTILS_CONFIG=/etc/config/secutils/secutils.toml
+      - SECUTILS_SECURITY__JWT_SECRET=65b033522af6769e89ee9017e1caf0a4
+      - SECUTILS_SMTP__ADDRESS=localhost
+      - SECUTILS_SMTP__USERNAME=e2e@secutils.dev
+      - SECUTILS_SMTP__PASSWORD=e2e
+      - SECUTILS_SMTP__CATCH_ALL__RECIPIENT=e2e@secutils.dev
+    volumes:
+      - type: bind
+        source: ./secutils-e2e.toml
+        target: /etc/config/secutils/secutils.toml
+    depends_on:
+      secutils_db:
+        condition: service_healthy
+      kratos:
+        condition: service_started
+      retrack:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - net
+
+  secutils_webui:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.webui
+    ports:
+      - "7171:8080"
+    volumes:
+      - type: bind
+        source: ./nginx-e2e.conf
+        target: /etc/nginx/conf.d/default.conf
+    depends_on:
+      - secutils_api
+    restart: unless-stopped
+    networks:
+      - net
