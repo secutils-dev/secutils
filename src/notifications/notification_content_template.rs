@@ -23,6 +23,7 @@ pub enum NotificationContentTemplate {
         code: String,
     },
     PageTrackerChanges {
+        tracker_id: Uuid,
         tracker_name: String,
         content: Result<String, String>,
     },
@@ -42,9 +43,13 @@ impl NotificationContentTemplate {
                 account_recovery::compile_to_email(api, code).await
             }
             NotificationContentTemplate::PageTrackerChanges {
+                tracker_id,
                 tracker_name,
                 content,
-            } => page_tracker_changes::compile_to_email(api, tracker_name, content).await,
+            } => {
+                page_tracker_changes::compile_to_email(api, *tracker_id, tracker_name, content)
+                    .await
+            }
         }
     }
 }
@@ -173,6 +178,7 @@ mod tests {
         let api = mock_api(pool).await?;
 
         let mut template = NotificationContentTemplate::PageTrackerChanges {
+            tracker_id: uuid!("00000000-0000-0000-0000-000000000001"),
             tracker_name: "tracker".to_string(),
             content: Ok("content".to_string()),
         }
@@ -190,9 +196,9 @@ mod tests {
         assert_debug_snapshot!(template, @r###"
         EmailNotificationContent {
             subject: "[Secutils.dev] Change detected: \"tracker\"",
-            text: "\"tracker\" tracker detected changes. Visit https://secutils.dev/ws/web_scraping__page to learn more.",
+            text: "\"tracker\" tracker detected changes. Visit https://secutils.dev/ws/web_scraping__page?q=00000000-0000-0000-0000-000000000001 to learn more.",
             html: Some(
-                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" tracker detected changes</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n    .numeric-code {\n      display: block;\n      width: 100px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" tracker detected changes</h1>\n  <p>Current content: content</p>\n  <p>To learn more, visit the <b>Page trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"https://secutils.dev/ws/web_scraping__page\">Web Scraping → Page trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>https://secutils.dev/ws/web_scraping__page</p>\n  <a href=\"https://secutils.dev/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
+                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" tracker detected changes</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n    .numeric-code {\n      display: block;\n      width: 100px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" tracker detected changes</h1>\n  <p>Current content: content</p>\n  <p>To learn more, visit the <b>Page trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"https://secutils.dev/ws/web_scraping__page?q&#x3D;00000000-0000-0000-0000-000000000001\">Web Scraping → Page trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>https://secutils.dev/ws/web_scraping__page?q&#x3D;00000000-0000-0000-0000-000000000001</p>\n  <a href=\"https://secutils.dev/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
             ),
             attachments: Some(
                 [
@@ -228,6 +234,7 @@ mod tests {
         let api = mock_api(pool).await?;
 
         let mut template = NotificationContentTemplate::PageTrackerChanges {
+            tracker_id: uuid!("00000000-0000-0000-0000-000000000001"),
             tracker_name: "tracker".to_string(),
             content: Err("Something went wrong".to_string()),
         }
@@ -245,9 +252,9 @@ mod tests {
         assert_debug_snapshot!(template, @r###"
         EmailNotificationContent {
             subject: "[Secutils.dev] Check failed: \"tracker\"",
-            text: "\"tracker\" tracker failed to check for changes due to the following error: Something went wrong. Visit https://secutils.dev/ws/web_scraping__page to learn more.",
+            text: "\"tracker\" tracker failed to check for changes due to the following error: Something went wrong. Visit https://secutils.dev/ws/web_scraping__page?q=00000000-0000-0000-0000-000000000001 to learn more.",
             html: Some(
-                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" tracker failed to check for changes</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n    .numeric-code {\n      display: block;\n      width: 100px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" tracker failed to check for changes</h1>\n  <p>There was an error while checking for changes: <b>Something went wrong</b>.</p>\n  <p>To check the tracker configuration and re-try, visit the <b>Page trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"https://secutils.dev/ws/web_scraping__page\">Web Scraping → Page trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>https://secutils.dev/ws/web_scraping__page</p>\n  <a href=\"https://secutils.dev/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
+                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" tracker failed to check for changes</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n    .numeric-code {\n      display: block;\n      width: 100px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" tracker failed to check for changes</h1>\n  <p>There was an error while checking for changes: <b>Something went wrong</b>.</p>\n  <p>To check the tracker configuration and re-try, visit the <b>Page trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"https://secutils.dev/ws/web_scraping__page?q&#x3D;00000000-0000-0000-0000-000000000001\">Web Scraping → Page trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>https://secutils.dev/ws/web_scraping__page?q&#x3D;00000000-0000-0000-0000-000000000001</p>\n  <a href=\"https://secutils.dev/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
             ),
             attachments: Some(
                 [

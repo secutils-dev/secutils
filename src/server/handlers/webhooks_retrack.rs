@@ -138,6 +138,7 @@ pub async fn webhooks_retrack(
             };
 
             NotificationContent::Template(NotificationContentTemplate::PageTrackerChanges {
+                tracker_id: tracker.id,
                 tracker_name: tracker.name,
                 content: match &body_params.result {
                     WebhookActionPayloadResult::Success(revision) => Ok(revision.to_string()),
@@ -763,6 +764,7 @@ mod tests {
                 destination: NotificationDestination::User(mock_user.id),
                 content: NotificationContent::Template(
                     NotificationContentTemplate::PageTrackerChanges {
+                        tracker_id: tracker.id,
                         tracker_name: tracker.name.clone(),
                         content: Ok(json!({ "one": 1 }).to_string())
                     }
@@ -858,6 +860,7 @@ mod tests {
                 destination: NotificationDestination::User(mock_user.id),
                 content: NotificationContent::Template(
                     NotificationContentTemplate::PageTrackerChanges {
+                        tracker_id: tracker.id,
                         tracker_name: tracker.name.clone(),
                         content: Err("some error".to_string())
                     }

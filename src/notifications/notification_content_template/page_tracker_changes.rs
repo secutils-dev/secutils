@@ -7,14 +7,19 @@ use crate::{
     },
 };
 use serde_json::json;
+use uuid::Uuid;
 
 /// Compiles page tracker changes template as an email.
 pub async fn compile_to_email<DR: DnsResolver, ET: EmailTransport>(
     api: &Api<DR, ET>,
+    tracker_id: Uuid,
     tracker_name: &str,
     content: &Result<String, String>,
 ) -> anyhow::Result<EmailNotificationContent> {
-    let back_link = format!("{}ws/web_scraping__page", api.config.public_url);
+    let back_link = format!(
+        "{}ws/web_scraping__page?q={}",
+        api.config.public_url, tracker_id
+    );
     let (subject, text, html) = match content {
         Ok(content) => (
             format!("[Secutils.dev] Change detected: \"{tracker_name}\""),
