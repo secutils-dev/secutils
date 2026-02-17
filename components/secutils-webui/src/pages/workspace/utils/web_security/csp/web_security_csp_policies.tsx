@@ -307,6 +307,13 @@ export default function WebSecurityContentSecurityPolicies() {
               width: '105px',
               actions: [
                 {
+                  name: 'Copy ID',
+                  description: 'Copy ID to clipboard',
+                  icon: 'tokenKey',
+                  type: 'icon',
+                  onClick: ({ id }: ContentSecurityPolicy) => void navigator.clipboard.writeText(id),
+                },
+                {
                   name: 'Copy',
                   description: 'Copy policy',
                   icon: 'copyClipboard',

@@ -282,6 +282,13 @@ export default function PageTrackers() {
               width: '105px',
               actions: [
                 {
+                  name: 'Copy ID',
+                  description: 'Copy ID to clipboard',
+                  icon: 'tokenKey',
+                  type: 'icon',
+                  onClick: ({ id }: PageTracker) => void navigator.clipboard.writeText(id),
+                },
+                {
                   name: 'Edit',
                   description: 'Edit tracker',
                   icon: 'pencil',

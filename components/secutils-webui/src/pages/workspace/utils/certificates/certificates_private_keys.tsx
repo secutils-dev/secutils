@@ -321,6 +321,13 @@ export default function CertificatesPrivateKeys() {
               width: '105px',
               actions: [
                 {
+                  name: 'Copy ID',
+                  description: 'Copy ID to clipboard',
+                  icon: 'tokenKey',
+                  type: 'icon',
+                  onClick: ({ id }: PrivateKey) => void navigator.clipboard.writeText(id),
+                },
+                {
                   name: 'Export',
                   description: 'Export private key',
                   icon: 'download',

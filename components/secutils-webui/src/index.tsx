@@ -64,6 +64,7 @@ import { icon as EuiIconStarFill } from '@elastic/eui/es/components/icon/assets/
 import { icon as EuiIconTable } from '@elastic/eui/es/components/icon/assets/table';
 import { icon as EuiIconTableDensityHigh } from '@elastic/eui/es/components/icon/assets/table_density_high';
 import { icon as EuiIconTableDensityLow } from '@elastic/eui/es/components/icon/assets/table_density_low';
+import { icon as EuiIconTokenKey } from '@elastic/eui/es/components/icon/assets/token_key';
 import { icon as EuiIconTokenNumber } from '@elastic/eui/es/components/icon/assets/token_number';
 import { icon as EuiIconTokenString } from '@elastic/eui/es/components/icon/assets/token_string';
 import { icon as EuiIconTrash } from '@elastic/eui/es/components/icon/assets/trash';
@@ -154,6 +155,7 @@ appendIconComponentCache({
   tableDensityExpanded: EuiIconTableDensityLow,
   tableDensityNormal: EuiIconTable,
   timeRefresh: EuiIconRefreshTime,
+  tokenKey: EuiIconTokenKey,
   tokenNumber: EuiIconTokenNumber,
   tokenString: EuiIconTokenString,
   training: EuiIconPresentation,

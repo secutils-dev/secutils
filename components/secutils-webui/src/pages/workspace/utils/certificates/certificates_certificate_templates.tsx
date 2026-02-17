@@ -329,6 +329,13 @@ export default function CertificatesCertificateTemplates() {
               width: '105px',
               actions: [
                 {
+                  name: 'Copy ID',
+                  description: 'Copy ID to clipboard',
+                  icon: 'tokenKey',
+                  type: 'icon',
+                  onClick: ({ id }: CertificateTemplate) => void navigator.clipboard.writeText(id),
+                },
+                {
                   name: 'Generate',
                   description: 'Generate',
                   icon: 'download',

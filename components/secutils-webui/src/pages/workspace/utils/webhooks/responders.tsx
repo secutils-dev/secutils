@@ -366,6 +366,13 @@ export default function Responders() {
               width: '105px',
               actions: [
                 {
+                  name: 'Copy ID',
+                  description: 'Copy ID to clipboard',
+                  icon: 'tokenKey',
+                  type: 'icon',
+                  onClick: ({ id }: Responder) => void navigator.clipboard.writeText(id),
+                },
+                {
                   name: 'Edit',
                   description: 'Edit responder',
                   icon: 'pencil',
