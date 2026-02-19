@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM --platform=$BUILDPLATFORM node:22-alpine3.22 AS builder
+FROM --platform=$BUILDPLATFORM node:22-alpine3.23 AS builder
 ARG SECUTILS_ENV="prod"
 ENV SECUTILS_ENV=${SECUTILS_ENV}
 WORKDIR /app
@@ -17,6 +17,6 @@ COPY ["components/secutils-docs/docs", "./docs"]
 COPY ["components/secutils-docs/blog", "./blog"]
 RUN set -x && npm run build
 
-FROM nginxinc/nginx-unprivileged:alpine3.22-slim
+FROM nginxinc/nginx-unprivileged:alpine3.23-slim
 COPY --from=builder ["/app/build/", "/usr/share/nginx/html/docs"]
 COPY ["components/secutils-docs/config/nginx.conf", "/etc/nginx/conf.d/default.conf"]
