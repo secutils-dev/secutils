@@ -6,30 +6,20 @@ on:
     paths-ignore:
       - '*.md'
       - '.husky/**'
-      - 'Dockerfile'
-      - 'Dockerfile.aarch64-unknown-linux-musl'
-      - 'Dockerfile.dockerignore'
-      - 'Dockerfile.docs'
-      - 'Dockerfile.docs.dockerignore'
-      - 'Dockerfile.webui'
-      - 'Dockerfile.webui.dockerignore'
       - 'LICENSE'
-      - 'dev/**'
 
 env:
   CARGO_TERM_COLOR: always
-  DATABASE_URL: postgres://postgres@localhost:5432/secutils
 
 jobs:
   ci-api:
     name: Build API (Linux)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        rust: [ stable ]
+    env:
+      DATABASE_URL: postgres://postgres@localhost:5432/secutils
     services:
       postgres:
-        image: postgres:latest
+        image: postgres:16
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
         ports:
@@ -43,10 +33,10 @@ jobs:
         uses: arduino/setup-protoc@v3
 
       # Always install nightly toolchain for `Rustfmt`.
-      - name: Install toolchain ${{ matrix.rust }}
+      - name: Install toolchains
         run: |
-          rustup toolchain install ${{ matrix.rust }} nightly
-          rustup override set ${{ matrix.rust }}
+          rustup toolchain install stable nightly
+          rustup override set stable
           rustup component add clippy
           rustup component add --toolchain nightly rustfmt
 
@@ -58,16 +48,14 @@ jobs:
 
       - name: Check database schema
         run: |
-          cargo install --locked --force sqlx-cli
+          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+          cargo binstall --no-confirm sqlx-cli
           cargo sqlx database create
           cargo sqlx migrate run
           cargo sqlx prepare --check
 
       - name: Test (default features)
         run: cargo test
-
-      - name: Build (default features)
-        run: cargo build --workspace --release
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
@@ -118,11 +106,19 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version-file: '.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: e2e/package-lock.json
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
           driver-opts: network=host
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('e2e/package-lock.json') }}
 
       - name: Install Playwright
         working-directory: e2e
@@ -133,27 +129,10 @@ jobs:
       - name: Start services
         run: docker compose -f dev/docker/docker-compose.ci-cache.yml up -d --build --wait
 
-      - name: Wait for services to be ready
+      - name: Verify services are ready
         run: |
-          echo "Waiting for Secutils API..."
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:7070/api/status > /dev/null 2>&1; then
-              echo "API is ready"
-              break
-            fi
-            echo "Attempt $i/60..."
-            sleep 5
-          done
-
-          echo "Waiting for WebUI..."
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:7171/ > /dev/null 2>&1; then
-              echo "WebUI is ready"
-              break
-            fi
-            echo "Attempt $i/30..."
-            sleep 5
-          done
+          curl -sf --retry 12 --retry-delay 5 --retry-all-errors http://localhost:7070/api/status
+          curl -sf --retry 6 --retry-delay 5 --retry-all-errors http://localhost:7171/
 
       - name: Run Playwright tests
         working-directory: e2e
