@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 test.describe('Secutils.dev Application', () => {
   test('API status endpoint is reachable', async ({ request }) => {
@@ -19,8 +19,8 @@ test.describe('Secutils.dev Application', () => {
     await page.goto('/');
 
     // The app should show a login/signup form or redirect to Kratos.
-    await expect(
-      page.locator('input[name="password"], input[name="identifier"], form'),
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('input[name="password"], input[name="identifier"], form')).toBeVisible({
+      timeout: 15000,
+    });
   });
 });
