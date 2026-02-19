@@ -112,45 +112,23 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Retrack API image
-        uses: docker/build-push-action@v6
+      - name: Build all Docker images
+        uses: docker/bake-action@v6
         with:
-          context: components/retrack
-          file: components/retrack/Dockerfile
+          files: |
+            dev/docker/docker-compose.yml
+            dev/docker/docker-compose.e2e.yml
+            dev/docker/docker-compose.ci-cache.yml
           load: true
-          tags: ci-retrack
-          cache-from: type=gha,scope=retrack
-          cache-to: type=gha,mode=max,scope=retrack
-
-      - name: Build Retrack Web Scraper image
-        uses: docker/build-push-action@v6
-        with:
-          context: components/retrack
-          file: components/retrack/Dockerfile.web-scraper
-          load: true
-          tags: ci-retrack-web-scraper
-          cache-from: type=gha,scope=retrack-web-scraper
-          cache-to: type=gha,mode=max,scope=retrack-web-scraper
-
-      - name: Build Secutils API image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          load: true
-          tags: ci-secutils-api
-          cache-from: type=gha,scope=secutils-api
-          cache-to: type=gha,mode=max,scope=secutils-api
-
-      - name: Build Secutils WebUI image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.webui
-          load: true
-          tags: ci-secutils-webui
-          cache-from: type=gha,scope=secutils-webui
-          cache-to: type=gha,mode=max,scope=secutils-webui
+          set: |
+            retrack.cache-from=type=gha,scope=retrack
+            retrack.cache-to=type=gha,mode=max,scope=retrack
+            retrack_web_scraper.cache-from=type=gha,scope=retrack-web-scraper
+            retrack_web_scraper.cache-to=type=gha,mode=max,scope=retrack-web-scraper
+            secutils_api.cache-from=type=gha,scope=secutils-api
+            secutils_api.cache-to=type=gha,mode=max,scope=secutils-api
+            secutils_webui.cache-from=type=gha,scope=secutils-webui
+            secutils_webui.cache-to=type=gha,mode=max,scope=secutils-webui
 
       - name: Cache Playwright browsers
         uses: actions/cache@v5
