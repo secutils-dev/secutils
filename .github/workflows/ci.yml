@@ -112,7 +112,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
-          driver-opts: network=host
+          driver-opts: |
+            network=host
+            env.ACTIONS_CACHE_URL
+            env.ACTIONS_RUNTIME_TOKEN
 
       - name: Cache Playwright browsers
         uses: actions/cache@v5
