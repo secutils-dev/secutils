@@ -1,6 +1,3 @@
-include:
-  - docker-compose.yml
-
 services:
   # Override Kratos services to use e2e config (internal Docker networking).
   kratos_migrate:
