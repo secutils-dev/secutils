@@ -131,11 +131,7 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Start services
-        run: >
-          docker compose
-          -f dev/docker/docker-compose.e2e.yml
-          -f dev/docker/docker-compose.ci-cache.yml
-          up -d --build --wait
+        run: docker compose -f dev/docker/docker-compose.ci-cache.yml up -d --build --wait
 
       - name: Wait for services to be ready
         run: |
@@ -175,7 +171,7 @@ jobs:
 
       - name: Collect Docker logs on failure
         if: failure()
-        run: docker compose -f dev/docker/docker-compose.e2e.yml logs > docker-logs.txt 2>&1
+        run: docker compose -f dev/docker/docker-compose.ci-cache.yml logs > docker-logs.txt 2>&1
 
       - name: Upload Docker logs
         uses: actions/upload-artifact@v4
@@ -187,4 +183,4 @@ jobs:
 
       - name: Stop services
         if: always()
-        run: docker compose -f dev/docker/docker-compose.e2e.yml down --volumes
+        run: docker compose -f dev/docker/docker-compose.ci-cache.yml down --volumes

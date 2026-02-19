@@ -1,3 +1,6 @@
+include:
+  - docker-compose.e2e.yml
+
 services:
   retrack:
     build:
