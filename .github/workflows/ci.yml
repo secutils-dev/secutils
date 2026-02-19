@@ -111,11 +111,46 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Build Retrack API image
+        uses: docker/build-push-action@v6
         with:
-          driver-opts: |
-            network=host
-            env.ACTIONS_CACHE_URL
-            env.ACTIONS_RUNTIME_TOKEN
+          context: components/retrack
+          file: components/retrack/Dockerfile
+          load: true
+          tags: ci-retrack
+          cache-from: type=gha,scope=retrack
+          cache-to: type=gha,mode=max,scope=retrack
+
+      - name: Build Retrack Web Scraper image
+        uses: docker/build-push-action@v6
+        with:
+          context: components/retrack
+          file: components/retrack/Dockerfile.web-scraper
+          load: true
+          tags: ci-retrack-web-scraper
+          cache-from: type=gha,scope=retrack-web-scraper
+          cache-to: type=gha,mode=max,scope=retrack-web-scraper
+
+      - name: Build Secutils API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          tags: ci-secutils-api
+          cache-from: type=gha,scope=secutils-api
+          cache-to: type=gha,mode=max,scope=secutils-api
+
+      - name: Build Secutils WebUI image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.webui
+          load: true
+          tags: ci-secutils-webui
+          cache-from: type=gha,scope=secutils-webui
+          cache-to: type=gha,mode=max,scope=secutils-webui
 
       - name: Cache Playwright browsers
         uses: actions/cache@v5
@@ -135,7 +170,7 @@ jobs:
           -f dev/docker/docker-compose.yml
           -f dev/docker/docker-compose.e2e.yml
           -f dev/docker/docker-compose.ci-cache.yml
-          up -d --build --wait
+          up -d --wait
 
       - name: Verify services are ready
         run: |
