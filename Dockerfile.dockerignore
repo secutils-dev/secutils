@@ -7,11 +7,11 @@
 .DS_Store
 
 # Build artifacts and caches
-target
-node_modules
-dist
-build
-.parcel-cache
+**/target
+**/node_modules
+**/dist
+**/build
+**/.parcel-cache
 
 # Files not needed in the API image
 *.md
@@ -20,12 +20,13 @@ build
 .nvmrc
 Dockerfile*
 LICENSE
+Makefile
 rustfmt.toml
 secutils.toml
 *.json
 
 # Directories not needed in the API image
-dev
+/dev
 /e2e
 /components/secutils-docs
 /components/secutils-webui

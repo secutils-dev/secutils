@@ -7,11 +7,11 @@
 .DS_Store
 
 # Build artifacts and caches
-target
-node_modules
-dist
-build
-.parcel-cache
+**/target
+**/node_modules
+**/dist
+**/build
+**/.parcel-cache
 
 # Files not needed in the WebUI image
 *.md
@@ -25,7 +25,7 @@ rustfmt.toml
 secutils.toml
 
 # Directories not needed in the WebUI image
-dev
+/dev
 /src
 /assets
 /migrations
