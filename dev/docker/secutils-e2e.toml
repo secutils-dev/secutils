@@ -21,7 +21,7 @@ timeout = 60000
 operators = ["@kratos", "@secutils", "@retrack"]
 
 [security.preconfigured_users]
-"test@secutils.dev" = { handle = "test", tier = "professional" }
+"e2e@secutils.dev" = { handle = "u", tier = "ultimate" }
 
 [scheduler]
 notifications_send = "0/15 * * * * *"

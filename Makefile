@@ -3,8 +3,10 @@ COMPOSE_DEBUG_SCRAPER	:= dev/docker/docker-compose.debug-scraper.yml
 COMPOSE_E2E          	:= dev/docker/docker-compose.e2e.yml
 ENV_FILE             	:= .env
 CHROME_PATH          	?= /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+RUNS                 	?= 10
+E2E_LOOP_DIR         	:= /tmp/e2e-loop-results
 
-.PHONY: dev-up dev-down api webui docs e2e-up e2e-down e2e-test clean
+.PHONY: dev-up dev-down api webui docs e2e-up e2e-down e2e-test e2e-test-loop docs-screenshots docs-screenshots-loop clean
 
 ## ---------- Development ----------
 
@@ -51,11 +53,48 @@ e2e-down: ## Stop the e2e stack and remove volumes.
 e2e-test: ## Run Playwright e2e tests (use ARGS for extra flags, e.g. make e2e-test ARGS="--ui").
 	cd e2e && npx playwright test $(ARGS)
 
+e2e-test-loop: ## Run e2e tests repeatedly (RUNS=N default 10, ARGS=...). Logs + failure screenshots → /tmp/e2e-loop-results/.
+	@rm -rf $(E2E_LOOP_DIR) && mkdir -p $(E2E_LOOP_DIR); \
+	pass=0; fail=0; \
+	for i in $$(seq 1 $(RUNS)); do \
+		echo "--- Run $$i/$(RUNS) ---"; \
+		rm -rf e2e/test-results; \
+		if (cd e2e && npx playwright test $(ARGS)) > $(E2E_LOOP_DIR)/run-$$i.log 2>&1; then \
+			pass=$$((pass+1)); echo "PASS"; \
+		else \
+			fail=$$((fail+1)); echo "FAIL  →  $(E2E_LOOP_DIR)/run-$$i.log"; \
+			[ -d e2e/test-results ] && cp -r e2e/test-results $(E2E_LOOP_DIR)/artifacts-run-$$i || true; \
+		fi; \
+	done; \
+	echo "=== Results: $$pass/$(RUNS) passed, $$fail/$(RUNS) failed ==="; \
+	echo "Logs and artifacts: $(E2E_LOOP_DIR)"
+
 e2e-report: ## Open the Playwright HTML report.
 	cd e2e && npx playwright show-report
 
 e2e-logs: ## Tail logs from e2e stack.
 	docker compose -f $(COMPOSE_DEV) -f $(COMPOSE_E2E) logs -f
+
+## ---------- Documentation ----------
+
+docs-screenshots: ## Regenerate doc screenshots (requires e2e stack running). Use ARGS for extra flags.
+	cd e2e && npx playwright test --config playwright.docs.config.ts $(ARGS)
+
+docs-screenshots-loop: ## Run docs screenshot tests repeatedly (RUNS=N default 10, ARGS=...). Logs + failure screenshots → /tmp/e2e-loop-results/.
+	@rm -rf $(E2E_LOOP_DIR) && mkdir -p $(E2E_LOOP_DIR); \
+	pass=0; fail=0; \
+	for i in $$(seq 1 $(RUNS)); do \
+		echo "--- Run $$i/$(RUNS) ---"; \
+		rm -rf e2e/test-results; \
+		if (cd e2e && npx playwright test --config playwright.docs.config.ts $(ARGS)) > $(E2E_LOOP_DIR)/run-$$i.log 2>&1; then \
+			pass=$$((pass+1)); echo "PASS"; \
+		else \
+			fail=$$((fail+1)); echo "FAIL  →  $(E2E_LOOP_DIR)/run-$$i.log"; \
+			[ -d e2e/test-results ] && cp -r e2e/test-results $(E2E_LOOP_DIR)/artifacts-run-$$i || true; \
+		fi; \
+	done; \
+	echo "=== Results: $$pass/$(RUNS) passed, $$fail/$(RUNS) failed ==="; \
+	echo "Logs and artifacts: $(E2E_LOOP_DIR)"
 
 ## ---------- Database ----------
 

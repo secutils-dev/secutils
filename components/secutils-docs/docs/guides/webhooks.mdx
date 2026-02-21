@@ -1,0 +1,328 @@
+---
+sidebar_position: 1
+sidebar_label: Webhooks
+title: Webhooks
+description: Learn how to create and use webhooks in Secutils.dev.
+---
+
+import Steps from '@site/src/components/Steps';
+import CodeBlock from '@theme/CodeBlock';
+
+# What is a webhook?
+
+A **webhook** is a mechanism that enables an application to receive automatic notifications or data updates by sending a request to a specified URL when a particular event or trigger occurs.
+
+There are various types of webhooks that serve different purposes. One such type is the responder, which is a special webhook that responds to requests with a certain predefined response. A responder is a handy tool when you need to simulate an HTTP endpoint that's not yet implemented or even create a quick ["honeypot"](https://en.wikipedia.org/wiki/Honeypot_(computing)) endpoint. Responders can also serve as a quick and easy way to test HTML, JavaScript, and CSS code.
+
+On this page, you can find several guides on how to create different types of responders.
+
+:::tip NOTE
+
+Each user on  [**secutils.dev**](https://secutils.dev) is assigned a randomly generated dedicated subdomain. This subdomain can host user-specific responders at any path, including the root path. For instance, if your dedicated subdomain is `abcdefg`, creating a responder at `/my-responder` would make it accessible via `https://abcdefg.webhooks.secutils.dev/my-responder`.
+
+:::
+
+## Return a static HTML page
+
+In this guide you'll create a simple responder that returns a static HTML page:
+
+<Steps steps={[
+    {
+        img: '../img/docs/guides/webhooks/html_step1_empty.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/webhooks__responders"><b>Webhooks → Responders</b></a> and click <strong>Create responder</strong>.</>,
+        alt: 'Navigate to Webhooks → Responders and click Create responder.',
+    },
+    {
+        img: '../img/docs/guides/webhooks/html_step2_form.png',
+        caption: <>Fill in the responder form and click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>HTML Responder</CodeBlock></td></tr>
+                <tr><td><b>Path</b></td><td><CodeBlock>/html-responder</CodeBlock></td></tr>
+                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: text/html; charset=utf-8</CodeBlock></td></tr>
+                <tr><td><b>Body</b></td><td><CodeBlock language="html">{`<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>My HTML responder</title>
+</head>
+<body>Hello World</body>
+</html>`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Fill in the responder name, path, headers, and body.',
+    },
+    {
+        img: '../img/docs/guides/webhooks/html_step3_created.png',
+        caption: 'The new HTML responder appears in the grid with its unique URL.',
+    },
+    {
+        img: '../img/docs/guides/webhooks/html_step4_result.png',
+        caption: <>Click the responder URL to open it in a new tab and verify it renders <code>Hello World</code>.</>,
+        alt: 'Open the responder URL and verify the HTML page renders.',
+    },
+]} />
+
+## Emulate a JSON API endpoint
+
+In this guide you'll create a simple responder that returns a JSON value:
+
+<Steps steps={[
+    {
+        img: '../img/docs/guides/webhooks/json_step1_empty.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/webhooks__responders"><b>Webhooks → Responders</b></a> and click <strong>Create responder</strong>.</>,
+        alt: 'Navigate to Webhooks → Responders and click Create responder.',
+    },
+    {
+        img: '../img/docs/guides/webhooks/json_step2_form.png',
+        caption: <>Fill in the responder form and click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>JSON Responder</CodeBlock></td></tr>
+                <tr><td><b>Path</b></td><td><CodeBlock>/json-responder</CodeBlock></td></tr>
+                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: application/json</CodeBlock></td></tr>
+                <tr><td><b>Body</b></td><td><CodeBlock language="json">{`{
+    "message": "Hello World"
+}`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Configure the JSON responder with name, path, headers, and a JSON body.',
+    },
+    {
+        img: '../img/docs/guides/webhooks/json_step3_created.png',
+        caption: 'The JSON responder appears in the grid with its unique URL.',
+    },
+]} />
+
+Use an HTTP client like **cURL** to verify the responder returns the expected JSON value:
+
+```bash title="Query the JSON responder"
+$ curl -s https://<subdomain>.webhooks.secutils.dev/json-responder | jq .
+{
+  "message": "Hello World"
+}
+```
+
+## Use the honeypot endpoint to inspect incoming requests
+
+In this guide, you'll create a responder that returns an HTML page with custom <b>Iframely</b> meta-tags, providing a rich preview in Notion. Additionally, the responder will track the five most recent incoming requests, allowing you to see exactly how Notion communicates with the responder's endpoint:
+
+<Steps steps={[
+    {
+        img: '../img/docs/guides/webhooks/tracking_step1_empty.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/webhooks__responders"><b>Webhooks → Responders</b></a> and click <strong>Create responder</strong>.</>,
+        alt: 'Navigate to Webhooks → Responders and click Create responder.',
+    },
+    {
+        img: '../img/docs/guides/webhooks/tracking_step2_form.png',
+        caption: <>Enable <b>Advanced mode</b>, set <b>Tracking</b> to 5, and fill in the rest of the form. Click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>Notion Honeypot</CodeBlock></td></tr>
+                <tr><td><b>Path</b></td><td><CodeBlock>/notion-honeypot</CodeBlock></td></tr>
+                <tr><td><b>Tracking</b></td><td><CodeBlock>5</CodeBlock></td></tr>
+                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: text/html; charset=utf-8</CodeBlock></td></tr>
+                <tr><td><b>Body</b></td><td><CodeBlock language="html">{`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta property="iframely:image"
+        content="https://raw.githubusercontent.com/secutils-dev/secutils/main/assets/logo/secutils-logo-initials.png" />
+  <meta property="iframely:description"
+        content="Inspect incoming HTTP request headers and body with the honeypot endpoint" />
+  <title>My HTML responder</title>
+</head>
+<body>Hello World</body>
+</html>`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Configure the honeypot responder with tracking enabled and rich meta-tags in the body.',
+    },
+    {
+        img: '../img/docs/guides/webhooks/tracking_step3_created.png',
+        caption: 'The honeypot responder appears in the grid with its unique URL.',
+    },
+    {
+        img: '../img/docs/guides/webhooks/tracking_step4_request.png',
+        caption: <>Copy its URL and create a bookmark in Notion to test the rich preview. Expand the responder's row to view tracked incoming requests.</>,
+        alt: 'Expand the responder row to view tracked incoming requests.',
+    },
+]} />
+
+## Generate a dynamic response
+
+In this guide, you'll build a responder that uses a custom JavaScript script to generate a dynamic response based on the request's query string parameter:
+
+:::info NOTE
+
+The script should be provided in the form of an [Immediately Invoked Function Expression (IIFE)](https://developer.mozilla.org/en-US/docs/Glossary/IIFE). It runs within a restricted version of the [Deno JavaScript runtime](https://deno.com/) for each incoming request, producing an object capable of modifying the default response's status code, headers, or body. Request details are accessible through the global `context` variable. Refer to the [Annex: Responder script examples](/docs/guides/webhooks#annex-responder-script-examples) for a list of script examples, expected return value and properties available in the global `context` variable.
+
+:::
+
+<Steps steps={[
+    {
+        img: '../img/docs/guides/webhooks/dynamic_step1_empty.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/webhooks__responders"><b>Webhooks → Responders</b></a> and click <strong>Create responder</strong>.</>,
+        alt: 'Navigate to Webhooks → Responders and click Create responder.',
+    },
+    {
+        img: '../img/docs/guides/webhooks/dynamic_step2_form.png',
+        caption: <>Enable <b>Advanced mode</b>, set <b>Tracking</b> to 5, and fill in the form with a custom script.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>Dynamic</CodeBlock></td></tr>
+                <tr><td><b>Path</b></td><td><CodeBlock>/dynamic</CodeBlock></td></tr>
+                <tr><td><b>Tracking</b></td><td><CodeBlock>5</CodeBlock></td></tr>
+                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: text/html; charset=utf-8</CodeBlock></td></tr>
+                <tr><td><b>Script</b></td><td><CodeBlock language="javascript">{`(async () => {
+  return {
+    // Encode body as binary data.
+    body: Deno.core.encode(
+      context.query.arg ?? 'Query string does not include \`arg\` parameter'
+    )
+  };
+})();`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Configure the dynamic responder with a custom script that reads the query string.',
+    },
+    {
+        img: '../img/docs/guides/webhooks/dynamic_step3_created.png',
+        caption: 'The dynamic responder appears in the grid with its unique URL.',
+    },
+    {
+        img: '../img/docs/guides/webhooks/dynamic_step4_no_arg.png',
+        caption: <>Click the responder URL to open it in a new tab. Without the <code>arg</code> query parameter the script returns the default message.</>,
+        alt: 'Open the dynamic responder URL without a query parameter.',
+    },
+    {
+        img: '../img/docs/guides/webhooks/dynamic_step5_with_arg.png',
+        caption: <>Append <code>?arg=hello</code> to the URL and reload. The script reads the query parameter and returns the dynamic reply.</>,
+        alt: 'Open the dynamic responder URL with ?arg=hello.',
+    },
+]} />
+
+## Annex: Responder script examples
+
+In this section, you'll discover examples of responder scripts capable of constructing dynamic responses based on incoming request properties. Essentially, each script defines a JavaScript function running within a restricted version of the [Deno JavaScript runtime](https://deno.com/). This function has access to incoming request properties through the global `context` variable. The returned value can override default responder's status code, headers, and body.
+
+The `context` argument has the following interface:
+
+```typescript
+interface Context {
+  // An internet socket address of the client that made the request, if available.
+  clientAddress?: string;
+  // HTTP method of the received request.
+  method: string;
+  // HTTP headers of the received request.
+  headers: Record<string, string>;
+  // HTTP path of the received request.
+  path: string;
+  // Parsed query string of the received request.
+  query: Record<string, string>;
+  // HTTP body of the received request in binary form.
+  body: number[];
+}
+```
+
+The returned value has the following interface:
+
+```typescript
+interface ScriptResult {
+  // HTTP status code to respond with. If not specified, the default status code of responder is used.
+  statusCode?: number;
+  // Optional HTTP headers of the response. If not specified, the default headers of responder are used.
+  headers?: Record<string, string>;
+  // Optional HTTP body of the response. If not specified, the default body of responder is used.
+  body?: Uint8Array;
+}
+```
+
+### Override response properties
+The script overrides responder's response with a custom status code, headers, and body:
+
+```javascript
+(async () => {
+  return {
+    statusCode: 201,
+    headers: {
+      "Content-Type": "application/json"
+    },
+    // Encode body as binary data.
+    body: Deno.core.encode(
+      JSON.stringify({ a: 1, b: 2 })
+    )
+  };
+})();
+```
+
+### Inspect request properties
+This script inspects the incoming request properties and returns them as a JSON value:
+
+```javascript
+(async () => {
+  // Decode request body as JSON.
+  const parsedJsonBody = context.body.length > 0
+    ? JSON.parse(Deno.core.decode(new Uint8Array(context.body)))
+    : {};
+
+  // Override response with a custom HTML body.
+  return {
+    body: Deno.core.encode(`
+      <h2>Request headers</h2>
+      <table>
+        <tr><th>Header</th><th>Value</th></tr>
+        ${Object.entries(context.headers).map(([key, value]) => `
+        <tr>
+          <td>${key}</td>
+          <td>${value}</td>
+        </tr>`
+        ).join('')}
+      </table>
+
+      <h2>Request query</h2>
+      <table>
+        <tr><th>Key</th><th>Value</th></tr>
+        ${Object.entries(context.query ?? {}).map(([key, value]) => `
+        <tr>
+          <td>${key}</td>
+          <td>${value}</td>
+        </tr>`
+        ).join('')}
+      </table>
+
+      <h2>Request body</h2>
+      <pre>${JSON.stringify(parsedJsonBody, null, 2)}</pre>
+    `)
+  };
+})();
+```
+
+### Generate images and other binary content
+
+Responders can return not only JSON, HTML, or plain text, but also binary data, such as images. This script demonstrates how you can generate a simple PNG image on the fly. PNG generation requires quite a bit of code, so for brevity, this guide assumes that you have already downloaded and edit the [`png-generator.js` script](https://secutils-dev.github.io/secutils-sandbox/responder-scripts/png-generator.js) from the [Secutils.dev Sandbox repository](https://github.com/secutils-dev/secutils-sandbox) (you can find the full source code [here](https://github.com/secutils-dev/secutils-sandbox/blob/6fe5bdf0ad8df23ea67a46e6624c8d6975f96f6a/responder-scripts/src/png-generator.ts)). The part you might want to edit is located at the bottom of the script:
+
+```javascript
+(() => {
+  // …[Skipping definition of the `PngImage` class for brevity]…
+
+  // Generate a custom 100x100 PNG image with a white background and red rectangle in the center.
+  const png = new PngImage(100, 100, 10, {
+    r: 255,
+    g: 255,
+    b: 255,
+    a: 1
+  });
+
+  const color = png.createRGBColor({
+    r: 255,
+    g: 0,
+    b: 0,
+    a: 1
+  });
+
+  png.drawRect(25, 25, 75, 75, color);
+
+  return {
+    body: png.getBuffer()
+  };
+})();
+```

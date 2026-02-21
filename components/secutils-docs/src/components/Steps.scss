@@ -1,0 +1,85 @@
+.su-steps {
+  margin: 1.5rem 0;
+}
+
+.su-steps__step {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.su-steps__indicator {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background-color: var(--ifm-color-primary);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.25rem;
+}
+
+.su-steps__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.su-steps__img {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  cursor: zoom-in;
+  transition: box-shadow 0.15s ease;
+
+  &:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  }
+}
+
+.su-steps__caption {
+  font-size: 0.9rem;
+  color: var(--ifm-color-emphasis-700);
+  margin: 0;
+}
+
+// Lightbox using native <dialog>.
+.su-steps__lightbox {
+  border: none;
+  background: transparent;
+  padding: 0;
+  max-width: none;
+  max-height: none;
+  width: 100vw;
+  height: 100vh;
+  cursor: zoom-out;
+
+  // Scoped to [open] so the UA stylesheet's `dialog:not([open]) { display: none }`
+  // isn't overridden by an unconditional display value on the class.
+  &[open] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &::backdrop {
+    background: rgba(0, 0, 0, 0.75);
+  }
+}
+
+.su-steps__lightbox-img {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}

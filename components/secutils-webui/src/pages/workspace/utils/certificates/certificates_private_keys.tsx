@@ -272,7 +272,7 @@ export default function CertificatesPrivateKeys() {
               field: 'name',
               textOnly: true,
               sortable: true,
-              render: (_, privateKey: PrivateKey) => privateKey.name,
+              render: (_, privateKey: PrivateKey) => <span style={{ whiteSpace: 'nowrap' }}>{privateKey.name}</span>,
             },
             {
               name: (

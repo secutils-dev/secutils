@@ -279,7 +279,7 @@ export default function WebSecurityContentSecurityPolicies() {
               field: 'name',
               sortable: true,
               textOnly: true,
-              render: (_, item: ContentSecurityPolicy) => item.name,
+              render: (_, item: ContentSecurityPolicy) => <span style={{ whiteSpace: 'nowrap' }}>{item.name}</span>,
             },
             {
               name: (
@@ -290,7 +290,6 @@ export default function WebSecurityContentSecurityPolicies() {
                 </EuiToolTip>
               ),
               field: 'directives',
-              width: '80%',
               render: (_, policy: ContentSecurityPolicy) => getContentSecurityPolicyString(policy),
             },
             {

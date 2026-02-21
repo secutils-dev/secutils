@@ -121,10 +121,10 @@ export function PageTrackerJobSchedule({ schedule, onChange }: PageTrackerJobSch
                 </>
               }
             >
-              <EuiButtonIcon iconType={'calendar'} aria-label="Show next occurences" />
+              <EuiButtonIcon iconType={'calendar'} aria-label="Show next occurrences" />
             </EuiToolTip>
           ) : (
-            <EuiButtonIcon iconType={'calendar'} aria-label="Next occurences aren't available" isDisabled />
+            <EuiButtonIcon iconType={'calendar'} aria-label="Next occurrences aren't available" isDisabled />
           )
         }
         onChange={(e) => {

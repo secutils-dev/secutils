@@ -1,0 +1,625 @@
+---
+sidebar_position: 1
+sidebar_label: Page Trackers
+title: Web Scraping ➔ Page trackers
+description: Learn how to create and use page trackers in Secutils.dev.
+---
+
+import Steps from '@site/src/components/Steps';
+import CodeBlock from '@theme/CodeBlock';
+
+# What is a page tracker?
+
+A page tracker is a utility that empowers developers to detect and monitor the content of any web page. Use cases range from ensuring that the deployed web application loads only the intended content throughout its lifecycle to tracking changes in arbitrary web content when the application lacks native tracking capabilities. In the event of a change, whether it's caused by a broken deployment or a legitimate content modification, the tracker promptly notifies the user.
+
+:::caution NOTE
+Currently, Secutils.dev doesn't support tracking content for web pages protected by application firewalls (WAF) or any form of CAPTCHA. If you require tracking content for such pages, please comment on [#secutils/34](https://github.com/secutils-dev/secutils/issues/34) to discuss your use case.
+:::
+
+On this page, you can find guides on creating and using page trackers.
+
+:::note
+The `Content extractor` script is essentially a [Playwright scenario](https://playwright.dev/docs/writing-tests) that allows you to extract almost anything from the web page as long as it doesn't exceed **1MB** in size. For instance, you can include text, links, images, or even JSON.
+:::
+
+## Create a page tracker
+
+In this guide, you'll create a simple page tracker for the top post on [Hacker News](https://news.ycombinator.com/):
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/web_scraping/create_step1_empty.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/web_scraping__page"><b>Web Scraping → Page trackers</b></a> and click <strong>Track page</strong>.</>,
+        alt: 'Navigate to Web Scraping → Page trackers and click Track page.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/create_step2_form.png',
+        caption: <>Configure the tracker and click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>Hacker News Top Post</CodeBlock></td></tr>
+                <tr><td><b>Frequency</b></td><td><CodeBlock>Manually</CodeBlock></td></tr>
+                <tr><td><b>Content extractor</b></td><td><CodeBlock language="javascript">{`export async function execute(page) {
+    // Navigate to the Hacker News homepage.
+    await page.goto('https://news.ycombinator.com/');
+
+    // Get the link to the top post.
+    const titleLink = page.locator('css=.titleline a').first();
+
+    // Return the title and link of the top post formatted as markdown.
+    return \`[\${(await titleLink.textContent()).trim()}](\${await titleLink.getAttribute('href')})\`;
+  };`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Configure the tracker name, frequency, and content extractor script.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/create_step3_created.png',
+        caption: 'The tracker appears in the grid.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/create_step4_update.png',
+        caption: <>Expand the tracker and click <b>Update</b> to fetch content.</>,
+        alt: 'Expand the tracker and click Update to fetch content.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/create_step5_result.png',
+        caption: 'After a few seconds the tracker fetches and renders the top post as a clickable markdown link.',
+    },
+]} />
+
+The content includes only the title of the post. However, as noted at the beginning of this guide, the content extractor script allows you to return almost anything, even the entire HTML of the post.
+
+## Detect changes with a page tracker
+
+In this guide, you'll create a page tracker and test it with changing content:
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/web_scraping/detect_step1_empty.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/web_scraping__page"><b>Web Scraping → Page trackers</b></a> and click <strong>Track page</strong>.</>,
+        alt: 'Navigate to Web Scraping → Page trackers and click Track page.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/detect_step2_form.png',
+        caption: <>Configure the tracker with an hourly frequency and click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>World Clock</CodeBlock></td></tr>
+                <tr><td><b>Frequency</b></td><td><CodeBlock>Hourly</CodeBlock></td></tr>
+                <tr><td><b>Content extractor</b></td><td><CodeBlock language="javascript">{`export async function execute(page) {
+    // Navigate to the Berlin world clock page.
+    await page.goto('https://www.timeanddate.com/worldclock/germany/berlin');
+
+    // Wait for the time element to be visible and get its value.
+    const time = await page.locator('css=#qlook #ct').textContent();
+
+    // Return the time formatted as markdown with a link to the world clock page.
+    return \`Berlin time is [**\${time}**](https://www.timeanddate.com/worldclock/germany/berlin)\`;
+};`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Configure the tracker with an hourly frequency and a content extractor for the Berlin world clock.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/detect_step3_created.png',
+        caption: 'The tracker appears in the grid with bell and timer icons, indicating it is configured for regular checks with notifications.',
+    },
+]} />
+
+Expand the tracker's row and click the **Update** button to make the first snapshot of the web page content. After a few seconds, the tracker will fetch the current Berlin time and render a nice markdown with a link to a world clock website:
+
+:::note EXAMPLE
+Berlin time is [**01:02:03**](https://www.timeanddate.com/worldclock/germany/berlin)
+:::
+
+With this configuration, the tracker will check the content of the web page every hour and notify you if any changes are detected.
+
+## Track web page resources
+
+You can also use the page tracker utility to detect and track resources of any web page. This functionality falls under the category of [synthetic monitoring](https://en.wikipedia.org/wiki/Synthetic_monitoring) tools and helps ensure that the deployed application loads only the intended web resources (JavaScript and CSS) during its lifetime. If any unintended changes occur, which could result from a broken deployment or malicious activity, the tracker will promptly notify developers or IT personnel about the detected anomalies.
+
+Additionally, security researchers who focus on discovering potential vulnerabilities in third-party web applications can use page trackers to be notified when the application's resources change. This allows them to identify if the application has been upgraded, providing an opportunity to re-examine it and potentially discover new vulnerabilities.
+
+:::note EXAMPLE
+Extracting all page resources isn't as straightforward as it might seem, so it's recommended to use the utilities provided by Secutils.dev, as demonstrated in the examples in the following sections. Utilities return CSS and JS resource descriptors with the following interfaces:
+```typescript
+/**
+ * Describes external or inline resource.
+ */
+interface WebPageResource {
+  /**
+   * Resource type, either 'script' or 'stylesheet'.
+   */
+  type: 'script' | 'stylesheet';
+
+  /**
+   * The URL resource is loaded from.
+   */
+  url?: string;
+
+  /**
+   * Resource content descriptor (size and digest), if available.
+   */
+  content: WebPageResourceContent;
+}
+
+/**
+ * Describes resource content.
+ */
+interface WebPageResourceContent {
+  /**
+   * Resource content data.
+   */
+  data: { raw: string } | { tlsh: string } | { sha1: string };
+
+  /**
+   * Describes resource content data, it can either be the raw content data or a hash such as Trend Micro Locality
+   * Sensitive Hash or simple SHA-1.
+   */
+  size: number;
+}
+```
+:::
+
+In this guide, you'll create a simple page tracker to track resources of the [Hacker News](https://news.ycombinator.com/):
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/web_scraping/resources_step1_empty.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/web_scraping__page"><b>Web Scraping → Page trackers</b></a> and click <strong>Track page</strong>.</>,
+        alt: 'Navigate to Web Scraping → Page trackers and click Track page.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/resources_step2_form.png',
+        caption: <>Configure the tracker with a resource-tracking content extractor script and click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>Hacker News (resources)</CodeBlock></td></tr>
+                <tr><td><b>Content extractor</b></td><td><CodeBlock language="javascript">{`export async function execute(page, { previousContent }) {
+    // Load built-in utilities for tracking resources.
+    const { resources: utils } = await import(\`data:text/javascript,\${encodeURIComponent(
+      await (await fetch('https://secutils.dev/retrack/utilities.js')).text()
+    )}\`);
+
+    // Start tracking resources.
+    utils.startTracking(page);
+
+    // Navigate to the target page.
+    await page.goto('https://news.ycombinator.com');
+    await page.waitForTimeout(1000);
+
+    // Stop tracking and return resources.
+    const resources = await utils.stopTracking(page);
+
+    // Format resources as a table,
+    // showing diff status if previous content is available.
+    return utils.formatAsTable(
+      previousContent
+        ? utils.setDiffStatus(previousContent.original.source, resources)
+        : resources
+    );
+};`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Configure the tracker with a resource-tracking content extractor script.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/resources_step3_created.png',
+        caption: <>Expand the tracker row and click <b>Update</b> to fetch the page resources.</>,
+        alt: 'Expand the tracker row and click Update to fetch the page resources.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/resources_step4_result.png',
+        caption: <>Once the tracker has fetched the resources, they appear in the resources grid.</>,
+        alt: 'Once the tracker has fetched resources, they appear in the resources grid.',
+    },
+]} />
+
+It's hard to believe, but as of the time of writing, Hacker News continues to rely on just a single script and stylesheet!
+
+## Filter web page resources
+
+In this guide, you will create a page tracker for the GitHub home page and learn how to track only specific resources:
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/web_scraping/filter_step1_empty.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/web_scraping__page"><b>Web Scraping → Page trackers</b></a> and click <strong>Track page</strong>.</>,
+        alt: 'Navigate to Web Scraping → Page trackers and click Track page.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/filter_step2_form.png',
+        caption: <>Configure a tracker for the GitHub home page and click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>GitHub</CodeBlock></td></tr>
+                <tr><td><b>Content extractor</b></td><td><CodeBlock language="javascript">{`export async function execute(page, { previousContent }) {
+    // Load built-in utilities for tracking resources.
+    const { resources: utils } = await import(\`data:text/javascript,\${encodeURIComponent(
+      await (await fetch('https://secutils.dev/retrack/utilities.js')).text()
+    )}\`);
+
+    // Start tracking resources.
+    utils.startTracking(page);
+
+    // Navigate to the target page.
+    await page.goto('https://github.com');
+    await page.waitForTimeout(1000);
+
+    // Stop tracking and return resources.
+    const resources = await utils.stopTracking(page);
+
+    // Format resources as a table,
+    // showing diff status if previous content is available.
+    return utils.formatAsTable(
+      previousContent
+        ? utils.setDiffStatus(previousContent.original.source, resources)
+        : resources
+    );
+};`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Create a tracker for the GitHub home page with the resource-tracking script.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/filter_step3_created.png',
+        caption: <>Expand the tracker row and click <b>Update</b> to fetch the page resources.</>,
+        alt: 'Expand the tracker row and click Update to fetch the page resources.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/filter_step4_result.png',
+        caption: <>Once the tracker has fetched the resources, they appear in the resources grid.</>,
+        alt: 'Once the tracker has fetched resources, they appear in the resources grid.',
+    },
+]} />
+
+You'll notice that there are nearly 100 resources used for the GitHub home page! In the case of large and complex pages like this one, it's recommended to have multiple separate trackers, e.g. one per logical functionality domain, to avoid overwhelming the developer with too many resources and consequently changes they might need to track. Let's say we're only interested in "vendored" resources.
+
+To filter out all resources that are not "vendored", edit the tracker and update the <b>Content extractor</b> script:
+
+<CodeBlock language="javascript" title="Filtered content extractor">{`export async function execute(page, { previousContent }) {
+    // Load built-in utilities for tracking resources.
+    const { resources: utils } = await import(\`data:text/javascript,\${encodeURIComponent(
+      await (await fetch('https://secutils.dev/retrack/utilities.js')).text()
+    )}\`);
+
+    // Start tracking resources.
+    utils.startTracking(page);
+
+    // Navigate to the target page.
+    await page.goto('https://github.com');
+    await page.waitForTimeout(1000);
+
+    // Stop tracking and return resources.
+    const allResources = await utils.stopTracking(page);
+
+    // Filter out all resources that are not "vendored".
+    const resources = {
+      scripts: allResources.scripts.filter((resource) => resource.url?.includes('vendors')),
+      styles: allResources.styles.filter((resource) => resource.url?.includes('vendors')),
+    };
+
+    // Format resources as a table,
+    // showing diff status if previous content is available.
+    return utils.formatAsTable(
+      previousContent
+        ? utils.setDiffStatus(previousContent.original.source, resources)
+        : resources
+    );
+};`}</CodeBlock>
+
+Save the tracker and click the **Update** button to re-fetch web page resources. Once the tracker has re-fetched resources, only about half of the previously extracted resources will appear in the resources grid.
+
+## Detect changes in web page resources
+
+In this guide, you will create several webhook responders that emulate JavaScript files and a simple HTML page, then set up a page tracker to detect changes in the resources loaded by that page across revisions.
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/web_scraping/detect_resources_step1_responders_empty.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/webhooks__responders"><b>Webhooks → Responders</b></a> and click <strong>Create responder</strong>.</>,
+        alt: 'Navigate to Webhooks → Responders and click Create responder.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/detect_resources_step2_no_changes_form.png',
+        caption: <>Create a JavaScript responder that <b>will remain unchanged</b> across revisions and click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>no-changes.js</CodeBlock></td></tr>
+                <tr><td><b>Path</b></td><td><CodeBlock>/no-changes.js</CodeBlock></td></tr>
+                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: application/javascript; charset=utf-8</CodeBlock></td></tr>
+                <tr><td><b>Body</b></td><td><CodeBlock language="javascript">{`document.body.insertAdjacentHTML(
+    'beforeend',
+    'Source: no-changes.js<br>'
+);`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Create the no-changes.js responder.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/detect_resources_step3_changed_form.png',
+        caption: <>Create a JavaScript responder that <b>will change</b> across revisions and click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>changed.js</CodeBlock></td></tr>
+                <tr><td><b>Path</b></td><td><CodeBlock>/changed.js</CodeBlock></td></tr>
+                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: application/javascript; charset=utf-8</CodeBlock></td></tr>
+                <tr><td><b>Body</b></td><td><CodeBlock language="javascript">{`document.body.insertAdjacentHTML(
+    'beforeend',
+    'Source: changed.js, Changed: no<br>'
+);`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Create the changed.js responder.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/detect_resources_step4_removed_form.png',
+        caption: <>Create a JavaScript responder that <b>will be removed</b> across revisions and click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>removed.js</CodeBlock></td></tr>
+                <tr><td><b>Path</b></td><td><CodeBlock>/removed.js</CodeBlock></td></tr>
+                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: application/javascript; charset=utf-8</CodeBlock></td></tr>
+                <tr><td><b>Body</b></td><td><CodeBlock language="javascript">{`document.body.insertAdjacentHTML(
+    'beforeend',
+    'Source: removed.js<br>'
+);`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Create the removed.js responder.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/detect_resources_step5_added_form.png',
+        caption: <>Create a JavaScript responder that <b>will be added</b> in a new revision and click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>added.js</CodeBlock></td></tr>
+                <tr><td><b>Path</b></td><td><CodeBlock>/added.js</CodeBlock></td></tr>
+                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: application/javascript; charset=utf-8</CodeBlock></td></tr>
+                <tr><td><b>Body</b></td><td><CodeBlock language="javascript">{`document.body.insertAdjacentHTML(
+    'beforeend',
+    'Source: added.js<br>'
+);`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Create the added.js responder.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/detect_resources_step6_html_form.png',
+        caption: <>Create a responder that serves a simple HTML page referencing the first three scripts (except <code>added.js</code>) and click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>track-me.html</CodeBlock></td></tr>
+                <tr><td><b>Path</b></td><td><CodeBlock>/track-me.html</CodeBlock></td></tr>
+                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: text/html; charset=utf-8</CodeBlock></td></tr>
+                <tr><td><b>Body</b></td><td><CodeBlock language="html">{`<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Evaluate resources tracker</title>
+    <script type="text/javascript" src="./no-changes.js" defer></script>
+    <script type="text/javascript" src="./changed.js" defer></script>
+    <script type="text/javascript" src="./removed.js" defer></script>
+</head>
+<body></body>
+</html>`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Create the track-me.html responder serving an HTML page with three script tags.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/detect_resources_step7_responders_created.png',
+        caption: 'All five responders appear in the grid with their unique URLs.',
+        alt: 'All five responders appear in the grid.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/detect_resources_step8_trackers_empty.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/web_scraping__page"><b>Web Scraping → Page trackers</b></a> and click <strong>Track page</strong>.</>,
+        alt: 'Navigate to Web Scraping → Page trackers and click Track page.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/detect_resources_step9_tracker_form.png',
+        caption: <>Configure a tracker for the <code>track-me.html</code> responder and click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>Demo</CodeBlock></td></tr>
+                <tr><td><b>Content extractor</b></td><td><CodeBlock language="javascript">{`export async function execute(page, { previousContent }) {
+    // Load built-in utilities for tracking resources.
+    const { resources: utils } = await import(\`data:text/javascript,\${encodeURIComponent(
+      await (await fetch('https://secutils.dev/retrack/utilities.js')).text()
+    )}\`);
+
+    // Start tracking resources.
+    utils.startTracking(page);
+
+    // Navigate to the target page.
+    // Replace [YOUR UNIQUE ID] with your unique handle!
+    await page.goto('https://[YOUR UNIQUE ID].webhooks.secutils.dev/track-me.html');
+    await page.waitForTimeout(1000);
+
+    // Stop tracking and return resources.
+    const resources = await utils.stopTracking(page);
+
+    // Format resources as a table,
+    // showing diff status if previous content is available.
+    return utils.formatAsTable(
+      previousContent
+        ? utils.setDiffStatus(previousContent.original.source, resources)
+        : resources
+    );
+};`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Configure a tracker for the track-me.html responder with the resource-tracking script.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/detect_resources_step10_tracker_created.png',
+        caption: <>Expand the tracker row and click <b>Update</b> to make the first snapshot of the web page resources.</>,
+        alt: 'Expand the tracker row and click Update to make the first snapshot.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/detect_resources_step11_initial.png',
+        caption: 'The initial resources appear in the grid - three scripts with no diff status yet.',
+        alt: 'The initial resources appear in the grid with no diff status.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/detect_resources_step12_diff.png',
+        caption: <>After editing the responders - replace <code>removed.js</code> with <code>added.js</code> in <code>track-me.html</code> and update the body of <code>changed.js</code> - click <b>Update</b> again to see the diff statuses: <b>Added</b>, <b>Changed</b>, and <b>Removed</b>.</>,
+        alt: 'After modifying the responders and clicking Update, the resources grid shows diff statuses.',
+    },
+]} />
+
+:::tip TIP
+You can configure the tracker with a schedule (e.g. **Daily**) and enable **Notifications** so that Secutils.dev automatically checks for resource changes and alerts you when they occur.
+:::
+
+## Annex: Content extractor script examples
+
+In this section, you can find examples of content extractor scripts that extract various content from web pages. Essentially, the script defines a function with the following signature:
+
+```typescript
+/**
+ * Content extractor script that extracts content from a web page.
+ * @param page - The Playwright Page object representing the web page.
+ * See more details at https://playwright.dev/docs/api/class-page.
+ * @param context.previousContent - The context extracted during
+ * the previous execution, if available.
+ * @returns {Promise<unknown>} - The extracted content to be tracked.
+ */
+export async function execute(
+  page: Page,
+  context: { previousContent?: { original: unknown } }
+)
+```
+
+### Track markdown-style content
+The script can return any [**valid markdown-style content**](https://eui.elastic.co/#/editors-syntax/markdown-format#kitchen-sink) that Secutils.dev will happily render in preview mode.
+
+```javascript
+export async function execute() {
+  return `
+    ## Text
+    ### h3 Heading
+    #### h4 Heading
+
+    **This is bold text**
+
+    *This is italic text*
+
+    ~~Strikethrough~~
+
+    ## Lists
+
+    * Item 1
+    * Item 2
+      * Item 2a
+
+    ## Code
+
+    \`\`\` js
+    const foo = (bar) => {
+      return bar++;
+    };
+
+    console.log(foo(5));
+    \`\`\`
+
+    ## Tables
+
+    | Option   | Description   |
+    | -------- | ------------- |
+    | Option#1 | Description#1 |
+    | Option#2 | Description#2 |
+
+    ## Links
+
+    [Link Text](https://secutils.dev)
+
+    ## Emojies
+
+    :wink: :cry: :laughing: :yum:
+  `;
+}
+```
+
+### Track API response
+You can use page tracker to track API responses as well (until dedicated [`API tracker` utility](https://github.com/secutils-dev/secutils/issues/32) is released). For instance, you can track the response of the [JSONPlaceholder](https://jsonplaceholder.typicode.com/) API:
+
+:::caution NOTE
+Ensure that the web page from which you're making a fetch request allows cross-origin requests. Otherwise, you'll get an error.
+:::
+
+```javascript
+export async function execute() {
+  const {url, method, headers, body} = {
+    url: 'https://jsonplaceholder.typicode.com/posts',
+    method: 'POST',
+    headers: {'Content-Type': 'application/json; charset=UTF-8'},
+    body: JSON.stringify({title: 'foo', body: 'bar', userId: 1}),
+  };
+  const response = await fetch(url, {method, headers, body});
+  return {
+    status: response.status,
+    headers: Object.fromEntries(response.headers.entries()),
+    body: (await response.text()) ?? '',
+  };
+}
+```
+
+### Use previous content
+
+In the content extract script, you can use the `context.previousContent.original` property to access the content extracted during the previous execution:
+
+```javascript
+export async function execute(page, { previousContent }) {
+  // Update counter based on the previous content.
+  return (previousContent?.original ?? 0) + 1;
+}
+```
+
+### Use external content extractor script
+Sometimes, your content extractor script can become large and complicated, making it hard to edit in the Secutils.dev UI. In such cases, you can develop and deploy the script separately in any development environment you prefer. Once the script is deployed, you can just use URL as the script content :
+
+```javascript
+// This code assumes your script exports a function named `execute` function.
+https://secutils-dev.github.io/secutils-sandbox/content-extractor-scripts/markdown-table.js
+```
+
+You can find more examples of content extractor scripts at the [Secutils.dev Sandbox](https://github.com/secutils-dev/secutils-sandbox/tree/main/content-extractor-scripts) repository.
+
+## Annex: Custom cron schedules
+
+:::caution NOTE
+Custom cron schedules are available only for [**Pro** subscription](https://secutils.dev/pricing) users.
+:::
+
+In this section, you can learn more about the supported cron expression syntax used to configure custom tracking schedules. A cron expression is a string consisting of six or seven subexpressions that describe individual details of the schedule. These subexpressions, separated by white space, can contain any of the allowed values with various combinations of the allowed characters for that subexpression:
+
+| Subexpression  | Mandatory | Allowed values  | Allowed special characters |
+|----------------|-----------|-----------------|----------------------------|
+| `Seconds`      | Yes       | 0-59            | * / , -                    |
+| `Minutes`      | Yes       | 0-59            | * / , -                    |
+| `Hours`        | Yes       | 0-23            | * / , -                    |
+| `Day of month` | Yes       | 1-31            | * / , - ?                  |
+| `Month`        | Yes       | 0-11 or JAN-DEC | * / , -                    |
+| `Day of week`  | Yes       | 1-7 or SUN-SAT  | * / , - ?                  |
+| `Year`         | No        | 1970-2099       | * / , -                    |
+
+Following the described cron syntax, you can create almost any schedule you want as long as the interval between two consecutive checks is **longer than 10 minutes**. Below are some examples of supported cron expressions:
+
+| Expression            | Meaning                                             |
+|-----------------------|-----------------------------------------------------|
+| `0 0 12 * * ?`        | Run at 12:00 (noon) every day                       |
+| `0 15 10 ? * *`       | Run at 10:15 every day                              |
+| `0 15 10 * * ?`       | Run at 10:15 every day                              |
+| `0 15 10 * * ? *`     | Run at 10:15 every day                              |
+| `0 15 10 * * ? 2025`  | Run at 10:15 every day during the year 2025         |
+| `0 0/10 14 * * ?`     | Run every 10 minutes from 14:00 to 14:59, every day |
+| `0 10,44 14 ? 3 WED`  | Run at 14:10 and at 14:44 every Wednesday in March  |
+| `0 15 10 ? * MON-FRI` | Run at 10:15 from Monday to Friday                  |
+| `0 11 15 8 10 ?`      | Run every October 8 at 15:11                        |
+
+To assist you in creating custom cron schedules, Secutils.dev lists five upcoming scheduled times for the specified schedule:
+
+| ![Secutils.dev UI - Custom schedule](/img/docs/guides/web_scraping/custom_schedule.png) |
+|---------------------------------------------------------------------------------------- |

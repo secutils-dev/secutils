@@ -91,6 +91,7 @@ services:
       - "7272:7272"
     environment:
       - RETRACK_WEB_SCRAPER_BROWSER_CHROMIUM_NO_SANDBOX=true
+      - RETRACK_WEB_SCRAPER_EXTRACTOR_SANDBOX_EXTRA_ALLOWED_MODULES=node:crypto
     restart: unless-stopped
     networks:
       - net

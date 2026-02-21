@@ -279,7 +279,7 @@ export default function CertificatesCertificateTemplates() {
               field: 'name',
               textOnly: true,
               sortable: true,
-              render: (_, template) => template.name,
+              render: (_, template) => <span style={{ whiteSpace: 'nowrap' }}>{template.name}</span>,
             },
             {
               name: (

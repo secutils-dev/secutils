@@ -11,7 +11,7 @@ const BASE_URL =
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'Secutils.dev',
-  tagline: 'Documentation, user guides, video step-by-step instructions and more...',
+  tagline: 'Documentation, user guides, step-by-step instructions and more…',
   favicon: 'img/favicon.ico',
   url: BASE_URL,
   baseUrl: '/docs/',
@@ -22,7 +22,20 @@ const config = {
 
   markdown: { mermaid: true },
   themes: ['@docusaurus/theme-mermaid'],
-  plugins: ['docusaurus-plugin-sass'],
+  plugins: [
+    'docusaurus-plugin-sass',
+    [
+      'docusaurus-plugin-llms',
+      {
+        generateLLMsTxt: true,
+        generateLLMsFullTxt: true,
+        title: 'Secutils.dev Documentation',
+        description:
+          'Documentation and guides for Secutils.dev - an open-source, versatile toolbox for security-minded engineers.',
+        includeBlog: false,
+      },
+    ],
+  ],
 
   scripts: [{ src: '/js/script.js', async: true, defer: true, 'data-domain': 'secutils.dev' }],
 

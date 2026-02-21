@@ -5,16 +5,16 @@ import type { PageTracker } from './page_tracker';
 export function TrackerName({ tracker }: { tracker: PageTracker }) {
   const jobConfig = tracker.retrack.config?.job;
   if (!jobConfig) {
-    return tracker.name;
+    return <span style={{ whiteSpace: 'nowrap' }}>{tracker.name}</span>;
   }
 
   const timeIcon = <EuiIcon type={'timeRefresh'} size="s" title={'Scheduled checks are enabled'} />;
   return tracker.retrack.notifications ? (
-    <EuiText size="s">
+    <EuiText size="s" style={{ whiteSpace: 'nowrap' }}>
       {tracker.name} {timeIcon} <EuiIcon type={'bell'} size="s" title={'Notifications are enabled'} />
     </EuiText>
   ) : (
-    <EuiText size="s">
+    <EuiText size="s" style={{ whiteSpace: 'nowrap' }}>
       {tracker.name} {timeIcon}
     </EuiText>
   );

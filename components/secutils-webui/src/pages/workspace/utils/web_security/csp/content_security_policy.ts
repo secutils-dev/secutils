@@ -12,7 +12,7 @@ export interface ContentSecurityPolicy<Directives = ContentSecurityPolicyDirecti
 export function getContentSecurityPolicyString(policy: ContentSecurityPolicy) {
   return Array.from(policy.directives.entries())
     .map(([directiveName, directiveValues]) =>
-      directiveValues.length > 0 ? `${directiveName} ${directiveValues.join(' ')}` : `${directiveName}`,
+      directiveValues.length > 0 ? `${directiveName} ${[...directiveValues].sort().join(' ')}` : `${directiveName}`,
     )
     .join('; ');
 }

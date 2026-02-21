@@ -1,0 +1,315 @@
+---
+sidebar_position: 1
+sidebar_label: Content Security Policies
+title: Web Security ➔ Content security policies (CSP)
+description: Learn how to create and use content security policies (CSP) in Secutils.dev.
+---
+
+import Steps from '@site/src/components/Steps';
+import CodeBlock from '@theme/CodeBlock';
+
+# What is a Content Security Policy?
+
+Content Security Policy (CSP) is an added layer of security that helps to detect and mitigate certain types of attacks, including Cross-Site Scripting (XSS) and data injection attacks. These attacks are used for everything from data theft, to site defacement, to malware distribution.
+
+Generally, to enable CSP, you need to configure your web server to return the **Content-Security-Policy** HTTP header or HTML meta tag. For more details, refer to [MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP) and [OWASP](https://owasp.org/www-community/controls/Content_Security_Policy).
+
+On this page, you can find guides on creating Content Security Policies that match your specific needs.
+
+## Create a Content Security Policy
+
+In this guide you'll create a simple Content Security Policy template that allows you to generate policies that are ready to be applied to any web application:
+
+<Steps steps={[
+  {
+    img: '../../img/docs/guides/csp/create_step1_empty.png',
+    caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp__policies"><b>Web Security → CSP → Policies</b></a> and click <strong>Create policy</strong>.</>,
+    alt: 'Navigate to Web Security → CSP → Policies and click Create policy.'
+  },
+  {
+      img: '../../img/docs/guides/csp/create_step2_form.png',
+      caption: <>Enter the policy name, configure directives, and click <b>Save</b> to save the policy.<br/><br/>
+        <table className="su-table">
+          <tbody>
+          <tr><td><b>Name</b></td><td><CodeBlock>secutils.dev</CodeBlock></td></tr>
+          <tr><td><b>Default source (default-src)</b></td><td><CodeBlock>'self', api.secutils.dev</CodeBlock></td></tr>
+          <tr><td><b>Style source (style-src)</b></td><td><CodeBlock>'self', fonts.googleapis.com</CodeBlock></td></tr>
+          </tbody>
+        </table></>,
+      alt: 'Enter the policy name, configure directives, and click Save to save the policy.'
+  },
+  { img: '../../img/docs/guides/csp/create_step3_created.png', caption: 'The new policy appears in the grid.' },
+  {
+      img: '../../img/docs/guides/csp/create_step4_copy.png',
+      caption: <>Use the <b>Copy</b> context menu button to get different policy representations.</>,
+      alt: 'Use the Copy context menu button to get different policy representations.'
+  },
+]} />
+
+## Import a Content Security Policy from URL
+
+In this guide you'll import a Content Security Policy from an external URL:
+
+<Steps steps={[
+  {
+    img: '../../img/docs/guides/csp/import_url_step1_empty.png',
+    caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp__policies"><b>Web Security → CSP → Policies</b></a> and click <strong>Import policy</strong>.</>,
+    alt: 'Navigate to Web Security → CSP → Policies and click Import policy.'
+  },
+  {
+    img: '../../img/docs/guides/csp/import_url_step2_modal.png',
+      caption: <>Pick <b>URL</b> tab, enter the policy name, target URL, select the policy source, and click <b>Import</b>.<br/><br/>
+          <table className="su-table">
+              <tbody>
+              <tr><td><b>Policy name</b></td><td><CodeBlock>Google CSP</CodeBlock></td></tr>
+              <tr><td><b>URL</b></td><td><CodeBlock>https://google.com</CodeBlock></td></tr>
+              <tr><td><b>Policy source</b></td><td><CodeBlock>HTTP header (report only)</CodeBlock></td></tr>
+              </tbody>
+          </table></>,
+    alt: 'Pick URL tab, enter the policy name, target URL, elect the policy source, and click Import.'
+  },
+  { img: '../../img/docs/guides/csp/import_url_step3_created.png', caption: 'The new policy appears in the grid.' },
+]} />
+
+## Import a Content Security Policy from a string
+
+In this guide you'll import a Content Security Policy from a string (serialized policy text):
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/csp/import_string_step1_empty.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp__policies"><b>Web Security → CSP → Policies</b></a> and click <strong>Import policy</strong>.</>,
+        alt: 'Navigate to Web Security → CSP → Policies and click Import policy.'
+    },
+    {
+        img: '../../img/docs/guides/csp/import_string_step2_modal.png',
+        caption: <>Pick <b>Serialized policy</b> tab, enter the policy name, policy string, and click <b>Import</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Policy name</b></td><td><CodeBlock>Custom CSP</CodeBlock></td></tr>
+                <tr><td><b>Serialized policy</b></td><td><CodeBlock>default-src 'self' api.secutils.dev; style-src 'self' fonts.googleapis.com</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Pick Serialized policy tab, enter the policy name, policy string, and click Import.'
+    },
+    { img: '../../img/docs/guides/csp/import_string_step3_created.png', caption: 'The new policy appears in the grid.' },
+]} />
+
+## Share a Content Security Policy
+
+This guide will walk you through sharing a Content Security Policy template publicly, allowing anyone on the internet to view it:
+
+1. Navigate to [Web Security → CSP → Policies](https://secutils.dev/ws/web_security__csp__policies) and pick the policy you'd like to share
+2. Click the policy's **Share policy** button and toggle **Share policy** switch to **on** position
+3. Once the policy is shared, the dialog will show a **Copy link** button
+4. Click the **Copy link** button to copy a unique shared policy link to your clipboard
+5. To stop sharing the policy, click the **Share policy** button again, and switch the **Share policy** toggle to the **off** position.
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/csp/share_step1_share.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp__policies"><b>Web Security → CSP → Policies</b></a>, pick the policy you'd like to share, and click <strong>Share</strong>.</>,
+        alt: 'Navigate to Web Security → CSP → Policies, pick the policy you\'d like to share, and click Share.'
+    },
+    {
+        img: '../../img/docs/guides/csp/share_step2_copy_link.png',
+        caption: <>Toggle the <b>Share policy</b> switch to <b>on</b> position, and then click the <b>Copy link</b> button to copy a unique shared policy link to your clipboard.</>,
+        alt: 'Toggle the Share policy switch to on position, and then click the Copy link button to copy a unique shared policy link to your clipboard.'
+    },
+    {
+        img: '../../img/docs/guides/csp/share_step3_unshare.png',
+        caption: <>To stop sharing the policy, click the <b>Share policy</b> button again, and switch the <b>Share policy</b> toggle to the <b>off</b> position.</>,
+        alt: 'To stop sharing the policy, click the Share policy button again, and switch the Share policy toggle to the off position.'
+    },
+]} />
+
+## Test a Content Security Policy
+
+In this guide, you will create a Content Security Policy and test it using a custom HTML responder:
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/csp/test_step1_responder_form.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/webhooks__responders"><b>Webhooks → Responders</b></a>, click <strong>Create responder</strong>, and configure it with a simple HTML page that uses <code>eval()</code>. Click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>CSP Test</CodeBlock></td></tr>
+                <tr><td><b>Path</b></td><td><CodeBlock>/csp-test</CodeBlock></td></tr>
+                <tr><td><b>Method</b></td><td><CodeBlock>GET</CodeBlock></td></tr>
+                <tr><td><b>Body</b></td><td><CodeBlock language="html">{`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Evaluate CSP</title>
+</head>
+<body>
+<label for="eval-input">Expression to evaluate:</label>
+<input id="eval-input" type="text" value="alert('xss')"/>
+<button id="eval-test">Eval</button>
+<script type="text/javascript" defer>
+  (async function main() {
+    const evalTestBtn = document.getElementById('eval-test');
+    evalTestBtn.addEventListener('click', () => {
+      const evalExpression = document.getElementById('eval-input');
+      window.eval(evalExpression.value);
+    });
+  })();
+</script>
+</body>
+</html>`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Create a CSP Test responder with an HTML page that uses eval().'
+    },
+    {
+        img: '../../img/docs/guides/csp/test_step2_responder_created.png',
+        caption: 'The responder appears in the grid with its unique URL.',
+    },
+    {
+        img: '../../img/docs/guides/csp/test_step2b_eval_page.png',
+        caption: 'Click the URL to open the test page and verify that the Eval button works without restrictions.',
+    },
+    {
+        img: '../../img/docs/guides/csp/test_step3_policy_form.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp__policies"><b>Web Security → CSP → Policies</b></a>, click <strong>Create policy</strong>, and configure it to forbid <code>eval()</code>. Click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>CSP Test</CodeBlock></td></tr>
+                <tr><td><b>Script source (script-src)</b></td><td><CodeBlock>{'\'self\', \'unsafe-inline\''}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Create a CSP Test policy with script-src set to self and unsafe-inline to forbid eval().'
+    },
+    {
+        img: '../../img/docs/guides/csp/test_step4_policy_created.png',
+        caption: 'The policy appears in the grid.',
+    },
+    {
+        img: '../../img/docs/guides/csp/test_step5_copy_meta_tag.png',
+        caption: <>Use the <b>Copy</b> context menu button, switch <b>Policy source</b> to <b>HTML meta tag</b>, and copy the generated <code>{'<meta>'}</code> tag.</>,
+        alt: 'Copy the policy as an HTML meta tag.',
+    },
+    {
+        img: '../../img/docs/guides/csp/test_step6_responder_meta_tag.png',
+        caption: <>Navigate back to <a href="https://secutils.dev/ws/webhooks__responders"><b>Webhooks → Responders</b></a>, edit the <b>CSP Test</b> responder, and paste the <code>{'<meta>'}</code> tag inside the <code>{'<head>'}</code> of the body. Save and navigate to the responder's URL again - this time, clicking <b>Eval</b> does nothing and a CSP error appears in the browser console.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>CSP Test</CodeBlock></td></tr>
+                <tr><td><b>Path</b></td><td><CodeBlock>/csp-test</CodeBlock></td></tr>
+                <tr><td><b>Body (updated)</b></td><td><CodeBlock language="html">{`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="Content-Security-Policy"
+        content="script-src 'self' 'unsafe-inline'">
+  <title>Evaluate CSP</title>
+</head>
+<body>
+<label for="eval-input">Expression to evaluate:</label>
+<input id="eval-input" type="text" value="alert('xss')"/>
+<button id="eval-test">Eval</button>
+<script type="text/javascript" defer>
+  (async function main() {
+    const evalTestBtn = document.getElementById('eval-test');
+    evalTestBtn.addEventListener('click', () => {
+      const evalExpression = document.getElementById('eval-input');
+      window.eval(evalExpression.value);
+    });
+  })();
+</script>
+</body>
+</html>`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Edit the CSP Test responder to add the Content-Security-Policy meta tag to the HTML head.',
+    },
+]} />
+
+## Report Content Security Policy violations
+
+In this guide, you will create a Content Security Policy and collect its violation reports using a custom tracking responder:
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/csp/report_step1_reporting_form.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/webhooks__responders"><b>Webhooks → Responders</b></a>, click <strong>Create responder</strong>, enable <b>Advanced mode</b>, and configure a responder to collect CSP violation reports. Click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>CSP Reporting</CodeBlock></td></tr>
+                <tr><td><b>Path</b></td><td><CodeBlock>/csp-reporting</CodeBlock></td></tr>
+                <tr><td><b>Method</b></td><td><CodeBlock>POST</CodeBlock></td></tr>
+                <tr><td><b>Tracking</b></td><td><CodeBlock>10</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Create a CSP Reporting responder with POST method and tracking enabled.',
+    },
+    {
+        img: '../../img/docs/guides/csp/report_step2_reporting_created.png',
+        caption: <>The reporting responder appears in the grid. Copy its URL - you will use it as the <code>report-uri</code> value in the next step.</>,
+    },
+    {
+        img: '../../img/docs/guides/csp/report_step3_policy_form.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp__policies"><b>Web Security → CSP → Policies</b></a>, click <strong>Create policy</strong>, and configure it with the <code>report-uri</code> directive pointing to the reporting responder URL. Click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>CSP Reporting</CodeBlock></td></tr>
+                <tr><td><b>Script source (script-src)</b></td><td><CodeBlock>{'\'self\', \'unsafe-inline\', \'report-sample\''}</CodeBlock></td></tr>
+                <tr><td><b>Report URI (report-uri)</b></td><td><CodeBlock>[CSP Reporting responder URL]</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Create a CSP Reporting policy with script-src and report-uri directives.',
+    },
+    {
+        img: '../../img/docs/guides/csp/report_step4_policy_created.png',
+        caption: 'The policy appears in the grid.',
+    },
+    {
+        img: '../../img/docs/guides/csp/report_step5_copy_header.png',
+        caption: <>Use the <b>Copy</b> context menu button to view the policy as an <b>HTTP header (enforcing)</b>. The generated header includes the <code>report-uri</code> directive with the reporting responder URL.</>,
+        alt: 'Copy the policy as an HTTP header (enforcing) with report-uri.',
+    },
+    {
+        img: '../../img/docs/guides/csp/report_step6_eval_form.png',
+        caption: <>Navigate back to <a href="https://secutils.dev/ws/webhooks__responders"><b>Webhooks → Responders</b></a>, click <strong>Create responder</strong>, and configure a responder that serves an HTML page with <code>eval()</code>. Set its <code>Content-Security-Policy</code> response header to include the policy with the <code>report-uri</code> directive. Click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>CSP Eval Test</CodeBlock></td></tr>
+                <tr><td><b>Path</b></td><td><CodeBlock>/csp-eval-test</CodeBlock></td></tr>
+                <tr><td><b>Headers</b></td><td><CodeBlock language="http">{`Content-Security-Policy: script-src 'self' 'unsafe-inline' 'report-sample'; report-uri [CSP Reporting responder URL]`}</CodeBlock></td></tr>
+                <tr><td><b>Body</b></td><td><CodeBlock language="html">{`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Evaluate CSP</title>
+</head>
+<body>
+<label for="eval-input">Expression to evaluate:</label>
+<input id="eval-input" type="text" value="alert('xss')"/>
+<button id="eval-test">Eval</button>
+<script type="text/javascript" defer>
+  (async function main() {
+    const evalTestBtn = document.getElementById('eval-test');
+    evalTestBtn.addEventListener('click', () => {
+      const evalExpression = document.getElementById('eval-input');
+      window.eval(evalExpression.value);
+    });
+  })();
+</script>
+</body>
+</html>`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Create a CSP Eval Test responder with a CSP header using report-uri and an HTML page that uses eval().',
+    },
+    {
+        img: '../../img/docs/guides/csp/report_step7_eval_created.png',
+        caption: <>Both responders appear in the grid. The <b>CSP Eval Test</b> responder has a unique URL.</>,
+    },
+    {
+        img: '../../img/docs/guides/csp/report_step8_eval_blocked.png',
+        caption: <>Click the <b>CSP Eval Test</b> responder URL to open the test page. Click <b>Eval</b> - nothing happens because the Content Security Policy blocks <code>eval()</code>. The browser automatically sends a violation report to the <code>report-uri</code> endpoint.</>,
+        alt: 'Open the eval test page and click Eval - CSP blocks it and sends a report.',
+    },
+    {
+        img: '../../img/docs/guides/csp/report_step9_violation_report.png',
+        caption: <>Go back to the responders grid and expand the <b>CSP Reporting</b> responder. The violation report sent by the browser is now visible in the requests list.</>,
+        alt: 'Expand the CSP Reporting responder to see the received violation report.',
+    },
+]} />
