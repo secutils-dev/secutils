@@ -15,7 +15,7 @@ Secutils.dev adheres to [open security principles](https://en.wikipedia.org/wiki
 
 * Guided experience for complex security concepts
 * [Request responders](https://secutils.dev/docs/guides/webhooks) for rapid mocking of HTTP APIs and webhooks
-* [Templates](https://secutils.dev/docs/guides/digital_certificates) for certificates and private keys to test
+* [Templates](https://secutils.dev/docs/guides/digital_certificates/certificate_templates) for certificates and private keys to test
   cryptographic security protocols
 * [Content Security Policy (CSP) management](https://secutils.dev/docs/guides/web_security/csp), enabling the import and
   creation of policies from scratch
