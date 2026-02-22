@@ -6,44 +6,44 @@ use crate::utils::web_security::{
 use anyhow::anyhow;
 use content_security_policy::Directive;
 use serde::{Deserialize, Deserializer, Serialize, de};
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case", tag = "name", content = "value")]
 pub enum ContentSecurityPolicyDirective {
     // 15 fetch directives
-    ChildSrc(HashSet<String>),
-    ConnectSrc(HashSet<String>),
-    DefaultSrc(HashSet<String>),
-    FontSrc(HashSet<String>),
-    FrameSrc(HashSet<String>),
-    ImgSrc(HashSet<String>),
-    ManifestSrc(HashSet<String>),
-    MediaSrc(HashSet<String>),
-    ObjectSrc(HashSet<String>),
-    ScriptSrc(HashSet<String>),
-    ScriptSrcElem(HashSet<String>),
-    ScriptSrcAttr(HashSet<String>),
-    StyleSrc(HashSet<String>),
-    StyleSrcElem(HashSet<String>),
-    StyleSrcAttr(HashSet<String>),
+    ChildSrc(BTreeSet<String>),
+    ConnectSrc(BTreeSet<String>),
+    DefaultSrc(BTreeSet<String>),
+    FontSrc(BTreeSet<String>),
+    FrameSrc(BTreeSet<String>),
+    ImgSrc(BTreeSet<String>),
+    ManifestSrc(BTreeSet<String>),
+    MediaSrc(BTreeSet<String>),
+    ObjectSrc(BTreeSet<String>),
+    ScriptSrc(BTreeSet<String>),
+    ScriptSrcElem(BTreeSet<String>),
+    ScriptSrcAttr(BTreeSet<String>),
+    StyleSrc(BTreeSet<String>),
+    StyleSrcElem(BTreeSet<String>),
+    StyleSrcAttr(BTreeSet<String>),
     // 2 other directives
     Webrtc([ContentSecurityPolicyWebrtcDirectiveValue; 1]),
-    WorkerSrc(HashSet<String>),
+    WorkerSrc(BTreeSet<String>),
     // 2 document directives
-    BaseUri(HashSet<String>),
-    Sandbox(HashSet<ContentSecurityPolicySandboxDirectiveValue>),
+    BaseUri(BTreeSet<String>),
+    Sandbox(BTreeSet<ContentSecurityPolicySandboxDirectiveValue>),
     // 2 navigation directives
-    FormAction(HashSet<String>),
-    FrameAncestors(HashSet<String>),
+    FormAction(BTreeSet<String>),
+    FrameAncestors(BTreeSet<String>),
     // 1 extension directive
     #[serde(deserialize_with = "deserialize_directive_without_value")]
     UpgradeInsecureRequests,
     // 2 trusted types directives
     RequireTrustedTypesFor([ContentSecurityPolicyRequireTrustedTypesForDirectiveValue; 1]),
-    TrustedTypes(HashSet<ContentSecurityPolicyTrustedTypesDirectiveValue>),
+    TrustedTypes(BTreeSet<ContentSecurityPolicyTrustedTypesDirectiveValue>),
     // 2 reporting directives
-    ReportUri(HashSet<String>),
+    ReportUri(BTreeSet<String>),
     ReportTo([String; 1]),
 }
 
@@ -139,11 +139,11 @@ mod tests {
     use content_security_policy::Directive;
     use insta::{assert_debug_snapshot, assert_json_snapshot};
     use serde_json::json;
-    use std::collections::HashSet;
+    use std::collections::BTreeSet;
 
     #[test]
     fn serialization_to_json() -> anyhow::Result<()> {
-        let sources = ["'self'".to_string()].into_iter().collect::<HashSet<_>>();
+        let sources = ["'self'".to_string()].into_iter().collect::<BTreeSet<_>>();
         assert_json_snapshot!(ContentSecurityPolicyDirective::ChildSrc(sources.clone()), @r###"
         {
           "name": "child-src",
@@ -368,7 +368,7 @@ mod tests {
         }
         "###);
 
-        assert_json_snapshot!(ContentSecurityPolicyDirective::TrustedTypes(HashSet::new()), @r###"
+        assert_json_snapshot!(ContentSecurityPolicyDirective::TrustedTypes(BTreeSet::new()), @r###"
         {
           "name": "trusted-types",
           "value": []
@@ -401,7 +401,7 @@ mod tests {
         assert_debug_snapshot!(
             String::try_from(ContentSecurityPolicyDirective::DefaultSrc(["'self'".to_string(), "https:".to_string()]
             .into_iter()
-            .collect::<HashSet<_>>()))?, @r###""default-src 'self' https:""###);
+            .collect::<BTreeSet<_>>()))?, @r###""default-src 'self' https:""###);
 
         assert_debug_snapshot!(
             String::try_from(ContentSecurityPolicyDirective::UpgradeInsecureRequests)?,
@@ -430,7 +430,7 @@ mod tests {
 
         assert_debug_snapshot!(
             String::try_from(
-                ContentSecurityPolicyDirective::TrustedTypes(HashSet::new())
+                ContentSecurityPolicyDirective::TrustedTypes(BTreeSet::new())
             )?,
             @r###""trusted-types""###
         );
@@ -440,7 +440,7 @@ mod tests {
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
-        let sources = ["'self'".to_string()].into_iter().collect::<HashSet<_>>();
+        let sources = ["'self'".to_string()].into_iter().collect::<BTreeSet<_>>();
         assert_eq!(
             serde_json::from_str::<ContentSecurityPolicyDirective>(
                 r#"{ "name": "child-src", "value": ["'self'"] }"#
@@ -682,7 +682,7 @@ mod tests {
 
         assert_eq!(
             ContentSecurityPolicyDirective::try_from(&directive)?,
-            ContentSecurityPolicyDirective::TrustedTypes(HashSet::new())
+            ContentSecurityPolicyDirective::TrustedTypes(BTreeSet::new())
         );
 
         Ok(())
@@ -729,7 +729,7 @@ mod tests {
     fn should_correctly_determine_if_supported_for_source() -> anyhow::Result<()> {
         let sources = ["'self'".to_string()]
             .into_iter()
-            .collect::<HashSet<String>>();
+            .collect::<BTreeSet<String>>();
         let all_directives = vec![
             ContentSecurityPolicyDirective::ChildSrc(sources.clone()),
             ContentSecurityPolicyDirective::ConnectSrc(sources.clone()),

@@ -26,7 +26,7 @@ mod tests {
     use crate::utils::web_security::{ContentSecurityPolicy, ContentSecurityPolicyDirective};
     use insta::assert_json_snapshot;
     use serde_json::json;
-    use std::collections::HashSet;
+    use std::collections::BTreeSet;
     use time::OffsetDateTime;
     use uuid::uuid;
 
@@ -92,7 +92,7 @@ mod tests {
             ContentSecurityPolicy {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "some-name".to_string(),
-                directives: vec![ContentSecurityPolicyDirective::Sandbox(HashSet::new())],
+                directives: vec![ContentSecurityPolicyDirective::Sandbox(BTreeSet::new())],
                 // January 1, 2000 11:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 // January 1, 2000 11:00:10

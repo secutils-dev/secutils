@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, de};
 
 /// See https://www.w3.org/TR/trusted-types.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ContentSecurityPolicyTrustedTypesDirectiveValue {
     #[serde(rename = "'allow-duplicates'")]
     AllowDuplicates,
