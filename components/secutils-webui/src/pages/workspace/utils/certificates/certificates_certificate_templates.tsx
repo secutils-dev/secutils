@@ -83,7 +83,7 @@ export default function CertificatesCertificateTemplates() {
 
   const titleActions = useMemo(
     () => (
-      <EuiFlexGroup gutterSize="s" responsive={false}>
+      <EuiFlexGroup gutterSize="s" responsive={false} alignItems="center" justifyContent="center">
         <EuiFlexItem grow={false}>{importButton}</EuiFlexItem>
         <EuiFlexItem grow={false}>{createButton}</EuiFlexItem>
       </EuiFlexGroup>
