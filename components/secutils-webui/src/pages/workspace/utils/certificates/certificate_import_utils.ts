@@ -111,9 +111,13 @@ const HASH_TO_SIG_ALG: Record<string, SignatureAlgorithm> = {
 };
 
 function getDnField(dn: string, field: string) {
-  const regex = new RegExp(`(?:^|,)\\s*${field}=([^,]*)`);
+  const regex = new RegExp(`(?:^|,)\\s*${field}=((?:[^,\\\\]|\\\\.)*)`);
   const match = dn.match(regex);
-  return match?.[1]?.trim() || undefined;
+  if (!match) {
+    return undefined;
+  }
+  const raw = match[1].trim();
+  return raw ? raw.replace(/\\(.)/g, '$1') : undefined;
 }
 
 export async function parseCertificateFromDer(der: ArrayBuffer, pem: string): Promise<ParsedCertificate> {

@@ -76,6 +76,7 @@
     "buffer": "^6.0.3",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-typescript": "^4.4.4",
     "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-prettier": "^5.5.5",
     "eslint-plugin-react": "^7.37.5",
@@ -88,7 +89,8 @@
     "svgo": "^4.0.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.55.0",
-    "url": "^0.11.4"
+    "url": "^0.11.4",
+    "vitest": "^4.0.18"
   },
   "optionalDependencies": {
     "@lmdb/lmdb-linux-arm64": "^3.5.1",
@@ -108,6 +110,8 @@
     "watch": "parcel --port 7171",
     "perf": "parcel build --reporter @parcel/reporter-bundle-buddy",
     "lint": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rm -rf dist .parcel-cache"
   }
 }

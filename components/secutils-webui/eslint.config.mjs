@@ -42,6 +42,9 @@ export default tsEsLint.config(
       parserOptions: { project: ['./tsconfig.json'] },
       globals: { ...globals.browser },
     },
+    settings: {
+      'import/resolver': { typescript: true },
+    },
     rules: {
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/explicit-module-boundary-types': 'off',

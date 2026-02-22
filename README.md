@@ -272,6 +272,7 @@ docker build --platform linux/arm64 --tag secutils-api:latest -f Dockerfile.aarc
 | `make dev-logs`              | Tail logs from dev infrastructure                                        |
 | `make api`                   | Run the Secutils API (`cargo run`)                                       |
 | `make webui`                 | Run the Web UI dev server                                                |
+| `make webui-test`            | Run Web UI unit tests (`ARGS="--watch"` for watch mode)                  |
 | `make docs`                  | Run the documentation dev server                                         |
 | `make dev-debug-scraper`     | Start infra with web scraper routed to host (for headed browser)         |
 | `make scraper-setup`         | Install web scraper npm dependencies (run once)                          |

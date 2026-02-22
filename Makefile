@@ -7,7 +7,7 @@ RUNS                 	?= 10
 E2E_LOOP_DIR         	:= /tmp/e2e-loop-results
 AGENT_WORKSPACE     	?=
 
-.PHONY: dev-up dev-down api webui docs e2e-up e2e-down e2e-test e2e-test-loop docs-screenshots docs-screenshots-loop agent-push agent-pull clean
+.PHONY: dev-up dev-down api webui webui-test docs e2e-up e2e-down e2e-test e2e-test-loop docs-screenshots docs-screenshots-loop agent-push agent-pull clean
 
 ## ---------- Development ----------
 
@@ -25,6 +25,9 @@ api: ## Run the Secutils API on the host.
 
 webui: ## Run the Web UI dev server on the host.
 	npm --prefix components/secutils-webui run watch
+
+webui-test: ## Run Web UI unit tests (use ARGS for extra flags, e.g. make webui-test ARGS="--watch").
+	npm --prefix components/secutils-webui run test -- $(ARGS)
 
 docs: ## Run the documentation dev server on the host.
 	npm --prefix components/secutils-docs run watch

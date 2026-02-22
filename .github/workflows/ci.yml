@@ -74,6 +74,9 @@ jobs:
       - name: Install dependencies
         run: npm --prefix components/secutils-webui ci
 
+      - name: Test
+        run: npm --prefix components/secutils-webui run test
+
       - name: Build
         run: npm --prefix components/secutils-webui run build
 
