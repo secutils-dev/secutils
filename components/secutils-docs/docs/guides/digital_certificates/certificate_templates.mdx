@@ -260,7 +260,7 @@ In this guide you'll import a certificate template by pasting PEM-encoded certif
     },
     {
         img: '../../img/docs/guides/digital_certificates/certificate_templates/import_string_step2_pem.png',
-        caption: <>In the <b>PEM content</b> tab, paste one or more PEM-encoded certificates (with or without headers) and click <b>Parse certificates</b>.</>,
+        caption: <>Paste one or more PEM-encoded certificates into the <b>PEM content</b> field and click <b>Parse certificates</b>.</>,
         alt: 'Paste PEM content and click Parse certificates.',
     },
     {
@@ -274,7 +274,7 @@ In this guide you'll import a certificate template by pasting PEM-encoded certif
     },
 ]} />
 
-You can also import certificates by uploading a `.pem`, `.crt`, `.cer`, or `.cert` file using the **File** tab.
+You can also import certificates by selecting the **File** source and uploading a `.pem`, `.crt`, `.cer`, or `.cert` file.
 
 ## Import a certificate template from URL
 
@@ -288,16 +288,21 @@ In this guide you'll import a certificate template by extracting the TLS certifi
     },
     {
         img: '../../img/docs/guides/digital_certificates/certificate_templates/import_url_step2_url.png',
-        caption: <>Switch to the <b>URL</b> tab, enter an HTTPS URL (e.g., <code>https://test.example.com</code>), and click <b>Fetch certificates</b>.</>,
-        alt: 'Switch to URL tab and fetch certificates from a URL.',
+        caption: <>Select <b>URL</b> as the source, enter an HTTPS URL (e.g., <code>https://test.example.com</code>), and click the <b>Fetch</b> button.</>,
+        alt: 'Select URL source and fetch certificates from a URL.',
     },
     {
-        img: '../../img/docs/guides/digital_certificates/certificate_templates/import_url_step3_preview.png',
+        img: '../../img/docs/guides/digital_certificates/certificate_templates/import_url_step3_pem_loaded.png',
+        caption: <>The fetched PEM content appears in the text area. Click <b>Parse certificates</b> to parse the certificates.</>,
+        alt: 'Fetched PEM content loaded in the text area.',
+    },
+    {
+        img: '../../img/docs/guides/digital_certificates/certificate_templates/import_url_step4_preview.png',
         caption: <>Review the fetched certificates. Expand each certificate to view its details. Select which certificates to import and set template names. Click <b>Import</b> to create the certificate templates.</>,
         alt: 'Preview and select certificates to import.',
     },
     {
-        img: '../../img/docs/guides/digital_certificates/certificate_templates/import_url_step4_imported.png',
+        img: '../../img/docs/guides/digital_certificates/certificate_templates/import_url_step5_imported.png',
         caption: 'The imported templates appear in the grid.',
     },
 ]} />

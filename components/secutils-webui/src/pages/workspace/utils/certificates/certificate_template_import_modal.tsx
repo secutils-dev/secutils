@@ -1,6 +1,8 @@
 import {
   EuiButton,
   EuiButtonEmpty,
+  EuiButtonGroup,
+  EuiButtonIcon,
   EuiCallOut,
   EuiFieldText,
   EuiFilePicker,
@@ -12,14 +14,12 @@ import {
   EuiModalHeader,
   EuiModalHeaderTitle,
   EuiSpacer,
-  EuiTab,
-  EuiTabs,
   EuiText,
   EuiTextArea,
   EuiTitle,
   htmlIdGenerator,
 } from '@elastic/eui';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import type { CertificateSelection } from './certificate_import_preview';
 import { CertificateImportPreview } from './certificate_import_preview';
@@ -45,12 +45,18 @@ export interface CertificateTemplateImportModalProps {
   onClose: (success?: boolean) => void;
 }
 
-type ImportTab = 'pem' | 'file' | 'url';
+type ImportSource = 'manual' | 'file' | 'url';
+
+const SOURCE_OPTIONS: Array<{ id: ImportSource; label: string }> = [
+  { id: 'manual', label: 'Manual' },
+  { id: 'file', label: 'File' },
+  { id: 'url', label: 'URL' },
+];
 
 export function CertificateTemplateImportModal({ onClose }: CertificateTemplateImportModalProps) {
   const { uiState, addToast } = useWorkspaceContext();
 
-  const [activeTab, setActiveTab] = useState<ImportTab>('pem');
+  const [importSource, setImportSource] = useState<ImportSource>('manual');
   const [pemContent, setPemContent] = useState('');
   const [urlValue, setUrlValue] = useState('');
   const [parseError, setParseError] = useState<string | null>(null);
@@ -58,6 +64,7 @@ export function CertificateTemplateImportModal({ onClose }: CertificateTemplateI
   const [certificates, setCertificates] = useState<ParsedCertificate[]>([]);
   const [selections, setSelections] = useState<CertificateSelection[]>([]);
 
+  const [fetchStatus, setFetchStatus] = useState<AsyncData<undefined> | null>(null);
   const [parseStatus, setParseStatus] = useState<AsyncData<undefined> | null>(null);
   const [importStatus, setImportStatus] = useState<AsyncData<undefined> | null>(null);
 
@@ -66,6 +73,13 @@ export function CertificateTemplateImportModal({ onClose }: CertificateTemplateI
     setSelections([]);
     setParseError(null);
   }, []);
+
+  const clearAll = useCallback(() => {
+    setPemContent('');
+    setParseStatus(null);
+    setFetchStatus(null);
+    clearResults();
+  }, [clearResults]);
 
   const handleParsedCerts = useCallback(async (derBuffers: ArrayBuffer[], pemStrings: string[]) => {
     try {
@@ -99,7 +113,6 @@ export function CertificateTemplateImportModal({ onClose }: CertificateTemplateI
 
       try {
         const derBuffers = parsePemContent(content);
-        // Reconstruct PEM strings for each certificate.
         const pemStrings = derBuffers.map((der) => {
           const base64 = btoa(Array.from(new Uint8Array(der), (b) => String.fromCharCode(b)).join(''));
           const lines = base64.match(/.{1,64}/g) ?? [];
@@ -118,29 +131,30 @@ export function CertificateTemplateImportModal({ onClose }: CertificateTemplateI
 
   const handleFileUpload = useCallback(
     async (files: FileList | null) => {
+      clearResults();
       if (!files || files.length === 0) {
-        clearResults();
+        setPemContent('');
         return;
       }
 
-      const file = files[0];
       try {
-        const content = await file.text();
-        await handleParsePem(content);
+        const content = await files[0].text();
+        setPemContent(content);
       } catch (err) {
         setParseError(err instanceof Error ? err.message : 'Failed to read file.');
       }
     },
-    [clearResults, handleParsePem],
+    [clearResults],
   );
 
   const handleFetchUrl = useCallback(async () => {
-    if (!uiState.synced || parseStatus?.status === 'pending') {
+    if (!uiState.synced || fetchStatus?.status === 'pending') {
       return;
     }
 
     clearResults();
-    setParseStatus({ status: 'pending' });
+    setPemContent('');
+    setFetchStatus({ status: 'pending' });
 
     try {
       const response = await fetch(getApiUrl('/api/utils/certificates/templates/peer_certificates'), {
@@ -155,28 +169,20 @@ export function CertificateTemplateImportModal({ onClose }: CertificateTemplateI
       const pemStrings: string[] = await response.json();
       if (pemStrings.length === 0) {
         setParseError('No certificates found at the specified URL.');
-        setParseStatus({ status: 'failed', error: 'No certificates' });
+        setFetchStatus({ status: 'failed', error: 'No certificates' });
         return;
       }
 
-      const derBuffers = pemStrings.flatMap((pem) => {
-        try {
-          return parsePemContent(pem);
-        } catch {
-          return [];
-        }
-      });
-
-      await handleParsedCerts(derBuffers, pemStrings);
-      setParseStatus({ status: 'succeeded', data: undefined });
+      setPemContent(pemStrings.join('\n\n'));
+      setFetchStatus({ status: 'succeeded', data: undefined });
     } catch (err: unknown) {
       const errorMessage = getErrorMessage(err as Error);
       setParseError(
         isClientError(err as Error) ? errorMessage : 'Unable to fetch certificates from the specified URL.',
       );
-      setParseStatus({ status: 'failed', error: errorMessage });
+      setFetchStatus({ status: 'failed', error: errorMessage });
     }
-  }, [uiState.synced, parseStatus?.status, clearResults, urlValue, handleParsedCerts]);
+  }, [uiState.synced, fetchStatus?.status, clearResults, urlValue]);
 
   const selectedCerts = certificates
     .map((cert, index) => ({ cert, selection: selections[index] }))
@@ -241,55 +247,21 @@ export function CertificateTemplateImportModal({ onClose }: CertificateTemplateI
     }
   }, [canImport, uiState.synced, selectedCerts, addToast, onClose]);
 
-  const canParse =
-    parseStatus?.status !== 'pending' &&
-    ((activeTab === 'pem' && pemContent.trim().length > 0) ||
-      (activeTab === 'url' && isValidURL(urlValue) && urlValue.startsWith('https')));
+  const canParse = parseStatus?.status !== 'pending' && pemContent.trim().length > 0;
+  const canFetchUrl =
+    fetchStatus?.status !== 'pending' && uiState.synced && isValidURL(urlValue) && urlValue.startsWith('https');
 
-  const pemInput = (
-    <EuiFormRow label="PEM content" helpText="Paste one or more PEM-encoded certificates" fullWidth>
-      <EuiTextArea
-        fullWidth
-        value={pemContent}
-        rows={6}
-        placeholder={'-----BEGIN CERTIFICATE-----\nMIID...base64 encoded...\n-----END CERTIFICATE-----'}
-        onChange={(e) => {
-          setPemContent(e.target.value);
-          clearResults();
-        }}
+  const fetchUrlButton = useMemo(
+    () => (
+      <EuiButtonIcon
+        iconType="download"
+        aria-label="Fetch certificates"
+        isLoading={fetchStatus?.status === 'pending'}
+        isDisabled={!canFetchUrl}
+        onClick={handleFetchUrl}
       />
-    </EuiFormRow>
-  );
-
-  const fileInput = (
-    <EuiFormRow label="Certificate file" helpText="Select a .pem, .crt, .cer, or .cert file" fullWidth>
-      <EuiFilePicker
-        fullWidth
-        accept=".pem,.crt,.cer,.cert"
-        onChange={handleFileUpload}
-        display="default"
-        initialPromptText="Select or drag a certificate file"
-      />
-    </EuiFormRow>
-  );
-
-  const urlInput = (
-    <EuiFormRow
-      label="URL"
-      helpText="HTTPS URL to extract the TLS certificate chain from (e.g., https://example.com)"
-      fullWidth
-    >
-      <EuiFieldText
-        fullWidth
-        placeholder="https://example.com"
-        value={urlValue}
-        type="url"
-        onChange={(e) => {
-          setUrlValue(e.target.value);
-          clearResults();
-        }}
-      />
-    </EuiFormRow>
+    ),
+    [fetchStatus?.status, canFetchUrl, handleFetchUrl],
   );
 
   return (
@@ -303,53 +275,80 @@ export function CertificateTemplateImportModal({ onClose }: CertificateTemplateI
       </EuiModalHeader>
       <EuiModalBody>
         <EuiForm component="form" onSubmit={(e) => e.preventDefault()}>
-          <EuiTabs size="s">
-            <EuiTab
-              isSelected={activeTab === 'pem'}
-              onClick={() => {
-                setActiveTab('pem');
-                clearResults();
+          <EuiFormRow label="Source" fullWidth>
+            <EuiButtonGroup
+              legend="Certificate source"
+              options={SOURCE_OPTIONS}
+              idSelected={importSource}
+              onChange={(id) => {
+                setImportSource(id as ImportSource);
+                clearAll();
               }}
-            >
-              PEM content
-            </EuiTab>
-            <EuiTab
-              isSelected={activeTab === 'file'}
-              onClick={() => {
-                setActiveTab('file');
-                clearResults();
-              }}
-            >
-              File
-            </EuiTab>
-            <EuiTab
-              isSelected={activeTab === 'url'}
-              onClick={() => {
-                setActiveTab('url');
-                clearResults();
-              }}
-            >
-              URL
-            </EuiTab>
-          </EuiTabs>
-          <EuiSpacer size="m" />
-          {activeTab === 'pem' ? pemInput : null}
-          {activeTab === 'file' ? fileInput : null}
-          {activeTab === 'url' ? urlInput : null}
+              buttonSize="compressed"
+              isFullWidth
+            />
+          </EuiFormRow>
 
-          {activeTab !== 'file' ? (
-            <>
-              <EuiSpacer size="s" />
-              <EuiButton
-                size="s"
-                onClick={activeTab === 'pem' ? () => handleParsePem(pemContent) : handleFetchUrl}
-                isLoading={parseStatus?.status === 'pending'}
-                isDisabled={!canParse}
-              >
-                {activeTab === 'url' ? 'Fetch certificates' : 'Parse certificates'}
-              </EuiButton>
-            </>
+          {importSource === 'file' ? (
+            <EuiFormRow label="Certificate file" helpText="Select a .pem, .crt, .cer, or .cert file" fullWidth>
+              <EuiFilePicker
+                fullWidth
+                accept=".pem,.crt,.cer,.cert"
+                onChange={handleFileUpload}
+                display="default"
+                initialPromptText="Select or drag a certificate file"
+              />
+            </EuiFormRow>
           ) : null}
+
+          {importSource === 'url' ? (
+            <EuiFormRow
+              label="URL"
+              helpText="HTTPS URL to extract the TLS certificate chain from (e.g., https://example.com)"
+              fullWidth
+            >
+              <EuiFieldText
+                fullWidth
+                placeholder="https://example.com"
+                value={urlValue}
+                type="url"
+                onChange={(e) => {
+                  setUrlValue(e.target.value);
+                  clearResults();
+                  setPemContent('');
+                }}
+                append={fetchUrlButton}
+              />
+            </EuiFormRow>
+          ) : null}
+
+          <EuiFormRow
+            label="PEM content"
+            helpText={importSource === 'manual' ? 'Paste one or more PEM-encoded certificates' : undefined}
+            fullWidth
+          >
+            <EuiTextArea
+              fullWidth
+              value={pemContent}
+              rows={6}
+              readOnly={importSource !== 'manual'}
+              placeholder={'-----BEGIN CERTIFICATE-----\nMIID...base64 encoded...\n-----END CERTIFICATE-----'}
+              onChange={(e) => {
+                setPemContent(e.target.value);
+                clearResults();
+              }}
+            />
+          </EuiFormRow>
+
+          <EuiSpacer size="s" />
+          <EuiButton
+            size="s"
+            onClick={() => handleParsePem(pemContent)}
+            isLoading={parseStatus?.status === 'pending'}
+            isDisabled={!canParse}
+          >
+            Parse certificates
+          </EuiButton>
         </EuiForm>
 
         {parseError ? (

@@ -499,22 +499,32 @@ test.describe('Certificate templates guide screenshots', () => {
     await highlightOn(importButton);
     await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'import_url_step1_empty.png') });
 
-    // Step 2: Open the modal, switch to the URL tab, enter a URL and click Fetch.
+    // Step 2: Open the modal, select URL source, enter a URL and highlight the fetch button.
     await highlightOff(importButton);
     await importButton.click();
     const modal = page.getByRole('dialog').filter({ has: page.getByText('Import certificate template') });
     await expect(modal).toBeVisible({ timeout: 10000 });
 
-    await modal.getByRole('tab', { name: 'URL' }).click();
-    const urlInput = modal.getByRole('textbox');
+    await modal.getByRole('button', { name: 'URL', exact: true }).click();
+    const urlInput = modal.getByRole('textbox', { name: 'URL' });
     await urlInput.fill('https://test.example.com');
 
     const fetchButton = modal.getByRole('button', { name: 'Fetch certificates' });
     await highlightOn(fetchButton);
     await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'import_url_step2_url.png') });
 
-    // Step 3: Fetch and preview.
+    // Step 3: Fetch certificates and show the loaded PEM content.
     await fetchButton.click();
+
+    const pemTextarea = modal.getByRole('textbox', { name: 'PEM content' });
+    await expect(pemTextarea).toHaveValue(/BEGIN CERTIFICATE/, { timeout: 10000 });
+
+    const parseButton = modal.getByRole('button', { name: 'Parse certificates' });
+    await highlightOn(parseButton);
+    await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'import_url_step3_pem_loaded.png') });
+
+    // Step 4: Parse and preview.
+    await parseButton.click();
 
     await expect(modal.getByText('1 certificate found')).toBeVisible({ timeout: 10000 });
 
@@ -523,9 +533,9 @@ test.describe('Certificate templates guide screenshots', () => {
 
     const importActionButton = modal.getByRole('button', { name: /Import/ }).last();
     await highlightOn(importActionButton);
-    await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'import_url_step3_preview.png') });
+    await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'import_url_step4_preview.png') });
 
-    // Step 4: Import and show the template in the grid.
+    // Step 5: Import and show the template in the grid.
     await importActionButton.click();
 
     await expect(modal).not.toBeVisible({ timeout: 15000 });
@@ -534,7 +544,7 @@ test.describe('Certificate templates guide screenshots', () => {
     const templateRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'test.example.com' }) });
     await expect(templateRow).toBeVisible({ timeout: 10000 });
     await highlightOn(templateRow);
-    await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'import_url_step4_imported.png') });
+    await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'import_url_step5_imported.png') });
   });
 
   test('Share a certificate template', async ({ page }) => {
