@@ -5,8 +5,9 @@ ENV_FILE             	:= .env
 CHROME_PATH          	?= /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
 RUNS                 	?= 10
 E2E_LOOP_DIR         	:= /tmp/e2e-loop-results
+AGENT_WORKSPACE     	?=
 
-.PHONY: dev-up dev-down api webui docs e2e-up e2e-down e2e-test e2e-test-loop docs-screenshots docs-screenshots-loop clean
+.PHONY: dev-up dev-down api webui docs e2e-up e2e-down e2e-test e2e-test-loop docs-screenshots docs-screenshots-loop agent-push agent-pull clean
 
 ## ---------- Development ----------
 
@@ -113,6 +114,16 @@ docker-webui: ## Build the Web UI Docker image.
 
 docker-docs: ## Build the Docs Docker image.
 	docker build --tag secutils-docs:latest -f Dockerfile.docs .
+
+## ---------- Agent Workspace Sync ----------
+
+agent-push: ## Push changes from this repo to the Agent workspace (excludes .git and gitignored files).
+	@if [ -z "$(AGENT_WORKSPACE)" ]; then echo "Error: set AGENT_WORKSPACE to the Agent project path"; exit 1; fi
+	rsync -av --delete --exclude='.git' --filter=':- .gitignore' ./ $(AGENT_WORKSPACE)/
+
+agent-pull: ## Pull changes from the Agent workspace into this repo (excludes .git and gitignored files).
+	@if [ -z "$(AGENT_WORKSPACE)" ]; then echo "Error: set AGENT_WORKSPACE to the Agent project path"; exit 1; fi
+	rsync -av --delete --exclude='.git' --filter=':- .gitignore' $(AGENT_WORKSPACE)/ ./
 
 ## ---------- Misc ----------
 
