@@ -184,7 +184,7 @@ npm --prefix components/secutils-docs run watch
 The docs UI will be available at http://localhost:7373. Documentation is also hosted at
 [secutils.dev/docs](https://secutils.dev/docs).
 
-## End-to-End Tests
+## End-to-End tests
 
 E2E tests use [Playwright](https://playwright.dev/) and run against the full stack in Docker.
 
@@ -265,24 +265,31 @@ docker build --platform linux/arm64 --tag secutils-api:latest -f Dockerfile.aarc
 
 ## Available Make targets
 
-| Command                  | Description                                                           |
-|--------------------------|-----------------------------------------------------------------------|
-| `make dev-up`            | Start dev infrastructure (`BUILD=1` to rebuild images)                |
-| `make dev-down`          | Stop dev infrastructure and remove volumes                            |
-| `make dev-logs`          | Tail logs from dev infrastructure                                     |
-| `make api`               | Run the Secutils API (`cargo run`)                                    |
-| `make webui`             | Run the Web UI dev server                                             |
-| `make docs`              | Run the documentation dev server                                      |
-| `make dev-debug-scraper` | Start infra with web scraper routed to host (for headed browser)      |
-| `make scraper-setup`     | Install web scraper npm dependencies (run once)                       |
-| `make scraper`           | Run web scraper on host with visible browser (uses Chrome by default) |
-| `make e2e-up`            | Start the full e2e stack (`BUILD=1` to rebuild images)                |
-| `make e2e-down`          | Stop the e2e stack and remove volumes                                 |
-| `make e2e-test`          | Run Playwright e2e tests (`ARGS="--ui"` for interactive mode)         |
-| `make e2e-report`        | Open the Playwright HTML report                                       |
-| `make db-reset`          | Drop, create, and migrate the dev database                            |
-| `make clean`             | Remove build artifacts                                                |
-| `make help`              | Show all available targets                                            |
+| Command                      | Description                                                              |
+|------------------------------|--------------------------------------------------------------------------|
+| `make dev-up`                | Start dev infrastructure (`BUILD=1` to rebuild images)                   |
+| `make dev-down`              | Stop dev infrastructure and remove volumes                               |
+| `make dev-logs`              | Tail logs from dev infrastructure                                        |
+| `make api`                   | Run the Secutils API (`cargo run`)                                       |
+| `make webui`                 | Run the Web UI dev server                                                |
+| `make docs`                  | Run the documentation dev server                                         |
+| `make dev-debug-scraper`     | Start infra with web scraper routed to host (for headed browser)         |
+| `make scraper-setup`         | Install web scraper npm dependencies (run once)                          |
+| `make scraper`               | Run web scraper on host with visible browser (uses Chrome by default)    |
+| `make e2e-up`                | Start the full e2e stack (`BUILD=1` to rebuild images)                   |
+| `make e2e-down`              | Stop the e2e stack and remove volumes                                    |
+| `make e2e-test`              | Run Playwright e2e tests (`ARGS="--ui"` for interactive mode)            |
+| `make e2e-test-loop`         | Run e2e tests repeatedly (`RUNS=N` default 10, `ARGS=...`)               |
+| `make e2e-report`            | Open the Playwright HTML report                                          |
+| `make e2e-logs`              | Tail logs from the e2e stack                                             |
+| `make docs-screenshots`      | Regenerate doc screenshots (requires e2e stack running, supports `ARGS`) |
+| `make docs-screenshots-loop` | Run docs screenshot tests repeatedly (`RUNS=N` default 10, `ARGS=...`)   |
+| `make db-reset`              | Drop, create, and migrate the dev database                               |
+| `make docker-api`            | Build the Secutils API Docker image                                      |
+| `make docker-webui`          | Build the Web UI Docker image                                            |
+| `make docker-docs`           | Build the Docs Docker image                                              |
+| `make clean`                 | Remove build artifacts                                                   |
+| `make help`                  | Show all available targets                                               |
 
 ### Debugging the web scraper with a visible browser
 

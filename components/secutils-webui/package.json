@@ -45,6 +45,7 @@
     "@emotion/react": "^11.14.0",
     "@monaco-editor/react": "^4.7.0",
     "@ory/kratos-client-fetch": "^25.4.0",
+    "@peculiar/x509": "^1.14.3",
     "moment": "^2.30.1",
     "monaco-editor": "^0.55.1",
     "nanoid": "^5.1.6",

@@ -6,6 +6,7 @@ use actix_web::http::Method;
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum UtilsResourceOperation {
     CertificatesTemplateGenerate,
+    CertificatesTemplatePeerCertificates,
     CertificatesPrivateKeyExport,
     WebhooksRespondersGetHistory,
     WebhooksRespondersClearHistory,
@@ -21,6 +22,7 @@ impl UtilsResourceOperation {
         matches!(
             self,
             Self::CertificatesTemplateGenerate
+                | Self::CertificatesTemplatePeerCertificates
                 | Self::CertificatesPrivateKeyExport
                 | Self::WebScrapingPageGetHistory
                 | Self::WebSecurityContentSecurityPolicySerialize
@@ -43,6 +45,11 @@ impl TryFrom<(&UtilsResource, &str, &Method)> for UtilsResourceOperation {
             // Certificate templates custom actions.
             UtilsResource::CertificatesTemplates if operation == "generate" => {
                 Ok(UtilsResourceOperation::CertificatesTemplateGenerate)
+            }
+            UtilsResource::CertificatesTemplates
+                if operation == "peer_certificates" && *method == Method::POST =>
+            {
+                Ok(UtilsResourceOperation::CertificatesTemplatePeerCertificates)
             }
 
             // Webhooks custom actions.
@@ -85,6 +92,7 @@ mod tests {
         assert!(UtilsResourceOperation::CertificatesPrivateKeyExport.requires_params());
 
         assert!(UtilsResourceOperation::CertificatesTemplateGenerate.requires_params());
+        assert!(UtilsResourceOperation::CertificatesTemplatePeerCertificates.requires_params());
 
         assert!(!UtilsResourceOperation::WebhooksRespondersGetHistory.requires_params());
         assert!(!UtilsResourceOperation::WebhooksRespondersClearHistory.requires_params());
@@ -124,6 +132,30 @@ mod tests {
                 &Method::POST
             )),
             Ok(UtilsResourceOperation::CertificatesTemplateGenerate)
+        );
+        assert_eq!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::CertificatesTemplates,
+                "peer_certificates",
+                &Method::POST
+            )),
+            Ok(UtilsResourceOperation::CertificatesTemplatePeerCertificates)
+        );
+        assert!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::CertificatesTemplates,
+                "peer_certificates",
+                &Method::GET
+            ))
+            .is_err()
+        );
+        assert!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::CertificatesPrivateKeys,
+                "peer_certificates",
+                &Method::POST
+            ))
+            .is_err()
         );
         assert!(
             UtilsResourceOperation::try_from((

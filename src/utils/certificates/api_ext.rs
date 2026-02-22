@@ -3,6 +3,7 @@ mod private_keys_export_params;
 mod private_keys_update_params;
 mod templates_create_params;
 mod templates_generate_params;
+mod templates_peer_certificates_params;
 mod templates_update_params;
 
 pub use self::{
@@ -11,6 +12,7 @@ pub use self::{
     private_keys_update_params::PrivateKeysUpdateParams,
     templates_create_params::TemplatesCreateParams,
     templates_generate_params::TemplatesGenerateParams,
+    templates_peer_certificates_params::TemplatesPeerCertificatesParams,
     templates_update_params::TemplatesUpdateParams,
 };
 use crate::{
@@ -38,15 +40,18 @@ use openssl::{
     pkcs12::Pkcs12,
     pkey::{PKey, Private},
     rsa::Rsa,
+    ssl::{SslConnector, SslMethod, SslVerifyMode},
     symm::Cipher,
     x509::{X509, X509Builder, X509NameBuilder, extension},
 };
 use std::{
     io::{Cursor, Write},
+    net::TcpStream,
     time::Instant,
 };
 use time::OffsetDateTime;
 use tracing::debug;
+use url::Url;
 use uuid::Uuid;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
@@ -473,6 +478,74 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
         users_api.remove_user_share(user_share.id).await
     }
 
+    /// Fetches the TLS peer certificate chain from the specified URL.
+    pub async fn get_peer_certificates(&self, url: &Url) -> anyhow::Result<Vec<String>> {
+        if url.scheme() != "https" {
+            bail!(SecutilsError::client(format!(
+                "URL must use HTTPS scheme to retrieve TLS certificates, but received {url}."
+            )));
+        }
+
+        if !self.api.network.is_public_web_url(url).await {
+            bail!(SecutilsError::client(format!(
+                "URL must have a valid public reachable domain name, but received {url}."
+            )));
+        }
+
+        let host = url
+            .host_str()
+            .ok_or_else(|| SecutilsError::client("URL must have a valid host."))?
+            .to_string();
+        let port = url.port().unwrap_or(443);
+
+        let certificates = tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<String>> {
+            let mut connector_builder = SslConnector::builder(SslMethod::tls())?;
+            // Accept all certificates (including self-signed) since we want to inspect, not validate.
+            connector_builder.set_verify(SslVerifyMode::NONE);
+            let connector = connector_builder.build();
+
+            let stream = TcpStream::connect(format!("{host}:{port}")).map_err(|err| {
+                SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
+                    "Cannot connect to {host}:{port} to retrieve TLS certificates."
+                )))
+            })?;
+
+            let ssl_stream = connector.connect(&host, stream).map_err(|err| {
+                SecutilsError::client_with_root_cause(
+                    anyhow!(err).context(format!("TLS handshake with {host}:{port} failed.")),
+                )
+            })?;
+
+            let Some(cert_chain) = ssl_stream.ssl().peer_cert_chain() else {
+                bail!(SecutilsError::client(format!(
+                    "No certificates found for {host}:{port}."
+                )));
+            };
+
+            let mut pem_certs = Vec::with_capacity(cert_chain.len());
+            for cert in cert_chain {
+                let pem = String::from_utf8(cert.to_pem()?)?;
+                pem_certs.push(pem);
+            }
+
+            if pem_certs.is_empty() {
+                bail!(SecutilsError::client(format!(
+                    "No certificates found for {host}:{port}."
+                )));
+            }
+
+            Ok(pem_certs)
+        })
+        .await??;
+
+        debug!(
+            "Retrieved {} peer certificate(s) from {url}.",
+            certificates.len()
+        );
+
+        Ok(certificates)
+    }
+
     /// Generates private key with the specified parameters.
     fn generate_private_key(alg: PrivateKeyAlgorithm) -> anyhow::Result<PKey<Private>> {
         let execute_start = Instant::now();
@@ -807,6 +880,7 @@ mod tests {
     use openssl::{hash::MessageDigest, pkcs12::Pkcs12};
     use sqlx::PgPool;
     use time::OffsetDateTime;
+    use url::Url;
 
     fn get_mock_certificate_attributes() -> anyhow::Result<CertificateAttributes> {
         Ok(CertificateAttributes {
@@ -2203,6 +2277,56 @@ mod tests {
                 .get_user_share(template_share.id)
                 .await?
                 .is_none()
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn fails_to_get_peer_certificates_for_non_https_url(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
+
+        let certificates = api.certificates();
+
+        assert_debug_snapshot!(
+            certificates
+                .get_peer_certificates(&Url::parse("http://example.com")?)
+                .await,
+            @r###"
+        Err(
+            "URL must use HTTPS scheme to retrieve TLS certificates, but received http://example.com/.",
+        )
+        "###
+        );
+
+        assert_debug_snapshot!(
+            certificates
+                .get_peer_certificates(&Url::parse("ftp://example.com")?)
+                .await,
+            @r###"
+        Err(
+            "URL must use HTTPS scheme to retrieve TLS certificates, but received ftp://example.com/.",
+        )
+        "###
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn fails_to_get_peer_certificates_for_non_public_url(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
+
+        let certificates = api.certificates();
+        assert_debug_snapshot!(
+            certificates
+                .get_peer_certificates(&Url::parse("https://127.0.0.1")?)
+                .await,
+            @r###"
+        Err(
+            "URL must have a valid public reachable domain name, but received https://127.0.0.1/.",
+        )
+        "###
         );
 
         Ok(())

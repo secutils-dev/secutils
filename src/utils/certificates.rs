@@ -148,6 +148,16 @@ pub async fn certificates_handle_action<DR: DnsResolver, ET: EmailTransport>(
                 .generate_self_signed_certificate(user.id, resource_id, extract_params(params)?)
                 .await?,
         ),
+        (
+            UtilsResource::CertificatesTemplates,
+            UtilsAction::Execute {
+                resource_id: None,
+                operation: UtilsResourceOperation::CertificatesTemplatePeerCertificates,
+            },
+        ) => {
+            let params: api_ext::TemplatesPeerCertificatesParams = extract_params(params)?;
+            UtilsActionResult::json(certificates.get_peer_certificates(&params.url).await?)
+        }
 
         _ => Err(SecutilsError::client("Invalid resource or action.").into()),
     }
@@ -813,6 +823,36 @@ pub mod tests {
         )?;
         assert!(user_unshare.is_none());
         assert!(api.users().get_user_share(user_share_id).await?.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn fails_to_get_peer_certificates_for_non_https(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
+
+        let mock_user = mock_user()?;
+        api.db.insert_user(&mock_user).await?;
+
+        let result = certificates_handle_action(
+            mock_user,
+            &api,
+            UtilsAction::Execute {
+                resource_id: None,
+                operation: UtilsResourceOperation::CertificatesTemplatePeerCertificates,
+            },
+            UtilsResource::CertificatesTemplates,
+            Some(UtilsActionParams::json(json!({
+                "url": "http://example.com",
+            }))),
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "URL must use HTTPS scheme to retrieve TLS certificates, but received http://example.com/."
+        );
 
         Ok(())
     }

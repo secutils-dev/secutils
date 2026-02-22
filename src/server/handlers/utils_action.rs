@@ -405,6 +405,20 @@ mod tests {
                 operation: UtilsResourceOperation::CertificatesTemplateGenerate
             })
         );
+
+        assert_eq!(
+            extract_action(
+                &TestRequest::with_uri("https://secutils.dev/api/utils")
+                    .method(Method::POST)
+                    .param("resource_id", "peer_certificates")
+                    .to_http_request(),
+                &resource,
+            ),
+            Some(UtilsAction::Execute {
+                resource_id: None,
+                operation: UtilsResourceOperation::CertificatesTemplatePeerCertificates
+            })
+        );
     }
 
     #[test]

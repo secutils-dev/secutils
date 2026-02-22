@@ -23,8 +23,8 @@ In this guide you'll create a template for generating a private key and self-sig
 <Steps steps={[
     {
         img: '../../img/docs/guides/digital_certificates/certificate_templates/https_step1_empty.png',
-        caption: <>Navigate to <a href="https://secutils.dev/ws/certificates__certificate_templates"><b>Digital Certificates → Certificate templates</b></a> and click <strong>Create certificate template</strong>.</>,
-        alt: 'Navigate to Digital Certificates → Certificate templates and click Create certificate template.',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/certificates__certificate_templates"><b>Digital Certificates → Certificate templates</b></a> and click <strong>Create template</strong>.</>,
+        alt: 'Navigate to Digital Certificates → Certificate templates and click Create template.',
     },
     {
         img: '../../img/docs/guides/digital_certificates/certificate_templates/https_step2_general.png',
@@ -84,7 +84,7 @@ Use the downloaded `https-server.pfx` file to configure a Node.js HTTPS server:
 (async function main() {
     const https = await import('node:https');
     const fs = await import('node:fs');
-    
+
     const httpsOptions = {
         // highlight-start
         // The name of the certificate bundle and the passphrase that was set in the generation dialog
@@ -92,12 +92,12 @@ Use the downloaded `https-server.pfx` file to configure a Node.js HTTPS server:
         passphrase: 'pass'
         // highlight-end
     };
-    
+
     https.createServer(httpsOptions, (req, res) => {
         res.writeHead(200);
         res.end('Hello World\n');
     }).listen(8000);
-    
+
     console.log(`Listening on https://localhost:8000`);
 })();
 ```
@@ -106,7 +106,7 @@ Run the server and query it with **cURL** or a similar HTTP client:
 
 ```bash title="Example commands"
 // Start server
-$ node index.js 
+$ node index.js
 Listening on https://localhost:8000
 
 // Query the server with cURL
@@ -125,7 +125,7 @@ $ curl -kv https://localhost:8000
 > ...
 < HTTP/1.1 200 OK
 < ....
-< 
+<
 Hello World
 ```
 
@@ -136,8 +136,8 @@ In this guide, you will generate a private key in PKCS#8 format and then export 
 <Steps steps={[
     {
         img: '../../img/docs/guides/digital_certificates/certificate_templates/jwk_step1_empty.png',
-        caption: <>Navigate to <a href="https://secutils.dev/ws/certificates__certificate_templates"><b>Digital Certificates → Certificate templates</b></a> and click <strong>Create certificate template</strong>.</>,
-        alt: 'Navigate to Digital Certificates → Certificate templates and click Create certificate template.',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/certificates__certificate_templates"><b>Digital Certificates → Certificate templates</b></a> and click <strong>Create template</strong>.</>,
+        alt: 'Navigate to Digital Certificates → Certificate templates and click Create template.',
     },
     {
         img: '../../img/docs/guides/digital_certificates/certificate_templates/jwk_step2_general.png',
@@ -245,6 +245,60 @@ In this guide, you will generate a private key in PKCS#8 format and then export 
         img: '../../img/docs/guides/digital_certificates/certificate_templates/jwk_step7_result.png',
         caption: <>Click the responder URL, upload the <code>jwk.p8</code> file, and observe the JSON Web Key (JWK) derived from your ECDSA key.</>,
         alt: 'Upload the PKCS#8 key and view the exported JWK.',
+    },
+]} />
+
+## Import a certificate template from a string
+
+In this guide you'll import a certificate template by pasting PEM-encoded certificate content:
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/digital_certificates/certificate_templates/import_string_step1_empty.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/certificates__certificate_templates"><b>Digital Certificates → Certificate templates</b></a> and click <strong>Import template</strong>.</>,
+        alt: 'Navigate to Digital Certificates → Certificate templates and click Import template.',
+    },
+    {
+        img: '../../img/docs/guides/digital_certificates/certificate_templates/import_string_step2_pem.png',
+        caption: <>In the <b>PEM content</b> tab, paste one or more PEM-encoded certificates (with or without headers) and click <b>Parse certificates</b>.</>,
+        alt: 'Paste PEM content and click Parse certificates.',
+    },
+    {
+        img: '../../img/docs/guides/digital_certificates/certificate_templates/import_string_step3_preview.png',
+        caption: <>Review the parsed certificates. Expand each certificate to view its details. Select which certificates to import and set template names. Click <b>Import</b> to create the certificate templates.</>,
+        alt: 'Preview and select certificates to import.',
+    },
+    {
+        img: '../../img/docs/guides/digital_certificates/certificate_templates/import_string_step4_imported.png',
+        caption: 'The imported templates appear in the grid.',
+    },
+]} />
+
+You can also import certificates by uploading a `.pem`, `.crt`, `.cer`, or `.cert` file using the **File** tab.
+
+## Import a certificate template from URL
+
+In this guide you'll import a certificate template by extracting the TLS certificate chain from a website:
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/digital_certificates/certificate_templates/import_url_step1_empty.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/certificates__certificate_templates"><b>Digital Certificates → Certificate templates</b></a> and click <strong>Import template</strong>.</>,
+        alt: 'Navigate to Digital Certificates → Certificate templates and click Import template.',
+    },
+    {
+        img: '../../img/docs/guides/digital_certificates/certificate_templates/import_url_step2_url.png',
+        caption: <>Switch to the <b>URL</b> tab, enter an HTTPS URL (e.g., <code>https://test.example.com</code>), and click <b>Fetch certificates</b>.</>,
+        alt: 'Switch to URL tab and fetch certificates from a URL.',
+    },
+    {
+        img: '../../img/docs/guides/digital_certificates/certificate_templates/import_url_step3_preview.png',
+        caption: <>Review the fetched certificates. Expand each certificate to view its details. Select which certificates to import and set template names. Click <b>Import</b> to create the certificate templates.</>,
+        alt: 'Preview and select certificates to import.',
+    },
+    {
+        img: '../../img/docs/guides/digital_certificates/certificate_templates/import_url_step4_imported.png',
+        caption: 'The imported templates appear in the grid.',
     },
 ]} />
 

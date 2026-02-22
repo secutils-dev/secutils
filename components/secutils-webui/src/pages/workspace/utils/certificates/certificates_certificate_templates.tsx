@@ -20,6 +20,7 @@ import { certificateTypeString, getDistinguishedNameString, signatureAlgorithmSt
 import type { CertificateTemplate } from './certificate_template';
 import { CertificateTemplateEditFlyout } from './certificate_template_edit_flyout';
 import { CertificateTemplateGenerateModal } from './certificate_template_generate_modal';
+import { CertificateTemplateImportModal } from './certificate_template_import_modal';
 import { CertificateTemplateShareModal } from './certificate_template_share_modal';
 import { SELF_SIGNED_PROD_WARNING_USER_SETTINGS_KEY } from './consts';
 import { privateKeyAlgString } from './private_key_alg';
@@ -44,6 +45,7 @@ export default function CertificatesCertificateTemplates() {
   const [templateToShare, setTemplateToShare] = useState<CertificateTemplate | null>(null);
   const [templateToEdit, setTemplateToEdit] = useState<Partial<CertificateTemplate> | null | undefined>(null);
   const [templateToRemove, setTemplateToRemove] = useState<CertificateTemplate | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   const docsButton = (
     <EuiButtonEmpty
@@ -56,6 +58,15 @@ export default function CertificatesCertificateTemplates() {
     </EuiButtonEmpty>
   );
 
+  const importButton = useMemo(
+    () => (
+      <EuiButton iconType={'importAction'} title="Import certificate template" onClick={() => setShowImportModal(true)}>
+        Import template
+      </EuiButton>
+    ),
+    [],
+  );
+
   const createButton = useMemo(
     () => (
       <EuiButton
@@ -64,10 +75,20 @@ export default function CertificatesCertificateTemplates() {
         fill
         onClick={() => setTemplateToEdit(undefined)}
       >
-        Create certificate template
+        Create template
       </EuiButton>
     ),
     [],
+  );
+
+  const titleActions = useMemo(
+    () => (
+      <EuiFlexGroup gutterSize="s" responsive={false}>
+        <EuiFlexItem grow={false}>{importButton}</EuiFlexItem>
+        <EuiFlexItem grow={false}>{createButton}</EuiFlexItem>
+      </EuiFlexGroup>
+    ),
+    [importButton, createButton],
   );
 
   const loadCertificateTemplates = useCallback(() => {
@@ -79,10 +100,10 @@ export default function CertificatesCertificateTemplates() {
 
         const templates = (await res.json()) as CertificateTemplate[];
         setTemplates({ status: 'succeeded', data: templates });
-        setTitleActions(templates.length === 0 ? null : createButton);
+        setTitleActions(templates.length === 0 ? null : titleActions);
       })
       .catch((err: Error) => setTemplates({ status: 'failed', error: getErrorMessage(err) }));
-  }, [setTitleActions, createButton]);
+  }, [setTitleActions, titleActions]);
 
   useEffect(() => {
     if (!uiState.synced) {
@@ -211,8 +232,11 @@ export default function CertificatesCertificateTemplates() {
             style={{ maxWidth: '60em', display: 'flex' }}
             body={
               <div>
-                <p>Go ahead and create your first certificate template.</p>
-                {createButton}
+                <p>Go ahead and create your first certificate template or import one from an existing certificate.</p>
+                <EuiFlexGroup gutterSize="s" justifyContent="center" responsive={false}>
+                  <EuiFlexItem grow={false}>{importButton}</EuiFlexItem>
+                  <EuiFlexItem grow={false}>{createButton}</EuiFlexItem>
+                </EuiFlexGroup>
                 <EuiSpacer size={'s'} />
                 {docsButton}
               </div>
@@ -383,6 +407,17 @@ export default function CertificatesCertificateTemplates() {
     );
   }
 
+  const importModal = showImportModal ? (
+    <CertificateTemplateImportModal
+      onClose={(success) => {
+        setShowImportModal(false);
+        if (success) {
+          loadCertificateTemplates();
+        }
+      }}
+    />
+  ) : null;
+
   return (
     <>
       {content}
@@ -390,6 +425,7 @@ export default function CertificatesCertificateTemplates() {
       {generateModal}
       {shareModal}
       {removeConfirmModal}
+      {importModal}
     </>
   );
 }

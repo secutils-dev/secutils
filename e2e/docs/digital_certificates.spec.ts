@@ -9,6 +9,7 @@ import {
   ensureUserAndLogin,
   fixCertificateTemplateValidityDates,
   goto,
+  highlightOff,
   highlightOn,
 } from './helpers';
 
@@ -138,7 +139,7 @@ test.describe('Certificate templates guide screenshots', () => {
   test('Generate a key pair for a HTTPS server', async ({ page }) => {
     // Step 1: Navigate to certificate templates and show the empty state.
     await goto(page, '/ws/certificates__certificate_templates');
-    const createButton = page.getByRole('button', { name: 'Create certificate template' });
+    const createButton = page.getByRole('button', { name: 'Create template' });
     await expect(createButton).toBeVisible({ timeout: 15000 });
     await highlightOn(createButton);
     await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'https_step1_empty.png') });
@@ -212,7 +213,7 @@ test.describe('Certificate templates guide screenshots', () => {
   test('Export a private key as a JSON Web Key', async ({ page }) => {
     // Step 1: Navigate to certificate templates and show the empty state.
     await goto(page, '/ws/certificates__certificate_templates');
-    const createButton = page.getByRole('button', { name: 'Create certificate template' });
+    const createButton = page.getByRole('button', { name: 'Create template' });
     await expect(createButton).toBeVisible({ timeout: 15000 });
     await highlightOn(createButton);
     await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'jwk_step1_empty.png') });
@@ -384,10 +385,162 @@ test.describe('Certificate templates guide screenshots', () => {
     await cryptoPage.close();
   });
 
+  test('Import a certificate template from string', async ({ page }) => {
+    // Real self-signed test certificate (RSA 2048, SHA-256, C=US/ST=California/L=San Francisco/O=Test Org/CN=test.example.com).
+    const TEST_PEM = [
+      '-----BEGIN CERTIFICATE-----',
+      'MIIDsTCCApmgAwIBAgIUYWNwS/Zjq9Dg3k7p1mMOgHN2HPwwDQYJKoZIhvcNAQEL',
+      'BQAwaDELMAkGA1UEBhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExFjAUBgNVBAcM',
+      'DVNhbiBGcmFuY2lzY28xETAPBgNVBAoMCFRlc3QgT3JnMRkwFwYDVQQDDBB0ZXN0',
+      'LmV4YW1wbGUuY29tMB4XDTI2MDIyMjE2MDQyMloXDTI3MDIyMjE2MDQyMlowaDEL',
+      'MAkGA1UEBhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExFjAUBgNVBAcMDVNhbiBG',
+      'cmFuY2lzY28xETAPBgNVBAoMCFRlc3QgT3JnMRkwFwYDVQQDDBB0ZXN0LmV4YW1w',
+      'bGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArRRWC6JnpD14',
+      'nqLaGC/GDbavICOLXJOvnsUmmSQneFyGKF/21oz/+ywnznM6BkmjXQJQH7lSfjf6',
+      '2nyavZvN21v0uZ1JwCUl3gqEvqoBPwlo57ZC8lrEm/OfGs9R+AMBZHr3AelmoV1r',
+      'giwFbSVhth9Thquby2RPF/jbgs2m/oSPSVRooOCkUfdCbp1DAC17+lyyhrByczMw',
+      'TCfZZi/bi6Bl9mUyIOImfxw4VDUIjG2z+3htoRMlt7DGmAcf0nHOtl6Y/PgNKGOL',
+      'lAuiDp31cRGU7u2+ptrHH2nSrQbWkcDO7QClAFFsUyMWudVoSWp2LB5faBDtLr/K',
+      'Buu6H+hM9QIDAQABo1MwUTAdBgNVHQ4EFgQUfuLq1fvV3xoyMudVt1WXuqbKvaAw',
+      'HwYDVR0jBBgwFoAUfuLq1fvV3xoyMudVt1WXuqbKvaAwDwYDVR0TAQH/BAUwAwEB',
+      '/zANBgkqhkiG9w0BAQsFAAOCAQEAQNGez0mH+lSa2R43Ex+20R+OECUnYu9CuCCK',
+      'tfX1rVUCejYbRKXr/w2UsQ2jQ5vzyOUOtlg9gEccnI7lqrXzi+tXYwQtsF0RSBvQ',
+      'HDhxTr7N2ZPch3E6Pu1VjK7GaKM6J0iLal76AhFZI5lUPxftRP1wvb4xFeU0/HCR',
+      'Lj1tTefuCCXM7dOrSUFau7I56ythgbppFW6052AVdXhypPrIqWaiKwnXBO+Y7znQ',
+      'fPWakaZEY44H0JWR7v6g9qk9RtCTDsxEr9qDH40PPQTT5dR6Y2nUd4nqqSXnoOTf',
+      'rL6NaXtNHWpD0yoc9+z0o1uBEI19++PrtMnl0j3fgtVyNIl5UQ==',
+      '-----END CERTIFICATE-----',
+    ].join('\n');
+
+    // Step 1: Navigate to certificate templates and highlight Import button.
+    await goto(page, '/ws/certificates__certificate_templates');
+    const importButton = page.getByRole('button', { name: 'Import template' });
+    await expect(importButton).toBeVisible({ timeout: 15000 });
+    await highlightOn(importButton);
+    await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'import_string_step1_empty.png') });
+
+    // Step 2: Open the modal and paste PEM content.
+    await highlightOff(importButton);
+    await importButton.click();
+    const modal = page.getByRole('dialog').filter({ has: page.getByText('Import certificate template') });
+    await expect(modal).toBeVisible({ timeout: 10000 });
+
+    const textarea = modal.getByRole('textbox');
+    await textarea.fill(TEST_PEM);
+
+    const parseButton = modal.getByRole('button', { name: 'Parse certificates' });
+    await highlightOn(parseButton);
+    await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'import_string_step2_pem.png') });
+
+    // Step 3: Parse and preview.
+    await parseButton.click();
+
+    await expect(modal.getByText('1 certificate found')).toBeVisible({ timeout: 10000 });
+
+    const accordion = modal.getByRole('button', { name: /test\.example\.com/ });
+    await accordion.click();
+
+    const importActionButton = modal.getByRole('button', { name: /Import/ }).last();
+    await highlightOn(importActionButton);
+    await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'import_string_step3_preview.png') });
+
+    // Step 4: Import and show the template in the grid.
+    await importActionButton.click();
+
+    await expect(modal).not.toBeVisible({ timeout: 15000 });
+    await dismissAllToasts(page);
+
+    const templateRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'test.example.com' }) });
+    await expect(templateRow).toBeVisible({ timeout: 10000 });
+    await highlightOn(templateRow);
+    await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'import_string_step4_imported.png') });
+  });
+
+  test('Import a certificate template from URL', async ({ page }) => {
+    // Reuse the same test certificate but serve it via a mocked API response.
+    const TEST_PEM = [
+      '-----BEGIN CERTIFICATE-----',
+      'MIIDsTCCApmgAwIBAgIUYWNwS/Zjq9Dg3k7p1mMOgHN2HPwwDQYJKoZIhvcNAQEL',
+      'BQAwaDELMAkGA1UEBhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExFjAUBgNVBAcM',
+      'DVNhbiBGcmFuY2lzY28xETAPBgNVBAoMCFRlc3QgT3JnMRkwFwYDVQQDDBB0ZXN0',
+      'LmV4YW1wbGUuY29tMB4XDTI2MDIyMjE2MDQyMloXDTI3MDIyMjE2MDQyMlowaDEL',
+      'MAkGA1UEBhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExFjAUBgNVBAcMDVNhbiBG',
+      'cmFuY2lzY28xETAPBgNVBAoMCFRlc3QgT3JnMRkwFwYDVQQDDBB0ZXN0LmV4YW1w',
+      'bGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArRRWC6JnpD14',
+      'nqLaGC/GDbavICOLXJOvnsUmmSQneFyGKF/21oz/+ywnznM6BkmjXQJQH7lSfjf6',
+      '2nyavZvN21v0uZ1JwCUl3gqEvqoBPwlo57ZC8lrEm/OfGs9R+AMBZHr3AelmoV1r',
+      'giwFbSVhth9Thquby2RPF/jbgs2m/oSPSVRooOCkUfdCbp1DAC17+lyyhrByczMw',
+      'TCfZZi/bi6Bl9mUyIOImfxw4VDUIjG2z+3htoRMlt7DGmAcf0nHOtl6Y/PgNKGOL',
+      'lAuiDp31cRGU7u2+ptrHH2nSrQbWkcDO7QClAFFsUyMWudVoSWp2LB5faBDtLr/K',
+      'Buu6H+hM9QIDAQABo1MwUTAdBgNVHQ4EFgQUfuLq1fvV3xoyMudVt1WXuqbKvaAw',
+      'HwYDVR0jBBgwFoAUfuLq1fvV3xoyMudVt1WXuqbKvaAwDwYDVR0TAQH/BAUwAwEB',
+      '/zANBgkqhkiG9w0BAQsFAAOCAQEAQNGez0mH+lSa2R43Ex+20R+OECUnYu9CuCCK',
+      'tfX1rVUCejYbRKXr/w2UsQ2jQ5vzyOUOtlg9gEccnI7lqrXzi+tXYwQtsF0RSBvQ',
+      'HDhxTr7N2ZPch3E6Pu1VjK7GaKM6J0iLal76AhFZI5lUPxftRP1wvb4xFeU0/HCR',
+      'Lj1tTefuCCXM7dOrSUFau7I56ythgbppFW6052AVdXhypPrIqWaiKwnXBO+Y7znQ',
+      'fPWakaZEY44H0JWR7v6g9qk9RtCTDsxEr9qDH40PPQTT5dR6Y2nUd4nqqSXnoOTf',
+      'rL6NaXtNHWpD0yoc9+z0o1uBEI19++PrtMnl0j3fgtVyNIl5UQ==',
+      '-----END CERTIFICATE-----',
+    ].join('\n');
+
+    // Intercept the peer_certificates API call to return our fixed PEM.
+    await page.route('**/api/utils/certificates/templates/peer_certificates', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([TEST_PEM]),
+      });
+    });
+
+    // Step 1: Navigate to certificate templates and highlight Import button.
+    await goto(page, '/ws/certificates__certificate_templates');
+    const importButton = page.getByRole('button', { name: 'Import template' });
+    await expect(importButton).toBeVisible({ timeout: 15000 });
+    await highlightOn(importButton);
+    await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'import_url_step1_empty.png') });
+
+    // Step 2: Open the modal, switch to the URL tab, enter a URL and click Fetch.
+    await highlightOff(importButton);
+    await importButton.click();
+    const modal = page.getByRole('dialog').filter({ has: page.getByText('Import certificate template') });
+    await expect(modal).toBeVisible({ timeout: 10000 });
+
+    await modal.getByRole('tab', { name: 'URL' }).click();
+    const urlInput = modal.getByRole('textbox');
+    await urlInput.fill('https://test.example.com');
+
+    const fetchButton = modal.getByRole('button', { name: 'Fetch certificates' });
+    await highlightOn(fetchButton);
+    await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'import_url_step2_url.png') });
+
+    // Step 3: Fetch and preview.
+    await fetchButton.click();
+
+    await expect(modal.getByText('1 certificate found')).toBeVisible({ timeout: 10000 });
+
+    const accordion = modal.getByRole('button', { name: /test\.example\.com/ });
+    await accordion.click();
+
+    const importActionButton = modal.getByRole('button', { name: /Import/ }).last();
+    await highlightOn(importActionButton);
+    await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'import_url_step3_preview.png') });
+
+    // Step 4: Import and show the template in the grid.
+    await importActionButton.click();
+
+    await expect(modal).not.toBeVisible({ timeout: 15000 });
+    await dismissAllToasts(page);
+
+    const templateRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'test.example.com' }) });
+    await expect(templateRow).toBeVisible({ timeout: 10000 });
+    await highlightOn(templateRow);
+    await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'import_url_step4_imported.png') });
+  });
+
   test('Share a certificate template', async ({ page }) => {
     // Create a template to share.
     await goto(page, '/ws/certificates__certificate_templates');
-    const createButton = page.getByRole('button', { name: 'Create certificate template' });
+    const createButton = page.getByRole('button', { name: 'Create template' });
     await expect(createButton).toBeVisible({ timeout: 15000 });
     await createButton.click();
 
