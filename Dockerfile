@@ -30,8 +30,13 @@ COPY ["./Cargo.lock", "./Cargo.toml", "./"]
 # Fetch dependencies if they change.
 RUN set -x && cargo fetch
 
-# Copy source code and build.
-COPY [".", "./"]
+# Copy only the files needed for the Rust build.
+
+COPY ["./.cargo", "./.cargo"]
+COPY ["./build.rs", "./"]
+COPY ["./.sqlx", "./.sqlx"]
+COPY ["./migrations", "./migrations"]
+COPY ["./src", "./src"]
 RUN --mount=type=cache,target=/app/target set -x && cargo build --release && \
     cp ./target/release/secutils ./ && \
     upx --best --lzma ./secutils
