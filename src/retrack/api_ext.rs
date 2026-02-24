@@ -172,7 +172,11 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> RetrackApi<'a, DR, ET> {
     ) -> anyhow::Result<Vec<TrackerDataRevision<TValue>>> {
         let mut query_pairs = vec![format!(
             "calculateDiff={}",
-            if params.calculate_diff { "true" } else { "false" }
+            if params.calculate_diff {
+                "true"
+            } else {
+                "false"
+            }
         )];
         if let Some(context_radius) = params.context_radius {
             query_pairs.push(format!("contextRadius={context_radius}"));
