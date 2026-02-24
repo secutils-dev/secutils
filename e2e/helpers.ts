@@ -13,11 +13,28 @@ export const PASSWORD = 'e2e_secutils_pass';
 export const OPERATOR_TOKEN =
   'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjIwODcxMDY2MDQsInN1YiI6IkBzZWN1dGlscyJ9.7UT-E9YkTqTiktTtZal6wbjsgB8PTjmdATxNaQPG9zs';
 
-export async function ensureUserAndLogin(request: APIRequestContext, page: Page): Promise<void> {
+export interface UserCredentials {
+  email: string;
+  password: string;
+}
+
+function generateRandomEmail(): string {
+  const id = Math.random().toString(36).slice(2, 10);
+  return `e2e-${id}@secutils.dev`;
+}
+
+export async function ensureUserAndLogin(
+  request: APIRequestContext,
+  page: Page,
+  credentials?: UserCredentials,
+): Promise<UserCredentials> {
+  const email = credentials?.email ?? generateRandomEmail();
+  const password = credentials?.password ?? PASSWORD;
+
   await page.context().clearCookies();
   await request.post('/api/users/remove', {
     headers: { Authorization: `Bearer ${OPERATOR_TOKEN}` },
-    data: { email: EMAIL },
+    data: { email },
   });
 
   await goto(page, '/');
@@ -38,7 +55,7 @@ export async function ensureUserAndLogin(request: APIRequestContext, page: Page)
     .poll(
       async () => {
         await emailInput.fill('');
-        await emailInput.pressSequentially(EMAIL);
+        await emailInput.pressSequentially(email);
         return continueButton.isEnabled();
       },
       { timeout: 15000 },
@@ -50,12 +67,14 @@ export async function ensureUserAndLogin(request: APIRequestContext, page: Page)
   const passwordInput = page.getByPlaceholder('Password', { exact: true });
   const repeatPasswordInput = page.getByPlaceholder('Repeat password');
   await expect(passwordInput).toBeVisible({ timeout: 15000 });
-  await passwordInput.fill(PASSWORD);
-  await repeatPasswordInput.fill(PASSWORD);
+  await passwordInput.fill(password);
+  await repeatPasswordInput.fill(password);
   await page.getByRole('button', { name: 'Sign up', exact: true }).click();
 
   await expect(page).toHaveURL(/\/ws/, { timeout: 30000 });
   await expect(page.getByRole('heading', { name: 'Welcome', level: 2 })).toBeVisible({ timeout: 15000 });
+
+  return { email, password };
 }
 
 export async function goto(page: Page, url: string) {

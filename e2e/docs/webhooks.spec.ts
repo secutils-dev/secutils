@@ -5,17 +5,19 @@ import { expect, test } from '@playwright/test';
 import {
   dismissAllToasts,
   DOCS_IMG_DIR,
+  EMAIL,
   ensureUserAndLogin,
   fixResponderRequestFields,
   goto,
   highlightOn,
-} from './helpers';
+  PASSWORD,
+} from '../helpers';
 
 const IMG_DIR = join(DOCS_IMG_DIR, 'webhooks');
 
 test.describe('Webhooks guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
-    await ensureUserAndLogin(request, page);
+    await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
   });
 
   test('Return a static HTML page', async ({ page }) => {

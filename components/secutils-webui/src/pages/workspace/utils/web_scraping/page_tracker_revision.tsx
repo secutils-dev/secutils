@@ -1,6 +1,8 @@
 import { EuiMarkdownFormat } from '@elastic/eui';
 
+import { containsHTMLTags, detectLanguage, revisionDataToString } from './revision_utils';
 import { PageTrackerRevisionCodeView } from './revision_views/page_tracker_revision_code_view';
+import { PageTrackerRevisionDiffView } from './revision_views/page_tracker_revision_diff_view';
 import {
   isPageTrackerRevisionTableViewData,
   PageTrackerRevisionTableView,
@@ -11,39 +13,34 @@ import type { TrackerRevisionsViewMode } from './tracker_revisions';
 export interface PageTrackerRevisionProps {
   revision: TrackerDataRevision;
   mode: TrackerRevisionsViewMode;
+  previousRevision?: TrackerDataRevision;
 }
 
-function containHTMLTags(data: string) {
-  if (!data) {
-    return false;
-  }
-
-  try {
-    const doc = new DOMParser().parseFromString(data, 'text/html');
-    return Array.from(doc.body.childNodes).some((node) => node.nodeType === Node.ELEMENT_NODE);
-  } catch {
-    return false;
-  }
-}
-
-export function PageTrackerRevision({ revision, mode }: PageTrackerRevisionProps) {
+export function PageTrackerRevision({ revision, mode, previousRevision }: PageTrackerRevisionProps) {
   const data = revision.data.original;
   if (mode !== 'source' && isPageTrackerRevisionTableViewData(data)) {
     return <PageTrackerRevisionTableView mode={mode} data={data} />;
+  }
+
+  if (mode === 'diff' && previousRevision) {
+    const modifiedContent = revisionDataToString(data);
+    const originalContent = revisionDataToString(previousRevision.data.original);
+    const language = typeof data === 'string' ? detectLanguage(data) : 'json';
+
+    return (
+      <PageTrackerRevisionDiffView
+        originalContent={originalContent}
+        modifiedContent={modifiedContent}
+        language={language}
+      />
+    );
   }
 
   if (typeof data !== 'string') {
     return <PageTrackerRevisionCodeView data={JSON.stringify(data, null, 2)} language={'json'} />;
   }
 
-  const codeLanguage =
-    mode == 'source'
-      ? 'text'
-      : mode === 'diff' && data.startsWith('@@')
-        ? 'diff'
-        : containHTMLTags(data)
-          ? 'html'
-          : null;
+  const codeLanguage = mode === 'source' ? 'text' : containsHTMLTags(data) ? ('html' as const) : null;
   if (codeLanguage) {
     return <PageTrackerRevisionCodeView data={data} language={codeLanguage} />;
   }

@@ -82,6 +82,7 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^17.3.0",
+    "happy-dom": "^20.7.0",
     "parcel": "^2.16.4",
     "playwright-core": "1.52.0",
     "prettier": "^3.8.1",

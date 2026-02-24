@@ -174,7 +174,13 @@ export default function PageTrackers() {
     } else {
       itemIdToExpandedRowMapValues[tracker.id] = (
         <TrackerRevisions kind={'page'} tracker={tracker}>
-          {(revision, mode) => <PageTrackerRevision revision={revision as TrackerDataRevision<string>} mode={mode} />}
+          {(revision, mode, previousRevision) => (
+            <PageTrackerRevision
+              revision={revision as TrackerDataRevision<string>}
+              mode={mode}
+              previousRevision={previousRevision as TrackerDataRevision<string> | undefined}
+            />
+          )}
         </TrackerRevisions>
       );
     }

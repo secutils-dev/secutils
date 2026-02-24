@@ -29,8 +29,8 @@ use crate::{
 use anyhow::{anyhow, bail};
 use croner::Cron;
 use retrack_types::trackers::{
-    PageTarget, TrackerConfig, TrackerCreateParams, TrackerDataRevision,
-    TrackerListRevisionsParams, TrackerTarget, TrackerUpdateParams,
+    PageTarget, TrackerConfig, TrackerCreateParams, TrackerDataRevision, TrackerTarget,
+    TrackerUpdateParams,
 };
 use std::time::Duration;
 use time::OffsetDateTime;
@@ -423,13 +423,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
 
         self.api
             .retrack()
-            .list_tracker_revisions(
-                tracker.retrack.id(),
-                TrackerListRevisionsParams {
-                    calculate_diff: params.calculate_diff,
-                    ..Default::default()
-                },
-            )
+            .list_tracker_revisions(tracker.retrack.id(), Default::default())
             .await
     }
 
@@ -2067,13 +2061,7 @@ mod tests {
                 }]);
         });
         let tracker_history = web_scraping
-            .get_page_tracker_history(
-                tracker.id,
-                PageTrackerGetHistoryParams {
-                    refresh: true,
-                    calculate_diff: false,
-                },
-            )
+            .get_page_tracker_history(tracker.id, PageTrackerGetHistoryParams { refresh: true })
             .await?;
         assert_eq!(
             tracker_history,
@@ -2144,13 +2132,7 @@ mod tests {
                 .json_body(json!({ "message": "some client-error".to_string() }));
         });
         let scraper_error = web_scraping
-            .get_page_tracker_history(
-                tracker.id,
-                PageTrackerGetHistoryParams {
-                    refresh: true,
-                    calculate_diff: false,
-                },
-            )
+            .get_page_tracker_history(tracker.id, PageTrackerGetHistoryParams { refresh: true })
             .await
             .unwrap_err()
             .downcast::<SecutilsError>()?;

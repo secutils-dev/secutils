@@ -7,9 +7,12 @@ import {
   EuiFlexGroup,
   EuiFlexItem,
   EuiIcon,
+  euiMaxBreakpoint,
   EuiPanel,
   EuiSelect,
+  EuiText,
   EuiToolTip,
+  useEuiTheme,
 } from '@elastic/eui';
 import { css } from '@emotion/react';
 import { unix } from 'moment';
@@ -27,13 +30,18 @@ import { useWorkspaceContext } from '../../hooks';
 export interface TrackerRevisionsProps {
   tracker: PageTracker;
   kind: 'page';
-  children: (revision: TrackerDataRevision, mode: TrackerRevisionsViewMode) => ReactNode;
+  children: (
+    revision: TrackerDataRevision,
+    mode: TrackerRevisionsViewMode,
+    previousRevision?: TrackerDataRevision,
+  ) => ReactNode;
 }
 
 export type TrackerRevisionsViewMode = 'default' | 'diff' | 'source' | 'chart';
 
 export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsProps) {
   const { uiState, addToast } = useWorkspaceContext();
+  const euiThemeContext = useEuiTheme();
 
   const [revisions, setRevisions] = useState<AsyncData<Array<TrackerDataRevision>, Array<TrackerDataRevision> | null>>({
     status: 'pending',
@@ -57,7 +65,7 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
   const [mode, setMode] = useState<TrackerRevisionsViewMode>('default');
 
   const fetchHistory = useCallback(
-    ({ refresh, forceMode }: { refresh: boolean; forceMode: TrackerRevisionsViewMode }) => {
+    ({ refresh }: { refresh: boolean }) => {
       setRevisions((currentRevisions) =>
         currentRevisions.status === 'succeeded'
           ? { status: 'pending', state: currentRevisions.data }
@@ -67,7 +75,7 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
       const historyUrl = getApiUrl(`/api/utils/web_scraping/${kind}/${encodeURIComponent(tracker.id)}/history`);
       fetch(historyUrl, {
         ...getApiRequestConfig('POST'),
-        body: JSON.stringify({ refresh, calculateDiff: forceMode === 'diff' }),
+        body: JSON.stringify({ refresh }),
       })
         .then(async (res) => {
           if (!res.ok) {
@@ -107,7 +115,7 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
       return;
     }
 
-    fetchHistory({ forceMode: 'default', refresh: false });
+    fetchHistory({ refresh: false });
   }, [uiState, tracker, fetchHistory]);
 
   const onRevisionChange = useCallback(
@@ -194,7 +202,7 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
               iconType={'refresh'}
               fill
               title="Fetch data for a web page"
-              onClick={() => fetchHistory({ forceMode: mode, refresh: true })}
+              onClick={() => fetchHistory({ refresh: true })}
             >
               Try again
             </EuiButton>
@@ -207,7 +215,7 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
       mode === 'chart' ? (
         <PageTrackerRevisionChartView revisions={revisions.data} />
       ) : (
-        children(revisions.data[revisionIndex], mode)
+        children(revisions.data[revisionIndex], mode, revisions.data[revisionIndex + 1])
       );
   } else {
     const updateButton = (
@@ -215,7 +223,7 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
         iconType={'refresh'}
         fill
         title="Fetch data for a web page"
-        onClick={() => fetchHistory({ forceMode: mode, refresh: true })}
+        onClick={() => fetchHistory({ refresh: true })}
       >
         Update
       </EuiButton>
@@ -249,65 +257,130 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
   }
 
   const revisionsToSelect = revisions.status === 'succeeded' ? revisions.data : (revisions.state ?? []);
+  const isLoading = revisions.status === 'pending';
+  const totalRevisions = revisionsToSelect.length;
+  const canGoNewer = revisionIndex !== null && revisionIndex > 0;
+  const canGoOlder = revisionIndex !== null && revisionIndex < totalRevisions - 1;
   const shouldDisplayControlPanel =
     (revisions.status === 'succeeded' && revisions.data.length > 0) || (revisions.state?.length ?? 0 > 0);
   const controlPanel = shouldDisplayControlPanel ? (
     <EuiFlexItem>
-      <EuiFlexGroup alignItems={'center'} responsive={false}>
+      <EuiFlexGroup
+        alignItems={'center'}
+        responsive={false}
+        wrap
+        gutterSize="s"
+        css={css`
+          row-gap: 4px;
+          ${euiMaxBreakpoint(euiThemeContext, 'm')} {
+            justify-content: center;
+          }
+        `}
+      >
+        <EuiFlexItem grow={false}>
+          <EuiFlexGroup alignItems="center" responsive={false} gutterSize="xs">
+            <EuiFlexItem grow={false}>
+              <EuiToolTip content="Newer revision">
+                <EuiButtonIcon
+                  iconType="arrowLeft"
+                  aria-label="Newer revision"
+                  isDisabled={isLoading || !canGoNewer}
+                  onClick={() => setRevisionIndex((i) => (i !== null && i > 0 ? i - 1 : i))}
+                  size="s"
+                />
+              </EuiToolTip>
+            </EuiFlexItem>
+            <EuiFlexItem grow={false}>
+              <EuiSelect
+                compressed
+                options={revisionsToSelect.map((rev) => ({
+                  value: rev.id,
+                  text: unix(rev.createdAt).format('ll HH:mm:ss'),
+                }))}
+                disabled={isLoading}
+                value={totalRevisions > 0 && revisionIndex !== null ? revisionsToSelect[revisionIndex].id : undefined}
+                onChange={(e) => onRevisionChange(e.target.value)}
+              />
+            </EuiFlexItem>
+            <EuiFlexItem grow={false}>
+              <EuiToolTip content="Older revision">
+                <EuiButtonIcon
+                  iconType="arrowRight"
+                  aria-label="Older revision"
+                  isDisabled={isLoading || !canGoOlder}
+                  onClick={() => setRevisionIndex((i) => (i !== null && i < totalRevisions - 1 ? i + 1 : i))}
+                  size="s"
+                />
+              </EuiToolTip>
+            </EuiFlexItem>
+          </EuiFlexGroup>
+        </EuiFlexItem>
+        {totalRevisions > 1 && revisionIndex !== null && (
+          <EuiFlexItem
+            grow={false}
+            css={css`
+              ${euiMaxBreakpoint(euiThemeContext, 'm')} {
+                flex-basis: 100%;
+                text-align: center;
+                order: -1;
+              }
+            `}
+          >
+            <EuiText size="xs" color="subdued">
+              {revisionIndex + 1} / {totalRevisions}
+            </EuiText>
+          </EuiFlexItem>
+        )}
         <EuiFlexItem
+          grow
           css={css`
-            min-width: 200px;
+            ${euiMaxBreakpoint(euiThemeContext, 'm')} {
+              flex-grow: 0 !important;
+            }
           `}
         >
-          <EuiSelect
-            options={revisionsToSelect.map((rev) => ({
-              value: rev.id,
-              text: unix(rev.createdAt).format('ll HH:mm:ss'),
-            }))}
-            disabled={revisions.status === 'pending'}
-            value={
-              revisionsToSelect.length > 0 && revisionIndex !== null ? revisionsToSelect[revisionIndex].id : undefined
-            }
-            onChange={(e) => onRevisionChange(e.target.value)}
-          />
-        </EuiFlexItem>
-        <EuiFlexItem grow={false}>
-          <EuiButtonGroup
-            legend="View mode"
-            options={modes}
-            idSelected={mode}
-            isDisabled={revisions.status !== 'succeeded'}
-            onChange={(id) => {
-              const newMode = id as TrackerRevisionsViewMode;
-              setMode(newMode);
-
-              const shouldFetch = (mode === 'diff' && id !== 'diff') || (mode !== 'diff' && id === 'diff');
-              if (shouldFetch) {
-                fetchHistory({ forceMode: newMode, refresh: false });
+          <EuiFlexGroup
+            alignItems="center"
+            responsive={false}
+            justifyContent="flexEnd"
+            gutterSize="s"
+            css={css`
+              ${euiMaxBreakpoint(euiThemeContext, 'm')} {
+                justify-content: center;
               }
-            }}
-          />
-        </EuiFlexItem>
-        <EuiFlexItem grow={false}>
-          <EuiToolTip content="Update">
-            <EuiButtonIcon
-              iconType="refresh"
-              aria-label="Update"
-              isDisabled={revisions.status === 'pending'}
-              onClick={() => fetchHistory({ forceMode: mode, refresh: true })}
-            />
-          </EuiToolTip>
-        </EuiFlexItem>
-        <EuiFlexItem grow={false}>
-          <EuiToolTip content="Clear history">
-            <EuiButtonIcon
-              iconType="cross"
-              color="danger"
-              aria-label="Clear history"
-              isDisabled={revisions.status === 'pending'}
-              onClick={() => setClearHistoryStatus({ isModalVisible: true, isInProgress: false })}
-            />
-          </EuiToolTip>
+            `}
+          >
+            <EuiFlexItem grow={false}>
+              <EuiButtonGroup
+                legend="View mode"
+                options={modes}
+                idSelected={mode}
+                isDisabled={revisions.status !== 'succeeded'}
+                onChange={(id) => setMode(id as TrackerRevisionsViewMode)}
+              />
+            </EuiFlexItem>
+            <EuiFlexItem grow={false}>
+              <EuiToolTip content="Update">
+                <EuiButtonIcon
+                  iconType="refresh"
+                  aria-label="Update"
+                  isDisabled={isLoading}
+                  onClick={() => fetchHistory({ refresh: true })}
+                />
+              </EuiToolTip>
+            </EuiFlexItem>
+            <EuiFlexItem grow={false}>
+              <EuiToolTip content="Clear history">
+                <EuiButtonIcon
+                  iconType="cross"
+                  color="danger"
+                  aria-label="Clear history"
+                  isDisabled={isLoading}
+                  onClick={() => setClearHistoryStatus({ isModalVisible: true, isInProgress: false })}
+                />
+              </EuiToolTip>
+            </EuiFlexItem>
+          </EuiFlexGroup>
         </EuiFlexItem>
       </EuiFlexGroup>
     </EuiFlexItem>

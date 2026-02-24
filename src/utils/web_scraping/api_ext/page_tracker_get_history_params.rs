@@ -5,8 +5,6 @@ use serde::Deserialize;
 pub struct PageTrackerGetHistoryParams {
     #[serde(default)]
     pub refresh: bool,
-    #[serde(default)]
-    pub calculate_diff: bool,
 }
 
 #[cfg(test)]
@@ -17,25 +15,12 @@ mod tests {
     fn deserialization() -> anyhow::Result<()> {
         assert_eq!(
             serde_json::from_str::<PageTrackerGetHistoryParams>(r#"{}"#)?,
-            PageTrackerGetHistoryParams {
-                refresh: false,
-                calculate_diff: false
-            }
+            PageTrackerGetHistoryParams { refresh: false }
         );
 
         assert_eq!(
-            serde_json::from_str::<PageTrackerGetHistoryParams>(
-                r#"
-{
-    "refresh": true,
-    "calculateDiff": true
-}
-          "#
-            )?,
-            PageTrackerGetHistoryParams {
-                refresh: true,
-                calculate_diff: true
-            }
+            serde_json::from_str::<PageTrackerGetHistoryParams>(r#"{ "refresh": true }"#)?,
+            PageTrackerGetHistoryParams { refresh: true }
         );
 
         Ok(())

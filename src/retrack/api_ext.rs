@@ -170,17 +170,24 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> RetrackApi<'a, DR, ET> {
         id: Uuid,
         params: TrackerListRevisionsParams,
     ) -> anyhow::Result<Vec<TrackerDataRevision<TValue>>> {
+        let mut query_pairs = vec![format!(
+            "calculateDiff={}",
+            if params.calculate_diff { "true" } else { "false" }
+        )];
+        if let Some(context_radius) = params.context_radius {
+            query_pairs.push(format!("contextRadius={context_radius}"));
+        }
+        if let Some(size) = params.size {
+            query_pairs.push(format!("size={size}"));
+        }
+
         self.api
             .network
             .http_client
             .get(format!(
-                "{}api/trackers/{id}/revisions?calculateDiff={}",
+                "{}api/trackers/{id}/revisions?{}",
                 self.api.config.retrack.host,
-                if params.calculate_diff {
-                    "true"
-                } else {
-                    "false"
-                }
+                query_pairs.join("&")
             ))
             .send()
             .await

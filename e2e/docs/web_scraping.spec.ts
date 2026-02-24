@@ -5,12 +5,14 @@ import { expect, test } from '@playwright/test';
 import {
   dismissAllToasts,
   DOCS_IMG_DIR,
+  EMAIL,
   ensureUserAndLogin,
   fixTrackerResourceRevisions,
   goto,
   highlightOff,
   highlightOn,
-} from './helpers';
+  PASSWORD,
+} from '../helpers';
 
 const IMG_DIR = join(DOCS_IMG_DIR, 'web_scraping');
 
@@ -46,7 +48,7 @@ function mockResourceRevision(rows: Array<Record<string, unknown>>, id = '000000
 
 test.describe('Web scraping guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
-    await ensureUserAndLogin(request, page);
+    await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
   });
 
   test('Create a page tracker', async ({ page }) => {
@@ -638,9 +640,7 @@ test.describe('Web scraping guide screenshots', () => {
 
     // Open the Edit flyout for the tracker.
     await goto(page, '/ws/web_scraping__page');
-    const trackerRow = page
-      .getByRole('row')
-      .filter({ has: page.getByRole('cell', { name: 'Custom Schedule Demo' }) });
+    const trackerRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'Custom Schedule Demo' }) });
     await expect(trackerRow).toBeVisible({ timeout: 15000 });
 
     await trackerRow.getByRole('button', { name: 'Edit' }).click();

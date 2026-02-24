@@ -6,19 +6,21 @@ import { expect, test } from '@playwright/test';
 import {
   dismissAllToasts,
   DOCS_IMG_DIR,
+  EMAIL,
   ensureUserAndLogin,
   fixCertificateTemplateValidityDates,
   goto,
   highlightOff,
   highlightOn,
-} from './helpers';
+  PASSWORD,
+} from '../helpers';
 
 const PRIVATE_KEYS_IMG_DIR = join(DOCS_IMG_DIR, 'digital_certificates/private_keys');
 const CERT_TEMPLATES_IMG_DIR = join(DOCS_IMG_DIR, 'digital_certificates/certificate_templates');
 
 test.describe('Private keys guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
-    await ensureUserAndLogin(request, page);
+    await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
   });
 
   test('Generate an RSA private key', async ({ page }) => {
@@ -132,7 +134,7 @@ test.describe('Private keys guide screenshots', () => {
 
 test.describe('Certificate templates guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
-    await ensureUserAndLogin(request, page);
+    await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
     await fixCertificateTemplateValidityDates(page);
   });
 

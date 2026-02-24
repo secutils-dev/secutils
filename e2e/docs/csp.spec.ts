@@ -5,12 +5,14 @@ import { expect, type Locator, test } from '@playwright/test';
 import {
   dismissAllToasts,
   DOCS_IMG_DIR,
+  EMAIL,
   ensureUserAndLogin,
   fixResponderRequestFields,
   goto,
   highlightOff,
   highlightOn,
-} from './helpers';
+  PASSWORD,
+} from '../helpers';
 
 const IMG_DIR = join(DOCS_IMG_DIR, 'csp');
 
@@ -20,7 +22,7 @@ function getByRoleAndLabel(parent: Locator, role: 'combobox' | 'textbox', label:
 
 test.describe('CSP guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
-    await ensureUserAndLogin(request, page);
+    await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
   });
 
   test('create a content security policy', async ({ page }) => {
