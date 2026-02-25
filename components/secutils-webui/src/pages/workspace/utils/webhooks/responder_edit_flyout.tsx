@@ -22,7 +22,7 @@ import { useCallback, useMemo, useState } from 'react';
 import type { ChangeEvent } from 'react';
 
 import type { Responder } from './responder';
-import { useRangeTicks } from '../../../../hooks';
+import { useFormChanges, useRangeTicks } from '../../../../hooks';
 import {
   type AsyncData,
   getApiRequestConfig,
@@ -175,6 +175,22 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
     setBody(e.target.value);
   }, []);
 
+  const isDuplicate = !!responder && !responder.id;
+  const hasFormChanges = useFormChanges({
+    name,
+    subdomainPrefix,
+    path,
+    pathType,
+    requestsToTrack,
+    statusCode,
+    method,
+    isEnabled,
+    headers,
+    body,
+    script,
+  });
+  const hasChanges = isDuplicate || hasFormChanges;
+
   const [updatingStatus, setUpdatingStatus] = useState<AsyncData<void>>();
   const onSave = useCallback(() => {
     if (updatingStatus?.status === 'pending') {
@@ -310,6 +326,7 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
       }
       onClose={() => onClose()}
       onSave={onSave}
+      hasChanges={hasChanges}
       canSave={
         name.trim().length > 0 &&
         !areHeadersInvalid &&

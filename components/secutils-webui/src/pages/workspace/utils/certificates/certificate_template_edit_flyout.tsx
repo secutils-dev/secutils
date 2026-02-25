@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { CertificateTemplate } from './certificate_template';
 import type { CertificateTemplateProps } from './certificate_template_form';
 import { CertificateTemplateForm } from './certificate_template_form';
+import { useFormChanges } from '../../../../hooks';
 import {
   type AsyncData,
   getApiRequestConfig,
@@ -25,25 +26,32 @@ export function CertificateTemplateEditFlyout({ onClose, template }: Certificate
 
   const [templateToSave, setTemplateToSave] = useState<CertificateTemplateProps>({
     name: template?.name ?? '',
-    attributes: template?.attributes ?? {
-      commonName: 'CA Issuer',
-      country: 'US',
-      stateOrProvince: 'California',
-      locality: 'San Francisco',
-      organization: 'CA Issuer, Inc',
-      keyAlgorithm: { keyType: 'ed25519' },
-      signatureAlgorithm: 'ed25519',
-      notValidBefore: moment().unix(),
-      notValidAfter: moment().add(1, 'years').unix(),
-      isCa: false,
-    },
+    attributes: template?.attributes
+      ? { ...template.attributes }
+      : {
+          commonName: 'CA Issuer',
+          country: 'US',
+          stateOrProvince: 'California',
+          locality: 'San Francisco',
+          organization: 'CA Issuer, Inc',
+          keyAlgorithm: { keyType: 'ed25519' },
+          signatureAlgorithm: 'ed25519',
+          notValidBefore: moment().unix(),
+          notValidAfter: moment().add(1, 'years').unix(),
+          isCa: false,
+        },
   });
+
+  const isDuplicate = !!template && !template.id;
+  const hasFormChanges = useFormChanges({ name: templateToSave.name, attributes: templateToSave.attributes });
+  const hasChanges = isDuplicate || hasFormChanges;
 
   const [updatingStatus, setUpdatingStatus] = useState<AsyncData<void>>();
   return (
     <EditorFlyout
       title={`${template?.id ? 'Edit' : 'Add'} certificate template`}
       onClose={() => onClose()}
+      hasChanges={hasChanges}
       onSave={() => {
         if (updatingStatus?.status === 'pending') {
           return;

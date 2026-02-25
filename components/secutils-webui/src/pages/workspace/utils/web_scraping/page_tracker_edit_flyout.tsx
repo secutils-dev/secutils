@@ -13,7 +13,7 @@ import type { PageTracker, SchedulerJobConfig } from './page_tracker';
 import { areSchedulerJobsEqual } from './page_tracker';
 import { PageTrackerJobSchedule } from './page_tracker_job_schedule';
 import { PageTrackerRetryStrategy } from './page_tracker_retry_strategy';
-import { useRangeTicks } from '../../../../hooks';
+import { useFormChanges, useRangeTicks } from '../../../../hooks';
 import {
   type AsyncData,
   getApiRequestConfig,
@@ -65,6 +65,10 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
 
   const [notifications, setNotifications] = useState<boolean>(tracker ? !!tracker.retrack?.notifications : false);
   const needsToSaveNotifications = newTracker || tracker?.retrack?.notifications !== notifications;
+
+  const isDuplicate = !!tracker && !tracker.id;
+  const hasFormChanges = useFormChanges({ name, jobConfig, extractorScript, revisions, notifications });
+  const hasChanges = isDuplicate || hasFormChanges;
 
   const [updatingStatus, setUpdatingStatus] = useState<AsyncData<void>>();
   const onSave = useCallback(() => {
@@ -183,6 +187,7 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
       title={`${tracker ? 'Edit' : 'Add'} tracker`}
       onClose={() => onClose()}
       onSave={onSave}
+      hasChanges={hasChanges}
       canSave={
         !!name &&
         !!extractorScript &&

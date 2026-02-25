@@ -4,6 +4,7 @@ import type { ContentSecurityPolicy } from './content_security_policy';
 import { serializeContentSecurityPolicyDirectives } from './content_security_policy';
 import type { ContentSecurityPolicyProps } from './content_security_policy_form';
 import { ContentSecurityPolicyForm } from './content_security_policy_form';
+import { useFormChanges } from '../../../../../hooks';
 import {
   type AsyncData,
   getApiRequestConfig,
@@ -25,8 +26,15 @@ export function ContentSecurityPolicyEditFlyout({ onClose, policy }: ContentSecu
 
   const [policyToSave, setPolicyToSave] = useState<ContentSecurityPolicyProps>({
     name: policy?.name ?? '',
-    directives: policy?.directives ?? new Map(),
+    directives: policy?.directives ? new Map(policy.directives) : new Map(),
   });
+
+  const isDuplicate = !!policy && !policy.id;
+  const hasFormChanges = useFormChanges({
+    name: policyToSave.name,
+    directives: serializeContentSecurityPolicyDirectives(policyToSave.directives),
+  });
+  const hasChanges = isDuplicate || hasFormChanges;
 
   const [updatingStatus, setUpdatingStatus] = useState<AsyncData<void>>();
 
@@ -34,6 +42,7 @@ export function ContentSecurityPolicyEditFlyout({ onClose, policy }: ContentSecu
     <EditorFlyout
       title={`${policy?.id ? 'Edit' : 'Add'} policy`}
       onClose={() => onClose()}
+      hasChanges={hasChanges}
       onSave={() => {
         if (updatingStatus?.status === 'pending') {
           return;

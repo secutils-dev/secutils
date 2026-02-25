@@ -7,6 +7,7 @@ import { EncryptionModeSelector } from './encryption_mode_selector';
 import type { PrivateKey } from './private_key';
 import type { PrivateKeyAlgorithm, PrivateKeyCurveName, PrivateKeySize } from './private_key_alg';
 import { privateKeyCurveNameString } from './private_key_alg';
+import { useFormChanges } from '../../../../hooks';
 import {
   type AsyncData,
   getApiRequestConfig,
@@ -85,10 +86,15 @@ export function PrivateKeyEditFlyout({ onClose, privateKey }: PrivateKeyEditFlyo
     return passphrase !== null && (nameChanged || !privateKey.encrypted || currentPassphrase !== passphrase);
   };
 
+  const isDuplicate = !!privateKey && !privateKey.id;
+  const hasFormChanges = useFormChanges({ name, keyAlgorithm, encryptionMode, passphrase, currentPassphrase });
+  const hasChanges = isDuplicate || hasFormChanges;
+
   return (
     <EditorFlyout
       title={`${privateKey?.id ? 'Edit' : 'Add'} private key`}
       onClose={() => onClose()}
+      hasChanges={hasChanges}
       onSave={() => {
         if (updatingStatus?.status === 'pending') {
           return;
