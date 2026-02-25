@@ -12,10 +12,29 @@ use crate::{
 };
 use actix_web::{HttpResponse, web};
 use retrack_types::trackers::{WebhookActionPayload, WebhookActionPayloadResult};
+use similar::TextDiff;
 use std::str::FromStr;
 use time::OffsetDateTime;
 use tracing::{error, info};
 use uuid::Uuid;
+
+fn normalize_for_diff(value: &serde_json::Value) -> String {
+    if value.is_object() || value.is_array() {
+        serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
+    } else if let Some(s) = value.as_str() {
+        s.to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+fn compute_unified_diff(old: &str, new: &str, context_radius: usize) -> String {
+    TextDiff::from_lines(old, new)
+        .unified_diff()
+        .context_radius(context_radius)
+        .missing_newline_hint(false)
+        .to_string()
+}
 
 pub async fn webhooks_retrack(
     state: web::Data<AppState>,
@@ -137,13 +156,33 @@ pub async fn webhooks_retrack(
                 return Ok(HttpResponse::NotFound().finish());
             };
 
+            let (content, diff) = match &body_params.result {
+                WebhookActionPayloadResult::Success(revision) => {
+                    if let Some(new_content) = revision.get("newContent") {
+                        let new_normalized = normalize_for_diff(new_content);
+                        let diff = revision
+                            .get("previousContent")
+                            .filter(|p| !p.is_null())
+                            .map(|prev| {
+                                compute_unified_diff(
+                                    &normalize_for_diff(prev),
+                                    &new_normalized,
+                                    state.api.config.utils.diff_context_radius,
+                                )
+                            });
+                        (Ok(new_normalized), diff)
+                    } else {
+                        (Ok(normalize_for_diff(revision)), None)
+                    }
+                }
+                WebhookActionPayloadResult::Failure(err) => (Err(err.to_string()), None),
+            };
+
             NotificationContent::Template(NotificationContentTemplate::PageTrackerChanges {
                 tracker_id: tracker.id,
                 tracker_name: tracker.name,
-                content: match &body_params.result {
-                    WebhookActionPayloadResult::Success(revision) => Ok(revision.to_string()),
-                    WebhookActionPayloadResult::Failure(err) => Err(err.to_string()),
-                },
+                content,
+                diff,
             })
         }
         _ => {
@@ -190,7 +229,7 @@ pub async fn webhooks_retrack(
 
 #[cfg(test)]
 mod tests {
-    use super::webhooks_retrack;
+    use super::{compute_unified_diff, webhooks_retrack};
     use crate::{
         notifications::{
             Notification, NotificationContent, NotificationContentTemplate, NotificationDestination,
@@ -726,7 +765,10 @@ mod tests {
             web::Json(WebhookActionPayload {
                 tracker_id: retrack_tracker.id,
                 tracker_name: retrack_tracker.name.clone(),
-                result: WebhookActionPayloadResult::Success(json!({ "one": 1 })),
+                result: WebhookActionPayloadResult::Success(json!({
+                    "newContent": { "one": 1 },
+                    "previousContent": { "one": 0 }
+                })),
             }),
         )
         .await?;
@@ -757,6 +799,10 @@ mod tests {
             .get_notification(notifications.remove(0)?)
             .await?
             .unwrap();
+
+        let expected_content = serde_json::to_string_pretty(&json!({ "one": 1 })).unwrap();
+        let expected_previous = serde_json::to_string_pretty(&json!({ "one": 0 })).unwrap();
+        let expected_diff = compute_unified_diff(&expected_previous, &expected_content, 3);
         assert_eq!(
             notification,
             Notification {
@@ -766,7 +812,8 @@ mod tests {
                     NotificationContentTemplate::PageTrackerChanges {
                         tracker_id: tracker.id,
                         tracker_name: tracker.name.clone(),
-                        content: Ok(json!({ "one": 1 }).to_string())
+                        content: Ok(expected_content),
+                        diff: Some(expected_diff),
                     }
                 ),
                 scheduled_at: notification.scheduled_at
@@ -862,7 +909,8 @@ mod tests {
                     NotificationContentTemplate::PageTrackerChanges {
                         tracker_id: tracker.id,
                         tracker_name: tracker.name.clone(),
-                        content: Err("some error".to_string())
+                        content: Err("some error".to_string()),
+                        diff: None,
                     }
                 ),
                 scheduled_at: notification.scheduled_at

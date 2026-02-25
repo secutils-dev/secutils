@@ -176,6 +176,7 @@ mod tests {
 
         [utils]
         webhook_url_type = 'subdomain'
+        diff_context_radius = 3
         [http.client]
         timeout = 30000
         pool_idle_timeout = 5000
@@ -313,6 +314,7 @@ mod tests {
 
         [utils]
         webhook_url_type = 'subdomain'
+        diff_context_radius = 3
     "#,
         )
         .unwrap();
@@ -531,6 +533,7 @@ mod tests {
             },
             utils: UtilsConfig {
                 webhook_url_type: Subdomain,
+                diff_context_radius: 3,
             },
             smtp: None,
             http: HttpConfig {

@@ -137,6 +137,7 @@ mod tests {
             },
             utils: UtilsConfig {
                 webhook_url_type: Subdomain,
+                diff_context_radius: 3,
             },
             smtp: Some(
                 SmtpConfig {

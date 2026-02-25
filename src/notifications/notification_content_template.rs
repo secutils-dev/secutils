@@ -26,6 +26,7 @@ pub enum NotificationContentTemplate {
         tracker_id: Uuid,
         tracker_name: String,
         content: Result<String, String>,
+        diff: Option<String>,
     },
 }
 
@@ -46,9 +47,16 @@ impl NotificationContentTemplate {
                 tracker_id,
                 tracker_name,
                 content,
+                diff,
             } => {
-                page_tracker_changes::compile_to_email(api, *tracker_id, tracker_name, content)
-                    .await
+                page_tracker_changes::compile_to_email(
+                    api,
+                    *tracker_id,
+                    tracker_name,
+                    content,
+                    diff.as_deref(),
+                )
+                .await
             }
         }
     }
@@ -181,6 +189,7 @@ mod tests {
             tracker_id: uuid!("00000000-0000-0000-0000-000000000001"),
             tracker_name: "tracker".to_string(),
             content: Ok("content".to_string()),
+            diff: None,
         }
         .compile_to_email(&api)
         .await?;
@@ -198,7 +207,7 @@ mod tests {
             subject: "[Secutils.dev] Change detected: \"tracker\"",
             text: "\"tracker\" tracker detected changes. Visit https://secutils.dev/ws/web_scraping__page?q=00000000-0000-0000-0000-000000000001 to learn more.",
             html: Some(
-                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" tracker detected changes</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n    .numeric-code {\n      display: block;\n      width: 100px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" tracker detected changes</h1>\n  <p>Current content: content</p>\n  <p>To learn more, visit the <b>Page trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"https://secutils.dev/ws/web_scraping__page?q&#x3D;00000000-0000-0000-0000-000000000001\">Web Scraping → Page trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>https://secutils.dev/ws/web_scraping__page?q&#x3D;00000000-0000-0000-0000-000000000001</p>\n  <a href=\"https://secutils.dev/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
+                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>\"tracker\" tracker detected changes</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n    .numeric-code {\n      display: block;\n      width: 100px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n  <style>\n    .diff-block {\n        font-family: 'Courier New', Courier, monospace;\n        font-size: 13px;\n        line-height: 1.4;\n        border: 1px solid #d0d7de;\n        border-radius: 6px;\n        overflow: auto;\n        margin-bottom: 20px;\n    }\n    .diff-block div {\n        padding: 1px 10px;\n        white-space: pre-wrap;\n        word-break: break-all;\n    }\n    .diff-add {\n        background-color: #e6ffec;\n        color: #1a7f37;\n    }\n    .diff-del {\n        background-color: #ffebe9;\n        color: #cf222e;\n    }\n    .diff-hunk {\n        background-color: #ddf4ff;\n        color: #0969da;\n        font-style: italic;\n    }\n    .diff-ctx {\n        background-color: #ffffff;\n        color: #1f2328;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <h1>\"tracker\" tracker detected changes</h1>\n  <p>Current content: content</p>\n  <p>To learn more, visit the <b>Page trackers</b> page:</p>\n  <a class=\"navigate-link\" href=\"https://secutils.dev/ws/web_scraping__page?q&#x3D;00000000-0000-0000-0000-000000000001\">Web Scraping → Page trackers</a>\n  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>\n  <p>https://secutils.dev/ws/web_scraping__page?q&#x3D;00000000-0000-0000-0000-000000000001</p>\n  <a href=\"https://secutils.dev/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
             ),
             attachments: Some(
                 [
@@ -228,6 +237,87 @@ mod tests {
     }
 
     #[sqlx::test]
+    async fn can_compile_page_tracker_changes_with_diff_template_to_email(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
+        let long_content = "a".repeat(300);
+
+        let mut template = NotificationContentTemplate::PageTrackerChanges {
+            tracker_id: uuid!("00000000-0000-0000-0000-000000000001"),
+            tracker_name: "tracker".to_string(),
+            content: Ok(long_content),
+            diff: Some("@@ -1 +1 @@\n-old line\n+new line\n".to_string()),
+        }
+        .compile_to_email(&api)
+        .await?;
+        template
+            .attachments
+            .as_mut()
+            .unwrap()
+            .iter_mut()
+            .for_each(|a| {
+                a.content = a.content.len().to_be_bytes().iter().cloned().collect_vec();
+            });
+
+        let html = template.html.as_deref().unwrap();
+        assert!(
+            html.contains("<div class=\"diff-block\">"),
+            "Should contain diff block"
+        );
+        assert!(
+            html.contains("<div class=\"diff-hunk\">@@ -1 +1 @@</div>"),
+            "Should contain hunk header"
+        );
+        assert!(
+            html.contains("<div class=\"diff-del\">-old line</div>"),
+            "Should contain deletion line"
+        );
+        assert!(
+            html.contains("<div class=\"diff-add\">+new line</div>"),
+            "Should contain addition line"
+        );
+        assert!(
+            !html.contains("Current content:"),
+            "Should NOT contain full content when diff is shown"
+        );
+        assert!(
+            html.contains("Here's what changed:"),
+            "Should contain diff intro text"
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_compile_page_tracker_short_content_with_diff_shows_content(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
+
+        let template = NotificationContentTemplate::PageTrackerChanges {
+            tracker_id: uuid!("00000000-0000-0000-0000-000000000001"),
+            tracker_name: "tracker".to_string(),
+            content: Ok("short".to_string()),
+            diff: Some("@@ -1 +1 @@\n-old\n+short\n".to_string()),
+        }
+        .compile_to_email(&api)
+        .await?;
+
+        let html = template.html.as_deref().unwrap();
+        assert!(
+            html.contains("Current content: short"),
+            "Short content should show full content"
+        );
+        assert!(
+            !html.contains("<div class=\"diff-block\">"),
+            "Short content should NOT show diff"
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
     async fn can_compile_page_tracker_changes_error_template_to_email(
         pool: PgPool,
     ) -> anyhow::Result<()> {
@@ -237,6 +327,7 @@ mod tests {
             tracker_id: uuid!("00000000-0000-0000-0000-000000000001"),
             tracker_name: "tracker".to_string(),
             content: Err("Something went wrong".to_string()),
+            diff: None,
         }
         .compile_to_email(&api)
         .await?;

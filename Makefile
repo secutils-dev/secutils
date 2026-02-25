@@ -49,10 +49,10 @@ scraper: ## Run web scraper on host (headed browser).
 ## ---------- End-to-End Testing ----------
 
 e2e-up: ## Start the full e2e stack (all services in Docker). Use BUILD=1 to rebuild images.
-	docker compose -f $(COMPOSE_DEV) -f $(COMPOSE_E2E) up $(if $(BUILD),--build) -d
+	docker compose -f $(COMPOSE_DEV) -f $(COMPOSE_E2E) --env-file $(ENV_FILE) up $(if $(BUILD),--build) -d
 
 e2e-down: ## Stop the e2e stack and remove volumes.
-	docker compose -f $(COMPOSE_DEV) -f $(COMPOSE_E2E) down --volumes --remove-orphans
+	docker compose -f $(COMPOSE_DEV) -f $(COMPOSE_E2E) --env-file $(ENV_FILE) down --volumes --remove-orphans
 
 e2e-test: ## Run Playwright e2e tests (use ARGS for extra flags, e.g. make e2e-test ARGS="--ui").
 	cd e2e && npx playwright test $(ARGS)

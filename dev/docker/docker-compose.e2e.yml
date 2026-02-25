@@ -21,6 +21,10 @@ services:
         target: /etc/config/kratos/user_identity.schema.json
     command: serve -c /etc/config/kratos/kratos.toml --dev --watch-courier --sqa-opt-out
 
+  retrack:
+    environment:
+      - 'RETRACK_TRACKERS__DEFAULT_ACTIONS=[{ type = "log" }, { type = "webhook", url = "http://secutils_api:7070/api/webhooks/retrack", headers = { "Content-Type" = "application/json", Authorization = "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjIwODc2MzUwMDgsInN1YiI6IkByZXRyYWNrIn0.eTdHUivatlOh-KNzSsr2gZi2I1RQLnRcMawv0Nn4KR8" }, formatter = "(() => ({ content: { newContent: context.newContent, previousContent: context.previousContent || null } }))()" }]'
+
   secutils_api:
     build:
       context: ../..
@@ -30,10 +34,10 @@ services:
     environment:
       - SECUTILS_CONFIG=/etc/config/secutils/secutils.toml
       - SECUTILS_SECURITY__JWT_SECRET=65b033522af6769e89ee9017e1caf0a4
-      - SECUTILS_SMTP__ADDRESS=localhost
-      - SECUTILS_SMTP__USERNAME=e2e@secutils.dev
-      - SECUTILS_SMTP__PASSWORD=e2e
-      - SECUTILS_SMTP__CATCH_ALL__RECIPIENT=e2e@secutils.dev
+      - SECUTILS_SMTP__ADDRESS=${SECUTILS_SMTP__ADDRESS:-localhost}
+      - SECUTILS_SMTP__USERNAME=${SECUTILS_SMTP__USERNAME:-e2e@secutils.dev}
+      - SECUTILS_SMTP__PASSWORD=${SECUTILS_SMTP__PASSWORD:-e2e}
+      - SECUTILS_SMTP__CATCH_ALL__RECIPIENT=${SECUTILS_SMTP__CATCH_ALL__RECIPIENT:-e2e@secutils.dev}
     volumes:
       - type: bind
         source: ./secutils-e2e.toml
