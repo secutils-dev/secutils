@@ -14,7 +14,6 @@ import {
   EuiSelect,
   EuiSwitch,
   EuiText,
-  EuiTextArea,
   EuiTitle,
 } from '@elastic/eui';
 import { customAlphabet, urlAlphabet } from 'nanoid';
@@ -71,6 +70,20 @@ const isSubdomainPrefixValid = (subdomainPrefix: string) => {
 };
 
 const nanoidCustom = customAlphabet(urlAlphabet.replace('_', '').replace('-', ''), 7);
+
+function getBodyLanguage(headers: Array<{ label: string }>): string {
+  const contentType = headers
+    .find((h) => h.label.toLowerCase().startsWith('content-type:'))
+    ?.label.split(':')[1]
+    ?.trim()
+    .toLowerCase();
+  if (!contentType) return 'plaintext';
+  if (contentType.includes('html')) return 'html';
+  if (contentType.includes('json')) return 'json';
+  if (contentType.includes('javascript')) return 'javascript';
+  if (contentType.includes('css')) return 'css';
+  return 'plaintext';
+}
 
 export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutProps) {
   const { addToast, uiState } = useWorkspaceContext();
@@ -171,10 +184,6 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
   const [body, setBody] = useState<string>(
     responder?.settings?.body ?? 'Hello from <a href="https://secutils.dev">Secutils.dev</a>!',
   );
-  const onBodyChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
-    setBody(e.target.value);
-  }, []);
-
   const isDuplicate = !!responder && !responder.id;
   const hasFormChanges = useFormChanges({
     name,
@@ -465,7 +474,11 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
             />
           </EuiFormRow>
           <EuiFormRow label="Body" isDisabled={method === 'HEAD'}>
-            <EuiTextArea value={body} onChange={onBodyChange} />
+            <ScriptEditor
+              onChange={(value) => setBody(value ?? '')}
+              defaultValue={body}
+              language={getBodyLanguage(headers)}
+            />
           </EuiFormRow>
           {isAdvancedMode ? (
             <EuiFormRow

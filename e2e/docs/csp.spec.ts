@@ -164,20 +164,7 @@ test.describe('CSP guide screenshots', () => {
   });
 
   test('test a content security policy', async ({ page }) => {
-    // Step 1: Create a responder with an HTML page that uses eval().
-    await goto(page, '/ws/webhooks__responders');
-    const createResponderButton = page.getByRole('button', { name: 'Create responder' });
-    await expect(createResponderButton).toBeVisible({ timeout: 15000 });
-    await createResponderButton.click();
-
-    const responderFlyout = page
-      .getByRole('dialog')
-      .filter({ has: page.getByRole('heading', { name: 'Add responder' }) });
-    await expect(responderFlyout).toBeVisible();
-
-    await responderFlyout.getByLabel('Name').fill('CSP Test');
-    await getByRoleAndLabel(responderFlyout, 'textbox', 'Path').fill('/csp-test');
-
+    // Step 1: Create a responder via API (Monaco editor cannot be reliably filled via Playwright).
     const body = [
       '<!DOCTYPE html>',
       '<html lang="en">',
@@ -200,17 +187,41 @@ test.describe('CSP guide screenshots', () => {
       '</body>',
       '</html>',
     ].join('\n');
-    await responderFlyout.getByLabel('Body').fill(body);
+    const createResponse = await page.request.post('/api/utils/webhooks/responders', {
+      data: {
+        name: 'CSP Test',
+        location: { pathType: '=', path: '/csp-test' },
+        method: 'ANY',
+        enabled: true,
+        settings: {
+          requestsToTrack: 10,
+          statusCode: 200,
+          headers: [['Content-Type', 'text/html; charset=utf-8']],
+          body,
+        },
+      },
+    });
+    expect(createResponse.ok()).toBeTruthy();
 
+    // Reload to see the responder, open Edit, and screenshot the form.
+    await goto(page, '/ws/webhooks__responders');
+    const responderRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'CSP Test' }) });
+    await expect(responderRow).toBeVisible({ timeout: 15000 });
+
+    await responderRow.getByRole('button', { name: 'Edit' }).click();
+    const responderFlyout = page
+      .getByRole('dialog')
+      .filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
+    await expect(responderFlyout).toBeVisible();
+
+    await responderFlyout.getByText('Body', { exact: true }).scrollIntoViewIfNeeded();
     const saveResponderButton = responderFlyout.getByRole('button', { name: 'Save' });
     await highlightOn(saveResponderButton);
     await page.screenshot({ path: join(IMG_DIR, 'test_step1_responder_form.png') });
 
-    await saveResponderButton.click();
+    await responderFlyout.getByRole('button', { name: 'Close' }).click();
     await expect(responderFlyout).not.toBeVisible({ timeout: 10000 });
 
-    const responderRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'CSP Test' }) });
-    await expect(responderRow).toBeVisible();
     await highlightOn(responderRow);
     await page.screenshot({ path: join(IMG_DIR, 'test_step2_responder_created.png') });
 
@@ -275,18 +286,7 @@ test.describe('CSP guide screenshots', () => {
 
     await page.screenshot({ path: join(IMG_DIR, 'test_step5_copy_meta_tag.png') });
 
-    // Step 4: Edit the responder to add the CSP meta-tag to its HTML body.
-    await goto(page, '/ws/webhooks__responders');
-    const editRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'CSP Test' }) });
-    await expect(editRow).toBeVisible({ timeout: 15000 });
-
-    const editGrid = page.getByRole('table');
-    await editGrid.getByRole('button', { name: 'All actions, row' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Edit', exact: true }).click();
-
-    const editFlyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
-    await expect(editFlyout).toBeVisible();
-
+    // Step 4: Update the responder body via API to add the CSP meta-tag.
     const updatedBody = [
       '<!DOCTYPE html>',
       '<html lang="en">',
@@ -311,22 +311,39 @@ test.describe('CSP guide screenshots', () => {
       '</body>',
       '</html>',
     ].join('\n');
-    await editFlyout.getByLabel('Body').fill(updatedBody);
 
-    const metaTag =
-      '  <meta http-equiv="Content-Security-Policy"\n        content="script-src \'self\' \'unsafe-inline\'">';
-    const bodyTextarea = editFlyout.getByLabel('Body');
-    await bodyTextarea.evaluate((el: HTMLTextAreaElement, tag: string) => {
+    const respondersResponse = await page.request.get('/api/utils/webhooks/responders');
+    const responders = await respondersResponse.json();
+    const cspTestResponder = responders.find((r: { name: string }) => r.name === 'CSP Test');
+    const updateResponse = await page.request.put(`/api/utils/webhooks/responders/${cspTestResponder.id}`, {
+      data: {
+        settings: {
+          requestsToTrack: 10,
+          statusCode: 200,
+          headers: [['Content-Type', 'text/html; charset=utf-8']],
+          body: updatedBody,
+        },
+      },
+    });
+    expect(updateResponse.ok()).toBeTruthy();
+
+    // Open the Edit flyout to screenshot the updated body with the meta-tag.
+    await goto(page, '/ws/webhooks__responders');
+    const editRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'CSP Test' }) });
+    await expect(editRow).toBeVisible({ timeout: 15000 });
+
+    await editRow.getByRole('button', { name: 'Edit' }).click();
+    const editFlyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
+    await expect(editFlyout).toBeVisible();
+
+    await editFlyout.getByText('Body', { exact: true }).scrollIntoViewIfNeeded();
+    // Body is the first Monaco editor in the flyout; Script is the second.
+    const editorContainer = editFlyout.locator('.monaco-editor').first();
+    await editorContainer.evaluate((el) => {
       el.style.outline = '3px dashed red';
       el.style.outlineOffset = '3px';
       el.style.borderRadius = '5px';
-      const start = el.value.indexOf(tag);
-      if (start !== -1) {
-        el.focus();
-        el.setSelectionRange(start, start + tag.length);
-        el.scrollTop = 0;
-      }
-    }, metaTag);
+    });
 
     await page.screenshot({ path: join(IMG_DIR, 'test_step6_responder_meta_tag.png') });
   });
@@ -420,25 +437,7 @@ test.describe('CSP guide screenshots', () => {
     await highlightOn(copyModal.locator('.euiCodeBlock'));
     await page.screenshot({ path: join(IMG_DIR, 'report_step5_copy_header.png') });
 
-    // Step 4: Create a "CSP Eval Test" responder with CSP header and an HTML page that uses eval().
-    await goto(page, '/ws/webhooks__responders');
-    await expect(page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'CSP Reporting' }) })).toBeVisible({
-      timeout: 15000,
-    });
-    await page.getByRole('button', { name: 'Create responder' }).click();
-
-    const evalFlyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add responder' }) });
-    await expect(evalFlyout).toBeVisible();
-
-    await evalFlyout.getByLabel('Name').fill('CSP Eval Test');
-    await getByRoleAndLabel(evalFlyout, 'textbox', 'Path').fill('/csp-eval-test');
-
-    const headersCombo = evalFlyout.getByRole('combobox', { name: 'Headers' });
-    await headersCombo.fill(
-      `Content-Security-Policy: script-src 'self' 'unsafe-inline' 'report-sample'; report-uri ${reportingUrl}`,
-    );
-    await headersCombo.press('Enter');
-
+    // Step 4: Create a "CSP Eval Test" responder via API (Monaco editor cannot be reliably filled via Playwright).
     const evalBody = [
       '<!DOCTYPE html>',
       '<html lang="en">',
@@ -461,23 +460,47 @@ test.describe('CSP guide screenshots', () => {
       '</body>',
       '</html>',
     ].join('\n');
-    const bodyTextarea = evalFlyout.getByLabel('Body');
-    await bodyTextarea.fill(evalBody);
-    await bodyTextarea.evaluate((el) => (el.scrollTop = 0));
+    const createEvalResponse = await page.request.post('/api/utils/webhooks/responders', {
+      data: {
+        name: 'CSP Eval Test',
+        location: { pathType: '=', path: '/csp-eval-test' },
+        method: 'ANY',
+        enabled: true,
+        settings: {
+          requestsToTrack: 10,
+          statusCode: 200,
+          headers: [
+            ['Content-Type', 'text/html; charset=utf-8'],
+            [
+              'Content-Security-Policy',
+              `script-src 'self' 'unsafe-inline' 'report-sample'; report-uri ${reportingUrl}`,
+            ],
+          ],
+          body: evalBody,
+        },
+      },
+    });
+    expect(createEvalResponse.ok()).toBeTruthy();
 
+    // Reload to see the responder, open Edit, and screenshot the form.
+    await goto(page, '/ws/webhooks__responders');
+    const evalRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'CSP Eval Test' }) });
+    await expect(evalRow).toBeVisible({ timeout: 15000 });
+
+    await evalRow.getByRole('button', { name: 'Edit' }).click();
+    const evalFlyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
+    await expect(evalFlyout).toBeVisible();
+
+    await evalFlyout.getByText('Body', { exact: true }).scrollIntoViewIfNeeded();
     const saveEvalButton = evalFlyout.getByRole('button', { name: 'Save' });
     await highlightOn(saveEvalButton);
     await page.screenshot({ path: join(IMG_DIR, 'report_step6_eval_form.png') });
 
-    await saveEvalButton.click();
+    await evalFlyout.getByRole('button', { name: 'Close' }).click();
     await expect(evalFlyout).not.toBeVisible({ timeout: 10000 });
 
-    const evalRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'CSP Eval Test' }) });
-    await expect(evalRow).toBeVisible();
     await highlightOn(page.getByRole('table'));
     await page.screenshot({ path: join(IMG_DIR, 'report_step7_eval_created.png') });
-
-    await dismissAllToasts(page);
 
     // Step 5: Open the eval test page and try eval() - CSP blocks it and sends a report via report-uri.
     const evalLink = evalRow.getByRole('link');

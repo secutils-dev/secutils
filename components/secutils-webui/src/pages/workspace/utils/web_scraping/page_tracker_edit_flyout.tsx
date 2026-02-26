@@ -23,6 +23,7 @@ import {
   ResponseError,
 } from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
+import { PAGE_TRACKER_TYPE_DEFS } from '../../components/page_tracker_type_defs';
 import { ScriptEditor } from '../../components/script_editor';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -52,7 +53,7 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
 
   const [extractorScript, setExtractorScript] = useState<string>(
     tracker?.retrack?.target?.extractor ??
-      "export async function execute(page) {\n    // Load the page.\n    await page.goto('https://secutils.dev');\n\n    // Get the page title.\n    const title = await page.title();\n\n    // See what's possible at:\n    // https://playwright.dev/docs/api/class-page\n\n    // Return result as Markdown.\n    return `## ${title}`;\n};",
+      "/** @param {Page} page */\nexport async function execute(page) {\n    // Load the page.\n    await page.goto('https://secutils.dev');\n\n    // Get the page title.\n    const title = await page.title();\n\n    // See what's possible at:\n    // https://playwright.dev/docs/api/class-page\n\n    // Return result as Markdown.\n    return `## ${title}`;\n};",
   );
   const onExtractContentScriptChange = useCallback((value?: string) => {
     setExtractorScript(value ?? '');
@@ -294,7 +295,11 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
               </span>
             }
           >
-            <ScriptEditor onChange={onExtractContentScriptChange} defaultValue={extractorScript} />
+            <ScriptEditor
+              onChange={onExtractContentScriptChange}
+              defaultValue={extractorScript}
+              extraLibs={[{ content: PAGE_TRACKER_TYPE_DEFS, filePath: 'ts:page-tracker.d.ts' }]}
+            />
           </EuiFormRow>
         </EuiDescribedFormGroup>
       </EuiForm>

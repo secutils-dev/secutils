@@ -3,7 +3,6 @@ import { join } from 'path';
 import { expect, test } from '@playwright/test';
 
 import {
-  dismissAllToasts,
   DOCS_IMG_DIR,
   EMAIL,
   ensureUserAndLogin,
@@ -401,8 +400,8 @@ test.describe('Web scraping guide screenshots', () => {
   // Responder URLs use the public_url (localhost:7171) which isn't reachable from the
   // Docker web scraper container, so this test uses fully mocked revision data.
   test('Detect changes in web page resources', async ({ page }) => {
-    const JS_HEADER = 'Content-Type: application/javascript; charset=utf-8';
-    const HTML_HEADER = 'Content-Type: text/html; charset=utf-8';
+    const JS_CONTENT_TYPE = 'application/javascript; charset=utf-8';
+    const HTML_CONTENT_TYPE = 'text/html; charset=utf-8';
 
     const jsBody = (name: string, extra = '') =>
       `document.body.insertAdjacentHTML(\n  'beforeend',\n  'Source: ${name}${extra}<br>'\n);`;
@@ -424,34 +423,43 @@ test.describe('Web scraping guide screenshots', () => {
       '};',
     ].join('\n');
 
-    // Helper to create a JS responder via the UI form and take a screenshot.
-    async function createJsResponder(name: string, path: string, body: string, screenshotName: string) {
-      const createButton = page.getByRole('button', { name: 'Create responder' });
-      await expect(createButton).toBeVisible({ timeout: 15000 });
-      await createButton.click();
+    // Helper to create a responder via API (Monaco editor cannot be reliably filled via Playwright).
+    async function createResponderViaApi(name: string, path: string, body: string, contentType: string) {
+      const response = await page.request.post('/api/utils/webhooks/responders', {
+        data: {
+          name,
+          location: { pathType: '=', path },
+          method: 'ANY',
+          enabled: true,
+          settings: {
+            requestsToTrack: 10,
+            statusCode: 200,
+            headers: [['Content-Type', contentType]],
+            body,
+          },
+        },
+      });
+      expect(response.ok()).toBeTruthy();
+    }
 
-      const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add responder' }) });
+    // Helper to open Edit flyout for a responder, screenshot, and close.
+    async function screenshotResponderEditForm(name: string, screenshotName: string) {
+      const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name }) });
+      await expect(row).toBeVisible({ timeout: 15000 });
+
+      await row.getByRole('button', { name: 'Edit' }).click();
+      const flyout = page
+        .getByRole('dialog')
+        .filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
       await expect(flyout).toBeVisible();
 
-      await flyout.getByLabel('Name').fill(name);
-      await flyout.getByLabel('Path', { exact: true }).fill(path);
-
-      await flyout.getByRole('button', { name: /Remove Content-Type/ }).click();
-      const headersCombo = flyout.getByRole('combobox', { name: 'Headers' });
-      await headersCombo.fill(JS_HEADER);
-      await headersCombo.press('Enter');
-
-      const bodyTextarea = flyout.getByLabel('Body');
-      await bodyTextarea.fill(body);
-      await bodyTextarea.evaluate((el) => (el.scrollTop = 0));
-
+      await flyout.getByText('Body', { exact: true }).scrollIntoViewIfNeeded();
       const saveButton = flyout.getByRole('button', { name: 'Save' });
       await highlightOn(saveButton);
       await page.screenshot({ path: join(IMG_DIR, screenshotName) });
 
-      await saveButton.click();
+      await flyout.getByRole('button', { name: 'Close' }).click();
       await expect(flyout).not.toBeVisible({ timeout: 10000 });
-      await dismissAllToasts(page);
     }
 
     // Step 1: Navigate to Webhooks → Responders and show the empty state.
@@ -461,39 +469,11 @@ test.describe('Web scraping guide screenshots', () => {
     await highlightOn(createButton);
     await page.screenshot({ path: join(IMG_DIR, 'detect_resources_step1_responders_empty.png') });
 
-    // Steps 2–5: Create each JS responder via UI with a screenshot.
-    await createJsResponder(
-      'no-changes.js',
-      '/no-changes.js',
-      jsBody('no-changes.js'),
-      'detect_resources_step2_no_changes_form.png',
-    );
-    await createJsResponder(
-      'changed.js',
-      '/changed.js',
-      jsBody('changed.js', ', Changed: no'),
-      'detect_resources_step3_changed_form.png',
-    );
-    await createJsResponder(
-      'removed.js',
-      '/removed.js',
-      jsBody('removed.js'),
-      'detect_resources_step4_removed_form.png',
-    );
-    await createJsResponder('added.js', '/added.js', jsBody('added.js'), 'detect_resources_step5_added_form.png');
-
-    // Step 6: Create `track-me.html` responder via UI.
-    await createButton.click();
-    const addFlyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add responder' }) });
-    await expect(addFlyout).toBeVisible();
-
-    await addFlyout.getByLabel('Name').fill('track-me.html');
-    await addFlyout.getByLabel('Path', { exact: true }).fill('/track-me.html');
-
-    await addFlyout.getByRole('button', { name: /Remove Content-Type/ }).click();
-    const htmlHeadersCombo = addFlyout.getByRole('combobox', { name: 'Headers' });
-    await htmlHeadersCombo.fill(HTML_HEADER);
-    await htmlHeadersCombo.press('Enter');
+    // Steps 2–6: Create all responders via API, then screenshot each Edit form.
+    await createResponderViaApi('no-changes.js', '/no-changes.js', jsBody('no-changes.js'), JS_CONTENT_TYPE);
+    await createResponderViaApi('changed.js', '/changed.js', jsBody('changed.js', ', Changed: no'), JS_CONTENT_TYPE);
+    await createResponderViaApi('removed.js', '/removed.js', jsBody('removed.js'), JS_CONTENT_TYPE);
+    await createResponderViaApi('added.js', '/added.js', jsBody('added.js'), JS_CONTENT_TYPE);
 
     const htmlBody = [
       '<!DOCTYPE html>',
@@ -507,17 +487,14 @@ test.describe('Web scraping guide screenshots', () => {
       '<body></body>',
       '</html>',
     ].join('\n');
-    const htmlBodyTextarea = addFlyout.getByLabel('Body');
-    await htmlBodyTextarea.fill(htmlBody);
-    await htmlBodyTextarea.evaluate((el) => (el.scrollTop = 0));
+    await createResponderViaApi('track-me.html', '/track-me.html', htmlBody, HTML_CONTENT_TYPE);
 
-    const htmlSaveButton = addFlyout.getByRole('button', { name: 'Save' });
-    await highlightOn(htmlSaveButton);
-    await page.screenshot({ path: join(IMG_DIR, 'detect_resources_step6_html_form.png') });
-
-    await htmlSaveButton.click();
-    await expect(addFlyout).not.toBeVisible({ timeout: 10000 });
-    await dismissAllToasts(page);
+    await goto(page, '/ws/webhooks__responders');
+    await screenshotResponderEditForm('no-changes.js', 'detect_resources_step2_no_changes_form.png');
+    await screenshotResponderEditForm('changed.js', 'detect_resources_step3_changed_form.png');
+    await screenshotResponderEditForm('removed.js', 'detect_resources_step4_removed_form.png');
+    await screenshotResponderEditForm('added.js', 'detect_resources_step5_added_form.png');
+    await screenshotResponderEditForm('track-me.html', 'detect_resources_step6_html_form.png');
 
     // Step 7: Show all 5 responders in the grid.
     await goto(page, '/ws/webhooks__responders');

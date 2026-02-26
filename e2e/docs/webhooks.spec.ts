@@ -3,7 +3,6 @@ import { join } from 'path';
 import { expect, test } from '@playwright/test';
 
 import {
-  dismissAllToasts,
   DOCS_IMG_DIR,
   EMAIL,
   ensureUserAndLogin,
@@ -28,14 +27,7 @@ test.describe('Webhooks guide screenshots', () => {
     await highlightOn(createButton);
     await page.screenshot({ path: join(IMG_DIR, 'html_step1_empty.png') });
 
-    // Step 2: Open the flyout and fill in the form.
-    await createButton.click();
-    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add responder' }) });
-    await expect(flyout).toBeVisible();
-
-    await flyout.getByLabel('Name').fill('HTML Responder');
-    await flyout.getByLabel('Path', { exact: true }).fill('/html-responder');
-
+    // Create the responder via API (Monaco editor cannot be reliably filled via Playwright).
     const htmlBody = [
       '<!DOCTYPE html>',
       '<html lang="en">',
@@ -45,24 +37,42 @@ test.describe('Webhooks guide screenshots', () => {
       '<body>Hello World</body>',
       '</html>',
     ].join('\n');
-    const bodyTextarea = flyout.getByLabel('Body');
-    await bodyTextarea.fill(htmlBody);
-    await bodyTextarea.evaluate((el) => (el.scrollTop = 0));
+    const createResponse = await page.request.post('/api/utils/webhooks/responders', {
+      data: {
+        name: 'HTML Responder',
+        location: { pathType: '=', path: '/html-responder' },
+        method: 'ANY',
+        enabled: true,
+        settings: {
+          requestsToTrack: 10,
+          statusCode: 200,
+          headers: [['Content-Type', 'text/html; charset=utf-8']],
+          body: htmlBody,
+        },
+      },
+    });
+    expect(createResponse.ok()).toBeTruthy();
 
+    // Step 2: Reload to see the responder, open Edit, and screenshot the form.
+    await goto(page, '/ws/webhooks__responders');
+    const responderRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'HTML Responder' }) });
+    await expect(responderRow).toBeVisible({ timeout: 15000 });
+
+    await responderRow.getByRole('button', { name: 'Edit' }).click();
+    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
+    await expect(flyout).toBeVisible();
+
+    await flyout.getByText('Body', { exact: true }).scrollIntoViewIfNeeded();
     const saveButton = flyout.getByRole('button', { name: 'Save' });
     await highlightOn(saveButton);
     await page.screenshot({ path: join(IMG_DIR, 'html_step2_form.png') });
 
-    // Step 3: Save and verify the responder appears in the grid.
-    await saveButton.click();
+    await flyout.getByRole('button', { name: 'Close' }).click();
     await expect(flyout).not.toBeVisible({ timeout: 10000 });
 
-    const responderRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'HTML Responder' }) });
-    await expect(responderRow).toBeVisible();
+    // Step 3: Show the responder in the grid.
     await highlightOn(responderRow);
     await page.screenshot({ path: join(IMG_DIR, 'html_step3_created.png') });
-
-    await dismissAllToasts(page);
 
     // Step 4: Open the responder URL and verify it renders the HTML page.
     const responderLink = responderRow.getByRole('link');
@@ -82,35 +92,42 @@ test.describe('Webhooks guide screenshots', () => {
     await highlightOn(createButton);
     await page.screenshot({ path: join(IMG_DIR, 'json_step1_empty.png') });
 
-    // Step 2: Open the flyout and fill in the form.
-    await createButton.click();
-    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add responder' }) });
+    // Create the responder via API (Monaco editor cannot be reliably filled via Playwright).
+    const jsonBody = ['{\n', '  "message": "Hello World"\n', '}'].join('');
+    const createResponse = await page.request.post('/api/utils/webhooks/responders', {
+      data: {
+        name: 'JSON Responder',
+        location: { pathType: '=', path: '/json-responder' },
+        method: 'ANY',
+        enabled: true,
+        settings: {
+          requestsToTrack: 10,
+          statusCode: 200,
+          headers: [['Content-Type', 'application/json']],
+          body: jsonBody,
+        },
+      },
+    });
+    expect(createResponse.ok()).toBeTruthy();
+
+    // Step 2: Reload to see the responder, open Edit, and screenshot the form.
+    await goto(page, '/ws/webhooks__responders');
+    const responderRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'JSON Responder' }) });
+    await expect(responderRow).toBeVisible({ timeout: 15000 });
+
+    await responderRow.getByRole('button', { name: 'Edit' }).click();
+    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
     await expect(flyout).toBeVisible();
 
-    await flyout.getByLabel('Name').fill('JSON Responder');
-    await flyout.getByLabel('Path', { exact: true }).fill('/json-responder');
-
-    // Remove the default Content-Type header and add the JSON one.
-    await flyout.getByRole('button', { name: /Remove Content-Type/ }).click();
-    const headersCombo = flyout.getByRole('combobox', { name: 'Headers' });
-    await headersCombo.fill('Content-Type: application/json');
-    await headersCombo.press('Enter');
-
-    const jsonBody = ['{\n', '  "message": "Hello World"\n', '}'].join('');
-    const bodyTextarea = flyout.getByLabel('Body');
-    await bodyTextarea.fill(jsonBody);
-    await bodyTextarea.evaluate((el) => (el.scrollTop = 0));
-
+    await flyout.getByText('Body', { exact: true }).scrollIntoViewIfNeeded();
     const saveButton = flyout.getByRole('button', { name: 'Save' });
     await highlightOn(saveButton);
     await page.screenshot({ path: join(IMG_DIR, 'json_step2_form.png') });
 
-    // Step 3: Save and verify the responder appears in the grid.
-    await saveButton.click();
+    await flyout.getByRole('button', { name: 'Close' }).click();
     await expect(flyout).not.toBeVisible({ timeout: 10000 });
 
-    const responderRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'JSON Responder' }) });
-    await expect(responderRow).toBeVisible();
+    // Step 3: Show the responder in the grid.
     await highlightOn(responderRow);
     await page.screenshot({ path: join(IMG_DIR, 'json_step3_created.png') });
   });
@@ -123,17 +140,7 @@ test.describe('Webhooks guide screenshots', () => {
     await highlightOn(createButton);
     await page.screenshot({ path: join(IMG_DIR, 'tracking_step1_empty.png') });
 
-    // Step 2: Open the flyout and fill in the form with tracking enabled.
-    await createButton.click();
-    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add responder' }) });
-    await expect(flyout).toBeVisible();
-
-    await flyout.getByLabel('Name').fill('Notion Honeypot');
-    await flyout.getByLabel('Path', { exact: true }).fill('/notion-honeypot');
-
-    await flyout.getByLabel('Advanced mode').click();
-    await flyout.getByRole('slider').fill('5');
-
+    // Create the responder via API (Monaco editor cannot be reliably filled via Playwright).
     const honeypotBody = [
       '<!DOCTYPE html>',
       '<html lang="en">',
@@ -147,24 +154,42 @@ test.describe('Webhooks guide screenshots', () => {
       '<body>Hello World</body>',
       '</html>',
     ].join('\n');
-    const bodyTextarea = flyout.getByLabel('Body');
-    await bodyTextarea.fill(honeypotBody);
-    await bodyTextarea.evaluate((el) => (el.scrollTop = 0));
+    const createResponse = await page.request.post('/api/utils/webhooks/responders', {
+      data: {
+        name: 'Notion Honeypot',
+        location: { pathType: '=', path: '/notion-honeypot' },
+        method: 'ANY',
+        enabled: true,
+        settings: {
+          requestsToTrack: 5,
+          statusCode: 200,
+          headers: [['Content-Type', 'text/html; charset=utf-8']],
+          body: honeypotBody,
+        },
+      },
+    });
+    expect(createResponse.ok()).toBeTruthy();
 
+    // Step 2: Reload to see the responder, open Edit, and screenshot the form.
+    await goto(page, '/ws/webhooks__responders');
+    const responderRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'Notion Honeypot' }) });
+    await expect(responderRow).toBeVisible({ timeout: 15000 });
+
+    await responderRow.getByRole('button', { name: 'Edit' }).click();
+    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
+    await expect(flyout).toBeVisible();
+
+    await flyout.getByText('Body', { exact: true }).scrollIntoViewIfNeeded();
     const saveButton = flyout.getByRole('button', { name: 'Save' });
     await highlightOn(saveButton);
     await page.screenshot({ path: join(IMG_DIR, 'tracking_step2_form.png') });
 
-    // Step 3: Save and verify the responder appears in the grid.
-    await saveButton.click();
+    await flyout.getByRole('button', { name: 'Close' }).click();
     await expect(flyout).not.toBeVisible({ timeout: 10000 });
 
-    const responderRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'Notion Honeypot' }) });
-    await expect(responderRow).toBeVisible();
+    // Step 3: Show the responder in the grid.
     await highlightOn(responderRow);
     await page.screenshot({ path: join(IMG_DIR, 'tracking_step3_created.png') });
-
-    await dismissAllToasts(page);
 
     // Step 4: Call the endpoint and expand the row to show tracked requests.
     await fixResponderRequestFields(page);

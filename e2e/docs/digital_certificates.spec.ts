@@ -269,20 +269,7 @@ test.describe('Certificate templates guide screenshots', () => {
 
     await generateModal.waitFor({ state: 'hidden', timeout: 10000 });
 
-    // Step 5: Create the "Subtle Crypto" responder with an HTML page.
-    await goto(page, '/ws/webhooks__responders');
-    const createResponderButton = page.getByRole('button', { name: 'Create responder' });
-    await expect(createResponderButton).toBeVisible({ timeout: 15000 });
-    await createResponderButton.click();
-
-    const responderFlyout = page
-      .getByRole('dialog')
-      .filter({ has: page.getByRole('heading', { name: 'Add responder' }) });
-    await expect(responderFlyout).toBeVisible();
-
-    await responderFlyout.getByLabel('Name').fill('Subtle Crypto');
-    await responderFlyout.getByLabel('Path', { exact: true }).fill('/subtle-crypto');
-
+    // Step 5: Create the "Subtle Crypto" responder via API (Monaco editor cannot be reliably filled via Playwright).
     const responderBody = [
       '<!DOCTYPE html>',
       '<html lang="en">',
@@ -342,23 +329,43 @@ test.describe('Certificate templates guide screenshots', () => {
       '</body>',
       '</html>',
     ].join('\n');
-    const bodyTextarea = responderFlyout.getByLabel('Body');
-    await bodyTextarea.fill(responderBody);
-    await bodyTextarea.evaluate((el) => (el.scrollTop = 0));
+    const createResponderResponse = await page.request.post('/api/utils/webhooks/responders', {
+      data: {
+        name: 'Subtle Crypto',
+        location: { pathType: '=', path: '/subtle-crypto' },
+        method: 'ANY',
+        enabled: true,
+        settings: {
+          requestsToTrack: 10,
+          statusCode: 200,
+          headers: [['Content-Type', 'text/html; charset=utf-8']],
+          body: responderBody,
+        },
+      },
+    });
+    expect(createResponderResponse.ok()).toBeTruthy();
 
+    // Reload to see the responder, open Edit, and screenshot the form.
+    await goto(page, '/ws/webhooks__responders');
+    const responderRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'Subtle Crypto' }) });
+    await expect(responderRow).toBeVisible({ timeout: 15000 });
+
+    await responderRow.getByRole('button', { name: 'Edit' }).click();
+    const responderFlyout = page
+      .getByRole('dialog')
+      .filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
+    await expect(responderFlyout).toBeVisible();
+
+    await responderFlyout.getByText('Body', { exact: true }).scrollIntoViewIfNeeded();
     const saveResponderButton = responderFlyout.getByRole('button', { name: 'Save' });
     await highlightOn(saveResponderButton);
     await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'jwk_step5_responder_form.png') });
 
-    await saveResponderButton.click();
+    await responderFlyout.getByRole('button', { name: 'Close' }).click();
     await expect(responderFlyout).not.toBeVisible({ timeout: 10000 });
 
-    const responderRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'Subtle Crypto' }) });
-    await expect(responderRow).toBeVisible();
     await highlightOn(responderRow);
     await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'jwk_step6_responder_created.png') });
-
-    await dismissAllToasts(page);
 
     // Step 7: Open the responder URL, upload the .p8 file, and view the JWK.
     const responderLink = responderRow.getByRole('link');
