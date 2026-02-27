@@ -125,6 +125,8 @@ mod tests {
         [subscriptions.basic.web_security]
         policies = 1000
         import_policy_from_url = true
+        [subscriptions.basic.secrets]
+        max_secrets = 100
         [subscriptions.standard.webhooks]
         responders = 100
         responder_requests = 30
@@ -141,6 +143,8 @@ mod tests {
         [subscriptions.standard.web_security]
         policies = 1000
         import_policy_from_url = true
+        [subscriptions.standard.secrets]
+        max_secrets = 100
         [subscriptions.professional.webhooks]
         responders = 100
         responder_requests = 30
@@ -157,6 +161,8 @@ mod tests {
         [subscriptions.professional.web_security]
         policies = 1000
         import_policy_from_url = true
+        [subscriptions.professional.secrets]
+        max_secrets = 100
         [subscriptions.ultimate.webhooks]
         responders = 100
         responder_requests = 30
@@ -173,6 +179,8 @@ mod tests {
         [subscriptions.ultimate.web_security]
         policies = 1000
         import_policy_from_url = true
+        [subscriptions.ultimate.secrets]
+        max_secrets = 100
 
         [utils]
         webhook_url_type = 'subdomain'
@@ -351,6 +359,7 @@ mod tests {
             security: SecurityConfig {
                 session_cookie_name: "id2",
                 jwt_secret: None,
+                secrets_encryption_key: None,
                 operators: None,
                 preconfigured_users: Some(
                     {
@@ -449,6 +458,9 @@ mod tests {
                         policies: 10,
                         import_policy_from_url: false,
                     },
+                    secrets: SubscriptionSecretsConfig {
+                        max_secrets: 100,
+                    },
                 },
                 standard: SubscriptionConfig {
                     webhooks: SubscriptionWebhooksConfig {
@@ -476,6 +488,9 @@ mod tests {
                     web_security: SubscriptionWebSecurityConfig {
                         policies: 1000,
                         import_policy_from_url: true,
+                    },
+                    secrets: SubscriptionSecretsConfig {
+                        max_secrets: 100,
                     },
                 },
                 professional: SubscriptionConfig {
@@ -505,6 +520,9 @@ mod tests {
                         policies: 1000,
                         import_policy_from_url: true,
                     },
+                    secrets: SubscriptionSecretsConfig {
+                        max_secrets: 100,
+                    },
                 },
                 ultimate: SubscriptionConfig {
                     webhooks: SubscriptionWebhooksConfig {
@@ -528,6 +546,9 @@ mod tests {
                     web_security: SubscriptionWebSecurityConfig {
                         policies: 1000,
                         import_policy_from_url: true,
+                    },
+                    secrets: SubscriptionSecretsConfig {
+                        max_secrets: 100,
                     },
                 },
             },

@@ -1,5 +1,6 @@
 mod subscription_certificates_config;
 mod subscription_config;
+mod subscription_secrets_config;
 mod subscription_web_scraping_config;
 mod subscription_web_security_config;
 mod subscription_webhooks_config;
@@ -11,6 +12,7 @@ use url::Url;
 pub use self::{
     subscription_certificates_config::SubscriptionCertificatesConfig,
     subscription_config::SubscriptionConfig,
+    subscription_secrets_config::SubscriptionSecretsConfig,
     subscription_web_scraping_config::SubscriptionWebScrapingConfig,
     subscription_web_security_config::SubscriptionWebSecurityConfig,
     subscription_webhooks_config::SubscriptionWebhooksConfig,
@@ -78,6 +80,8 @@ mod tests {
         [basic.web_security]
         policies = 1000
         import_policy_from_url = true
+        [basic.secrets]
+        max_secrets = 100
         [standard.webhooks]
         responders = 100
         responder_requests = 30
@@ -94,6 +98,8 @@ mod tests {
         [standard.web_security]
         policies = 1000
         import_policy_from_url = true
+        [standard.secrets]
+        max_secrets = 100
         [professional.webhooks]
         responders = 100
         responder_requests = 30
@@ -110,6 +116,8 @@ mod tests {
         [professional.web_security]
         policies = 1000
         import_policy_from_url = true
+        [professional.secrets]
+        max_secrets = 100
         [ultimate.webhooks]
         responders = 100
         responder_requests = 30
@@ -126,6 +134,8 @@ mod tests {
         [ultimate.web_security]
         policies = 1000
         import_policy_from_url = true
+        [ultimate.secrets]
+        max_secrets = 100
         "###);
 
         let config = SubscriptionsConfig {
@@ -155,6 +165,8 @@ mod tests {
         [basic.web_security]
         policies = 1000
         import_policy_from_url = true
+        [basic.secrets]
+        max_secrets = 100
         [standard.webhooks]
         responders = 100
         responder_requests = 30
@@ -171,6 +183,8 @@ mod tests {
         [standard.web_security]
         policies = 1000
         import_policy_from_url = true
+        [standard.secrets]
+        max_secrets = 100
         [professional.webhooks]
         responders = 100
         responder_requests = 30
@@ -187,6 +201,8 @@ mod tests {
         [professional.web_security]
         policies = 1000
         import_policy_from_url = true
+        [professional.secrets]
+        max_secrets = 100
         [ultimate.webhooks]
         responders = 100
         responder_requests = 30
@@ -203,6 +219,8 @@ mod tests {
         [ultimate.web_security]
         policies = 1000
         import_policy_from_url = true
+        [ultimate.secrets]
+        max_secrets = 100
         "###);
     }
 
@@ -342,7 +360,8 @@ mod tests {
                             .into_iter()
                             .collect()
                         )
-                    }
+                    },
+                    secrets: Default::default(),
                 },
                 standard: SubscriptionConfig {
                     webhooks: SubscriptionWebhooksConfig {
@@ -380,7 +399,8 @@ mod tests {
                             .into_iter()
                             .collect()
                         )
-                    }
+                    },
+                    secrets: Default::default(),
                 },
                 professional: SubscriptionConfig {
                     webhooks: SubscriptionWebhooksConfig {
@@ -401,7 +421,8 @@ mod tests {
                         private_keys: 3,
                         templates: 33,
                         private_key_algorithms: None
-                    }
+                    },
+                    secrets: Default::default(),
                 },
                 ultimate: SubscriptionConfig {
                     webhooks: SubscriptionWebhooksConfig {
@@ -422,7 +443,8 @@ mod tests {
                         private_keys: 4,
                         templates: 44,
                         private_key_algorithms: None
-                    }
+                    },
+                    secrets: Default::default(),
                 },
             }
         );
@@ -472,6 +494,7 @@ mod tests {
                         .collect(),
                     ),
                 },
+                secrets: Default::default(),
             },
             standard: SubscriptionConfig {
                 webhooks: SubscriptionWebhooksConfig {
@@ -510,6 +533,7 @@ mod tests {
                         .collect(),
                     ),
                 },
+                secrets: Default::default(),
             },
             professional: SubscriptionConfig {
                 webhooks: SubscriptionWebhooksConfig {
@@ -531,6 +555,7 @@ mod tests {
                     templates: 33,
                     private_key_algorithms: None,
                 },
+                secrets: Default::default(),
             },
             ultimate: SubscriptionConfig {
                 webhooks: SubscriptionWebhooksConfig {
@@ -552,6 +577,7 @@ mod tests {
                     templates: 44,
                     private_key_algorithms: None,
                 },
+                secrets: Default::default(),
             },
         };
 

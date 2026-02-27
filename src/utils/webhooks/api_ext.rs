@@ -394,6 +394,7 @@ mod tests {
     use crate::{
         error::Error as SecutilsError,
         tests::{mock_api, mock_user},
+        users::SecretsAccess,
         utils::webhooks::{
             Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,
             ResponderStats, RespondersRequestCreateParams,
@@ -438,6 +439,7 @@ mod tests {
                     body: Some("body".to_string()),
                     headers: Some(vec![("key".to_string(), "value".to_string())]),
                     script: Some("return { body: `custom body` };".to_string()),
+                    secrets: SecretsAccess::None,
                 },
             })
             .await?;
@@ -463,6 +465,7 @@ mod tests {
             body: None,
             headers: None,
             script: Some("return { body: `custom body` };".to_string()),
+            secrets: SecretsAccess::None,
         };
 
         let create_and_fail = |result: anyhow::Result<_>| -> SecutilsError {
@@ -731,6 +734,7 @@ mod tests {
                     body: None,
                     headers: None,
                     script: None,
+                    secrets: SecretsAccess::None,
                 },
             })
             .await?;
@@ -898,6 +902,7 @@ mod tests {
                         body: Some("some-new-body".to_string()),
                         headers: Some(vec![("new-key".to_string(), "value".to_string())]),
                         script: Some("return { body: `custom body` };".to_string()),
+                        secrets: SecretsAccess::None,
                     }),
                 },
             )
@@ -917,6 +922,7 @@ mod tests {
                 body: Some("some-new-body".to_string()),
                 headers: Some(vec![("new-key".to_string(), "value".to_string())]),
                 script: Some("return { body: `custom body` };".to_string()),
+                secrets: SecretsAccess::None,
             },
             updated_at: updated_responder.updated_at,
             ..responder.clone()
@@ -943,6 +949,7 @@ mod tests {
             body: None,
             headers: None,
             script: None,
+            secrets: SecretsAccess::None,
         };
         let responder = webhooks
             .create_responder(RespondersCreateParams {
@@ -1233,6 +1240,7 @@ mod tests {
             body: None,
             headers: None,
             script: None,
+            secrets: SecretsAccess::None,
         };
 
         let responders = [
@@ -1315,6 +1323,7 @@ mod tests {
             body: None,
             headers: None,
             script: None,
+            secrets: SecretsAccess::None,
         };
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {
@@ -1375,6 +1384,7 @@ mod tests {
             body: None,
             headers: None,
             script: None,
+            secrets: SecretsAccess::None,
         };
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {
@@ -1430,6 +1440,7 @@ mod tests {
             body: None,
             headers: None,
             script: None,
+            secrets: SecretsAccess::None,
         };
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {
@@ -1512,6 +1523,7 @@ mod tests {
             body: None,
             headers: None,
             script: None,
+            secrets: SecretsAccess::None,
         };
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {
@@ -1593,6 +1605,7 @@ mod tests {
             body: None,
             headers: None,
             script: None,
+            secrets: SecretsAccess::None,
         };
         let responder = webhooks
             .create_responder(RespondersCreateParams {
@@ -1660,6 +1673,7 @@ mod tests {
             body: None,
             headers: None,
             script: None,
+            secrets: SecretsAccess::None,
         };
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {
@@ -1757,6 +1771,7 @@ mod tests {
             body: None,
             headers: None,
             script: None,
+            secrets: SecretsAccess::None,
         };
         let responder_one = webhooks
             .create_responder(RespondersCreateParams {

@@ -28,8 +28,11 @@ pub struct Responder {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::webhooks::{
-        Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,
+    use crate::{
+        users::SecretsAccess,
+        utils::webhooks::{
+            Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,
+        },
     };
     use insta::assert_json_snapshot;
     use time::OffsetDateTime;
@@ -53,6 +56,7 @@ mod tests {
                 body: Some("some-body".to_string()),
                 headers: Some(vec![("key".to_string(), "value".to_string())]),
                 script: Some("return { body: `custom body` };".to_string()),
+                secrets: SecretsAccess::None,
             },
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?
@@ -133,6 +137,7 @@ mod tests {
                     body: Some("some-body".to_string()),
                     headers: Some(vec![("key".to_string(), "value".to_string())]),
                     script: Some("return { body: `custom body` };".to_string()),
+                    secrets: SecretsAccess::None,
                 },
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?

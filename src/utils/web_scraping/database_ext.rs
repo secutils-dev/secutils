@@ -25,7 +25,7 @@ impl<'pool> WebScrapingDatabaseExt<'pool> {
         let raw_trackers = query_as!(
             RawPageTracker,
             r#"
-SELECT id, name, retrack_id, user_id, created_at, updated_at
+SELECT id, name, retrack_id, user_id, secrets, created_at, updated_at
 FROM user_data_web_scraping_page_trackers
 WHERE user_id = $1
 ORDER BY updated_at
@@ -48,7 +48,7 @@ ORDER BY updated_at
         query_as!(
             RawPageTracker,
             r#"
-    SELECT id, name, user_id, retrack_id, created_at, updated_at
+    SELECT id, name, user_id, retrack_id, secrets, created_at, updated_at
     FROM user_data_web_scraping_page_trackers
     WHERE user_id = $1 AND id = $2
                     "#,
@@ -66,13 +66,14 @@ ORDER BY updated_at
         let raw_tracker = RawPageTracker::try_from(tracker)?;
         let result = query!(
             r#"
-    INSERT INTO user_data_web_scraping_page_trackers (user_id, id, name, retrack_id, created_at, updated_at)
-    VALUES ( $1, $2, $3, $4, $5, $6 )
+    INSERT INTO user_data_web_scraping_page_trackers (user_id, id, name, retrack_id, secrets, created_at, updated_at)
+    VALUES ( $1, $2, $3, $4, $5, $6, $7 )
             "#,
             *self.user_id,
             raw_tracker.id,
             raw_tracker.name,
             raw_tracker.retrack_id,
+            raw_tracker.secrets.as_slice(),
             raw_tracker.created_at,
             raw_tracker.updated_at
         )
@@ -106,13 +107,14 @@ ORDER BY updated_at
         let result = query!(
             r#"
 UPDATE user_data_web_scraping_page_trackers
-SET name = $3, retrack_id = $4, updated_at = $5
+SET name = $3, retrack_id = $4, secrets = $5, updated_at = $6
 WHERE user_id = $1 AND id = $2
         "#,
             *self.user_id,
             raw_tracker.id,
             raw_tracker.name,
             raw_tracker.retrack_id,
+            raw_tracker.secrets.as_slice(),
             raw_tracker.updated_at
         )
         .execute(self.pool)

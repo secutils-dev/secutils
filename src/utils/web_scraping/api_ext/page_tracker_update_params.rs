@@ -1,4 +1,7 @@
-use crate::utils::web_scraping::{PageTrackerConfig, page_trackers::PageTrackerTarget};
+use crate::{
+    users::SecretsAccess,
+    utils::web_scraping::{PageTrackerConfig, page_trackers::PageTrackerTarget},
+};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Default, Clone, PartialEq, Eq)]
@@ -13,6 +16,8 @@ pub struct PageTrackerUpdateParams {
     pub target: Option<PageTrackerTarget>,
     /// Indicates whether the user should be notified about changes.
     pub notifications: bool,
+    /// Controls which user secrets are available to this tracker's extractor script.
+    pub secrets: Option<SecretsAccess>,
 }
 
 #[cfg(test)]
@@ -35,7 +40,10 @@ mod tests {
             )?,
             PageTrackerUpdateParams {
                 name: Some("tck".to_string()),
-                ..Default::default()
+                config: None,
+                target: None,
+                notifications: false,
+                secrets: None,
             }
         );
 
@@ -56,7 +64,8 @@ mod tests {
                     job: None
                 }),
                 target: None,
-                notifications: false
+                notifications: false,
+                secrets: None,
             }
         );
 
@@ -95,7 +104,8 @@ mod tests {
                     })
                 }),
                 target: None,
-                notifications: false
+                notifications: false,
+                secrets: None,
             }
         );
 
@@ -153,6 +163,7 @@ mod tests {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 }),
                 notifications: true,
+                secrets: None,
             }
         );
 

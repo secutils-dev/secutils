@@ -89,6 +89,19 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
                     .route("/send_message", web::post().to(handlers::send_message))
                     .route("/user/data", web::post().to(handlers::user_data_set))
                     .route("/user/data", web::get().to(handlers::user_data_get))
+                    .route("/user/secrets", web::get().to(handlers::user_secrets_list))
+                    .route(
+                        "/user/secrets",
+                        web::post().to(handlers::user_secrets_create),
+                    )
+                    .route(
+                        "/user/secrets/{secret_name}",
+                        web::put().to(handlers::user_secrets_update),
+                    )
+                    .route(
+                        "/user/secrets/{secret_name}",
+                        web::delete().to(handlers::user_secrets_delete),
+                    )
                     .route(
                         "/user/subscription",
                         web::post().to(handlers::security_subscription_update),

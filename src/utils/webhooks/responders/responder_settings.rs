@@ -1,3 +1,4 @@
+use crate::users::SecretsAccess;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -14,15 +15,18 @@ pub struct ResponderSettings {
     /// Optional headers to respond with.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<Vec<(String, String)>>,
-    /// Optional JavaScript code to execute for every received request that allows overriding response status code, body
-    /// and headers.
+    /// Optional JavaScript code to execute for every received request that allows overriding
+    /// response status code, body, and headers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub script: Option<String>,
+    /// Controls which user secrets are available to this responder.
+    #[serde(default, skip_serializing_if = "SecretsAccess::is_none")]
+    pub secrets: SecretsAccess,
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::webhooks::ResponderSettings;
+    use crate::{users::SecretsAccess, utils::webhooks::ResponderSettings};
     use insta::assert_json_snapshot;
 
     #[test]
@@ -33,6 +37,7 @@ mod tests {
             body: Some("some-body".to_string()),
             headers: Some(vec![("key".to_string(), "value".to_string())]),
             script: Some("return { body: `custom body` };".to_string()),
+            secrets: SecretsAccess::None,
         }, @r###"
         {
           "requestsToTrack": 10,
@@ -45,6 +50,43 @@ mod tests {
             ]
           ],
           "script": "return { body: `custom body` };"
+        }
+        "###);
+
+        assert_json_snapshot!(ResponderSettings {
+            requests_to_track: 0,
+            status_code: 200,
+            body: None,
+            headers: None,
+            script: None,
+            secrets: SecretsAccess::All,
+        }, @r###"
+        {
+          "requestsToTrack": 0,
+          "statusCode": 200,
+          "secrets": {
+            "type": "all"
+          }
+        }
+        "###);
+
+        assert_json_snapshot!(ResponderSettings {
+            requests_to_track: 0,
+            status_code: 200,
+            body: None,
+            headers: None,
+            script: None,
+            secrets: SecretsAccess::Selected { secrets: vec!["KEY_A".into()] },
+        }, @r###"
+        {
+          "requestsToTrack": 0,
+          "statusCode": 200,
+          "secrets": {
+            "type": "selected",
+            "secrets": [
+              "KEY_A"
+            ]
+          }
         }
         "###);
 
@@ -76,6 +118,7 @@ mod tests {
                 body: Some("some-body".to_string()),
                 headers: Some(vec![("key".to_string(), "value".to_string())]),
                 script: Some("return { body: `custom body` };".to_string()),
+                secrets: SecretsAccess::None,
             }
         );
 
@@ -92,7 +135,22 @@ mod tests {
                 status_code: 123,
                 body: None,
                 headers: None,
-                script: None
+                script: None,
+                secrets: SecretsAccess::None,
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<ResponderSettings>(
+                r#"{"statusCode":200,"secrets":{"type":"all"}}"#
+            )?,
+            ResponderSettings {
+                requests_to_track: 0,
+                status_code: 200,
+                body: None,
+                headers: None,
+                script: None,
+                secrets: SecretsAccess::All,
             }
         );
 

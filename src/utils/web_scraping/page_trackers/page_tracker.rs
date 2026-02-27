@@ -1,4 +1,7 @@
-use crate::{retrack::RetrackTracker, users::UserId};
+use crate::{
+    retrack::RetrackTracker,
+    users::{SecretsAccess, UserId},
+};
 use serde::Serialize;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -15,6 +18,9 @@ pub struct PageTracker {
     pub user_id: UserId,
     /// By-value or by-reference instance of the Retrack tracker associated with the current tracker.
     pub retrack: RetrackTracker,
+    /// Controls which user secrets are available to this tracker's extractor script.
+    #[serde(default, skip_serializing_if = "SecretsAccess::is_none")]
+    pub secrets: SecretsAccess,
     /// Date and time when the tracker was created.
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
@@ -28,6 +34,7 @@ mod tests {
     use crate::{
         retrack::{RetrackTracker, tests::RetrackTrackerValue},
         tests::mock_user,
+        users::SecretsAccess,
         utils::web_scraping::PageTracker,
     };
     use insta::assert_json_snapshot;
@@ -48,6 +55,7 @@ mod tests {
             retrack: RetrackTracker::Reference {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
             },
+            secrets: SecretsAccess::None,
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -90,6 +98,7 @@ mod tests {
                 }),
                 notifications: false,
             })),
+            secrets: SecretsAccess::None,
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };

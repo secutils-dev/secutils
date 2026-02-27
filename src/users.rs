@@ -1,5 +1,6 @@
 pub mod api_ext;
 mod database_ext;
+mod secrets;
 mod user;
 mod user_data;
 mod user_data_key;
@@ -11,6 +12,7 @@ mod user_subscription;
 
 pub use self::{
     api_ext::errors::UserSignupError,
+    secrets::SecretsAccess,
     user::User,
     user_data::UserData,
     user_data_key::UserDataKey,
@@ -23,4 +25,6 @@ pub use self::{
     },
 };
 
-pub(crate) use self::api_ext::user_data_setters::DictionaryDataUserDataSetter;
+pub(crate) use self::{
+    api_ext::user_data_setters::DictionaryDataUserDataSetter, secrets::RawSecretsAccess,
+};

@@ -19,7 +19,7 @@ test.describe('Script editor full-screen mode', () => {
     await expect(flyout).toBeVisible();
 
     // The Scripts section is below the fold; scroll it into view.
-    const contentExtractorLabel = flyout.getByText('Content extractor');
+    const contentExtractorLabel = flyout.getByText('Content extractor', { exact: true });
     await contentExtractorLabel.scrollIntoViewIfNeeded();
 
     const fullScreenButton = flyout.getByRole('button', { name: 'Enter full screen' });
@@ -35,7 +35,7 @@ test.describe('Script editor full-screen mode', () => {
     const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add tracker' }) });
     await expect(flyout).toBeVisible();
 
-    const contentExtractorLabel = flyout.getByText('Content extractor');
+    const contentExtractorLabel = flyout.getByText('Content extractor', { exact: true });
     await contentExtractorLabel.scrollIntoViewIfNeeded();
 
     const fullScreenButton = flyout.getByRole('button', { name: 'Enter full screen' });
@@ -63,7 +63,7 @@ test.describe('Script editor full-screen mode', () => {
     const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add tracker' }) });
     await expect(flyout).toBeVisible();
 
-    const contentExtractorLabel = flyout.getByText('Content extractor');
+    const contentExtractorLabel = flyout.getByText('Content extractor', { exact: true });
     await contentExtractorLabel.scrollIntoViewIfNeeded();
 
     const fullScreenButton = flyout.getByRole('button', { name: 'Enter full screen' });
@@ -98,7 +98,7 @@ test.describe('Script editor full-screen mode', () => {
     await expect(flyout).toBeVisible();
 
     // Scroll to the Content extractor section which is below the fold.
-    const contentExtractorLabel = flyout.getByText('Content extractor');
+    const contentExtractorLabel = flyout.getByText('Content extractor', { exact: true });
     await contentExtractorLabel.scrollIntoViewIfNeeded();
 
     const inlineEditor = flyout.locator('.monaco-editor');

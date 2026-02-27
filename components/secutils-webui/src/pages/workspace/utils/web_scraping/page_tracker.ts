@@ -1,8 +1,14 @@
+export interface SecretsAccess {
+  type: 'none' | 'all' | 'selected';
+  secrets?: string[];
+}
+
 export interface PageTracker {
   id: string;
   name: string;
   createdAt: number;
   updatedAt: number;
+  secrets?: SecretsAccess;
   retrack: {
     id: string;
     enabled?: boolean;

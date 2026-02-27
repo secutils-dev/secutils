@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nUPDATE user_data_web_scraping_page_trackers\nSET name = $3, retrack_id = $4, secrets = $5, updated_at = $6\nWHERE user_id = $1 AND id = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Bytea",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "611c298846ea638faa10c6bd74c1bdadcd04e38a101dfdbcf2a92416cebad56a"
+}

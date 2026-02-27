@@ -21,7 +21,7 @@ use anyhow::bail;
 use bytes::Bytes;
 use serde::Deserialize;
 use std::{borrow::Cow, collections::HashMap};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 const X_REPLACED_PATH_HEADER_NAME: &str = "x-replaced-path";
 
@@ -198,11 +198,22 @@ pub async fn webhooks_responders(
     let (resource, resource_group) = UtilsResource::WebhooksResponders.into();
 
     // Check if body is supposed to be a JavaScript code.
+    let secrets_access = &responder.settings.secrets;
     let (status_code, headers, body) = match &responder.settings.script {
         Some(script) => {
             let query = web::Query::<HashMap<String, String>>::from_query(request.query_string())
                 .unwrap()
                 .into_inner();
+
+            let decrypted_secrets = if !secrets_access.is_none() {
+                state.api.secrets(&user).get_decrypted_secrets(secrets_access).await.unwrap_or_else(|err| {
+                    error!(user.id = %user.id, "Failed to decrypt secrets for responder script: {err:?}");
+                    HashMap::new()
+                })
+            } else {
+                HashMap::new()
+            };
+
             let js_script_context = ResponderScriptContext {
                 client_address: request.peer_addr(),
                 method: request.method().as_str(),
@@ -217,6 +228,7 @@ pub async fn webhooks_responders(
                     .map(|(k, v)| (k.as_str(), v.as_str()))
                     .collect(),
                 body: &payload,
+                secrets: decrypted_secrets,
             };
 
             // Configure JavaScript runtime based on user's subscription level/overrides.
@@ -275,11 +287,41 @@ pub async fn webhooks_responders(
                     .or_else(|| responder.settings.body.map(|body| body.boxed())),
             )
         }
-        None => (
-            responder.settings.status_code,
-            responder.settings.headers,
-            responder.settings.body.map(|body| body.boxed()),
-        ),
+        None => {
+            let mut body = responder.settings.body;
+            let mut headers = responder.settings.headers;
+
+            if !secrets_access.is_none() {
+                let secrets = state
+                    .api
+                    .secrets(&user)
+                    .get_decrypted_secrets(secrets_access)
+                    .await
+                    .unwrap_or_else(|err| {
+                        error!(user.id = %user.id, "Failed to decrypt secrets for template interpolation: {err:?}");
+                        HashMap::new()
+                    });
+
+                if !secrets.is_empty() {
+                    if let Some(ref mut b) = body {
+                        *b = resolve_secret_templates(b, &secrets);
+                    }
+                    if let Some(ref mut h) = headers {
+                        for (_, value) in h.iter_mut() {
+                            if value.contains("${secrets.") {
+                                *value = resolve_secret_templates(value, &secrets);
+                            }
+                        }
+                    }
+                }
+            }
+
+            (
+                responder.settings.status_code,
+                headers,
+                body.map(|b| b.boxed()),
+            )
+        }
     };
 
     // Prepare response, set response status code.
@@ -341,6 +383,31 @@ pub async fn webhooks_responders(
     })
 }
 
+/// Replaces `${secrets.KEY}` patterns in a string with the corresponding decrypted secret values.
+/// Unresolved references (missing secrets) are left as-is and logged as warnings.
+fn resolve_secret_templates(input: &str, secrets: &HashMap<String, String>) -> String {
+    let mut result = input.to_string();
+    let mut start = 0;
+    while let Some(begin) = result[start..].find("${secrets.") {
+        let abs_begin = start + begin;
+        let after_prefix = abs_begin + "${secrets.".len();
+        if let Some(end_offset) = result[after_prefix..].find('}') {
+            let key = &result[after_prefix..after_prefix + end_offset];
+            if let Some(value) = secrets.get(key) {
+                let full_pattern_end = after_prefix + end_offset + 1;
+                result.replace_range(abs_begin..full_pattern_end, value);
+                start = abs_begin + value.len();
+            } else {
+                warn!("Unresolved secret reference: ${{secrets.{key}}}");
+                start = after_prefix + end_offset + 1;
+            }
+        } else {
+            break;
+        }
+    }
+    result
+}
+
 /// Parses the host that webhook was access through to determine user handle and subdomain prefix.
 pub fn parse_webhook_host<'s>(
     config: &Config,
@@ -375,6 +442,7 @@ mod tests {
     use crate::{
         server::handlers::webhooks_responders::PathParams,
         tests::{mock_app_state, mock_config, mock_user},
+        users::SecretsAccess,
         utils::webhooks::{
             ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,
             tests::{RespondersCreateParams, RespondersUpdateParams},
@@ -416,6 +484,7 @@ mod tests {
                     body: Some("body".to_string()),
                     headers: Some(vec![("key".to_string(), "value".to_string())]),
                     script: None,
+                    secrets: SecretsAccess::None,
                 },
             })
             .await?;
@@ -521,6 +590,7 @@ mod tests {
                     body: Some("body".to_string()),
                     headers: Some(vec![("key".to_string(), "value".to_string())]),
                     script: None,
+                    secrets: SecretsAccess::None,
                 },
             })
             .await?;
@@ -595,6 +665,7 @@ mod tests {
                     body: Some("body".to_string()),
                     headers: Some(vec![("key".to_string(), "value".to_string())]),
                     script: None,
+                    secrets: SecretsAccess::None,
                 },
             })
             .await?;
@@ -669,6 +740,7 @@ mod tests {
                     body: Some("body".to_string()),
                     headers: Some(vec![("key".to_string(), "value".to_string())]),
                     script: None,
+                    secrets: SecretsAccess::None,
                 },
             })
             .await?;
@@ -690,6 +762,7 @@ mod tests {
                     body: Some("body-two".to_string()),
                     headers: Some(vec![("key-2".to_string(), "value-2".to_string())]),
                     script: None,
+                    secrets: SecretsAccess::None,
                 },
             })
             .await?;
@@ -802,6 +875,7 @@ mod tests {
                         script: Some(
                             "(() => { return { statusCode: 300, headers: { one: `two` }, body: Deno.core.encode(JSON.stringify(context)) }; })()".to_string(),
                         ),
+                        secrets: SecretsAccess::None,
                     },
                 },
             )
@@ -943,6 +1017,7 @@ mod tests {
                     body: Some("body".to_string()),
                     headers: Some(vec![("key".to_string(), "value".to_string())]),
                     script: None,
+                    secrets: SecretsAccess::None,
                 },
             })
             .await?;
@@ -1049,5 +1124,85 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    mod template_interpolation {
+        use super::super::resolve_secret_templates;
+        use std::collections::HashMap;
+
+        fn make_secrets(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+            pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect()
+        }
+
+        #[test]
+        fn resolves_single_reference() {
+            let secrets = make_secrets(&[("API_KEY", "sk-123")]);
+            assert_eq!(
+                resolve_secret_templates("Bearer ${secrets.API_KEY}", &secrets),
+                "Bearer sk-123"
+            );
+        }
+
+        #[test]
+        fn resolves_multiple_references() {
+            let secrets = make_secrets(&[("A", "1"), ("B", "2")]);
+            assert_eq!(
+                resolve_secret_templates("${secrets.A}-${secrets.B}", &secrets),
+                "1-2"
+            );
+        }
+
+        #[test]
+        fn leaves_unresolved_references() {
+            let secrets = make_secrets(&[("A", "1")]);
+            assert_eq!(
+                resolve_secret_templates("${secrets.MISSING}", &secrets),
+                "${secrets.MISSING}"
+            );
+        }
+
+        #[test]
+        fn no_references_returns_input() {
+            let secrets = make_secrets(&[("A", "1")]);
+            assert_eq!(
+                resolve_secret_templates("no refs here", &secrets),
+                "no refs here"
+            );
+        }
+
+        #[test]
+        fn handles_adjacent_references() {
+            let secrets = make_secrets(&[("X", "a"), ("Y", "b")]);
+            assert_eq!(
+                resolve_secret_templates("${secrets.X}${secrets.Y}", &secrets),
+                "ab"
+            );
+        }
+
+        #[test]
+        fn handles_empty_input() {
+            let secrets = make_secrets(&[("A", "1")]);
+            assert_eq!(resolve_secret_templates("", &secrets), "");
+        }
+
+        #[test]
+        fn handles_partial_pattern() {
+            let secrets = make_secrets(&[("A", "1")]);
+            assert_eq!(
+                resolve_secret_templates("${secrets.", &secrets),
+                "${secrets."
+            );
+        }
+
+        #[test]
+        fn handles_value_containing_pattern_syntax() {
+            let secrets = make_secrets(&[("A", "${secrets.B}")]);
+            // The value itself looks like a pattern but shouldn't be re-expanded.
+            let result = resolve_secret_templates("${secrets.A}", &secrets);
+            assert_eq!(result, "${secrets.B}");
+        }
     }
 }

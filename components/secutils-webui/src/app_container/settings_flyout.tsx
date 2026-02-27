@@ -33,6 +33,7 @@ import {
   isClientError,
   USER_SETTINGS_KEY_COMMON_UI_THEME,
 } from '../model';
+import { SecretsTab } from './secrets_tab';
 import { signupWithPasskey } from '../model/webauthn';
 import { getOryApi } from '../tools/ory';
 import { isWebAuthnSupported } from '../tools/webauthn';
@@ -168,7 +169,7 @@ export function SettingsFlyout({ onClose }: Props) {
     </EuiFormRow>
   ) : null;
 
-  const [selectedTab, setSelectedTab] = useState<'general' | 'security' | 'account'>('general');
+  const [selectedTab, setSelectedTab] = useState<'general' | 'security' | 'secrets' | 'account'>('general');
   let selectedTabContent;
   if (selectedTab === 'general') {
     selectedTabContent = (
@@ -299,6 +300,8 @@ export function SettingsFlyout({ onClose }: Props) {
         {passkeySection}
       </EuiDescribedFormGroup>
     );
+  } else if (selectedTab === 'secrets') {
+    selectedTabContent = <SecretsTab addToast={addToast} />;
   } else {
     const subscription = uiState.user?.subscription;
     let trialSection = null;
@@ -432,13 +435,7 @@ export function SettingsFlyout({ onClose }: Props) {
   ) : null;
 
   return (
-    <EuiFlyout
-      size="m"
-      maxWidth
-      onClose={() => onClose()}
-      ownFocus={true}
-      maskProps={{ headerZindexLocation: 'above' }}
-    >
+    <EuiFlyout size="m" maxWidth onClose={() => onClose()} ownFocus={true}>
       <EuiFlyoutHeader>
         <EuiTitle size="s">
           <h1>Settings</h1>
@@ -451,6 +448,9 @@ export function SettingsFlyout({ onClose }: Props) {
           </EuiTab>
           <EuiTab onClick={() => setSelectedTab('security')} isSelected={selectedTab === 'security'}>
             Security
+          </EuiTab>
+          <EuiTab onClick={() => setSelectedTab('secrets')} isSelected={selectedTab === 'secrets'}>
+            Secrets
           </EuiTab>
           <EuiTab onClick={() => setSelectedTab('account')} isSelected={selectedTab === 'account'}>
             Account

@@ -1,6 +1,16 @@
-import { EuiDescribedFormGroup, EuiFieldText, EuiForm, EuiFormRow, EuiLink, EuiRange, EuiSwitch } from '@elastic/eui';
+import {
+  EuiComboBox,
+  EuiDescribedFormGroup,
+  EuiFieldText,
+  EuiForm,
+  EuiFormRow,
+  EuiLink,
+  EuiRange,
+  EuiSelect,
+  EuiSwitch,
+} from '@elastic/eui';
 import type { ChangeEvent } from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { RetryInterval } from './consts';
 import {
@@ -67,8 +77,37 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
   const [notifications, setNotifications] = useState<boolean>(tracker ? !!tracker.retrack?.notifications : false);
   const needsToSaveNotifications = newTracker || tracker?.retrack?.notifications !== notifications;
 
+  const existingSecrets = tracker?.secrets;
+  const [secretsMode, setSecretsMode] = useState<'none' | 'all' | 'selected'>(existingSecrets?.type ?? 'none');
+  const [selectedSecretNames, setSelectedSecretNames] = useState<Array<{ label: string }>>(
+    existingSecrets?.type === 'selected' ? (existingSecrets.secrets ?? []).map((s) => ({ label: s })) : [],
+  );
+  const [availableSecrets, setAvailableSecrets] = useState<Array<{ label: string }>>([]);
+  const [secretsLoaded, setSecretsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (secretsMode !== 'selected' || secretsLoaded) return;
+    fetch(getApiUrl('/api/user/secrets'), getApiRequestConfig())
+      .then(async (res) => {
+        if (res.ok) {
+          const data: Array<{ name: string }> = await res.json();
+          setAvailableSecrets(data.map((s) => ({ label: s.name })));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setSecretsLoaded(true));
+  }, [secretsMode, secretsLoaded]);
+
   const isDuplicate = !!tracker && !tracker.id;
-  const hasFormChanges = useFormChanges({ name, jobConfig, extractorScript, revisions, notifications });
+  const hasFormChanges = useFormChanges({
+    name,
+    jobConfig,
+    extractorScript,
+    revisions,
+    notifications,
+    secretsMode,
+    selectedSecretNames,
+  });
   const hasChanges = isDuplicate || hasFormChanges;
 
   const [updatingStatus, setUpdatingStatus] = useState<AsyncData<void>>();
@@ -92,6 +131,12 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
           ? { extractor: extractorScript }
           : null,
       notifications,
+      secrets:
+        secretsMode === 'none'
+          ? { type: 'none' as const }
+          : secretsMode === 'all'
+            ? { type: 'all' as const }
+            : { type: 'selected' as const, secrets: selectedSecretNames.map((s) => s.label) },
     };
 
     const requestInit = { ...getApiRequestConfig(), body: JSON.stringify(trackerToUpdate) };
@@ -139,6 +184,8 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
     revisions,
     extractorScript,
     jobConfig,
+    secretsMode,
+    selectedSecretNames,
     tracker,
     updatingStatus,
     addToast,
@@ -196,7 +243,8 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
           needsToSaveRevisions ||
           needsToSaveJobConfig ||
           needsToSaveExtractorScript ||
-          needsToSaveNotifications)
+          needsToSaveNotifications ||
+          hasChanges)
       }
       saveInProgress={updatingStatus?.status === 'pending'}
     >
@@ -301,6 +349,34 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
               extraLibs={[{ content: PAGE_TRACKER_TYPE_DEFS, filePath: 'ts:page-tracker.d.ts' }]}
             />
           </EuiFormRow>
+        </EuiDescribedFormGroup>
+        <EuiDescribedFormGroup
+          title={<h3>Secrets</h3>}
+          description="Control which user secrets are available to this tracker's content extractor script."
+        >
+          <EuiFormRow label="Access mode" helpText="Choose which secrets to expose to this tracker." fullWidth>
+            <EuiSelect
+              fullWidth
+              options={[
+                { value: 'none', text: 'No secrets' },
+                { value: 'all', text: 'All secrets' },
+                { value: 'selected', text: 'Selected secrets' },
+              ]}
+              value={secretsMode}
+              onChange={(e) => setSecretsMode(e.target.value as 'none' | 'all' | 'selected')}
+            />
+          </EuiFormRow>
+          {secretsMode === 'selected' ? (
+            <EuiFormRow label="Secrets" helpText="Select the secrets to expose." fullWidth>
+              <EuiComboBox
+                fullWidth
+                options={availableSecrets}
+                selectedOptions={selectedSecretNames}
+                onChange={setSelectedSecretNames}
+                isLoading={!secretsLoaded}
+              />
+            </EuiFormRow>
+          ) : null}
         </EuiDescribedFormGroup>
       </EuiForm>
     </EditorFlyout>

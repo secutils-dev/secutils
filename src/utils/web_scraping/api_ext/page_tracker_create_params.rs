@@ -1,4 +1,7 @@
-use crate::utils::web_scraping::{PageTrackerConfig, page_trackers::PageTrackerTarget};
+use crate::{
+    users::SecretsAccess,
+    utils::web_scraping::{PageTrackerConfig, page_trackers::PageTrackerTarget},
+};
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -13,12 +16,18 @@ pub struct PageTrackerCreateParams {
     /// Indicates whether the user should be notified about changes.
     #[serde(default)]
     pub notifications: bool,
+    /// Controls which user secrets are available to this tracker's extractor script.
+    #[serde(default)]
+    pub secrets: SecretsAccess,
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::web_scraping::{
-        PageTrackerConfig, api_ext::PageTrackerCreateParams, page_trackers::PageTrackerTarget,
+    use crate::{
+        users::SecretsAccess,
+        utils::web_scraping::{
+            PageTrackerConfig, api_ext::PageTrackerCreateParams, page_trackers::PageTrackerTarget,
+        },
     };
     use retrack_types::scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy};
     use std::time::Duration;
@@ -48,7 +57,8 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
-                notifications: false
+                notifications: false,
+                secrets: SecretsAccess::None,
             }
         );
 
@@ -94,7 +104,8 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
-                notifications: true
+                notifications: true,
+                secrets: SecretsAccess::None,
             }
         );
 

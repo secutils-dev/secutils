@@ -87,6 +87,7 @@ pub mod tests {
     pub use crate::utils::webhooks::api_ext::{RespondersCreateParams, RespondersUpdateParams};
     use crate::{
         tests::{mock_api, mock_user},
+        users::SecretsAccess,
         utils::{
             UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
             webhooks::{
@@ -125,6 +126,7 @@ pub mod tests {
                         body: None,
                         headers: None,
                         script: None,
+                        secrets: SecretsAccess::None,
                     },
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
@@ -185,6 +187,7 @@ pub mod tests {
                     status_code: 200,
                     body: None,
                     headers: None,
+                    secrets: SecretsAccess::None,
                 },
             })
             .await?;
@@ -253,6 +256,7 @@ pub mod tests {
                     status_code: 200,
                     body: None,
                     headers: None,
+                    secrets: SecretsAccess::None,
                 }
             }))),
         )
@@ -301,6 +305,7 @@ pub mod tests {
                     status_code: 200,
                     body: None,
                     headers: None,
+                    secrets: SecretsAccess::None,
                 },
             })
             .await?;
@@ -327,6 +332,7 @@ pub mod tests {
                     status_code: 200,
                     body: None,
                     headers: None,
+                    secrets: SecretsAccess::None,
                 }
             }))),
         )
@@ -353,6 +359,7 @@ pub mod tests {
                     status_code: 200,
                     body: None,
                     headers: None,
+                    secrets: SecretsAccess::None,
                 },
                 created_at: responder.created_at,
                 updated_at: updated_responder.updated_at
@@ -385,6 +392,7 @@ pub mod tests {
                     status_code: 200,
                     body: None,
                     headers: None,
+                    secrets: SecretsAccess::None,
                 },
             })
             .await?;
@@ -432,6 +440,7 @@ pub mod tests {
                     status_code: 200,
                     body: None,
                     headers: None,
+                    secrets: SecretsAccess::None,
                 },
             })
             .await?;
@@ -521,6 +530,7 @@ pub mod tests {
                     status_code: 200,
                     body: None,
                     headers: None,
+                    secrets: SecretsAccess::None,
                 },
             })
             .await?;
@@ -601,6 +611,7 @@ pub mod tests {
                     status_code: 200,
                     body: None,
                     headers: None,
+                    secrets: SecretsAccess::None,
                 },
             })
             .await?;

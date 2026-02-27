@@ -159,7 +159,21 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                 name: params.name.clone(),
                 target: TrackerTarget::Page(PageTarget {
                     extractor: params.target.extractor,
-                    params: None,
+                    params: if !params.secrets.is_none() {
+                        let secrets = self
+                            .api
+                            .secrets(self.user)
+                            .get_decrypted_secrets(&params.secrets)
+                            .await
+                            .unwrap_or_default();
+                        if secrets.is_empty() {
+                            None
+                        } else {
+                            Some(serde_json::json!({ "secrets": secrets }))
+                        }
+                    } else {
+                        None
+                    },
                     engine: None,
                     user_agent: None,
                     accept_invalid_certificates: false,
@@ -190,6 +204,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             name: params.name,
             user_id: self.user.id,
             retrack: RetrackTracker::from_value(retrack_tracker),
+            secrets: params.secrets.clone(),
             created_at,
             updated_at: created_at,
         };
@@ -267,6 +282,22 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         };
 
         // 3. Update tracker in Retrack.
+        let effective_secrets = params.secrets.as_ref().unwrap_or(&existing_tracker.secrets);
+        let page_params = if !effective_secrets.is_none() {
+            let secrets = self
+                .api
+                .secrets(self.user)
+                .get_decrypted_secrets(effective_secrets)
+                .await
+                .unwrap_or_default();
+            if secrets.is_empty() {
+                None
+            } else {
+                Some(serde_json::json!({ "secrets": secrets }))
+            }
+        } else {
+            None
+        };
         let retrack_tracker = retrack
             .update_tracker(
                 retrack_tracker.id,
@@ -277,15 +308,25 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                         timeout: None,
                         job: config.job,
                     }),
-                    target: params.target.map(|target| {
-                        TrackerTarget::Page(PageTarget {
+                    target: if let Some(target) = params.target {
+                        Some(TrackerTarget::Page(PageTarget {
                             extractor: target.extractor,
-                            params: None,
+                            params: page_params,
                             engine: None,
                             user_agent: None,
                             accept_invalid_certificates: false,
+                        }))
+                    } else if params.secrets.is_some() {
+                        Some(match retrack_tracker.target {
+                            TrackerTarget::Page(page) => TrackerTarget::Page(PageTarget {
+                                params: page_params,
+                                ..page
+                            }),
+                            other => other,
                         })
-                    }),
+                    } else {
+                        None
+                    },
                     tags: Some(prepare_tags(&[
                         format!("{RETRACK_USER_TAG}:{}", self.user.id),
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", params.notifications),
@@ -304,6 +345,10 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         let tracker = PageTracker {
             name: params.name.unwrap_or(existing_tracker.name),
             retrack: RetrackTracker::from_value(retrack_tracker),
+            secrets: params
+                .secrets
+                .clone()
+                .unwrap_or(existing_tracker.secrets.clone()),
             // Preserve timestamp only up to seconds.
             updated_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
@@ -556,6 +601,62 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
 
         Ok(())
     }
+
+    /// Syncs secrets to all page trackers that use secrets (SecretsAccess != None).
+    /// Called when a user creates, updates, or deletes a secret.
+    pub async fn sync_secrets_to_trackers(&self) -> anyhow::Result<()> {
+        let web_scraping = self.api.db.web_scraping(self.user.id);
+        let trackers = web_scraping.get_page_trackers().await?;
+        let trackers_with_secrets: Vec<_> = trackers
+            .into_iter()
+            .filter(|t| !t.secrets.is_none())
+            .collect();
+        if trackers_with_secrets.is_empty() {
+            return Ok(());
+        }
+
+        let retrack = self.api.retrack();
+        for tracker in trackers_with_secrets {
+            let secrets = self
+                .api
+                .secrets(self.user)
+                .get_decrypted_secrets(&tracker.secrets)
+                .await
+                .unwrap_or_default();
+            let params_json = if secrets.is_empty() {
+                None
+            } else {
+                Some(serde_json::json!({ "secrets": secrets }))
+            };
+
+            let Some(retrack_tracker) = retrack.get_tracker(tracker.retrack.id()).await? else {
+                continue;
+            };
+
+            let update_params = TrackerUpdateParams {
+                target: Some(match retrack_tracker.target {
+                    TrackerTarget::Page(page) => TrackerTarget::Page(PageTarget {
+                        params: params_json,
+                        ..page
+                    }),
+                    other => other,
+                }),
+                ..Default::default()
+            };
+            if let Err(err) = retrack
+                .update_tracker(retrack_tracker.id, &update_params)
+                .await
+            {
+                error!(
+                    user.id = %self.user.id,
+                    retrack.id = %tracker.retrack.id(),
+                    "Failed to sync secrets to tracker: {err:?}"
+                );
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
@@ -681,6 +782,7 @@ mod tests {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
                 notifications: false,
+                secrets: Default::default(),
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -738,7 +840,8 @@ mod tests {
                 name: "".to_string(),
                 config: config.clone(),
                 target: target.clone(),
-                notifications: false
+                notifications: false,
+                secrets: Default::default(),
             }).await),
             @r###""Page tracker name cannot be empty.""###
         );
@@ -749,7 +852,8 @@ mod tests {
                 name: "a".repeat(101),
                 config: config.clone(),
                 target: target.clone(),
-                notifications: false
+                notifications: false,
+                secrets: Default::default(),
             }).await),
             @r###""Page tracker name cannot be longer than 100 characters.""###
         );
@@ -763,7 +867,8 @@ mod tests {
                     ..config.clone()
                 },
                 target: target.clone(),
-                notifications: false
+                notifications: false,
+                secrets: Default::default(),
             }).await),
             @r###""Page tracker revisions count cannot be greater than 30.""###
         );
@@ -780,7 +885,8 @@ mod tests {
                     ..config.clone()
                 },
                 target: target.clone(),
-                notifications: false
+                notifications: false,
+                secrets: Default::default(),
             }).await),
             @r###"
         Error {
@@ -802,7 +908,8 @@ mod tests {
                     ..config.clone()
                 },
                 target: target.clone(),
-                notifications: false
+                notifications: false,
+                secrets: Default::default(),
             }).await),
             @r###""Page tracker schedule must have at least 10s between occurrences, but detected 5s.""###
         );
@@ -822,7 +929,8 @@ mod tests {
                     ..config.clone()
                 },
                 target: target.clone(),
-                notifications: false
+                notifications: false,
+                secrets: Default::default(),
             }).await),
             @r###""Page tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
         );
@@ -842,7 +950,8 @@ mod tests {
                     ..config.clone()
                 },
                 target: target.clone(),
-                notifications: false
+                notifications: false,
+                secrets: Default::default(),
             }).await),
             @r###""Page tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
         );
@@ -862,7 +971,8 @@ mod tests {
                     ..config.clone()
                 },
                 target: target.clone(),
-                notifications: false
+                notifications: false,
+                secrets: Default::default(),
             }).await),
             @r###""Page tracker min retry interval cannot be less than 1m, but received 30s.""###
         );
@@ -884,7 +994,8 @@ mod tests {
                     ..config.clone()
                 },
                 target: target.clone(),
-                notifications: false
+                notifications: false,
+                secrets: Default::default(),
             }).await),
             @r###""Page tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
         );
@@ -906,7 +1017,8 @@ mod tests {
                     ..config.clone()
                 },
                 target: target.clone(),
-                notifications: false
+                notifications: false,
+                secrets: Default::default(),
             }).await),
             @r###""Page tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
         );
@@ -927,7 +1039,8 @@ mod tests {
                     ..config.clone()
                 },
                 target: target.clone(),
-                notifications: false
+                notifications: false,
+                secrets: Default::default(),
             }).await),
             @r###""Page tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
         );
@@ -940,7 +1053,8 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "".to_string(),
                 },
-                notifications: false
+                notifications: false,
+                secrets: Default::default(),
             }).await),
             @r###""Page tracker extractor script cannot be empty.""###
         );
@@ -1007,6 +1121,7 @@ mod tests {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
                 notifications: false,
+                secrets: Default::default(),
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -1439,7 +1554,8 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
-                notifications: false
+                notifications: false,
+                secrets: Default::default(),
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -1706,6 +1822,7 @@ mod tests {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
                 notifications: false,
+                secrets: Default::default(),
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -1730,6 +1847,7 @@ mod tests {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
                 notifications: false,
+                secrets: Default::default(),
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -1872,6 +1990,7 @@ mod tests {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
                 notifications: false,
+                secrets: Default::default(),
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -1924,6 +2043,7 @@ mod tests {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
                 notifications: false,
+                secrets: Default::default(),
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -1948,6 +2068,7 @@ mod tests {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
                 notifications: false,
+                secrets: Default::default(),
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -2016,6 +2137,7 @@ mod tests {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
                 notifications: false,
+                secrets: Default::default(),
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -2120,6 +2242,7 @@ mod tests {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
                 notifications: false,
+                secrets: Default::default(),
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -2188,6 +2311,7 @@ mod tests {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
                 notifications: false,
+                secrets: Default::default(),
             })
             .await?;
         retrack_create_api_mock.assert();

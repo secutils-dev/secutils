@@ -86,6 +86,7 @@ pub mod tests {
             tests::{RetrackTrackerValue, mock_retrack_tracker},
         },
         tests::{mock_api_with_config, mock_config, mock_user},
+        users::SecretsAccess,
         utils::{
             UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
             web_scraping::{
@@ -126,6 +127,7 @@ pub mod tests {
                     name: name.into(),
                     user_id: mock_user()?.id,
                     retrack,
+                    secrets: SecretsAccess::None,
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
@@ -200,6 +202,7 @@ pub mod tests {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
                 notifications: true,
+                secrets: Default::default(),
             })
             .await?;
 
@@ -374,6 +377,7 @@ pub mod tests {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
                 notifications: true,
+                secrets: Default::default(),
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -489,6 +493,7 @@ pub mod tests {
                     target: updated_retrack_tracker.target,
                     notifications: false,
                 })),
+                secrets: SecretsAccess::None,
                 created_at: tracker.created_at,
                 updated_at: updated_tracker.updated_at
             }
@@ -534,6 +539,7 @@ pub mod tests {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
                 notifications: true,
+                secrets: Default::default(),
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -609,6 +615,7 @@ pub mod tests {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
                 notifications: true,
+                secrets: Default::default(),
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -695,6 +702,7 @@ pub mod tests {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                 },
                 notifications: true,
+                secrets: Default::default(),
             })
             .await?;
         retrack_create_api_mock.assert();

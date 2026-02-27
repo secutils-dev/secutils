@@ -7,11 +7,13 @@ import {
   DOCS_IMG_DIR,
   EMAIL,
   ensureUserAndLogin,
+  fixEntityTimestamps,
   fixResponderRequestFields,
   goto,
   highlightOff,
   highlightOn,
   PASSWORD,
+  pinEntityTimestamps,
 } from '../helpers';
 
 const IMG_DIR = join(DOCS_IMG_DIR, 'csp');
@@ -23,6 +25,8 @@ function getByRoleAndLabel(parent: Locator, role: 'combobox' | 'textbox', label:
 test.describe('CSP guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
     await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
+    await fixEntityTimestamps(page, '**/api/utils/web_security/csp');
+    await fixEntityTimestamps(page, '**/api/utils/webhooks/responders');
   });
 
   test('create a content security policy', async ({ page }) => {
@@ -83,12 +87,15 @@ test.describe('CSP guide screenshots', () => {
   });
 
   test('import policy from URL', async ({ page }) => {
-    // Replace nonce values in API responses with a fixed one so screenshots are stable.
+    // Replace nonce values and pin timestamps in API responses so screenshots are stable.
     await page.route('**/api/utils/web_security/csp', async (route) => {
       if (route.request().method() === 'GET') {
         const response = await route.fetch();
-        const body = await response.text();
-        await route.fulfill({ response, body: body.replace(/'nonce-[^']+'/g, "'nonce-m0ck'") });
+        let body = await response.text();
+        body = body.replace(/'nonce-[^']+'/g, "'nonce-m0ck'");
+        const json = JSON.parse(body);
+        pinEntityTimestamps(json);
+        await route.fulfill({ response, json });
       } else {
         await route.continue();
       }

@@ -484,13 +484,22 @@ In this section, you can find examples of content extractor scripts that extract
  * See more details at https://playwright.dev/docs/api/class-page.
  * @param context.previousContent - The context extracted during
  * the previous execution, if available.
+ * @param context.params.secrets - User secrets (key-value pairs).
+ * Available when secrets access is enabled in the tracker settings.
  * @returns {Promise<unknown>} - The extracted content to be tracked.
  */
 export async function execute(
   page: Page,
-  context: { previousContent?: { original: unknown } }
+  context: {
+    previousContent?: { original: unknown };
+    params?: { secrets?: Record<string, string> };
+  }
 )
 ```
+
+:::tip Using secrets in extractor scripts
+To make secrets available to your extractor script, open the tracker's edit form and set the **Secrets → Access mode** to **All secrets** or **Selected secrets**. The decrypted secrets will then be available as `context.params.secrets`. Manage your secrets in **Settings → Secrets**. Example: `const token = context.params.secrets.MY_TOKEN;`
+:::
 
 ### Track markdown-style content
 The script can return any [**valid markdown-style content**](https://eui.elastic.co/#/editors-syntax/markdown-format#kitchen-sink) that Secutils.dev will happily render in preview mode.

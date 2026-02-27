@@ -9,6 +9,7 @@ import {
   EMAIL,
   ensureUserAndLogin,
   fixCertificateTemplateValidityDates,
+  fixEntityTimestamps,
   goto,
   highlightOff,
   highlightOn,
@@ -21,6 +22,7 @@ const CERT_TEMPLATES_IMG_DIR = join(DOCS_IMG_DIR, 'digital_certificates/certific
 test.describe('Private keys guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
     await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
+    await fixEntityTimestamps(page, '**/api/utils/certificates/private_keys');
   });
 
   test('Generate an RSA private key', async ({ page }) => {
@@ -136,6 +138,7 @@ test.describe('Certificate templates guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
     await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
     await fixCertificateTemplateValidityDates(page);
+    await fixEntityTimestamps(page, '**/api/utils/webhooks/responders');
   });
 
   test('Generate a key pair for a HTTPS server', async ({ page }) => {

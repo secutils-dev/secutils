@@ -6,6 +6,7 @@ import {
   DOCS_IMG_DIR,
   EMAIL,
   ensureUserAndLogin,
+  fixEntityTimestamps,
   fixResponderRequestFields,
   goto,
   highlightOn,
@@ -17,6 +18,7 @@ const IMG_DIR = join(DOCS_IMG_DIR, 'webhooks');
 test.describe('Webhooks guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
     await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
+    await fixEntityTimestamps(page, '**/api/utils/webhooks/responders');
   });
 
   test('Return a static HTML page', async ({ page }) => {

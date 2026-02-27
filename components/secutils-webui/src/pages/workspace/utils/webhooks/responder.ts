@@ -1,3 +1,8 @@
+export interface SecretsAccess {
+  type: 'none' | 'all' | 'selected';
+  secrets?: string[];
+}
+
 export interface Responder {
   id: string;
   name: string;
@@ -14,6 +19,7 @@ export interface Responder {
     headers?: Array<[string, string]>;
     body?: string;
     script?: string;
+    secrets?: SecretsAccess;
   };
   createdAt: number;
   updatedAt: number;

@@ -84,6 +84,7 @@ mod test {
                     .collect(),
                 ),
             },
+            secrets: Default::default(),
         };
 
         config.subscriptions.standard = SubscriptionConfig {
@@ -123,6 +124,7 @@ mod test {
                     .collect(),
                 ),
             },
+            secrets: Default::default(),
         };
 
         config.subscriptions.professional = SubscriptionConfig {
@@ -145,6 +147,7 @@ mod test {
                 templates: 33,
                 private_key_algorithms: None,
             },
+            secrets: Default::default(),
         };
 
         let subscription = UserSubscription {

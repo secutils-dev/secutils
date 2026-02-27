@@ -17,7 +17,7 @@ import {
   EuiTitle,
 } from '@elastic/eui';
 import { customAlphabet, urlAlphabet } from 'nanoid';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent } from 'react';
 
 import type { Responder } from './responder';
@@ -93,7 +93,13 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
 
   const httpMethods = useMemo(() => HTTP_METHODS.map((method) => ({ value: method, text: method })), []);
 
-  const [isAdvancedMode, setIsAdvancedMode] = useState(!newResponder);
+  const [isAdvancedMode, setIsAdvancedMode] = useState(
+    !newResponder &&
+      (responder?.method !== 'ANY' ||
+        responder?.enabled === false ||
+        !!responder?.settings?.script ||
+        (!!responder?.settings?.secrets && responder.settings.secrets.type !== 'none')),
+  );
 
   const [name, setName] = useState<string>(responder?.name ?? '');
   const onNameChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
@@ -159,6 +165,27 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
     setScript(value);
   }, []);
 
+  const existingSecrets = responder?.settings?.secrets;
+  const [secretsMode, setSecretsMode] = useState<'none' | 'all' | 'selected'>(existingSecrets?.type ?? 'none');
+  const [selectedSecretNames, setSelectedSecretNames] = useState<Array<{ label: string }>>(
+    existingSecrets?.type === 'selected' ? (existingSecrets.secrets ?? []).map((s) => ({ label: s })) : [],
+  );
+  const [availableSecrets, setAvailableSecrets] = useState<Array<{ label: string }>>([]);
+  const [secretsLoaded, setSecretsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (secretsMode !== 'selected' || secretsLoaded) return;
+    fetch(getApiUrl('/api/user/secrets'), getApiRequestConfig())
+      .then(async (res) => {
+        if (res.ok) {
+          const data: Array<{ name: string }> = await res.json();
+          setAvailableSecrets(data.map((s) => ({ label: s.name })));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setSecretsLoaded(true));
+  }, [secretsMode, secretsLoaded]);
+
   const onCreateHeader = (headerValue: string) => {
     if (!isHeaderValid(headerValue)) {
       return false;
@@ -197,6 +224,8 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
     headers,
     body,
     script,
+    secretsMode,
+    selectedSecretNames,
   });
   const hasChanges = isDuplicate || hasFormChanges;
 
@@ -241,6 +270,12 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
               })
             : undefined,
         script: script?.trim() ? script.trim() : undefined,
+        secrets:
+          secretsMode === 'none'
+            ? { type: 'none' as const }
+            : secretsMode === 'all'
+              ? { type: 'all' as const }
+              : { type: 'selected' as const, secrets: selectedSecretNames.map((s) => s.label) },
       },
     };
 
@@ -301,6 +336,8 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
     body,
     headers,
     script,
+    secretsMode,
+    selectedSecretNames,
     responder,
     updatingStatus,
     supportsCustomSubdomainPrefixes,
@@ -496,7 +533,8 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
                     <b>documentation</b>
                   </EuiLink>{' '}
                   for a list of script examples, expected return value and properties available in the
-                  &quot;context&quot; object argument.
+                  &quot;context&quot; object argument. User secrets are available via
+                  <b>context.secrets.MY_KEY</b>. For static body and headers, use <b>{'${secrets.MY_KEY}'}</b> syntax.
                 </span>
               }
             >
@@ -504,6 +542,36 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
             </EuiFormRow>
           ) : null}
         </EuiDescribedFormGroup>
+        {isAdvancedMode ? (
+          <EuiDescribedFormGroup
+            title={<h3>Secrets</h3>}
+            description="Control which user secrets are available to this responder's script and template interpolation."
+          >
+            <EuiFormRow label="Access mode" helpText="Choose which secrets to expose to this responder." fullWidth>
+              <EuiSelect
+                fullWidth
+                options={[
+                  { value: 'none', text: 'No secrets' },
+                  { value: 'all', text: 'All secrets' },
+                  { value: 'selected', text: 'Selected secrets' },
+                ]}
+                value={secretsMode}
+                onChange={(e) => setSecretsMode(e.target.value as 'none' | 'all' | 'selected')}
+              />
+            </EuiFormRow>
+            {secretsMode === 'selected' ? (
+              <EuiFormRow label="Secrets" helpText="Select the secrets to expose." fullWidth>
+                <EuiComboBox
+                  fullWidth
+                  options={availableSecrets}
+                  selectedOptions={selectedSecretNames}
+                  onChange={setSelectedSecretNames}
+                  isLoading={!secretsLoaded}
+                />
+              </EuiFormRow>
+            ) : null}
+          </EuiDescribedFormGroup>
+        ) : null}
       </EuiForm>
     </EditorFlyout>
   );

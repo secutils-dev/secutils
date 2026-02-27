@@ -3,7 +3,7 @@ import { resolve } from 'path';
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 
-export const DOCS_IMG_DIR = resolve(__dirname, '../../components/secutils-docs/static/img/docs/guides');
+export const DOCS_IMG_DIR = resolve(__dirname, '../components/secutils-docs/static/img/docs/guides');
 
 export const EMAIL = 'e2e@secutils.dev';
 export const PASSWORD = 'e2e_secutils_pass';
@@ -80,7 +80,10 @@ export async function ensureUserAndLogin(
 export async function goto(page: Page, url: string) {
   await page.goto(url);
   await page.addStyleTag({
-    content: '*, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; }',
+    content: [
+      '*, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; }',
+      '.monaco-editor .decorationsOverviewRuler { display: none !important; }',
+    ].join('\n'),
   });
 }
 
@@ -99,6 +102,43 @@ export async function dismissAllToasts(page: Page) {
   }
 }
 
+/** Fixed timestamp (Feb 19 2025) used to pin entity timestamps in screenshots.
+ *  It is >3 days old so `TimestampTableCell` renders the absolute date "February 19, 2025"
+ *  instead of an unstable relative string like "a few seconds ago".
+ */
+export const FIXED_ENTITY_TIMESTAMP = 1740000000;
+
+/**
+ * Replace `createdAt` / `updatedAt` with {@link FIXED_ENTITY_TIMESTAMP} in a JSON
+ * value (object or array of objects).  Mutates in place.
+ */
+export function pinEntityTimestamps(json: unknown): void {
+  const items = Array.isArray(json) ? json : [json];
+  for (const item of items) {
+    if (item && typeof item === 'object') {
+      if ('createdAt' in item) item.createdAt = FIXED_ENTITY_TIMESTAMP;
+      if ('updatedAt' in item) item.updatedAt = FIXED_ENTITY_TIMESTAMP;
+    }
+  }
+}
+
+/**
+ * Set up a route handler that pins `createdAt`/`updatedAt` in GET JSON responses
+ * matching `urlPattern`.  Non-GET requests pass through unchanged.
+ */
+export async function fixEntityTimestamps(page: Page, urlPattern: string) {
+  await page.route(urlPattern, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.continue();
+      return;
+    }
+    const response = await route.fetch();
+    const json = await response.json();
+    pinEntityTimestamps(json);
+    await route.fulfill({ response, json });
+  });
+}
+
 /**
  * Intercept responder history API responses and replace dynamic `createdAt` and
  * `clientAddress` fields with fixed values so screenshots are stable.
@@ -108,7 +148,7 @@ export async function fixResponderRequestFields(page: Page) {
     const response = await route.fetch();
     const json = await response.json();
     for (const req of json) {
-      req.createdAt = 1740000000;
+      req.createdAt = FIXED_ENTITY_TIMESTAMP;
       req.clientAddress = '172.18.0.1:12345';
     }
     await route.fulfill({ response, json });
@@ -133,6 +173,7 @@ export async function fixCertificateTemplateValidityDates(page: Page) {
         tpl.attributes.notValidAfter = FIXED_NOT_VALID_BEFORE + diff;
       }
     }
+    pinEntityTimestamps(isArray ? templates : templates[0]);
     await route.fulfill({ response, json: isArray ? templates : templates[0] });
   });
 }
@@ -142,7 +183,6 @@ export async function fixCertificateTemplateValidityDates(page: Page) {
  * (URLs, sizes, timestamps) so screenshots remain consistent across runs.
  */
 export async function fixTrackerResourceRevisions(page: Page) {
-  const FIXED_TIMESTAMP = 1735689600; // Jan 1, 2025 00:00:00 UTC
   await page.route('**/api/utils/web_scraping/page/*/history', async (route) => {
     const response = await route.fetch();
     const json = await response.json();
@@ -151,7 +191,7 @@ export async function fixTrackerResourceRevisions(page: Page) {
       return;
     }
     for (const rev of json) {
-      rev.createdAt = FIXED_TIMESTAMP;
+      rev.createdAt = FIXED_ENTITY_TIMESTAMP;
       const original = rev.data?.original;
       if (!original?.rows) {
         continue;

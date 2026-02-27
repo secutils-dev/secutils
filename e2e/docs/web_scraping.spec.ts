@@ -6,6 +6,7 @@ import {
   DOCS_IMG_DIR,
   EMAIL,
   ensureUserAndLogin,
+  fixEntityTimestamps,
   fixTrackerResourceRevisions,
   goto,
   highlightOff,
@@ -48,6 +49,8 @@ function mockResourceRevision(rows: Array<Record<string, unknown>>, id = '000000
 test.describe('Web scraping guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
     await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
+    await fixEntityTimestamps(page, '**/api/utils/web_scraping/page');
+    await fixEntityTimestamps(page, '**/api/utils/webhooks/responders');
   });
 
   test('Create a page tracker', async ({ page }) => {

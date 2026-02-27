@@ -1,4 +1,4 @@
-use crate::{retrack::RetrackTracker, utils::web_scraping::PageTracker};
+use crate::{retrack::RetrackTracker, users::RawSecretsAccess, utils::web_scraping::PageTracker};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -8,6 +8,7 @@ pub(super) struct RawPageTracker {
     pub name: String,
     pub user_id: Uuid,
     pub retrack_id: Uuid,
+    pub secrets: Vec<u8>,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
 }
@@ -21,6 +22,9 @@ impl TryFrom<RawPageTracker> for PageTracker {
             name: raw.name,
             user_id: raw.user_id.into(),
             retrack: RetrackTracker::from_reference(raw.retrack_id),
+            secrets: postcard::from_bytes::<RawSecretsAccess>(&raw.secrets)
+                .map(Into::into)
+                .unwrap_or_default(),
             created_at: raw.created_at,
             updated_at: raw.updated_at,
         })
@@ -36,6 +40,7 @@ impl TryFrom<&PageTracker> for RawPageTracker {
             name: item.name.clone(),
             user_id: *item.user_id,
             retrack_id: item.retrack.id(),
+            secrets: postcard::to_stdvec(&RawSecretsAccess::from(&item.secrets))?,
             created_at: item.created_at,
             updated_at: item.updated_at,
         })
@@ -45,7 +50,10 @@ impl TryFrom<&PageTracker> for RawPageTracker {
 #[cfg(test)]
 mod tests {
     use super::RawPageTracker;
-    use crate::{retrack::RetrackTracker, tests::mock_user, utils::web_scraping::PageTracker};
+    use crate::{
+        retrack::RetrackTracker, tests::mock_user, users::SecretsAccess,
+        utils::web_scraping::PageTracker,
+    };
     use time::OffsetDateTime;
     use uuid::uuid;
 
@@ -57,6 +65,7 @@ mod tests {
                 name: "tk".to_string(),
                 user_id: *mock_user()?.id,
                 retrack_id: uuid!("00000000-0000-0000-0000-000000000002"),
+                secrets: vec![0],
                 // January 1, 2000 10:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 // January 1, 2000 10:00:10
@@ -69,6 +78,7 @@ mod tests {
                 retrack: RetrackTracker::Reference {
                     id: uuid!("00000000-0000-0000-0000-000000000002")
                 },
+                secrets: SecretsAccess::None,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             }
@@ -87,6 +97,7 @@ mod tests {
                 retrack: RetrackTracker::Reference {
                     id: uuid!("00000000-0000-0000-0000-000000000002")
                 },
+                secrets: SecretsAccess::None,
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?
             })?,
@@ -95,6 +106,7 @@ mod tests {
                 name: "tk".to_string(),
                 user_id: *mock_user()?.id,
                 retrack_id: uuid!("00000000-0000-0000-0000-000000000002"),
+                secrets: vec![0],
                 // January 1, 2000 10:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 // January 1, 2000 10:00:10

@@ -220,8 +220,14 @@ interface Context {
   query: Record<string, string>;
   // HTTP body of the received request in binary form.
   body: number[];
+  // User secrets (decrypted key-value pairs). Manage secrets in Settings → Secrets.
+  secrets: Record<string, string>;
 }
 ```
+
+:::tip Secrets access
+By default, no secrets are exposed to a responder. To enable secrets, open the responder's advanced settings and set the **Secrets → Access mode** to **All secrets** or **Selected secrets**. Once enabled, you can reference secrets in scripts via `context.secrets.KEY` and in static body/headers via `${secrets.KEY}` template syntax.
+:::
 
 The returned value has the following interface:
 
@@ -292,6 +298,19 @@ This script inspects the incoming request properties and returns them as a JSON 
       <h2>Request body</h2>
       <pre>${JSON.stringify(parsedJsonBody, null, 2)}</pre>
     `)
+  };
+})();
+```
+
+### Use secrets in a response
+This script reads a user secret and includes it in the response. Secrets are managed in **Settings → Secrets** and are available via `context.secrets`:
+
+```javascript
+(async () => {
+  const apiKey = context.secrets.THIRD_PARTY_API_KEY ?? 'not-set';
+  return {
+    headers: { 'Content-Type': 'application/json' },
+    body: Deno.core.encode(JSON.stringify({ apiKey }))
   };
 })();
 ```

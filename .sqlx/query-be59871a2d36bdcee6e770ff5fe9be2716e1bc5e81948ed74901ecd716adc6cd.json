@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n    SELECT id, name, user_id, retrack_id, created_at, updated_at\n    FROM user_data_web_scraping_page_trackers\n    WHERE user_id = $1 AND id = $2\n                    ",
+  "query": "\nSELECT id, user_id, name, value, created_at, updated_at\nFROM user_data_secrets\nWHERE user_id = $1\nORDER BY name ASC\n            ",
   "describe": {
     "columns": [
       {
@@ -10,18 +10,18 @@
       },
       {
         "ordinal": 1,
-        "name": "name",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 2,
         "name": "user_id",
         "type_info": "Uuid"
       },
       {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
         "ordinal": 3,
-        "name": "retrack_id",
-        "type_info": "Uuid"
+        "name": "value",
+        "type_info": "Bytea"
       },
       {
         "ordinal": 4,
@@ -36,7 +36,6 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid",
         "Uuid"
       ]
     },
@@ -49,5 +48,5 @@
       false
     ]
   },
-  "hash": "b1658eea9cc76bc4efe940993ca7c7410e7361e67206ea16cbdf255d5ebf8503"
+  "hash": "be59871a2d36bdcee6e770ff5fe9be2716e1bc5e81948ed74901ecd716adc6cd"
 }

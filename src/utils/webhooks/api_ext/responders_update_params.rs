@@ -17,9 +17,12 @@ pub struct RespondersUpdateParams {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::webhooks::{
-        ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,
-        api_ext::RespondersUpdateParams,
+    use crate::{
+        users::SecretsAccess,
+        utils::webhooks::{
+            ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,
+            api_ext::RespondersUpdateParams,
+        },
     };
 
     #[test]
@@ -63,6 +66,7 @@ mod tests {
                         ("key2".to_string(), "value2".to_string())
                     ]),
                     script: Some("return { body: `custom body` };".to_string()),
+                    secrets: SecretsAccess::None,
                 })
             }
         );
@@ -106,6 +110,7 @@ mod tests {
                         ("key2".to_string(), "value2".to_string())
                     ]),
                     script: Some("return { body: `custom body` };".to_string()),
+                    secrets: SecretsAccess::None,
                 })
             }
         );
@@ -147,6 +152,7 @@ mod tests {
                         ("key2".to_string(), "value2".to_string())
                     ]),
                     script: Some("return { body: `custom body` };".to_string()),
+                    secrets: SecretsAccess::None,
                 })
             }
         );
@@ -180,6 +186,7 @@ mod tests {
                         ("key2".to_string(), "value2".to_string())
                     ]),
                     script: Some("return { body: `custom body` };".to_string()),
+                    secrets: SecretsAccess::None,
                 })
             }
         );
@@ -212,6 +219,7 @@ mod tests {
                         ("key2".to_string(), "value2".to_string())
                     ]),
                     script: Some("return { body: `custom body` };".to_string()),
+                    secrets: SecretsAccess::None,
                 })
             }
         );
@@ -236,7 +244,8 @@ mod tests {
                     status_code: 302,
                     body: None,
                     headers: None,
-                    script: None
+                    script: None,
+                    secrets: SecretsAccess::None,
                 })
             }
         );

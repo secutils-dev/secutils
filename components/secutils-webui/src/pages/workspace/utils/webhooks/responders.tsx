@@ -183,7 +183,7 @@ export default function Responders() {
     pageSizeOptions: [10, 15, 25, 50, 100],
     totalItemCount: 0,
   });
-  const [sorting, setSorting] = useState<{ sort: PropertySort }>({ sort: { field: 'path', direction: 'asc' } });
+  const [sorting, setSorting] = useState<{ sort: PropertySort }>({ sort: { field: 'name', direction: 'asc' } });
   const onTableChange = useCallback(
     ({ page, sort }: Criteria<Responder>) => {
       setPagination({
@@ -299,7 +299,7 @@ export default function Responders() {
                 </EuiToolTip>
               ),
               field: 'path',
-              sortable: true,
+              sortable: (responder: Responder) => responder.location.path,
               render: (_, responder: Responder) => {
                 const url = getResponderUrl(responder);
                 return responder.enabled && url ? (

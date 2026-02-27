@@ -139,6 +139,7 @@ mod test {
                     .collect(),
                 ),
             },
+            secrets: Default::default(),
         };
 
         let subscription = UserSubscription {

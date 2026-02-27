@@ -23,8 +23,9 @@ pub use self::{
     smtp_catch_all_config::SmtpCatchAllConfig,
     smtp_config::SmtpConfig,
     subscriptions_config::{
-        SubscriptionCertificatesConfig, SubscriptionConfig, SubscriptionWebScrapingConfig,
-        SubscriptionWebSecurityConfig, SubscriptionWebhooksConfig, SubscriptionsConfig,
+        SubscriptionCertificatesConfig, SubscriptionConfig, SubscriptionSecretsConfig,
+        SubscriptionWebScrapingConfig, SubscriptionWebSecurityConfig, SubscriptionWebhooksConfig,
+        SubscriptionsConfig,
     },
     utils_config::UtilsConfig,
 };
@@ -132,6 +133,7 @@ mod tests {
             security: SecurityConfig {
                 session_cookie_name: "id",
                 jwt_secret: None,
+                secrets_encryption_key: None,
                 operators: None,
                 preconfigured_users: None,
             },
@@ -246,6 +248,9 @@ mod tests {
                         policies: 1000,
                         import_policy_from_url: true,
                     },
+                    secrets: SubscriptionSecretsConfig {
+                        max_secrets: 100,
+                    },
                 },
                 standard: SubscriptionConfig {
                     webhooks: SubscriptionWebhooksConfig {
@@ -269,6 +274,9 @@ mod tests {
                     web_security: SubscriptionWebSecurityConfig {
                         policies: 1000,
                         import_policy_from_url: true,
+                    },
+                    secrets: SubscriptionSecretsConfig {
+                        max_secrets: 100,
                     },
                 },
                 professional: SubscriptionConfig {
@@ -294,6 +302,9 @@ mod tests {
                         policies: 1000,
                         import_policy_from_url: true,
                     },
+                    secrets: SubscriptionSecretsConfig {
+                        max_secrets: 100,
+                    },
                 },
                 ultimate: SubscriptionConfig {
                     webhooks: SubscriptionWebhooksConfig {
@@ -317,6 +328,9 @@ mod tests {
                     web_security: SubscriptionWebSecurityConfig {
                         policies: 1000,
                         import_policy_from_url: true,
+                    },
+                    secrets: SubscriptionSecretsConfig {
+                        max_secrets: 100,
                     },
                 },
             },

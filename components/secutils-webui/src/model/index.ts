@@ -24,3 +24,5 @@ export type {
   SerializedPublicKeyCredentialRequestOptions,
 } from './webauthn';
 export { getCopyName } from './strings';
+export type { UserSecret } from './user_secrets';
+export { getUserSecrets, createUserSecret, updateUserSecret, deleteUserSecret } from './user_secrets';

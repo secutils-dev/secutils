@@ -19,6 +19,8 @@ pub struct SecurityConfig {
     /// Secret key used to sign JWT tokens used for HTTP authentication. If not provided, HTTP
     /// authentication will be disabled.
     pub jwt_secret: Option<String>,
+    /// Hex-encoded 32-byte (256-bit) key used to encrypt user secrets at rest via AES-256-GCM.
+    pub secrets_encryption_key: Option<String>,
     /// List of user or service account identifiers that should be treated as operators, if specified.
     pub operators: Option<HashSet<String>>,
     /// List of the preconfigured users, if specified.
@@ -30,6 +32,7 @@ impl Default for SecurityConfig {
         Self {
             session_cookie_name: "id".to_string(),
             jwt_secret: None,
+            secrets_encryption_key: None,
             preconfigured_users: None,
             operators: None,
         }
@@ -51,6 +54,9 @@ mod tests {
         let config = SecurityConfig {
             session_cookie_name: "id".to_string(),
             jwt_secret: Some("3024bf8975b03b84e405f36a7bacd1c1".to_string()),
+            secrets_encryption_key: Some(
+                "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2".to_string(),
+            ),
             operators: Some(["test@secutils.dev".to_string()].into_iter().collect()),
             preconfigured_users: Some(
                 [(
@@ -68,6 +74,7 @@ mod tests {
         assert_toml_snapshot!(config, @r###"
         session_cookie_name = 'id'
         jwt_secret = '3024bf8975b03b84e405f36a7bacd1c1'
+        secrets_encryption_key = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2'
         operators = ['test@secutils.dev']
         [preconfigured_users."test@secutils.dev"]
         handle = 'test-handle'
@@ -89,6 +96,7 @@ mod tests {
             SecurityConfig {
                 session_cookie_name: "id".to_string(),
                 jwt_secret: None,
+                secrets_encryption_key: None,
                 preconfigured_users: None,
                 operators: None,
             }
