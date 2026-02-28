@@ -186,9 +186,31 @@ mod tests {
                 }),
                 target: Some(PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                    accept_invalid_certificates: false,
                 }),
                 notifications: true,
                 secrets: None,
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<PageTrackerUpdateParams>(
+                r#"
+    {
+        "target": {
+            "extractor": "export async function execute(p) { return await p.content(); }",
+            "acceptInvalidCertificates": true
+        }
+    }
+              "#
+            )?,
+            PageTrackerUpdateParams {
+                target: Some(PageTrackerTarget {
+                    extractor: "export async function execute(p) { return await p.content(); }"
+                        .to_string(),
+                    accept_invalid_certificates: true,
+                }),
+                ..Default::default()
             }
         );
 

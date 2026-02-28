@@ -64,6 +64,7 @@ mod tests {
                 },
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                    accept_invalid_certificates: false,
                 },
                 notifications: false,
                 secrets: SecretsAccess::None,
@@ -90,7 +91,8 @@ mod tests {
             }
         },
         "target": {
-            "extractor": "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }"
+            "extractor": "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }",
+            "acceptInvalidCertificates": true
         },
         "notifications": true
     }
@@ -113,6 +115,7 @@ mod tests {
                 },
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                    accept_invalid_certificates: true,
                 },
                 notifications: true,
                 secrets: SecretsAccess::None,

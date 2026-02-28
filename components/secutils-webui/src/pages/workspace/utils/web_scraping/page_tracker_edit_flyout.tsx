@@ -1,13 +1,18 @@
+import type { EuiSwitchEvent } from '@elastic/eui';
 import {
   EuiComboBox,
   EuiDescribedFormGroup,
   EuiFieldText,
+  EuiFlexGroup,
+  EuiFlexItem,
   EuiForm,
   EuiFormRow,
   EuiLink,
   EuiRange,
   EuiSelect,
   EuiSwitch,
+  EuiText,
+  EuiTitle,
 } from '@elastic/eui';
 import type { ChangeEvent } from 'react';
 import { useCallback, useEffect, useState } from 'react';
@@ -47,6 +52,16 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
   const maxTicks = useRangeTicks();
 
   const newTracker = !tracker?.id;
+
+  const [isAdvancedMode, setIsAdvancedMode] = useState(
+    !newTracker &&
+      (!!tracker?.retrack?.target?.acceptInvalidCertificates ||
+        (!!tracker?.secrets && tracker.secrets.type !== 'none')),
+  );
+
+  const [acceptInvalidCerts, setAcceptInvalidCerts] = useState<boolean>(
+    !!tracker?.retrack?.target?.acceptInvalidCertificates,
+  );
 
   const [name, setName] = useState<string>(tracker?.name ?? '');
   const onNameChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
@@ -109,6 +124,7 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
     revisions,
     enabled,
     notifications,
+    acceptInvalidCerts,
     secretsMode,
     selectedSecretNames,
   });
@@ -131,8 +147,11 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
           ? { revisions, job: jobConfig }
           : null,
       target:
-        !!extractorScript && (newTracker || tracker?.retrack?.target?.extractor !== extractorScript)
-          ? { extractor: extractorScript }
+        !!extractorScript &&
+        (newTracker ||
+          tracker?.retrack?.target?.extractor !== extractorScript ||
+          !!tracker?.retrack?.target?.acceptInvalidCertificates !== acceptInvalidCerts)
+          ? { extractor: extractorScript, acceptInvalidCertificates: acceptInvalidCerts || undefined }
           : null,
       enabled,
       notifications,
@@ -189,6 +208,7 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
     revisions,
     enabled,
     extractorScript,
+    acceptInvalidCerts,
     jobConfig,
     secretsMode,
     selectedSecretNames,
@@ -238,7 +258,26 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
   const tickInterval = Math.ceil(maxTrackerRevisions / maxTicks);
   return (
     <EditorFlyout
-      title={`${tracker ? 'Edit' : 'Add'} tracker`}
+      title={
+        <EuiFlexGroup>
+          <EuiFlexItem>
+            <EuiTitle size="s">
+              <h1>{`${tracker ? 'Edit' : 'Add'} tracker`}</h1>
+            </EuiTitle>
+          </EuiFlexItem>
+          <EuiFlexItem grow={false}>
+            <EuiSwitch
+              label={
+                <EuiText color={'subdued'} size={'s'}>
+                  Advanced mode
+                </EuiText>
+              }
+              checked={isAdvancedMode}
+              onChange={(e) => setIsAdvancedMode(e.target.checked)}
+            />
+          </EuiFlexItem>
+        </EuiFlexGroup>
+      }
       onClose={() => onClose()}
       onSave={onSave}
       hasChanges={hasChanges}
@@ -364,35 +403,50 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
               extraLibs={[{ content: PAGE_TRACKER_TYPE_DEFS, filePath: 'ts:page-tracker.d.ts' }]}
             />
           </EuiFormRow>
-        </EuiDescribedFormGroup>
-        <EuiDescribedFormGroup
-          title={<h3>Secrets</h3>}
-          description="Control which user secrets are available to this tracker's content extractor script."
-        >
-          <EuiFormRow label="Access mode" helpText="Choose which secrets to expose to this tracker." fullWidth>
-            <EuiSelect
-              fullWidth
-              options={[
-                { value: 'none', text: 'No secrets' },
-                { value: 'all', text: 'All secrets' },
-                { value: 'selected', text: 'Selected secrets' },
-              ]}
-              value={secretsMode}
-              onChange={(e) => setSecretsMode(e.target.value as 'none' | 'all' | 'selected')}
-            />
-          </EuiFormRow>
-          {secretsMode === 'selected' ? (
-            <EuiFormRow label="Secrets" helpText="Select the secrets to expose." fullWidth>
-              <EuiComboBox
-                fullWidth
-                options={availableSecrets}
-                selectedOptions={selectedSecretNames}
-                onChange={setSelectedSecretNames}
-                isLoading={!secretsLoaded}
+          {isAdvancedMode ? (
+            <EuiFormRow
+              label="Accept invalid certificates"
+              helpText="Allow connections to servers with invalid or self-signed SSL certificates"
+            >
+              <EuiSwitch
+                showLabel={false}
+                label="Accept invalid certificates"
+                checked={acceptInvalidCerts}
+                onChange={(e: EuiSwitchEvent) => setAcceptInvalidCerts(e.target.checked)}
               />
             </EuiFormRow>
           ) : null}
         </EuiDescribedFormGroup>
+        {isAdvancedMode ? (
+          <EuiDescribedFormGroup
+            title={<h3>Secrets</h3>}
+            description="Control which user secrets are available to this tracker's content extractor script."
+          >
+            <EuiFormRow label="Access mode" helpText="Choose which secrets to expose to this tracker." fullWidth>
+              <EuiSelect
+                fullWidth
+                options={[
+                  { value: 'none', text: 'No secrets' },
+                  { value: 'all', text: 'All secrets' },
+                  { value: 'selected', text: 'Selected secrets' },
+                ]}
+                value={secretsMode}
+                onChange={(e) => setSecretsMode(e.target.value as 'none' | 'all' | 'selected')}
+              />
+            </EuiFormRow>
+            {secretsMode === 'selected' ? (
+              <EuiFormRow label="Secrets" helpText="Select the secrets to expose." fullWidth>
+                <EuiComboBox
+                  fullWidth
+                  options={availableSecrets}
+                  selectedOptions={selectedSecretNames}
+                  onChange={setSelectedSecretNames}
+                  isLoading={!secretsLoaded}
+                />
+              </EuiFormRow>
+            ) : null}
+          </EuiDescribedFormGroup>
+        ) : null}
       </EuiForm>
     </EditorFlyout>
   );

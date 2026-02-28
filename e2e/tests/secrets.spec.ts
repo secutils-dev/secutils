@@ -89,6 +89,9 @@ test.describe('Secrets access in tracker edit flyout', () => {
     const saveButton = flyout.getByRole('button', { name: 'Save' });
     await expect(saveButton).toBeDisabled();
 
+    // Enable advanced mode to reveal the Secrets section.
+    await flyout.getByLabel('Advanced mode').click();
+
     // Scroll to the Secrets section and change mode.
     const accessModeSelect = flyout.getByLabel('Access mode');
     await accessModeSelect.scrollIntoViewIfNeeded();
@@ -157,6 +160,9 @@ test.describe('Secrets access in tracker edit flyout', () => {
     await row.getByRole('button', { name: 'Edit' }).click();
     const flyout2 = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit tracker' }) });
     await expect(flyout2).toBeVisible();
+
+    // With secrets reset to none, advanced mode should not be auto-enabled.
+    await flyout2.getByLabel('Advanced mode').click();
     const accessModeSelect2 = flyout2.getByLabel('Access mode');
     await accessModeSelect2.scrollIntoViewIfNeeded();
     await expect(accessModeSelect2).toHaveValue('none');
@@ -185,6 +191,9 @@ test.describe('Secrets access in tracker edit flyout', () => {
     await row.getByRole('button', { name: 'Edit' }).click();
     const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit tracker' }) });
     await expect(flyout).toBeVisible();
+
+    // Enable advanced mode to reveal the Secrets section.
+    await flyout.getByLabel('Advanced mode').click();
 
     // Change mode to "Selected secrets".
     const accessModeSelect = flyout.getByLabel('Access mode');

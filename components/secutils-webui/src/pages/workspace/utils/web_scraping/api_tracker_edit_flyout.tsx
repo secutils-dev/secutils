@@ -627,34 +627,36 @@ export function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
           ) : null}
         </EuiDescribedFormGroup>
 
-        <EuiDescribedFormGroup
-          title={<h3>Secrets</h3>}
-          description="Control which user secrets are available to this tracker's scripts."
-        >
-          <EuiFormRow label="Access mode" helpText="Choose which secrets to expose to this tracker." fullWidth>
-            <EuiSelect
-              fullWidth
-              options={[
-                { value: 'none', text: 'No secrets' },
-                { value: 'all', text: 'All secrets' },
-                { value: 'selected', text: 'Selected secrets' },
-              ]}
-              value={secretsMode}
-              onChange={(e) => setSecretsMode(e.target.value as 'none' | 'all' | 'selected')}
-            />
-          </EuiFormRow>
-          {secretsMode === 'selected' ? (
-            <EuiFormRow label="Secrets" helpText="Select the secrets to expose." fullWidth>
-              <EuiComboBox
+        {isAdvancedMode ? (
+          <EuiDescribedFormGroup
+            title={<h3>Secrets</h3>}
+            description="Control which user secrets are available to this tracker's scripts."
+          >
+            <EuiFormRow label="Access mode" helpText="Choose which secrets to expose to this tracker." fullWidth>
+              <EuiSelect
                 fullWidth
-                options={availableSecrets}
-                selectedOptions={selectedSecretNames}
-                onChange={setSelectedSecretNames}
-                isLoading={!secretsLoaded}
+                options={[
+                  { value: 'none', text: 'No secrets' },
+                  { value: 'all', text: 'All secrets' },
+                  { value: 'selected', text: 'Selected secrets' },
+                ]}
+                value={secretsMode}
+                onChange={(e) => setSecretsMode(e.target.value as 'none' | 'all' | 'selected')}
               />
             </EuiFormRow>
-          ) : null}
-        </EuiDescribedFormGroup>
+            {secretsMode === 'selected' ? (
+              <EuiFormRow label="Secrets" helpText="Select the secrets to expose." fullWidth>
+                <EuiComboBox
+                  fullWidth
+                  options={availableSecrets}
+                  selectedOptions={selectedSecretNames}
+                  onChange={setSelectedSecretNames}
+                  isLoading={!secretsLoaded}
+                />
+              </EuiFormRow>
+            ) : null}
+          </EuiDescribedFormGroup>
+        ) : null}
       </EuiForm>
     </EditorFlyout>
   );

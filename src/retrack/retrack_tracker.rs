@@ -161,6 +161,42 @@ mod tests {
     }
 
     #[test]
+    fn page_target_with_accept_invalid_certificates() -> anyhow::Result<()> {
+        let value = RetrackTrackerValue {
+            id: uuid!("00000000-0000-0000-0000-000000000001"),
+            enabled: true,
+            config: minimal_config(),
+            target: TrackerTarget::Page(PageTarget {
+                extractor: "return document.title;".to_string(),
+                params: None,
+                engine: None,
+                user_agent: None,
+                accept_invalid_certificates: true,
+            }),
+            notifications: false,
+        };
+        assert_json_snapshot!(value, @r###"
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "enabled": true,
+          "config": {
+            "revisions": 1,
+            "job": {
+              "schedule": "@daily"
+            }
+          },
+          "target": {
+            "type": "page",
+            "extractor": "return document.title;",
+            "acceptInvalidCertificates": true
+          },
+          "notifications": false
+        }
+        "###);
+        Ok(())
+    }
+
+    #[test]
     fn api_target_minimal_is_flattened() -> anyhow::Result<()> {
         let value = RetrackTrackerValue {
             id: uuid!("00000000-0000-0000-0000-000000000001"),

@@ -14,6 +14,7 @@ export interface PageTracker {
     enabled?: boolean;
     target?: {
       extractor: string;
+      acceptInvalidCertificates?: boolean;
     };
     config?: {
       revisions: number;
