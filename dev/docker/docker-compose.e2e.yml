@@ -23,6 +23,7 @@ services:
 
   retrack:
     environment:
+      - RETRACK_TRACKERS__RESTRICT_TO_PUBLIC_URLS=false
       - 'RETRACK_TRACKERS__DEFAULT_ACTIONS=[{ type = "log" }, { type = "webhook", url = "http://secutils_api:7070/api/webhooks/retrack", headers = { "Content-Type" = "application/json", Authorization = "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjIwODc2MzUwMDgsInN1YiI6IkByZXRyYWNrIn0.eTdHUivatlOh-KNzSsr2gZi2I1RQLnRcMawv0Nn4KR8" }, formatter = "(() => ({ content: { newContent: context.newContent, previousContent: context.previousContent || null } }))()" }]'
 
   secutils_api:

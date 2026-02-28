@@ -289,6 +289,7 @@ test.describe('CSP guide screenshots', () => {
     await expect(copyModal).toBeVisible({ timeout: 10000 });
 
     await getByRoleAndLabel(copyModal, 'combobox', 'Policy source').selectOption('HTML meta tag');
+    await expect(copyModal.locator('.euiCodeBlock')).toContainText('meta http-equiv', { timeout: 10000 });
     await highlightOn(copyModal.locator('.euiCodeBlock'));
 
     await page.screenshot({ path: join(IMG_DIR, 'test_step5_copy_meta_tag.png') });

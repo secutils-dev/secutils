@@ -1,0 +1,205 @@
+---
+sidebar_position: 2
+sidebar_label: API Trackers
+title: Web Scraping ➔ API trackers
+description: Learn how to create and use API trackers in Secutils.dev.
+---
+
+import Steps from '@site/src/components/Steps';
+import CodeBlock from '@theme/CodeBlock';
+
+# What is an API tracker?
+
+An API tracker is a utility that empowers developers to detect and monitor changes in the responses of any HTTP API endpoint. Whether you need to ensure that a deployed REST API continues to return the expected data or you want to be notified when an upstream API changes its response format, the API tracker has you covered. When a change is detected, the tracker promptly notifies the user.
+
+Unlike [page trackers](/docs/guides/web_scraping/page), which use a full headless browser to extract content from web pages, API trackers send direct HTTP requests to API endpoints. This makes them lighter, faster, and ideal for monitoring JSON APIs, webhooks, and other HTTP services.
+
+On this page, you can find guides on creating and using API trackers.
+
+## Create an API tracker
+
+In this guide, you'll create a simple API tracker to monitor a public JSON API endpoint:
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/web_scraping/api_create_step1_empty.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/web_scraping__api"><b>Web Scraping → API trackers</b></a> and click <strong>Track API</strong>.</>,
+        alt: 'Navigate to Web Scraping → API trackers and click Track API.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/api_create_step2_form.png',
+        caption: <>Configure the tracker and click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>Application State</CodeBlock></td></tr>
+                <tr><td><b>URL</b></td><td><CodeBlock>https://api.example.com/state</CodeBlock></td></tr>
+                <tr><td><b>Method</b></td><td><CodeBlock>GET</CodeBlock></td></tr>
+                <tr><td><b>Frequency</b></td><td><CodeBlock>Manually</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Configure the API tracker with name, URL, method, and frequency.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/api_create_step3_created.png',
+        caption: 'The tracker appears in the grid.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/api_create_step4_update.png',
+        caption: <>Expand the tracker and click <b>Update</b> to fetch the API response.</>,
+        alt: 'Expand the tracker and click Update to fetch content.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/api_create_step5_result.png',
+        caption: 'After a few seconds the tracker fetches the API response and displays the formatted JSON.',
+    },
+]} />
+
+When no data extractor script is provided, the API tracker returns the raw response body. You can add a custom extractor to parse, filter, or transform the response before it is stored.
+
+## Create an API tracker with a POST request
+
+In this guide, you'll create an API tracker that sends a POST request with a JSON body:
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/web_scraping/api_post_step1_empty.png',
+        caption: <>Navigate to <a href="https://secutils.dev/ws/web_scraping__api"><b>Web Scraping → API trackers</b></a> and click <strong>Track API</strong>.</>,
+        alt: 'Navigate to Web Scraping → API trackers and click Track API.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/api_post_step2_form.png',
+        caption: <>Configure the tracker with a POST method and JSON body and click <b>Save</b>.<br/><br/>
+            <table className="su-table">
+                <tbody>
+                <tr><td><b>Name</b></td><td><CodeBlock>State via POST</CodeBlock></td></tr>
+                <tr><td><b>URL</b></td><td><CodeBlock>https://api.example.com/state</CodeBlock></td></tr>
+                <tr><td><b>Method</b></td><td><CodeBlock>POST</CodeBlock></td></tr>
+                <tr><td><b>Headers</b></td><td><CodeBlock>Content-Type: application/json</CodeBlock></td></tr>
+                <tr><td><b>Body</b></td><td><CodeBlock language="json">{`{
+  "title": "Test Post",
+  "body": "This is a test post body.",
+  "userId": 1
+}`}</CodeBlock></td></tr>
+                </tbody>
+            </table></>,
+        alt: 'Configure the API tracker with a POST method and JSON body.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/api_post_step3_created.png',
+        caption: 'The tracker appears in the grid showing the POST method.',
+    },
+]} />
+
+## Annex: Data extractor script {#annex-extractor-script}
+
+The data extractor script is a JavaScript **IIFE** (Immediately Invoked Function Expression) that runs in an isolated Deno sandbox. It processes the raw HTTP responses from the API. For a complete reference of the `Deno.core` utilities available inside the sandbox (encoding, Base64, type checking, and more), see [Deno Sandbox Runtime](/docs/guides/platform/deno_runtime). The global `context` object has the following shape:
+
+```typescript
+interface ExtractorContext {
+  /** Tags associated with the tracker. */
+  tags: string[];
+  /** Content extracted during the previous execution, if available. */
+  previousContent?: { original: unknown };
+  /** Raw HTTP responses from the API requests. */
+  responses?: Array<{
+    status: number;
+    headers: Record<string, string>;
+    body: number[];
+  }>;
+  /** Optional parameters including user secrets. */
+  params?: { secrets?: Record<string, string> };
+}
+```
+
+The script must be wrapped in `(() => { ... })();` and return an object with an optional `body` field (a `Uint8Array`). Use `Deno.core.encode()` and `Deno.core.decode()` to convert between strings and byte arrays:
+
+```javascript
+(() => {
+  const responses = context.responses ?? [];
+  if (responses.length === 0) {
+    return { body: Deno.core.encode("No responses") };
+  }
+
+  const last = responses[responses.length - 1];
+  const body = last.body
+    ? Deno.core.decode(new Uint8Array(last.body))
+    : "{}";
+  return {
+    body: Deno.core.encode(
+      JSON.stringify(JSON.parse(body), null, 2)
+    )
+  };
+})();
+```
+
+:::caution Sandbox restrictions
+Scripts run in a strictly isolated Deno sandbox. **`fetch`, `XMLHttpRequest`, and other network APIs are not available.** Only `Deno.core` utilities (such as `encode`, `decode`) and JavaScript built-ins are accessible. See [Deno Sandbox Runtime](/docs/guides/platform/deno_runtime) for the full reference of available APIs.
+:::
+
+:::tip Using secrets in scripts
+To make secrets available to your extractor or configurator script, open the tracker's edit form, enable **Advanced mode**, and set the **Secrets → Access mode** to **All secrets** or **Selected secrets**. The decrypted secrets will then be available as `context.params.secrets`. Manage your secrets in **Settings → Secrets**. Example: `const token = context.params.secrets.MY_TOKEN;`
+:::
+
+## Annex: Request configurator script {#annex-configurator-script}
+
+The request configurator is an advanced **IIFE** script that allows you to dynamically modify API requests before they are sent. This is useful for adding dynamic authentication tokens, timestamps, or other request parameters. It runs in the same isolated Deno sandbox as the extractor. The global `context` object has the following shape:
+
+```typescript
+interface ConfiguratorRequest {
+  url: string;
+  method?: string;
+  headers?: Record<string, string>;
+  body?: number[];
+  mediaType?: string;
+  acceptStatuses?: number[];
+  acceptInvalidCertificates?: boolean;
+}
+
+interface ConfiguratorResponse {
+  status: number;
+  headers: Record<string, string>;
+  body: number[];
+}
+
+interface ConfiguratorContext {
+  /** Tags associated with the tracker. */
+  tags: string[];
+  /** Content extracted during the previous execution, if available. */
+  previousContent?: { original: unknown };
+  /** The requests to be sent, which can be modified. */
+  requests: ConfiguratorRequest[];
+  /** Optional parameters including user secrets. */
+  params?: { secrets?: Record<string, string> };
+}
+```
+
+The script must return either `{ requests: [...] }` to modify the outgoing requests, or `{ responses: [...] }` to skip the real HTTP call and provide mock responses directly.
+
+:::warning Response body must be valid JSON
+When returning `{ responses: [...] }` without a data extractor, each response `body` must contain **valid JSON bytes** (e.g. `Deno.core.encode(JSON.stringify(...))`), because the tracker stores the result as a JSON value. Plain text like `Deno.core.encode("Hello World")` will fail with "Cannot deserialize API response". Either wrap the value with `JSON.stringify()` or add a data extractor script to process the raw bytes.
+:::
+
+For example, to inject a secret as a Bearer token:
+
+```javascript
+(() => {
+  const req = context.requests[0];
+  return {
+    requests: [{
+      ...req,
+      headers: {
+        ...req.headers,
+        Authorization: "Bearer " + (context.params?.secrets?.API_KEY ?? "")
+      }
+    }]
+  };
+})();
+```
+
+## Annex: Custom cron schedules
+
+:::caution NOTE
+Custom cron schedules are available only for [**Pro** subscription](https://secutils.dev/pricing) users.
+:::
+
+The cron expression syntax for API tracker schedules is identical to the one used by [page trackers](/docs/guides/web_scraping/page#annex-custom-cron-schedules). Refer to the page tracker documentation for details on supported cron expressions and examples.

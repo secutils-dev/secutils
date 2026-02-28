@@ -74,6 +74,9 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
   const [revisions, setRevisions] = useState<number>(tracker ? (tracker.retrack?.config?.revisions ?? 0) : 3);
   const needsToSaveRevisions = newTracker || tracker?.retrack?.config?.revisions !== revisions;
 
+  const [enabled, setEnabled] = useState<boolean>(tracker?.retrack?.enabled ?? true);
+  const needsToSaveEnabled = newTracker || tracker?.retrack?.enabled !== enabled;
+
   const [notifications, setNotifications] = useState<boolean>(tracker ? !!tracker.retrack?.notifications : false);
   const needsToSaveNotifications = newTracker || tracker?.retrack?.notifications !== notifications;
 
@@ -104,6 +107,7 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
     jobConfig,
     extractorScript,
     revisions,
+    enabled,
     notifications,
     secretsMode,
     selectedSecretNames,
@@ -130,6 +134,7 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
         !!extractorScript && (newTracker || tracker?.retrack?.target?.extractor !== extractorScript)
           ? { extractor: extractorScript }
           : null,
+      enabled,
       notifications,
       secrets:
         secretsMode === 'none'
@@ -182,6 +187,7 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
   }, [
     name,
     revisions,
+    enabled,
     extractorScript,
     jobConfig,
     secretsMode,
@@ -241,6 +247,7 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
         !!extractorScript &&
         (needsToSaveName ||
           needsToSaveRevisions ||
+          needsToSaveEnabled ||
           needsToSaveJobConfig ||
           needsToSaveExtractorScript ||
           needsToSaveNotifications ||
@@ -264,6 +271,14 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
               showTicks
               tickInterval={tickInterval > 1 ? Math.ceil(tickInterval / 5) * 5 : tickInterval}
               showValue={maxTrackerRevisions > maxTicks}
+            />
+          </EuiFormRow>
+          <EuiFormRow label="Enabled" helpText="Disable the tracker to pause scheduled checks.">
+            <EuiSwitch
+              showLabel={false}
+              label="Enable tracker"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
             />
           </EuiFormRow>
         </EuiDescribedFormGroup>

@@ -13,6 +13,9 @@ pub enum UtilsResourceOperation {
     WebhooksRespondersGetStats,
     WebScrapingPageGetHistory,
     WebScrapingPageClearHistory,
+    WebScrapingApiGetHistory,
+    WebScrapingApiClearHistory,
+    WebScrapingApiTestRequest,
     WebSecurityContentSecurityPolicySerialize,
 }
 
@@ -25,6 +28,8 @@ impl UtilsResourceOperation {
                 | Self::CertificatesTemplatePeerCertificates
                 | Self::CertificatesPrivateKeyExport
                 | Self::WebScrapingPageGetHistory
+                | Self::WebScrapingApiGetHistory
+                | Self::WebScrapingApiTestRequest
                 | Self::WebSecurityContentSecurityPolicySerialize
         )
     }
@@ -70,6 +75,15 @@ impl TryFrom<(&UtilsResource, &str, &Method)> for UtilsResourceOperation {
             UtilsResource::WebScrapingPage if operation == "clear" => {
                 Ok(UtilsResourceOperation::WebScrapingPageClearHistory)
             }
+            UtilsResource::WebScrapingApi if operation == "history" => {
+                Ok(UtilsResourceOperation::WebScrapingApiGetHistory)
+            }
+            UtilsResource::WebScrapingApi if operation == "clear" => {
+                Ok(UtilsResourceOperation::WebScrapingApiClearHistory)
+            }
+            UtilsResource::WebScrapingApi if operation == "test" && *method == Method::POST => {
+                Ok(UtilsResourceOperation::WebScrapingApiTestRequest)
+            }
 
             // Web security custom actions.
             UtilsResource::WebSecurityContentSecurityPolicies if operation == "serialize" => {
@@ -100,6 +114,10 @@ mod tests {
 
         assert!(UtilsResourceOperation::WebScrapingPageGetHistory.requires_params());
         assert!(!UtilsResourceOperation::WebScrapingPageClearHistory.requires_params());
+
+        assert!(UtilsResourceOperation::WebScrapingApiGetHistory.requires_params());
+        assert!(!UtilsResourceOperation::WebScrapingApiClearHistory.requires_params());
+        assert!(UtilsResourceOperation::WebScrapingApiTestRequest.requires_params());
 
         assert!(
             UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize.requires_params()
@@ -225,6 +243,40 @@ mod tests {
             )),
             Ok(UtilsResourceOperation::WebScrapingPageClearHistory)
         );
+
+        assert_eq!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingApi,
+                "history",
+                &Method::POST
+            )),
+            Ok(UtilsResourceOperation::WebScrapingApiGetHistory)
+        );
+        assert_eq!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingApi,
+                "clear",
+                &Method::POST
+            )),
+            Ok(UtilsResourceOperation::WebScrapingApiClearHistory)
+        );
+        assert_eq!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingApi,
+                "test",
+                &Method::POST
+            )),
+            Ok(UtilsResourceOperation::WebScrapingApiTestRequest)
+        );
+        assert!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingApi,
+                "test",
+                &Method::GET
+            ))
+            .is_err()
+        );
+
         assert!(
             UtilsResourceOperation::try_from((
                 &UtilsResource::CertificatesPrivateKeys,

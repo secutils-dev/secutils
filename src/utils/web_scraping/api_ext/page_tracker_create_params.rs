@@ -9,6 +9,9 @@ use serde::Deserialize;
 pub struct PageTrackerCreateParams {
     /// Arbitrary name of the page tracker.
     pub name: String,
+    /// Whether the tracker is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
     /// Page tracker configuration.
     pub config: PageTrackerConfig,
     /// Page tracker configuration.
@@ -19,6 +22,10 @@ pub struct PageTrackerCreateParams {
     /// Controls which user secrets are available to this tracker's extractor script.
     #[serde(default)]
     pub secrets: SecretsAccess,
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 #[cfg(test)]
@@ -50,6 +57,7 @@ mod tests {
             )?,
             PageTrackerCreateParams {
                 name: "tck".to_string(),
+                enabled: true,
                 config: PageTrackerConfig {
                     revisions: 3,
                     job: None,
@@ -67,6 +75,7 @@ mod tests {
                 r#"
     {
         "name": "tck",
+        "enabled": false,
         "config": {
             "revisions": 3,
             "job": {
@@ -89,6 +98,7 @@ mod tests {
             )?,
             PageTrackerCreateParams {
                 name: "tck".to_string(),
+                enabled: false,
                 config: PageTrackerConfig {
                     revisions: 3,
                     job: Some(SchedulerJobConfig {

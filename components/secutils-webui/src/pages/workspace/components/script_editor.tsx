@@ -1,24 +1,12 @@
 import type { UseEuiTheme } from '@elastic/eui';
 import { EuiButtonIcon, EuiFlexGroup, EuiFlexItem, EuiFocusTrap, EuiPanel, useEuiTheme } from '@elastic/eui';
 import { css } from '@emotion/react';
-import { Editor, loader } from '@monaco-editor/react';
-import * as monaco from 'monaco-editor';
-import { typescript as monacoTypescript } from 'monaco-editor';
+import { Editor } from '@monaco-editor/react';
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-loader.config({ monaco });
-
-// See https://github.com/microsoft/monaco-editor/blob/main/docs/integrate-esm.md#using-parcel
-self.MonacoEnvironment = {
-  getWorkerUrl: (_: string, label: string) => {
-    if (label === 'javascript' || label === 'typescript') return '/tools/monaco/ts.worker.js';
-    if (label === 'json') return '/tools/monaco/json.worker.js';
-    if (label === 'html' || label === 'handlebars' || label === 'razor') return '/tools/monaco/html.worker.js';
-    if (label === 'css' || label === 'scss' || label === 'less') return '/tools/monaco/css.worker.js';
-    return '/tools/monaco/editor.worker.js';
-  },
-};
+import type { monaco } from '../../../tools/monaco_setup';
+import { monacoTypescript } from '../../../tools/monaco_setup';
 
 export function createTheme({ euiTheme }: UseEuiTheme, backgroundColor?: string): monaco.editor.IStandaloneThemeData {
   return {

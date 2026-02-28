@@ -185,6 +185,55 @@ pub async fn webhooks_retrack(
                 diff,
             })
         }
+        UtilsResource::WebScrapingApi => {
+            let Some(tracker) = state
+                .api
+                .web_scraping(&user)
+                .get_api_tracker(resource_id)
+                .await?
+            else {
+                error!(
+                    user.id = %user.id,
+                    util.resource = resource,
+                    util.resource_group = resource_group,
+                    util.resource_id = %resource_id,
+                    retrack.id = %retrack_tracker.id,
+                    retrack.name = retrack_tracker.name,
+                    retrack.tags = ?retrack_tracker.tags,
+                    "Failed to find API tracker to handle Retrack webhook request."
+                );
+                return Ok(HttpResponse::NotFound().finish());
+            };
+
+            let (content, diff) = match &body_params.result {
+                WebhookActionPayloadResult::Success(revision) => {
+                    if let Some(new_content) = revision.get("newContent") {
+                        let new_normalized = normalize_for_diff(new_content);
+                        let diff = revision
+                            .get("previousContent")
+                            .filter(|p| !p.is_null())
+                            .map(|prev| {
+                                compute_unified_diff(
+                                    &normalize_for_diff(prev),
+                                    &new_normalized,
+                                    state.api.config.utils.diff_context_radius,
+                                )
+                            });
+                        (Ok(new_normalized), diff)
+                    } else {
+                        (Ok(normalize_for_diff(revision)), None)
+                    }
+                }
+                WebhookActionPayloadResult::Failure(err) => (Err(err.to_string()), None),
+            };
+
+            NotificationContent::Template(NotificationContentTemplate::ApiTrackerChanges {
+                tracker_id: tracker.id,
+                tracker_name: tracker.name,
+                content,
+                diff,
+            })
+        }
         _ => {
             error!(
                 user.id = %user.id,
@@ -244,7 +293,10 @@ mod tests {
         },
         security::Operator,
         tests::{mock_app_state_with_config, mock_config, mock_user},
-        utils::{UtilsResource, web_scraping::tests::MockPageTrackerBuilder},
+        utils::{
+            UtilsResource,
+            web_scraping::tests::{MockApiTrackerBuilder, MockPageTrackerBuilder},
+        },
     };
     use actix_web::{body::MessageBody, web};
     use bytes::Bytes;
@@ -907,6 +959,270 @@ mod tests {
                 destination: NotificationDestination::User(mock_user.id),
                 content: NotificationContent::Template(
                     NotificationContentTemplate::PageTrackerChanges {
+                        tracker_id: tracker.id,
+                        tracker_name: tracker.name.clone(),
+                        content: Err("some error".to_string()),
+                        diff: None,
+                    }
+                ),
+                scheduled_at: notification.scheduled_at
+            }
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn fails_for_unknown_api_trackers(pool: PgPool) -> anyhow::Result<()> {
+        let retrack_server = MockServer::start();
+        let mut config = mock_config()?;
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let app_state = mock_app_state_with_config(pool, config).await?;
+        let mock_user = mock_user()?;
+        app_state.api.db.insert_user(&mock_user).await?;
+
+        let app_state = web::Data::new(app_state);
+
+        let mut retrack_tracker = mock_retrack_tracker()?;
+        retrack_tracker.tags = prepare_tags(&[
+            format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingApi),
+            format!(
+                "{RETRACK_RESOURCE_ID_TAG}:{}",
+                uuid!("00000000-0000-0000-0000-000000000001")
+            ),
+            format!("{RETRACK_RESOURCE_NAME_TAG}:{}", retrack_tracker.name),
+            format!("{RETRACK_NOTIFICATIONS_TAG}:true"),
+        ]);
+        let retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+
+        let response = webhooks_retrack(
+            app_state.clone(),
+            Operator::new("operator"),
+            web::Json(WebhookActionPayload {
+                tracker_id: retrack_tracker.id,
+                tracker_name: retrack_tracker.name.clone(),
+                result: WebhookActionPayloadResult::Success(json!({})),
+            }),
+        )
+        .await?;
+        retrack_get_api_mock.assert();
+
+        assert_debug_snapshot!(response, @r###"
+        HttpResponse {
+            error: None,
+            res: 
+            Response HTTP/1.1 404 Not Found
+              headers:
+              body: Sized(0)
+            ,
+        }
+        "###);
+
+        let notifications = app_state
+            .api
+            .db
+            .get_notification_ids(OffsetDateTime::now_utc(), 10);
+        assert!(notifications.collect::<Vec<_>>().await.is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_schedule_api_tracker_success_notification(pool: PgPool) -> anyhow::Result<()> {
+        let retrack_server = MockServer::start();
+        let mut config = mock_config()?;
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let app_state = mock_app_state_with_config(pool, config).await?;
+        let mock_user = mock_user()?;
+        app_state.api.db.insert_user(&mock_user).await?;
+
+        let app_state = web::Data::new(app_state);
+
+        let mut retrack_tracker = mock_retrack_tracker()?;
+        let tracker = MockApiTrackerBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            retrack_tracker.name.clone(),
+            RetrackTracker::from_value(retrack_tracker.clone()),
+        )?
+        .build();
+        retrack_tracker.tags = prepare_tags(&[
+            format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingApi),
+            format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+            format!("{RETRACK_RESOURCE_NAME_TAG}:{}", tracker.name),
+            format!("{RETRACK_NOTIFICATIONS_TAG}:true"),
+        ]);
+        let retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+        app_state
+            .api
+            .db
+            .web_scraping(mock_user.id)
+            .insert_api_tracker(&tracker)
+            .await?;
+
+        let response = webhooks_retrack(
+            app_state.clone(),
+            Operator::new("operator"),
+            web::Json(WebhookActionPayload {
+                tracker_id: retrack_tracker.id,
+                tracker_name: retrack_tracker.name.clone(),
+                result: WebhookActionPayloadResult::Success(json!({
+                    "newContent": { "one": 1 },
+                    "previousContent": { "one": 0 }
+                })),
+            }),
+        )
+        .await?;
+        retrack_get_api_mock.assert_calls(2);
+
+        assert_debug_snapshot!(response, @r###"
+        HttpResponse {
+            error: None,
+            res: 
+            Response HTTP/1.1 200 OK
+              headers:
+              body: Sized(0)
+            ,
+        }
+        "###);
+
+        let mut notifications = app_state
+            .api
+            .db
+            .get_notification_ids(OffsetDateTime::now_utc(), 10)
+            .collect::<Vec<_>>()
+            .await;
+        assert_eq!(notifications.len(), 1);
+
+        let notification = app_state
+            .api
+            .db
+            .get_notification(notifications.remove(0)?)
+            .await?
+            .unwrap();
+
+        let expected_content = serde_json::to_string_pretty(&json!({ "one": 1 })).unwrap();
+        let expected_previous = serde_json::to_string_pretty(&json!({ "one": 0 })).unwrap();
+        let expected_diff = compute_unified_diff(&expected_previous, &expected_content, 3);
+        assert_eq!(
+            notification,
+            Notification {
+                id: notification.id,
+                destination: NotificationDestination::User(mock_user.id),
+                content: NotificationContent::Template(
+                    NotificationContentTemplate::ApiTrackerChanges {
+                        tracker_id: tracker.id,
+                        tracker_name: tracker.name.clone(),
+                        content: Ok(expected_content),
+                        diff: Some(expected_diff),
+                    }
+                ),
+                scheduled_at: notification.scheduled_at
+            }
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_schedule_api_tracker_failure_notification(pool: PgPool) -> anyhow::Result<()> {
+        let retrack_server = MockServer::start();
+        let mut config = mock_config()?;
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let app_state = mock_app_state_with_config(pool, config).await?;
+        let mock_user = mock_user()?;
+        app_state.api.db.insert_user(&mock_user).await?;
+
+        let app_state = web::Data::new(app_state);
+
+        let mut retrack_tracker = mock_retrack_tracker()?;
+        let tracker = MockApiTrackerBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            retrack_tracker.name.clone(),
+            RetrackTracker::from_value(retrack_tracker.clone()),
+        )?
+        .build();
+        retrack_tracker.tags = prepare_tags(&[
+            format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingApi),
+            format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
+            format!("{RETRACK_RESOURCE_NAME_TAG}:{}", tracker.name),
+            format!("{RETRACK_NOTIFICATIONS_TAG}:true"),
+        ]);
+        let retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+        app_state
+            .api
+            .db
+            .web_scraping(mock_user.id)
+            .insert_api_tracker(&tracker)
+            .await?;
+
+        let response = webhooks_retrack(
+            app_state.clone(),
+            Operator::new("operator"),
+            web::Json(WebhookActionPayload {
+                tracker_id: retrack_tracker.id,
+                tracker_name: retrack_tracker.name.clone(),
+                result: WebhookActionPayloadResult::Failure("some error".to_string()),
+            }),
+        )
+        .await?;
+        retrack_get_api_mock.assert_calls(2);
+
+        assert_debug_snapshot!(response, @r###"
+        HttpResponse {
+            error: None,
+            res: 
+            Response HTTP/1.1 200 OK
+              headers:
+              body: Sized(0)
+            ,
+        }
+        "###);
+
+        let mut notifications = app_state
+            .api
+            .db
+            .get_notification_ids(OffsetDateTime::now_utc(), 10)
+            .collect::<Vec<_>>()
+            .await;
+        assert_eq!(notifications.len(), 1);
+
+        let notification = app_state
+            .api
+            .db
+            .get_notification(notifications.remove(0)?)
+            .await?
+            .unwrap();
+        assert_eq!(
+            notification,
+            Notification {
+                id: notification.id,
+                destination: NotificationDestination::User(mock_user.id),
+                content: NotificationContent::Template(
+                    NotificationContentTemplate::ApiTrackerChanges {
                         tracker_id: tracker.id,
                         tracker_name: tracker.name.clone(),
                         content: Err("some error".to_string()),

@@ -120,4 +120,44 @@ test.describe('Script editor full-screen mode', () => {
     await expect(flyout).toBeVisible();
     await expect(inlineEditor).toContainText('page.title', { timeout: 15000 });
   });
+
+  test('API tracker Data extractor can go fullscreen', async ({ page }) => {
+    const extractorScript =
+      '(() => { const r = context.responses ?? []; return { body: Deno.core.encode(JSON.stringify(r)) }; })();';
+    const createResponse = await page.request.post('/api/utils/web_scraping/api', {
+      data: {
+        name: 'FullScreen API Tracker',
+        config: { revisions: 3 },
+        target: { url: 'https://secutils.dev/', extractor: extractorScript },
+      },
+    });
+    expect(createResponse.ok()).toBeTruthy();
+
+    await page.goto('/ws/web_scraping__api');
+    const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'FullScreen API Tracker' }) });
+    await expect(row).toBeVisible({ timeout: 15000 });
+
+    await row.getByRole('button', { name: 'Edit' }).click();
+    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit API tracker' }) });
+    await expect(flyout).toBeVisible();
+
+    // Scroll to the Data extractor section which is below the fold.
+    const dataExtractorLabel = flyout.getByText('Data extractor', { exact: true });
+    await dataExtractorLabel.scrollIntoViewIfNeeded();
+
+    const fullScreenButton = flyout.getByRole('button', { name: 'Enter full screen' });
+    await expect(fullScreenButton).toBeVisible({ timeout: 15000 });
+    await fullScreenButton.click();
+
+    const fullScreenOverlay = page.locator('[data-test-subj="scriptEditorFullScreen"]');
+    await expect(fullScreenOverlay).toBeVisible({ timeout: 15000 });
+    await expect(fullScreenOverlay.locator('.monaco-editor')).toBeVisible({ timeout: 15000 });
+
+    const exitButton = fullScreenOverlay.getByRole('button', { name: 'Exit full screen' });
+    await expect(exitButton).toBeVisible();
+    await exitButton.click();
+
+    await expect(fullScreenOverlay).not.toBeVisible();
+    await expect(flyout).toBeVisible();
+  });
 });

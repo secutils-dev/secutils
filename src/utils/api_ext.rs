@@ -146,6 +146,15 @@ mod tests {
                             ),
                             utils: None,
                         },
+                        Util {
+                            id: 12,
+                            handle: "web_scraping__api",
+                            name: "API trackers",
+                            keywords: Some(
+                                "web scraping api http rest json tracker track endpoint",
+                            ),
+                            utils: None,
+                        },
                     ],
                 ),
             },

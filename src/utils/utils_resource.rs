@@ -9,6 +9,7 @@ pub enum UtilsResource {
     CertificatesPrivateKeys,
     WebhooksResponders,
     WebScrapingPage,
+    WebScrapingApi,
     WebSecurityContentSecurityPolicies,
 }
 
@@ -25,6 +26,7 @@ impl From<&UtilsResource> for (&str, &str) {
             UtilsResource::CertificatesPrivateKeys => ("certificates", "private_keys"),
             UtilsResource::WebhooksResponders => ("webhooks", "responders"),
             UtilsResource::WebScrapingPage => ("web_scraping", "page"),
+            UtilsResource::WebScrapingApi => ("web_scraping", "api"),
             UtilsResource::WebSecurityContentSecurityPolicies => ("web_security", "csp"),
         }
     }
@@ -39,6 +41,7 @@ impl TryFrom<(&str, &str)> for UtilsResource {
             ("certificates", "private_keys") => Ok(UtilsResource::CertificatesPrivateKeys),
             ("webhooks", "responders") => Ok(UtilsResource::WebhooksResponders),
             ("web_scraping", "page") => Ok(UtilsResource::WebScrapingPage),
+            ("web_scraping", "api") => Ok(UtilsResource::WebScrapingApi),
             ("web_security", "csp") => Ok(UtilsResource::WebSecurityContentSecurityPolicies),
             _ => Err(()),
         }
@@ -89,6 +92,10 @@ mod tests {
             Ok(UtilsResource::WebScrapingPage)
         );
         assert_eq!(
+            UtilsResource::try_from(("web_scraping", "api")),
+            Ok(UtilsResource::WebScrapingApi)
+        );
+        assert_eq!(
             UtilsResource::try_from(("web_security", "csp")),
             Ok(UtilsResource::WebSecurityContentSecurityPolicies)
         );
@@ -120,6 +127,10 @@ mod tests {
         assert_eq!(
             ResourceTuple::from(UtilsResource::WebScrapingPage),
             ("web_scraping", "page")
+        );
+        assert_eq!(
+            ResourceTuple::from(UtilsResource::WebScrapingApi),
+            ("web_scraping", "api")
         );
         assert_eq!(
             ResourceTuple::from(UtilsResource::WebSecurityContentSecurityPolicies),

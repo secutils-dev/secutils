@@ -10,6 +10,8 @@ use serde::Deserialize;
 pub struct PageTrackerUpdateParams {
     /// Arbitrary name of the page tracker.
     pub name: Option<String>,
+    /// Whether the tracker is enabled.
+    pub enabled: Option<bool>,
     /// Page tracker configuration.
     pub config: Option<PageTrackerConfig>,
     /// Page tracker configuration.
@@ -40,6 +42,25 @@ mod tests {
             )?,
             PageTrackerUpdateParams {
                 name: Some("tck".to_string()),
+                enabled: None,
+                config: None,
+                target: None,
+                notifications: false,
+                secrets: None,
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<PageTrackerUpdateParams>(
+                r#"
+    {
+        "enabled": false
+    }
+              "#
+            )?,
+            PageTrackerUpdateParams {
+                name: None,
+                enabled: Some(false),
                 config: None,
                 target: None,
                 notifications: false,
@@ -59,6 +80,7 @@ mod tests {
             )?,
             PageTrackerUpdateParams {
                 name: None,
+                enabled: None,
                 config: Some(PageTrackerConfig {
                     revisions: 3,
                     job: None
@@ -91,6 +113,7 @@ mod tests {
             )?,
             PageTrackerUpdateParams {
                 name: None,
+                enabled: None,
                 config: Some(PageTrackerConfig {
                     revisions: 3,
                     job: Some(SchedulerJobConfig {
@@ -125,6 +148,7 @@ mod tests {
                 r#"
     {
         "name": "tck",
+        "enabled": true,
         "config": {
             "revisions": 3,
             "job": {
@@ -147,6 +171,7 @@ mod tests {
             )?,
             PageTrackerUpdateParams {
                 name: Some("tck".to_string()),
+                enabled: Some(true),
                 config: Some(PageTrackerConfig {
                     revisions: 3,
                     job: Some(SchedulerJobConfig {

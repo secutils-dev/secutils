@@ -19,6 +19,7 @@ import { unix } from 'moment';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 
+import type { ApiTracker } from './api_tracker';
 import type { PageTracker } from './page_tracker';
 import { isChartableData } from './revision_views/page_tracker_revision_chart_utils';
 import { PageTrackerRevisionChartView } from './revision_views/page_tracker_revision_chart_view';
@@ -28,8 +29,8 @@ import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, Respon
 import { useWorkspaceContext } from '../../hooks';
 
 export interface TrackerRevisionsProps {
-  tracker: PageTracker;
-  kind: 'page';
+  tracker: ApiTracker | PageTracker;
+  kind: 'page' | 'api';
   children: (
     revision: TrackerDataRevision,
     mode: TrackerRevisionsViewMode,
@@ -132,9 +133,10 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
     isModalVisible: false,
   });
 
+  const trackerLabel = kind === 'api' ? 'API tracker' : 'page tracker';
   const clearConfirmModal = clearHistoryStatus.isModalVisible ? (
     <EuiConfirmModal
-      title={`Clear page tracker history?`}
+      title={`Clear ${trackerLabel} history?`}
       onCancel={() => setClearHistoryStatus({ isModalVisible: false, isInProgress: false })}
       isLoading={clearHistoryStatus.isInProgress}
       onConfirm={() => {
@@ -156,7 +158,7 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
               id: `success-clear-tracker-history-${tracker.name}`,
               iconType: 'check',
               color: 'success',
-              title: `Successfully cleared page tracker history`,
+              title: `Successfully cleared ${trackerLabel} history`,
             });
 
             setClearHistoryStatus({ isModalVisible: false, isInProgress: false });
@@ -175,7 +177,7 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
       confirmButtonText="Clear"
       buttonColor="danger"
     >
-      The history for the page tracker <b>{tracker.name}</b> will be cleared. Are you sure you want to proceed?
+      The history for the {trackerLabel} <b>{tracker.name}</b> will be cleared. Are you sure you want to proceed?
     </EuiConfirmModal>
   ) : null;
 
@@ -185,7 +187,7 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
   } else if (revisions.status === 'failed') {
     history = (
       <PageErrorState
-        title="Cannot load page tracker history"
+        title={`Cannot load ${trackerLabel} history`}
         content={
           <p>
             <strong

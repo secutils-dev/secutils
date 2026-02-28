@@ -25,7 +25,7 @@ impl EmailNotificationContent {
         }
     }
 
-    /// Create new HTML email with a plain-text fallback.
+    /// Create a new HTML email with a plain-text fallback.
     #[allow(dead_code)]
     pub fn html<S: Into<String>, T: Into<String>, H: Into<String>>(
         subject: S,
@@ -40,7 +40,7 @@ impl EmailNotificationContent {
         }
     }
 
-    /// Create new HTML email with a plain-text fallback and attachments.
+    /// Create a new HTML email with a plain-text fallback and attachments.
     pub fn html_with_attachments<S: Into<String>, T: Into<String>, H: Into<String>>(
         subject: S,
         text: T,

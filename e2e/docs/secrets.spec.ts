@@ -21,7 +21,6 @@ test.describe('Secrets guide screenshots', () => {
   });
 
   test('manage user secrets', async ({ page }) => {
-
     // Step 1: Open settings and navigate to Secrets tab — empty state.
     await page.getByRole('button', { name: 'Account menu' }).click();
     const settingsButton = page.getByText('Settings');

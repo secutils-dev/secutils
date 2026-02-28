@@ -106,7 +106,6 @@
     "typescript": "^5.9.3"
   },
   "scripts": {
-    "prebuild": "eslint .",
     "build": "parcel build --no-source-maps",
     "watch": "parcel --port 7171",
     "perf": "parcel build --reporter @parcel/reporter-bundle-buddy",

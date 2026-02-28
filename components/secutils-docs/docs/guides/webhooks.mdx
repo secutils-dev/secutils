@@ -153,7 +153,7 @@ In this guide, you'll build a responder that uses a custom JavaScript script to 
 
 :::info NOTE
 
-The script should be provided in the form of an [Immediately Invoked Function Expression (IIFE)](https://developer.mozilla.org/en-US/docs/Glossary/IIFE). It runs within a restricted version of the [Deno JavaScript runtime](https://deno.com/) for each incoming request, producing an object capable of modifying the default response's status code, headers, or body. Request details are accessible through the global `context` variable. Refer to the [Annex: Responder script examples](/docs/guides/webhooks#annex-responder-script-examples) for a list of script examples, expected return value and properties available in the global `context` variable.
+The script should be provided in the form of an [Immediately Invoked Function Expression (IIFE)](https://developer.mozilla.org/en-US/docs/Glossary/IIFE). It runs within a restricted version of the [Deno JavaScript runtime](https://deno.com/) for each incoming request, producing an object capable of modifying the default response's status code, headers, or body. Request details are accessible through the global `context` variable. Refer to the [Annex: Responder script examples](/docs/guides/webhooks#annex-responder-script-examples) for a list of script examples, expected return value and properties available in the global `context` variable. See [Deno Sandbox Runtime](/docs/guides/platform/deno_runtime) for the full reference of available `Deno.core` APIs.
 
 :::
 
@@ -202,7 +202,7 @@ The script should be provided in the form of an [Immediately Invoked Function Ex
 
 ## Annex: Responder script examples
 
-In this section, you'll discover examples of responder scripts capable of constructing dynamic responses based on incoming request properties. Essentially, each script defines a JavaScript function running within a restricted version of the [Deno JavaScript runtime](https://deno.com/). This function has access to incoming request properties through the global `context` variable. The returned value can override default responder's status code, headers, and body.
+In this section, you'll discover examples of responder scripts capable of constructing dynamic responses based on incoming request properties. Essentially, each script defines a JavaScript function running within a restricted version of the [Deno JavaScript runtime](https://deno.com/). This function has access to incoming request properties through the global `context` variable. The returned value can override default responder's status code, headers, and body. For a complete reference of the `Deno.core` utilities available inside the sandbox (encoding, Base64, type checking, and more), see [Deno Sandbox Runtime](/docs/guides/platform/deno_runtime).
 
 The `context` argument has the following interface:
 

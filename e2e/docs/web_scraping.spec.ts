@@ -3,6 +3,7 @@ import { join } from 'path';
 import { expect, test } from '@playwright/test';
 
 import {
+  dismissAllToasts,
   DOCS_IMG_DIR,
   EMAIL,
   ensureUserAndLogin,
@@ -451,9 +452,7 @@ test.describe('Web scraping guide screenshots', () => {
       await expect(row).toBeVisible({ timeout: 15000 });
 
       await row.getByRole('button', { name: 'Edit' }).click();
-      const flyout = page
-        .getByRole('dialog')
-        .filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
+      const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
       await expect(flyout).toBeVisible();
 
       await flyout.getByText('Body', { exact: true }).scrollIntoViewIfNeeded();
@@ -655,6 +654,304 @@ test.describe('Web scraping guide screenshots', () => {
 
     await page.screenshot({
       path: join(IMG_DIR, 'custom_schedule.png'),
+      clip: { x, y, width: right - x, height: bottom - y },
+    });
+  });
+});
+
+test.describe('API tracker guide screenshots', () => {
+  test.beforeEach(async ({ page, request }) => {
+    await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
+    await fixEntityTimestamps(page, '**/api/utils/web_scraping/api');
+  });
+
+  test('Create an API tracker', async ({ page }) => {
+    const API_URL = 'http://host.docker.internal:7171/api/ui/state';
+
+    // Step 1: Navigate to API trackers and show the empty state.
+    await goto(page, '/ws/web_scraping__api');
+    const trackApiButton = page.getByRole('button', { name: 'Track API' });
+    await expect(trackApiButton).toBeVisible({ timeout: 15000 });
+    await highlightOn(trackApiButton);
+    await page.screenshot({ path: join(IMG_DIR, 'api_create_step1_empty.png') });
+
+    // Step 2: Create the tracker by filling the form.
+    await trackApiButton.click();
+    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add API tracker' }) });
+    await expect(flyout).toBeVisible();
+
+    await flyout.getByLabel('Name').fill('Application State');
+    await flyout.getByLabel('URL').fill(API_URL);
+
+    const saveButton = flyout.getByRole('button', { name: 'Save' });
+    await highlightOn(saveButton);
+    await page.screenshot({ path: join(IMG_DIR, 'api_create_step2_form.png') });
+
+    await saveButton.click();
+    await expect(page.getByText('Successfully saved')).toBeVisible({ timeout: 15000 });
+    await dismissAllToasts(page);
+
+    // Step 3: Show the created tracker in the grid.
+    const trackerRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'Application State' }) });
+    await expect(trackerRow).toBeVisible({ timeout: 15000 });
+    await highlightOn(trackerRow);
+    await page.screenshot({ path: join(IMG_DIR, 'api_create_step3_created.png') });
+    await highlightOff(trackerRow);
+
+    // Verify URL is saved by re-opening the Edit flyout.
+    await trackerRow.getByRole('button', { name: 'Edit' }).click();
+    const editFlyout = page
+      .getByRole('dialog')
+      .filter({ has: page.getByRole('heading', { name: 'Edit API tracker' }) });
+    await expect(editFlyout).toBeVisible();
+    await expect(editFlyout.getByLabel('URL')).toHaveValue(API_URL);
+    await editFlyout.getByRole('button', { name: 'Close' }).click();
+    await expect(editFlyout).not.toBeVisible({ timeout: 10000 });
+
+    // Step 4: Expand history and show the Update button.
+    await trackerRow.getByRole('button', { name: 'Show history' }).click();
+    const updateButton = page.getByRole('button', { name: 'Update', exact: true });
+    await expect(updateButton).toBeVisible({ timeout: 10000 });
+    await highlightOn(updateButton);
+    await page.screenshot({ path: join(IMG_DIR, 'api_create_step4_update.png') });
+
+    // Step 5: Click Update and show the result with a fixed response.
+    const FIXED_RESPONSE = JSON.stringify({ status: 'active', version: '1.0.0', mode: 'standard' }, null, 2);
+    const FIXED_REVISION_TIMESTAMP = 1735689600;
+    await page.route('**/api/utils/web_scraping/api/*/history', async (route) => {
+      const response = await route.fetch();
+      const json = await response.json();
+      if (!Array.isArray(json)) {
+        await route.fulfill({ response, json });
+        return;
+      }
+      for (const rev of json) {
+        rev.createdAt = FIXED_REVISION_TIMESTAMP;
+        if (rev.data) {
+          rev.data.original = FIXED_RESPONSE;
+        }
+      }
+      await route.fulfill({ response, json });
+    });
+
+    await updateButton.click();
+    await expect(page.getByText('"active"')).toBeVisible({ timeout: 60000 });
+    await page.screenshot({ path: join(IMG_DIR, 'api_create_step5_result.png') });
+  });
+
+  test('Create an API tracker with POST request', async ({ page }) => {
+    test.setTimeout(120000);
+
+    const API_URL = 'http://host.docker.internal:7171/api/ui/state';
+
+    // Step 1: Navigate to API trackers and show the empty state.
+    await goto(page, '/ws/web_scraping__api');
+    const trackApiButton = page.getByRole('button', { name: 'Track API' });
+    await expect(trackApiButton).toBeVisible({ timeout: 15000 });
+    await highlightOn(trackApiButton);
+    await page.screenshot({ path: join(IMG_DIR, 'api_post_step1_empty.png') });
+
+    // Step 2: Fill the form with POST request details.
+    await trackApiButton.click();
+    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add API tracker' }) });
+    await expect(flyout).toBeVisible();
+
+    await flyout.getByLabel('Name').fill('State via POST');
+    await flyout.getByLabel('URL').fill(API_URL);
+    await flyout.getByLabel('Method').selectOption('POST');
+
+    // Remove the default header and add Authorization.
+    await flyout.getByRole('button', { name: /Remove Content-Type/ }).click();
+    const headersCombo = flyout.getByRole('combobox', { name: 'Headers' });
+    await headersCombo.fill('Authorization: Bearer my-token');
+    await headersCombo.press('Enter');
+
+    const saveButton = flyout.getByRole('button', { name: 'Save' });
+    await highlightOn(saveButton);
+    await page.screenshot({ path: join(IMG_DIR, 'api_post_step2_form.png') });
+
+    await saveButton.click();
+    await expect(page.getByText('Successfully saved')).toBeVisible({ timeout: 15000 });
+    await dismissAllToasts(page);
+
+    // Step 3: Show the created tracker in the grid.
+    const trackerRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'State via POST' }) });
+    await expect(trackerRow).toBeVisible({ timeout: 15000 });
+    await highlightOn(trackerRow);
+    await page.screenshot({ path: join(IMG_DIR, 'api_post_step3_created.png') });
+
+    // Verify URL and method are saved by re-opening the Edit flyout.
+    await highlightOff(trackerRow);
+    await trackerRow.getByRole('button', { name: 'Edit' }).click();
+    const editFlyout = page
+      .getByRole('dialog')
+      .filter({ has: page.getByRole('heading', { name: 'Edit API tracker' }) });
+    await expect(editFlyout).toBeVisible();
+    await expect(editFlyout.getByLabel('URL')).toHaveValue(API_URL);
+    await expect(editFlyout.getByLabel('Method')).toHaveValue('POST');
+  });
+
+  test('Detect changes with an API tracker', async ({ page }) => {
+    test.setTimeout(120000);
+
+    const API_URL = 'http://host.docker.internal:7171/api/ui/state';
+
+    // Step 1: Navigate to API trackers and show the empty state.
+    await goto(page, '/ws/web_scraping__api');
+    const trackApiButton = page.getByRole('button', { name: 'Track API' });
+    await expect(trackApiButton).toBeVisible({ timeout: 15000 });
+    await highlightOn(trackApiButton);
+    await page.screenshot({ path: join(IMG_DIR, 'api_detect_step1_empty.png') });
+
+    // Step 2: Fill the form with schedule and notifications.
+    await trackApiButton.click();
+    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add API tracker' }) });
+    await expect(flyout).toBeVisible();
+
+    await flyout.getByLabel('Name').fill('Application State Monitor');
+    await flyout.getByLabel('URL').fill(API_URL);
+
+    // Scroll to "Change tracking" and configure schedule + notifications.
+    const changeTrackingHeading = flyout.getByRole('heading', {
+      name: 'Change tracking',
+      level: 3,
+    });
+    await changeTrackingHeading.scrollIntoViewIfNeeded();
+
+    const changeTrackingGroup = flyout
+      .locator('.euiDescribedFormGroup')
+      .filter({ has: page.locator('h3', { hasText: 'Change tracking' }) });
+    const frequencySelect = changeTrackingGroup.locator('select');
+    await frequencySelect.selectOption('@hourly');
+
+    const notificationSwitch = flyout.getByLabel('Notification on change');
+    await notificationSwitch.check();
+
+    const saveButton = flyout.getByRole('button', { name: 'Save' });
+    await highlightOn(saveButton);
+    await page.screenshot({ path: join(IMG_DIR, 'api_detect_step2_form.png') });
+
+    await saveButton.click();
+    await expect(page.getByText('Successfully saved')).toBeVisible({ timeout: 15000 });
+    await dismissAllToasts(page);
+
+    // Step 3: Show the tracker in the grid.
+    const trackerRow = page
+      .getByRole('row')
+      .filter({ has: page.getByRole('cell', { name: 'Application State Monitor' }) });
+    await expect(trackerRow).toBeVisible({ timeout: 15000 });
+
+    // Verify URL is saved by re-opening the Edit flyout.
+    await trackerRow.getByRole('button', { name: 'Edit' }).click();
+    const editFlyout = page
+      .getByRole('dialog')
+      .filter({ has: page.getByRole('heading', { name: 'Edit API tracker' }) });
+    await expect(editFlyout).toBeVisible();
+    await expect(editFlyout.getByLabel('URL')).toHaveValue(API_URL);
+    await editFlyout.getByRole('button', { name: 'Close' }).click();
+    await expect(editFlyout).not.toBeVisible({ timeout: 10000 });
+
+    await highlightOn(trackerRow);
+    await page.screenshot({ path: join(IMG_DIR, 'api_detect_step3_created.png') });
+  });
+
+  test('Custom cron schedule for API tracker', async ({ page }) => {
+    test.setTimeout(120000);
+
+    // Mock the schedule parse API to return fixed upcoming check dates.
+    await page.route('**/api/scheduler/parse_schedule', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          minInterval: 31536000,
+          nextOccurrences: [
+            1759936260, // Wed, 08 Oct 2025 15:11:00 GMT
+            1791472260, // Thu, 08 Oct 2026 15:11:00 GMT
+            1823008260, // Fri, 08 Oct 2027 15:11:00 GMT
+            1854630660, // Sun, 08 Oct 2028 15:11:00 GMT
+            1886166660, // Mon, 08 Oct 2029 15:11:00 GMT
+          ],
+        }),
+      });
+    });
+
+    // Step 1: Navigate to API trackers and create a tracker with a custom schedule via form.
+    await goto(page, '/ws/web_scraping__api');
+    const trackApiButton = page.getByRole('button', { name: 'Track API' });
+    await expect(trackApiButton).toBeVisible({ timeout: 15000 });
+
+    await trackApiButton.click();
+    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add API tracker' }) });
+    await expect(flyout).toBeVisible();
+
+    const API_URL = 'http://host.docker.internal:7171/api/ui/state';
+    await flyout.getByLabel('Name').fill('Custom Schedule API');
+    await flyout.getByLabel('URL').fill(API_URL);
+
+    // Scroll to "Change tracking" and configure a custom cron schedule.
+    const changeTrackingHeading = flyout.getByRole('heading', { name: 'Change tracking', level: 3 });
+    await changeTrackingHeading.scrollIntoViewIfNeeded();
+
+    const changeTrackingGroup = flyout
+      .locator('.euiDescribedFormGroup')
+      .filter({ has: page.locator('h3', { hasText: 'Change tracking' }) });
+    const frequencySelect = changeTrackingGroup.locator('select');
+    await frequencySelect.selectOption('@@');
+
+    const cronInput = flyout.getByPlaceholder('Cron expression');
+    await cronInput.fill('0 11 15 8 10 ?');
+
+    // Enable notifications.
+    const notificationSwitch = flyout.getByLabel('Notification on change');
+    await notificationSwitch.check();
+
+    const saveButton = flyout.getByRole('button', { name: 'Save' });
+    await saveButton.click();
+    await expect(page.getByText('Successfully saved')).toBeVisible({ timeout: 15000 });
+    await dismissAllToasts(page);
+
+    // Step 2: Reopen the Edit flyout to verify schedule and show the tooltip.
+    const trackerRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'Custom Schedule API' }) });
+    await expect(trackerRow).toBeVisible({ timeout: 15000 });
+
+    await trackerRow.getByRole('button', { name: 'Edit' }).click();
+    const editFlyout = page
+      .getByRole('dialog')
+      .filter({ has: page.getByRole('heading', { name: 'Edit API tracker' }) });
+    await expect(editFlyout).toBeVisible();
+
+    // Verify URL persisted.
+    await expect(editFlyout.getByLabel('URL')).toHaveValue(API_URL);
+
+    // Wait for the calendar icon to appear (schedule parse succeeded).
+    const calendarButton = editFlyout.getByLabel('Show next occurrences');
+    await expect(calendarButton).toBeVisible({ timeout: 15000 });
+
+    // Scroll so the "Change tracking" section is visible.
+    const editChangeTracking = editFlyout.getByRole('heading', { name: 'Change tracking', level: 3 });
+    await editChangeTracking.scrollIntoViewIfNeeded();
+
+    // Hover the calendar button to show the "Upcoming checks" tooltip.
+    await calendarButton.hover();
+    const tooltip = page.getByRole('tooltip');
+    await expect(tooltip).toBeVisible({ timeout: 5000 });
+    await highlightOn(tooltip);
+
+    // Clip the screenshot to the "Change tracking" section plus the tooltip.
+    const section = editFlyout
+      .locator('.euiDescribedFormGroup')
+      .filter({ has: page.locator('h3', { hasText: 'Change tracking' }) });
+    const sectionBox = (await section.boundingBox())!;
+    const tooltipBox = (await tooltip.boundingBox())!;
+    const PAD = 10;
+    const x = Math.min(sectionBox.x, tooltipBox.x) - PAD;
+    const y = Math.min(sectionBox.y, tooltipBox.y) - PAD;
+    const right = Math.max(sectionBox.x + sectionBox.width, tooltipBox.x + tooltipBox.width) + PAD;
+    const bottom = Math.max(sectionBox.y + sectionBox.height, tooltipBox.y + tooltipBox.height) + PAD;
+
+    await page.screenshot({
+      path: join(IMG_DIR, 'api_custom_schedule.png'),
       clip: { x, y, width: right - x, height: bottom - y },
     });
   });

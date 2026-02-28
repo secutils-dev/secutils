@@ -140,6 +140,8 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
 
     async fn cleanup_tracker_secrets(&self, name: &str) -> anyhow::Result<()> {
         let web_scraping_db = self.api.db.web_scraping(self.user.id);
+
+        // Clean up page tracker secrets (local DB column).
         let trackers = web_scraping_db.get_page_trackers().await?;
         for mut tracker in trackers {
             if let SecretsAccess::Selected { ref secrets } = tracker.secrets
@@ -149,6 +151,18 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
                 web_scraping_db.update_page_tracker(&tracker).await?;
             }
         }
+
+        // Clean up API tracker secrets (local DB column).
+        let api_trackers = web_scraping_db.get_api_trackers().await?;
+        for mut tracker in api_trackers {
+            if let SecretsAccess::Selected { ref secrets } = tracker.secrets
+                && secrets.contains(&name.to_string())
+            {
+                tracker.secrets = tracker.secrets.without_secret(name);
+                web_scraping_db.update_api_tracker(&tracker).await?;
+            }
+        }
+
         Ok(())
     }
 

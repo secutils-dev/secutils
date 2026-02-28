@@ -4598,6 +4598,7 @@ dependencies = [
  "handlebars",
  "hex",
  "html5ever",
+ "http 1.4.0",
  "httpmock",
  "humantime",
  "insta",

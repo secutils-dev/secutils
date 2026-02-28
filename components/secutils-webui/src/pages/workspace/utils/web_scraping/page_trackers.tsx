@@ -12,6 +12,7 @@ import {
   EuiScreenReaderOnly,
   EuiSpacer,
   EuiToolTip,
+  useEuiTheme,
 } from '@elastic/eui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -37,6 +38,7 @@ import { useWorkspaceContext } from '../../hooks';
 
 export default function PageTrackers() {
   const { uiState, setTitleActions } = useWorkspaceContext();
+  const theme = useEuiTheme();
 
   const [trackers, setTrackers] = useState<AsyncData<PageTracker[]>>({ status: 'pending' });
 
@@ -274,7 +276,12 @@ export default function PageTrackers() {
               width: '160px',
               mobileOptions: { width: 'unset' },
               sortable: (tracker) => tracker.updatedAt,
-              render: (_, tracker: PageTracker) => <TimestampTableCell timestamp={tracker.updatedAt} />,
+              render: (_, tracker: PageTracker) => (
+                <TimestampTableCell
+                  timestamp={tracker.updatedAt}
+                  color={tracker.retrack.enabled === false ? theme.euiTheme.colors.textDisabled : undefined}
+                />
+              ),
             },
             // Just a padding column to increase the height of the table row in responsive mode.
             {

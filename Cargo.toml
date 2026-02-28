@@ -34,6 +34,7 @@ futures = "0.3.31"
 handlebars = "6.4.0"
 hex = "0.4.3"
 html5ever = "0.38.0"
+http = "1.4.0"
 humantime = "2.3.0"
 itertools = "0.14.0"
 jsonwebtoken = {version = "10.3.0", default-features = false }

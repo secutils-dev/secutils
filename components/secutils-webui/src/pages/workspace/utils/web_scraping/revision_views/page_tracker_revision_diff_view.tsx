@@ -7,13 +7,10 @@ import {
   useEuiTheme,
   useIsWithinMaxBreakpoint,
 } from '@elastic/eui';
-import { DiffEditor, loader } from '@monaco-editor/react';
-import * as monaco from 'monaco-editor';
+import { DiffEditor } from '@monaco-editor/react';
 import { useMemo, useState } from 'react';
 
 import { createTheme } from '../../../components/script_editor';
-
-loader.config({ monaco });
 
 export interface PageTrackerRevisionDiffViewProps {
   originalContent: string;

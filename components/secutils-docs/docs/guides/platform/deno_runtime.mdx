@@ -1,0 +1,236 @@
+---
+sidebar_position: 2
+sidebar_label: Deno Runtime
+title: Deno Sandbox Runtime
+description: Reference for the Deno Core APIs available in responder and tracker scripts.
+---
+
+import CodeBlock from '@theme/CodeBlock';
+
+# Deno Sandbox Runtime
+
+Webhook [responder scripts](/docs/guides/webhooks#annex-responder-script-examples) and API tracker [extractor](/docs/guides/web_scraping/api#annex-extractor-script) / [configurator](/docs/guides/web_scraping/api#annex-configurator-script) scripts run inside a **restricted [Deno](https://deno.com/) runtime**. The sandbox intentionally limits what code can do:
+
+- **No network access** — `fetch`, `XMLHttpRequest`, and all other network APIs are unavailable.
+- **No file-system access** — reading or writing files is not possible.
+- **No `btoa` / `atob`** — the standard Base64 globals are not exposed (see [Base64 encoding](#base64-encoding) below for a workaround).
+
+What **is** available:
+
+- All standard JavaScript built-ins (`JSON`, `Math`, `Date`, `Map`, `Set`, `Array`, `TextEncoder`, `TextDecoder`, `Promise`, etc.).
+- The `Deno.core` utility namespace documented on this page.
+- The global `context` variable injected by Secutils.dev with request/response data (see the individual guide pages for its shape).
+
+:::tip Full API list
+The complete list of `Deno.core` members exposed in the sandbox is published at
+[**demo.webhooks.dev.secutils.dev/deno-apis**](https://demo.webhooks.dev.secutils.dev/deno-apis).
+This page covers only the subset that is most useful when writing scripts.
+:::
+
+## Encoding and decoding
+
+These are the most commonly used APIs. Every script that builds or reads a binary body will use at least `encode` and `decode`.
+
+### `Deno.core.encode(text)`
+
+Encodes a JavaScript string into a `Uint8Array` using **UTF-8**:
+
+```javascript
+const bytes = Deno.core.encode('Hello, world!');
+// Uint8Array(13) [72, 101, 108, 108, 111, 44, 32, 119, 111, 114, 108, 100, 33]
+```
+
+Use it whenever a script needs to return a binary body:
+
+```javascript
+(() => {
+  return {
+    body: Deno.core.encode(
+      JSON.stringify({ status: 'ok' })
+    )
+  };
+})();
+```
+
+### `Deno.core.decode(buffer)`
+
+Decodes a `Uint8Array` back into a JavaScript string using **UTF-8**:
+
+```javascript
+const text = Deno.core.decode(new Uint8Array([72, 101, 108, 108, 111]));
+// 'Hello'
+```
+
+Typical use — parsing an incoming JSON body in a responder or extractor:
+
+```javascript
+const body = context.body.length > 0
+  ? JSON.parse(Deno.core.decode(new Uint8Array(context.body)))
+  : {};
+```
+
+### `Deno.core.encodeBinaryString(buffer)`
+
+Converts a `Uint8Array` into a **binary string** where each byte maps to a single Latin-1 character. This is the same encoding that `String.fromCharCode` would produce byte-by-byte, but much faster for large buffers:
+
+```javascript
+const bin = Deno.core.encodeBinaryString(
+  new Uint8Array([0x48, 0x65, 0x6c, 0x6c, 0x6f])
+);
+// 'Hello'
+```
+
+This function is particularly useful as a building block for [Base64 encoding](#base64-encoding).
+
+## Base64 encoding
+
+The sandbox does not expose the standard `btoa` and `atob` globals. You can implement Base64 encoding and decoding with pure JavaScript and the APIs above.
+
+### Encode (btoa replacement)
+
+```javascript
+function toBase64(input) {
+  const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const bytes = typeof input === 'string'
+    ? Deno.core.encode(input)
+    : input;
+  let result = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i];
+    const b = i + 1 < bytes.length ? bytes[i + 1] : 0;
+    const c = i + 2 < bytes.length ? bytes[i + 2] : 0;
+    result += CHARS[a >> 2]
+           + CHARS[((a & 3) << 4) | (b >> 4)]
+           + (i + 1 < bytes.length ? CHARS[((b & 15) << 2) | (c >> 6)] : '=')
+           + (i + 2 < bytes.length ? CHARS[c & 63] : '=');
+  }
+  return result;
+}
+```
+
+### Decode (atob replacement)
+
+```javascript
+function fromBase64(base64) {
+  const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const stripped = base64.replace(/=+$/, '');
+  const bytes = [];
+  for (let i = 0; i < stripped.length; i += 4) {
+    const a = CHARS.indexOf(stripped[i]);
+    const b = CHARS.indexOf(stripped[i + 1]);
+    const c = CHARS.indexOf(stripped[i + 2]);
+    const d = CHARS.indexOf(stripped[i + 3]);
+    bytes.push((a << 2) | (b >> 4));
+    if (c >= 0) bytes.push(((b & 15) << 4) | (c >> 2));
+    if (d >= 0) bytes.push(((c & 3) << 6) | d);
+  }
+  return new Uint8Array(bytes);
+}
+```
+
+### Example: return a Base64-encoded value
+
+```javascript
+(() => {
+  const payload = JSON.stringify({ user: 'alice', role: 'admin' });
+  const encoded = toBase64(payload);
+  return {
+    body: Deno.core.encode(encoded)
+  };
+})();
+```
+
+## String utilities
+
+### `Deno.core.byteLength(str)`
+
+Returns the **UTF-8 byte length** of a string without allocating a `Uint8Array`. This is handy when you need to set a `Content-Length` header:
+
+```javascript
+(() => {
+  const body = JSON.stringify({ status: 'ok' });
+  return {
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': String(Deno.core.byteLength(body)),
+    },
+    body: Deno.core.encode(body),
+  };
+})();
+```
+
+## Debugging
+
+### `Deno.core.print(msg, isErr)`
+
+Prints a string to the runtime's output stream. Pass `true` as the second argument to write to stderr instead of stdout:
+
+```javascript
+Deno.core.print('Debug: processing request\n', false);
+Deno.core.print('Warning: missing field\n', true);
+```
+
+:::caution
+Output from `Deno.core.print` is written to the server log, not returned to the HTTP client. Use it only for temporary debugging.
+:::
+
+## Deep copy
+
+### `Deno.core.structuredClone(value)`
+
+Creates a deep copy of a value using the [structured clone algorithm](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm), the same mechanism behind the global `structuredClone` in modern runtimes:
+
+```javascript
+const original = { nested: { count: 1 }, items: [1, 2, 3] };
+const copy = Deno.core.structuredClone(original);
+copy.nested.count = 99;
+// original.nested.count is still 1
+```
+
+## Type checking
+
+`Deno.core` exposes a set of `is*` predicates that mirror Node.js's [`util.types`](https://nodejs.org/api/util.html#utiltypes). They are useful when your script handles input whose shape is not known in advance.
+
+| Predicate | Returns `true` for |
+|---|---|
+| `Deno.core.isDate(v)` | `Date` instances |
+| `Deno.core.isRegExp(v)` | `RegExp` instances |
+| `Deno.core.isMap(v)` | `Map` instances |
+| `Deno.core.isSet(v)` | `Set` instances |
+| `Deno.core.isTypedArray(v)` | Any typed array (`Uint8Array`, `Float64Array`, etc.) |
+| `Deno.core.isArrayBuffer(v)` | `ArrayBuffer` instances |
+| `Deno.core.isArrayBufferView(v)` | Any `ArrayBuffer` view (typed arrays and `DataView`) |
+| `Deno.core.isPromise(v)` | `Promise` instances |
+| `Deno.core.isNativeError(v)` | Native `Error` instances (including subtypes) |
+
+```javascript
+if (Deno.core.isTypedArray(context.body)) {
+  Deno.core.print('Body is already a typed array\n', false);
+}
+```
+
+## Serialization (advanced) {#serialization}
+
+For advanced use cases that need compact binary encoding beyond JSON, `Deno.core` exposes V8's built-in serialization format:
+
+### `Deno.core.serialize(value)`
+
+Serializes a JavaScript value into a `Uint8Array` using V8's internal format. This preserves types that `JSON.stringify` cannot, such as `Map`, `Set`, `Date`, `RegExp`, `ArrayBuffer`, and typed arrays:
+
+```javascript
+const data = { created: new Date(), tags: new Set(['a', 'b']) };
+const packed = Deno.core.serialize(data);
+```
+
+### `Deno.core.deserialize(buffer)`
+
+Restores the value from a buffer previously produced by `Deno.core.serialize`:
+
+```javascript
+const restored = Deno.core.deserialize(packed);
+// restored.created is a Date, restored.tags is a Set
+```
+
+:::warning
+The serialization format is specific to V8 and is **not** portable across engines or language runtimes. Prefer JSON for data that will be consumed outside of the Deno sandbox.
+:::

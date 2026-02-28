@@ -237,9 +237,7 @@ test.describe('Unsaved changes confirmation', () => {
       await expect(row).toBeVisible({ timeout: 15000 });
 
       await row.getByRole('button', { name: 'Edit' }).click();
-      const flyout = page
-        .getByRole('dialog')
-        .filter({ has: page.getByRole('heading', { name: 'Edit private key' }) });
+      const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit private key' }) });
       await expect(flyout).toBeVisible();
 
       await flyout.getByRole('button', { name: 'Close' }).click();
@@ -257,9 +255,7 @@ test.describe('Unsaved changes confirmation', () => {
       await expect(row).toBeVisible({ timeout: 15000 });
 
       await row.getByRole('button', { name: 'Edit' }).click();
-      const flyout = page
-        .getByRole('dialog')
-        .filter({ has: page.getByRole('heading', { name: 'Edit private key' }) });
+      const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit private key' }) });
       await expect(flyout).toBeVisible();
 
       const nameInput = flyout.getByLabel('Name');
@@ -292,9 +288,7 @@ test.describe('Unsaved changes confirmation', () => {
       await expect(duplicateButton).toBeVisible();
       await duplicateButton.click();
 
-      const flyout = page
-        .getByRole('dialog')
-        .filter({ has: page.getByRole('heading', { name: 'Add private key' }) });
+      const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add private key' }) });
       await expect(flyout).toBeVisible();
 
       // Verify the duplicate flyout is pre-filled with the copy name.
@@ -537,9 +531,7 @@ test.describe('Unsaved changes confirmation', () => {
       await expect(row).toBeVisible({ timeout: 15000 });
 
       await row.getByRole('button', { name: 'Edit' }).click();
-      const flyout = page
-        .getByRole('dialog')
-        .filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
+      const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
       await expect(flyout).toBeVisible();
 
       await flyout.getByRole('button', { name: 'Close' }).click();
@@ -567,9 +559,7 @@ test.describe('Unsaved changes confirmation', () => {
       await expect(row).toBeVisible({ timeout: 15000 });
 
       await row.getByRole('button', { name: 'Edit' }).click();
-      const flyout = page
-        .getByRole('dialog')
-        .filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
+      const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
       await expect(flyout).toBeVisible();
 
       const nameInput = flyout.getByLabel('Name');
@@ -613,9 +603,7 @@ test.describe('Unsaved changes confirmation', () => {
       await duplicateButton.click();
 
       // Responder uses `responder ?` check so duplicate (object exists) shows "Edit responder".
-      const flyout = page
-        .getByRole('dialog')
-        .filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
+      const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
       await expect(flyout).toBeVisible();
 
       // Verify the duplicate flyout is pre-filled with the copy name.
@@ -753,6 +741,71 @@ test.describe('Unsaved changes confirmation', () => {
 
       // Verify the duplicate flyout is pre-filled with the copy name.
       await expect(flyout.getByLabel('Name')).toHaveValue('existing-tracker (Copy 1)');
+
+      await flyout.getByRole('button', { name: 'Close' }).click();
+
+      const confirmModal = page.getByRole('alertdialog').filter({
+        has: page.getByRole('heading', { name: 'Discard unsaved changes?' }),
+      });
+      await expect(confirmModal).toBeVisible({ timeout: 10000 });
+
+      await confirmModal.getByRole('button', { name: 'Discard' }).click();
+      await expect(flyout).not.toBeVisible({ timeout: 10000 });
+    });
+  });
+
+  test.describe('API tracker flyout', () => {
+    test('create - closes without confirmation when no changes were made', async ({ page }) => {
+      await page.goto('/ws/web_scraping__api');
+      const createButton = page.getByRole('button', { name: 'Track API' });
+      await expect(createButton).toBeVisible({ timeout: 15000 });
+
+      await createButton.click();
+      const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add API tracker' }) });
+      await expect(flyout).toBeVisible();
+
+      await flyout.getByRole('button', { name: 'Close' }).click();
+      await expect(flyout).not.toBeVisible({ timeout: 10000 });
+    });
+
+    test('create - shows confirmation when closing with unsaved changes', async ({ page }) => {
+      await page.goto('/ws/web_scraping__api');
+      const createButton = page.getByRole('button', { name: 'Track API' });
+      await expect(createButton).toBeVisible({ timeout: 15000 });
+
+      await createButton.click();
+      const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add API tracker' }) });
+      await expect(flyout).toBeVisible();
+
+      const nameInput = flyout.getByLabel('Name');
+      await nameInput.fill('test-tracker');
+      await expect(nameInput).toHaveValue('test-tracker');
+
+      await flyout.getByRole('button', { name: 'Close' }).click();
+
+      const confirmModal = page.getByRole('alertdialog').filter({
+        has: page.getByRole('heading', { name: 'Discard unsaved changes?' }),
+      });
+      await expect(confirmModal).toBeVisible({ timeout: 10000 });
+
+      await confirmModal.getByRole('button', { name: 'Keep editing' }).click();
+      await expect(confirmModal).not.toBeVisible();
+      await expect(flyout).toBeVisible();
+      await expect(flyout.getByLabel('Name')).toHaveValue('test-tracker');
+    });
+
+    test('create - discards changes when confirming the discard dialog', async ({ page }) => {
+      await page.goto('/ws/web_scraping__api');
+      const createButton = page.getByRole('button', { name: 'Track API' });
+      await expect(createButton).toBeVisible({ timeout: 15000 });
+
+      await createButton.click();
+      const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add API tracker' }) });
+      await expect(flyout).toBeVisible();
+
+      const nameInput = flyout.getByLabel('Name');
+      await nameInput.fill('test-tracker');
+      await expect(nameInput).toHaveValue('test-tracker');
 
       await flyout.getByRole('button', { name: 'Close' }).click();
 

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>"{{tracker_name}}" API tracker detected changes</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {{> email_styles}}
+  <style>
+    .diff-block {
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 13px;
+        line-height: 1.4;
+        border: 1px solid #d0d7de;
+        border-radius: 6px;
+        overflow: auto;
+        margin-bottom: 20px;
+    }
+    .diff-block div {
+        padding: 1px 10px;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+    .diff-add {
+        background-color: #e6ffec;
+        color: #1a7f37;
+    }
+    .diff-del {
+        background-color: #ffebe9;
+        color: #cf222e;
+    }
+    .diff-hunk {
+        background-color: #ddf4ff;
+        color: #0969da;
+        font-style: italic;
+    }
+    .diff-ctx {
+        background-color: #ffffff;
+        color: #1f2328;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>"{{tracker_name}}" API tracker detected changes</h1>
+  {{#if diff_html}}
+  <p>Here's what changed:</p>
+  {{{diff_html}}}
+  {{else}}
+  <p>Current content: {{content}}</p>
+  {{/if}}
+  <p>To learn more, visit the <b>API trackers</b> page:</p>
+  <a class="navigate-link" href="{{back_link}}">Web Scraping → API trackers</a>
+  <p>If the button above doesn't work, you can navigate to the following URL directly: </p>
+  <p>{{back_link}}</p>
+  <a href="{{home_link}}"><img src="cid:secutils-logo" alt="Secutils.dev logo" width="89" height="14" /></a>
+</div>
+</body>
+</html>
