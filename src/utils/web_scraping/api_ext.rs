@@ -1,4 +1,5 @@
 mod api_tracker_create_params;
+mod api_tracker_debug_params;
 mod api_tracker_test_params;
 mod api_tracker_update_params;
 mod page_tracker_create_params;
@@ -7,6 +8,7 @@ mod page_tracker_update_params;
 
 pub use self::{
     api_tracker_create_params::ApiTrackerCreateParams,
+    api_tracker_debug_params::ApiTrackerDebugParams,
     api_tracker_test_params::{ApiTrackerTestParams, ApiTrackerTestResult},
     api_tracker_update_params::ApiTrackerUpdateParams,
     page_tracker_create_params::PageTrackerCreateParams,
@@ -40,8 +42,9 @@ use croner::Cron;
 use http::Method;
 use retrack_types::trackers::{
     ApiTarget, PageTarget, TargetRequest, TrackerConfig, TrackerCreateParams, TrackerDataRevision,
-    TrackerTarget, TrackerUpdateParams,
+    TrackerDebugParams, TrackerTarget, TrackerUpdateParams,
 };
+use serde_json::Value as JsonValue;
 use std::{collections::HashSet, time::Duration};
 use time::OffsetDateTime;
 use tracing::error;
@@ -1176,6 +1179,46 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         })
     }
 
+    /// Runs the full Retrack debug pipeline (configurator, request(s), extractor)
+    /// without persisting anything, and returns the raw debug result.
+    pub async fn debug_api_tracker(
+        &self,
+        params: ApiTrackerDebugParams,
+    ) -> anyhow::Result<JsonValue> {
+        self.validate_api_tracker_target(&params.target)?;
+
+        let api_params = if !params.secrets.is_none() {
+            let secrets = self
+                .api
+                .secrets(self.user)
+                .get_decrypted_secrets(&params.secrets)
+                .await
+                .unwrap_or_default();
+            if secrets.is_empty() {
+                None
+            } else {
+                Some(serde_json::json!({ "secrets": secrets }))
+            }
+        } else {
+            None
+        };
+
+        let api_target = Self::build_api_target_from_params(&params.target, api_params);
+        let debug_params = TrackerDebugParams {
+            target: TrackerTarget::Api(api_target),
+            config: TrackerConfig::default(),
+            tags: vec![],
+            actions: vec![],
+            previous_content: None,
+        };
+
+        let mut result = self.api.retrack().debug_tracker(&debug_params).await?;
+        if let Some(obj) = result.as_object_mut() {
+            obj.remove("actions");
+        }
+        Ok(result)
+    }
+
     fn validate_api_tracker_name(&self, name: &str) -> anyhow::Result<()> {
         if name.is_empty() {
             bail!(SecutilsError::client("API tracker name cannot be empty."));
@@ -1417,9 +1460,10 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ApiTrackerCreateParams, ApiTrackerTestParams, ApiTrackerUpdateParams,
-        PageTrackerGetHistoryParams, PageTrackerUpdateParams, RETRACK_NOTIFICATIONS_TAG,
-        RETRACK_RESOURCE_ID_TAG, RETRACK_RESOURCE_NAME_TAG, RETRACK_RESOURCE_TAG, RETRACK_USER_TAG,
+        ApiTrackerCreateParams, ApiTrackerDebugParams, ApiTrackerTestParams,
+        ApiTrackerUpdateParams, PageTrackerGetHistoryParams, PageTrackerUpdateParams,
+        RETRACK_NOTIFICATIONS_TAG, RETRACK_RESOURCE_ID_TAG, RETRACK_RESOURCE_NAME_TAG,
+        RETRACK_RESOURCE_TAG, RETRACK_USER_TAG,
     };
     use crate::{
         error::Error as SecutilsError,
@@ -1429,6 +1473,7 @@ mod tests {
             tests::{RetrackTrackerValue, mock_retrack_tracker},
         },
         tests::{mock_api, mock_api_with_config, mock_config, mock_user},
+        users::SecretsAccess,
         utils::{
             UtilsResource,
             web_scraping::{
@@ -5031,6 +5076,206 @@ mod tests {
                     configurator: None,
                     extractor: None,
                 },
+            })
+            .await;
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("http or https"),
+            "Expected URL scheme error, got: {err_msg}"
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn properly_debugs_api_tracker(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let debug_response = serde_json::json!({
+            "durationMs": 42,
+            "result": { "data": "value" },
+            "target": {
+                "type": "api",
+                "requests": [{
+                    "index": 0,
+                    "source": "target",
+                    "url": "https://api.example.com/data",
+                    "method": "GET",
+                    "statusCode": 200,
+                    "durationMs": 35
+                }]
+            }
+        });
+        let retrack_debug_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/trackers/_debug");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(debug_response.clone());
+        });
+
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let web_scraping = api.web_scraping(&mock_user);
+        let result = web_scraping
+            .debug_api_tracker(ApiTrackerDebugParams {
+                target: ApiTrackerTarget {
+                    url: "https://api.example.com/data".parse().unwrap(),
+                    method: None,
+                    headers: None,
+                    body: None,
+                    media_type: None,
+                    accept_statuses: None,
+                    accept_invalid_certificates: false,
+                    configurator: None,
+                    extractor: None,
+                },
+                secrets: SecretsAccess::None,
+            })
+            .await?;
+
+        assert_eq!(result, debug_response);
+        retrack_debug_mock.assert();
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn properly_debugs_api_tracker_with_scripts(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let debug_response = serde_json::json!({
+            "durationMs": 100,
+            "result": [1, 2, 3],
+            "target": {
+                "type": "api",
+                "configurator": { "durationMs": 5, "result": { "requests": [] } },
+                "requests": [{
+                    "index": 0,
+                    "source": "configurator",
+                    "url": "https://api.example.com/data",
+                    "method": "POST",
+                    "statusCode": 200,
+                    "durationMs": 50
+                }],
+                "extractor": { "durationMs": 10, "result": [1, 2, 3] }
+            }
+        });
+        let retrack_debug_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/trackers/_debug");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(debug_response.clone());
+        });
+
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let web_scraping = api.web_scraping(&mock_user);
+        let result = web_scraping
+            .debug_api_tracker(ApiTrackerDebugParams {
+                target: ApiTrackerTarget {
+                    url: "https://api.example.com/data".parse().unwrap(),
+                    method: Some("POST".to_string()),
+                    headers: None,
+                    body: None,
+                    media_type: None,
+                    accept_statuses: None,
+                    accept_invalid_certificates: false,
+                    configurator: Some("(() => context)()".to_string()),
+                    extractor: Some("(() => context.body)()".to_string()),
+                },
+                secrets: SecretsAccess::None,
+            })
+            .await?;
+
+        assert_eq!(result, debug_response);
+        retrack_debug_mock.assert();
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn debug_api_tracker_forwards_retrack_client_errors(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let retrack_debug_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/trackers/_debug");
+            then.status(400)
+                .header("Content-Type", "text/plain")
+                .body("Invalid target URL");
+        });
+
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let web_scraping = api.web_scraping(&mock_user);
+        let result = web_scraping
+            .debug_api_tracker(ApiTrackerDebugParams {
+                target: ApiTrackerTarget {
+                    url: "https://api.example.com/data".parse().unwrap(),
+                    method: None,
+                    headers: None,
+                    body: None,
+                    media_type: None,
+                    accept_statuses: None,
+                    accept_invalid_certificates: false,
+                    configurator: None,
+                    extractor: None,
+                },
+                secrets: SecretsAccess::None,
+            })
+            .await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.downcast_ref::<SecutilsError>().is_some());
+        assert!(err.to_string().contains("Invalid target URL"));
+        retrack_debug_mock.assert();
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn debug_api_tracker_rejects_invalid_url(pool: PgPool) -> anyhow::Result<()> {
+        let config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let web_scraping = api.web_scraping(&mock_user);
+        let result = web_scraping
+            .debug_api_tracker(ApiTrackerDebugParams {
+                target: ApiTrackerTarget {
+                    url: "ftp://not-http.example.com".parse().unwrap(),
+                    method: None,
+                    headers: None,
+                    body: None,
+                    media_type: None,
+                    accept_statuses: None,
+                    accept_invalid_certificates: false,
+                    configurator: None,
+                    extractor: None,
+                },
+                secrets: SecretsAccess::None,
             })
             .await;
 

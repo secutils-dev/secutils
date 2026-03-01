@@ -282,7 +282,7 @@ export default function ApiTrackers() {
                   color={tracker.retrack.enabled === false ? disabledColor : undefined}
                   title={tracker.retrack.target?.url}
                 >
-                  {tracker.retrack.target?.url ?? '—'}
+                  {tracker.retrack.target?.url ?? '-'}
                 </EuiText>
               ),
             },

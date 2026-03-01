@@ -90,6 +90,62 @@ In this guide, you'll create an API tracker that sends a POST request with a JSO
     },
 ]} />
 
+## Debug an API tracker
+
+Before saving a tracker you can use the built-in **Debug** mode to run the full pipeline and inspect every stage - from request configuration to response extraction. This is useful for verifying that your configurator and extractor scripts work correctly, that the right headers are sent, and that the response is what you expect.
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/web_scraping/api_debug_step1_configurator_result.png',
+        caption: <>Open the tracker form, fill in the <b>URL</b>, and click the <b>Debug</b> button in the footer. The debug modal shows the pipeline stages as horizontal steps. Click the <b>Configurator</b> step to see the <b>Result</b> tab - the requests or responses produced by the configurator script.</>,
+        alt: 'Debug modal showing the Configurator step with the Result tab selected.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/api_debug_step2_configurator_params.png',
+        caption: <>Switch to the <b>Params</b> tab to inspect the parameters passed to the configurator script, including any decrypted secrets.</>,
+        alt: 'Debug modal showing the Configurator step with the Params tab selected.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/api_debug_step3_request_response_body.png',
+        caption: <>Click the <b>Request</b> step. The <b>Response Body</b> tab shows the formatted response received from the API endpoint.</>,
+        alt: 'Debug modal showing the Request step with the Response Body tab selected.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/api_debug_step4_request_response_headers.png',
+        caption: <>Switch to the <b>Response Headers</b> tab to inspect the HTTP headers returned by the server.</>,
+        alt: 'Debug modal showing the Request step with the Response Headers tab selected.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/api_debug_step5_request_request_headers.png',
+        caption: <>Switch to the <b>Request Headers</b> tab to verify the headers that were sent with the outgoing request (including any added by the configurator).</>,
+        alt: 'Debug modal showing the Request step with the Request Headers tab selected.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/api_debug_step6_request_request_body.png',
+        caption: <>Switch to the <b>Request Body</b> tab to see the body payload that was sent with the request.</>,
+        alt: 'Debug modal showing the Request step with the Request Body tab selected.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/api_debug_step7_extractor_result.png',
+        caption: <>Click the <b>Extractor</b> step. The <b>Result</b> tab shows the value returned by the extractor script after processing the response.</>,
+        alt: 'Debug modal showing the Extractor step with the Result tab selected.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/api_debug_step8_extractor_params.png',
+        caption: <>Switch to the <b>Params</b> tab to inspect the parameters passed to the extractor script.</>,
+        alt: 'Debug modal showing the Extractor step with the Params tab selected.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/api_debug_step9_result.png',
+        caption: <>Click the <b>Result</b> step to see the final output that would be stored as a tracker revision, along with the total pipeline execution time.</>,
+        alt: 'Debug modal showing the final Result step with the pipeline output.',
+    },
+]} />
+
+:::tip
+The Debug button is available whenever a URL is filled in - you don't need to save the tracker first. If a pipeline stage fails, it will be highlighted in red and the error message will be shown in the detail panel.
+:::
+
 ## Annex: Data extractor script {#annex-extractor-script}
 
 The data extractor script is a JavaScript **IIFE** (Immediately Invoked Function Expression) that runs in an isolated Deno sandbox. It processes the raw HTTP responses from the API. For a complete reference of the `Deno.core` utilities available inside the sandbox (encoding, Base64, type checking, and more), see [Deno Sandbox Runtime](/docs/guides/platform/deno_runtime). The global `context` object has the following shape:

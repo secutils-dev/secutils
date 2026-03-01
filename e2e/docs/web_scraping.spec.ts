@@ -855,6 +855,157 @@ test.describe('API tracker guide screenshots', () => {
     await page.screenshot({ path: join(IMG_DIR, 'api_detect_step3_created.png') });
   });
 
+  test('Debug an API tracker', async ({ page }) => {
+    test.setTimeout(120000);
+
+    // Comprehensive mock that exercises every pipeline step and tab.
+    const debugFixture = {
+      durationMs: 285,
+      result: { users: [{ id: 1, name: 'Alice' }], total: 1 },
+      target: {
+        type: 'api',
+        params: {
+          secrets: { apiKey: 'sk-demo-9f3a7c…e12d', endpoint: 'https://api.example.com' },
+        },
+        configurator: {
+          durationMs: 14,
+          result: {
+            requests: [
+              {
+                url: 'https://api.example.com/v2/users',
+                method: 'POST',
+                headers: { authorization: 'Bearer sk-demo-9f3a7c…e12d', 'content-type': 'application/json' },
+                body: { filters: { role: 'admin' }, limit: 10, offset: 0 },
+              },
+            ],
+          },
+        },
+        requests: [
+          {
+            index: 0,
+            source: 'configurator',
+            url: 'https://api.example.com/v2/users',
+            method: 'POST',
+            requestHeaders: {
+              authorization: 'Bearer sk-demo-9f3a7c…e12d',
+              'content-type': 'application/json',
+              'user-agent': 'Retrack/1.0',
+              accept: 'application/json',
+            },
+            requestBody: { filters: { role: 'admin' }, limit: 10, offset: 0 },
+            statusCode: 200,
+            responseHeaders: {
+              'content-type': 'application/json; charset=utf-8',
+              'x-request-id': 'req-abc-123',
+              'cache-control': 'no-store',
+              'x-ratelimit-remaining': '98',
+            },
+            responseBodyRaw: JSON.stringify(
+              { users: [{ id: 1, name: 'Alice', role: 'admin', email: 'alice@example.com' }], total: 1, page: 1 },
+              null,
+              2,
+            ),
+            responseBodyRawSize: 109,
+            durationMs: 195,
+          },
+        ],
+        extractor: {
+          durationMs: 22,
+          result: { users: [{ id: 1, name: 'Alice' }], total: 1 },
+        },
+      },
+    };
+
+    await page.route('**/api/utils/web_scraping/api/debug', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(debugFixture),
+      });
+    });
+
+    // Navigate to API trackers.
+    await goto(page, '/ws/web_scraping__api');
+    const trackApiButton = page.getByRole('button', { name: 'Track API' });
+    await expect(trackApiButton).toBeVisible({ timeout: 15000 });
+    await trackApiButton.click();
+
+    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add API tracker' }) });
+    await expect(flyout).toBeVisible();
+
+    // Fill URL and open the debug modal.
+    await flyout.getByLabel('URL').fill('https://api.example.com/v2/users');
+    const debugButton = flyout.getByRole('button', { name: 'Debug' });
+    await expect(debugButton).toBeEnabled();
+    await debugButton.click();
+
+    const modal = page.locator('[data-test-subj="debug-modal"]');
+    await expect(modal).toBeVisible();
+
+    // Wait for debug to finish (Result step visible).
+    const configuratorStep = modal.getByRole('button', { name: 'Configurator' });
+    const requestStep = modal.getByRole('button', { name: 'Request' });
+    const extractorStep = modal.getByRole('button', { name: 'Extractor' });
+    const resultStep = modal.getByRole('button', { name: 'Result' });
+    await expect(resultStep).toBeVisible({ timeout: 15000 });
+
+    // --- Configurator: Result tab ---
+    await configuratorStep.click();
+    const cfgResultTab = modal.getByRole('tab', { name: 'Result' });
+    await expect(cfgResultTab).toBeVisible();
+    await expect(cfgResultTab).toHaveAttribute('aria-selected', 'true');
+    await page.screenshot({ path: join(IMG_DIR, 'api_debug_step1_configurator_result.png') });
+
+    // --- Configurator: Params tab ---
+    const cfgParamsTab = modal.getByRole('tab', { name: 'Params' });
+    await cfgParamsTab.click();
+    await expect(cfgParamsTab).toHaveAttribute('aria-selected', 'true');
+    await page.screenshot({ path: join(IMG_DIR, 'api_debug_step2_configurator_params.png') });
+
+    // --- Request: Response Body tab ---
+    await requestStep.click();
+    const responseBodyTab = modal.getByRole('tab', { name: 'Response Body' });
+    await expect(responseBodyTab).toBeVisible();
+    await expect(responseBodyTab).toHaveAttribute('aria-selected', 'true');
+    await page.screenshot({ path: join(IMG_DIR, 'api_debug_step3_request_response_body.png') });
+
+    // --- Request: Response Headers tab ---
+    const responseHeadersTab = modal.getByRole('tab', { name: 'Response Headers' });
+    await responseHeadersTab.click();
+    await expect(responseHeadersTab).toHaveAttribute('aria-selected', 'true');
+    await page.screenshot({ path: join(IMG_DIR, 'api_debug_step4_request_response_headers.png') });
+
+    // --- Request: Request Headers tab ---
+    const requestHeadersTab = modal.getByRole('tab', { name: 'Request Headers' });
+    await requestHeadersTab.click();
+    await expect(requestHeadersTab).toHaveAttribute('aria-selected', 'true');
+    await page.screenshot({ path: join(IMG_DIR, 'api_debug_step5_request_request_headers.png') });
+
+    // --- Request: Request Body tab ---
+    const requestBodyTab = modal.getByRole('tab', { name: 'Request Body' });
+    await requestBodyTab.click();
+    await expect(requestBodyTab).toHaveAttribute('aria-selected', 'true');
+    await page.screenshot({ path: join(IMG_DIR, 'api_debug_step6_request_request_body.png') });
+
+    // --- Extractor: Result tab ---
+    await extractorStep.click();
+    const extResultTab = modal.getByRole('tab', { name: 'Result' });
+    await expect(extResultTab).toBeVisible();
+    await expect(extResultTab).toHaveAttribute('aria-selected', 'true');
+    await page.screenshot({ path: join(IMG_DIR, 'api_debug_step7_extractor_result.png') });
+
+    // --- Extractor: Params tab ---
+    const extParamsTab = modal.getByRole('tab', { name: 'Params' });
+    await extParamsTab.click();
+    await expect(extParamsTab).toHaveAttribute('aria-selected', 'true');
+    await page.screenshot({ path: join(IMG_DIR, 'api_debug_step8_extractor_params.png') });
+
+    // --- Result step ---
+    await resultStep.click();
+    await expect(modal.getByText('285ms total')).toBeVisible();
+    await page.screenshot({ path: join(IMG_DIR, 'api_debug_step9_result.png') });
+  });
+
   test('Custom cron schedule for API tracker', async ({ page }) => {
     test.setTimeout(120000);
 

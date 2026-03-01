@@ -16,6 +16,7 @@ pub enum UtilsResourceOperation {
     WebScrapingApiGetHistory,
     WebScrapingApiClearHistory,
     WebScrapingApiTestRequest,
+    WebScrapingApiDebugRequest,
     WebSecurityContentSecurityPolicySerialize,
 }
 
@@ -30,6 +31,7 @@ impl UtilsResourceOperation {
                 | Self::WebScrapingPageGetHistory
                 | Self::WebScrapingApiGetHistory
                 | Self::WebScrapingApiTestRequest
+                | Self::WebScrapingApiDebugRequest
                 | Self::WebSecurityContentSecurityPolicySerialize
         )
     }
@@ -84,6 +86,9 @@ impl TryFrom<(&UtilsResource, &str, &Method)> for UtilsResourceOperation {
             UtilsResource::WebScrapingApi if operation == "test" && *method == Method::POST => {
                 Ok(UtilsResourceOperation::WebScrapingApiTestRequest)
             }
+            UtilsResource::WebScrapingApi if operation == "debug" && *method == Method::POST => {
+                Ok(UtilsResourceOperation::WebScrapingApiDebugRequest)
+            }
 
             // Web security custom actions.
             UtilsResource::WebSecurityContentSecurityPolicies if operation == "serialize" => {
@@ -118,6 +123,7 @@ mod tests {
         assert!(UtilsResourceOperation::WebScrapingApiGetHistory.requires_params());
         assert!(!UtilsResourceOperation::WebScrapingApiClearHistory.requires_params());
         assert!(UtilsResourceOperation::WebScrapingApiTestRequest.requires_params());
+        assert!(UtilsResourceOperation::WebScrapingApiDebugRequest.requires_params());
 
         assert!(
             UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize.requires_params()
@@ -272,6 +278,22 @@ mod tests {
             UtilsResourceOperation::try_from((
                 &UtilsResource::WebScrapingApi,
                 "test",
+                &Method::GET
+            ))
+            .is_err()
+        );
+        assert_eq!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingApi,
+                "debug",
+                &Method::POST
+            )),
+            Ok(UtilsResourceOperation::WebScrapingApiDebugRequest)
+        );
+        assert!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingApi,
+                "debug",
                 &Method::GET
             ))
             .is_err()

@@ -11,9 +11,9 @@ import CodeBlock from '@theme/CodeBlock';
 
 Webhook [responder scripts](/docs/guides/webhooks#annex-responder-script-examples) and API tracker [extractor](/docs/guides/web_scraping/api#annex-extractor-script) / [configurator](/docs/guides/web_scraping/api#annex-configurator-script) scripts run inside a **restricted [Deno](https://deno.com/) runtime**. The sandbox intentionally limits what code can do:
 
-- **No network access** — `fetch`, `XMLHttpRequest`, and all other network APIs are unavailable.
-- **No file-system access** — reading or writing files is not possible.
-- **No `btoa` / `atob`** — the standard Base64 globals are not exposed (see [Base64 encoding](#base64-encoding) below for a workaround).
+- **No network access** - `fetch`, `XMLHttpRequest`, and all other network APIs are unavailable.
+- **No file-system access** - reading or writing files is not possible.
+- **No `btoa` / `atob`** - the standard Base64 globals are not exposed (see [Base64 encoding](#base64-encoding) below for a workaround).
 
 What **is** available:
 
@@ -61,7 +61,7 @@ const text = Deno.core.decode(new Uint8Array([72, 101, 108, 108, 111]));
 // 'Hello'
 ```
 
-Typical use — parsing an incoming JSON body in a responder or extractor:
+Typical use - parsing an incoming JSON body in a responder or extractor:
 
 ```javascript
 const body = context.body.length > 0

@@ -124,6 +124,17 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
                 .test_api_request(extract_params(params)?)
                 .await?,
         ),
+        (
+            UtilsResource::WebScrapingApi,
+            UtilsAction::Execute {
+                resource_id: None,
+                operation: UtilsResourceOperation::WebScrapingApiDebugRequest,
+            },
+        ) => UtilsActionResult::json(
+            web_scraping
+                .debug_api_tracker(extract_params(params)?)
+                .await?,
+        ),
         _ => Err(SecutilsError::client("Invalid resource or action.").into()),
     }
 }
@@ -1497,6 +1508,63 @@ pub mod tests {
         assert!(action_result.into_inner().is_none());
         retrack_get_api_mock.assert();
         retrack_clear_revisions_api_mock.assert();
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn properly_handles_api_tracker_debug_operation(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let debug_response = json!({
+            "durationMs": 42,
+            "result": { "data": "value" },
+            "target": {
+                "type": "api",
+                "requests": [{
+                    "index": 0,
+                    "source": "target",
+                    "url": "https://api.example.com/data",
+                    "method": "GET",
+                    "statusCode": 200,
+                    "durationMs": 35
+                }]
+            }
+        });
+        let retrack_debug_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/trackers/_debug");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(debug_response.clone());
+        });
+
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let action_result = web_scraping_handle_action(
+            mock_user.clone(),
+            &api,
+            UtilsAction::Execute {
+                resource_id: None,
+                operation: UtilsResourceOperation::WebScrapingApiDebugRequest,
+            },
+            UtilsResource::WebScrapingApi,
+            Some(UtilsActionParams::json(json!({
+                "target": {
+                    "url": "https://api.example.com/data"
+                },
+                "secrets": { "type": "none" }
+            }))),
+        )
+        .await?;
+
+        assert_eq!(action_result.into_inner().unwrap(), debug_response);
+        retrack_debug_mock.assert();
 
         Ok(())
     }

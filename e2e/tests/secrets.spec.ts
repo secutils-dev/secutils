@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { dismissAllToasts, ensureUserAndLogin, OPERATOR_TOKEN } from '../helpers';
+import { dismissAllToasts, ensureUserAndLogin } from '../helpers';
 
 test.describe('User Secrets CRUD', () => {
   test.beforeEach(async ({ request, page }) => {
@@ -234,15 +234,6 @@ test.describe('Secrets access in tracker edit flyout', () => {
 test.describe('Secrets access in responder edit flyout', () => {
   const SECRETS_EMAIL = 'e2e-secrets-responder@secutils.dev';
   const SECRETS_NONE_EMAIL = 'e2e-secrets-responder-none@secutils.dev';
-
-  test.beforeEach(async ({ request }) => {
-    for (const email of [SECRETS_EMAIL, SECRETS_NONE_EMAIL]) {
-      await request.post('/api/users/remove', {
-        headers: { Authorization: `Bearer ${OPERATOR_TOKEN}` },
-        data: { email },
-      });
-    }
-  });
 
   test('changing secrets mode to "Selected" loads combo box and persists', async ({ request, page }) => {
     await ensureUserAndLogin(request, page, { email: SECRETS_EMAIL, password: 'e2e_secutils_pass' });

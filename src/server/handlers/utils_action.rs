@@ -587,6 +587,20 @@ mod tests {
                 operation: UtilsResourceOperation::WebScrapingApiTestRequest
             })
         );
+
+        assert_eq!(
+            extract_action(
+                &TestRequest::with_uri("https://secutils.dev/api/utils")
+                    .method(Method::POST)
+                    .param("resource_id", "debug")
+                    .to_http_request(),
+                &resource,
+            ),
+            Some(UtilsAction::Execute {
+                resource_id: None,
+                operation: UtilsResourceOperation::WebScrapingApiDebugRequest
+            })
+        );
     }
 
     #[test]

@@ -6,10 +6,11 @@ use crate::{
 };
 use anyhow::{Context, bail};
 use retrack_types::trackers::{
-    Tracker, TrackerCreateParams, TrackerDataRevision, TrackerListRevisionsParams,
-    TrackerUpdateParams,
+    Tracker, TrackerCreateParams, TrackerDataRevision, TrackerDebugParams,
+    TrackerListRevisionsParams, TrackerUpdateParams,
 };
 use serde::de::DeserializeOwned;
+use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 /// API to work with Retrack.
@@ -259,6 +260,37 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> RetrackApi<'a, DR, ET> {
             bail!(SecutilsError::client(response.text().await?))
         } else {
             bail!(response.text().await?)
+        }
+    }
+
+    /// Runs the full tracker debug pipeline without persisting anything.
+    pub async fn debug_tracker(&self, params: &TrackerDebugParams) -> anyhow::Result<JsonValue> {
+        let response = self
+            .api
+            .network
+            .http_client
+            .post(format!(
+                "{}api/trackers/_debug",
+                self.api.config.retrack.host
+            ))
+            .json(params)
+            .send()
+            .await
+            .context("Cannot execute tracker debug request.")?;
+
+        let status_code = response.status();
+        if status_code.is_success() {
+            return response
+                .json()
+                .await
+                .context("Cannot deserialize tracker debug result.");
+        }
+
+        let error_message = format!("Failed to debug tracker: {}", response.text().await?);
+        if status_code.is_client_error() {
+            bail!(SecutilsError::client(error_message))
+        } else {
+            bail!(error_message)
         }
     }
 }

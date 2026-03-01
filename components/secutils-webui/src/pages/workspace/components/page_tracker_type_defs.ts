@@ -20,7 +20,7 @@ interface Response {
   headers(): Record<string, string>;
 }
 
-/** Playwright ElementHandle — a handle to a DOM element. */
+/** Playwright ElementHandle - a handle to a DOM element. */
 interface ElementHandle {
   /** Returns the \`element.textContent\`. */
   textContent(): Promise<string | null>;
@@ -46,7 +46,7 @@ interface ElementHandle {
   evaluate<T = any>(pageFunction: (element: Element, ...args: any[]) => T, ...args: any[]): Promise<T>;
 }
 
-/** Playwright Locator — a way to find element(s) on the page at any moment. */
+/** Playwright Locator - a way to find element(s) on the page at any moment. */
 interface Locator {
   /** Click the element. */
   click(options?: { button?: 'left' | 'right' | 'middle'; delay?: number; timeout?: number }): Promise<void>;
@@ -82,7 +82,7 @@ interface Locator {
   evaluate<T = any>(pageFunction: (element: Element, ...args: any[]) => T, ...args: any[]): Promise<T>;
 }
 
-/** Playwright Page — the main object for interacting with a browser tab. */
+/** Playwright Page - the main object for interacting with a browser tab. */
 interface Page {
   /** Navigate to a URL. */
   goto(url: string, options?: {

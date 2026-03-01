@@ -22,9 +22,23 @@ export interface Props {
   canSave?: boolean;
   saveInProgress?: boolean;
   hasChanges?: boolean;
+  onDebug?: () => void;
+  canDebug?: boolean;
+  debugInProgress?: boolean;
 }
 
-export function EditorFlyout({ title, children, onSave, onClose, canSave, saveInProgress, hasChanges }: Props) {
+export function EditorFlyout({
+  title,
+  children,
+  onSave,
+  onClose,
+  canSave,
+  saveInProgress,
+  hasChanges,
+  onDebug,
+  canDebug,
+  debugInProgress,
+}: Props) {
   const [isDiscardConfirmVisible, setIsDiscardConfirmVisible] = useState(false);
 
   // Track hasChanges in a ref so handleClose always reads the latest value,
@@ -62,9 +76,31 @@ export function EditorFlyout({ title, children, onSave, onClose, canSave, saveIn
             </EuiButtonEmpty>
           </EuiFlexItem>
           <EuiFlexItem grow={false}>
-            <EuiButton isLoading={saveInProgress === true} isDisabled={canSave === false} onClick={() => onSave()} fill>
-              Save
-            </EuiButton>
+            <EuiFlexGroup gutterSize="s" responsive={false}>
+              {onDebug ? (
+                <EuiFlexItem grow={false}>
+                  <EuiButton
+                    iconType="bug"
+                    color="text"
+                    isLoading={debugInProgress === true}
+                    isDisabled={canDebug === false}
+                    onClick={onDebug}
+                  >
+                    Debug
+                  </EuiButton>
+                </EuiFlexItem>
+              ) : null}
+              <EuiFlexItem grow={false}>
+                <EuiButton
+                  isLoading={saveInProgress === true}
+                  isDisabled={canSave === false}
+                  onClick={() => onSave()}
+                  fill
+                >
+                  Save
+                </EuiButton>
+              </EuiFlexItem>
+            </EuiFlexGroup>
           </EuiFlexItem>
         </EuiFlexGroup>
       </EuiFlyoutFooter>

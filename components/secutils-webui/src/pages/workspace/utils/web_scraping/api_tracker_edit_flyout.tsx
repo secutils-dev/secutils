@@ -15,10 +15,11 @@ import {
   EuiTitle,
 } from '@elastic/eui';
 import type { ChangeEvent } from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { ApiTracker, ApiTrackerTarget } from './api_tracker';
-import { ApiTrackerTestPanel } from './api_tracker_test_panel';
+import type { ApiTrackerDebugPanelProps } from './api_tracker_debug_panel';
+import { ApiTrackerDebugPanel } from './api_tracker_debug_panel';
 import type { RetryInterval } from './consts';
 import {
   getDefaultRetryStrategy,
@@ -222,6 +223,37 @@ export function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
       .catch(() => {})
       .finally(() => setSecretsLoaded(true));
   }, [secretsMode, secretsLoaded]);
+
+  const [isDebugOpen, setIsDebugOpen] = useState(false);
+  const [debugInProgress, setDebugInProgress] = useState(false);
+
+  const debugPanelProps = useMemo<Omit<ApiTrackerDebugPanelProps, 'isOpen' | 'onClose' | 'onStatusChange'>>(() => {
+    return {
+      url,
+      method,
+      headers,
+      body,
+      mediaType,
+      acceptInvalidCertificates: acceptInvalidCerts,
+      configurator: configurator || undefined,
+      extractor: extractor || undefined,
+      secrets:
+        secretsMode === 'all'
+          ? { type: 'all' as const }
+          : secretsMode === 'selected'
+            ? { type: 'selected' as const, secrets: selectedSecretNames.map((s) => s.label) }
+            : { type: 'none' as const },
+    };
+  }, [url, method, headers, body, mediaType, acceptInvalidCerts, configurator, extractor, secretsMode, selectedSecretNames]);
+
+  const onDebug = useCallback(() => {
+    setIsDebugOpen(true);
+    setDebugInProgress(true);
+  }, []);
+
+  const onDebugStatusChange = useCallback((status: 'idle' | 'pending' | 'done') => {
+    setDebugInProgress(status === 'pending');
+  }, []);
 
   const isDuplicate = !!tracker && !tracker.id;
   const hasFormChanges = useFormChanges({
@@ -431,6 +463,9 @@ export function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
       hasChanges={hasChanges}
       canSave={!!name && !!url && !areHeadersInvalid && (hasFormChanges || isDuplicate)}
       saveInProgress={updatingStatus?.status === 'pending'}
+      onDebug={onDebug}
+      canDebug={!!url}
+      debugInProgress={debugInProgress}
     >
       <EuiForm fullWidth>
         <EuiDescribedFormGroup title={<h3>General</h3>} description={'General properties of the API tracker'}>
@@ -516,20 +551,6 @@ export function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
               </EuiFormRow>
             </>
           ) : null}
-          <EuiFormRow
-            label="Test"
-            helpText="Send the configured HTTP request and inspect the response before saving."
-            fullWidth
-          >
-            <ApiTrackerTestPanel
-              url={url}
-              method={method}
-              headers={headers}
-              body={body}
-              mediaType={mediaType}
-              acceptInvalidCertificates={acceptInvalidCerts}
-            />
-          </EuiFormRow>
         </EuiDescribedFormGroup>
 
         <EuiDescribedFormGroup
@@ -658,6 +679,12 @@ export function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
           </EuiDescribedFormGroup>
         ) : null}
       </EuiForm>
+      <ApiTrackerDebugPanel
+        {...debugPanelProps}
+        isOpen={isDebugOpen}
+        onClose={() => setIsDebugOpen(false)}
+        onStatusChange={onDebugStatusChange}
+      />
     </EditorFlyout>
   );
 }

@@ -1049,7 +1049,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.upsert_user(&mock_user).await?;
 
-        // Tracker with SecretsAccess::None — sync should be skipped entirely.
+        // Tracker with SecretsAccess::None - sync should be skipped entirely.
         let tracker = mock_page_tracker(SecretsAccess::None);
         api.db
             .web_scraping(mock_user.id)
