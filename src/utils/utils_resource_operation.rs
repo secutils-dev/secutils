@@ -13,6 +13,7 @@ pub enum UtilsResourceOperation {
     WebhooksRespondersGetStats,
     WebScrapingPageGetHistory,
     WebScrapingPageClearHistory,
+    WebScrapingPageDebugRequest,
     WebScrapingApiGetHistory,
     WebScrapingApiClearHistory,
     WebScrapingApiTestRequest,
@@ -29,6 +30,7 @@ impl UtilsResourceOperation {
                 | Self::CertificatesTemplatePeerCertificates
                 | Self::CertificatesPrivateKeyExport
                 | Self::WebScrapingPageGetHistory
+                | Self::WebScrapingPageDebugRequest
                 | Self::WebScrapingApiGetHistory
                 | Self::WebScrapingApiTestRequest
                 | Self::WebScrapingApiDebugRequest
@@ -77,6 +79,9 @@ impl TryFrom<(&UtilsResource, &str, &Method)> for UtilsResourceOperation {
             UtilsResource::WebScrapingPage if operation == "clear" => {
                 Ok(UtilsResourceOperation::WebScrapingPageClearHistory)
             }
+            UtilsResource::WebScrapingPage if operation == "debug" && *method == Method::POST => {
+                Ok(UtilsResourceOperation::WebScrapingPageDebugRequest)
+            }
             UtilsResource::WebScrapingApi if operation == "history" => {
                 Ok(UtilsResourceOperation::WebScrapingApiGetHistory)
             }
@@ -119,6 +124,7 @@ mod tests {
 
         assert!(UtilsResourceOperation::WebScrapingPageGetHistory.requires_params());
         assert!(!UtilsResourceOperation::WebScrapingPageClearHistory.requires_params());
+        assert!(UtilsResourceOperation::WebScrapingPageDebugRequest.requires_params());
 
         assert!(UtilsResourceOperation::WebScrapingApiGetHistory.requires_params());
         assert!(!UtilsResourceOperation::WebScrapingApiClearHistory.requires_params());
@@ -248,6 +254,22 @@ mod tests {
                 &Method::POST
             )),
             Ok(UtilsResourceOperation::WebScrapingPageClearHistory)
+        );
+        assert_eq!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingPage,
+                "debug",
+                &Method::POST
+            )),
+            Ok(UtilsResourceOperation::WebScrapingPageDebugRequest)
+        );
+        assert!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingPage,
+                "debug",
+                &Method::GET
+            ))
+            .is_err()
         );
 
         assert_eq!(

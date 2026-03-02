@@ -29,6 +29,7 @@ import { areSchedulerJobsEqual } from './page_tracker';
 import { PageTrackerJobSchedule } from './page_tracker_job_schedule';
 import { PageTrackerRetryStrategy } from './page_tracker_retry_strategy';
 import { useFormChanges, useRangeTicks } from '../../../../hooks';
+import { TrackerDebugPanel } from './tracker_debug_panel';
 import {
   type AsyncData,
   getApiRequestConfig,
@@ -129,6 +130,38 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
     selectedSecretNames,
   });
   const hasChanges = isDuplicate || hasFormChanges;
+
+  const [isDebugOpen, setIsDebugOpen] = useState(false);
+  const [debugInProgress, setDebugInProgress] = useState(false);
+
+  const buildDebugRequest = useCallback(() => {
+    const secrets =
+      secretsMode === 'all'
+        ? { type: 'all' as const }
+        : secretsMode === 'selected'
+          ? { type: 'selected' as const, secrets: selectedSecretNames.map((s) => s.label) }
+          : { type: 'none' as const };
+
+    return {
+      url: getApiUrl('/api/utils/web_scraping/page/debug'),
+      body: JSON.stringify({
+        target: {
+          extractor: extractorScript,
+          acceptInvalidCertificates: acceptInvalidCerts || undefined,
+        },
+        secrets,
+      }),
+    };
+  }, [extractorScript, acceptInvalidCerts, secretsMode, selectedSecretNames]);
+
+  const onDebug = useCallback(() => {
+    setIsDebugOpen(true);
+    setDebugInProgress(true);
+  }, []);
+
+  const onDebugStatusChange = useCallback((status: 'idle' | 'pending' | 'done') => {
+    setDebugInProgress(status === 'pending');
+  }, []);
 
   const [updatingStatus, setUpdatingStatus] = useState<AsyncData<void>>();
   const onSave = useCallback(() => {
@@ -293,6 +326,9 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
           hasChanges)
       }
       saveInProgress={updatingStatus?.status === 'pending'}
+      onDebug={onDebug}
+      canDebug={!!extractorScript}
+      debugInProgress={debugInProgress}
     >
       <EuiForm fullWidth>
         <EuiDescribedFormGroup title={<h3>General</h3>} description={'General properties of the page tracker'}>
@@ -448,6 +484,12 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
           </EuiDescribedFormGroup>
         ) : null}
       </EuiForm>
+      <TrackerDebugPanel
+        isOpen={isDebugOpen}
+        onClose={() => setIsDebugOpen(false)}
+        onStatusChange={onDebugStatusChange}
+        buildDebugRequest={buildDebugRequest}
+      />
     </EditorFlyout>
   );
 }

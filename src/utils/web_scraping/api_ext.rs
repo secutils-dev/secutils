@@ -3,6 +3,7 @@ mod api_tracker_debug_params;
 mod api_tracker_test_params;
 mod api_tracker_update_params;
 mod page_tracker_create_params;
+mod page_tracker_debug_params;
 mod page_tracker_get_history_params;
 mod page_tracker_update_params;
 
@@ -12,6 +13,7 @@ pub use self::{
     api_tracker_test_params::{ApiTrackerTestParams, ApiTrackerTestResult},
     api_tracker_update_params::ApiTrackerUpdateParams,
     page_tracker_create_params::PageTrackerCreateParams,
+    page_tracker_debug_params::PageTrackerDebugParams,
     page_tracker_get_history_params::PageTrackerGetHistoryParams,
     page_tracker_update_params::PageTrackerUpdateParams,
 };
@@ -27,22 +29,22 @@ use crate::{
         },
     },
     scheduler::CronExt,
-    users::User,
+    users::{SecretsAccess, User},
     utils::{
         UtilsResource,
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
-        web_scraping::{
-            ApiTracker, ApiTrackerConfig, ApiTrackerTarget, PageTracker, PageTrackerConfig,
-            PageTrackerTarget,
-        },
+        web_scraping::{ApiTracker, ApiTrackerTarget, PageTracker, PageTrackerTarget},
     },
 };
 use anyhow::{anyhow, bail};
 use croner::Cron;
 use http::Method;
-use retrack_types::trackers::{
-    ApiTarget, PageTarget, TargetRequest, TrackerConfig, TrackerCreateParams, TrackerDataRevision,
-    TrackerDebugParams, TrackerTarget, TrackerUpdateParams,
+use retrack_types::{
+    scheduler::SchedulerJobConfig,
+    trackers::{
+        ApiTarget, PageTarget, TargetRequest, TrackerConfig, TrackerCreateParams,
+        TrackerDataRevision, TrackerDebugParams, TrackerTarget, TrackerUpdateParams,
+    },
 };
 use serde_json::Value as JsonValue;
 use std::{collections::HashSet, time::Duration};
@@ -50,23 +52,9 @@ use time::OffsetDateTime;
 use tracing::error;
 use uuid::Uuid;
 
-/// We currently support up to 10 retry attempts for the web page tracker.
-const MAX_PAGE_TRACKER_RETRY_ATTEMPTS: u32 = 10;
-
-/// We currently support a minimum 60 seconds between retry attempts for the web page tracker.
-const MIN_PAGE_TRACKER_RETRY_INTERVAL: Duration = Duration::from_secs(60);
-
-/// We currently support the maximum 12 hours between retry attempts for the web page tracker.
-const MAX_PAGE_TRACKER_RETRY_INTERVAL: Duration = Duration::from_secs(12 * 3600);
-
-/// We currently support up to 10 retry attempts for the API tracker.
-const MAX_API_TRACKER_RETRY_ATTEMPTS: u32 = 10;
-
-/// We currently support a minimum 60 seconds between retry attempts for the API tracker.
-const MIN_API_TRACKER_RETRY_INTERVAL: Duration = Duration::from_secs(60);
-
-/// We currently support the maximum 12 hours between retry attempts for the API tracker.
-const MAX_API_TRACKER_RETRY_INTERVAL: Duration = Duration::from_secs(12 * 3600);
+const MAX_TRACKER_RETRY_ATTEMPTS: u32 = 10;
+const MIN_TRACKER_RETRY_INTERVAL: Duration = Duration::from_secs(60);
+const MAX_TRACKER_RETRY_INTERVAL: Duration = Duration::from_secs(12 * 3600);
 
 pub struct WebScrapingApiExt<'a, 'u, DR: DnsResolver, ET: EmailTransport> {
     api: &'a Api<DR, ET>,
@@ -77,6 +65,27 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
     /// Creates WebScraping API.
     pub fn new(api: &'a Api<DR, ET>, user: &'u User) -> Self {
         Self { api, user }
+    }
+
+    /// Resolves a `SecretsAccess` value into the JSON `params` object expected by
+    /// Retrack's tracker target (`{ "secrets": { … } }`), or `None` when there are
+    /// no applicable secrets.
+    async fn resolve_secrets_params(&self, secrets: &SecretsAccess) -> Option<serde_json::Value> {
+        if secrets.is_none() {
+            return None;
+        }
+
+        let decrypted = self
+            .api
+            .secrets(self.user)
+            .get_decrypted_secrets(secrets)
+            .await
+            .unwrap_or_default();
+        if decrypted.is_empty() {
+            None
+        } else {
+            Some(serde_json::json!({ "secrets": decrypted }))
+        }
     }
 
     /// Returns all page trackers.
@@ -167,8 +176,8 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         params: PageTrackerCreateParams,
     ) -> anyhow::Result<PageTracker> {
         // 1. Perform validation.
-        self.validate_page_tracker_name(&params.name)?;
-        self.validate_page_tracker_config(&params.config)?;
+        Self::validate_tracker_name(&params.name)?;
+        self.validate_tracker_config(params.config.revisions, params.config.job.as_ref())?;
         self.validate_page_tracker_target(&params.target)?;
 
         // 2. Create a new Retrack tracker.
@@ -182,21 +191,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                 name: params.name.clone(),
                 target: TrackerTarget::Page(PageTarget {
                     extractor: params.target.extractor,
-                    params: if !params.secrets.is_none() {
-                        let secrets = self
-                            .api
-                            .secrets(self.user)
-                            .get_decrypted_secrets(&params.secrets)
-                            .await
-                            .unwrap_or_default();
-                        if secrets.is_empty() {
-                            None
-                        } else {
-                            Some(serde_json::json!({ "secrets": secrets }))
-                        }
-                    } else {
-                        None
-                    },
+                    params: self.resolve_secrets_params(&params.secrets).await,
                     engine: None,
                     user_agent: None,
                     accept_invalid_certificates,
@@ -277,10 +272,10 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
 
         // 1. Perform validation.
         if let Some(ref name) = params.name {
-            self.validate_page_tracker_name(name)?;
+            Self::validate_tracker_name(name)?;
         }
         if let Some(ref config) = params.config {
-            self.validate_page_tracker_config(config)?;
+            self.validate_tracker_config(config.revisions, config.job.as_ref())?;
         }
         if let Some(ref target) = params.target {
             self.validate_page_tracker_target(target)?;
@@ -306,21 +301,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
 
         // 3. Update tracker in Retrack.
         let effective_secrets = params.secrets.as_ref().unwrap_or(&existing_tracker.secrets);
-        let page_params = if !effective_secrets.is_none() {
-            let secrets = self
-                .api
-                .secrets(self.user)
-                .get_decrypted_secrets(effective_secrets)
-                .await
-                .unwrap_or_default();
-            if secrets.is_empty() {
-                None
-            } else {
-                Some(serde_json::json!({ "secrets": secrets }))
-            }
-        } else {
-            None
-        };
+        let page_params = self.resolve_secrets_params(effective_secrets).await;
         let retrack_tracker = retrack
             .update_tracker(
                 retrack_tracker.id,
@@ -510,34 +491,39 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             .await
     }
 
-    fn validate_page_tracker_name(&self, name: &str) -> anyhow::Result<()> {
+    fn validate_tracker_name(name: &str) -> anyhow::Result<()> {
         if name.is_empty() {
-            bail!(SecutilsError::client("Page tracker name cannot be empty."));
+            bail!(SecutilsError::client(
+                "Tracker name cannot be empty.".to_string()
+            ));
         }
 
         if name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
             bail!(SecutilsError::client(format!(
-                "Page tracker name cannot be longer than {MAX_UTILS_ENTITY_NAME_LENGTH} characters.",
+                "Tracker name cannot be longer than {MAX_UTILS_ENTITY_NAME_LENGTH} characters.",
             )));
         }
 
         Ok(())
     }
 
-    fn validate_page_tracker_config(&self, config: &PageTrackerConfig) -> anyhow::Result<()> {
+    fn validate_tracker_config(
+        &self,
+        revisions: usize,
+        job: Option<&SchedulerJobConfig>,
+    ) -> anyhow::Result<()> {
         let features = self.user.subscription.get_features(&self.api.config);
-        if config.revisions > features.config.web_scraping.tracker_revisions {
+        if revisions > features.config.web_scraping.tracker_revisions {
             bail!(SecutilsError::client(format!(
-                "Page tracker revisions count cannot be greater than {}.",
+                "Tracker revisions count cannot be greater than {}.",
                 features.config.web_scraping.tracker_revisions
             )));
         }
 
-        let Some(ref job_config) = config.job else {
+        let Some(job_config) = job else {
             return Ok(());
         };
 
-        // Validate that the schedule is a valid cron expression.
         let schedule = match Cron::parse_pattern(job_config.schedule.as_str()) {
             Ok(schedule) => schedule,
             Err(err) => {
@@ -546,37 +532,33 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                         "Failed to parse schedule `{}`: {err:?}",
                         job_config.schedule
                     )
-                    .context("Page tracker schedule must be a valid cron expression.")
+                    .context("Tracker schedule must be a valid cron expression.".to_string())
                 ));
             }
         };
 
-        // Check if the interval between next occurrences is greater or equal to a minimum
-        // interval defined by the subscription.
-        let features = self.user.subscription.get_features(&self.api.config);
         let min_schedule_interval = schedule.min_interval()?;
         if min_schedule_interval < features.config.web_scraping.min_schedule_interval {
             bail!(SecutilsError::client(format!(
-                "Page tracker schedule must have at least {} between occurrences, but detected {}.",
+                "Tracker schedule must have at least {} between occurrences, but detected {}.",
                 humantime::format_duration(features.config.web_scraping.min_schedule_interval),
                 humantime::format_duration(min_schedule_interval)
             )));
         }
 
-        // Validate retry strategy.
         if let Some(retry_strategy) = &job_config.retry_strategy {
             let max_attempts = retry_strategy.max_attempts();
-            if max_attempts == 0 || max_attempts > MAX_PAGE_TRACKER_RETRY_ATTEMPTS {
+            if max_attempts == 0 || max_attempts > MAX_TRACKER_RETRY_ATTEMPTS {
                 bail!(SecutilsError::client(format!(
-                    "Page tracker max retry attempts cannot be zero or greater than {MAX_PAGE_TRACKER_RETRY_ATTEMPTS}, but received {max_attempts}."
+                    "Tracker max retry attempts cannot be zero or greater than {MAX_TRACKER_RETRY_ATTEMPTS}, but received {max_attempts}."
                 )));
             }
 
             let min_interval = *retry_strategy.min_interval();
-            if min_interval < MIN_PAGE_TRACKER_RETRY_INTERVAL {
+            if min_interval < MIN_TRACKER_RETRY_INTERVAL {
                 bail!(SecutilsError::client(format!(
-                    "Page tracker min retry interval cannot be less than {}, but received {}.",
-                    humantime::format_duration(MIN_PAGE_TRACKER_RETRY_INTERVAL),
+                    "Tracker min retry interval cannot be less than {}, but received {}.",
+                    humantime::format_duration(MIN_TRACKER_RETRY_INTERVAL),
                     humantime::format_duration(min_interval)
                 )));
             }
@@ -591,21 +573,20 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             } = retry_strategy
             {
                 let max_interval = *max_interval;
-                if max_interval < MIN_PAGE_TRACKER_RETRY_INTERVAL {
+                if max_interval < MIN_TRACKER_RETRY_INTERVAL {
                     bail!(SecutilsError::client(format!(
-                        "Page tracker retry strategy max interval cannot be less than {}, but received {}.",
-                        humantime::format_duration(MIN_PAGE_TRACKER_RETRY_INTERVAL),
+                        "Tracker retry strategy max interval cannot be less than {}, but received {}.",
+                        humantime::format_duration(MIN_TRACKER_RETRY_INTERVAL),
                         humantime::format_duration(max_interval)
                     )));
                 }
 
-                if max_interval > MAX_PAGE_TRACKER_RETRY_INTERVAL
-                    || max_interval > min_schedule_interval
+                if max_interval > MAX_TRACKER_RETRY_INTERVAL || max_interval > min_schedule_interval
                 {
                     bail!(SecutilsError::client(format!(
-                        "Page tracker retry strategy max interval cannot be greater than {}, but received {}.",
+                        "Tracker retry strategy max interval cannot be greater than {}, but received {}.",
                         humantime::format_duration(
-                            MAX_PAGE_TRACKER_RETRY_INTERVAL.min(min_schedule_interval)
+                            MAX_TRACKER_RETRY_INTERVAL.min(min_schedule_interval)
                         ),
                         humantime::format_duration(max_interval)
                     )));
@@ -748,29 +729,15 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         &self,
         params: ApiTrackerCreateParams,
     ) -> anyhow::Result<ApiTracker> {
-        self.validate_api_tracker_name(&params.name)?;
-        self.validate_api_tracker_config(&params.config)?;
+        Self::validate_tracker_name(&params.name)?;
+        self.validate_tracker_config(params.config.revisions, params.config.job.as_ref())?;
         self.validate_api_tracker_target(&params.target)?;
 
         let id = Uuid::now_v7();
         let retrack = self.api.retrack();
         let utils_resource = UtilsResource::WebScrapingApi;
 
-        let api_params = if !params.secrets.is_none() {
-            let secrets = self
-                .api
-                .secrets(self.user)
-                .get_decrypted_secrets(&params.secrets)
-                .await
-                .unwrap_or_default();
-            if secrets.is_empty() {
-                None
-            } else {
-                Some(serde_json::json!({ "secrets": secrets }))
-            }
-        } else {
-            None
-        };
+        let api_params = self.resolve_secrets_params(&params.secrets).await;
 
         let api_target = Self::build_api_target_from_params(&params.target, api_params);
 
@@ -851,10 +818,10 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         };
 
         if let Some(ref name) = params.name {
-            self.validate_api_tracker_name(name)?;
+            Self::validate_tracker_name(name)?;
         }
         if let Some(ref config) = params.config {
-            self.validate_api_tracker_config(config)?;
+            self.validate_tracker_config(config.revisions, config.job.as_ref())?;
         }
         if let Some(ref target) = params.target {
             self.validate_api_tracker_target(target)?;
@@ -878,55 +845,12 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         };
 
         let effective_secrets = params.secrets.as_ref().unwrap_or(&existing_tracker.secrets);
-        let api_params = if !effective_secrets.is_none() {
-            let secrets = self
-                .api
-                .secrets(self.user)
-                .get_decrypted_secrets(effective_secrets)
-                .await
-                .unwrap_or_default();
-            if secrets.is_empty() {
-                None
-            } else {
-                Some(serde_json::json!({ "secrets": secrets }))
-            }
-        } else {
-            None
-        };
+        let api_params = self.resolve_secrets_params(effective_secrets).await;
 
-        let target_update = if let Some(target) = params.target {
-            Some(TrackerTarget::Api(ApiTarget {
-                requests: vec![TargetRequest {
-                    url: target.url.clone(),
-                    method: target
-                        .method
-                        .as_deref()
-                        .and_then(|m| m.parse::<Method>().ok()),
-                    headers: target.headers.as_ref().map(|h| {
-                        let header_map: http::HeaderMap = h
-                            .iter()
-                            .filter_map(|(k, v)| {
-                                let name = k.parse::<http::header::HeaderName>().ok()?;
-                                let value = http::header::HeaderValue::from_str(v).ok()?;
-                                Some((name, value))
-                            })
-                            .collect();
-                        header_map
-                    }),
-                    body: target.body.clone(),
-                    media_type: target.media_type.as_ref().and_then(|m| m.parse().ok()),
-                    accept_statuses: target.accept_statuses.as_ref().map(|statuses| {
-                        statuses
-                            .iter()
-                            .filter_map(|s| http::StatusCode::from_u16(*s).ok())
-                            .collect::<HashSet<_>>()
-                    }),
-                    accept_invalid_certificates: target.accept_invalid_certificates,
-                }],
-                configurator: target.configurator.clone(),
-                extractor: target.extractor.clone(),
-                params: api_params,
-            }))
+        let target_update = if let Some(ref target) = params.target {
+            Some(TrackerTarget::Api(Self::build_api_target_from_params(
+                target, api_params,
+            )))
         } else if params.secrets.is_some() {
             Some(match &retrack_tracker.target {
                 TrackerTarget::Api(api) => TrackerTarget::Api(ApiTarget {
@@ -1179,33 +1103,10 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         })
     }
 
-    /// Runs the full Retrack debug pipeline (configurator, request(s), extractor)
-    /// without persisting anything, and returns the raw debug result.
-    pub async fn debug_api_tracker(
-        &self,
-        params: ApiTrackerDebugParams,
-    ) -> anyhow::Result<JsonValue> {
-        self.validate_api_tracker_target(&params.target)?;
-
-        let api_params = if !params.secrets.is_none() {
-            let secrets = self
-                .api
-                .secrets(self.user)
-                .get_decrypted_secrets(&params.secrets)
-                .await
-                .unwrap_or_default();
-            if secrets.is_empty() {
-                None
-            } else {
-                Some(serde_json::json!({ "secrets": secrets }))
-            }
-        } else {
-            None
-        };
-
-        let api_target = Self::build_api_target_from_params(&params.target, api_params);
+    /// Sends a debug request to Retrack and strips the `actions` field from the response.
+    async fn run_debug(&self, target: TrackerTarget) -> anyhow::Result<JsonValue> {
         let debug_params = TrackerDebugParams {
-            target: TrackerTarget::Api(api_target),
+            target,
             config: TrackerConfig::default(),
             tags: vec![],
             actions: vec![],
@@ -1219,106 +1120,36 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         Ok(result)
     }
 
-    fn validate_api_tracker_name(&self, name: &str) -> anyhow::Result<()> {
-        if name.is_empty() {
-            bail!(SecutilsError::client("API tracker name cannot be empty."));
-        }
+    /// Runs the full Retrack debug pipeline (configurator, request(s), extractor)
+    /// without persisting anything, and returns the raw debug result.
+    pub async fn debug_api_tracker(
+        &self,
+        params: ApiTrackerDebugParams,
+    ) -> anyhow::Result<JsonValue> {
+        self.validate_api_tracker_target(&params.target)?;
 
-        if name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
-            bail!(SecutilsError::client(format!(
-                "API tracker name cannot be longer than {MAX_UTILS_ENTITY_NAME_LENGTH} characters.",
-            )));
-        }
-
-        Ok(())
+        let api_params = self.resolve_secrets_params(&params.secrets).await;
+        let api_target = Self::build_api_target_from_params(&params.target, api_params);
+        self.run_debug(TrackerTarget::Api(api_target)).await
     }
 
-    fn validate_api_tracker_config(&self, config: &ApiTrackerConfig) -> anyhow::Result<()> {
-        let features = self.user.subscription.get_features(&self.api.config);
-        if config.revisions > features.config.web_scraping.tracker_revisions {
-            bail!(SecutilsError::client(format!(
-                "API tracker revisions count cannot be greater than {}.",
-                features.config.web_scraping.tracker_revisions
-            )));
-        }
+    /// Runs the Retrack debug pipeline for a page tracker (Playwright scenario)
+    /// without persisting anything, and returns the raw debug result.
+    pub async fn debug_page_tracker(
+        &self,
+        params: PageTrackerDebugParams,
+    ) -> anyhow::Result<JsonValue> {
+        self.validate_page_tracker_target(&params.target)?;
 
-        let Some(ref job_config) = config.job else {
-            return Ok(());
-        };
-
-        let schedule = match Cron::parse_pattern(job_config.schedule.as_str()) {
-            Ok(schedule) => schedule,
-            Err(err) => {
-                bail!(SecutilsError::client_with_root_cause(
-                    anyhow!(
-                        "Failed to parse schedule `{}`: {err:?}",
-                        job_config.schedule
-                    )
-                    .context("API tracker schedule must be a valid cron expression.")
-                ));
-            }
-        };
-
-        let features = self.user.subscription.get_features(&self.api.config);
-        let min_schedule_interval = schedule.min_interval()?;
-        if min_schedule_interval < features.config.web_scraping.min_schedule_interval {
-            bail!(SecutilsError::client(format!(
-                "API tracker schedule must have at least {} between occurrences, but detected {}.",
-                humantime::format_duration(features.config.web_scraping.min_schedule_interval),
-                humantime::format_duration(min_schedule_interval)
-            )));
-        }
-
-        if let Some(retry_strategy) = &job_config.retry_strategy {
-            let max_attempts = retry_strategy.max_attempts();
-            if max_attempts == 0 || max_attempts > MAX_API_TRACKER_RETRY_ATTEMPTS {
-                bail!(SecutilsError::client(format!(
-                    "API tracker max retry attempts cannot be zero or greater than {MAX_API_TRACKER_RETRY_ATTEMPTS}, but received {max_attempts}."
-                )));
-            }
-
-            let min_interval = *retry_strategy.min_interval();
-            if min_interval < MIN_API_TRACKER_RETRY_INTERVAL {
-                bail!(SecutilsError::client(format!(
-                    "API tracker min retry interval cannot be less than {}, but received {}.",
-                    humantime::format_duration(MIN_API_TRACKER_RETRY_INTERVAL),
-                    humantime::format_duration(min_interval)
-                )));
-            }
-
-            if let retrack_types::scheduler::SchedulerJobRetryStrategy::Linear {
-                max_interval,
-                ..
-            }
-            | retrack_types::scheduler::SchedulerJobRetryStrategy::Exponential {
-                max_interval,
-                ..
-            } = retry_strategy
-            {
-                let max_interval = *max_interval;
-                if max_interval < MIN_API_TRACKER_RETRY_INTERVAL {
-                    bail!(SecutilsError::client(format!(
-                        "API tracker retry strategy max interval cannot be less than {}, but received {}.",
-                        humantime::format_duration(MIN_API_TRACKER_RETRY_INTERVAL),
-                        humantime::format_duration(max_interval)
-                    )));
-                }
-
-                if max_interval > MAX_API_TRACKER_RETRY_INTERVAL
-                    || max_interval > min_schedule_interval
-                {
-                    bail!(SecutilsError::client(format!(
-                        "API tracker retry strategy max interval cannot be greater than {}, but received {}.",
-                        humantime::format_duration(
-                            MAX_API_TRACKER_RETRY_INTERVAL.min(min_schedule_interval)
-                        ),
-                        humantime::format_duration(max_interval)
-                    )));
-                }
-            }
-        }
-
-        Ok(())
+        let page_params = self.resolve_secrets_params(&params.secrets).await;
+        self.run_debug(TrackerTarget::Page(PageTarget {
+            extractor: params.target.extractor,
+            params: page_params,
+            engine: None,
+            user_agent: None,
+            accept_invalid_certificates: params.target.accept_invalid_certificates,
+        }))
+        .await
     }
 
     fn validate_api_tracker_target(&self, target: &ApiTrackerTarget) -> anyhow::Result<()> {
@@ -1363,17 +1194,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
 
         let retrack = self.api.retrack();
         for tracker in trackers_with_secrets {
-            let secrets = self
-                .api
-                .secrets(self.user)
-                .get_decrypted_secrets(&tracker.secrets)
-                .await
-                .unwrap_or_default();
-            let params_json = if secrets.is_empty() {
-                None
-            } else {
-                Some(serde_json::json!({ "secrets": secrets }))
-            };
+            let params_json = self.resolve_secrets_params(&tracker.secrets).await;
 
             let Some(retrack_tracker) = retrack.get_tracker(tracker.retrack.id()).await? else {
                 continue;
@@ -1408,17 +1229,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             .filter(|t| !t.secrets.is_none())
             .collect();
         for tracker in api_trackers_with_secrets {
-            let secrets = self
-                .api
-                .secrets(self.user)
-                .get_decrypted_secrets(&tracker.secrets)
-                .await
-                .unwrap_or_default();
-            let params_json = if secrets.is_empty() {
-                None
-            } else {
-                Some(serde_json::json!({ "secrets": secrets }))
-            };
+            let params_json = self.resolve_secrets_params(&tracker.secrets).await;
 
             let Some(retrack_tracker) = retrack.get_tracker(tracker.retrack.id()).await? else {
                 continue;
@@ -1461,9 +1272,9 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 mod tests {
     use super::{
         ApiTrackerCreateParams, ApiTrackerDebugParams, ApiTrackerTestParams,
-        ApiTrackerUpdateParams, PageTrackerGetHistoryParams, PageTrackerUpdateParams,
-        RETRACK_NOTIFICATIONS_TAG, RETRACK_RESOURCE_ID_TAG, RETRACK_RESOURCE_NAME_TAG,
-        RETRACK_RESOURCE_TAG, RETRACK_USER_TAG,
+        ApiTrackerUpdateParams, PageTrackerDebugParams, PageTrackerGetHistoryParams,
+        PageTrackerUpdateParams, RETRACK_NOTIFICATIONS_TAG, RETRACK_RESOURCE_ID_TAG,
+        RETRACK_RESOURCE_NAME_TAG, RETRACK_RESOURCE_TAG, RETRACK_USER_TAG,
     };
     use crate::{
         error::Error as SecutilsError,
@@ -1711,7 +1522,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""Page tracker name cannot be empty.""###
+            @r###""Tracker name cannot be empty.""###
         );
 
         // Very long name.
@@ -1724,7 +1535,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""Page tracker name cannot be longer than 100 characters.""###
+            @r###""Tracker name cannot be longer than 100 characters.""###
         );
 
         // Too many revisions.
@@ -1740,7 +1551,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""Page tracker revisions count cannot be greater than 30.""###
+            @r###""Tracker revisions count cannot be greater than 30.""###
         );
 
         // Invalid schedule.
@@ -1761,7 +1572,7 @@ mod tests {
             }).await),
             @r###"
         Error {
-            context: "Page tracker schedule must be a valid cron expression.",
+            context: "Tracker schedule must be a valid cron expression.",
             source: "Failed to parse schedule `-`: Invalid pattern: Pattern must have 6 or 7 fields when seconds are required and years are optional.",
         }
         "###
@@ -1783,7 +1594,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""Page tracker schedule must have at least 10s between occurrences, but detected 5s.""###
+            @r###""Tracker schedule must have at least 10s between occurrences, but detected 5s.""###
         );
 
         // Too few retry attempts.
@@ -1805,7 +1616,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""Page tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
+            @r###""Tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
         );
 
         // Too many retry attempts.
@@ -1827,7 +1638,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""Page tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
+            @r###""Tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
         );
 
         // Too low retry interval.
@@ -1849,7 +1660,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""Page tracker min retry interval cannot be less than 1m, but received 30s.""###
+            @r###""Tracker min retry interval cannot be less than 1m, but received 30s.""###
         );
 
         // Too low max retry interval.
@@ -1873,7 +1684,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""Page tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
+            @r###""Tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
         );
 
         // Too high max retry interval.
@@ -1897,7 +1708,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""Page tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
+            @r###""Tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
         );
 
         assert_debug_snapshot!(
@@ -1920,7 +1731,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""Page tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
+            @r###""Tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
         );
 
         // Empty extractor.
@@ -2543,7 +2354,7 @@ mod tests {
                 name: Some("".to_string()),
                 ..Default::default()
             }).await),
-            @r###""Page tracker name cannot be empty.""###
+            @r###""Tracker name cannot be empty.""###
         );
 
         // Very long name.
@@ -2552,7 +2363,7 @@ mod tests {
                 name: Some("a".repeat(101)),
                 ..Default::default()
             }).await),
-            @r###""Page tracker name cannot be longer than 100 characters.""###
+            @r###""Tracker name cannot be longer than 100 characters.""###
         );
 
         // Too many revisions.
@@ -2564,7 +2375,7 @@ mod tests {
                 }),
                 ..Default::default()
             }).await),
-            @r###""Page tracker revisions count cannot be greater than 30.""###
+            @r###""Tracker revisions count cannot be greater than 30.""###
         );
 
         // Invalid schedule.
@@ -2581,7 +2392,7 @@ mod tests {
             }).await),
             @r###"
         Error {
-            context: "Page tracker schedule must be a valid cron expression.",
+            context: "Tracker schedule must be a valid cron expression.",
             source: "Failed to parse schedule `-`: Invalid pattern: Pattern must have 6 or 7 fields when seconds are required and years are optional.",
         }
         "###
@@ -2599,7 +2410,7 @@ mod tests {
                 }),
                 ..Default::default()
             }).await),
-            @r###""Page tracker schedule must have at least 10s between occurrences, but detected 5s.""###
+            @r###""Tracker schedule must have at least 10s between occurrences, but detected 5s.""###
         );
 
         // Too few retry attempts.
@@ -2617,7 +2428,7 @@ mod tests {
                 }),
                 ..Default::default()
             }).await),
-            @r###""Page tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
+            @r###""Tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
         );
 
         // Too many retry attempts.
@@ -2635,7 +2446,7 @@ mod tests {
                 }),
                 ..Default::default()
             }).await),
-            @r###""Page tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
+            @r###""Tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
         );
 
         // Too low retry interval.
@@ -2653,7 +2464,7 @@ mod tests {
                 }),
                 ..Default::default()
             }).await),
-            @r###""Page tracker min retry interval cannot be less than 1m, but received 30s.""###
+            @r###""Tracker min retry interval cannot be less than 1m, but received 30s.""###
         );
 
         // Too low max retry interval.
@@ -2673,7 +2484,7 @@ mod tests {
                 }),
                 ..Default::default()
             }).await),
-            @r###""Page tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
+            @r###""Tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
         );
 
         // Too high max retry interval.
@@ -2693,7 +2504,7 @@ mod tests {
                 }),
                 ..Default::default()
             }).await),
-            @r###""Page tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
+            @r###""Tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
         );
 
         assert_debug_snapshot!(
@@ -2712,7 +2523,7 @@ mod tests {
                 }),
                ..Default::default()
             }).await),
-            @r###""Page tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
+            @r###""Tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
         );
 
         // Empty extractor.
@@ -3504,7 +3315,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""API tracker name cannot be empty.""###
+            @r###""Tracker name cannot be empty.""###
         );
 
         // Very long name.
@@ -3517,7 +3328,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""API tracker name cannot be longer than 100 characters.""###
+            @r###""Tracker name cannot be longer than 100 characters.""###
         );
 
         // Too many revisions.
@@ -3533,7 +3344,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""API tracker revisions count cannot be greater than 30.""###
+            @r###""Tracker revisions count cannot be greater than 30.""###
         );
 
         // Invalid schedule.
@@ -3554,7 +3365,7 @@ mod tests {
             }).await),
             @r###"
         Error {
-            context: "API tracker schedule must be a valid cron expression.",
+            context: "Tracker schedule must be a valid cron expression.",
             source: "Failed to parse schedule `-`: Invalid pattern: Pattern must have 6 or 7 fields when seconds are required and years are optional.",
         }
         "###
@@ -3576,7 +3387,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""API tracker schedule must have at least 10s between occurrences, but detected 5s.""###
+            @r###""Tracker schedule must have at least 10s between occurrences, but detected 5s.""###
         );
 
         // Too few retry attempts.
@@ -3598,7 +3409,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""API tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
+            @r###""Tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
         );
 
         // Too many retry attempts.
@@ -3620,7 +3431,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""API tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
+            @r###""Tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
         );
 
         // Too low retry interval.
@@ -3642,7 +3453,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""API tracker min retry interval cannot be less than 1m, but received 30s.""###
+            @r###""Tracker min retry interval cannot be less than 1m, but received 30s.""###
         );
 
         // Too low max retry interval.
@@ -3666,7 +3477,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""API tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
+            @r###""Tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
         );
 
         // Too high max retry interval (monthly schedule).
@@ -3690,7 +3501,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""API tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
+            @r###""Tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
         );
 
         // Too high max retry interval (hourly schedule).
@@ -3714,7 +3525,7 @@ mod tests {
                 notifications: false,
                 secrets: Default::default(),
             }).await),
-            @r###""API tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
+            @r###""Tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
         );
 
         // Invalid URL scheme.
@@ -4290,7 +4101,7 @@ mod tests {
                 name: Some("".to_string()),
                 ..Default::default()
             }).await),
-            @r###""API tracker name cannot be empty.""###
+            @r###""Tracker name cannot be empty.""###
         );
 
         // Very long name.
@@ -4299,7 +4110,7 @@ mod tests {
                 name: Some("a".repeat(101)),
                 ..Default::default()
             }).await),
-            @r###""API tracker name cannot be longer than 100 characters.""###
+            @r###""Tracker name cannot be longer than 100 characters.""###
         );
 
         // Too many revisions.
@@ -4311,7 +4122,7 @@ mod tests {
                 }),
                 ..Default::default()
             }).await),
-            @r###""API tracker revisions count cannot be greater than 30.""###
+            @r###""Tracker revisions count cannot be greater than 30.""###
         );
 
         // Invalid schedule.
@@ -4328,7 +4139,7 @@ mod tests {
             }).await),
             @r###"
         Error {
-            context: "API tracker schedule must be a valid cron expression.",
+            context: "Tracker schedule must be a valid cron expression.",
             source: "Failed to parse schedule `-`: Invalid pattern: Pattern must have 6 or 7 fields when seconds are required and years are optional.",
         }
         "###
@@ -4346,7 +4157,7 @@ mod tests {
                 }),
                 ..Default::default()
             }).await),
-            @r###""API tracker schedule must have at least 10s between occurrences, but detected 5s.""###
+            @r###""Tracker schedule must have at least 10s between occurrences, but detected 5s.""###
         );
 
         // Too few retry attempts.
@@ -4364,7 +4175,7 @@ mod tests {
                 }),
                 ..Default::default()
             }).await),
-            @r###""API tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
+            @r###""Tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
         );
 
         // Too many retry attempts.
@@ -4382,7 +4193,7 @@ mod tests {
                 }),
                 ..Default::default()
             }).await),
-            @r###""API tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
+            @r###""Tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
         );
 
         // Too low retry interval.
@@ -4400,7 +4211,7 @@ mod tests {
                 }),
                 ..Default::default()
             }).await),
-            @r###""API tracker min retry interval cannot be less than 1m, but received 30s.""###
+            @r###""Tracker min retry interval cannot be less than 1m, but received 30s.""###
         );
 
         // Too low max retry interval.
@@ -4420,7 +4231,7 @@ mod tests {
                 }),
                 ..Default::default()
             }).await),
-            @r###""API tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
+            @r###""Tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
         );
 
         // Too high max retry interval.
@@ -4440,7 +4251,7 @@ mod tests {
                 }),
                 ..Default::default()
             }).await),
-            @r###""API tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
+            @r###""Tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
         );
 
         assert_debug_snapshot!(
@@ -4459,7 +4270,7 @@ mod tests {
                 }),
                 ..Default::default()
             }).await),
-            @r###""API tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
+            @r###""Tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
         );
 
         // Invalid URL scheme.
@@ -5284,6 +5095,124 @@ mod tests {
         assert!(
             err_msg.contains("http or https"),
             "Expected URL scheme error, got: {err_msg}"
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn properly_debugs_page_tracker(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let debug_response = serde_json::json!({
+            "durationMs": 2800,
+            "result": "## Secutils.dev",
+            "target": {
+                "type": "page",
+                "extractorSource": "export async function execute(p) { return await p.content(); }",
+                "logs": [
+                    { "level": "info", "message": "Navigating to page..." }
+                ],
+                "durationMs": 2700
+            }
+        });
+        let retrack_debug_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/trackers/_debug");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(debug_response.clone());
+        });
+
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let web_scraping = api.web_scraping(&mock_user);
+        let result = web_scraping
+            .debug_page_tracker(PageTrackerDebugParams {
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { return await p.content(); }"
+                        .to_string(),
+                    accept_invalid_certificates: false,
+                },
+                secrets: SecretsAccess::None,
+            })
+            .await?;
+
+        assert_eq!(result, debug_response);
+        retrack_debug_mock.assert();
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn debug_page_tracker_forwards_retrack_client_errors(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let retrack_debug_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/trackers/_debug");
+            then.status(400)
+                .header("Content-Type", "text/plain")
+                .body("Invalid extractor script");
+        });
+
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let web_scraping = api.web_scraping(&mock_user);
+        let result = web_scraping
+            .debug_page_tracker(PageTrackerDebugParams {
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { return await p.content(); }"
+                        .to_string(),
+                    accept_invalid_certificates: false,
+                },
+                secrets: SecretsAccess::None,
+            })
+            .await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.downcast_ref::<SecutilsError>().is_some());
+        assert!(err.to_string().contains("Invalid extractor script"));
+        retrack_debug_mock.assert();
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn debug_page_tracker_rejects_empty_extractor(pool: PgPool) -> anyhow::Result<()> {
+        let config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let web_scraping = api.web_scraping(&mock_user);
+        let result = web_scraping
+            .debug_page_tracker(PageTrackerDebugParams {
+                target: PageTrackerTarget {
+                    extractor: "".to_string(),
+                    accept_invalid_certificates: false,
+                },
+                secrets: SecretsAccess::None,
+            })
+            .await;
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("extractor script cannot be empty"),
+            "Expected empty extractor error, got: {err_msg}"
         );
 
         Ok(())

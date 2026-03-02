@@ -473,6 +473,32 @@ In this guide, you will create several webhook responders that emulate JavaScrip
 You can configure the tracker with a schedule (e.g. **Daily**) and enable **Notifications** so that Secutils.dev automatically checks for resource changes and alerts you when they occur.
 :::
 
+## Debug a page tracker
+
+Before saving a tracker you can use the built-in **Debug** mode to run the full extraction pipeline and inspect every detail - from the Playwright scenario execution to the final extracted result. This is useful for verifying that your content extractor script works correctly and produces the expected output.
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/web_scraping/page_debug_step1_extractor_params.png',
+        caption: <>Open the tracker form and click the <b>Debug</b> button in the footer. The debug modal shows the pipeline stages as horizontal steps. Click the <b>Extractor</b> step to inspect the <b>Params</b> tab - this shows the parameters passed to the extractor script, including any decrypted secrets.</>,
+        alt: 'Debug modal showing the Extractor step with the Params tab selected.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/page_debug_step2_extractor_logs.png',
+        caption: <>Switch to the <b>Logs</b> tab to see log messages collected during the Playwright scenario execution, including <code>console.log</code> calls from the extractor script and browser-side console output. This is helpful for diagnosing navigation issues or slow page loads.</>,
+        alt: 'Debug modal showing the Extractor step with the Logs tab selected.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/page_debug_step3_result.png',
+        caption: <>Click the <b>Result</b> step to see the final output that would be stored as a tracker revision, along with the total pipeline execution time.</>,
+        alt: 'Debug modal showing the final Result step with the pipeline output.',
+    },
+]} />
+
+:::tip
+The Debug button is available whenever a content extractor script is present - you don't need to save the tracker first. If the extraction fails, the Extractor step will be highlighted in red and the error message will be shown in the detail panel.
+:::
+
 ## Annex: Content extractor script examples
 
 In this section, you can find examples of content extractor scripts that extract various content from web pages. Essentially, the script defines a function with the following signature:

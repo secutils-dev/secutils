@@ -17,24 +17,22 @@ import {
 import { css } from '@emotion/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import type { ApiTrackerTarget } from './api_tracker';
-import type { ApiRequestDebugInfo, DebugResult, PipelineStage, ScriptDebugInfo } from './api_tracker_debug_types';
-import { buildPipelineStages } from './api_tracker_debug_types';
-import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
+import type {
+  ApiRequestDebugInfo,
+  DebugResult,
+  PageDebugTarget,
+  PageLogEntry,
+  PipelineStage,
+  ScriptDebugInfo,
+} from './tracker_debug_types';
+import { buildPipelineStages } from './tracker_debug_types';
+import { type AsyncData, getApiRequestConfig, getErrorMessage, ResponseError } from '../../../../model';
 
-export interface ApiTrackerDebugPanelProps {
+export interface TrackerDebugPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  url: string;
-  method: string;
-  headers: Array<{ label: string }>;
-  body: string;
-  mediaType: string;
-  acceptInvalidCertificates: boolean;
-  configurator?: string;
-  extractor?: string;
-  secrets: { type: string; secrets?: string[] };
   onStatusChange?: (status: 'idle' | 'pending' | 'done') => void;
+  buildDebugRequest: () => { url: string; body: string };
 }
 
 function statusColor(status: number): 'success' | 'warning' | 'danger' | 'default' {
@@ -78,6 +76,7 @@ function stageTitle(stage: PipelineStage, totalRequests: number): string {
     case 'request':
       return totalRequests > 1 ? `Request #${stage.data.index + 1}` : 'Request';
     case 'extractor':
+    case 'pageExtractor':
       return 'Extractor';
     case 'result':
       return 'Result';
@@ -90,6 +89,8 @@ function stageStatus(stage: PipelineStage, debugResult: DebugResult): 'complete'
     case 'extractor':
       return stage.data.error ? 'danger' : 'complete';
     case 'request':
+      return stage.data.error ? 'danger' : 'complete';
+    case 'pageExtractor':
       return stage.data.error ? 'danger' : 'complete';
     case 'result':
       return debugResult.error ? 'danger' : debugResult.result != null ? 'complete' : 'incomplete';
@@ -317,6 +318,73 @@ function ExtractorDetail({ data, params }: { data: ScriptDebugInfo; params?: unk
   return <ScriptDetail label="Extractor" data={data} params={params} />;
 }
 
+function formatLogEntry(entry: PageLogEntry): string {
+  let line = `[${entry.level}] ${entry.message}`;
+  if (entry.args && entry.args.length > 0) {
+    line += ' ' + entry.args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+  }
+  return line;
+}
+
+function PageExtractorDetail({ data }: { data: PageDebugTarget }) {
+  const tabs = useMemo(() => {
+    const result: Array<{ id: string; name: string; content: React.ReactNode }> = [];
+
+    if (data.params != null) {
+      result.push({
+        id: 'params',
+        name: 'Params',
+        content: (
+          <>
+            <EuiSpacer size="s" />
+            <EuiCodeBlock language="json" fontSize="s" paddingSize="s" overflowHeight={300} isCopyable>
+              {formatJson(data.params)}
+            </EuiCodeBlock>
+          </>
+        ),
+      });
+    }
+
+    if (data.logs && data.logs.length > 0) {
+      result.push({
+        id: 'logs',
+        name: 'Logs',
+        content: (
+          <>
+            <EuiSpacer size="s" />
+            <EuiCodeBlock fontSize="s" paddingSize="s" overflowHeight={300} isCopyable>
+              {data.logs.map(formatLogEntry).join('\n')}
+            </EuiCodeBlock>
+          </>
+        ),
+      });
+    }
+
+    return result;
+  }, [data]);
+
+  return (
+    <>
+      <EuiFlexGroup gutterSize="s" alignItems="center" responsive={false}>
+        <EuiFlexItem grow={false}>
+          <EuiBadge color="hollow">{data.durationMs}ms</EuiBadge>
+        </EuiFlexItem>
+        {data.engine ? (
+          <EuiFlexItem grow={false}>
+            <EuiBadge color="hollow">{data.engine}</EuiBadge>
+          </EuiFlexItem>
+        ) : null}
+      </EuiFlexGroup>
+      {tabs.length > 0 ? (
+        <>
+          <EuiSpacer size="s" />
+          <EuiTabbedContent tabs={tabs} size="s" autoFocus="selected" />
+        </>
+      ) : null}
+    </>
+  );
+}
+
 function ResultDetail({ debugResult }: { debugResult: DebugResult }) {
   return (
     <>
@@ -354,7 +422,7 @@ function ResultDetail({ debugResult }: { debugResult: DebugResult }) {
 
 function StageDetailPanel({ stage, debugResult }: { stage: PipelineStage | null; debugResult: DebugResult }) {
   if (!stage) return null;
-  const params = debugResult.target.params;
+  const params = debugResult.target.type === 'api' ? debugResult.target.params : undefined;
   switch (stage.kind) {
     case 'configurator':
       return <ConfiguratorDetail data={stage.data} params={params} />;
@@ -362,6 +430,8 @@ function StageDetailPanel({ stage, debugResult }: { stage: PipelineStage | null;
       return <RequestDetail data={stage.data} />;
     case 'extractor':
       return <ExtractorDetail data={stage.data} params={params} />;
+    case 'pageExtractor':
+      return <PageExtractorDetail data={stage.data} />;
     case 'result':
       return <ResultDetail debugResult={debugResult} />;
   }
@@ -371,20 +441,7 @@ function StageDetailPanel({ stage, debugResult }: { stage: PipelineStage | null;
 // Main component
 // ---------------------------------------------------------------------------
 
-export function ApiTrackerDebugPanel({
-  isOpen,
-  onClose,
-  url,
-  method,
-  headers,
-  body,
-  mediaType,
-  acceptInvalidCertificates,
-  configurator,
-  extractor,
-  secrets,
-  onStatusChange,
-}: ApiTrackerDebugPanelProps) {
+export function TrackerDebugPanel({ isOpen, onClose, onStatusChange, buildDebugRequest }: TrackerDebugPanelProps) {
   const [result, setResult] = useState<AsyncData<DebugResult>>();
   const [selectedStageIndex, setSelectedStageIndex] = useState<number>(-1);
 
@@ -396,40 +453,11 @@ export function ApiTrackerDebugPanel({
     setResult({ status: 'pending' });
     onStatusChange?.('pending');
 
-    const headersObj =
-      headers.length > 0
-        ? Object.fromEntries(
-            headers.map((h) => {
-              const [k, ...rest] = h.label.split(':');
-              return [k.trim(), rest.join(':').trim()];
-            }),
-          )
-        : undefined;
+    const { url, body } = buildDebugRequest();
 
-    let parsedBody: unknown = undefined;
-    if (body && method !== 'GET' && method !== 'HEAD') {
-      try {
-        parsedBody = JSON.parse(body);
-      } catch {
-        parsedBody = body;
-      }
-    }
-
-    const target: ApiTrackerTarget = {
-      url,
-      method: method !== 'GET' ? method : undefined,
-      headers: headersObj,
-      body: parsedBody,
-      mediaType: mediaType || undefined,
-      acceptInvalidCertificates: acceptInvalidCertificates || undefined,
-      configurator: configurator || undefined,
-      extractor: extractor || undefined,
-    };
-
-    fetch(getApiUrl('/api/utils/web_scraping/api/debug'), {
-      ...getApiRequestConfig(),
-      method: 'POST',
-      body: JSON.stringify({ target, secrets }),
+    fetch(url, {
+      ...getApiRequestConfig('POST'),
+      body,
     })
       .then(async (res) => {
         if (!res.ok) throw await ResponseError.fromResponse(res);
@@ -444,19 +472,7 @@ export function ApiTrackerDebugPanel({
         setResult({ status: 'failed', error: getErrorMessage(err) });
         onStatusChange?.('done');
       });
-  }, [
-    url,
-    method,
-    headers,
-    body,
-    mediaType,
-    acceptInvalidCertificates,
-    configurator,
-    extractor,
-    secrets,
-    result?.status,
-    onStatusChange,
-  ]);
+  }, [buildDebugRequest, result?.status, onStatusChange]);
 
   useEffect(() => {
     if (isOpen && !result) {
@@ -465,7 +481,8 @@ export function ApiTrackerDebugPanel({
   }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const debugData = result?.status === 'succeeded' ? result.data : null;
-  const totalRequests = debugData?.target.requests.length ?? 0;
+  const totalRequests =
+    debugData?.target.type === 'api' ? debugData.target.requests.length : 0;
 
   const horizontalSteps = useMemo(
     () =>

@@ -657,6 +657,86 @@ test.describe('Web scraping guide screenshots', () => {
       clip: { x, y, width: right - x, height: bottom - y },
     });
   });
+
+  test('Debug a page tracker', async ({ page }) => {
+    test.setTimeout(120000);
+
+    const debugFixture = {
+      durationMs: 3250,
+      result: `## Secutils.dev\n\nOpen-source toolbox for security-minded engineers.`,
+      target: {
+        type: 'page',
+        params: {
+          secrets: { loginToken: 'tok-preview-a1b2c3…f4e5d6' },
+        },
+        engine: 'chromium',
+        extractorSource: [
+          "export async function execute(page) {",
+          "  await page.goto('https://secutils.dev');",
+          "  const title = await page.title();",
+          "  const description = await page.locator('meta[name=\"description\"]')",
+          "    .getAttribute('content');",
+          "  return `## ${title}\\n\\n${description}`;",
+          "}",
+        ].join('\n'),
+        logs: [
+          { level: 'info', message: 'Launching chromium browser…' },
+          { level: 'info', message: 'Navigating to https://secutils.dev…' },
+          { level: 'info', message: 'Page loaded (status 200, 1.8 s)' },
+          { level: 'info', message: 'Running extractor script…' },
+          { level: 'info', message: 'Extraction complete (324 bytes)' },
+        ],
+        durationMs: 3100,
+      },
+    };
+
+    await page.route('**/api/utils/web_scraping/page/debug', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(debugFixture),
+      });
+    });
+
+    await goto(page, '/ws/web_scraping__page');
+    const trackPageButton = page.getByRole('button', { name: 'Track page' });
+    await expect(trackPageButton).toBeVisible({ timeout: 15000 });
+    await trackPageButton.click();
+
+    const flyout = page
+      .getByRole('dialog')
+      .filter({ has: page.getByRole('heading', { name: 'Add tracker' }) });
+    await expect(flyout).toBeVisible();
+
+    const debugButton = flyout.getByRole('button', { name: 'Debug' });
+    await expect(debugButton).toBeEnabled();
+    await debugButton.click();
+
+    const modal = page.locator('[data-test-subj="debug-modal"]');
+    await expect(modal).toBeVisible();
+
+    const extractorStep = modal.getByRole('button', { name: 'Extractor' });
+    const resultStep = modal.getByRole('button', { name: 'Result' });
+    await expect(resultStep).toBeVisible({ timeout: 15000 });
+
+    // --- Extractor: Params tab ---
+    await extractorStep.click();
+    const extParamsTab = modal.getByRole('tab', { name: 'Params' });
+    await expect(extParamsTab).toBeVisible();
+    await expect(extParamsTab).toHaveAttribute('aria-selected', 'true');
+    await page.screenshot({ path: join(IMG_DIR, 'page_debug_step1_extractor_params.png') });
+
+    // --- Extractor: Logs tab ---
+    const extLogsTab = modal.getByRole('tab', { name: 'Logs' });
+    await extLogsTab.click();
+    await expect(extLogsTab).toHaveAttribute('aria-selected', 'true');
+    await page.screenshot({ path: join(IMG_DIR, 'page_debug_step2_extractor_logs.png') });
+
+    // --- Result step ---
+    await resultStep.click();
+    await expect(modal.getByText('3250ms total')).toBeVisible();
+    await page.screenshot({ path: join(IMG_DIR, 'page_debug_step3_result.png') });
+  });
 });
 
 test.describe('API tracker guide screenshots', () => {

@@ -15,11 +15,10 @@ import {
   EuiTitle,
 } from '@elastic/eui';
 import type { ChangeEvent } from 'react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { ApiTracker, ApiTrackerTarget } from './api_tracker';
-import type { ApiTrackerDebugPanelProps } from './api_tracker_debug_panel';
-import { ApiTrackerDebugPanel } from './api_tracker_debug_panel';
+import { TrackerDebugPanel } from './tracker_debug_panel';
 import type { RetryInterval } from './consts';
 import {
   getDefaultRetryStrategy,
@@ -227,22 +226,47 @@ export function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
   const [isDebugOpen, setIsDebugOpen] = useState(false);
   const [debugInProgress, setDebugInProgress] = useState(false);
 
-  const debugPanelProps = useMemo<Omit<ApiTrackerDebugPanelProps, 'isOpen' | 'onClose' | 'onStatusChange'>>(() => {
-    return {
+  const buildDebugRequest = useCallback(() => {
+    const headersObj =
+      headers.length > 0
+        ? Object.fromEntries(
+            headers.map((h) => {
+              const [k, ...rest] = h.label.split(':');
+              return [k.trim(), rest.join(':').trim()];
+            }),
+          )
+        : undefined;
+
+    let parsedBody: unknown = undefined;
+    if (body && method !== 'GET' && method !== 'HEAD') {
+      try {
+        parsedBody = JSON.parse(body);
+      } catch {
+        parsedBody = body;
+      }
+    }
+
+    const target: ApiTrackerTarget = {
       url,
-      method,
-      headers,
-      body,
-      mediaType,
-      acceptInvalidCertificates: acceptInvalidCerts,
+      method: method !== 'GET' ? method : undefined,
+      headers: headersObj,
+      body: parsedBody,
+      mediaType: mediaType || undefined,
+      acceptInvalidCertificates: acceptInvalidCerts || undefined,
       configurator: configurator || undefined,
       extractor: extractor || undefined,
-      secrets:
-        secretsMode === 'all'
-          ? { type: 'all' as const }
-          : secretsMode === 'selected'
-            ? { type: 'selected' as const, secrets: selectedSecretNames.map((s) => s.label) }
-            : { type: 'none' as const },
+    };
+
+    const secrets =
+      secretsMode === 'all'
+        ? { type: 'all' as const }
+        : secretsMode === 'selected'
+          ? { type: 'selected' as const, secrets: selectedSecretNames.map((s) => s.label) }
+          : { type: 'none' as const };
+
+    return {
+      url: getApiUrl('/api/utils/web_scraping/api/debug'),
+      body: JSON.stringify({ target, secrets }),
     };
   }, [url, method, headers, body, mediaType, acceptInvalidCerts, configurator, extractor, secretsMode, selectedSecretNames]);
 
@@ -679,11 +703,11 @@ export function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
           </EuiDescribedFormGroup>
         ) : null}
       </EuiForm>
-      <ApiTrackerDebugPanel
-        {...debugPanelProps}
+      <TrackerDebugPanel
         isOpen={isDebugOpen}
         onClose={() => setIsDebugOpen(false)}
         onStatusChange={onDebugStatusChange}
+        buildDebugRequest={buildDebugRequest}
       />
     </EditorFlyout>
   );

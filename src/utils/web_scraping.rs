@@ -74,6 +74,17 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
             web_scraping.clear_page_tracker_history(resource_id).await?;
             Ok(UtilsActionResult::empty())
         }
+        (
+            UtilsResource::WebScrapingPage,
+            UtilsAction::Execute {
+                resource_id: None,
+                operation: UtilsResourceOperation::WebScrapingPageDebugRequest,
+            },
+        ) => UtilsActionResult::json(
+            web_scraping
+                .debug_page_tracker(extract_params(params)?)
+                .await?,
+        ),
         (UtilsResource::WebScrapingApi, UtilsAction::List) => {
             UtilsActionResult::json(web_scraping.get_api_trackers().await?)
         }
@@ -1557,6 +1568,60 @@ pub mod tests {
             Some(UtilsActionParams::json(json!({
                 "target": {
                     "url": "https://api.example.com/data"
+                },
+                "secrets": { "type": "none" }
+            }))),
+        )
+        .await?;
+
+        assert_eq!(action_result.into_inner().unwrap(), debug_response);
+        retrack_debug_mock.assert();
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn properly_handles_page_tracker_debug_operation(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let debug_response = json!({
+            "durationMs": 2800,
+            "result": "## Secutils.dev",
+            "target": {
+                "type": "page",
+                "extractorSource": "export async function execute(p) { return await p.content(); }",
+                "logs": [
+                    { "level": "info", "message": "Navigating to page..." }
+                ],
+                "durationMs": 2700
+            }
+        });
+        let retrack_debug_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/trackers/_debug");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(debug_response.clone());
+        });
+
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let action_result = web_scraping_handle_action(
+            mock_user.clone(),
+            &api,
+            UtilsAction::Execute {
+                resource_id: None,
+                operation: UtilsResourceOperation::WebScrapingPageDebugRequest,
+            },
+            UtilsResource::WebScrapingPage,
+            Some(UtilsActionParams::json(json!({
+                "target": {
+                    "extractor": "export async function execute(p) { return await p.content(); }"
                 },
                 "secrets": { "type": "none" }
             }))),
