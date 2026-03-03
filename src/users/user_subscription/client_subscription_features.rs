@@ -122,6 +122,7 @@ mod test {
                     .collect(),
                 ),
                 min_schedule_interval: Duration::from_secs(10),
+                max_debug_screenshots_total_size: 5 * 1024 * 1024,
             },
             web_security: SubscriptionWebSecurityConfig {
                 policies: 10,

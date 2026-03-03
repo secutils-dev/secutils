@@ -4,6 +4,12 @@ export interface PageLogEntry {
   args?: unknown[];
 }
 
+export interface PageScreenshotEntry {
+  label: string;
+  data: string;
+  mimeType: string;
+}
+
 export interface PageDebugResult {
   durationMs: number;
   result?: unknown;
@@ -14,6 +20,7 @@ export interface PageDebugResult {
     engine?: string;
     extractorSource: string;
     logs: PageLogEntry[];
+    screenshots?: PageScreenshotEntry[];
     durationMs: number;
     error?: string;
   };

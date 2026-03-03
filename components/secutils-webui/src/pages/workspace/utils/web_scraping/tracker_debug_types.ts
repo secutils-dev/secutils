@@ -27,6 +27,12 @@ export interface PageLogEntry {
   args?: unknown[];
 }
 
+export interface PageScreenshotEntry {
+  label: string;
+  data: string;
+  mimeType: string;
+}
+
 export interface ApiDebugTarget {
   type: 'api';
   params?: unknown;
@@ -41,6 +47,7 @@ export interface PageDebugTarget {
   engine?: string;
   extractorSource: string;
   logs: PageLogEntry[];
+  screenshots?: PageScreenshotEntry[];
   durationMs: number;
   error?: string;
 }

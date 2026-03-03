@@ -18,7 +18,6 @@ import type { ChangeEvent } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 
 import type { ApiTracker, ApiTrackerTarget } from './api_tracker';
-import { TrackerDebugPanel } from './tracker_debug_panel';
 import type { RetryInterval } from './consts';
 import {
   getDefaultRetryStrategy,
@@ -30,6 +29,7 @@ import { areSchedulerJobsEqual } from './page_tracker';
 import type { SchedulerJobConfig } from './page_tracker';
 import { PageTrackerJobSchedule } from './page_tracker_job_schedule';
 import { PageTrackerRetryStrategy } from './page_tracker_retry_strategy';
+import { TrackerDebugPanel } from './tracker_debug_panel';
 import { useFormChanges, useRangeTicks } from '../../../../hooks';
 import {
   type AsyncData,
@@ -268,7 +268,18 @@ export function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
       url: getApiUrl('/api/utils/web_scraping/api/debug'),
       body: JSON.stringify({ target, secrets }),
     };
-  }, [url, method, headers, body, mediaType, acceptInvalidCerts, configurator, extractor, secretsMode, selectedSecretNames]);
+  }, [
+    url,
+    method,
+    headers,
+    body,
+    mediaType,
+    acceptInvalidCerts,
+    configurator,
+    extractor,
+    secretsMode,
+    selectedSecretNames,
+  ]);
 
   const onDebug = useCallback(() => {
     setIsDebugOpen(true);

@@ -119,6 +119,7 @@ mod tests {
         trackers = 100
         tracker_revisions = 30
         min_schedule_interval = 10000
+        max_debug_screenshots_total_size = 5242880
         [subscriptions.basic.certificates]
         private_keys = 100
         templates = 1000
@@ -137,6 +138,7 @@ mod tests {
         trackers = 100
         tracker_revisions = 30
         min_schedule_interval = 10000
+        max_debug_screenshots_total_size = 5242880
         [subscriptions.standard.certificates]
         private_keys = 100
         templates = 1000
@@ -155,6 +157,7 @@ mod tests {
         trackers = 100
         tracker_revisions = 30
         min_schedule_interval = 10000
+        max_debug_screenshots_total_size = 5242880
         [subscriptions.professional.certificates]
         private_keys = 100
         templates = 1000
@@ -173,6 +176,7 @@ mod tests {
         trackers = 100
         tracker_revisions = 30
         min_schedule_interval = 10000
+        max_debug_screenshots_total_size = 5242880
         [subscriptions.ultimate.certificates]
         private_keys = 100
         templates = 1000
@@ -444,6 +448,7 @@ mod tests {
                         tracker_revisions: 11,
                         tracker_schedules: None,
                         min_schedule_interval: 10s,
+                        max_debug_screenshots_total_size: 5242880,
                     },
                     certificates: SubscriptionCertificatesConfig {
                         private_keys: 1,
@@ -475,6 +480,7 @@ mod tests {
                         tracker_revisions: 22,
                         tracker_schedules: None,
                         min_schedule_interval: 20s,
+                        max_debug_screenshots_total_size: 5242880,
                     },
                     certificates: SubscriptionCertificatesConfig {
                         private_keys: 2,
@@ -506,6 +512,7 @@ mod tests {
                         tracker_revisions: 33,
                         tracker_schedules: None,
                         min_schedule_interval: 30s,
+                        max_debug_screenshots_total_size: 5242880,
                     },
                     certificates: SubscriptionCertificatesConfig {
                         private_keys: 3,
@@ -537,6 +544,7 @@ mod tests {
                         tracker_revisions: 44,
                         tracker_schedules: None,
                         min_schedule_interval: 40s,
+                        max_debug_screenshots_total_size: 5242880,
                     },
                     certificates: SubscriptionCertificatesConfig {
                         private_keys: 4,

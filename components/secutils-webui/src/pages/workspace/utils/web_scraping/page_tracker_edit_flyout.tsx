@@ -28,8 +28,8 @@ import type { PageTracker, SchedulerJobConfig } from './page_tracker';
 import { areSchedulerJobsEqual } from './page_tracker';
 import { PageTrackerJobSchedule } from './page_tracker_job_schedule';
 import { PageTrackerRetryStrategy } from './page_tracker_retry_strategy';
-import { useFormChanges, useRangeTicks } from '../../../../hooks';
 import { TrackerDebugPanel } from './tracker_debug_panel';
+import { useFormChanges, useRangeTicks } from '../../../../hooks';
 import {
   type AsyncData,
   getApiRequestConfig,

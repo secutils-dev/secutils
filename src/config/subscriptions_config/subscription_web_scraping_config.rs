@@ -14,6 +14,13 @@ pub struct SubscriptionWebScrapingConfig {
     /// The minimum interval between two consequent scheduled tracker checks.
     #[serde_as(as = "DurationMilliSeconds<u64>")]
     pub min_schedule_interval: Duration,
+    /// Maximum cumulative size (in bytes) of debug screenshots per debug run.
+    #[serde(default = "default_max_debug_screenshots_total_size")]
+    pub max_debug_screenshots_total_size: u64,
+}
+
+fn default_max_debug_screenshots_total_size() -> u64 {
+    5 * 1024 * 1024
 }
 
 impl Default for SubscriptionWebScrapingConfig {
@@ -25,6 +32,7 @@ impl Default for SubscriptionWebScrapingConfig {
             tracker_schedules: None,
             // Default to 10 seconds.
             min_schedule_interval: Duration::from_secs(10),
+            max_debug_screenshots_total_size: default_max_debug_screenshots_total_size(),
         }
     }
 }
@@ -41,6 +49,7 @@ mod tests {
         trackers = 100
         tracker_revisions = 30
         min_schedule_interval = 10000
+        max_debug_screenshots_total_size = 5242880
         "###);
     }
 

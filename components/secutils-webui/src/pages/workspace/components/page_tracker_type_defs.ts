@@ -162,7 +162,15 @@ interface Page {
   /** Unsubscribe from a page event. */
   off(event: string, handler: (...args: any[]) => void): void;
 
-  /** Take a screenshot of the page. */
+  /**
+   * Take a screenshot of the page.
+   *
+   * In debug mode the \`path\` option is ignored - screenshots are captured
+   * in-memory and returned in the debug response instead of being written to
+   * disk. Additionally, debug mode automatically captures a viewport screenshot
+   * after every significant action (goto, click, fill, etc.) so you often don't
+   * need to call this method explicitly.
+   */
   screenshot(options?: {
     path?: string;
     type?: 'png' | 'jpeg';

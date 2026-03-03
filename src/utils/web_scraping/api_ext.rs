@@ -37,12 +37,13 @@ use crate::{
     },
 };
 use anyhow::{anyhow, bail};
+use byte_unit::Byte;
 use croner::Cron;
 use http::Method;
 use retrack_types::{
     scheduler::SchedulerJobConfig,
     trackers::{
-        ApiTarget, PageTarget, TargetRequest, TrackerConfig, TrackerCreateParams,
+        ApiTarget, DebugOptions, PageTarget, TargetRequest, TrackerConfig, TrackerCreateParams,
         TrackerDataRevision, TrackerDebugParams, TrackerTarget, TrackerUpdateParams,
     },
 };
@@ -1105,12 +1106,22 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
 
     /// Sends a debug request to Retrack and strips the `actions` field from the response.
     async fn run_debug(&self, target: TrackerTarget) -> anyhow::Result<JsonValue> {
+        let features = self.user.subscription.get_features(&self.api.config);
         let debug_params = TrackerDebugParams {
             target,
             config: TrackerConfig::default(),
             tags: vec![],
             actions: vec![],
             previous_content: None,
+            debug: Some(DebugOptions {
+                max_screenshots_total_size: Some(Byte::from_u64(
+                    features
+                        .config
+                        .web_scraping
+                        .max_debug_screenshots_total_size,
+                )),
+                auto_screenshots: Some(true),
+            }),
         };
 
         let mut result = self.api.retrack().debug_tracker(&debug_params).await?;

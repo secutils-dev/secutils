@@ -5,6 +5,7 @@ import {
   EuiEmptyPrompt,
   EuiFlexGroup,
   EuiFlexItem,
+  EuiImage,
   EuiLoadingLogo,
   EuiModal,
   EuiModalBody,
@@ -23,6 +24,7 @@ import type {
   DebugResult,
   PageDebugTarget,
   PageLogEntry,
+  PageScreenshotEntry,
   PipelineStage,
   ScriptDebugInfo,
 } from './tracker_debug_types';
@@ -328,6 +330,52 @@ function formatLogEntry(entry: PageLogEntry): string {
   return line;
 }
 
+function ScreenshotsGrid({ screenshots }: { screenshots: PageScreenshotEntry[] }) {
+  const count = screenshots.length;
+  const columns = count === 1 ? '1fr' : count === 2 ? '1fr 1fr' : 'repeat(auto-fill, minmax(250px, 1fr))';
+
+  return (
+    <div
+      css={css`
+        display: grid;
+        grid-template-columns: ${columns};
+        gap: 12px;
+        max-height: 300px;
+        overflow-y: auto;
+        padding: 4px;
+      `}
+    >
+      {screenshots.map((entry, i) => (
+        <div
+          key={i}
+          css={css`
+            text-align: center;
+          `}
+        >
+          <EuiImage
+            alt={entry.label}
+            src={`data:${entry.mimeType};base64,${entry.data}`}
+            allowFullScreen
+            css={css`
+              max-width: 100%;
+              cursor: pointer;
+            `}
+          />
+          <EuiText
+            size="xs"
+            color="subdued"
+            css={css`
+              margin-top: 4px;
+            `}
+          >
+            {entry.label}
+          </EuiText>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function PageExtractorDetail({ data }: { data: PageDebugTarget }) {
   const tabs = useMemo(() => {
     const result: Array<{ id: string; name: string; content: React.ReactNode }> = [];
@@ -357,6 +405,19 @@ function PageExtractorDetail({ data }: { data: PageDebugTarget }) {
             <EuiCodeBlock fontSize="s" paddingSize="s" overflowHeight={300} isCopyable>
               {data.logs.map(formatLogEntry).join('\n')}
             </EuiCodeBlock>
+          </>
+        ),
+      });
+    }
+
+    if (data.screenshots && data.screenshots.length > 0) {
+      result.push({
+        id: 'screenshots',
+        name: 'Screenshots',
+        content: (
+          <>
+            <EuiSpacer size="s" />
+            <ScreenshotsGrid screenshots={data.screenshots} />
           </>
         ),
       });
@@ -483,8 +544,7 @@ export function TrackerDebugPanel({ isOpen, onClose, onStatusChange, buildDebugR
   }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const debugData = result?.status === 'succeeded' ? result.data : null;
-  const totalRequests =
-    debugData?.target.type === 'api' ? debugData.target.requests.length : 0;
+  const totalRequests = debugData?.target.type === 'api' ? debugData.target.requests.length : 0;
 
   const horizontalSteps = useMemo(
     () =>

@@ -67,6 +67,7 @@ mod test {
                     .collect(),
                 ),
                 min_schedule_interval: Duration::from_secs(10),
+                max_debug_screenshots_total_size: 5 * 1024 * 1024,
             },
             web_security: SubscriptionWebSecurityConfig {
                 policies: 10,
@@ -110,6 +111,7 @@ mod test {
                     .collect(),
                 ),
                 min_schedule_interval: Duration::from_secs(20),
+                max_debug_screenshots_total_size: 5 * 1024 * 1024,
             },
             web_security: SubscriptionWebSecurityConfig::default(),
             certificates: SubscriptionCertificatesConfig {
@@ -140,6 +142,7 @@ mod test {
                 tracker_revisions: 33,
                 tracker_schedules: None,
                 min_schedule_interval: Duration::from_secs(30),
+                max_debug_screenshots_total_size: 5 * 1024 * 1024,
             },
             web_security: SubscriptionWebSecurityConfig::default(),
             certificates: SubscriptionCertificatesConfig {

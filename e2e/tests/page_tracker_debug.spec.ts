@@ -72,6 +72,28 @@ function debugResultNoLogs(): PageDebugResult {
   };
 }
 
+// Tiny 1x1 red PNG as base64 for testing screenshot display.
+const TINY_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwADhQGAWjR9awAAAABJRU5ErkJggg==';
+
+function debugResultWithScreenshots(): PageDebugResult {
+  return {
+    durationMs: 3500,
+    result: 'ok',
+    target: {
+      type: 'page',
+      engine: 'chromium',
+      extractorSource: "export async function execute(page) { await page.goto('https://example.com'); return 'ok'; }",
+      logs: [{ level: 'info', message: 'Connected.' }],
+      screenshots: [
+        { label: 'after goto: https://example.com', data: TINY_PNG, mimeType: 'image/png' },
+        { label: 'page.screenshot()', data: TINY_PNG, mimeType: 'image/png' },
+      ],
+      durationMs: 3400,
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -327,6 +349,39 @@ test.describe('Page Tracker Debug Panel', () => {
       await expect(modal.getByRole('button', { name: 'Result' })).toBeVisible({ timeout: 15000 });
 
       expect(capturedSecrets).toEqual({ type: 'none' });
+    });
+  });
+
+  test.describe('with screenshots (mocked)', () => {
+    test('shows Screenshots tab with images', async ({ page }) => {
+      await mockDebugEndpoint(page, debugResultWithScreenshots());
+      const flyout = await openTrackerFlyout(page);
+      await clickDebug(flyout);
+
+      const modal = getDebugModal(page);
+      const extractorStep = modal.getByRole('button', { name: 'Extractor' });
+      await expect(extractorStep).toBeVisible({ timeout: 15000 });
+      await extractorStep.click();
+
+      const screenshotsTab = modal.getByRole('tab', { name: 'Screenshots' });
+      await expect(screenshotsTab).toBeVisible();
+      await screenshotsTab.click();
+
+      await expect(modal.getByText('after goto: https://example.com')).toBeVisible();
+      await expect(modal.getByText('page.screenshot()')).toBeVisible();
+    });
+
+    test('hides Screenshots tab when no screenshots are present', async ({ page }) => {
+      await mockDebugEndpoint(page, debugResultSimple());
+      const flyout = await openTrackerFlyout(page);
+      await clickDebug(flyout);
+
+      const modal = getDebugModal(page);
+      const extractorStep = modal.getByRole('button', { name: 'Extractor' });
+      await expect(extractorStep).toBeVisible({ timeout: 15000 });
+      await extractorStep.click();
+
+      await expect(modal.getByRole('tab', { name: 'Screenshots' })).not.toBeVisible();
     });
   });
 

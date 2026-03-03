@@ -495,6 +495,16 @@ Before saving a tracker you can use the built-in **Debug** mode to run the full 
     },
 ]} />
 
+### Automatic visual trace (Screenshots)
+
+In debug mode, a screenshot is automatically captured after every significant Playwright action (`goto`, `click`, `fill`, `type`, `press`, `check`, `uncheck`, `selectOption`). These auto-trace screenshots create a visual storyboard of the script execution without any changes to the extractor script. You can also call `page.screenshot()` manually in the script - in debug mode the image is captured in-memory rather than written to disk.
+
+All captured screenshots appear in the **Screenshots** tab in the Extractor step. Click any screenshot to view it in fullscreen. Screenshot labels (e.g., "after goto: https://example.com") describe the action that triggered the capture.
+
+:::note
+Screenshots are subject to a per-run size limit (5 MB by default). When the limit is reached, subsequent screenshots are silently skipped - the extraction still succeeds. Auto-trace screenshots use viewport-only captures to conserve the size budget.
+:::
+
 :::tip
 The Debug button is available whenever a content extractor script is present - you don't need to save the tracker first. If the extraction fails, the Extractor step will be highlighted in red and the error message will be shown in the detail panel.
 :::

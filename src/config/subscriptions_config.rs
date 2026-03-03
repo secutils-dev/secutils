@@ -74,6 +74,7 @@ mod tests {
         trackers = 100
         tracker_revisions = 30
         min_schedule_interval = 10000
+        max_debug_screenshots_total_size = 5242880
         [basic.certificates]
         private_keys = 100
         templates = 1000
@@ -92,6 +93,7 @@ mod tests {
         trackers = 100
         tracker_revisions = 30
         min_schedule_interval = 10000
+        max_debug_screenshots_total_size = 5242880
         [standard.certificates]
         private_keys = 100
         templates = 1000
@@ -110,6 +112,7 @@ mod tests {
         trackers = 100
         tracker_revisions = 30
         min_schedule_interval = 10000
+        max_debug_screenshots_total_size = 5242880
         [professional.certificates]
         private_keys = 100
         templates = 1000
@@ -128,6 +131,7 @@ mod tests {
         trackers = 100
         tracker_revisions = 30
         min_schedule_interval = 10000
+        max_debug_screenshots_total_size = 5242880
         [ultimate.certificates]
         private_keys = 100
         templates = 1000
@@ -159,6 +163,7 @@ mod tests {
         trackers = 100
         tracker_revisions = 30
         min_schedule_interval = 10000
+        max_debug_screenshots_total_size = 5242880
         [basic.certificates]
         private_keys = 100
         templates = 1000
@@ -177,6 +182,7 @@ mod tests {
         trackers = 100
         tracker_revisions = 30
         min_schedule_interval = 10000
+        max_debug_screenshots_total_size = 5242880
         [standard.certificates]
         private_keys = 100
         templates = 1000
@@ -195,6 +201,7 @@ mod tests {
         trackers = 100
         tracker_revisions = 30
         min_schedule_interval = 10000
+        max_debug_screenshots_total_size = 5242880
         [professional.certificates]
         private_keys = 100
         templates = 1000
@@ -213,6 +220,7 @@ mod tests {
         trackers = 100
         tracker_revisions = 30
         min_schedule_interval = 10000
+        max_debug_screenshots_total_size = 5242880
         [ultimate.certificates]
         private_keys = 100
         templates = 1000
@@ -344,6 +352,7 @@ mod tests {
                             .collect()
                         ),
                         min_schedule_interval: Duration::from_secs(10),
+                        max_debug_screenshots_total_size: 5 * 1024 * 1024,
                     },
                     web_security: SubscriptionWebSecurityConfig {
                         policies: 10,
@@ -386,6 +395,7 @@ mod tests {
                             .collect()
                         ),
                         min_schedule_interval: Duration::from_secs(20),
+                        max_debug_screenshots_total_size: 5 * 1024 * 1024,
                     },
                     web_security: SubscriptionWebSecurityConfig::default(),
                     certificates: SubscriptionCertificatesConfig {
@@ -415,6 +425,7 @@ mod tests {
                         tracker_revisions: 33,
                         tracker_schedules: None,
                         min_schedule_interval: Duration::from_secs(30),
+                        max_debug_screenshots_total_size: 5 * 1024 * 1024,
                     },
                     web_security: SubscriptionWebSecurityConfig::default(),
                     certificates: SubscriptionCertificatesConfig {
@@ -437,6 +448,7 @@ mod tests {
                         tracker_revisions: 44,
                         tracker_schedules: None,
                         min_schedule_interval: Duration::from_secs(40),
+                        max_debug_screenshots_total_size: 5 * 1024 * 1024,
                     },
                     web_security: SubscriptionWebSecurityConfig::default(),
                     certificates: SubscriptionCertificatesConfig {
@@ -477,6 +489,7 @@ mod tests {
                         .collect(),
                     ),
                     min_schedule_interval: Duration::from_secs(10),
+                    max_debug_screenshots_total_size: 5 * 1024 * 1024,
                 },
                 web_security: SubscriptionWebSecurityConfig {
                     policies: 10,
@@ -519,6 +532,7 @@ mod tests {
                         .collect(),
                     ),
                     min_schedule_interval: Duration::from_secs(20),
+                    max_debug_screenshots_total_size: 5 * 1024 * 1024,
                 },
                 web_security: SubscriptionWebSecurityConfig::default(),
                 certificates: SubscriptionCertificatesConfig {
@@ -548,6 +562,7 @@ mod tests {
                     tracker_revisions: 33,
                     tracker_schedules: None,
                     min_schedule_interval: Duration::from_secs(30),
+                    max_debug_screenshots_total_size: 5 * 1024 * 1024,
                 },
                 web_security: SubscriptionWebSecurityConfig::default(),
                 certificates: SubscriptionCertificatesConfig {
@@ -570,6 +585,7 @@ mod tests {
                     tracker_revisions: 44,
                     tracker_schedules: None,
                     min_schedule_interval: Duration::from_secs(40),
+                    max_debug_screenshots_total_size: 5 * 1024 * 1024,
                 },
                 web_security: SubscriptionWebSecurityConfig::default(),
                 certificates: SubscriptionCertificatesConfig {
