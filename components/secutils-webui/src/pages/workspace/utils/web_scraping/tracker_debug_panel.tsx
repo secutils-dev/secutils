@@ -2,9 +2,10 @@ import {
   EuiBadge,
   EuiCallOut,
   EuiCodeBlock,
+  EuiEmptyPrompt,
   EuiFlexGroup,
   EuiFlexItem,
-  EuiLoadingSpinner,
+  EuiLoadingLogo,
   EuiModal,
   EuiModalBody,
   EuiModalHeader,
@@ -26,6 +27,7 @@ import type {
   ScriptDebugInfo,
 } from './tracker_debug_types';
 import { buildPipelineStages } from './tracker_debug_types';
+import { Logo } from '../../../../components';
 import { type AsyncData, getApiRequestConfig, getErrorMessage, ResponseError } from '../../../../model';
 
 export interface TrackerDebugPanelProps {
@@ -521,53 +523,43 @@ export function TrackerDebugPanel({ isOpen, onClose, onStatusChange, buildDebugR
     flex-direction: column;
   `;
 
-  const bodyCss = css`
-    flex: 1 1 auto;
-    min-height: 0;
-  `;
-
   return (
     <EuiModal onClose={handleClose} maxWidth={false} data-test-subj="debug-modal" css={modalCss}>
       <EuiModalHeader>
         <EuiModalHeaderTitle>Debug</EuiModalHeaderTitle>
       </EuiModalHeader>
-      <EuiModalBody css={bodyCss}>
-        {result?.status === 'pending' ? (
-          <EuiFlexGroup
-            alignItems="center"
-            justifyContent="center"
-            direction="column"
-            gutterSize="m"
-            responsive={false}
-            css={css`
-              flex: 1;
-            `}
-          >
-            <EuiFlexItem grow={false}>
-              <EuiLoadingSpinner size="xl" />
-            </EuiFlexItem>
-            <EuiFlexItem grow={false}>
-              <EuiText size="s" color="subdued">
-                Running debug pipeline…
-              </EuiText>
-            </EuiFlexItem>
-          </EuiFlexGroup>
-        ) : null}
+      {result?.status === 'pending' ? (
+        <div
+          css={css`
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          `}
+        >
+          <EuiEmptyPrompt
+            icon={<EuiLoadingLogo logo={() => <Logo size={40} />} size="l" />}
+            titleSize="xs"
+            title={<h2>Running debug pipeline…</h2>}
+          />
+        </div>
+      ) : (
+        <EuiModalBody style={{ minHeight: 0 }}>
+          {result?.status === 'failed' ? (
+            <EuiCallOut title="Debug request failed" color="danger" iconType="error" size="s">
+              <p>{result.error}</p>
+            </EuiCallOut>
+          ) : null}
 
-        {result?.status === 'failed' ? (
-          <EuiCallOut title="Debug request failed" color="danger" iconType="error" size="s">
-            <p>{result.error}</p>
-          </EuiCallOut>
-        ) : null}
-
-        {debugData ? (
-          <>
-            <EuiStepsHorizontal steps={horizontalSteps} size="xs" />
-            <EuiSpacer size="m" />
-            <StageDetailPanel stage={selectedStage} debugResult={debugData} />
-          </>
-        ) : null}
-      </EuiModalBody>
+          {debugData ? (
+            <>
+              <EuiStepsHorizontal steps={horizontalSteps} size="xs" />
+              <EuiSpacer size="m" />
+              <StageDetailPanel stage={selectedStage} debugResult={debugData} />
+            </>
+          ) : null}
+        </EuiModalBody>
+      )}
     </EuiModal>
   );
 }
