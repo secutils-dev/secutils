@@ -4,27 +4,26 @@ import type { Responder } from './responder';
 
 export function ResponderName({ responder }: { responder: Responder }) {
   const theme = useEuiTheme();
-  if (!responder.settings.script && responder.enabled) {
+
+  const icons = [];
+  if (responder.settings.script) {
+    icons.push(<EuiIcon key="script" type={'function'} size="s" title={'Responder generates responses dynamically'} />);
+  }
+  if (!responder.enabled) {
+    icons.push(<EuiIcon key="offline" type={'offline'} size="s" title={'Responder is disabled'} />);
+  }
+
+  if (icons.length === 0) {
     return <span style={{ whiteSpace: 'nowrap' }}>{responder.name}</span>;
   }
 
-  const disabledIcon = <EuiIcon type={'offline'} size="s" title={'Responder is disabled'} />;
-  if (responder.settings.script) {
-    const scriptIcon = <EuiIcon type={'function'} size="s" title={'Responder generates responses dynamically'} />;
-    return responder.enabled ? (
-      <EuiText size="s" style={{ whiteSpace: 'nowrap' }}>
-        {responder.name} {scriptIcon}
-      </EuiText>
-    ) : (
-      <EuiText size="s" color={theme.euiTheme.colors.textDisabled} style={{ whiteSpace: 'nowrap' }}>
-        {responder.name} {scriptIcon} {disabledIcon}
-      </EuiText>
-    );
-  }
-
   return (
-    <EuiText size="s" color={theme.euiTheme.colors.textDisabled} style={{ whiteSpace: 'nowrap' }}>
-      {responder.name} {disabledIcon}
+    <EuiText
+      size="s"
+      color={!responder.enabled ? theme.euiTheme.colors.textDisabled : undefined}
+      style={{ whiteSpace: 'nowrap' }}
+    >
+      {responder.name} <span style={{ display: 'inline-flex', gap: 4, verticalAlign: 'middle' }}>{icons}</span>
     </EuiText>
   );
 }

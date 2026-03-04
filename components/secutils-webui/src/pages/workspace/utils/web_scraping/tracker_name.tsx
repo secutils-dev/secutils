@@ -27,7 +27,7 @@ export function TrackerName({ tracker }: { tracker: TrackerLike }) {
 
   return (
     <EuiText size="s" color={isDisabled ? euiTheme.colors.textDisabled : undefined} style={{ whiteSpace: 'nowrap' }}>
-      {tracker.name} {icons}
+      {tracker.name} <span style={{ display: 'inline-flex', gap: 4, verticalAlign: 'middle' }}>{icons}</span>
     </EuiText>
   );
 }
