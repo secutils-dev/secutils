@@ -54,15 +54,20 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
 
   const newTracker = !tracker?.id;
 
+  const existingEngine = tracker?.retrack?.target?.engine?.type ?? 'chromium';
+
   const [isAdvancedMode, setIsAdvancedMode] = useState(
     !newTracker &&
       (!!tracker?.retrack?.target?.acceptInvalidCertificates ||
+        existingEngine !== 'chromium' ||
         (!!tracker?.secrets && tracker.secrets.type !== 'none')),
   );
 
   const [acceptInvalidCerts, setAcceptInvalidCerts] = useState<boolean>(
     !!tracker?.retrack?.target?.acceptInvalidCertificates,
   );
+
+  const [engine, setEngine] = useState<string>(existingEngine);
 
   const [name, setName] = useState<string>(tracker?.name ?? '');
   const onNameChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
@@ -126,6 +131,7 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
     enabled,
     notifications,
     acceptInvalidCerts,
+    engine,
     secretsMode,
     selectedSecretNames,
   });
@@ -148,11 +154,12 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
         target: {
           extractor: extractorScript,
           acceptInvalidCertificates: acceptInvalidCerts || undefined,
+          engine: engine !== 'chromium' ? { type: engine } : undefined,
         },
         secrets,
       }),
     };
-  }, [extractorScript, acceptInvalidCerts, secretsMode, selectedSecretNames]);
+  }, [extractorScript, acceptInvalidCerts, engine, secretsMode, selectedSecretNames]);
 
   const onDebug = useCallback(() => {
     setIsDebugOpen(true);
@@ -183,8 +190,13 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
         !!extractorScript &&
         (newTracker ||
           tracker?.retrack?.target?.extractor !== extractorScript ||
-          !!tracker?.retrack?.target?.acceptInvalidCertificates !== acceptInvalidCerts)
-          ? { extractor: extractorScript, acceptInvalidCertificates: acceptInvalidCerts || undefined }
+          !!tracker?.retrack?.target?.acceptInvalidCertificates !== acceptInvalidCerts ||
+          existingEngine !== engine)
+          ? {
+              extractor: extractorScript,
+              acceptInvalidCertificates: acceptInvalidCerts || undefined,
+              engine: engine !== 'chromium' ? { type: engine } : undefined,
+            }
           : null,
       enabled,
       notifications,
@@ -242,6 +254,8 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
     enabled,
     extractorScript,
     acceptInvalidCerts,
+    engine,
+    existingEngine,
     jobConfig,
     secretsMode,
     selectedSecretNames,
@@ -449,6 +463,21 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
                 label="Accept invalid certificates"
                 checked={acceptInvalidCerts}
                 onChange={(e: EuiSwitchEvent) => setAcceptInvalidCerts(e.target.checked)}
+              />
+            </EuiFormRow>
+          ) : null}
+          {isAdvancedMode ? (
+            <EuiFormRow
+              label="Browser engine"
+              helpText="Choose the browser engine for running the content extractor script. Camoufox is a Firefox-based engine with better anti-fingerprinting for pages that block automated browsers."
+            >
+              <EuiSelect
+                options={[
+                  { value: 'chromium', text: 'Chromium' },
+                  { value: 'camoufox', text: 'Camoufox' },
+                ]}
+                value={engine}
+                onChange={(e) => setEngine(e.target.value)}
               />
             </EuiFormRow>
           ) : null}

@@ -109,7 +109,9 @@ mod tests {
     use insta::assert_json_snapshot;
     use retrack_types::{
         scheduler::SchedulerJobConfig,
-        trackers::{ApiTarget, PageTarget, TargetRequest, TrackerConfig, TrackerTarget},
+        trackers::{
+            ApiTarget, ExtractorEngine, PageTarget, TargetRequest, TrackerConfig, TrackerTarget,
+        },
     };
     use serde_json::json;
     use uuid::uuid;
@@ -189,6 +191,44 @@ mod tests {
             "type": "page",
             "extractor": "return document.title;",
             "acceptInvalidCertificates": true
+          },
+          "notifications": false
+        }
+        "###);
+        Ok(())
+    }
+
+    #[test]
+    fn page_target_with_engine() -> anyhow::Result<()> {
+        let value = RetrackTrackerValue {
+            id: uuid!("00000000-0000-0000-0000-000000000001"),
+            enabled: true,
+            config: minimal_config(),
+            target: TrackerTarget::Page(PageTarget {
+                extractor: "return document.title;".to_string(),
+                params: None,
+                engine: Some(ExtractorEngine::Camoufox),
+                user_agent: None,
+                accept_invalid_certificates: false,
+            }),
+            notifications: false,
+        };
+        assert_json_snapshot!(value, @r###"
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "enabled": true,
+          "config": {
+            "revisions": 1,
+            "job": {
+              "schedule": "@daily"
+            }
+          },
+          "target": {
+            "type": "page",
+            "extractor": "return document.title;",
+            "engine": {
+              "type": "camoufox"
+            }
           },
           "notifications": false
         }

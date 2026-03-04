@@ -36,7 +36,10 @@ mod tests {
             PageTrackerConfig, api_ext::PageTrackerCreateParams, page_trackers::PageTrackerTarget,
         },
     };
-    use retrack_types::scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy};
+    use retrack_types::{
+        scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
+        trackers::ExtractorEngine,
+    };
     use std::time::Duration;
 
     #[test]
@@ -65,6 +68,7 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: false,
                 secrets: SecretsAccess::None,
@@ -116,8 +120,45 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: true,
+                    engine: None,
                 },
                 notifications: true,
+                secrets: SecretsAccess::None,
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn deserialization_with_engine() -> anyhow::Result<()> {
+        assert_eq!(
+            serde_json::from_str::<PageTrackerCreateParams>(
+                r#"
+    {
+        "name": "tck",
+        "config": { "revisions": 3 },
+        "target": {
+            "extractor": "export async function execute(p) { return await p.content(); }",
+            "engine": { "type": "camoufox" }
+        }
+    }
+              "#
+            )?,
+            PageTrackerCreateParams {
+                name: "tck".to_string(),
+                enabled: true,
+                config: PageTrackerConfig {
+                    revisions: 3,
+                    job: None,
+                },
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { return await p.content(); }"
+                        .to_string(),
+                    accept_invalid_certificates: false,
+                    engine: Some(ExtractorEngine::Camoufox),
+                },
+                notifications: false,
                 secrets: SecretsAccess::None,
             }
         );

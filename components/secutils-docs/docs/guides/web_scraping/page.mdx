@@ -509,6 +509,29 @@ Screenshots are subject to a per-run size limit (5 MB by default). When the limi
 The Debug button is available whenever a content extractor script is present - you don't need to save the tracker first. If the extraction fails, the Extractor step will be highlighted in red and the error message will be shown in the detail panel.
 :::
 
+## Browser engine
+
+By default, page trackers use **Chromium** to run content extractor scripts. If the target page blocks automated Chromium browsers (e.g. via bot detection or browser fingerprinting), you can switch to **Camoufox** - a Firefox-based engine with enhanced anti-fingerprinting capabilities.
+
+The browser engine setting is available in **Advanced mode**. Toggle the **Advanced mode** switch in the tracker form header to reveal the **Browser engine** selector in the **Scripts** section.
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/web_scraping/engine_step1_form.png',
+        caption: <>Enable <b>Advanced mode</b> and select <b>Camoufox</b> from the <b>Browser engine</b> dropdown in the <b>Scripts</b> section.</>,
+        alt: 'Tracker form with Advanced mode enabled showing the Browser engine selector set to Camoufox.',
+    },
+    {
+        img: '../../img/docs/guides/web_scraping/engine_step2_debug.png',
+        caption: <>When debugging, the <b>Extractor</b> step shows the engine used for the run as a badge next to the duration.</>,
+        alt: 'Debug modal showing the Extractor step with the camoufox engine badge.',
+    },
+]} />
+
+:::note
+The selected engine applies to both scheduled checks and debug runs. Camoufox may be slower than Chromium for some pages due to the additional anti-fingerprinting measures. Use the **Debug** mode to compare extraction results and performance before choosing an engine.
+:::
+
 ## Annex: Content extractor script examples
 
 In this section, you can find examples of content extractor scripts that extract various content from web pages. Essentially, the script defines a function with the following signature:

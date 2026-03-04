@@ -671,13 +671,13 @@ test.describe('Web scraping guide screenshots', () => {
         },
         engine: 'chromium',
         extractorSource: [
-          "export async function execute(page) {",
+          'export async function execute(page) {',
           "  await page.goto('https://secutils.dev');",
-          "  const title = await page.title();",
-          "  const description = await page.locator('meta[name=\"description\"]')",
+          '  const title = await page.title();',
+          '  const description = await page.locator(\'meta[name="description"]\')',
           "    .getAttribute('content');",
-          "  return `## ${title}\\n\\n${description}`;",
-          "}",
+          '  return `## ${title}\\n\\n${description}`;',
+          '}',
         ].join('\n'),
         logs: [
           { level: 'info', message: 'Launching chromium browser…' },
@@ -703,9 +703,7 @@ test.describe('Web scraping guide screenshots', () => {
     await expect(trackPageButton).toBeVisible({ timeout: 15000 });
     await trackPageButton.click();
 
-    const flyout = page
-      .getByRole('dialog')
-      .filter({ has: page.getByRole('heading', { name: 'Add tracker' }) });
+    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add tracker' }) });
     await expect(flyout).toBeVisible();
 
     const debugButton = flyout.getByRole('button', { name: 'Debug' });
@@ -736,6 +734,75 @@ test.describe('Web scraping guide screenshots', () => {
     await resultStep.click();
     await expect(modal.getByText('3250ms total')).toBeVisible();
     await page.screenshot({ path: join(IMG_DIR, 'page_debug_step3_result.png') });
+  });
+
+  test('Browser engine setting', async ({ page }) => {
+    test.setTimeout(120000);
+
+    const camoufoxDebugFixture = {
+      durationMs: 4100,
+      result: `## Secutils.dev\n\nOpen-source toolbox for security-minded engineers.`,
+      target: {
+        type: 'page',
+        engine: 'camoufox',
+        extractorSource: [
+          'export async function execute(page) {',
+          "  await page.goto('https://secutils.dev');",
+          '  const title = await page.title();',
+          '  const description = await page.locator(\'meta[name="description"]\')',
+          "    .getAttribute('content');",
+          '  return `## ${title}\\n\\n${description}`;',
+          '}',
+        ].join('\n'),
+        logs: [
+          { level: 'info', message: 'Launching camoufox browser…' },
+          { level: 'info', message: 'Navigating to https://secutils.dev…' },
+          { level: 'info', message: 'Page loaded (status 200, 2.4 s)' },
+          { level: 'info', message: 'Running extractor script…' },
+          { level: 'info', message: 'Extraction complete (324 bytes)' },
+        ],
+        durationMs: 3900,
+      },
+    };
+
+    await page.route('**/api/utils/web_scraping/page/debug', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(camoufoxDebugFixture),
+      });
+    });
+
+    // Step 1: Open the tracker form, enable Advanced mode, select Camoufox.
+    await goto(page, '/ws/web_scraping__page');
+    const trackPageButton = page.getByRole('button', { name: 'Track page' });
+    await expect(trackPageButton).toBeVisible({ timeout: 15000 });
+    await trackPageButton.click();
+
+    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add tracker' }) });
+    await expect(flyout).toBeVisible();
+
+    await flyout.getByLabel('Advanced mode').check();
+    const engineSelect = flyout.getByRole('combobox', { name: 'Browser engine' });
+    await expect(engineSelect).toBeVisible();
+    await engineSelect.selectOption('camoufox');
+
+    await flyout.getByText('Browser engine', { exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: join(IMG_DIR, 'engine_step1_form.png') });
+
+    // Step 2: Debug with Camoufox and show the engine badge.
+    const debugButton = flyout.getByRole('button', { name: 'Debug' });
+    await expect(debugButton).toBeEnabled();
+    await debugButton.click();
+
+    const modal = page.locator('[data-test-subj="debug-modal"]');
+    await expect(modal).toBeVisible();
+
+    const extractorStep = modal.getByRole('button', { name: 'Extractor' });
+    await expect(modal.getByRole('button', { name: 'Result' })).toBeVisible({ timeout: 15000 });
+    await extractorStep.click();
+    await expect(modal.getByText('camoufox', { exact: true })).toBeVisible();
+    await page.screenshot({ path: join(IMG_DIR, 'engine_step2_debug.png') });
   });
 });
 

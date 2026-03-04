@@ -171,9 +171,7 @@ async function openTrackerFlyout(page: Page) {
   await expect(createButton).toBeVisible({ timeout: 15000 });
   await createButton.click();
 
-  const flyout = page
-    .getByRole('dialog')
-    .filter({ has: page.getByRole('heading', { name: 'Add API tracker' }) });
+  const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add API tracker' }) });
   await expect(flyout).toBeVisible();
   return flyout;
 }

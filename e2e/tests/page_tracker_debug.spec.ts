@@ -73,8 +73,7 @@ function debugResultNoLogs(): PageDebugResult {
 }
 
 // Tiny 1x1 red PNG as base64 for testing screenshot display.
-const TINY_PNG =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwADhQGAWjR9awAAAABJRU5ErkJggg==';
+const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwADhQGAWjR9awAAAABJRU5ErkJggg==';
 
 function debugResultWithScreenshots(): PageDebugResult {
   return {
@@ -104,9 +103,7 @@ async function openTrackerFlyout(page: Page) {
   await expect(createButton).toBeVisible({ timeout: 15000 });
   await createButton.click();
 
-  const flyout = page
-    .getByRole('dialog')
-    .filter({ has: page.getByRole('heading', { name: 'Add tracker' }) });
+  const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add tracker' }) });
   await expect(flyout).toBeVisible();
   return flyout;
 }
@@ -382,6 +379,81 @@ test.describe('Page Tracker Debug Panel', () => {
       await extractorStep.click();
 
       await expect(modal.getByRole('tab', { name: 'Screenshots' })).not.toBeVisible();
+    });
+  });
+
+  test.describe('engine selection', () => {
+    test('shows camoufox engine badge in debug results', async ({ page }) => {
+      const camoufoxResult: PageDebugResult = {
+        ...debugResultSimple(),
+        target: { ...debugResultSimple().target, engine: 'camoufox' },
+      };
+      await mockDebugEndpoint(page, camoufoxResult);
+      const flyout = await openTrackerFlyout(page);
+      await clickDebug(flyout);
+
+      const modal = getDebugModal(page);
+      const extractorStep = modal.getByRole('button', { name: 'Extractor' });
+      await expect(extractorStep).toBeVisible({ timeout: 15000 });
+      await extractorStep.click();
+
+      await expect(modal.getByText('camoufox', { exact: true })).toBeVisible();
+    });
+
+    test('engine selector is visible only in advanced mode', async ({ page }) => {
+      const flyout = await openTrackerFlyout(page);
+
+      await expect(flyout.getByRole('combobox', { name: 'Browser engine' })).not.toBeVisible();
+
+      await flyout.getByLabel('Advanced mode').check();
+      await expect(flyout.getByRole('combobox', { name: 'Browser engine' })).toBeVisible();
+    });
+
+    test('sends engine in debug request when camoufox selected', async ({ page }) => {
+      let capturedTarget: unknown = null;
+      await page.route('**/api/utils/web_scraping/page/debug', async (route) => {
+        const postData = route.request().postDataJSON();
+        capturedTarget = postData?.target;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            ...debugResultSimple(),
+            target: { ...debugResultSimple().target, engine: 'camoufox' },
+          }),
+        });
+      });
+
+      const flyout = await openTrackerFlyout(page);
+      await flyout.getByLabel('Advanced mode').check();
+      await flyout.getByRole('combobox', { name: 'Browser engine' }).selectOption('camoufox');
+      await clickDebug(flyout);
+
+      const modal = getDebugModal(page);
+      await expect(modal.getByRole('button', { name: 'Result' })).toBeVisible({ timeout: 15000 });
+
+      expect(capturedTarget).toHaveProperty('engine', { type: 'camoufox' });
+    });
+
+    test('does not send engine in debug request when chromium selected', async ({ page }) => {
+      let capturedTarget: unknown = null;
+      await page.route('**/api/utils/web_scraping/page/debug', async (route) => {
+        const postData = route.request().postDataJSON();
+        capturedTarget = postData?.target;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(debugResultSimple()),
+        });
+      });
+
+      const flyout = await openTrackerFlyout(page);
+      await clickDebug(flyout);
+
+      const modal = getDebugModal(page);
+      await expect(modal.getByRole('button', { name: 'Result' })).toBeVisible({ timeout: 15000 });
+
+      expect(capturedTarget).not.toHaveProperty('engine');
     });
   });
 

@@ -12,6 +12,7 @@ pub struct PageTrackerDebugParams {
 mod tests {
     use super::PageTrackerDebugParams;
     use crate::users::SecretsAccess;
+    use retrack_types::trackers::ExtractorEngine;
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
@@ -23,6 +24,7 @@ mod tests {
             "export async function execute(p) { return await p.content(); }"
         );
         assert!(!params.target.accept_invalid_certificates);
+        assert!(params.target.engine.is_none());
         assert_eq!(params.secrets, SecretsAccess::None);
 
         let params: PageTrackerDebugParams = serde_json::from_str(
@@ -40,6 +42,21 @@ mod tests {
                 secrets: vec!["key1".to_string(), "key2".to_string()]
             }
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn deserialization_with_engine() -> anyhow::Result<()> {
+        let params: PageTrackerDebugParams = serde_json::from_str(
+            r#"{ "target": { "extractor": "export async function execute(p) { return await p.content(); }", "engine": { "type": "camoufox" } }, "secrets": { "type": "none" } }"#,
+        )?;
+        assert_eq!(params.target.engine, Some(ExtractorEngine::Camoufox));
+
+        let params: PageTrackerDebugParams = serde_json::from_str(
+            r#"{ "target": { "extractor": "export async function execute(p) { return await p.content(); }", "engine": { "type": "chromium" } }, "secrets": { "type": "none" } }"#,
+        )?;
+        assert_eq!(params.target.engine, Some(ExtractorEngine::Chromium));
 
         Ok(())
     }

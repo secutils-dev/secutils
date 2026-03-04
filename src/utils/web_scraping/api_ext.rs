@@ -193,7 +193,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                 target: TrackerTarget::Page(PageTarget {
                     extractor: params.target.extractor,
                     params: self.resolve_secrets_params(&params.secrets).await,
-                    engine: None,
+                    engine: params.target.engine,
                     user_agent: None,
                     accept_invalid_certificates,
                 }),
@@ -318,7 +318,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                         Some(TrackerTarget::Page(PageTarget {
                             extractor: target.extractor,
                             params: page_params,
-                            engine: None,
+                            engine: target.engine,
                             user_agent: None,
                             accept_invalid_certificates: target.accept_invalid_certificates,
                         }))
@@ -1156,7 +1156,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         self.run_debug(TrackerTarget::Page(PageTarget {
             extractor: params.target.extractor,
             params: page_params,
-            engine: None,
+            engine: params.target.engine,
             user_agent: None,
             accept_invalid_certificates: params.target.accept_invalid_certificates,
         }))
@@ -1310,8 +1310,9 @@ mod tests {
     use retrack_types::{
         scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
         trackers::{
-            ApiTarget, PageTarget, TargetRequest, Tracker, TrackerConfig, TrackerCreateParams,
-            TrackerDataRevision, TrackerDataValue, TrackerTarget, TrackerUpdateParams,
+            ApiTarget, ExtractorEngine, PageTarget, TargetRequest, Tracker, TrackerConfig,
+            TrackerCreateParams, TrackerDataRevision, TrackerDataValue, TrackerTarget,
+            TrackerUpdateParams,
         },
     };
     use serde_json::json;
@@ -1399,6 +1400,7 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: false,
                 secrets: Default::default(),
@@ -1485,6 +1487,75 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: true,
+                    engine: None,
+                },
+                notifications: false,
+                secrets: Default::default(),
+            })
+            .await?;
+        retrack_create_api_mock.assert();
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn properly_creates_page_tracker_with_engine(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let retrack_tracker = mock_retrack_tracker()?;
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/trackers")
+                .json_body_includes(
+                    serde_json::to_string_pretty(&TrackerCreateParams {
+                        name: "name_one".to_string(),
+                        enabled: true,
+                        target: TrackerTarget::Page(PageTarget {
+                            extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                            params: None,
+                            engine: Some(ExtractorEngine::Camoufox),
+                            user_agent: None,
+                            accept_invalid_certificates: false,
+                        }),
+                        config: TrackerConfig {
+                            revisions: 3,
+                            timeout: None,
+                            job: None,
+                        },
+                        tags: prepare_tags(&[
+                            format!("{RETRACK_USER_TAG}:{}", mock_user.id),
+                            format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
+                            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage)
+                        ]),
+                        actions: vec![],
+                    })
+                    .unwrap(),
+                );
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let web_scraping = api.web_scraping(&mock_user);
+        web_scraping
+            .create_page_tracker(PageTrackerCreateParams {
+                name: "name_one".to_string(),
+                enabled: true,
+                config: PageTrackerConfig {
+                    revisions: 3,
+                    job: None,
+                },
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                    accept_invalid_certificates: false,
+                    engine: Some(ExtractorEngine::Camoufox),
                 },
                 notifications: false,
                 secrets: Default::default(),
@@ -1517,6 +1588,7 @@ mod tests {
         let target = PageTrackerTarget {
             extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
             accept_invalid_certificates: false,
+            engine: None,
         };
 
         let create_and_fail = |result: anyhow::Result<_>| -> SecutilsError {
@@ -1754,6 +1826,7 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: false,
                 secrets: Default::default(),
@@ -1823,6 +1896,7 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: false,
                 secrets: Default::default(),
@@ -2082,6 +2156,7 @@ mod tests {
                     target: Some(PageTrackerTarget {
                         extractor: "export async function execute(p) { await p.goto('http://localhost:1234/my/app?q=3'); return await p.content(); }".to_string(),
                         accept_invalid_certificates: false,
+                        engine: None,
                     }),
                     ..Default::default()
                 },
@@ -2153,6 +2228,7 @@ mod tests {
                     target: Some(PageTrackerTarget {
                         extractor: "export async function execute(p) { await p.goto('http://localhost:1234/my/app?q=3'); return await p.content(); }".to_string(),
                         accept_invalid_certificates: true,
+                        engine: None,
                     }),
                     ..Default::default()
                 },
@@ -2331,6 +2407,7 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: false,
                 secrets: Default::default(),
@@ -2543,6 +2620,7 @@ mod tests {
                 target: Some(PageTrackerTarget {
                     extractor: "".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 }),
                 ..Default::default()
             }).await),
@@ -2601,6 +2679,7 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: false,
                 secrets: Default::default(),
@@ -2628,6 +2707,7 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: false,
                 secrets: Default::default(),
@@ -2773,6 +2853,7 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: false,
                 secrets: Default::default(),
@@ -2828,6 +2909,7 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: false,
                 secrets: Default::default(),
@@ -2855,6 +2937,7 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: false,
                 secrets: Default::default(),
@@ -2926,6 +3009,7 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: false,
                 secrets: Default::default(),
@@ -3033,6 +3117,7 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: false,
                 secrets: Default::default(),
@@ -3104,6 +3189,7 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: false,
                 secrets: Default::default(),
@@ -5149,6 +5235,7 @@ mod tests {
                     extractor: "export async function execute(p) { return await p.content(); }"
                         .to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 secrets: SecretsAccess::None,
             })
@@ -5186,6 +5273,7 @@ mod tests {
                     extractor: "export async function execute(p) { return await p.content(); }"
                         .to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 secrets: SecretsAccess::None,
             })
@@ -5214,6 +5302,7 @@ mod tests {
                 target: PageTrackerTarget {
                     extractor: "".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 secrets: SecretsAccess::None,
             })

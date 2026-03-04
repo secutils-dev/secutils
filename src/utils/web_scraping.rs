@@ -340,6 +340,7 @@ pub mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: true,
                 secrets: Default::default(),
@@ -517,6 +518,7 @@ pub mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: true,
                 secrets: Default::default(),
@@ -681,6 +683,7 @@ pub mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: true,
                 secrets: Default::default(),
@@ -759,6 +762,7 @@ pub mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: true,
                 secrets: Default::default(),
@@ -848,6 +852,7 @@ pub mod tests {
                 target: PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 },
                 notifications: true,
                 secrets: Default::default(),

@@ -92,7 +92,25 @@ services:
       - "7272:7272"
     environment:
       - RETRACK_WEB_SCRAPER_BROWSER_CHROMIUM_NO_SANDBOX=true
+      - RETRACK_WEB_SCRAPER_BROWSER_FIREFOX_WS_ENDPOINT=ws://retrack_web_scraper_camoufox:7777/camoufox
       - RETRACK_WEB_SCRAPER_EXTRACTOR_SANDBOX_EXTRA_ALLOWED_MODULES=node:crypto
+    depends_on:
+      - retrack_web_scraper_camoufox
+    restart: unless-stopped
+    networks:
+      - net
+
+  retrack_web_scraper_camoufox:
+    build:
+      context: ../../components/retrack
+      dockerfile: Dockerfile.web-scraper-camoufox
+    ports:
+      - "7777:7777"
+    environment:
+      - DISPLAY=:99
+    command: ["/bin/sh", "-c", "Xvfb :99 -screen 0 1280x720x24 & sleep 1 && python /app/camoufox_launcher.py"]
+    security_opt:
+      - seccomp:unconfined
     restart: unless-stopped
     networks:
       - net

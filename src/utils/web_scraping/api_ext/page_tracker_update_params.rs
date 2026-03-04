@@ -27,7 +27,10 @@ mod tests {
     use crate::utils::web_scraping::{
         PageTrackerConfig, api_ext::PageTrackerUpdateParams, page_trackers::PageTrackerTarget,
     };
-    use retrack_types::scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy};
+    use retrack_types::{
+        scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
+        trackers::ExtractorEngine,
+    };
     use std::time::Duration;
 
     #[test]
@@ -187,6 +190,7 @@ mod tests {
                 target: Some(PageTrackerTarget {
                     extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
                     accept_invalid_certificates: false,
+                    engine: None,
                 }),
                 notifications: true,
                 secrets: None,
@@ -209,6 +213,34 @@ mod tests {
                     extractor: "export async function execute(p) { return await p.content(); }"
                         .to_string(),
                     accept_invalid_certificates: true,
+                    engine: None,
+                }),
+                ..Default::default()
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn deserialization_with_engine() -> anyhow::Result<()> {
+        assert_eq!(
+            serde_json::from_str::<PageTrackerUpdateParams>(
+                r#"
+    {
+        "target": {
+            "extractor": "export async function execute(p) { return await p.content(); }",
+            "engine": { "type": "camoufox" }
+        }
+    }
+              "#
+            )?,
+            PageTrackerUpdateParams {
+                target: Some(PageTrackerTarget {
+                    extractor: "export async function execute(p) { return await p.content(); }"
+                        .to_string(),
+                    accept_invalid_certificates: false,
+                    engine: Some(ExtractorEngine::Camoufox),
                 }),
                 ..Default::default()
             }
