@@ -669,7 +669,7 @@ test.describe('Web scraping guide screenshots', () => {
         params: {
           secrets: { loginToken: 'tok-preview-a1b2c3…f4e5d6' },
         },
-        engine: 'chromium',
+        engine: { type: 'chromium' },
         extractorSource: [
           'export async function execute(page) {',
           "  await page.goto('https://secutils.dev');",
@@ -744,7 +744,7 @@ test.describe('Web scraping guide screenshots', () => {
       result: `## Secutils.dev\n\nOpen-source toolbox for security-minded engineers.`,
       target: {
         type: 'page',
-        engine: 'camoufox',
+        engine: { type: 'camoufox' },
         extractorSource: [
           'export async function execute(page) {',
           "  await page.goto('https://secutils.dev');",

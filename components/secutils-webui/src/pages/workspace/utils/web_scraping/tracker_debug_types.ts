@@ -44,7 +44,7 @@ export interface ApiDebugTarget {
 export interface PageDebugTarget {
   type: 'page';
   params?: unknown;
-  engine?: string;
+  engine?: { type: string };
   extractorSource: string;
   logs: PageLogEntry[];
   screenshots?: PageScreenshotEntry[];

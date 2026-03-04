@@ -14,7 +14,7 @@ function debugResultSimple(): PageDebugResult {
     result: '## Secutils.dev',
     target: {
       type: 'page',
-      engine: 'chromium',
+      engine: { type: 'chromium' },
       extractorSource:
         "export async function execute(page) {\n  await page.goto('https://secutils.dev');\n  return `## ${await page.title()}`;\n}",
       logs: [
@@ -33,7 +33,7 @@ function debugResultWithParams(): PageDebugResult {
     target: {
       type: 'page',
       params: { secrets: { apiKey: 'sk-test-123' } },
-      engine: 'chromium',
+      engine: { type: 'chromium' },
       extractorSource: "export async function execute(page) { return 'ok'; }",
       logs: [{ level: 'info', message: 'Connecting to browser...' }],
       durationMs: 3100,
@@ -47,7 +47,7 @@ function debugResultWithError(): PageDebugResult {
     error: 'Extractor script failed: TimeoutError: page.goto: Timeout 30000ms exceeded.',
     target: {
       type: 'page',
-      engine: 'chromium',
+      engine: { type: 'chromium' },
       extractorSource: "export async function execute(page) { await page.goto('https://down.example.com'); }",
       logs: [
         { level: 'info', message: 'Navigating to https://down.example.com...' },
@@ -81,7 +81,7 @@ function debugResultWithScreenshots(): PageDebugResult {
     result: 'ok',
     target: {
       type: 'page',
-      engine: 'chromium',
+      engine: { type: 'chromium' },
       extractorSource: "export async function execute(page) { await page.goto('https://example.com'); return 'ok'; }",
       logs: [{ level: 'info', message: 'Connected.' }],
       screenshots: [
@@ -386,7 +386,7 @@ test.describe('Page Tracker Debug Panel', () => {
     test('shows camoufox engine badge in debug results', async ({ page }) => {
       const camoufoxResult: PageDebugResult = {
         ...debugResultSimple(),
-        target: { ...debugResultSimple().target, engine: 'camoufox' },
+        target: { ...debugResultSimple().target, engine: { type: 'camoufox' } },
       };
       await mockDebugEndpoint(page, camoufoxResult);
       const flyout = await openTrackerFlyout(page);
@@ -419,7 +419,7 @@ test.describe('Page Tracker Debug Panel', () => {
           contentType: 'application/json',
           body: JSON.stringify({
             ...debugResultSimple(),
-            target: { ...debugResultSimple().target, engine: 'camoufox' },
+            target: { ...debugResultSimple().target, engine: { type: 'camoufox' } },
           }),
         });
       });

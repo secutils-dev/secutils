@@ -434,7 +434,7 @@ function PageExtractorDetail({ data }: { data: PageDebugTarget }) {
         </EuiFlexItem>
         {data.engine ? (
           <EuiFlexItem grow={false}>
-            <EuiBadge color="hollow">{data.engine}</EuiBadge>
+            <EuiBadge color="hollow">{data.engine.type}</EuiBadge>
           </EuiFlexItem>
         ) : null}
       </EuiFlexGroup>
