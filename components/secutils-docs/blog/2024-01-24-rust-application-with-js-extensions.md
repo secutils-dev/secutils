@@ -25,7 +25,7 @@ The core idea is that if a specific modification holds genuine value for the use
 
 The idea looks good in theory. Though it might not work for all applications or users, having a mostly developer audience makes things simpler. Developers are accustomed to modifications, plugins, and extensions. More importantly, they have coding skills, making them more comfortable with writing code to extend the applications they use. Moreover, with the emergence of highly capable code-generating language models (LLMs), being a developer might not be a strict requirement for crafting simple extensions in the future.
 
-If I've convinced you that extending Sectuils.dev with the user code is a good idea, the next thing to consider is the language for this code. There are many great languages, but let's be honest — there's currently one universal "web" language, and that's JavaScript. It's easy to grasp and forgiving of user errors, making it the ideal language for user extensions!
+If I've convinced you that extending Sectuils.dev with the user code is a good idea, the next thing to consider is the language for this code. There are many great languages, but let's be honest - there's currently one universal "web" language, and that's JavaScript. It's easy to grasp and forgiving of user errors, making it the ideal language for user extensions!
 
 If your application is written in JavaScript, integrating it with JavaScript extensions is a no-brainer. However, Secutils.dev is entirely written in Rust. How would I even begin? Fortunately, I recently came across an excellent blog post series explaining how to implement your JavaScript runtime in a Rust application with [**Deno**](https://deno.com/):
 

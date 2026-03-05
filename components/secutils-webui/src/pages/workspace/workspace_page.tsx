@@ -254,7 +254,7 @@ export function WorkspacePage() {
       headerActions={headerActions}
       contentProps={{
         css: css`
-          height: 100%;
+          min-height: 100%;
         `,
       }}
     >

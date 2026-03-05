@@ -590,10 +590,11 @@ test.describe('CSP guide screenshots', () => {
     await expect(shareModal).toBeVisible({ timeout: 10000 });
 
     const shareToggle = shareModal.getByRole('switch', { name: 'Share policy' });
-    await highlightOn(shareToggle);
     await shareToggle.click();
 
     const shareLinkCopyButton = shareModal.getByRole('button', { name: 'Copy  link' });
+    await dismissAllToasts(page);
+    await highlightOn(shareToggle);
     await highlightOn(shareLinkCopyButton);
     await page.screenshot({ path: join(IMG_DIR, 'share_step2_copy_link.png') });
 

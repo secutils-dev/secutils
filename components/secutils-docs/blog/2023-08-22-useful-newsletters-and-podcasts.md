@@ -16,7 +16,7 @@ However, that doesn't mean I've sworn off reading, watching, and listening to le
 
 ## [**JavaScript Weekly**](https://javascriptweekly.com/) and [**Node Weekly**](https://nodeweekly.com/)
 
-These newsletters are among the best sources to stay up-to-date with the latest happenings in JavaScript, web development, and Node.js. They conveniently categorize content into sections like new releases, articles & tutorials, and code & tools. Since I use JavaScript/TypeScript and Node.js extensively, both in my [**day job**](https://github.com/elastic/kibana) and for [**Secutils.dev**](https://github.com/secutils-dev), I have to stay informed about developments in these essential tools. Usually, I quickly scan through the newsletter and focus only on the items that grab my attention — it doesn't consume much time but keeps me well-informed.
+These newsletters are among the best sources to stay up-to-date with the latest happenings in JavaScript, web development, and Node.js. They conveniently categorize content into sections like new releases, articles & tutorials, and code & tools. Since I use JavaScript/TypeScript and Node.js extensively, both in my [**day job**](https://github.com/elastic/kibana) and for [**Secutils.dev**](https://github.com/secutils-dev), I have to stay informed about developments in these essential tools. Usually, I quickly scan through the newsletter and focus only on the items that grab my attention - it doesn't consume much time but keeps me well-informed.
 
 ## [**This Week in Rust**](https://this-week-in-rust.org/)
 

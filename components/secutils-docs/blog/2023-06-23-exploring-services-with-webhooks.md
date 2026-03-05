@@ -8,13 +8,13 @@ tags: [technology, application-security, guides]
 ---
 Hello!
 
-Today, I'd like to show you how you can leverage the ["Webhooks" feature](https://secutils.dev/docs/guides/webhooks) of Secutils.dev to explore third-party web services, or as a security researcher would say, perform a basic active reconnaissance. Reconnaissance is just a fancy word for gathering information about a target system to identify exploitable vulnerabilities and potential attack vectors. In this post, we'll focus on learning how a specific web service implements functionality that interests us. Our intention is purely innocent — we simply want to understand how it works. However, the technique we'll use is quite similar to what security researchers employ during routine reconnaissance.
+Today, I'd like to show you how you can leverage the ["Webhooks" feature](https://secutils.dev/docs/guides/webhooks) of Secutils.dev to explore third-party web services, or as a security researcher would say, perform a basic active reconnaissance. Reconnaissance is just a fancy word for gathering information about a target system to identify exploitable vulnerabilities and potential attack vectors. In this post, we'll focus on learning how a specific web service implements functionality that interests us. Our intention is purely innocent - we simply want to understand how it works. However, the technique we'll use is quite similar to what security researchers employ during routine reconnaissance.
 
 <!--truncate-->
 
 For our exploration, we'll be using [Notion](https://www.notion.so/) as our target. Notion has an extensive API surface, but I'm particularly interested in how it handles the embedding of external content, such as links, images, and other web pages.
 
-I'm an avid user of Notion. — it's my go-to tool for everything. I collect numerous links within Notion and heavily rely on their "Web Bookmark" functionality, which provides neat previews and allows me to navigate through the links quickly.
+I'm an avid user of Notion. - it's my go-to tool for everything. I collect numerous links within Notion and heavily rely on their "Web Bookmark" functionality, which provides neat previews and allows me to navigate through the links quickly.
 
 ![Bookmark in Notion](https://secutils.dev/docs/img/blog/2023-06-23_web_bookmark.png)
 
@@ -148,7 +148,7 @@ Content-Type: text/html; charset=utf-8
 </tbody>
 </table>
 
-And here's the result — let's call it a success!
+And here's the result - let's call it a success!
 
 ![Auto-responder as rich Web bookmark in Notion](https://secutils.dev/docs/img/blog/2023-06-23_webhook_v2.png)
 

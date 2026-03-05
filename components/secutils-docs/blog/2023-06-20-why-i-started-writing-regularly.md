@@ -30,9 +30,9 @@ In fact, at my day job, I jokingly refer to it as "proof of work" when I encoura
 
 ## Learning how to write
 
-As I mentioned earlier, I didn't write much in the past, and my writing skills left much to be desired — and they still do. However, at a certain stage in one's career or personal growth, good writing skills become essential for advancement. No matter how proficient you are as an engineer, designer, or any other technical specialist, the leverage and reach of your technical abilities are inherently limited. Similarly, the value you can create alone has its limits. By combining technical skills with soft skills, including efficient and clear writing, you can gain more influence and respect from others and become truly unstoppable 🙂
+As I mentioned earlier, I didn't write much in the past, and my writing skills left much to be desired - and they still do. However, at a certain stage in one's career or personal growth, good writing skills become essential for advancement. No matter how proficient you are as an engineer, designer, or any other technical specialist, the leverage and reach of your technical abilities are inherently limited. Similarly, the value you can create alone has its limits. By combining technical skills with soft skills, including efficient and clear writing, you can gain more influence and respect from others and become truly unstoppable 🙂
 
-Fortunately, writing skills can be learned through regular practice. There's no magic formula — just practice, learn, and evolve. That's why I'm writing: to learn how to write!
+Fortunately, writing skills can be learned through regular practice. There's no magic formula - just practice, learn, and evolve. That's why I'm writing: to learn how to write!
 
 ## Getting feedback
 
@@ -40,7 +40,7 @@ Lastly, I write publicly to share my thoughts and ideas to receive feedback. In 
 
 **Here's a fun fact:** Take a look at the screenshot of the number of visitors to my blog over time, with a few observations. It's interesting to see that the posts I put quite a bit of effort into, particularly the ones about technology, operations, or finances, didn't attract many readers. It seems like those articles didn't quite capture their attention.
 
-However, the easiest post for me to write, which essentially offered a "something for nothing" scheme — ["Running a micro-SaaS for less than 1€ a month"](https://secutils.dev/docs/blog/running-micro-saas-for-less-than-one-euro-a-month) — attracted a larger audience. Interestingly, the posts with the fewest readers provided the most valuable feedback. I believe this is because the readers who were willing to invest their time in reading and digesting non-trivial information also had a lot to share on the topic.
+However, the easiest post for me to write, which essentially offered a "something for nothing" scheme - ["Running a micro-SaaS for less than 1€ a month"](https://secutils.dev/docs/blog/running-micro-saas-for-less-than-one-euro-a-month) - attracted a larger audience. Interestingly, the posts with the fewest readers provided the most valuable feedback. I believe this is because the readers who were willing to invest their time in reading and digesting non-trivial information also had a lot to share on the topic.
 
 ![[Secutils.dev](https://Secutils.dev) blog statistics](https://secutils.dev/docs/img/blog/2023-06-20_readers_stat.png)
 

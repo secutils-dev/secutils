@@ -12,7 +12,7 @@ After a refreshing winter-time blogging-break, I'd like to resume introducing ne
 
 <!--truncate-->
 
-If you've read my previous blog posts or ever experimented with Secutils.dev, you might be familiar with the [**web page tracking utility**](/guides/web_scraping/page). This utility allows you to monitor changes in web page content and resources, specifically JavaScript and CSS. While it has a somewhat narrow security-focused purpose — detecting broken or tampered web application deployments — it may not be the type of tool you use daily. Nevertheless, it serves as a good example of what you can build with modern browser automation tools like [**Playwright**](https://playwright.dev/) and [**Puppeteer**](https://pptr.dev/). If you're interested in digging deeper into this specific utility, refer to the following blog post series:
+If you've read my previous blog posts or ever experimented with Secutils.dev, you might be familiar with the [**web page tracking utility**](/guides/web_scraping/page). This utility allows you to monitor changes in web page content and resources, specifically JavaScript and CSS. While it has a somewhat narrow security-focused purpose - detecting broken or tampered web application deployments - it may not be the type of tool you use daily. Nevertheless, it serves as a good example of what you can build with modern browser automation tools like [**Playwright**](https://playwright.dev/) and [**Puppeteer**](https://pptr.dev/). If you're interested in digging deeper into this specific utility, refer to the following blog post series:
 
 - [**Detecting changes in JavaScript and CSS isn't an easy task, Part 1**](./2023-07-11-detecting-changes-in-js-css-part-1.md)
 - [**Detecting changes in JavaScript and CSS isn't an easy task, Part 2**](./2023-07-13-detecting-changes-in-js-css-part-2.md)
@@ -24,7 +24,7 @@ Typically, you would subscribe to email or push notifications through a subscrip
 
 This is where the trio of browser, scheduler, and notifications can be extremely valuable. You can instruct the scheduler to periodically check the content you're interested in, use a browser automation tool to extract the relevant part of the content, and then rely on notifications to alert you to any changes. Essentially, this is what the web page content tracker utility does. In general, if you can manually obtain the information you need through a browser, it can be automated as well.
 
-Originally, I developed the web page content trackers utility to address a very specific security-focused requirement in my day job — I needed to monitor security headers and a few other properties of the production [**Cloud Kibana**](https://www.elastic.co/kibana) deployment. However, since its release, I've found myself leveraging this the content trackers for a lot of use cases that extend well beyond security:
+Originally, I developed the web page content trackers utility to address a very specific security-focused requirement in my day job - I needed to monitor security headers and a few other properties of the production [**Cloud Kibana**](https://www.elastic.co/kibana) deployment. However, since its release, I've found myself leveraging this the content trackers for a lot of use cases that extend well beyond security:
 
 - In one of my other projects, [**AZbyte | ETF**](https://azbyte.xyz), I require up-to-date information about exchange-traded funds (ETFs) from various fund providers (iShares, Vanguard, etc.). Content trackers come in handy to monitor their websites for new funds, as these providers don't offer a way to subscribe to such updates.
 - For my day job, I track web page metadata of my development [**“serverless” Elastic projects**](https://docs.elastic.co/serverless). This helps me know when they are automatically upgraded to a new version since there's currently no straightforward way to receive notifications about this.
@@ -60,7 +60,7 @@ return `Top repository is **[${topLinkName}](${topLink.href})**`;
 
 While the script, relying on opaque web page-specific CSS selectors, might appear fragile, these selectors don't change frequently in practice. Moreover, the tracker will notify me if this code begins to fail, allowing me to make necessary adjustments.
 
-One doesn't need to be proficient in JavaScript to write such simple scripts — ChatGPT and similar tools can generate something like this easily nowadays. I'm seriously thinking about launching a dedicated paid service centered around this functionality. Users could simply hover over the content they want to track, and the AI would handle the rest! Wouldn't that be awesome? 😃
+One doesn't need to be proficient in JavaScript to write such simple scripts - ChatGPT and similar tools can generate something like this easily nowadays. I'm seriously thinking about launching a dedicated paid service centered around this functionality. Users could simply hover over the content they want to track, and the AI would handle the rest! Wouldn't that be awesome? 😃
 
 The script can return Markdown-styled content, making it easier for users to consume. Here's how it looks in Secutils.dev UI:
 
@@ -72,7 +72,7 @@ With Markdown and a bit of creativity, one can create a nice personalized versio
 
 I won't dive into the UI, HTTP APIs, or storage layer used for this functionality, as it's all standard tech. I'd better focus on the content extraction part, the core of this functionality.
 
-To begin, all functionality related to browser automation and web scraping lives in a dedicated service — [**Retrack**](https://github.com/secutils-dev/retrack). The primary rationale is that dealing with browsers and arbitrary user scripts is tricky from a security standpoint, and it's always a good idea to isolate such functionality as much as possible. You can read more about the security aspects of web scraping in the [**"Running web scraping service securely"**](./2023-09-12-running-web-scraping-service-securely.md) post.
+To begin, all functionality related to browser automation and web scraping lives in a dedicated service - [**Retrack**](https://github.com/secutils-dev/retrack). The primary rationale is that dealing with browsers and arbitrary user scripts is tricky from a security standpoint, and it's always a good idea to isolate such functionality as much as possible. You can read more about the security aspects of web scraping in the [**"Running web scraping service securely"**](./2023-09-12-running-web-scraping-service-securely.md) post.
 
 As the post title suggests, at the heart of Web Scraper lies [**Playwright**](https://playwright.dev/) with an additional HTTP API layer on top. Playwright is an exceptional tool that manages all interactions with the headless browser and abstracts away a considerable amount of complexity. Let me show you how I use Playwright to extract content from web pages:
 

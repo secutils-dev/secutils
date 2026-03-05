@@ -31,7 +31,7 @@ test.describe('User Registration and Login Flow', () => {
     await page.getByPlaceholder('Password', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
-    // Verify the Welcome page loads again after re-login.
+    // Verify the home page loads again after re-login.
     await expect(page).toHaveURL(/\/ws/, { timeout: 30000 });
     await expect(page.getByRole('heading', { name: 'Welcome', level: 2 })).toBeVisible({ timeout: 15000 });
   });

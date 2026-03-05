@@ -81,8 +81,13 @@ export async function goto(page: Page, url: string) {
   await page.goto(url);
   await page.addStyleTag({
     content: [
-      '*, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; }',
+      '*, *::before, *::after {',
+      '  animation-duration: 0s !important; animation-delay: 0s !important;',
+      '  transition-duration: 0s !important; transition-delay: 0s !important;',
+      '}',
       '.monaco-editor .decorationsOverviewRuler { display: none !important; }',
+      '.monaco-editor .cursors-layer { display: none !important; }',
+      '* { caret-color: transparent !important; }',
     ].join('\n'),
   });
 }

@@ -181,7 +181,7 @@ export function Page({
         `}
       >
         {header}
-        <EuiPageSection color="plain" alignment={contentAlignment} contentProps={contentProps} grow>
+        <EuiPageSection color="plain" alignment={contentAlignment} contentProps={contentProps} grow bottomBorder={false}>
           {children}
         </EuiPageSection>
         <EuiPageSection color="plain" paddingSize="m">
