@@ -2,12 +2,13 @@ import type { EuiSideNavItemType } from '@elastic/eui';
 import { EuiButtonIcon, EuiFlexGroup, EuiFlexItem, EuiIcon, EuiSideNav, EuiSpacer, useEuiTheme } from '@elastic/eui';
 import type { EuiBreadcrumbProps } from '@elastic/eui/src/components/breadcrumbs/types';
 import { css } from '@emotion/react';
-import type { ReactNode } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
 
 import { SiteSearchBar } from './components/site_search_bar';
 import { getUtilIcon, UTIL_HANDLES, UtilsComponents, UtilsShareComponents } from './utils';
+import { getWorkspaceUtilLink } from './utils/workspace_links';
 import { WorkspaceContext } from './workspace_context';
 import { SettingsFlyout } from '../../app_container';
 import { PageLoadingState } from '../../components';
@@ -83,6 +84,30 @@ export function WorkspacePage() {
     [navigate],
   );
 
+  const onSidebarClickCapture = useCallback(
+    (e: MouseEvent<HTMLElement>) => {
+      // Preserve native behavior for non-primary or modified clicks.
+      if (e.defaultPrevented || e.button !== 0 || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) {
+        return;
+      }
+
+      const targetElement = e.target as HTMLElement | null;
+      const linkElement = targetElement?.closest('a[href^="/ws"]');
+      if (!linkElement) {
+        return;
+      }
+
+      const href = linkElement.getAttribute('href');
+      if (!href) {
+        return;
+      }
+
+      e.preventDefault();
+      navigate(href);
+    },
+    [navigate],
+  );
+
   const [titleActions, setTitleActions] = useState<ReactNode | null>(null);
   const [title, setTitle] = useState<string | null>(null);
 
@@ -96,25 +121,21 @@ export function WorkspacePage() {
     const utilsMap = new Map<string, Util>();
     const createItem = (util: Util): EuiSideNavItemType<unknown> => {
       utilsMap.set(util.handle, util);
-      const utilUrl = util.handle === 'home' ? '/ws' : `/ws/${util.handle}`;
+      const utilUrl = getWorkspaceUtilLink(util.handle);
       const utilIcon = selectedUtil ? getUtilIcon(util.handle, 'navigation') : undefined;
+      const childUtils =
+        showOnlyFavorites && util.utils
+          ? util.utils.filter((nestedUtil) => showDisplayUtil(nestedUtil, favorites))
+          : (util.utils ?? []);
+      const childItems = childUtils.length > 0 ? childUtils.map((nestedUtil) => createItem(nestedUtil)) : undefined;
+
       return {
         id: util.handle,
         name: util.name,
-        href: util.utils && util.utils.length === 0 ? utilUrl : undefined,
+        href: childItems ? undefined : utilUrl,
         icon: utilIcon ? <EuiIcon type={utilIcon} /> : undefined,
         isSelected: selectedUtil?.handle === util.handle && !deepLinkFromParam,
-        onClick:
-          util.utils && util.utils.length > 0
-            ? undefined
-            : (e) => {
-                e.preventDefault();
-                navigate(utilUrl);
-              },
-        items: (showOnlyFavorites && util.utils
-          ? util.utils.filter((util) => showDisplayUtil(util, favorites))
-          : (util.utils ?? [])
-        ).map((util) => createItem(util)),
+        items: childItems,
       };
     };
 
@@ -124,7 +145,7 @@ export function WorkspacePage() {
       ),
       utilsMap,
     ];
-  }, [uiState, selectedUtil, deepLinkFromParam, favorites, showOnlyFavorites, navigate]);
+  }, [uiState, selectedUtil, deepLinkFromParam, favorites, showOnlyFavorites]);
 
   useEffect(() => {
     const newSelectedUtil =
@@ -210,7 +231,7 @@ export function WorkspacePage() {
 
   // Sidebar is only available to authenticated users.
   const sidebar = uiState.user ? (
-    <aside>
+    <aside onClickCapture={onSidebarClickCapture}>
       <SiteSearchBar />
       <EuiSpacer size="m" />
       <EuiSideNav items={sideNavItems} mobileBreakpoints={[]} />

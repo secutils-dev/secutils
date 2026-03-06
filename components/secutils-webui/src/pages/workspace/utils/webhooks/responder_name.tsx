@@ -1,9 +1,11 @@
-import { EuiIcon, EuiText, useEuiTheme } from '@elastic/eui';
+import { EuiIcon, EuiLink, useEuiTheme } from '@elastic/eui';
 
 import type { Responder } from './responder';
 
-export function ResponderName({ responder }: { responder: Responder }) {
+export function ResponderName({ responder, href }: { responder: Responder; href: string }) {
   const theme = useEuiTheme();
+  const disabledColor = theme.euiTheme.colors.textDisabled;
+  const textColor = theme.euiTheme.colors.text;
 
   const icons = [];
   if (responder.settings.script) {
@@ -13,17 +15,14 @@ export function ResponderName({ responder }: { responder: Responder }) {
     icons.push(<EuiIcon key="offline" type={'offline'} size="s" title={'Responder is disabled'} />);
   }
 
-  if (icons.length === 0) {
-    return <span style={{ whiteSpace: 'nowrap' }}>{responder.name}</span>;
-  }
-
   return (
-    <EuiText
-      size="s"
-      color={!responder.enabled ? theme.euiTheme.colors.textDisabled : undefined}
-      style={{ whiteSpace: 'nowrap' }}
-    >
-      {responder.name} <span style={{ display: 'inline-flex', gap: 4, verticalAlign: 'middle' }}>{icons}</span>
-    </EuiText>
+    <span style={{ whiteSpace: 'nowrap' }}>
+      <EuiLink href={href} style={{ color: responder.enabled ? textColor : disabledColor }}>
+        {responder.name}
+      </EuiLink>
+      {icons.length > 0 ? (
+        <span style={{ display: 'inline-flex', gap: 4, marginLeft: 4, verticalAlign: 'middle' }}>{icons}</span>
+      ) : null}
+    </span>
   );
 }

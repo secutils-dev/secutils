@@ -17,6 +17,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
+import { UTIL_HANDLES } from '..';
 import type { PageTracker } from './page_tracker';
 import { PageTrackerEditFlyout } from './page_tracker_edit_flyout';
 import { PageTrackerRevision } from './page_tracker_revision';
@@ -35,6 +36,7 @@ import {
 import { ItemsTableFilter, useItemsTableFilter } from '../../components/items_table_filter';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
+import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
 
 export default function PageTrackers() {
   const { uiState, setTitleActions } = useWorkspaceContext();
@@ -267,8 +269,12 @@ export default function PageTrackers() {
               ),
               field: 'name',
               sortable: true,
-              textOnly: true,
-              render: (_, tracker: PageTracker) => <TrackerName tracker={tracker} />,
+              render: (_, tracker: PageTracker) => (
+                <TrackerName
+                  tracker={tracker}
+                  href={getWorkspaceEntityLink(UTIL_HANDLES.webScrapingPage, tracker.id)}
+                />
+              ),
             },
             {
               name: 'Last updated',
@@ -300,6 +306,16 @@ export default function PageTrackers() {
                   icon: 'tokenKey',
                   type: 'icon',
                   onClick: ({ id }: PageTracker) => void navigator.clipboard.writeText(id),
+                },
+                {
+                  name: 'Copy link',
+                  description: 'Copy link to tracker in grid',
+                  icon: 'link',
+                  type: 'icon',
+                  onClick: ({ id }: PageTracker) =>
+                    void navigator.clipboard.writeText(
+                      getWorkspaceEntityAbsoluteLink(UTIL_HANDLES.webScrapingPage, id),
+                    ),
                 },
                 {
                   name: 'Edit',

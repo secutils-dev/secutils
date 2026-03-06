@@ -13,16 +13,19 @@ import {
 } from '@elastic/eui';
 import { css } from '@emotion/react';
 import type { MouseEvent } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router';
 
+import { getUtilIcon } from '..';
 import { useWorkspaceSummary } from './use_workspace_summary';
 import { usePageMeta } from '../../../../hooks';
+import type { Util } from '../../../../model';
 import HelpPageContent from '../../components/help_page_content';
 import { useWorkspaceContext } from '../../hooks';
 
 interface ToolSubPath {
   label: string;
-  path: string;
+  utilNames: string[];
 }
 
 interface ToolDefinition {
@@ -30,9 +33,25 @@ interface ToolDefinition {
   title: string;
   icon: string;
   description: string;
-  path: string;
+  utilNames: string[];
   guideUrl: string;
   subPaths?: ToolSubPath[];
+  checklistPrompt: string;
+}
+
+interface ResolvedToolSubPath {
+  label: string;
+  path: string;
+}
+
+interface ResolvedToolDefinition {
+  id: string;
+  title: string;
+  icon: string;
+  description: string;
+  path: string;
+  guideUrl: string;
+  subPaths?: ResolvedToolSubPath[];
   checklistPrompt: string;
 }
 
@@ -42,7 +61,7 @@ const TOOLS: ToolDefinition[] = [
     title: 'Webhooks',
     icon: 'node',
     description: 'Create mock HTTP APIs, test webhook integrations, and set up honeypot endpoints.',
-    path: '/ws/webhooks__responders',
+    utilNames: ['Webhooks', 'Responders'],
     guideUrl: '/docs/guides/webhooks',
     checklistPrompt: 'Create your first webhook responder',
   },
@@ -51,7 +70,7 @@ const TOOLS: ToolDefinition[] = [
     title: 'Digital Certificates',
     icon: 'securityApp',
     description: 'Generate X.509 certificate templates and manage private keys for HTTPS and code signing.',
-    path: '/ws/certificates__certificate_templates',
+    utilNames: ['Digital Certificates', 'Certificate templates'],
     guideUrl: '/docs/category/digital-certificates',
     checklistPrompt: 'Generate a certificate template',
   },
@@ -60,7 +79,7 @@ const TOOLS: ToolDefinition[] = [
     title: 'Content Security Policy',
     icon: 'globe',
     description: 'Create, import, and test Content Security Policies for your web applications.',
-    path: '/ws/web_security__csp__policies',
+    utilNames: ['Web Security', 'CSP', 'Policies'],
     guideUrl: '/docs/guides/web_security/csp',
     checklistPrompt: 'Set up a content security policy',
   },
@@ -69,11 +88,11 @@ const TOOLS: ToolDefinition[] = [
     title: 'Web Scraping',
     icon: 'cut',
     description: 'Track changes in web pages and API responses over time with scheduled checks.',
-    path: '/ws/web_scraping__page',
+    utilNames: ['Web Scraping', 'Page trackers'],
     guideUrl: '/docs/category/web-scraping',
     subPaths: [
-      { label: 'Pages', path: '/ws/web_scraping__page' },
-      { label: 'APIs', path: '/ws/web_scraping__api' },
+      { label: 'Pages', utilNames: ['Web Scraping', 'Page trackers'] },
+      { label: 'APIs', utilNames: ['Web Scraping', 'API trackers'] },
     ],
     checklistPrompt: 'Track your first web page or API',
   },
@@ -123,11 +142,28 @@ function formatRelativeTime(unixSeconds: number): string {
   return new Date(unixSeconds * 1000).toLocaleDateString();
 }
 
+function findUtilByNames(utils: Util[], utilNames: string[]): Util | undefined {
+  let currentUtils = utils;
+  let currentUtil: Util | undefined;
+
+  for (const utilName of utilNames) {
+    currentUtil = currentUtils.find((util) => util.name === utilName);
+    if (!currentUtil) {
+      return;
+    }
+    currentUtils = currentUtil.utils ?? [];
+  }
+
+  return currentUtil;
+}
+
+function getWorkspacePath(utilHandle?: string): string {
+  return utilHandle && utilHandle !== 'home' ? `/ws/${utilHandle}` : '/ws';
+}
+
 const sidePanelStyle = css`
   height: 100%;
 `;
-
-const TOOL_BY_ID = new Map(TOOLS.map((t) => [t.id, t]));
 
 export default function Home() {
   usePageMeta('Welcome to Secutils.dev');
@@ -136,19 +172,34 @@ export default function Home() {
   const { uiState } = useWorkspaceContext();
   const summary = useWorkspaceSummary(!!uiState.user);
   const counts = summary.counts;
+  const tools = useMemo<ResolvedToolDefinition[]>(() => {
+    return TOOLS.map((tool) => ({
+      id: tool.id,
+      title: tool.title,
+      icon: tool.icon,
+      description: tool.description,
+      path: getWorkspacePath(findUtilByNames(uiState.utils, tool.utilNames)?.handle),
+      guideUrl: tool.guideUrl,
+      checklistPrompt: tool.checklistPrompt,
+      subPaths: tool.subPaths?.map((subPath) => ({
+        label: subPath.label,
+        path: getWorkspacePath(findUtilByNames(uiState.utils, subPath.utilNames)?.handle),
+      })),
+    }));
+  }, [uiState.utils]);
 
-  const activeToolCount = TOOLS.filter((t) => {
+  const activeToolCount = tools.filter((t) => {
     const c = counts[t.id as keyof typeof counts];
     return c !== null && c > 0;
   }).length;
 
-  const progressValue = summary.status === 'succeeded' ? (activeToolCount / TOOLS.length) * 100 : 0;
+  const progressValue = summary.status === 'succeeded' ? (activeToolCount / tools.length) * 100 : 0;
 
   const stopPropagation = (e: MouseEvent) => {
     e.stopPropagation();
   };
 
-  const showChecklist = summary.status === 'succeeded' && activeToolCount < TOOLS.length;
+  const showChecklist = summary.status === 'succeeded' && activeToolCount < tools.length;
   const showRecentItems = summary.status === 'succeeded' && summary.recentItems.length > 0;
 
   return (
@@ -168,7 +219,7 @@ export default function Home() {
             <EuiProgress value={progressValue} max={100} size="m" color="primary" />
             <EuiSpacer size="xs" />
             <EuiText size="xs" color="subdued">
-              You&apos;re using {activeToolCount} of {TOOLS.length} tools
+              You&apos;re using {activeToolCount} of {tools.length} tools
             </EuiText>
           </>
         )}
@@ -178,7 +229,7 @@ export default function Home() {
 
       {/* Tool cards */}
       <EuiFlexGroup gutterSize="l" wrap>
-        {TOOLS.map((tool) => {
+        {tools.map((tool) => {
           const count = counts[tool.id as keyof typeof counts];
           const isActive = count !== null && count > 0;
 
@@ -251,7 +302,7 @@ export default function Home() {
                   </EuiTitle>
                   <EuiSpacer size="s" />
                   <EuiFlexGroup direction="column" gutterSize="xs">
-                    {TOOLS.map((tool) => {
+                    {tools.map((tool) => {
                       const count = counts[tool.id as keyof typeof counts];
                       const completed = count !== null && count > 0;
                       return (
@@ -293,19 +344,15 @@ export default function Home() {
                   <EuiSpacer size="s" />
                   <EuiFlexGroup direction="column" gutterSize="xs">
                     {summary.recentItems.map((item, i) => {
-                      const tool = TOOL_BY_ID.get(item.toolId);
+                      const recentItemIcon = getUtilIcon(item.utilHandle, 'search') ?? 'document';
                       return (
                         <EuiFlexItem key={i}>
                           <EuiFlexGroup gutterSize="s" alignItems="center" responsive={false}>
                             <EuiFlexItem grow={false}>
-                              <EuiIcon size="s" type={tool?.icon ?? 'document'} color="subdued" />
+                              <EuiIcon size="s" type={recentItemIcon} color="subdued" />
                             </EuiFlexItem>
                             <EuiFlexItem grow={false}>
-                              <EuiButtonEmpty
-                                size="xs"
-                                flush="left"
-                                onClick={() => navigate(item.path)}
-                              >
+                              <EuiButtonEmpty size="xs" flush="left" onClick={() => navigate(item.path)}>
                                 {item.name}
                               </EuiButtonEmpty>
                             </EuiFlexItem>
@@ -352,4 +399,3 @@ export default function Home() {
     </HelpPageContent>
   );
 }
-

@@ -16,6 +16,7 @@ import {
 import { unix } from 'moment';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { UTIL_HANDLES } from '..';
 import { certificateTypeString, getDistinguishedNameString, signatureAlgorithmString } from './certificate_attributes';
 import type { CertificateTemplate } from './certificate_template';
 import { CertificateTemplateEditFlyout } from './certificate_template_edit_flyout';
@@ -35,6 +36,7 @@ import {
 } from '../../../../model';
 import { ItemsTableFilter, useItemsTableFilter } from '../../components/items_table_filter';
 import { useWorkspaceContext } from '../../hooks';
+import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
 
 export default function CertificatesCertificateTemplates() {
   const { uiState, settings, setSettings, setTitleActions } = useWorkspaceContext();
@@ -301,9 +303,16 @@ export default function CertificatesCertificateTemplates() {
                 </EuiToolTip>
               ),
               field: 'name',
-              textOnly: true,
               sortable: true,
-              render: (_, template) => <span style={{ whiteSpace: 'nowrap' }}>{template.name}</span>,
+              render: (_, template) => (
+                <EuiLink
+                  href={getWorkspaceEntityLink(UTIL_HANDLES.certificatesCertificateTemplates, template.id)}
+                  color="text"
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  {template.name}
+                </EuiLink>
+              ),
             },
             {
               name: (
@@ -358,6 +367,16 @@ export default function CertificatesCertificateTemplates() {
                   icon: 'tokenKey',
                   type: 'icon',
                   onClick: ({ id }: CertificateTemplate) => void navigator.clipboard.writeText(id),
+                },
+                {
+                  name: 'Copy link',
+                  description: 'Copy link to template in grid',
+                  icon: 'link',
+                  type: 'icon',
+                  onClick: ({ id }: CertificateTemplate) =>
+                    void navigator.clipboard.writeText(
+                      getWorkspaceEntityAbsoluteLink(UTIL_HANDLES.certificatesCertificateTemplates, id),
+                    ),
                 },
                 {
                   name: 'Generate',

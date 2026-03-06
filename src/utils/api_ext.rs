@@ -2,7 +2,8 @@ use crate::{
     api::Api,
     database::Database,
     network::{DnsResolver, EmailTransport},
-    utils::Util,
+    users::UserId,
+    utils::{HomeSummary, Util},
 };
 use std::borrow::Cow;
 
@@ -21,6 +22,12 @@ impl<'a> UtilsApiExt<'a> {
     /// Returns all available utils.
     pub async fn get_all(&self) -> anyhow::Result<Vec<Util>> {
         self.db.get_utils().await
+    }
+
+    /// Returns a summary of all util items for the home page: per-tool counts and the most
+    /// recently updated items across all tools.
+    pub async fn get_home_summary(&self, user_id: UserId) -> anyhow::Result<HomeSummary> {
+        self.db.get_home_summary(user_id).await
     }
 }
 

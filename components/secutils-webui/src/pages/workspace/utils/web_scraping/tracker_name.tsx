@@ -1,14 +1,15 @@
-import { EuiIcon, EuiText, useEuiTheme } from '@elastic/eui';
+import { EuiIcon, EuiLink, useEuiTheme } from '@elastic/eui';
 
 import type { ApiTracker } from './api_tracker';
 import type { PageTracker } from './page_tracker';
 
 type TrackerLike = PageTracker | ApiTracker;
 
-export function TrackerName({ tracker }: { tracker: TrackerLike }) {
+export function TrackerName({ tracker, href }: { tracker: TrackerLike; href: string }) {
   const { euiTheme } = useEuiTheme();
   const isDisabled = tracker.retrack.enabled === false;
   const jobConfig = tracker.retrack.config?.job;
+  const textColor = euiTheme.colors.text;
 
   const icons = [];
   if (jobConfig) {
@@ -21,13 +22,14 @@ export function TrackerName({ tracker }: { tracker: TrackerLike }) {
     icons.push(<EuiIcon key="offline" type={'offline'} size="s" title={'Tracker is disabled'} />);
   }
 
-  if (icons.length === 0) {
-    return <span style={{ whiteSpace: 'nowrap' }}>{tracker.name}</span>;
-  }
-
   return (
-    <EuiText size="s" color={isDisabled ? euiTheme.colors.textDisabled : undefined} style={{ whiteSpace: 'nowrap' }}>
-      {tracker.name} <span style={{ display: 'inline-flex', gap: 4, verticalAlign: 'middle' }}>{icons}</span>
-    </EuiText>
+    <span style={{ whiteSpace: 'nowrap' }}>
+      <EuiLink href={href} style={{ color: isDisabled ? euiTheme.colors.textDisabled : textColor }}>
+        {tracker.name}
+      </EuiLink>
+      {icons.length > 0 ? (
+        <span style={{ display: 'inline-flex', gap: 4, marginLeft: 4, verticalAlign: 'middle' }}>{icons}</span>
+      ) : null}
+    </span>
   );
 }

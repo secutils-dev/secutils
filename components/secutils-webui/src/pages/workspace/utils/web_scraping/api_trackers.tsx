@@ -18,6 +18,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
+import { UTIL_HANDLES } from '..';
 import type { ApiTracker } from './api_tracker';
 import { ApiTrackerEditFlyout } from './api_tracker_edit_flyout';
 import { PageTrackerRevision } from './page_tracker_revision';
@@ -36,6 +37,7 @@ import {
 import { ItemsTableFilter, useItemsTableFilter } from '../../components/items_table_filter';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
+import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
 
 export default function ApiTrackers() {
   const { uiState, setTitleActions } = useWorkspaceContext();
@@ -268,8 +270,9 @@ export default function ApiTrackers() {
               ),
               field: 'name',
               sortable: true,
-              textOnly: true,
-              render: (_, tracker: ApiTracker) => <TrackerName tracker={tracker} />,
+              render: (_, tracker: ApiTracker) => (
+                <TrackerName tracker={tracker} href={getWorkspaceEntityLink(UTIL_HANDLES.webScrapingApi, tracker.id)} />
+              ),
             },
             {
               name: 'URL',
@@ -326,6 +329,14 @@ export default function ApiTrackers() {
                   icon: 'tokenKey',
                   type: 'icon',
                   onClick: ({ id }: ApiTracker) => void navigator.clipboard.writeText(id),
+                },
+                {
+                  name: 'Copy link',
+                  description: 'Copy link to tracker in grid',
+                  icon: 'link',
+                  type: 'icon',
+                  onClick: ({ id }: ApiTracker) =>
+                    void navigator.clipboard.writeText(getWorkspaceEntityAbsoluteLink(UTIL_HANDLES.webScrapingApi, id)),
                 },
                 {
                   name: 'Edit',

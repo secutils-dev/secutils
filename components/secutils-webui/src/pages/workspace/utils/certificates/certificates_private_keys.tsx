@@ -16,6 +16,7 @@ import {
 } from '@elastic/eui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { UTIL_HANDLES } from '..';
 import { PRIVATE_KEYS_PROD_WARNING_USER_SETTINGS_KEY } from './consts';
 import type { PrivateKey } from './private_key';
 import { privateKeyAlgString } from './private_key_alg';
@@ -33,6 +34,7 @@ import {
 import { ItemsTableFilter, useItemsTableFilter } from '../../components/items_table_filter';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
+import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
 
 export default function CertificatesPrivateKeys() {
   const { uiState, setTitleActions, setSettings, settings } = useWorkspaceContext();
@@ -270,9 +272,16 @@ export default function CertificatesPrivateKeys() {
                 </EuiToolTip>
               ),
               field: 'name',
-              textOnly: true,
               sortable: true,
-              render: (_, privateKey: PrivateKey) => <span style={{ whiteSpace: 'nowrap' }}>{privateKey.name}</span>,
+              render: (_, privateKey: PrivateKey) => (
+                <EuiLink
+                  href={getWorkspaceEntityLink(UTIL_HANDLES.certificatesPrivateKeys, privateKey.id)}
+                  color="text"
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  {privateKey.name}
+                </EuiLink>
+              ),
             },
             {
               name: (
@@ -326,6 +335,16 @@ export default function CertificatesPrivateKeys() {
                   icon: 'tokenKey',
                   type: 'icon',
                   onClick: ({ id }: PrivateKey) => void navigator.clipboard.writeText(id),
+                },
+                {
+                  name: 'Copy link',
+                  description: 'Copy link to private key in grid',
+                  icon: 'link',
+                  type: 'icon',
+                  onClick: ({ id }: PrivateKey) =>
+                    void navigator.clipboard.writeText(
+                      getWorkspaceEntityAbsoluteLink(UTIL_HANDLES.certificatesPrivateKeys, id),
+                    ),
                 },
                 {
                   name: 'Export',

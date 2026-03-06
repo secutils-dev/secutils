@@ -77,7 +77,8 @@ test.describe('Webhooks guide screenshots', () => {
     await page.screenshot({ path: join(IMG_DIR, 'html_step3_created.png') });
 
     // Step 4: Open the responder URL and verify it renders the HTML page.
-    const responderLink = responderRow.getByRole('link');
+    const responderLink = responderRow.getByRole('link', { name: /\/api\/webhooks\/u\// });
+    await expect(responderLink).toBeVisible();
     const responderUrl = await responderLink.getAttribute('href');
     const htmlPage = await page.context().newPage();
     await goto(htmlPage, responderUrl!);
@@ -195,7 +196,8 @@ test.describe('Webhooks guide screenshots', () => {
 
     // Step 4: Call the endpoint and expand the row to show tracked requests.
     await fixResponderRequestFields(page);
-    const responderLink = responderRow.getByRole('link');
+    const responderLink = responderRow.getByRole('link', { name: /\/api\/webhooks\/u\// });
+    await expect(responderLink).toBeVisible();
     const responderUrl = await responderLink.getAttribute('href');
     const honeypotPage = await page.context().newPage();
     await goto(honeypotPage, responderUrl!);
@@ -268,7 +270,8 @@ test.describe('Webhooks guide screenshots', () => {
     await page.screenshot({ path: join(IMG_DIR, 'dynamic_step3_created.png') });
 
     // Step 4: Open the responder URL without args - shows the default message.
-    const responderLink = responderRow.getByRole('link');
+    const responderLink = responderRow.getByRole('link', { name: /\/api\/webhooks\/u\// });
+    await expect(responderLink).toBeVisible();
     const responderUrl = await responderLink.getAttribute('href');
     const noArgPage = await page.context().newPage();
     await goto(noArgPage, responderUrl!);

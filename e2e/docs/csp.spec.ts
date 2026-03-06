@@ -235,7 +235,8 @@ test.describe('CSP guide screenshots', () => {
     await dismissAllToasts(page);
 
     // Step 2b: Open the responder URL and capture the eval page.
-    const responderLink = responderRow.getByRole('link');
+    const responderLink = responderRow.getByRole('link', { name: /\/api\/webhooks\/u\// });
+    await expect(responderLink).toBeVisible();
     const responderUrl = await responderLink.getAttribute('href');
     const evalPage = await page.context().newPage();
     await goto(evalPage, responderUrl!);
@@ -385,7 +386,9 @@ test.describe('CSP guide screenshots', () => {
     const reportingRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'CSP Reporting' }) });
     await expect(reportingRow).toBeVisible();
 
-    const reportingUrl = await reportingRow.getByRole('link').getAttribute('href');
+    const reportingLink = reportingRow.getByRole('link', { name: /\/api\/webhooks\/u\// });
+    await expect(reportingLink).toBeVisible();
+    const reportingUrl = await reportingLink.getAttribute('href');
 
     await highlightOn(reportingRow);
     await page.screenshot({ path: join(IMG_DIR, 'report_step2_reporting_created.png') });
@@ -511,7 +514,8 @@ test.describe('CSP guide screenshots', () => {
     await page.screenshot({ path: join(IMG_DIR, 'report_step7_eval_created.png') });
 
     // Step 5: Open the eval test page and try eval() - CSP blocks it and sends a report via report-uri.
-    const evalLink = evalRow.getByRole('link');
+    const evalLink = evalRow.getByRole('link', { name: /\/api\/webhooks\/u\// });
+    await expect(evalLink).toBeVisible();
     const evalUrl = await evalLink.getAttribute('href');
     const evalPage = await page.context().newPage();
     await goto(evalPage, evalUrl!);

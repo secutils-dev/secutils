@@ -8,11 +8,13 @@ import {
   EuiFlexItem,
   EuiIcon,
   EuiInMemoryTable,
+  EuiLink,
   EuiSpacer,
   EuiToolTip,
 } from '@elastic/eui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { UTIL_HANDLES } from '../..';
 import type { ContentSecurityPolicy, SerializedContentSecurityPolicyDirectives } from './content_security_policy';
 import { deserializeContentSecurityPolicyDirectives, getContentSecurityPolicyString } from './content_security_policy';
 import { ContentSecurityPolicyCopyModal } from './content_security_policy_copy_modal';
@@ -31,6 +33,7 @@ import {
 import { ItemsTableFilter, useItemsTableFilter } from '../../../components/items_table_filter';
 import { TimestampTableCell } from '../../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../../hooks';
+import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../../workspace_links';
 
 export default function WebSecurityContentSecurityPolicies() {
   const { uiState, setTitleActions } = useWorkspaceContext();
@@ -278,8 +281,15 @@ export default function WebSecurityContentSecurityPolicies() {
               ),
               field: 'name',
               sortable: true,
-              textOnly: true,
-              render: (_, item: ContentSecurityPolicy) => <span style={{ whiteSpace: 'nowrap' }}>{item.name}</span>,
+              render: (_, item: ContentSecurityPolicy) => (
+                <EuiLink
+                  href={getWorkspaceEntityLink(UTIL_HANDLES.webSecurityCspPolicies, item.id)}
+                  color="text"
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  {item.name}
+                </EuiLink>
+              ),
             },
             {
               name: (
@@ -311,6 +321,16 @@ export default function WebSecurityContentSecurityPolicies() {
                   icon: 'tokenKey',
                   type: 'icon',
                   onClick: ({ id }: ContentSecurityPolicy) => void navigator.clipboard.writeText(id),
+                },
+                {
+                  name: 'Copy link',
+                  description: 'Copy link to policy in grid',
+                  icon: 'link',
+                  type: 'icon',
+                  onClick: ({ id }: ContentSecurityPolicy) =>
+                    void navigator.clipboard.writeText(
+                      getWorkspaceEntityAbsoluteLink(UTIL_HANDLES.webSecurityCspPolicies, id),
+                    ),
                 },
                 {
                   name: 'Copy',

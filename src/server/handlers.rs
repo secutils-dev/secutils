@@ -1,3 +1,4 @@
+mod home_summary_get;
 mod scheduler_parse_schedule;
 mod search;
 mod security_subscription_update;
@@ -19,6 +20,7 @@ mod webhooks_responders;
 mod webhooks_retrack;
 
 pub use self::{
+    home_summary_get::home_summary_get,
     scheduler_parse_schedule::scheduler_parse_schedule,
     search::search,
     security_subscription_update::security_subscription_update,

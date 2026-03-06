@@ -19,6 +19,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
+import { UTIL_HANDLES } from '..';
 import type { Responder } from './responder';
 import { ResponderEditFlyout } from './responder_edit_flyout';
 import { ResponderName } from './responder_name';
@@ -36,6 +37,7 @@ import {
 import { ItemsTableFilter, useItemsTableFilter } from '../../components/items_table_filter';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
+import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
 
 export default function Responders() {
   const theme = useEuiTheme();
@@ -287,8 +289,12 @@ export default function Responders() {
               ),
               field: 'name',
               sortable: true,
-              textOnly: true,
-              render: (_, responder: Responder) => <ResponderName responder={responder} />,
+              render: (_, responder: Responder) => (
+                <ResponderName
+                  responder={responder}
+                  href={getWorkspaceEntityLink(UTIL_HANDLES.webhooksResponders, responder.id)}
+                />
+              ),
             },
             {
               name: (
@@ -371,6 +377,16 @@ export default function Responders() {
                   icon: 'tokenKey',
                   type: 'icon',
                   onClick: ({ id }: Responder) => void navigator.clipboard.writeText(id),
+                },
+                {
+                  name: 'Copy link',
+                  description: 'Copy link to responder in grid',
+                  icon: 'link',
+                  type: 'icon',
+                  onClick: ({ id }: Responder) =>
+                    void navigator.clipboard.writeText(
+                      getWorkspaceEntityAbsoluteLink(UTIL_HANDLES.webhooksResponders, id),
+                    ),
                 },
                 {
                   name: 'Edit',

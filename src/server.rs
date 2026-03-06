@@ -144,7 +144,9 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
                             .wrap(Cors::permissive()),
                     )
                     .service(
-                        web::scope("/ui").route("/state", web::get().to(handlers::ui_state_get)),
+                        web::scope("/ui")
+                            .route("/state", web::get().to(handlers::ui_state_get))
+                            .route("/home/summary", web::get().to(handlers::home_summary_get)),
                     ),
             )
     });

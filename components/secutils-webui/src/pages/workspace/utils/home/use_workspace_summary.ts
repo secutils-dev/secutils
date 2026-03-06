@@ -11,7 +11,7 @@ interface ToolCount {
 
 export interface RecentItem {
   name: string;
-  toolId: string;
+  utilHandle: string;
   path: string;
   updatedAt: number;
 }
@@ -24,24 +24,23 @@ export interface WorkspaceSummary {
 
 const EMPTY_COUNTS: ToolCount = { webhooks: null, certificates: null, csp: null, webScraping: null };
 
-interface RawItem {
-  name: string;
-  updatedAt: number;
+interface ServerSummary {
+  counts: {
+    webhooks: number;
+    certificates: number;
+    csp: number;
+    webScraping: number;
+  };
+  recentItems: {
+    name: string;
+    utilHandle: string;
+    updatedAt: number;
+  }[];
 }
 
-async function fetchItems(path: string): Promise<RawItem[]> {
-  const res = await fetch(getApiUrl(path), getApiRequestConfig());
-  if (!res.ok) {
-    throw new Error(`Failed to fetch ${path}`);
-  }
-  return (await res.json()) as RawItem[];
+function getUtilPath(utilHandle: string): string {
+  return utilHandle === 'home' ? '/ws' : `/ws/${utilHandle}`;
 }
-
-function toRecentItems(items: RawItem[], toolId: string, path: string): RecentItem[] {
-  return items.map((item) => ({ name: item.name, toolId, path, updatedAt: item.updatedAt }));
-}
-
-const MAX_RECENT_ITEMS = 3;
 
 export function useWorkspaceSummary(isAuthenticated: boolean): WorkspaceSummary {
   const [summary, setSummary] = useState<WorkspaceSummary>({
@@ -58,34 +57,27 @@ export function useWorkspaceSummary(isAuthenticated: boolean): WorkspaceSummary 
 
     setSummary({ status: 'pending', counts: EMPTY_COUNTS, recentItems: [] });
 
-    Promise.all([
-      fetchItems('/api/utils/webhooks/responders'),
-      fetchItems('/api/utils/certificates/templates'),
-      fetchItems('/api/utils/certificates/private_keys'),
-      fetchItems('/api/utils/web_security/csp'),
-      fetchItems('/api/utils/web_scraping/page'),
-      fetchItems('/api/utils/web_scraping/api'),
-    ])
-      .then(([webhooks, certTemplates, privateKeys, csp, pageTrackers, apiTrackers]) => {
-        const recentItems = [
-          ...toRecentItems(webhooks, 'webhooks', '/ws/webhooks__responders'),
-          ...toRecentItems(certTemplates, 'certificates', '/ws/certificates__certificate_templates'),
-          ...toRecentItems(privateKeys, 'certificates', '/ws/certificates__private_keys'),
-          ...toRecentItems(csp, 'csp', '/ws/web_security__csp__policies'),
-          ...toRecentItems(pageTrackers, 'webScraping', '/ws/web_scraping__page'),
-          ...toRecentItems(apiTrackers, 'webScraping', '/ws/web_scraping__api'),
-        ]
-          .sort((a, b) => b.updatedAt - a.updatedAt)
-          .slice(0, MAX_RECENT_ITEMS);
+    fetch(getApiUrl('/api/ui/home/summary'), getApiRequestConfig())
+      .then(async (res) => {
+        if (!res.ok) {
+          throw new Error(`Failed to fetch home summary: ${res.status}`);
+        }
+        return (await res.json()) as ServerSummary;
+      })
+      .then((data) => {
+        const recentItems: RecentItem[] = data.recentItems.map((item) => {
+          const utilHandle = item.utilHandle;
+          return {
+            name: item.name,
+            utilHandle,
+            path: getUtilPath(utilHandle),
+            updatedAt: item.updatedAt,
+          };
+        });
 
         setSummary({
           status: 'succeeded',
-          counts: {
-            webhooks: webhooks.length,
-            certificates: certTemplates.length + privateKeys.length,
-            csp: csp.length,
-            webScraping: pageTrackers.length + apiTrackers.length,
-          },
+          counts: data.counts,
           recentItems,
         });
       })
