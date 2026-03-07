@@ -289,8 +289,16 @@ test.describe('CSP guide screenshots', () => {
     const copyModal = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Copy policy' }) });
     await expect(copyModal).toBeVisible({ timeout: 10000 });
 
-    await getByRoleAndLabel(copyModal, 'combobox', 'Policy source').selectOption('HTML meta tag');
-    await expect(copyModal.locator('.euiCodeBlock')).toContainText('meta http-equiv', { timeout: 10000 });
+    const policySourceCombo = getByRoleAndLabel(copyModal, 'combobox', 'Policy source');
+    await expect
+      .poll(
+        async () => {
+          await policySourceCombo.selectOption('HTML meta tag');
+          return copyModal.locator('.euiCodeBlock').textContent();
+        },
+        { timeout: 10000 },
+      )
+      .toContain('meta http-equiv');
     await highlightOn(copyModal.locator('.euiCodeBlock'));
 
     await page.screenshot({ path: join(IMG_DIR, 'test_step5_copy_meta_tag.png') });

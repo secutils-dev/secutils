@@ -15,8 +15,7 @@ import {
   EuiPageSection,
   EuiText,
 } from '@elastic/eui';
-import type { EuiPageSectionProps, IconType } from '@elastic/eui';
-import type { EuiBreadcrumbProps } from '@elastic/eui/src/components/breadcrumbs/types';
+import type { EuiBreadcrumb, EuiPageSectionProps, IconType } from '@elastic/eui';
 import { css } from '@emotion/react';
 import { useCallback, useState } from 'react';
 import type { MouseEventHandler, ReactElement, ReactNode } from 'react';
@@ -33,7 +32,7 @@ export interface PageProps {
   contentAlignment?: 'top' | 'center' | 'horizontalCenter';
   contentProps?: EuiPageSectionProps['contentProps'];
   sideBar?: ReactNode;
-  headerBreadcrumbs?: EuiBreadcrumbProps[];
+  headerBreadcrumbs?: EuiBreadcrumb[];
   headerActions?: ReactNode[];
   pageTitle?: ReactNode;
 }

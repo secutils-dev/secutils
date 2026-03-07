@@ -1,6 +1,5 @@
-import type { EuiThemeColorMode } from '@elastic/eui';
+import type { EuiGlobalToastListToast, EuiThemeColorMode } from '@elastic/eui';
 import { EuiGlobalToastList, EuiProvider } from '@elastic/eui';
-import type { Toast } from '@elastic/eui/src/components/toast/global_toast_list';
 import { useCallback, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router';
 
@@ -97,7 +96,7 @@ export function AppContainer() {
   const addToast = useCallback((toast: PageToast) => {
     setToasts((currentToasts) => [...currentToasts, toast]);
   }, []);
-  const removeToast = useCallback((removedToast: Toast) => {
+  const removeToast = useCallback((removedToast: EuiGlobalToastListToast) => {
     setToasts((currentToasts) => currentToasts.filter((toast) => toast.id !== removedToast.id));
   }, []);
 

@@ -193,30 +193,69 @@ make docs-screenshots ARGS="docs/csp.spec.ts"
 make docs-screenshots ARGS="docs/csp.spec.ts -g 'test a content security policy'"
 ```
 
-### Shared helpers (`e2e/docs/helpers.ts`)
+### Shared helpers (`e2e/helpers.ts`)
 
 All docs tests import from `helpers.ts`. Key exports:
 
 | Helper                                      | Purpose                                                                                                                                 |
 |---------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------|
 | `ensureUserAndLogin(request, page)`         | Remove existing user, register a fresh one, and log in.                                                                                 |
-| `goto(page, url)`                           | Navigate and inject a stylesheet that disables all CSS animations/transitions for deterministic screenshots.                            |
+| `goto(page, url)`                           | Navigate, inject stability CSS, and patch `page.screenshot()` for determinism.                                                          |
 | `highlightOn(locator)`                      | Add a red dashed outline around an element for visual emphasis.                                                                         |
 | `highlightOff(locator)`                     | Remove the highlight outline.                                                                                                           |
 | `dismissAllToasts(page)`                    | Dismiss every visible toast notification (iterate all, not just one).                                                                   |
+| `pinEntityTimestamps(json)`                 | Replace `createdAt`/`updatedAt` with `FIXED_ENTITY_TIMESTAMP` in a JSON value.                                                          |
+| `fixEntityTimestamps(page, pattern)`        | Set up a route handler that pins timestamps in GET JSON responses matching `pattern`.                                                   |
 | `fixResponderRequestFields(page)`           | Intercept responder request history API and pin `createdAt`/`clientAddress` to fixed values.                                            |
 | `fixCertificateTemplateValidityDates(page)` | Pin `notValidBefore`/`notValidAfter` to fixed dates while preserving their duration.                                                    |
 | `fixTrackerResourceRevisions(page)`         | Stabilize tracker revision history: strip URL query strings, normalize webhook subdomains, compute deterministic sizes, fix timestamps. |
 
 ### Screenshot stability
 
-Screenshots must be **deterministic** - running the tests twice should produce identical
-images. Any dynamic value that leaks into a screenshot causes unnecessary diffs.
+Screenshots must be **byte-identical** across runs. The stability system has multiple layers
+that work together automatically when using `goto()`:
 
-Common sources of instability and how to fix them:
+#### Automatic stabilization (handled by `goto()` and `patchPageScreenshot`)
+
+These apply to every screenshot without any test-level code:
+
+1. **CSS injection** — `goto()` injects a `<style>` tag after navigation that:
+   - Disables all CSS animations and transitions (`animation-duration: 0s; transition-duration: 0s`).
+   - Forces greyscale anti-aliasing (`-webkit-font-smoothing: antialiased; text-rendering: geometricPrecision`) — reduces font rendering variance from ±8 to ±1.
+   - Forces icon buttons and toggle switches into GPU compositing layers (`.euiButtonIcon, .euiSwitch__body { will-change: transform }`) — reduces SVG/toggle rendering variance from ±24 to ±1.
+   - Hides Monaco editor non-deterministic elements (cursor layer, minimap, decorations overview ruler, scroll decoration).
+   - Hides the system text caret (`caret-color: transparent`).
+   - Hides scrollbars (`::-webkit-scrollbar { width: 0; height: 0 }`).
+
+2. **Pre-screenshot stabilization** — `waitForStableUiBeforeScreenshot()` runs before every
+   `page.screenshot()` call and:
+   - Waits for `domcontentloaded` and `networkidle` (with 5 s timeout).
+   - Waits for all EUI icons to finish loading (`.euiIcon[data-is-loading="true"]`).
+   - Waits for all web fonts to reach `loaded` status (`document.fonts.status`).
+   - Normalizes webhook URLs in the DOM — replaces user-specific UUIDs in
+     `/api/webhooks/u/<uuid>/` with `/api/webhooks/u/preview/` in links, input values,
+     code blocks, and data grid popovers.
+   - Waits three animation frames for layout/paint/composite to settle.
+
+3. **Sticky-pixel screenshot stabilization** — `stabilizeScreenshot()` runs after
+   every `page.screenshot()`.  Before the screenshot is taken, the existing file on disk
+   (if any) is saved as a byte buffer.  After capturing, both the reference and new PNGs
+   are decoded to raw RGBA pixels with `pngjs` (`PNG.sync.read`).  If every channel value
+   in the new image is within ±1 of the reference (`MAX_CHANNEL_DIFF`), the image has
+   not meaningfully changed — the original reference bytes are written back verbatim,
+   producing zero diff.  This absorbs non-deterministic sub-pixel anti-aliasing jitter
+   from Chromium's GPU compositor between browser sessions.  When any pixel genuinely
+   differs (channel diff > 1) or the dimensions changed, the new Playwright file is kept
+   as-is and becomes the new baseline for future runs.
+
+#### Test-level stabilization (must be added per test/describe)
+
+Each source of dynamic data needs explicit stabilization in the test code:
 
 - **Timestamps / dates**: Intercept the API response with `page.route()` and replace
-  dynamic timestamps with a fixed epoch value (e.g. `1740000000`).
+  dynamic timestamps with `FIXED_ENTITY_TIMESTAMP` (epoch `1740000000`, renders as
+  "February 19, 2025" — deliberately >3 days old so the UI shows an absolute date
+  instead of a relative string like "a few seconds ago").
 - **Client addresses**: Pin to a fixed value like `172.18.0.1:12345`.
 - **CSP nonces**: Intercept responses and replace rotating nonces with a fixed value
   (e.g. `nonce-m0ck`).
@@ -225,8 +264,8 @@ Common sources of instability and how to fix them:
   (e.g. `preview.webhooks.secutils.dev`).
 - **Cryptographic output** (JWK values, key exports): Replace dynamic fields via
   `element.evaluate()` after the UI renders them.
-- **CSS animations**: Already handled by `goto()` which injects
-  `animation-duration: 0s !important; transition-duration: 0s !important`.
+- **Home page summary**: Intercept `/api/ui/home/summary` and call `pinEntityTimestamps()`
+  on `recentItems` to avoid relative time strings.
 
 General pattern for stabilization - intercept with `page.route()`, call `route.fetch()`
 to get the real response, mutate the JSON, then `route.fulfill({ response, json })`:
@@ -242,6 +281,94 @@ await page.route('**/api/some/endpoint', async (route) => {
 
 When a `page.route()` handler may receive non-array responses (e.g. POST refresh vs GET
 list), always guard with `if (!Array.isArray(json))` before iterating.
+
+#### Clipped screenshots with tooltips
+
+When screenshots are clipped to a bounding box (e.g. tooltip + section), round coordinates
+to whole pixels and use generous padding to absorb sub-pixel layout jitter:
+
+```typescript
+const PAD = 16;
+const x = Math.floor(Math.min(sectionBox.x, tooltipBox.x)) - PAD;
+const y = Math.floor(Math.min(sectionBox.y, tooltipBox.y)) - PAD;
+const right = Math.ceil(Math.max(sectionBox.x + sectionBox.width, tooltipBox.x + tooltipBox.width)) + PAD;
+const bottom = Math.ceil(Math.max(sectionBox.y + sectionBox.height, tooltipBox.y + tooltipBox.height)) + PAD;
+await page.screenshot({ path, clip: { x, y, width: right - x, height: bottom - y } });
+```
+
+### Debugging screenshot instability
+
+When screenshots differ between runs, use the comparison tooling to diagnose:
+
+```bash
+# Run docs screenshots twice and diff all PNGs (pixel + byte level)
+make docs-screenshots-diff
+# Or for a single spec file:
+make docs-screenshots-diff ARGS="docs/csp.spec.ts"
+
+# Analyze diffs with detailed per-file report (pixel counts, regions, categories)
+make docs-screenshots-analyze
+```
+
+The tools output to `/tmp/screenshot-diff/`:
+
+| Path                     | Contents                                                     |
+|--------------------------|--------------------------------------------------------------|
+| `run-a/`, `run-b/`       | PNG snapshots from each run                                  |
+| `diffs/`                 | ImageMagick visual diff images (red = changed pixels)        |
+| `analysis/`              | Python-annotated diff images with bounding boxes             |
+| `report.txt`             | Summary with per-file pixel diff counts and byte sizes       |
+| `analysis-report.json`   | Detailed JSON: pixel counts, bounding boxes, diff categories |
+| `run-a.log`, `run-b.log` | Full Playwright output from each run                         |
+
+**Workflow for diagnosing instability:**
+
+1. Run `make docs-screenshots-diff` to produce two runs of screenshots.
+2. Run `make docs-screenshots-analyze` to get a detailed report.
+3. Check the report categories:
+   - `Byte-identical` — no action needed.
+   - `Byte-diff only (0 pixel diffs)` — DEFLATE compression non-determinism (should be
+     resolved by `reEncodePngDeterministic`; if it re-appears, check for PNG chunk changes).
+   - Files with pixel diffs > 0 — need investigation (see below).
+4. For files with pixel diffs, run a **deep pixel analysis** to locate the exact element:
+   ```python
+   # In Python (or inline via shell):
+   from PIL import Image
+   a = Image.open('/tmp/screenshot-diff/run-a/<file>').convert('RGBA')
+   b = Image.open('/tmp/screenshot-diff/run-b/<file>').convert('RGBA')
+   for i, (pa, pb) in enumerate(zip(a.tobytes(), b.tobytes())):
+       if pa != pb:
+           px = (i // 4) % a.size[0]; py = (i // 4) // a.size[0]
+           print(f'({px},{py}) {"RGBA"[i%4]}: {pa}->{pb} delta={pb-pa}')
+   ```
+5. Crop the diff region (`Image.crop()`) and view it to identify the UI element.
+6. Apply the appropriate fix from the troubleshooting table.
+7. Use the loop command to verify a fix is stable:
+   ```bash
+   make docs-screenshots-loop ARGS="docs/csp.spec.ts" RUNS=10
+   ```
+
+**Expected residual instability:** With sticky-pixel stabilization, all 159 screenshots
+should be byte-identical across runs.  If new screenshots are added without an existing
+reference file on disk, the first run establishes the baseline; subsequent runs converge.
+
+**Common instability patterns and their solutions:**
+
+| Symptom                     | Likely Cause                                  | Fix                                                              |
+|-----------------------------|-----------------------------------------------|------------------------------------------------------------------|
+| Byte-diff but no pixel diff | PNG DEFLATE non-determinism or ±1 AA jitter   | `stabilizeScreenshot()` (automatic — restores reference file)    |
+| Text changes between runs   | Relative timestamps ("a few seconds ago")     | `fixEntityTimestamps()` or `pinEntityTimestamps()`               |
+| URL segments differ         | User-specific webhook UUIDs                   | Automatic DOM normalization in `waitForStableUiBeforeScreenshot` |
+| ±1 diffs at icon/text edges | Sub-pixel anti-aliasing between browser runs  | Handled by sticky-pixel stabilization (automatic)                |
+| Thin line diffs at edges    | Scrollbar visibility                          | Hidden by stability CSS (`::-webkit-scrollbar`)                  |
+| Monaco editor differences   | Cursor, minimap, decorations                  | Hidden by stability CSS                                          |
+| Clipped region shifts       | Tooltip/bounding box sub-pixel jitter         | Use `Math.floor`/`Math.ceil` + generous padding                  |
+| Animation artifacts         | CSS transitions captured in screenshot        | `addStyleTag` after `goto()` disables transitions before screenshots |
+
+**Important: Do NOT use `addInitScript` to inject stability CSS.** Injecting
+`transition-duration: 0s` before the React app renders prevents `transitionend` events from
+firing during EUI component initialization, causing the page to never finish loading. The CSS
+must be injected AFTER navigation via `addStyleTag` so initial transitions complete normally.
 
 ### Test structure for docs screenshots
 

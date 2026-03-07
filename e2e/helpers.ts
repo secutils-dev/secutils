@@ -1,7 +1,9 @@
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 
 import type { APIRequestContext, Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
+import { PNG } from 'pngjs';
 
 export const DOCS_IMG_DIR = resolve(__dirname, '../components/secutils-docs/static/img/docs/guides');
 
@@ -16,6 +18,127 @@ export const OPERATOR_TOKEN =
 export interface UserCredentials {
   email: string;
   password: string;
+}
+
+const patchedScreenshotPages = new WeakSet<Page>();
+
+function patchPageScreenshot(page: Page) {
+  if (patchedScreenshotPages.has(page)) {
+    return;
+  }
+
+  const originalScreenshot = page.screenshot.bind(page);
+  const patchedPage = page as Page & { screenshot: Page['screenshot'] };
+  patchedPage.screenshot = (async (...args: Parameters<Page['screenshot']>) => {
+    await waitForStableUiBeforeScreenshot(page);
+
+    const opts = args[0];
+    const path = opts && 'path' in opts ? (opts.path as string | undefined) : undefined;
+    let referenceBytes: Buffer | null = null;
+    if (path && existsSync(path)) {
+      referenceBytes = readFileSync(path);
+    }
+
+    const buffer = await originalScreenshot(...args);
+    if (path && referenceBytes) {
+      stabilizeScreenshot(path, referenceBytes);
+    }
+    return buffer;
+  }) as Page['screenshot'];
+
+  patchedScreenshotPages.add(page);
+}
+
+async function waitForStableUiBeforeScreenshot(page: Page) {
+  await page.waitForLoadState('domcontentloaded').catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+
+  await page
+    .waitForFunction(() => !document.querySelector('.euiIcon[data-is-loading="true"]'), undefined, {
+      timeout: 5000,
+    })
+    .catch(() => {});
+
+  await page
+    .waitForFunction(
+      () => {
+        if (!('fonts' in document)) return true;
+        const fonts = document as Document & { fonts: FontFaceSet };
+        return fonts.fonts.status === 'loaded';
+      },
+      undefined,
+      { timeout: 5000 },
+    )
+    .catch(() => {});
+
+  // Replace user-specific webhook UUIDs in visible DOM elements so
+  // screenshots don't change when a new user is created per run.
+  await page
+    .evaluate(() => {
+      const WEBHOOK_RE = /\/api\/webhooks\/u\/[^/]+\//g;
+      const STABLE = '/api/webhooks/u/preview/';
+      for (const a of Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/api/webhooks/u/"]'))) {
+        a.href = a.href.replace(WEBHOOK_RE, STABLE);
+        if (a.textContent?.includes('/api/webhooks/u/')) {
+          a.textContent = a.href;
+        }
+      }
+      for (const el of Array.from(
+        document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input[value*="/api/webhooks/u/"], textarea'),
+      )) {
+        if (el.value.includes('/api/webhooks/u/')) {
+          el.value = el.value.replace(WEBHOOK_RE, STABLE);
+        }
+      }
+      const containers = Array.from(
+        document.querySelectorAll('.euiCodeBlock, [data-test-subj="euiDataGridExpansionPopover"], pre, code'),
+      );
+      for (const container of containers) {
+        if (!container.textContent?.includes('/api/webhooks/u/')) continue;
+        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+        let node;
+        while ((node = walker.nextNode())) {
+          if (node.textContent?.includes('/api/webhooks/u/')) {
+            node.textContent = node.textContent.replace(WEBHOOK_RE, STABLE);
+          }
+        }
+      }
+    })
+    .catch(() => {});
+
+  // Wait for three animation frames so layout/paint/composite fully settle.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      }),
+  );
+}
+
+const MAX_CHANNEL_DIFF = 1;
+
+/**
+ * Compare the freshly-captured screenshot at `filePath` against
+ * `referenceBytes` (the previous file on disk).  If every RGBA channel
+ * differs by at most {@link MAX_CHANNEL_DIFF} the image hasn't
+ * meaningfully changed — restore the reference file so there is zero diff.
+ */
+function stabilizeScreenshot(filePath: string, referenceBytes: Buffer): void {
+  try {
+    const refPng = PNG.sync.read(referenceBytes);
+    const newPng = PNG.sync.read(readFileSync(filePath));
+    if (refPng.width !== newPng.width || refPng.height !== newPng.height) return;
+
+    const ref = refPng.data;
+    const cur = newPng.data;
+    for (let i = 0; i < ref.length; i++) {
+      if (Math.abs(ref[i] - cur[i]) > MAX_CHANNEL_DIFF) return;
+    }
+
+    writeFileSync(filePath, referenceBytes);
+  } catch {
+    // If either PNG can't be decoded, leave the new file as-is.
+  }
 }
 
 function generateRandomEmail(): string {
@@ -77,19 +200,26 @@ export async function ensureUserAndLogin(
   return { email, password };
 }
 
+const STABILITY_CSS = [
+  '*, *::before, *::after {',
+  '  animation-duration: 0s !important; animation-delay: 0s !important;',
+  '  transition-duration: 0s !important; transition-delay: 0s !important;',
+  '}',
+  'body { -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision; }',
+  '.euiButtonIcon, .euiSwitch__body { will-change: transform; }',
+  '.monaco-editor .decorationsOverviewRuler { display: none !important; }',
+  '.monaco-editor .cursors-layer { display: none !important; }',
+  '.monaco-editor .minimap { display: none !important; }',
+  '.monaco-editor .scroll-decoration { display: none !important; }',
+  '* { caret-color: transparent !important; }',
+  '::-webkit-scrollbar { width: 0 !important; height: 0 !important; }',
+].join('\n');
+
 export async function goto(page: Page, url: string) {
+  patchPageScreenshot(page);
+
   await page.goto(url);
-  await page.addStyleTag({
-    content: [
-      '*, *::before, *::after {',
-      '  animation-duration: 0s !important; animation-delay: 0s !important;',
-      '  transition-duration: 0s !important; transition-delay: 0s !important;',
-      '}',
-      '.monaco-editor .decorationsOverviewRuler { display: none !important; }',
-      '.monaco-editor .cursors-layer { display: none !important; }',
-      '* { caret-color: transparent !important; }',
-    ].join('\n'),
-  });
+  await page.addStyleTag({ content: STABILITY_CSS });
 }
 
 export async function highlightOn(locator: Locator) {
@@ -138,6 +268,10 @@ export async function fixEntityTimestamps(page: Page, urlPattern: string) {
       return;
     }
     const response = await route.fetch();
+    if (!response.ok()) {
+      await route.fulfill({ response });
+      return;
+    }
     const json = await response.json();
     pinEntityTimestamps(json);
     await route.fulfill({ response, json });
@@ -151,6 +285,10 @@ export async function fixEntityTimestamps(page: Page, urlPattern: string) {
 export async function fixResponderRequestFields(page: Page) {
   await page.route('**/api/utils/webhooks/responders/*/history', async (route) => {
     const response = await route.fetch();
+    if (!response.ok()) {
+      await route.fulfill({ response });
+      return;
+    }
     const json = await response.json();
     for (const req of json) {
       req.createdAt = FIXED_ENTITY_TIMESTAMP;
@@ -168,6 +306,10 @@ export async function fixCertificateTemplateValidityDates(page: Page) {
   const FIXED_NOT_VALID_BEFORE = 1735689600; // Jan 1, 2025 00:00:00 UTC
   await page.route('**/api/utils/certificates/templates**', async (route) => {
     const response = await route.fetch();
+    if (!response.ok()) {
+      await route.fulfill({ response });
+      return;
+    }
     const json = await response.json();
     const isArray = Array.isArray(json);
     const templates = isArray ? json : [json];
@@ -190,6 +332,10 @@ export async function fixCertificateTemplateValidityDates(page: Page) {
 export async function fixTrackerResourceRevisions(page: Page) {
   await page.route('**/api/utils/web_scraping/page/*/history', async (route) => {
     const response = await route.fetch();
+    if (!response.ok()) {
+      await route.fulfill({ response });
+      return;
+    }
     const json = await response.json();
     if (!Array.isArray(json)) {
       await route.fulfill({ response, json });

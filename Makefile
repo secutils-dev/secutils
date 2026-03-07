@@ -7,7 +7,7 @@ RUNS                 	?= 10
 E2E_LOOP_DIR         	:= /tmp/e2e-loop-results
 AGENT_WORKSPACE     	?=
 
-.PHONY: dev-up dev-down api webui webui-test docs e2e-up e2e-down e2e-test e2e-test-loop docs-screenshots docs-screenshots-loop agent-push agent-pull clean
+.PHONY: dev-up dev-down api webui webui-test docs e2e-up e2e-down e2e-test e2e-test-loop docs-screenshots docs-screenshots-loop docs-screenshots-diff docs-screenshots-analyze agent-push agent-pull clean
 
 ## ---------- Development ----------
 
@@ -99,6 +99,12 @@ docs-screenshots-loop: ## Run docs screenshot tests repeatedly (RUNS=N default 1
 	done; \
 	echo "=== Results: $$pass/$(RUNS) passed, $$fail/$(RUNS) failed ==="; \
 	echo "Logs and artifacts: $(E2E_LOOP_DIR)"
+
+docs-screenshots-diff: ## Run docs screenshots twice and compare (use ARGS for extra flags).
+	./e2e/scripts/compare-screenshots.sh $(ARGS)
+
+docs-screenshots-analyze: ## Analyze diffs from docs-screenshots-diff (reads /tmp/screenshot-diff/).
+	python3 e2e/scripts/analyze-screenshot-diffs.py
 
 ## ---------- Database ----------
 

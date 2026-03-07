@@ -641,16 +641,17 @@ test.describe('Web scraping guide screenshots', () => {
     await highlightOn(tooltip);
 
     // Clip the screenshot to the "Change tracking" section plus the tooltip.
+    // Round to whole pixels to avoid sub-pixel jitter between runs.
     const section = flyout
       .locator('.euiDescribedFormGroup')
       .filter({ has: page.locator('h3', { hasText: 'Change tracking' }) });
     const sectionBox = (await section.boundingBox())!;
     const tooltipBox = (await tooltip.boundingBox())!;
-    const PAD = 10;
-    const x = Math.min(sectionBox.x, tooltipBox.x) - PAD;
-    const y = Math.min(sectionBox.y, tooltipBox.y) - PAD;
-    const right = Math.max(sectionBox.x + sectionBox.width, tooltipBox.x + tooltipBox.width) + PAD;
-    const bottom = Math.max(sectionBox.y + sectionBox.height, tooltipBox.y + tooltipBox.height) + PAD;
+    const PAD = 16;
+    const x = Math.floor(Math.min(sectionBox.x, tooltipBox.x)) - PAD;
+    const y = Math.floor(Math.min(sectionBox.y, tooltipBox.y)) - PAD;
+    const right = Math.ceil(Math.max(sectionBox.x + sectionBox.width, tooltipBox.x + tooltipBox.width)) + PAD;
+    const bottom = Math.ceil(Math.max(sectionBox.y + sectionBox.height, tooltipBox.y + tooltipBox.height)) + PAD;
 
     await page.screenshot({
       path: join(IMG_DIR, 'custom_schedule.png'),
@@ -1237,16 +1238,17 @@ test.describe('API tracker guide screenshots', () => {
     await highlightOn(tooltip);
 
     // Clip the screenshot to the "Change tracking" section plus the tooltip.
+    // Round to whole pixels to avoid sub-pixel jitter between runs.
     const section = editFlyout
       .locator('.euiDescribedFormGroup')
       .filter({ has: page.locator('h3', { hasText: 'Change tracking' }) });
     const sectionBox = (await section.boundingBox())!;
     const tooltipBox = (await tooltip.boundingBox())!;
-    const PAD = 10;
-    const x = Math.min(sectionBox.x, tooltipBox.x) - PAD;
-    const y = Math.min(sectionBox.y, tooltipBox.y) - PAD;
-    const right = Math.max(sectionBox.x + sectionBox.width, tooltipBox.x + tooltipBox.width) + PAD;
-    const bottom = Math.max(sectionBox.y + sectionBox.height, tooltipBox.y + tooltipBox.height) + PAD;
+    const PAD = 16;
+    const x = Math.floor(Math.min(sectionBox.x, tooltipBox.x)) - PAD;
+    const y = Math.floor(Math.min(sectionBox.y, tooltipBox.y)) - PAD;
+    const right = Math.ceil(Math.max(sectionBox.x + sectionBox.width, tooltipBox.x + tooltipBox.width)) + PAD;
+    const bottom = Math.ceil(Math.max(sectionBox.y + sectionBox.height, tooltipBox.y + tooltipBox.height)) + PAD;
 
     await page.screenshot({
       path: join(IMG_DIR, 'api_custom_schedule.png'),

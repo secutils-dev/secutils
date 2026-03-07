@@ -1,6 +1,5 @@
-import type { EuiSideNavItemType } from '@elastic/eui';
+import type { EuiBreadcrumb, EuiSideNavItemType } from '@elastic/eui';
 import { EuiButtonIcon, EuiFlexGroup, EuiFlexItem, EuiIcon, EuiSideNav, EuiSpacer, useEuiTheme } from '@elastic/eui';
-import type { EuiBreadcrumbProps } from '@elastic/eui/src/components/breadcrumbs/types';
 import { css } from '@emotion/react';
 import type { MouseEvent, ReactNode } from 'react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
@@ -57,7 +56,7 @@ export function WorkspacePage() {
 
   const getBreadcrumbs = useCallback(
     (util: Util, utilsMap: Map<string, Util>, deepLink?: string) => {
-      const breadcrumbs: EuiBreadcrumbProps[] = [];
+      const breadcrumbs: EuiBreadcrumb[] = [];
       let utilToBreadcrumb: Util | undefined = util;
       while (utilToBreadcrumb) {
         const utilUrl = `/ws/${utilToBreadcrumb.handle}`;
@@ -112,7 +111,7 @@ export function WorkspacePage() {
   const [title, setTitle] = useState<string | null>(null);
 
   const [selectedUtil, setSelectedUtil] = useState<Util | null>(null);
-  const [navigationBar, setNavigationBar] = useState<{ breadcrumbs: EuiBreadcrumbProps[]; deepLink?: string }>({
+  const [navigationBar, setNavigationBar] = useState<{ breadcrumbs: EuiBreadcrumb[]; deepLink?: string }>({
     breadcrumbs: [],
     deepLink: deepLinkFromParam,
   });

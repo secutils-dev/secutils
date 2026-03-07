@@ -2,13 +2,26 @@ import { resolve } from 'path';
 
 import { expect, test } from '@playwright/test';
 
-import { EMAIL, ensureUserAndLogin, goto, PASSWORD } from '../helpers';
+import { EMAIL, ensureUserAndLogin, goto, PASSWORD, pinEntityTimestamps } from '../helpers';
 
 const IMG_DIR = resolve(__dirname, '../../components/secutils-docs/static/img/docs/home');
 
 test.describe('Home page screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
     await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
+
+    // Pin timestamps in workspace summary so that "Recent items" shows stable
+    // absolute dates instead of relative strings like "a few seconds ago".
+    await page.route('**/api/ui/home/summary', async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+      const response = await route.fetch();
+      const json = await response.json();
+      pinEntityTimestamps(json?.recentItems ?? []);
+      await route.fulfill({ response, json });
+    });
   });
 
   test('workspace hub with active and unexplored tools', async ({ page }) => {
