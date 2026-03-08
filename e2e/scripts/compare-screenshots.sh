@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# compare-screenshots.sh — Run docs screenshot tests twice and compare outputs.
+# compare-screenshots.sh - Run docs screenshot tests twice and compare outputs.
 #
 # Usage:
 #   ./e2e/scripts/compare-screenshots.sh [SPEC_FILE]
@@ -14,10 +14,10 @@
 #   - ImageMagick installed (brew install imagemagick)
 #
 # Outputs to /tmp/screenshot-diff/:
-#   run-a/          — screenshots from first run
-#   run-b/          — screenshots from second run
-#   diffs/          — visual diff images (red = changed pixels)
-#   report.txt      — summary with per-file pixel diff counts and byte sizes
+#   run-a/          - screenshots from first run
+#   run-b/          - screenshots from second run
+#   diffs/          - visual diff images (red = changed pixels)
+#   report.txt      - summary with per-file pixel diff counts and byte sizes
 
 set -euo pipefail
 
@@ -108,7 +108,7 @@ echo "=== Comparing ==="
 
 echo ""
 echo "Results in: $OUT_DIR"
-echo "  run-a.log / run-b.log  — Playwright output"
-echo "  run-a/ / run-b/        — PNG snapshots"
-echo "  diffs/                 — visual diff images (red pixels = differences)"
-echo "  report.txt             — this report"
+echo "  run-a.log / run-b.log  - Playwright output"
+echo "  run-a/ / run-b/        - PNG snapshots"
+echo "  diffs/                 - visual diff images (red pixels = differences)"
+echo "  report.txt             - this report"

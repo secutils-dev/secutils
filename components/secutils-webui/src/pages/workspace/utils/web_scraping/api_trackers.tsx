@@ -23,8 +23,10 @@ import type { ApiTracker } from './api_tracker';
 import { ApiTrackerEditFlyout } from './api_tracker_edit_flyout';
 import { PageTrackerRevision } from './page_tracker_revision';
 import type { TrackerDataRevision } from './tracker_data_revision';
+import { TrackerHealthDots } from './tracker_health_dots';
 import { TrackerName } from './tracker_name';
 import { TrackerRevisions } from './tracker_revisions';
+import { useTrackerHealth } from './use_tracker_health';
 import { PageErrorState, PageLoadingState } from '../../../../components';
 import {
   type AsyncData,
@@ -115,6 +117,11 @@ export default function ApiTrackers() {
     getSearchFields,
   });
 
+  const { data: healthData, refetch: refetchHealth } = useTrackerHealth(
+    'api',
+    trackers.status === 'succeeded' ? trackers.data.map((t) => t.id) : undefined,
+  );
+
   const [itemIdToExpandedRowMap, setItemIdToExpandedRowMap] = useState<Record<string, ReactNode>>({});
 
   const removeConfirmModal = trackerToRemove ? (
@@ -176,7 +183,7 @@ export default function ApiTrackers() {
       delete itemIdToExpandedRowMapValues[tracker.id];
     } else {
       itemIdToExpandedRowMapValues[tracker.id] = (
-        <TrackerRevisions kind={'api'} tracker={tracker}>
+        <TrackerRevisions kind={'api'} tracker={tracker} onHealthRefreshNeeded={refetchHealth}>
           {(revision, mode, previousRevision) => (
             <PageTrackerRevision
               revision={revision as TrackerDataRevision<string>}
@@ -258,7 +265,7 @@ export default function ApiTrackers() {
           items={filteredItems}
           itemId={(item) => item.id}
           itemIdToExpandedRowMap={itemIdToExpandedRowMap}
-          tableLayout={'auto'}
+          tableLayout={'fixed'}
           columns={[
             {
               name: (
@@ -272,6 +279,20 @@ export default function ApiTrackers() {
               sortable: true,
               render: (_, tracker: ApiTracker) => (
                 <TrackerName tracker={tracker} href={getWorkspaceEntityLink(UTIL_HANDLES.webScrapingApi, tracker.id)} />
+              ),
+            },
+            {
+              name: (
+                <EuiToolTip content="Recent execution status (oldest to newest)">
+                  <span>
+                    Health <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                  </span>
+                </EuiToolTip>
+              ),
+              field: 'id',
+              width: '150px',
+              render: (_: string, tracker: ApiTracker) => (
+                <TrackerHealthDots logs={healthData.status === 'succeeded' ? healthData.data[tracker.id] : undefined} />
               ),
             },
             {

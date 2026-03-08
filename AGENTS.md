@@ -219,30 +219,30 @@ that work together automatically when using `goto()`:
 
 These apply to every screenshot without any test-level code:
 
-1. **CSS injection** — `goto()` injects a `<style>` tag after navigation that:
+1. **CSS injection** - `goto()` injects a `<style>` tag after navigation that:
    - Disables all CSS animations and transitions (`animation-duration: 0s; transition-duration: 0s`).
-   - Forces greyscale anti-aliasing (`-webkit-font-smoothing: antialiased; text-rendering: geometricPrecision`) — reduces font rendering variance from ±8 to ±1.
-   - Forces icon buttons and toggle switches into GPU compositing layers (`.euiButtonIcon, .euiSwitch__body { will-change: transform }`) — reduces SVG/toggle rendering variance from ±24 to ±1.
+   - Forces greyscale anti-aliasing (`-webkit-font-smoothing: antialiased; text-rendering: geometricPrecision`) - reduces font rendering variance from ±8 to ±1.
+   - Forces icon buttons and toggle switches into GPU compositing layers (`.euiButtonIcon, .euiSwitch__body { will-change: transform }`) - reduces SVG/toggle rendering variance from ±24 to ±1.
    - Hides Monaco editor non-deterministic elements (cursor layer, minimap, decorations overview ruler, scroll decoration).
    - Hides the system text caret (`caret-color: transparent`).
    - Hides scrollbars (`::-webkit-scrollbar { width: 0; height: 0 }`).
 
-2. **Pre-screenshot stabilization** — `waitForStableUiBeforeScreenshot()` runs before every
+2. **Pre-screenshot stabilization** - `waitForStableUiBeforeScreenshot()` runs before every
    `page.screenshot()` call and:
    - Waits for `domcontentloaded` and `networkidle` (with 5 s timeout).
    - Waits for all EUI icons to finish loading (`.euiIcon[data-is-loading="true"]`).
    - Waits for all web fonts to reach `loaded` status (`document.fonts.status`).
-   - Normalizes webhook URLs in the DOM — replaces user-specific UUIDs in
+   - Normalizes webhook URLs in the DOM - replaces user-specific UUIDs in
      `/api/webhooks/u/<uuid>/` with `/api/webhooks/u/preview/` in links, input values,
      code blocks, and data grid popovers.
    - Waits three animation frames for layout/paint/composite to settle.
 
-3. **Sticky-pixel screenshot stabilization** — `stabilizeScreenshot()` runs after
+3. **Sticky-pixel screenshot stabilization** - `stabilizeScreenshot()` runs after
    every `page.screenshot()`.  Before the screenshot is taken, the existing file on disk
    (if any) is saved as a byte buffer.  After capturing, both the reference and new PNGs
    are decoded to raw RGBA pixels with `pngjs` (`PNG.sync.read`).  If every channel value
    in the new image is within ±1 of the reference (`MAX_CHANNEL_DIFF`), the image has
-   not meaningfully changed — the original reference bytes are written back verbatim,
+   not meaningfully changed - the original reference bytes are written back verbatim,
    producing zero diff.  This absorbs non-deterministic sub-pixel anti-aliasing jitter
    from Chromium's GPU compositor between browser sessions.  When any pixel genuinely
    differs (channel diff > 1) or the dimensions changed, the new Playwright file is kept
@@ -254,7 +254,7 @@ Each source of dynamic data needs explicit stabilization in the test code:
 
 - **Timestamps / dates**: Intercept the API response with `page.route()` and replace
   dynamic timestamps with `FIXED_ENTITY_TIMESTAMP` (epoch `1740000000`, renders as
-  "February 19, 2025" — deliberately >3 days old so the UI shows an absolute date
+  "February 19, 2025" - deliberately >3 days old so the UI shows an absolute date
   instead of a relative string like "a few seconds ago").
 - **Client addresses**: Pin to a fixed value like `172.18.0.1:12345`.
 - **CSP nonces**: Intercept responses and replace rotating nonces with a fixed value
@@ -326,10 +326,10 @@ The tools output to `/tmp/screenshot-diff/`:
 1. Run `make docs-screenshots-diff` to produce two runs of screenshots.
 2. Run `make docs-screenshots-analyze` to get a detailed report.
 3. Check the report categories:
-   - `Byte-identical` — no action needed.
-   - `Byte-diff only (0 pixel diffs)` — DEFLATE compression non-determinism (should be
+   - `Byte-identical` - no action needed.
+   - `Byte-diff only (0 pixel diffs)` - DEFLATE compression non-determinism (should be
      resolved by `reEncodePngDeterministic`; if it re-appears, check for PNG chunk changes).
-   - Files with pixel diffs > 0 — need investigation (see below).
+   - Files with pixel diffs > 0 - need investigation (see below).
 4. For files with pixel diffs, run a **deep pixel analysis** to locate the exact element:
    ```python
    # In Python (or inline via shell):
@@ -354,16 +354,16 @@ reference file on disk, the first run establishes the baseline; subsequent runs 
 
 **Common instability patterns and their solutions:**
 
-| Symptom                     | Likely Cause                                  | Fix                                                              |
-|-----------------------------|-----------------------------------------------|------------------------------------------------------------------|
-| Byte-diff but no pixel diff | PNG DEFLATE non-determinism or ±1 AA jitter   | `stabilizeScreenshot()` (automatic — restores reference file)    |
-| Text changes between runs   | Relative timestamps ("a few seconds ago")     | `fixEntityTimestamps()` or `pinEntityTimestamps()`               |
-| URL segments differ         | User-specific webhook UUIDs                   | Automatic DOM normalization in `waitForStableUiBeforeScreenshot` |
-| ±1 diffs at icon/text edges | Sub-pixel anti-aliasing between browser runs  | Handled by sticky-pixel stabilization (automatic)                |
-| Thin line diffs at edges    | Scrollbar visibility                          | Hidden by stability CSS (`::-webkit-scrollbar`)                  |
-| Monaco editor differences   | Cursor, minimap, decorations                  | Hidden by stability CSS                                          |
-| Clipped region shifts       | Tooltip/bounding box sub-pixel jitter         | Use `Math.floor`/`Math.ceil` + generous padding                  |
-| Animation artifacts         | CSS transitions captured in screenshot        | `addStyleTag` after `goto()` disables transitions before screenshots |
+| Symptom                     | Likely Cause                                 | Fix                                                                  |
+|-----------------------------|----------------------------------------------|----------------------------------------------------------------------|
+| Byte-diff but no pixel diff | PNG DEFLATE non-determinism or ±1 AA jitter  | `stabilizeScreenshot()` (automatic - restores reference file)        |
+| Text changes between runs   | Relative timestamps ("a few seconds ago")    | `fixEntityTimestamps()` or `pinEntityTimestamps()`                   |
+| URL segments differ         | User-specific webhook UUIDs                  | Automatic DOM normalization in `waitForStableUiBeforeScreenshot`     |
+| ±1 diffs at icon/text edges | Sub-pixel anti-aliasing between browser runs | Handled by sticky-pixel stabilization (automatic)                    |
+| Thin line diffs at edges    | Scrollbar visibility                         | Hidden by stability CSS (`::-webkit-scrollbar`)                      |
+| Monaco editor differences   | Cursor, minimap, decorations                 | Hidden by stability CSS                                              |
+| Clipped region shifts       | Tooltip/bounding box sub-pixel jitter        | Use `Math.floor`/`Math.ceil` + generous padding                      |
+| Animation artifacts         | CSS transitions captured in screenshot       | `addStyleTag` after `goto()` disables transitions before screenshots |
 
 **Important: Do NOT use `addInitScript` to inject stability CSS.** Injecting
 `transition-duration: 0s` before the React app renders prevents `transitionend` events from

@@ -146,6 +146,21 @@ Before saving a tracker you can use the built-in **Debug** mode to run the full 
 The Debug button is available whenever a URL is filled in - you don't need to save the tracker first. If a pipeline stage fails, it will be highlighted in red and the error message will be shown in the detail panel.
 :::
 
+## View execution logs
+
+Every time an API tracker runs - whether manually or on a schedule - Secutils.dev records an execution log entry. You can use these logs to understand when the tracker ran, how long it took, whether it succeeded or failed, and what happened during each phase of execution.
+
+To view the execution logs, expand the tracker row in the list and switch to the **Logs** view using the view mode toggle:
+
+| ![Secutils.dev - API tracker execution logs](/img/docs/guides/web_scraping/api_logs_step1_view.png) |
+|-----------------------------------------------------------------------------------------------------|
+
+The log table shows the same columns as for [page trackers](/docs/guides/web_scraping/page#view-execution-logs): status, start time, duration, type, retry information, revision size, and error details. Each row can be expanded to reveal the execution phases timeline.
+
+The **Health** column in the tracker list provides a quick at-a-glance summary of recent execution results.
+
+To clear all execution logs for a tracker, click the **Clear logs** button (cross icon) while in the Logs view mode.
+
 ## Annex: Data extractor script {#annex-extractor-script}
 
 The data extractor script is a JavaScript **IIFE** (Immediately Invoked Function Expression) that runs in an isolated Deno sandbox. It processes the raw HTTP responses from the API. For a complete reference of the `Deno.core` utilities available inside the sandbox (encoding, Base64, type checking, and more), see [Deno Sandbox Runtime](/docs/guides/platform/deno_runtime). The global `context` object has the following shape:

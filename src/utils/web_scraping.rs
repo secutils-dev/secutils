@@ -77,6 +77,40 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
         (
             UtilsResource::WebScrapingPage,
             UtilsAction::Execute {
+                resource_id: Some(resource_id),
+                operation: UtilsResourceOperation::WebScrapingPageGetLogs,
+            },
+        ) => UtilsActionResult::json(
+            web_scraping
+                .get_tracker_logs(resource_id, UtilsResource::WebScrapingPage)
+                .await?,
+        ),
+        (
+            UtilsResource::WebScrapingPage,
+            UtilsAction::Execute {
+                resource_id: Some(resource_id),
+                operation: UtilsResourceOperation::WebScrapingPageClearLogs,
+            },
+        ) => {
+            web_scraping
+                .clear_tracker_logs(resource_id, UtilsResource::WebScrapingPage)
+                .await?;
+            Ok(UtilsActionResult::empty())
+        }
+        (
+            UtilsResource::WebScrapingPage,
+            UtilsAction::Execute {
+                resource_id: None,
+                operation: UtilsResourceOperation::WebScrapingPageGetLogsSummary,
+            },
+        ) => UtilsActionResult::json(
+            web_scraping
+                .get_tracker_logs_summary(UtilsResource::WebScrapingPage)
+                .await?,
+        ),
+        (
+            UtilsResource::WebScrapingPage,
+            UtilsAction::Execute {
                 resource_id: None,
                 operation: UtilsResourceOperation::WebScrapingPageDebugRequest,
             },
@@ -124,6 +158,40 @@ pub async fn web_scraping_handle_action<DR: DnsResolver, ET: EmailTransport>(
             web_scraping.clear_api_tracker_history(resource_id).await?;
             Ok(UtilsActionResult::empty())
         }
+        (
+            UtilsResource::WebScrapingApi,
+            UtilsAction::Execute {
+                resource_id: Some(resource_id),
+                operation: UtilsResourceOperation::WebScrapingApiGetLogs,
+            },
+        ) => UtilsActionResult::json(
+            web_scraping
+                .get_tracker_logs(resource_id, UtilsResource::WebScrapingApi)
+                .await?,
+        ),
+        (
+            UtilsResource::WebScrapingApi,
+            UtilsAction::Execute {
+                resource_id: Some(resource_id),
+                operation: UtilsResourceOperation::WebScrapingApiClearLogs,
+            },
+        ) => {
+            web_scraping
+                .clear_tracker_logs(resource_id, UtilsResource::WebScrapingApi)
+                .await?;
+            Ok(UtilsActionResult::empty())
+        }
+        (
+            UtilsResource::WebScrapingApi,
+            UtilsAction::Execute {
+                resource_id: None,
+                operation: UtilsResourceOperation::WebScrapingApiGetLogsSummary,
+            },
+        ) => UtilsActionResult::json(
+            web_scraping
+                .get_tracker_logs_summary(UtilsResource::WebScrapingApi)
+                .await?,
+        ),
         (
             UtilsResource::WebScrapingApi,
             UtilsAction::Execute {

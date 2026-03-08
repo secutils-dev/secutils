@@ -118,10 +118,10 @@ async function waitForStableUiBeforeScreenshot(page: Page) {
 const MAX_CHANNEL_DIFF = 1;
 
 /**
- * Compare the freshly-captured screenshot at `filePath` against
+ * Compare the freshly captured screenshot at `filePath` against
  * `referenceBytes` (the previous file on disk).  If every RGBA channel
  * differs by at most {@link MAX_CHANNEL_DIFF} the image hasn't
- * meaningfully changed — restore the reference file so there is zero diff.
+ * meaningfully changed - restore the reference file so there is zero diff.
  */
 function stabilizeScreenshot(filePath: string, referenceBytes: Buffer): void {
   try {
@@ -377,6 +377,73 @@ function stableResourceSize(url: string): number {
     hash = ((hash << 5) - hash + url.charCodeAt(i)) | 0;
   }
   return (Math.abs(hash) % 9000) + 1000;
+}
+
+/**
+ * Intercept tracker execution log responses and pin timestamps/durations to fixed values
+ * so screenshots remain consistent across runs.
+ */
+export async function fixTrackerExecutionLogs(page: Page) {
+  const FIXED_STARTED_AT = FIXED_ENTITY_TIMESTAMP;
+  const FIXED_FINISHED_AT = FIXED_ENTITY_TIMESTAMP + 3;
+  const FIXED_PHASE_DURATION = 500;
+
+  await page.route('**/api/utils/web_scraping/*/*/logs', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    if (!response.ok()) {
+      await route.fulfill({ response });
+      return;
+    }
+    const json = await response.json();
+    if (!Array.isArray(json)) {
+      await route.fulfill({ response, json });
+      return;
+    }
+    for (const log of json) {
+      log.startedAt = FIXED_STARTED_AT;
+      log.finishedAt = FIXED_FINISHED_AT;
+      if (Array.isArray(log.phases)) {
+        for (const phase of log.phases) {
+          phase.durationMs = FIXED_PHASE_DURATION;
+        }
+      }
+    }
+    await route.fulfill({ response, json });
+  });
+}
+
+/**
+ * Intercept tracker health summary (logs_summary) responses and pin timestamps/durations
+ * to fixed values so health dot screenshots remain consistent across runs.
+ */
+export async function fixTrackerHealthDots(page: Page) {
+  const FIXED_STARTED_AT = FIXED_ENTITY_TIMESTAMP;
+  const FIXED_FINISHED_AT = FIXED_ENTITY_TIMESTAMP + 2;
+
+  await page.route('**/api/utils/web_scraping/*/logs_summary', async (route) => {
+    const response = await route.fetch();
+    if (!response.ok()) {
+      await route.fulfill({ response });
+      return;
+    }
+    const json = await response.json();
+    if (typeof json !== 'object' || json === null) {
+      await route.fulfill({ response, json });
+      return;
+    }
+    for (const trackerId of Object.keys(json)) {
+      if (!Array.isArray(json[trackerId])) continue;
+      for (const log of json[trackerId]) {
+        log.startedAt = FIXED_STARTED_AT;
+        log.finishedAt = FIXED_FINISHED_AT;
+      }
+    }
+    await route.fulfill({ response, json });
+  });
 }
 
 export async function highlightOff(locator: Locator) {

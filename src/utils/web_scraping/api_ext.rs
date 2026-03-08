@@ -44,11 +44,15 @@ use retrack_types::{
     scheduler::SchedulerJobConfig,
     trackers::{
         ApiTarget, DebugOptions, PageTarget, TargetRequest, TrackerConfig, TrackerCreateParams,
-        TrackerDataRevision, TrackerDebugParams, TrackerTarget, TrackerUpdateParams,
+        TrackerDataRevision, TrackerDebugParams, TrackerExecutionLog, TrackerTarget,
+        TrackerUpdateParams,
     },
 };
 use serde_json::Value as JsonValue;
-use std::{collections::HashSet, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 use time::OffsetDateTime;
 use tracing::error;
 use uuid::Uuid;
@@ -490,6 +494,99 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             .retrack()
             .clear_tracker_revisions(tracker.retrack.id())
             .await
+    }
+
+    /// Returns execution logs for the specified tracker (page or API).
+    pub async fn get_tracker_logs(
+        &self,
+        tracker_id: Uuid,
+        resource: UtilsResource,
+    ) -> anyhow::Result<Vec<TrackerExecutionLog>> {
+        let retrack_id = self.get_tracker_retrack_id(tracker_id, resource).await?;
+        self.api
+            .retrack()
+            .list_tracker_execution_logs(retrack_id)
+            .await
+    }
+
+    /// Clears execution logs for the specified tracker (page or API).
+    pub async fn clear_tracker_logs(
+        &self,
+        tracker_id: Uuid,
+        resource: UtilsResource,
+    ) -> anyhow::Result<()> {
+        let retrack_id = self.get_tracker_retrack_id(tracker_id, resource).await?;
+        self.api
+            .retrack()
+            .clear_tracker_execution_logs(retrack_id)
+            .await
+    }
+
+    /// Returns a summary of recent execution logs for all of the user's trackers
+    /// of the given type (page or API), keyed by Secutils resource ID.
+    pub async fn get_tracker_logs_summary(
+        &self,
+        resource: UtilsResource,
+    ) -> anyhow::Result<HashMap<Uuid, Vec<TrackerExecutionLog>>> {
+        let id_pairs: Vec<(Uuid, Uuid)> = match resource {
+            UtilsResource::WebScrapingPage => self
+                .get_page_trackers()
+                .await?
+                .into_iter()
+                .map(|t| (t.retrack.id(), t.id))
+                .collect(),
+            UtilsResource::WebScrapingApi => self
+                .get_api_trackers()
+                .await?
+                .into_iter()
+                .map(|t| (t.retrack.id(), t.id))
+                .collect(),
+            _ => bail!(SecutilsError::client("Invalid resource type.")),
+        };
+        if id_pairs.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let retrack_ids: Vec<Uuid> = id_pairs.iter().map(|(rid, _)| *rid).collect();
+        let retrack_to_secutils: HashMap<Uuid, Uuid> = id_pairs.into_iter().collect();
+
+        let batch = self
+            .api
+            .retrack()
+            .list_tracker_execution_logs_batch(&retrack_ids, 10)
+            .await?;
+
+        Ok(batch
+            .into_iter()
+            .filter_map(|(retrack_id, logs)| {
+                retrack_to_secutils
+                    .get(&retrack_id)
+                    .map(|&secutils_id| (secutils_id, logs))
+            })
+            .collect())
+    }
+
+    /// Resolves the Retrack ID for a given Secutils tracker ID by looking up the
+    /// appropriate tracker type (page or API) based on the resource.
+    async fn get_tracker_retrack_id(
+        &self,
+        tracker_id: Uuid,
+        resource: UtilsResource,
+    ) -> anyhow::Result<Uuid> {
+        let retrack_id = match resource {
+            UtilsResource::WebScrapingPage => self
+                .get_page_tracker(tracker_id)
+                .await?
+                .map(|t| t.retrack.id()),
+            UtilsResource::WebScrapingApi => self
+                .get_api_tracker(tracker_id)
+                .await?
+                .map(|t| t.retrack.id()),
+            _ => bail!(SecutilsError::client("Invalid resource type.")),
+        };
+        retrack_id.ok_or_else(|| {
+            SecutilsError::client(format!("Tracker ('{tracker_id}') is not found.")).into()
+        })
     }
 
     fn validate_tracker_name(name: &str) -> anyhow::Result<()> {

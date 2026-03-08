@@ -24,6 +24,7 @@ import type { PageTracker } from './page_tracker';
 import { isChartableData } from './revision_views/page_tracker_revision_chart_utils';
 import { PageTrackerRevisionChartView } from './revision_views/page_tracker_revision_chart_view';
 import type { TrackerDataRevision } from './tracker_data_revision';
+import { TrackerExecutionLogs } from './tracker_execution_logs';
 import { PageErrorState, PageLoadingState } from '../../../../components';
 import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
 import { useWorkspaceContext } from '../../hooks';
@@ -31,6 +32,7 @@ import { useWorkspaceContext } from '../../hooks';
 export interface TrackerRevisionsProps {
   tracker: ApiTracker | PageTracker;
   kind: 'page' | 'api';
+  onHealthRefreshNeeded?: () => void;
   children: (
     revision: TrackerDataRevision,
     mode: TrackerRevisionsViewMode,
@@ -38,9 +40,9 @@ export interface TrackerRevisionsProps {
   ) => ReactNode;
 }
 
-export type TrackerRevisionsViewMode = 'default' | 'diff' | 'source' | 'chart';
+export type TrackerRevisionsViewMode = 'default' | 'diff' | 'source' | 'chart' | 'logs';
 
-export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsProps) {
+export function TrackerRevisions({ kind, tracker, onHealthRefreshNeeded, children }: TrackerRevisionsProps) {
   const { uiState, addToast } = useWorkspaceContext();
   const euiThemeContext = useEuiTheme();
 
@@ -50,18 +52,22 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
   });
   const [revisionIndex, setRevisionIndex] = useState<number | null>(null);
 
-  const isDataChartable = revisions.status === 'succeeded' && isChartableData(revisions.data);
+  const hasRevisions = revisions.status === 'succeeded' && revisions.data.length > 0;
+  const isDataChartable = hasRevisions && isChartableData(revisions.data);
   const modes = [
     { id: 'default' as const, label: 'Default', isDisabled: revisions.status !== 'succeeded' },
-    {
-      id: 'diff' as const,
-      label: 'Diff',
-      isDisabled: revisions.status !== 'succeeded' || revisionIndex === revisions.data.length - 1,
-    },
-    { id: 'source' as const, label: 'Source', isDisabled: revisions.status !== 'succeeded' },
-    ...(isDataChartable
-      ? [{ id: 'chart' as const, label: 'Chart', isDisabled: revisions.status !== 'succeeded' }]
+    ...(hasRevisions
+      ? [
+          {
+            id: 'diff' as const,
+            label: 'Diff',
+            isDisabled: revisionIndex === revisions.data.length - 1,
+          },
+          { id: 'source' as const, label: 'Source' },
+        ]
       : []),
+    ...(isDataChartable ? [{ id: 'chart' as const, label: 'Chart' }] : []),
+    { id: 'logs' as const, label: 'Logs' },
   ];
   const [mode, setMode] = useState<TrackerRevisionsViewMode>('default');
 
@@ -96,7 +102,11 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
           );
 
           if (revisions.length < 2) {
-            setMode('default');
+            setMode((m) => (m === 'logs' ? m : 'default'));
+          }
+
+          if (refresh) {
+            onHealthRefreshNeeded?.();
           }
         })
         .catch((err: Error) => {
@@ -106,9 +116,13 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
             state: currentRevisions.state,
           }));
           setRevisionIndex(null);
+
+          if (refresh) {
+            onHealthRefreshNeeded?.();
+          }
         });
     },
-    [kind, tracker.id],
+    [kind, tracker.id, onHealthRefreshNeeded],
   );
 
   useEffect(() => {
@@ -181,8 +195,64 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
     </EuiConfirmModal>
   ) : null;
 
+  const [logsRefreshKey, setLogsRefreshKey] = useState(0);
+  const [clearLogsStatus, setClearLogsStatus] = useState<{ isModalVisible: boolean; isInProgress: boolean }>({
+    isInProgress: false,
+    isModalVisible: false,
+  });
+
+  const clearLogsConfirmModal = clearLogsStatus.isModalVisible ? (
+    <EuiConfirmModal
+      title={`Clear ${trackerLabel} execution logs?`}
+      onCancel={() => setClearLogsStatus({ isModalVisible: false, isInProgress: false })}
+      isLoading={clearLogsStatus.isInProgress}
+      onConfirm={() => {
+        setClearLogsStatus((s) => ({ ...s, isInProgress: true }));
+
+        fetch(
+          getApiUrl(`/api/utils/web_scraping/${kind}/${encodeURIComponent(tracker.id)}/clear_logs`),
+          getApiRequestConfig('POST'),
+        )
+          .then(async (res) => {
+            if (!res.ok) {
+              throw await ResponseError.fromResponse(res);
+            }
+
+            setLogsRefreshKey((k) => k + 1);
+            onHealthRefreshNeeded?.();
+            addToast({
+              id: `success-clear-tracker-logs-${tracker.name}`,
+              iconType: 'check',
+              color: 'success',
+              title: `Successfully cleared ${trackerLabel} execution logs`,
+            });
+            setClearLogsStatus({ isModalVisible: false, isInProgress: false });
+          })
+          .catch(() => {
+            addToast({
+              id: `failed-clear-tracker-logs-${tracker.name}`,
+              iconType: 'warning',
+              color: 'danger',
+              title: `Unable to clear execution logs, please try again later`,
+            });
+            setClearLogsStatus((s) => ({ ...s, isInProgress: false }));
+          });
+      }}
+      cancelButtonText="Cancel"
+      confirmButtonText="Clear"
+      buttonColor="danger"
+    >
+      The execution logs for the {trackerLabel} <b>{tracker.name}</b> will be cleared. Are you sure you want to proceed?
+    </EuiConfirmModal>
+  ) : null;
+
+  const isLogsMode = mode === 'logs';
+  const hideRevisionPicker = isLogsMode || mode === 'chart';
+
   let history;
-  if (revisions.status === 'pending') {
+  if (isLogsMode) {
+    history = <TrackerExecutionLogs key={logsRefreshKey} kind={kind} tracker={tracker} />;
+  } else if (revisions.status === 'pending') {
     history = <PageLoadingState title={`Loading…`} />;
   } else if (revisions.status === 'failed') {
     history = (
@@ -259,13 +329,11 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
   }
 
   const revisionsToSelect = revisions.status === 'succeeded' ? revisions.data : (revisions.state ?? []);
-  const isLoading = revisions.status === 'pending';
+  const isLoading = revisions.status === 'pending' && !isLogsMode;
   const totalRevisions = revisionsToSelect.length;
   const canGoNewer = revisionIndex !== null && revisionIndex > 0;
   const canGoOlder = revisionIndex !== null && revisionIndex < totalRevisions - 1;
-  const shouldDisplayControlPanel =
-    (revisions.status === 'succeeded' && revisions.data.length > 0) || (revisions.state?.length ?? 0 > 0);
-  const controlPanel = shouldDisplayControlPanel ? (
+  const controlPanel = (
     <EuiFlexItem>
       <EuiFlexGroup
         alignItems={'center'}
@@ -279,45 +347,47 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
           }
         `}
       >
-        <EuiFlexItem grow={false}>
-          <EuiFlexGroup alignItems="center" responsive={false} gutterSize="xs">
-            <EuiFlexItem grow={false}>
-              <EuiToolTip content="Newer revision">
-                <EuiButtonIcon
-                  iconType="arrowLeft"
-                  aria-label="Newer revision"
-                  isDisabled={isLoading || !canGoNewer}
-                  onClick={() => setRevisionIndex((i) => (i !== null && i > 0 ? i - 1 : i))}
-                  size="s"
+        {!hideRevisionPicker && totalRevisions > 0 && (
+          <EuiFlexItem grow={false}>
+            <EuiFlexGroup alignItems="center" responsive={false} gutterSize="xs">
+              <EuiFlexItem grow={false}>
+                <EuiToolTip content="Newer revision">
+                  <EuiButtonIcon
+                    iconType="arrowLeft"
+                    aria-label="Newer revision"
+                    isDisabled={isLoading || !canGoNewer}
+                    onClick={() => setRevisionIndex((i) => (i !== null && i > 0 ? i - 1 : i))}
+                    size="s"
+                  />
+                </EuiToolTip>
+              </EuiFlexItem>
+              <EuiFlexItem grow={false}>
+                <EuiSelect
+                  compressed
+                  options={revisionsToSelect.map((rev) => ({
+                    value: rev.id,
+                    text: unix(rev.createdAt).format('ll HH:mm:ss'),
+                  }))}
+                  disabled={isLoading}
+                  value={totalRevisions > 0 && revisionIndex !== null ? revisionsToSelect[revisionIndex].id : undefined}
+                  onChange={(e) => onRevisionChange(e.target.value)}
                 />
-              </EuiToolTip>
-            </EuiFlexItem>
-            <EuiFlexItem grow={false}>
-              <EuiSelect
-                compressed
-                options={revisionsToSelect.map((rev) => ({
-                  value: rev.id,
-                  text: unix(rev.createdAt).format('ll HH:mm:ss'),
-                }))}
-                disabled={isLoading}
-                value={totalRevisions > 0 && revisionIndex !== null ? revisionsToSelect[revisionIndex].id : undefined}
-                onChange={(e) => onRevisionChange(e.target.value)}
-              />
-            </EuiFlexItem>
-            <EuiFlexItem grow={false}>
-              <EuiToolTip content="Older revision">
-                <EuiButtonIcon
-                  iconType="arrowRight"
-                  aria-label="Older revision"
-                  isDisabled={isLoading || !canGoOlder}
-                  onClick={() => setRevisionIndex((i) => (i !== null && i < totalRevisions - 1 ? i + 1 : i))}
-                  size="s"
-                />
-              </EuiToolTip>
-            </EuiFlexItem>
-          </EuiFlexGroup>
-        </EuiFlexItem>
-        {totalRevisions > 1 && revisionIndex !== null && (
+              </EuiFlexItem>
+              <EuiFlexItem grow={false}>
+                <EuiToolTip content="Older revision">
+                  <EuiButtonIcon
+                    iconType="arrowRight"
+                    aria-label="Older revision"
+                    isDisabled={isLoading || !canGoOlder}
+                    onClick={() => setRevisionIndex((i) => (i !== null && i < totalRevisions - 1 ? i + 1 : i))}
+                    size="s"
+                  />
+                </EuiToolTip>
+              </EuiFlexItem>
+            </EuiFlexGroup>
+          </EuiFlexItem>
+        )}
+        {!hideRevisionPicker && totalRevisions > 1 && revisionIndex !== null && (
           <EuiFlexItem
             grow={false}
             css={css`
@@ -357,36 +427,43 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
                 legend="View mode"
                 options={modes}
                 idSelected={mode}
-                isDisabled={revisions.status !== 'succeeded'}
                 onChange={(id) => setMode(id as TrackerRevisionsViewMode)}
               />
             </EuiFlexItem>
-            <EuiFlexItem grow={false}>
-              <EuiToolTip content="Update">
-                <EuiButtonIcon
-                  iconType="refresh"
-                  aria-label="Update"
-                  isDisabled={isLoading}
-                  onClick={() => fetchHistory({ refresh: true })}
-                />
-              </EuiToolTip>
-            </EuiFlexItem>
-            <EuiFlexItem grow={false}>
-              <EuiToolTip content="Clear history">
-                <EuiButtonIcon
-                  iconType="cross"
-                  color="danger"
-                  aria-label="Clear history"
-                  isDisabled={isLoading}
-                  onClick={() => setClearHistoryStatus({ isModalVisible: true, isInProgress: false })}
-                />
-              </EuiToolTip>
-            </EuiFlexItem>
+            {!isLogsMode && totalRevisions > 0 && (
+              <EuiFlexItem grow={false}>
+                <EuiToolTip content="Update">
+                  <EuiButtonIcon
+                    iconType="refresh"
+                    aria-label="Update"
+                    isDisabled={isLoading}
+                    onClick={() => fetchHistory({ refresh: true })}
+                  />
+                </EuiToolTip>
+              </EuiFlexItem>
+            )}
+            {(isLogsMode || totalRevisions > 0) && (
+              <EuiFlexItem grow={false}>
+                <EuiToolTip content={isLogsMode ? 'Clear logs' : 'Clear history'}>
+                  <EuiButtonIcon
+                    iconType="cross"
+                    color="danger"
+                    aria-label={isLogsMode ? 'Clear logs' : 'Clear history'}
+                    isDisabled={isLoading}
+                    onClick={() =>
+                      isLogsMode
+                        ? setClearLogsStatus({ isModalVisible: true, isInProgress: false })
+                        : setClearHistoryStatus({ isModalVisible: true, isInProgress: false })
+                    }
+                  />
+                </EuiToolTip>
+              </EuiFlexItem>
+            )}
           </EuiFlexGroup>
         </EuiFlexItem>
       </EuiFlexGroup>
     </EuiFlexItem>
-  ) : null;
+  );
   return (
     <EuiFlexGroup direction={'column'} style={{ height: '100%' }} gutterSize={'s'}>
       {controlPanel}
@@ -395,6 +472,7 @@ export function TrackerRevisions({ kind, tracker, children }: TrackerRevisionsPr
           {history}
         </EuiPanel>
         {clearConfirmModal}
+        {clearLogsConfirmModal}
       </EuiFlexItem>
     </EuiFlexGroup>
   );

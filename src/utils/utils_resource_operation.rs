@@ -13,9 +13,15 @@ pub enum UtilsResourceOperation {
     WebhooksRespondersGetStats,
     WebScrapingPageGetHistory,
     WebScrapingPageClearHistory,
+    WebScrapingPageGetLogs,
+    WebScrapingPageClearLogs,
+    WebScrapingPageGetLogsSummary,
     WebScrapingPageDebugRequest,
     WebScrapingApiGetHistory,
     WebScrapingApiClearHistory,
+    WebScrapingApiGetLogs,
+    WebScrapingApiClearLogs,
+    WebScrapingApiGetLogsSummary,
     WebScrapingApiTestRequest,
     WebScrapingApiDebugRequest,
     WebSecurityContentSecurityPolicySerialize,
@@ -79,6 +85,17 @@ impl TryFrom<(&UtilsResource, &str, &Method)> for UtilsResourceOperation {
             UtilsResource::WebScrapingPage if operation == "clear" => {
                 Ok(UtilsResourceOperation::WebScrapingPageClearHistory)
             }
+            UtilsResource::WebScrapingPage if operation == "logs" && *method == Method::GET => {
+                Ok(UtilsResourceOperation::WebScrapingPageGetLogs)
+            }
+            UtilsResource::WebScrapingPage if operation == "clear_logs" => {
+                Ok(UtilsResourceOperation::WebScrapingPageClearLogs)
+            }
+            UtilsResource::WebScrapingPage
+                if operation == "logs_summary" && *method == Method::GET =>
+            {
+                Ok(UtilsResourceOperation::WebScrapingPageGetLogsSummary)
+            }
             UtilsResource::WebScrapingPage if operation == "debug" && *method == Method::POST => {
                 Ok(UtilsResourceOperation::WebScrapingPageDebugRequest)
             }
@@ -87,6 +104,17 @@ impl TryFrom<(&UtilsResource, &str, &Method)> for UtilsResourceOperation {
             }
             UtilsResource::WebScrapingApi if operation == "clear" => {
                 Ok(UtilsResourceOperation::WebScrapingApiClearHistory)
+            }
+            UtilsResource::WebScrapingApi if operation == "logs" && *method == Method::GET => {
+                Ok(UtilsResourceOperation::WebScrapingApiGetLogs)
+            }
+            UtilsResource::WebScrapingApi if operation == "clear_logs" => {
+                Ok(UtilsResourceOperation::WebScrapingApiClearLogs)
+            }
+            UtilsResource::WebScrapingApi
+                if operation == "logs_summary" && *method == Method::GET =>
+            {
+                Ok(UtilsResourceOperation::WebScrapingApiGetLogsSummary)
             }
             UtilsResource::WebScrapingApi if operation == "test" && *method == Method::POST => {
                 Ok(UtilsResourceOperation::WebScrapingApiTestRequest)
@@ -124,10 +152,16 @@ mod tests {
 
         assert!(UtilsResourceOperation::WebScrapingPageGetHistory.requires_params());
         assert!(!UtilsResourceOperation::WebScrapingPageClearHistory.requires_params());
+        assert!(!UtilsResourceOperation::WebScrapingPageGetLogs.requires_params());
+        assert!(!UtilsResourceOperation::WebScrapingPageClearLogs.requires_params());
+        assert!(!UtilsResourceOperation::WebScrapingPageGetLogsSummary.requires_params());
         assert!(UtilsResourceOperation::WebScrapingPageDebugRequest.requires_params());
 
         assert!(UtilsResourceOperation::WebScrapingApiGetHistory.requires_params());
         assert!(!UtilsResourceOperation::WebScrapingApiClearHistory.requires_params());
+        assert!(!UtilsResourceOperation::WebScrapingApiGetLogs.requires_params());
+        assert!(!UtilsResourceOperation::WebScrapingApiClearLogs.requires_params());
+        assert!(!UtilsResourceOperation::WebScrapingApiGetLogsSummary.requires_params());
         assert!(UtilsResourceOperation::WebScrapingApiTestRequest.requires_params());
         assert!(UtilsResourceOperation::WebScrapingApiDebugRequest.requires_params());
 
@@ -258,6 +292,30 @@ mod tests {
         assert_eq!(
             UtilsResourceOperation::try_from((
                 &UtilsResource::WebScrapingPage,
+                "logs",
+                &Method::GET
+            )),
+            Ok(UtilsResourceOperation::WebScrapingPageGetLogs)
+        );
+        assert_eq!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingPage,
+                "clear_logs",
+                &Method::POST
+            )),
+            Ok(UtilsResourceOperation::WebScrapingPageClearLogs)
+        );
+        assert_eq!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingPage,
+                "logs_summary",
+                &Method::GET
+            )),
+            Ok(UtilsResourceOperation::WebScrapingPageGetLogsSummary)
+        );
+        assert_eq!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingPage,
                 "debug",
                 &Method::POST
             )),
@@ -287,6 +345,30 @@ mod tests {
                 &Method::POST
             )),
             Ok(UtilsResourceOperation::WebScrapingApiClearHistory)
+        );
+        assert_eq!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingApi,
+                "logs",
+                &Method::GET
+            )),
+            Ok(UtilsResourceOperation::WebScrapingApiGetLogs)
+        );
+        assert_eq!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingApi,
+                "clear_logs",
+                &Method::POST
+            )),
+            Ok(UtilsResourceOperation::WebScrapingApiClearLogs)
+        );
+        assert_eq!(
+            UtilsResourceOperation::try_from((
+                &UtilsResource::WebScrapingApi,
+                "logs_summary",
+                &Method::GET
+            )),
+            Ok(UtilsResourceOperation::WebScrapingApiGetLogsSummary)
         );
         assert_eq!(
             UtilsResourceOperation::try_from((

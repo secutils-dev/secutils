@@ -6,11 +6,12 @@ use crate::{
 };
 use anyhow::{Context, bail};
 use retrack_types::trackers::{
-    Tracker, TrackerCreateParams, TrackerDataRevision, TrackerDebugParams,
+    Tracker, TrackerCreateParams, TrackerDataRevision, TrackerDebugParams, TrackerExecutionLog,
     TrackerListRevisionsParams, TrackerUpdateParams,
 };
 use serde::de::DeserializeOwned;
 use serde_json::Value as JsonValue;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// API to work with Retrack.
@@ -260,6 +261,81 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> RetrackApi<'a, DR, ET> {
             bail!(SecutilsError::client(response.text().await?))
         } else {
             bail!(response.text().await?)
+        }
+    }
+
+    /// Retrieves execution logs for a tracker.
+    pub async fn list_tracker_execution_logs(
+        &self,
+        id: Uuid,
+    ) -> anyhow::Result<Vec<TrackerExecutionLog>> {
+        self.api
+            .network
+            .http_client
+            .get(format!(
+                "{}api/trackers/{id}/execution-logs",
+                self.api.config.retrack.host
+            ))
+            .send()
+            .await
+            .with_context(|| format!("Cannot retrieve tracker execution logs ({id})."))?
+            .json()
+            .await
+            .with_context(|| format!("Cannot deserialize tracker execution logs ({id})."))
+    }
+
+    /// Retrieves execution logs for multiple trackers in a single batch request.
+    pub async fn list_tracker_execution_logs_batch(
+        &self,
+        tracker_ids: &[Uuid],
+        size: usize,
+    ) -> anyhow::Result<HashMap<Uuid, Vec<TrackerExecutionLog>>> {
+        self.api
+            .network
+            .http_client
+            .post(format!(
+                "{}api/trackers/execution-logs",
+                self.api.config.retrack.host
+            ))
+            .json(&serde_json::json!({
+                "trackerIds": tracker_ids,
+                "size": size,
+            }))
+            .send()
+            .await
+            .context("Cannot retrieve batch tracker execution logs.")?
+            .json()
+            .await
+            .context("Cannot deserialize batch tracker execution logs.")
+    }
+
+    /// Clears execution logs for a tracker.
+    pub async fn clear_tracker_execution_logs(&self, id: Uuid) -> anyhow::Result<()> {
+        let response = self
+            .api
+            .network
+            .http_client
+            .delete(format!(
+                "{}api/trackers/{id}/execution-logs",
+                self.api.config.retrack.host
+            ))
+            .send()
+            .await
+            .with_context(|| format!("Cannot clear tracker execution logs ({id})."))?;
+
+        let status_code = response.status();
+        if status_code.is_informational() || status_code.is_success() {
+            return Ok(());
+        }
+
+        let error_message = format!(
+            "Failed to clear tracker execution logs ({id}): {}",
+            response.text().await?
+        );
+        if status_code.is_client_error() {
+            bail!(SecutilsError::client(error_message))
+        } else {
+            bail!(error_message)
         }
     }
 

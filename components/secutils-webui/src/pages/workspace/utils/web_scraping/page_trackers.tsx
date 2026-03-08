@@ -22,8 +22,10 @@ import type { PageTracker } from './page_tracker';
 import { PageTrackerEditFlyout } from './page_tracker_edit_flyout';
 import { PageTrackerRevision } from './page_tracker_revision';
 import type { TrackerDataRevision } from './tracker_data_revision';
+import { TrackerHealthDots } from './tracker_health_dots';
 import { TrackerName } from './tracker_name';
 import { TrackerRevisions } from './tracker_revisions';
+import { useTrackerHealth } from './use_tracker_health';
 import { PageErrorState, PageLoadingState } from '../../../../components';
 import {
   type AsyncData,
@@ -116,6 +118,11 @@ export default function PageTrackers() {
     getSearchFields,
   });
 
+  const { data: healthData, refetch: refetchHealth } = useTrackerHealth(
+    'page',
+    trackers.status === 'succeeded' ? trackers.data.map((t) => t.id) : undefined,
+  );
+
   const [itemIdToExpandedRowMap, setItemIdToExpandedRowMap] = useState<Record<string, ReactNode>>({});
 
   const removeConfirmModal = trackerToRemove ? (
@@ -177,7 +184,7 @@ export default function PageTrackers() {
       delete itemIdToExpandedRowMapValues[tracker.id];
     } else {
       itemIdToExpandedRowMapValues[tracker.id] = (
-        <TrackerRevisions kind={'page'} tracker={tracker}>
+        <TrackerRevisions kind={'page'} tracker={tracker} onHealthRefreshNeeded={refetchHealth}>
           {(revision, mode, previousRevision) => (
             <PageTrackerRevision
               revision={revision as TrackerDataRevision<string>}
@@ -257,7 +264,7 @@ export default function PageTrackers() {
           items={filteredItems}
           itemId={(item) => item.id}
           itemIdToExpandedRowMap={itemIdToExpandedRowMap}
-          tableLayout={'auto'}
+          tableLayout={'fixed'}
           columns={[
             {
               name: (
@@ -277,6 +284,20 @@ export default function PageTrackers() {
               ),
             },
             {
+              name: (
+                <EuiToolTip content="Recent execution status (oldest to newest)">
+                  <span>
+                    Health <EuiIcon size="s" color="subdued" type="question" className="eui-alignTop" />
+                  </span>
+                </EuiToolTip>
+              ),
+              field: 'id',
+              width: '150px',
+              render: (_: string, tracker: PageTracker) => (
+                <TrackerHealthDots logs={healthData.status === 'succeeded' ? healthData.data[tracker.id] : undefined} />
+              ),
+            },
+            {
               name: 'Last updated',
               field: 'updatedAt',
               width: '160px',
@@ -289,7 +310,6 @@ export default function PageTrackers() {
                 />
               ),
             },
-            // Just a padding column to increase the height of the table row in responsive mode.
             {
               name: <></>,
               render: () => <EuiSpacer size={'xxl'} />,

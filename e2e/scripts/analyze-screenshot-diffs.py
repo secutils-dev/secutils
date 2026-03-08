@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-analyze-screenshot-diffs.py — Deep analysis of screenshot differences between two runs.
+analyze-screenshot-diffs.py - Deep analysis of screenshot differences between two runs.
 
 Usage:
     python3 e2e/scripts/analyze-screenshot-diffs.py [--dir /tmp/screenshot-diff]

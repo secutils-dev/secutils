@@ -805,6 +805,100 @@ test.describe('Web scraping guide screenshots', () => {
     await expect(modal.getByText('camoufox', { exact: true })).toBeVisible();
     await page.screenshot({ path: join(IMG_DIR, 'engine_step2_debug.png') });
   });
+
+  test('View page tracker execution logs', async ({ page }) => {
+    // Create a tracker so the table renders.
+    const createResponse = await page.request.post('/api/utils/web_scraping/page', {
+      data: {
+        name: 'Logs Demo',
+        config: { revisions: 3 },
+        target: { extractor: 'export async function execute(p) { return "ok"; }' },
+      },
+    });
+    expect(createResponse.ok()).toBeTruthy();
+    const tracker = (await createResponse.json()) as { id: string };
+
+    const FIXED_TS = 1740000000;
+    const mockLogs = [
+      {
+        id: '00000000-0000-0000-0000-000000000001',
+        trackerId: tracker.id,
+        startedAt: FIXED_TS,
+        finishedAt: FIXED_TS + 3,
+        status: 'success',
+        isManual: false,
+        hasChanges: true,
+        durationMs: 980,
+        revisionSize: 2048,
+        phases: [
+          { phase: 'fetch', durationMs: 800, status: 'success' },
+          { phase: 'extract', durationMs: 120, status: 'success' },
+          { phase: 'compare', durationMs: 10, status: 'success', meta: { changed: true } },
+          { phase: 'persist', durationMs: 50, status: 'success' },
+        ],
+      },
+      {
+        id: '00000000-0000-0000-0000-000000000002',
+        trackerId: tracker.id,
+        startedAt: FIXED_TS - 3600,
+        finishedAt: FIXED_TS - 3597,
+        status: 'success',
+        isManual: true,
+        hasChanges: false,
+        durationMs: 858,
+        revisionSize: 1920,
+        phases: [
+          { phase: 'fetch', durationMs: 750, status: 'success' },
+          { phase: 'extract', durationMs: 100, status: 'success' },
+          { phase: 'compare', durationMs: 8, status: 'success', meta: { changed: false } },
+        ],
+      },
+      {
+        id: '00000000-0000-0000-0000-000000000003',
+        trackerId: tracker.id,
+        startedAt: FIXED_TS - 7200,
+        finishedAt: FIXED_TS - 7198,
+        status: 'failure',
+        error: 'Navigation timeout exceeded',
+        isManual: false,
+        durationMs: 30000,
+        retryAttempt: 1,
+        maxRetryAttempts: 3,
+        phases: [{ phase: 'fetch', durationMs: 30000, status: 'failure' }],
+      },
+    ];
+
+    // Mock a revision so the control panel (with the Logs button) is visible.
+    const mockRevision = { id: '00000000-0000-0000-0000-000000000099', data: { original: 'ok' }, createdAt: FIXED_TS };
+    await page.route('**/api/utils/web_scraping/*/*/history', async (route) => {
+      await route.fulfill({ json: [mockRevision] });
+    });
+
+    await page.route('**/api/utils/web_scraping/*/*/logs', async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({ json: mockLogs });
+    });
+
+    await page.route('**/api/utils/web_scraping/*/logs_summary', async (route) => {
+      await route.fulfill({ json: { [tracker.id]: mockLogs.slice(0, 5) } });
+    });
+
+    await goto(page, '/ws/web_scraping__page');
+    const trackerRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'Logs Demo' }) });
+    await expect(trackerRow).toBeVisible({ timeout: 15000 });
+
+    await trackerRow.getByRole('button', { name: 'Show history' }).click();
+
+    const logsButton = page.getByRole('button', { name: 'Logs' });
+    await expect(logsButton).toBeVisible({ timeout: 10000 });
+    await logsButton.click();
+    await page.waitForTimeout(1000);
+
+    await page.screenshot({ path: join(IMG_DIR, 'page_logs_step1_view.png') });
+  });
 });
 
 test.describe('API tracker guide screenshots', () => {
@@ -1254,5 +1348,100 @@ test.describe('API tracker guide screenshots', () => {
       path: join(IMG_DIR, 'api_custom_schedule.png'),
       clip: { x, y, width: right - x, height: bottom - y },
     });
+  });
+
+  test('View API tracker execution logs', async ({ page }) => {
+    const API_URL = 'http://host.docker.internal:7171/api/ui/state';
+
+    // Create a tracker via the UI.
+    await goto(page, '/ws/web_scraping__api');
+    const trackApiButton = page.getByRole('button', { name: 'Track API' });
+    await expect(trackApiButton).toBeVisible({ timeout: 15000 });
+    await trackApiButton.click();
+
+    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add API tracker' }) });
+    await expect(flyout).toBeVisible();
+    await flyout.getByLabel('Name').fill('API Logs Demo');
+    await flyout.getByLabel('URL').fill(API_URL);
+    await flyout.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByText('Successfully saved')).toBeVisible({ timeout: 15000 });
+    await dismissAllToasts(page);
+
+    // Read back the tracker ID.
+    const trackerId = await page.request
+      .get('/api/utils/web_scraping/api')
+      .then((r) => r.json())
+      .then((trackers: Array<{ id: string; name: string }>) => trackers.find((t) => t.name === 'API Logs Demo')?.id);
+
+    const FIXED_TS = 1740000000;
+    const mockLogs = [
+      {
+        id: '00000000-0000-0000-0000-000000000011',
+        trackerId,
+        startedAt: FIXED_TS,
+        finishedAt: FIXED_TS + 2,
+        status: 'success',
+        isManual: false,
+        hasChanges: true,
+        durationMs: 485,
+        revisionSize: 4096,
+        phases: [
+          { phase: 'fetch', durationMs: 400, status: 'success' },
+          { phase: 'extract', durationMs: 50, status: 'success' },
+          { phase: 'compare', durationMs: 5, status: 'success', meta: { changed: true } },
+          { phase: 'persist', durationMs: 30, status: 'success' },
+        ],
+      },
+      {
+        id: '00000000-0000-0000-0000-000000000012',
+        trackerId,
+        startedAt: FIXED_TS - 3600,
+        finishedAt: FIXED_TS - 3598,
+        status: 'failure',
+        error: 'Connection refused',
+        isManual: false,
+        durationMs: 5000,
+        retryAttempt: 1,
+        maxRetryAttempts: 3,
+        phases: [{ phase: 'fetch', durationMs: 5000, status: 'failure' }],
+      },
+    ];
+
+    // Mock a revision so the control panel (with the Logs button) is visible,
+    // and mock execution logs and health summary.
+    const mockRevision = {
+      id: '00000000-0000-0000-0000-000000000099',
+      data: { original: '{"status":"ok"}' },
+      createdAt: FIXED_TS,
+    };
+    await page.route('**/api/utils/web_scraping/*/*/history', async (route) => {
+      await route.fulfill({ json: [mockRevision] });
+    });
+
+    await page.route('**/api/utils/web_scraping/*/*/logs', async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({ json: mockLogs });
+    });
+
+    await page.route('**/api/utils/web_scraping/*/logs_summary', async (route) => {
+      await route.fulfill({ json: { [trackerId!]: mockLogs.slice(0, 5) } });
+    });
+
+    // Reload the page so the route interceptors take effect for the initial load.
+    await goto(page, '/ws/web_scraping__api');
+    const trackerRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'API Logs Demo' }) });
+    await expect(trackerRow).toBeVisible({ timeout: 15000 });
+
+    await trackerRow.getByRole('button', { name: 'Show history' }).click();
+
+    const logsButton = page.getByRole('button', { name: 'Logs' });
+    await expect(logsButton).toBeVisible({ timeout: 10000 });
+    await logsButton.click();
+    await page.waitForTimeout(1000);
+
+    await page.screenshot({ path: join(IMG_DIR, 'api_logs_step1_view.png') });
   });
 });

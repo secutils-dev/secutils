@@ -532,6 +532,30 @@ The browser engine setting is available in **Advanced mode**. Toggle the **Advan
 The selected engine applies to both scheduled checks and debug runs. Camoufox may be slower than Chromium for some pages due to the additional anti-fingerprinting measures. Use the **Debug** mode to compare extraction results and performance before choosing an engine.
 :::
 
+## View execution logs
+
+Every time a page tracker runs - whether manually or on a schedule - Secutils.dev records an execution log entry. You can use these logs to understand when the tracker ran, how long it took, whether it succeeded or failed, and what happened during each phase of execution.
+
+To view the execution logs, expand the tracker row in the list and switch to the **Logs** view using the view mode toggle:
+
+| ![Secutils.dev - Page tracker execution logs](/img/docs/guides/web_scraping/page_logs_step1_view.png) |
+|------------------------------------------------------------------------------------------------------|
+
+The log table shows:
+- **Status** - whether the execution succeeded or failed
+- **Started** - when the execution began
+- **Duration** - how long the execution took
+- **Type** - whether it was a manual or scheduled run
+- **Retry** - the retry attempt number, if applicable
+- **Revision size** - the size of the stored revision data
+- **Error** - the error message, if the execution failed
+
+Each row can be expanded to reveal the **execution phases** - a detailed timeline of the steps the tracker performed (e.g. fetching data, extracting content, comparing with previous revision, persisting the result).
+
+The **Health** column in the tracker list provides a quick at-a-glance summary of recent execution results, showing colored dots for the last several runs (green for success, red for failure).
+
+To clear all execution logs for a tracker, click the **Clear logs** button (cross icon) while in the Logs view mode.
+
 ## Annex: Content extractor script examples
 
 In this section, you can find examples of content extractor scripts that extract various content from web pages. Essentially, the script defines a function with the following signature:
