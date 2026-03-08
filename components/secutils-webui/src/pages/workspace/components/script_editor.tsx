@@ -91,6 +91,12 @@ export interface ExtraLib {
   filePath?: string;
 }
 
+export interface ScriptSnippet {
+  id: string;
+  label: string;
+  template: string;
+}
+
 let extraLibsConfigured = false;
 
 function registerExtraLibs(extraLibs?: ExtraLib[]) {
@@ -122,6 +128,7 @@ export interface Props {
   defaultValue?: string;
   extraLibs?: ExtraLib[];
   language?: string;
+  snippets?: ScriptSnippet[];
 }
 
 const EDITOR_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions = {
@@ -136,15 +143,30 @@ const FULLSCREEN_EDITOR_OPTIONS: monaco.editor.IStandaloneEditorConstructionOpti
   minimap: { enabled: true },
 };
 
+function registerSnippetActions(editor: monaco.editor.IStandaloneCodeEditor, snippets?: ScriptSnippet[]) {
+  (snippets ?? []).forEach((snippet, idx) => {
+    editor.addAction({
+      id: `insert-snippet-${snippet.id}`,
+      label: snippet.label,
+      contextMenuGroupId: '0_template',
+      contextMenuOrder: idx,
+      run: (ed) => {
+        ed.setValue(snippet.template);
+      },
+    });
+  });
+}
+
 interface FullScreenEditorProps {
   value: string;
   onChange: (value?: string) => void;
   extraLibs?: ExtraLib[];
+  snippets?: ScriptSnippet[];
   language: string;
   onClose: () => void;
 }
 
-function FullScreenEditor({ value, onChange, extraLibs, language, onClose }: FullScreenEditorProps) {
+function FullScreenEditor({ value, onChange, extraLibs, snippets, language, onClose }: FullScreenEditorProps) {
   const euiTheme = useEuiTheme();
   const { euiTheme: theme } = euiTheme;
 
@@ -227,6 +249,7 @@ function FullScreenEditor({ value, onChange, extraLibs, language, onClose }: Ful
                   m.editor.defineTheme('euiTheme', createTheme(euiTheme));
                   registerExtraLibs(extraLibs);
                 }}
+                onMount={(editor) => registerSnippetActions(editor, snippets)}
               />
             </EuiFlexItem>
           </EuiFlexGroup>
@@ -237,7 +260,7 @@ function FullScreenEditor({ value, onChange, extraLibs, language, onClose }: Ful
   );
 }
 
-export function ScriptEditor({ onChange, defaultValue, extraLibs, language = 'javascript' }: Props) {
+export function ScriptEditor({ onChange, defaultValue, extraLibs, language = 'javascript', snippets }: Props) {
   const euiTheme = useEuiTheme();
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [currentValue, setCurrentValue] = useState(defaultValue ?? '');
@@ -269,6 +292,7 @@ export function ScriptEditor({ onChange, defaultValue, extraLibs, language = 'ja
           m.editor.defineTheme('euiTheme', createTheme(euiTheme));
           registerExtraLibs(extraLibs);
         }}
+        onMount={(editor) => registerSnippetActions(editor, snippets)}
       />
       <EuiButtonIcon
         iconType="fullScreen"
@@ -292,6 +316,7 @@ export function ScriptEditor({ onChange, defaultValue, extraLibs, language = 'ja
           value={currentValue}
           onChange={handleChange}
           extraLibs={extraLibs}
+          snippets={snippets}
           language={language}
           onClose={toggleFullScreen}
         />

@@ -81,7 +81,7 @@ The backend is written in **Rust** using the **Actix-web** framework, with **Pos
                                                     │                 │
                                                     ▼                 ▼
                                            ┌──────────────┐  ┌──────────────┐
-                                           │  Retrack API  │  │  Web Scraper │
+                                           │  Retrack API │  │  Web Scraper │
                                            │  Port: 7676  │  │  Port: 7272  │
                                            └──────────────┘  └──────────────┘
 ```
@@ -130,50 +130,50 @@ secutils/
 ### Local development setup
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                      Docker Compose Network                      │
-│              (docker compose -f dev/docker/docker-compose.yml)   │
-│                                                                  │
-│  ┌─────────────────┐                                             │
-│  │  secutils_db    │  PostgreSQL 16                              │
-│  │  Port: 5432     │  - Secutils data                            │
-│  │                 │  - Kratos data (kratos schema)              │
-│  │                 │  - Retrack data (retrack database)          │
-│  └────────┬────────┘                                             │
-│           │                                                      │
-│     ┌─────┴──────────────┐                                       │
-│     │                    │                                       │
-│     ▼                    ▼                                       │
-│  ┌─────────────────┐  ┌─────────────────┐                        │
-│  │     kratos      │  │    retrack      │  Retrack API           │
-│  │  Port: 4433     │  │  Port: 7676     │  - Tracker management  │
-│  │  Port: 4434     │  └────────┬────────┘                        │
-│  └─────────────────┘           │                                 │
-│                                ▼                                 │
-│                       ┌─────────────────┐                        │
-│                       │ retrack_web_    │  Chromium + Node.js     │
-│                       │ scraper         │  - Page rendering       │
-│                       │ Port: 7272      │                        │
-│                       └─────────────────┘                        │
-└──────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│                      Docker Compose Network                        │
+│              (docker compose -f dev/docker/docker-compose.yml)     │
+│                                                                    │
+│            ┌─────────────────┐                                     │
+│            │  secutils_db    │  PostgreSQL 16                      │
+│            │  Port: 5432     │  - Secutils data                    │
+│            │                 │  - Kratos data (kratos schema)      │
+│            │                 │  - Retrack data (retrack database)  │
+│            └────────┬────────┘                                     │
+│                     │                                              │
+│           ┌─────────┴──────────┐                                   │
+│           │                    │                                   │
+│           ▼                    ▼                                   │
+│  ┌─────────────────┐  ┌─────────────────┐                          │
+│  │     kratos      │  │    retrack      │  Retrack API             │
+│  │  Port: 4433     │  │  Port: 7676     │  - Tracker management    │
+│  │  Port: 4434     │  └────────┬────────┘                          │
+│  └─────────────────┘           │                                   │
+│                                ▼                                   │
+│                       ┌─────────────────────┐                      │
+│                       │ retrack_web_scraper │  Chromium + Node.js  │
+│                       │                     │  - Page rendering    │
+│                       │ Port: 7272          │                      │
+│                       └─────────────────────┘                      │
+└────────────────────────────────────────────────────────────────────┘
 
-┌──────────────────────────────────────────────────────────────────┐
-│                           Host Machine                           │
-│                                                                  │
-│  ┌─────────────────┐                                             │
-│  │  Secutils API   │  cargo run                                  │
-│  │  Port: 7070     │  - Connects to PostgreSQL                   │
-│  │                 │  - Connects to Kratos                       │
-│  │                 │  - Connects to Retrack                      │
-│  └─────────────────┘                                             │
-│                                                                  │
-│  ┌─────────────────┐                                             │
-│  │  Secutils WebUI │  npm run watch (in components/secutils-webui)│
-│  │  Port: 7171     │  - React SPA                                │
-│  │                 │  - Proxies API, Kratos requests              │
-│  └─────────────────┘                                             │
-│                                                                  │
-└──────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                           Host Machine                              │
+│                                                                     │
+│  ┌─────────────────┐                                                │
+│  │  Secutils API   │  cargo run                                     │
+│  │  Port: 7070     │  - Connects to PostgreSQL                      │
+│  │                 │  - Connects to Kratos                          │
+│  │                 │  - Connects to Retrack                         │
+│  └─────────────────┘                                                │
+│                                                                     │
+│  ┌─────────────────┐                                                │
+│  │  Secutils WebUI │  npm run watch (in components/secutils-webui)  │
+│  │  Port: 7171     │  - React SPA                                   │
+│  │                 │  - Proxies API, Kratos requests                │
+│  └─────────────────┘                                                │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ### E2E testing setup

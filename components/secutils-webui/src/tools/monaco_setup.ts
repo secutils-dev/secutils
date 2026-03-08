@@ -12,6 +12,8 @@ import * as _monacoTypescript from 'monaco-editor/esm/vs/language/typescript/mon
 
 loader.config({ monaco });
 
+(self as unknown as Record<string, unknown>).__test_monaco = monaco;
+
 self.MonacoEnvironment = {
   getWorkerUrl: (_: string, label: string) => {
     if (label === 'javascript' || label === 'typescript') return '/tools/monaco/ts.worker.js';

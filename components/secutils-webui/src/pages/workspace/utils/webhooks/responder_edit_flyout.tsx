@@ -31,6 +31,7 @@ import {
   ResponseError,
 } from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
+import type { ScriptSnippet } from '../../components/script_editor';
 import { ScriptEditor } from '../../components/script_editor';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -84,6 +85,24 @@ function getBodyLanguage(headers: Array<{ label: string }>): string {
   if (contentType.includes('css')) return 'css';
   return 'plaintext';
 }
+
+const SCRIPT_SNIPPETS: ScriptSnippet[] = [
+  {
+    id: 'responder-script-basic',
+    label: 'Insert Example: Responder Script',
+    template: [
+      '(() => {',
+      '    const { method, path, body } = context;',
+      '',
+      '    return {',
+      '        statusCode: 200,',
+      "        headers: { 'Content-Type': 'application/json' },",
+      '        body: Deno.core.encode(JSON.stringify({ method, path, body })),',
+      '    };',
+      '})();',
+    ].join('\n'),
+  },
+];
 
 export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutProps) {
   const { addToast, uiState } = useWorkspaceContext();
@@ -538,7 +557,7 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
                 </span>
               }
             >
-              <ScriptEditor onChange={onUserScriptChange} defaultValue={script} />
+              <ScriptEditor onChange={onUserScriptChange} defaultValue={script} snippets={SCRIPT_SNIPPETS} />
             </EuiFormRow>
           ) : null}
         </EuiDescribedFormGroup>

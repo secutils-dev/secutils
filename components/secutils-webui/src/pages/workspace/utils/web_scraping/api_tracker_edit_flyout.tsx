@@ -40,6 +40,7 @@ import {
   ResponseError,
 } from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
+import type { ScriptSnippet } from '../../components/script_editor';
 import { ScriptEditor } from '../../components/script_editor';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -111,6 +112,42 @@ type ConfiguratorResult = { requests: ConfiguratorRequest[] } | { responses: Con
 declare const context: ConfiguratorContext;
 declare namespace Deno { namespace core { function encode(input: string): Uint8Array; function decode(input: Uint8Array): string; } }
 `;
+
+const EXTRACTOR_SNIPPETS: ScriptSnippet[] = [
+  {
+    id: 'api-extractor-basic',
+    label: 'Insert Example: Data Extractor',
+    template: [
+      '(() => {',
+      '    const response = context.responses?.[0];',
+      '    if (!response) return;',
+      '',
+      '    const body = Deno.core.decode(new Uint8Array(response.body));',
+      '    const result = JSON.parse(body);',
+      '',
+      '    return { body: Deno.core.encode(JSON.stringify(result, null, 2)) };',
+      '})();',
+    ].join('\n'),
+  },
+];
+
+const CONFIGURATOR_SNIPPETS: ScriptSnippet[] = [
+  {
+    id: 'api-configurator-basic',
+    label: 'Insert Example: Request Configurator',
+    template: [
+      '(() => {',
+      '    const request = context.requests[0];',
+      '    return {',
+      '        requests: [{',
+      '            ...request,',
+      "            headers: { ...request.headers, 'Authorization': 'Bearer token' },",
+      '        }],',
+      '    };',
+      '})();',
+    ].join('\n'),
+  },
+];
 
 const DEFAULT_EXTRACTOR_SCRIPT = '';
 
@@ -657,6 +694,7 @@ export function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
               onChange={onExtractorChange}
               defaultValue={extractor}
               extraLibs={[{ content: API_TRACKER_EXTRACTOR_TYPE_DEFS, filePath: 'ts:api-tracker-extractor.d.ts' }]}
+              snippets={EXTRACTOR_SNIPPETS}
             />
           </EuiFormRow>
           {isAdvancedMode ? (
@@ -678,6 +716,7 @@ export function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
                 extraLibs={[
                   { content: API_TRACKER_CONFIGURATOR_TYPE_DEFS, filePath: 'ts:api-tracker-configurator.d.ts' },
                 ]}
+                snippets={CONFIGURATOR_SNIPPETS}
               />
             </EuiFormRow>
           ) : null}

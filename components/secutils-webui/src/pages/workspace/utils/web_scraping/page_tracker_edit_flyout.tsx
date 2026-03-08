@@ -40,8 +40,26 @@ import {
 } from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
 import { PAGE_TRACKER_TYPE_DEFS } from '../../components/page_tracker_type_defs';
+import type { ScriptSnippet } from '../../components/script_editor';
 import { ScriptEditor } from '../../components/script_editor';
 import { useWorkspaceContext } from '../../hooks';
+
+const EXTRACTOR_SNIPPETS: ScriptSnippet[] = [
+  {
+    id: 'page-extractor-basic',
+    label: 'Insert Example: Page Content Extractor',
+    template: [
+      '/** @param {Page} page */',
+      'export async function execute(page) {',
+      "    await page.goto('https://example.com');",
+      '',
+      '    const result = await page.title();',
+      '',
+      '    return result;',
+      '}',
+    ].join('\n'),
+  },
+];
 
 export interface Props {
   onClose: (success?: boolean) => void;
@@ -451,6 +469,7 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
               onChange={onExtractContentScriptChange}
               defaultValue={extractorScript}
               extraLibs={[{ content: PAGE_TRACKER_TYPE_DEFS, filePath: 'ts:page-tracker.d.ts' }]}
+              snippets={EXTRACTOR_SNIPPETS}
             />
           </EuiFormRow>
           {isAdvancedMode ? (
