@@ -44,6 +44,8 @@ pub mod tests {
             actions: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            scheduled_at: None,
+            last_ran_at: None,
         })
     }
 }

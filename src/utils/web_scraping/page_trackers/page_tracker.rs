@@ -96,6 +96,8 @@ mod tests {
                     user_agent: None,
                     accept_invalid_certificates: false,
                 }),
+                scheduled_at: None,
+                last_ran_at: None,
                 notifications: false,
             })),
             secrets: SecretsAccess::None,

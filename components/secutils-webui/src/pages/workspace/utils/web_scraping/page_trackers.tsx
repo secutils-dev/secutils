@@ -252,7 +252,10 @@ export default function PageTrackers() {
         <ItemsTableFilter
           query={query}
           onQueryChange={setQuery}
-          onRefresh={loadTrackers}
+          onRefresh={() => {
+            loadTrackers();
+            refetchHealth();
+          }}
           placeholder="Search by name or ID..."
         />
         <EuiSpacer size="m" />
@@ -296,6 +299,36 @@ export default function PageTrackers() {
               render: (_: string, tracker: PageTracker) => (
                 <TrackerHealthDots logs={healthData.status === 'succeeded' ? healthData.data[tracker.id] : undefined} />
               ),
+            },
+            {
+              name: 'Next run',
+              field: 'retrack.scheduledAt',
+              width: '130px',
+              sortable: (tracker) => tracker.retrack.scheduledAt ?? 0,
+              render: (_, tracker: PageTracker) =>
+                tracker.retrack.scheduledAt != null ? (
+                  <TimestampTableCell
+                    timestamp={tracker.retrack.scheduledAt}
+                    color={tracker.retrack.enabled === false ? theme.euiTheme.colors.textDisabled : undefined}
+                  />
+                ) : (
+                  '—'
+                ),
+            },
+            {
+              name: 'Last ran',
+              field: 'retrack.lastRanAt',
+              width: '130px',
+              sortable: (tracker) => tracker.retrack.lastRanAt ?? 0,
+              render: (_, tracker: PageTracker) =>
+                tracker.retrack.lastRanAt != null ? (
+                  <TimestampTableCell
+                    timestamp={tracker.retrack.lastRanAt}
+                    color={tracker.retrack.enabled === false ? theme.euiTheme.colors.textDisabled : undefined}
+                  />
+                ) : (
+                  '—'
+                ),
             },
             {
               name: 'Last updated',

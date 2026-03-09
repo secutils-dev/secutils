@@ -31,7 +31,7 @@ export function TimestampTableCell({ timestamp, color, highlightRecent }: Props)
   const formattedTimestamp =
     isRecent || unixTimestamp.diff(now(), 'days') > MAX_DIFF_FOR_RELATIVE_TIMESTAMP_DAYS
       ? unixTimestamp.fromNow(false)
-      : unixTimestamp.format('LL');
+      : unixTimestamp.format('ll');
 
   return (
     <EuiToolTip content={unixTimestamp.format('ll HH:mm:ss')}>

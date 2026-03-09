@@ -21,6 +21,8 @@ export interface PageTracker {
       revisions: number;
       job?: SchedulerJobConfig;
     };
+    scheduledAt?: number;
+    lastRanAt?: number;
     notifications?: boolean;
   };
 }

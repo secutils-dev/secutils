@@ -286,6 +286,8 @@ pub mod tests {
             actions: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            scheduled_at: None,
+            last_ran_at: None,
         })
     }
 
@@ -703,6 +705,8 @@ pub mod tests {
                     enabled: updated_retrack_tracker.enabled,
                     config: updated_retrack_tracker.config,
                     target: updated_retrack_tracker.target,
+                    scheduled_at: None,
+                    last_ran_at: None,
                     notifications: false,
                 })),
                 secrets: SecretsAccess::None,
@@ -1326,6 +1330,8 @@ pub mod tests {
                     enabled: updated_retrack_tracker.enabled,
                     config: updated_retrack_tracker.config,
                     target: updated_retrack_tracker.target,
+                    scheduled_at: None,
+                    last_ran_at: None,
                     notifications: false,
                 })),
                 secrets: SecretsAccess::None,

@@ -253,7 +253,10 @@ export default function ApiTrackers() {
         <ItemsTableFilter
           query={query}
           onQueryChange={setQuery}
-          onRefresh={loadTrackers}
+          onRefresh={() => {
+            loadTrackers();
+            refetchHealth();
+          }}
           placeholder="Search by name or ID..."
         />
         <EuiSpacer size="m" />
@@ -305,6 +308,7 @@ export default function ApiTrackers() {
                   size="s"
                   color={tracker.retrack.enabled === false ? disabledColor : undefined}
                   title={tracker.retrack.target?.url}
+                  style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                 >
                   {tracker.retrack.target?.url ?? '-'}
                 </EuiText>
@@ -320,6 +324,36 @@ export default function ApiTrackers() {
                   {tracker.retrack.target?.method ?? 'GET'}
                 </EuiText>
               ),
+            },
+            {
+              name: 'Next run',
+              field: 'retrack.scheduledAt',
+              width: '130px',
+              sortable: (tracker) => tracker.retrack.scheduledAt ?? 0,
+              render: (_, tracker: ApiTracker) =>
+                tracker.retrack.scheduledAt != null ? (
+                  <TimestampTableCell
+                    timestamp={tracker.retrack.scheduledAt}
+                    color={tracker.retrack.enabled === false ? disabledColor : undefined}
+                  />
+                ) : (
+                  '—'
+                ),
+            },
+            {
+              name: 'Last ran',
+              field: 'retrack.lastRanAt',
+              width: '130px',
+              sortable: (tracker) => tracker.retrack.lastRanAt ?? 0,
+              render: (_, tracker: ApiTracker) =>
+                tracker.retrack.lastRanAt != null ? (
+                  <TimestampTableCell
+                    timestamp={tracker.retrack.lastRanAt}
+                    color={tracker.retrack.enabled === false ? disabledColor : undefined}
+                  />
+                ) : (
+                  '—'
+                ),
             },
             {
               name: 'Last updated',

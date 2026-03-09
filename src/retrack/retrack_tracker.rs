@@ -1,6 +1,7 @@
 use crate::retrack::tags::{RETRACK_NOTIFICATIONS_TAG, get_tag_value};
 use retrack_types::trackers::{Tracker, TrackerConfig, TrackerTarget};
 use serde::{Serialize, Serializer};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -25,6 +26,8 @@ impl RetrackTracker {
             enabled: tracker.enabled,
             config: tracker.config,
             target: tracker.target,
+            scheduled_at: tracker.scheduled_at,
+            last_ran_at: tracker.last_ran_at,
             notifications: get_tag_value(&tracker.tags, RETRACK_NOTIFICATIONS_TAG)
                 .and_then(|tag| tag.parse::<bool>().ok())
                 .unwrap_or_default(),
@@ -45,6 +48,20 @@ pub struct RetrackTrackerValue {
     pub config: TrackerConfig,
     #[serde(serialize_with = "serialize_tracker_target")]
     pub target: TrackerTarget,
+    /// Date and time when the tracker is next scheduled to run (derived from the scheduler).
+    #[serde(
+        default,
+        with = "time::serde::timestamp::option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub scheduled_at: Option<OffsetDateTime>,
+    /// Date and time when the tracker last ran on schedule (derived from the scheduler).
+    #[serde(
+        default,
+        with = "time::serde::timestamp::option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub last_ran_at: Option<OffsetDateTime>,
     pub notifications: bool,
 }
 
@@ -114,6 +131,7 @@ mod tests {
         },
     };
     use serde_json::json;
+    use time::OffsetDateTime;
     use uuid::uuid;
 
     fn minimal_config() -> TrackerConfig {
@@ -140,6 +158,8 @@ mod tests {
                 user_agent: None,
                 accept_invalid_certificates: false,
             }),
+            scheduled_at: None,
+            last_ran_at: None,
             notifications: false,
         };
         assert_json_snapshot!(value, @r###"
@@ -175,6 +195,8 @@ mod tests {
                 user_agent: None,
                 accept_invalid_certificates: true,
             }),
+            scheduled_at: None,
+            last_ran_at: None,
             notifications: false,
         };
         assert_json_snapshot!(value, @r###"
@@ -211,6 +233,8 @@ mod tests {
                 user_agent: None,
                 accept_invalid_certificates: false,
             }),
+            scheduled_at: None,
+            last_ran_at: None,
             notifications: false,
         };
         assert_json_snapshot!(value, @r###"
@@ -248,6 +272,8 @@ mod tests {
                 extractor: None,
                 params: None,
             }),
+            scheduled_at: None,
+            last_ran_at: None,
             notifications: false,
         };
         assert_json_snapshot!(value, @r###"
@@ -298,6 +324,8 @@ mod tests {
                 extractor: Some("(() => ({ body: context.body }))()".to_string()),
                 params: None,
             }),
+            scheduled_at: None,
+            last_ran_at: None,
             notifications: true,
         };
         let json = serde_json::to_value(&value)?;
@@ -339,9 +367,73 @@ mod tests {
                 extractor: None,
                 params: None,
             }),
+            scheduled_at: None,
+            last_ran_at: None,
             notifications: false,
         };
         assert_json_snapshot!(serde_json::to_value(&value)?["target"], @"{}");
+        Ok(())
+    }
+
+    #[test]
+    fn schedule_timestamps_included_when_set() -> anyhow::Result<()> {
+        let value = RetrackTrackerValue {
+            id: uuid!("00000000-0000-0000-0000-000000000001"),
+            enabled: true,
+            config: minimal_config(),
+            target: TrackerTarget::Page(PageTarget {
+                extractor: "return document.title;".to_string(),
+                params: None,
+                engine: None,
+                user_agent: None,
+                accept_invalid_certificates: false,
+            }),
+            scheduled_at: Some(OffsetDateTime::from_unix_timestamp(1740000000)?),
+            last_ran_at: Some(OffsetDateTime::from_unix_timestamp(1739990000)?),
+            notifications: false,
+        };
+        assert_json_snapshot!(value, @r###"
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "enabled": true,
+          "config": {
+            "revisions": 1,
+            "job": {
+              "schedule": "@daily"
+            }
+          },
+          "target": {
+            "type": "page",
+            "extractor": "return document.title;"
+          },
+          "scheduledAt": 1740000000,
+          "lastRanAt": 1739990000,
+          "notifications": false
+        }
+        "###);
+        Ok(())
+    }
+
+    #[test]
+    fn schedule_timestamps_omitted_when_none() -> anyhow::Result<()> {
+        let value = RetrackTrackerValue {
+            id: uuid!("00000000-0000-0000-0000-000000000001"),
+            enabled: true,
+            config: minimal_config(),
+            target: TrackerTarget::Page(PageTarget {
+                extractor: "return document.title;".to_string(),
+                params: None,
+                engine: None,
+                user_agent: None,
+                accept_invalid_certificates: false,
+            }),
+            scheduled_at: None,
+            last_ran_at: None,
+            notifications: false,
+        };
+        let json = serde_json::to_value(&value)?;
+        assert!(json.get("scheduledAt").is_none());
+        assert!(json.get("lastRanAt").is_none());
         Ok(())
     }
 }

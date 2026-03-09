@@ -14,6 +14,8 @@ export interface ApiTracker {
       revisions: number;
       job?: SchedulerJobConfig;
     };
+    scheduledAt?: number;
+    lastRanAt?: number;
     notifications?: boolean;
   };
 }

@@ -253,6 +253,20 @@ export function pinEntityTimestamps(json: unknown): void {
     if (item && typeof item === 'object') {
       if ('createdAt' in item) item.createdAt = FIXED_ENTITY_TIMESTAMP;
       if ('updatedAt' in item) item.updatedAt = FIXED_ENTITY_TIMESTAMP;
+
+      // For scheduled trackers, inject fixed schedule timestamps so the
+      // "Next run" and "Last ran" columns render stable absolute dates.
+      if ('retrack' in item) {
+        const retrack = (item as Record<string, unknown>).retrack;
+        if (retrack && typeof retrack === 'object') {
+          const rt = retrack as Record<string, unknown>;
+          const config = rt.config as Record<string, unknown> | undefined;
+          if (config?.job) {
+            rt.scheduledAt = FIXED_ENTITY_TIMESTAMP;
+            rt.lastRanAt = FIXED_ENTITY_TIMESTAMP;
+          }
+        }
+      }
     }
   }
 }

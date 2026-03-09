@@ -98,6 +98,8 @@ mod tests {
                     extractor: None,
                     params: None,
                 }),
+                scheduled_at: None,
+                last_ran_at: None,
                 notifications: false,
             })),
             secrets: SecretsAccess::None,
