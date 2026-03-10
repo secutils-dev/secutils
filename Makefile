@@ -7,7 +7,18 @@ RUNS                 	?= 10
 E2E_LOOP_DIR         	:= /tmp/e2e-loop-results
 AGENT_WORKSPACE     	?=
 
+-include deploy.env
+
+DEPLOY_REGISTRY     	?=
+DEPLOY_PLATFORM     	?= linux/arm64
+DEPLOY_DEV_TAG      	?= latest
+DEPLOY_PROD_TAG     	?=
+DEPLOY_CAMOUFOX_TAG 	?=
+
 .PHONY: dev-up dev-down api webui webui-test docs e2e-up e2e-down e2e-test e2e-test-loop docs-screenshots docs-screenshots-loop docs-screenshots-diff docs-screenshots-analyze agent-push agent-pull clean
+.PHONY: deploy-dev deploy-dev-api deploy-dev-webui deploy-dev-docs deploy-dev-retrack-api deploy-dev-retrack-scraper
+.PHONY: deploy-prod deploy-prod-api deploy-prod-webui deploy-prod-docs deploy-prod-retrack-api deploy-prod-retrack-scraper
+.PHONY: deploy-camoufox
 
 ## ---------- Development ----------
 
@@ -123,6 +134,65 @@ docker-webui: ## Build the Web UI Docker image.
 
 docker-docs: ## Build the Docs Docker image.
 	docker build --tag secutils-docs:latest -f Dockerfile.docs .
+
+## ---------- Deploy (build & push to Docker registry) ----------
+
+define _buildx_push
+	DOCKER_BUILDKIT=1 docker buildx build --progress=plain --push \
+		--platform $(DEPLOY_PLATFORM) \
+		--tag $(DEPLOY_REGISTRY)/$(1):$(2) $(3)
+endef
+
+_require-deploy-registry:
+	@test -n "$(DEPLOY_REGISTRY)" || \
+		{ echo "Error: DEPLOY_REGISTRY not set. Copy deploy.env.example to deploy.env and fill it in."; exit 1; }
+
+_require-deploy-prod-tag: _require-deploy-registry
+	@test -n "$(DEPLOY_PROD_TAG)" || \
+		{ echo "Error: DEPLOY_PROD_TAG not set in deploy.env."; exit 1; }
+
+_require-deploy-camoufox-tag: _require-deploy-registry
+	@test -n "$(DEPLOY_CAMOUFOX_TAG)" || \
+		{ echo "Error: DEPLOY_CAMOUFOX_TAG not set in deploy.env."; exit 1; }
+
+deploy-dev: _require-deploy-registry ## Build & push all images for dev (DEV_TAG).
+deploy-dev: deploy-dev-api deploy-dev-webui deploy-dev-docs deploy-dev-retrack-api deploy-dev-retrack-scraper
+
+deploy-dev-api: _require-deploy-registry
+	$(call _buildx_push,secutils-api,$(DEPLOY_DEV_TAG),.)
+
+deploy-dev-webui: _require-deploy-registry
+	$(call _buildx_push,secutils-webui,$(DEPLOY_DEV_TAG),-f Dockerfile.webui .)
+
+deploy-dev-docs: _require-deploy-registry
+	$(call _buildx_push,secutils-docs,$(DEPLOY_DEV_TAG),-f Dockerfile.docs .)
+
+deploy-dev-retrack-api: _require-deploy-registry
+	$(call _buildx_push,retrack-api,$(DEPLOY_DEV_TAG),-f components/retrack/Dockerfile components/retrack)
+
+deploy-dev-retrack-scraper: _require-deploy-registry
+	$(call _buildx_push,retrack-web-scraper,$(DEPLOY_DEV_TAG),-f components/retrack/Dockerfile.web-scraper components/retrack)
+
+deploy-prod: _require-deploy-prod-tag ## Build & push all images for prod (PROD_TAG).
+deploy-prod: deploy-prod-api deploy-prod-webui deploy-prod-docs deploy-prod-retrack-api deploy-prod-retrack-scraper
+
+deploy-prod-api: _require-deploy-prod-tag
+	$(call _buildx_push,secutils-api,$(DEPLOY_PROD_TAG),.)
+
+deploy-prod-webui: _require-deploy-prod-tag
+	$(call _buildx_push,secutils-webui,$(DEPLOY_PROD_TAG),-f Dockerfile.webui .)
+
+deploy-prod-docs: _require-deploy-prod-tag
+	$(call _buildx_push,secutils-docs,$(DEPLOY_PROD_TAG),-f Dockerfile.docs .)
+
+deploy-prod-retrack-api: _require-deploy-prod-tag
+	$(call _buildx_push,retrack-api,$(DEPLOY_PROD_TAG),-f components/retrack/Dockerfile components/retrack)
+
+deploy-prod-retrack-scraper: _require-deploy-prod-tag
+	$(call _buildx_push,retrack-web-scraper,$(DEPLOY_PROD_TAG),-f components/retrack/Dockerfile.web-scraper components/retrack)
+
+deploy-camoufox: _require-deploy-camoufox-tag ## Build & push the Camoufox web scraper image.
+	$(call _buildx_push,retrack-web-scraper-camoufox,$(DEPLOY_CAMOUFOX_TAG),-f components/retrack/Dockerfile.web-scraper-camoufox components/retrack)
 
 ## ---------- Agent Workspace Sync ----------
 
