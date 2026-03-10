@@ -151,7 +151,7 @@ export default function CertificatesPrivateKeys() {
     pageSizeOptions: [10, 15, 25, 50, 100],
     totalItemCount: 0,
   });
-  const [sorting, setSorting] = useState<{ sort: PropertySort }>({ sort: { field: 'name', direction: 'asc' } });
+  const [sorting, setSorting] = useState<{ sort: PropertySort }>({ sort: { field: 'updatedAt', direction: 'desc' } });
   const onTableChange = useCallback(
     ({ page, sort }: Criteria<PrivateKey>) => {
       setPagination({

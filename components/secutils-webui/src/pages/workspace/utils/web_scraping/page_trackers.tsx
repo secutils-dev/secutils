@@ -162,7 +162,7 @@ export default function PageTrackers() {
     pageSizeOptions: [10, 15, 25, 50, 100],
     totalItemCount: 0,
   });
-  const [sorting, setSorting] = useState<{ sort: PropertySort }>({ sort: { field: 'name', direction: 'asc' } });
+  const [sorting, setSorting] = useState<{ sort: PropertySort }>({ sort: { field: 'updatedAt', direction: 'desc' } });
   const onTableChange = useCallback(
     ({ page, sort }: Criteria<PageTracker>) => {
       setPagination({
@@ -304,7 +304,7 @@ export default function PageTrackers() {
               name: 'Next run',
               field: 'retrack.scheduledAt',
               width: '130px',
-              sortable: (tracker) => tracker.retrack.scheduledAt ?? 0,
+              sortable: (tracker) => tracker.retrack.scheduledAt ?? Number.MAX_SAFE_INTEGER,
               render: (_, tracker: PageTracker) =>
                 tracker.retrack.scheduledAt != null ? (
                   <TimestampTableCell
@@ -319,7 +319,7 @@ export default function PageTrackers() {
               name: 'Last ran',
               field: 'retrack.lastRanAt',
               width: '130px',
-              sortable: (tracker) => tracker.retrack.lastRanAt ?? 0,
+              sortable: (tracker) => tracker.retrack.lastRanAt ?? Number.MAX_SAFE_INTEGER,
               render: (_, tracker: PageTracker) =>
                 tracker.retrack.lastRanAt != null ? (
                   <TimestampTableCell
