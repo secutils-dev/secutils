@@ -2,10 +2,12 @@ mod api_ext;
 mod api_trackers;
 mod database_ext;
 mod page_trackers;
+mod schedule;
 
 pub use self::{
     api_trackers::{ApiTracker, ApiTrackerConfig, ApiTrackerTarget},
     page_trackers::{PageTracker, PageTrackerConfig, PageTrackerTarget},
+    schedule::{expand_job_config, expand_schedule_preset},
 };
 use crate::{
     api::Api,
@@ -471,7 +473,7 @@ pub mod tests {
                             revisions: 3,
                             timeout: None,
                             job: Some(SchedulerJobConfig {
-                                schedule: "@hourly".to_string(),
+                                schedule: "0 0 * * * *".to_string(),
                                 retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                                     interval: Duration::from_secs(120),
                                     max_attempts: 5,
@@ -511,7 +513,7 @@ pub mod tests {
                 "config": {
                     "revisions": 3,
                     "job": Some(SchedulerJobConfig {
-                        schedule: "@hourly".to_string(),
+                        schedule: "0 0 * * * *".to_string(),
                         retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                             interval: Duration::from_secs(120),
                             max_attempts: 5,
@@ -1092,7 +1094,7 @@ pub mod tests {
                             revisions: 3,
                             timeout: None,
                             job: Some(SchedulerJobConfig {
-                                schedule: "@hourly".to_string(),
+                                schedule: "0 0 * * * *".to_string(),
                                 retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                                     interval: Duration::from_secs(120),
                                     max_attempts: 5,
@@ -1132,7 +1134,7 @@ pub mod tests {
                 "config": {
                     "revisions": 3,
                     "job": Some(SchedulerJobConfig {
-                        schedule: "@hourly".to_string(),
+                        schedule: "0 0 * * * *".to_string(),
                         retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                             interval: Duration::from_secs(120),
                             max_attempts: 5,

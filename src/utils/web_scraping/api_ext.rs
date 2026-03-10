@@ -33,7 +33,9 @@ use crate::{
     utils::{
         UtilsResource,
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
-        web_scraping::{ApiTracker, ApiTrackerTarget, PageTracker, PageTrackerTarget},
+        web_scraping::{
+            ApiTracker, ApiTrackerTarget, PageTracker, PageTrackerTarget, expand_job_config,
+        },
     },
 };
 use anyhow::{anyhow, bail};
@@ -204,7 +206,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                 config: TrackerConfig {
                     revisions: params.config.revisions,
                     timeout: None,
-                    job: params.config.job,
+                    job: params.config.job.map(expand_job_config),
                 },
                 tags: prepare_tags(&[
                     format!("{RETRACK_USER_TAG}:{}", self.user.id),
@@ -316,7 +318,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                     config: params.config.map(|config| TrackerConfig {
                         revisions: config.revisions,
                         timeout: None,
-                        job: config.job,
+                        job: config.job.map(expand_job_config),
                     }),
                     target: if let Some(target) = params.target {
                         Some(TrackerTarget::Page(PageTarget {
@@ -847,7 +849,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                 config: TrackerConfig {
                     revisions: params.config.revisions,
                     timeout: None,
-                    job: params.config.job,
+                    job: params.config.job.map(expand_job_config),
                 },
                 tags: prepare_tags(&[
                     format!("{RETRACK_USER_TAG}:{}", self.user.id),
@@ -970,7 +972,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                     config: params.config.map(|config| TrackerConfig {
                         revisions: config.revisions,
                         timeout: None,
-                        job: config.job,
+                        job: config.job.map(expand_job_config),
                     }),
                     target: target_update,
                     tags: Some(prepare_tags(&[
@@ -1447,7 +1449,7 @@ mod tests {
                             revisions: 3,
                             timeout: None,
                             job: Some(SchedulerJobConfig {
-                                schedule: "@hourly".to_string(),
+                                schedule: "0 0 * * * *".to_string(),
                                 retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                                     interval: Duration::from_secs(120),
                                     max_attempts: 5,
@@ -1487,7 +1489,7 @@ mod tests {
                 config: PageTrackerConfig {
                     revisions: 3,
                     job: Some(SchedulerJobConfig {
-                        schedule: "@hourly".to_string(),
+                        schedule: "0 0 * * * *".to_string(),
                         retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                             interval: Duration::from_secs(120),
                             max_attempts: 5,
@@ -1674,7 +1676,7 @@ mod tests {
         let api = api.web_scraping(&mock_user);
 
         let job_config = SchedulerJobConfig {
-            schedule: "@hourly".to_string(),
+            schedule: "0 0 * * * *".to_string(),
             retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                 interval: Duration::from_secs(120),
                 max_attempts: 5,
@@ -1876,7 +1878,7 @@ mod tests {
                 enabled: true,
                 config: PageTrackerConfig {
                     job: Some(SchedulerJobConfig {
-                        schedule: "@monthly".to_string(),
+                        schedule: "0 0 0 1 * *".to_string(),
                         retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
                             initial_interval: Duration::from_secs(120),
                             increment: Duration::from_secs(10),
@@ -1899,7 +1901,7 @@ mod tests {
                 enabled: true,
                 config: PageTrackerConfig {
                     job: Some(SchedulerJobConfig {
-                        schedule: "@hourly".to_string(),
+                        schedule: "0 0 * * * *".to_string(),
                         retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
                             initial_interval: Duration::from_secs(120),
                             increment: Duration::from_secs(10),
@@ -2138,7 +2140,7 @@ mod tests {
                 revisions: 4,
                 timeout: None,
                 job: Some(SchedulerJobConfig {
-                    schedule: "@hourly".to_string(),
+                    schedule: "0 0 * * * *".to_string(),
                     retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                         interval: Duration::from_secs(120),
                         max_attempts: 5,
@@ -2180,7 +2182,7 @@ mod tests {
                     config: Some(PageTrackerConfig {
                         revisions: 4,
                         job: Some(SchedulerJobConfig {
-                            schedule: "@hourly".to_string(),
+                            schedule: "0 0 * * * *".to_string(),
                             retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                                 interval: Duration::from_secs(120),
                                 max_attempts: 5,
@@ -2461,7 +2463,7 @@ mod tests {
                             revisions: 3,
                             timeout: None,
                             job: Some(SchedulerJobConfig {
-                                schedule: "@hourly".to_string(),
+                                schedule: "0 0 * * * *".to_string(),
                                 retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                                     interval: Duration::from_secs(120),
                                     max_attempts: 5,
@@ -2487,7 +2489,7 @@ mod tests {
         api.db.insert_user(&mock_user).await?;
 
         let job_config = SchedulerJobConfig {
-            schedule: "@hourly".to_string(),
+            schedule: "0 0 * * * *".to_string(),
             retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                 interval: Duration::from_secs(120),
                 max_attempts: 5,
@@ -2506,7 +2508,7 @@ mod tests {
                 config: PageTrackerConfig {
                     revisions: 3,
                     job: Some(SchedulerJobConfig {
-                        schedule: "@hourly".to_string(),
+                        schedule: "0 0 * * * *".to_string(),
                         retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                             interval: Duration::from_secs(120),
                             max_attempts: 5,
@@ -2689,7 +2691,7 @@ mod tests {
             update_and_fail(web_scraping.update_page_tracker(tracker.id, PageTrackerUpdateParams {
                 config: Some(PageTrackerConfig {
                     job: Some(SchedulerJobConfig {
-                        schedule: "@monthly".to_string(),
+                        schedule: "0 0 0 1 * *".to_string(),
                         retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
                             initial_interval: Duration::from_secs(120),
                             increment: Duration::from_secs(10),
@@ -2708,7 +2710,7 @@ mod tests {
             update_and_fail(web_scraping.update_page_tracker(tracker.id, PageTrackerUpdateParams {
                  config: Some(PageTrackerConfig {
                     job: Some(SchedulerJobConfig {
-                        schedule: "@hourly".to_string(),
+                        schedule: "0 0 * * * *".to_string(),
                         retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
                             initial_interval: Duration::from_secs(120),
                             increment: Duration::from_secs(10),
@@ -3345,7 +3347,7 @@ mod tests {
                 revisions: 3,
                 timeout: None,
                 job: Some(SchedulerJobConfig {
-                    schedule: "@hourly".to_string(),
+                    schedule: "0 0 * * * *".to_string(),
                     retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                         interval: Duration::from_secs(120),
                         max_attempts: 5,
@@ -3395,7 +3397,7 @@ mod tests {
                             revisions: 3,
                             timeout: None,
                             job: Some(SchedulerJobConfig {
-                                schedule: "@hourly".to_string(),
+                                schedule: "0 0 * * * *".to_string(),
                                 retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                                     interval: Duration::from_secs(120),
                                     max_attempts: 5,
@@ -3434,7 +3436,7 @@ mod tests {
                 config: ApiTrackerConfig {
                     revisions: 3,
                     job: Some(SchedulerJobConfig {
-                        schedule: "@hourly".to_string(),
+                        schedule: "0 0 * * * *".to_string(),
                         retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                             interval: Duration::from_secs(120),
                             max_attempts: 5,
@@ -3489,7 +3491,7 @@ mod tests {
         let api = api.web_scraping(&mock_user);
 
         let job_config = SchedulerJobConfig {
-            schedule: "@hourly".to_string(),
+            schedule: "0 0 * * * *".to_string(),
             retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                 interval: Duration::from_secs(120),
                 max_attempts: 5,
@@ -3697,7 +3699,7 @@ mod tests {
                 enabled: true,
                 config: ApiTrackerConfig {
                     job: Some(SchedulerJobConfig {
-                        schedule: "@monthly".to_string(),
+                        schedule: "0 0 0 1 * *".to_string(),
                         retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
                             initial_interval: Duration::from_secs(120),
                             increment: Duration::from_secs(10),
@@ -3721,7 +3723,7 @@ mod tests {
                 enabled: true,
                 config: ApiTrackerConfig {
                     job: Some(SchedulerJobConfig {
-                        schedule: "@hourly".to_string(),
+                        schedule: "0 0 * * * *".to_string(),
                         retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
                             initial_interval: Duration::from_secs(120),
                             increment: Duration::from_secs(10),
@@ -4021,7 +4023,7 @@ mod tests {
                 revisions: 4,
                 timeout: None,
                 job: Some(SchedulerJobConfig {
-                    schedule: "@hourly".to_string(),
+                    schedule: "0 0 * * * *".to_string(),
                     retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                         interval: Duration::from_secs(120),
                         max_attempts: 5,
@@ -4062,7 +4064,7 @@ mod tests {
                     config: Some(ApiTrackerConfig {
                         revisions: 4,
                         job: Some(SchedulerJobConfig {
-                            schedule: "@hourly".to_string(),
+                            schedule: "0 0 * * * *".to_string(),
                             retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                                 interval: Duration::from_secs(120),
                                 max_attempts: 5,
@@ -4222,7 +4224,7 @@ mod tests {
                             revisions: 3,
                             timeout: None,
                             job: Some(SchedulerJobConfig {
-                                schedule: "@hourly".to_string(),
+                                schedule: "0 0 * * * *".to_string(),
                                 retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                                     interval: Duration::from_secs(120),
                                     max_attempts: 5,
@@ -4247,7 +4249,7 @@ mod tests {
         api.db.insert_user(&mock_user).await?;
 
         let job_config = SchedulerJobConfig {
-            schedule: "@hourly".to_string(),
+            schedule: "0 0 * * * *".to_string(),
             retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                 interval: Duration::from_secs(120),
                 max_attempts: 5,
@@ -4266,7 +4268,7 @@ mod tests {
                 config: ApiTrackerConfig {
                     revisions: 3,
                     job: Some(SchedulerJobConfig {
-                        schedule: "@hourly".to_string(),
+                        schedule: "0 0 * * * *".to_string(),
                         retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
                             interval: Duration::from_secs(120),
                             max_attempts: 5,
@@ -4455,7 +4457,7 @@ mod tests {
             update_and_fail(web_scraping.update_api_tracker(tracker.id, ApiTrackerUpdateParams {
                 config: Some(ApiTrackerConfig {
                     job: Some(SchedulerJobConfig {
-                        schedule: "@monthly".to_string(),
+                        schedule: "0 0 0 1 * *".to_string(),
                         retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
                             initial_interval: Duration::from_secs(120),
                             increment: Duration::from_secs(10),
@@ -4474,7 +4476,7 @@ mod tests {
             update_and_fail(web_scraping.update_api_tracker(tracker.id, ApiTrackerUpdateParams {
                 config: Some(ApiTrackerConfig {
                     job: Some(SchedulerJobConfig {
-                        schedule: "@hourly".to_string(),
+                        schedule: "0 0 * * * *".to_string(),
                         retry_strategy: Some(SchedulerJobRetryStrategy::Linear {
                             initial_interval: Duration::from_secs(120),
                             increment: Duration::from_secs(10),
@@ -5433,6 +5435,345 @@ mod tests {
             err_msg.contains("extractor script cannot be empty"),
             "Expected empty extractor error, got: {err_msg}"
         );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn expands_schedule_preset_when_creating_page_tracker(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let retrack_tracker = mock_retrack_tracker()?;
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/trackers")
+                .body_excludes("@hourly")
+                .body_matches(r#""schedule":"0 \d{1,2} \* \* \* \*""#);
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        api.web_scraping(&mock_user)
+            .create_page_tracker(PageTrackerCreateParams {
+                name: "name_one".to_string(),
+                enabled: true,
+                config: PageTrackerConfig {
+                    revisions: 3,
+                    job: Some(SchedulerJobConfig {
+                        schedule: "@hourly".to_string(),
+                        retry_strategy: None,
+                    }),
+                },
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                    accept_invalid_certificates: false,
+                    engine: None,
+                },
+                notifications: false,
+                secrets: Default::default(),
+            })
+            .await?;
+
+        retrack_create_api_mock.assert();
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn expands_schedule_preset_when_updating_page_tracker(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let retrack_tracker = mock_retrack_tracker()?;
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let web_scraping = api.web_scraping(&mock_user);
+        let tracker = web_scraping
+            .create_page_tracker(PageTrackerCreateParams {
+                name: "name_one".to_string(),
+                enabled: true,
+                config: PageTrackerConfig {
+                    revisions: 3,
+                    job: None,
+                },
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                    accept_invalid_certificates: false,
+                    engine: None,
+                },
+                notifications: false,
+                secrets: Default::default(),
+            })
+            .await?;
+        retrack_create_api_mock.assert();
+
+        let updated_retrack_tracker = Tracker {
+            config: TrackerConfig {
+                revisions: 3,
+                timeout: None,
+                job: Some(SchedulerJobConfig {
+                    schedule: "0 0 0 * * 0".to_string(),
+                    retry_strategy: None,
+                }),
+            },
+            ..retrack_tracker.clone()
+        };
+        let retrack_update_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::PUT)
+                .path(format!("/api/trackers/{}", retrack_tracker.id))
+                .body_excludes("@weekly")
+                .body_matches(r#""schedule":"0 \d{1,2} \d{1,2} \* \* [0-6]""#);
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&updated_retrack_tracker);
+        });
+        let retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&updated_retrack_tracker);
+        });
+
+        web_scraping
+            .update_page_tracker(
+                tracker.id,
+                PageTrackerUpdateParams {
+                    config: Some(PageTrackerConfig {
+                        revisions: 3,
+                        job: Some(SchedulerJobConfig {
+                            schedule: "@weekly".to_string(),
+                            retry_strategy: None,
+                        }),
+                    }),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        retrack_update_api_mock.assert();
+        retrack_get_api_mock.assert();
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn expands_schedule_preset_when_creating_api_tracker(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let retrack_tracker = Tracker {
+            id: uuid!("00000000-0000-0000-0000-000000000010"),
+            name: "api_one".to_string(),
+            enabled: true,
+            target: TrackerTarget::Api(ApiTarget {
+                requests: vec![TargetRequest::new(Url::parse(
+                    "https://api.example.com/data",
+                )?)],
+                configurator: None,
+                extractor: None,
+                params: None,
+            }),
+            job_id: None,
+            config: TrackerConfig {
+                revisions: 3,
+                timeout: None,
+                job: Some(SchedulerJobConfig {
+                    schedule: "@daily".to_string(),
+                    retry_strategy: None,
+                }),
+            },
+            tags: vec![],
+            actions: vec![],
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            scheduled_at: None,
+            last_ran_at: None,
+        };
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/trackers")
+                .body_excludes("@daily")
+                .body_matches(r#""schedule":"0 \d{1,2} \d{1,2} \* \* \*""#);
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        api.web_scraping(&mock_user)
+            .create_api_tracker(ApiTrackerCreateParams {
+                name: "api_one".to_string(),
+                enabled: true,
+                config: ApiTrackerConfig {
+                    revisions: 3,
+                    job: Some(SchedulerJobConfig {
+                        schedule: "@daily".to_string(),
+                        retry_strategy: None,
+                    }),
+                },
+                target: ApiTrackerTarget {
+                    url: "https://api.example.com/data".parse()?,
+                    method: None,
+                    headers: None,
+                    body: None,
+                    media_type: None,
+                    accept_statuses: None,
+                    accept_invalid_certificates: false,
+                    configurator: None,
+                    extractor: None,
+                },
+                notifications: false,
+                secrets: Default::default(),
+            })
+            .await?;
+
+        retrack_create_api_mock.assert();
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn expands_schedule_preset_when_updating_api_tracker(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let retrack_tracker = Tracker {
+            id: uuid!("00000000-0000-0000-0000-000000000010"),
+            name: "api_one".to_string(),
+            enabled: true,
+            target: TrackerTarget::Api(ApiTarget {
+                requests: vec![TargetRequest::new(Url::parse(
+                    "https://api.example.com/data",
+                )?)],
+                configurator: None,
+                extractor: None,
+                params: None,
+            }),
+            job_id: None,
+            config: TrackerConfig {
+                revisions: 3,
+                timeout: None,
+                job: None,
+            },
+            tags: vec![],
+            actions: vec![],
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            scheduled_at: None,
+            last_ran_at: None,
+        };
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let web_scraping = api.web_scraping(&mock_user);
+        let tracker = web_scraping
+            .create_api_tracker(ApiTrackerCreateParams {
+                name: "api_one".to_string(),
+                enabled: true,
+                config: ApiTrackerConfig {
+                    revisions: 3,
+                    job: None,
+                },
+                target: ApiTrackerTarget {
+                    url: "https://api.example.com/data".parse()?,
+                    method: None,
+                    headers: None,
+                    body: None,
+                    media_type: None,
+                    accept_statuses: None,
+                    accept_invalid_certificates: false,
+                    configurator: None,
+                    extractor: None,
+                },
+                notifications: false,
+                secrets: Default::default(),
+            })
+            .await?;
+        retrack_create_api_mock.assert();
+
+        let updated_retrack_tracker = Tracker {
+            config: TrackerConfig {
+                revisions: 3,
+                timeout: None,
+                job: Some(SchedulerJobConfig {
+                    schedule: "0 0 0 1 * *".to_string(),
+                    retry_strategy: None,
+                }),
+            },
+            ..retrack_tracker.clone()
+        };
+        let retrack_update_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::PUT)
+                .path(format!("/api/trackers/{}", retrack_tracker.id))
+                .body_excludes("@monthly")
+                .body_matches(r#""schedule":"0 \d{1,2} \d{1,2} \d{1,2} \* \*""#);
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&updated_retrack_tracker);
+        });
+        let retrack_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&updated_retrack_tracker);
+        });
+
+        web_scraping
+            .update_api_tracker(
+                tracker.id,
+                ApiTrackerUpdateParams {
+                    config: Some(ApiTrackerConfig {
+                        revisions: 3,
+                        job: Some(SchedulerJobConfig {
+                            schedule: "@monthly".to_string(),
+                            retry_strategy: None,
+                        }),
+                    }),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        retrack_update_api_mock.assert();
+        retrack_get_api_mock.assert();
 
         Ok(())
     }

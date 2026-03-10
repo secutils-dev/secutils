@@ -1,4 +1,7 @@
-use crate::{error::Error as SecutilsError, scheduler::CronExt, server::AppState, users::User};
+use crate::{
+    error::Error as SecutilsError, scheduler::CronExt, server::AppState, users::User,
+    utils::web_scraping::expand_schedule_preset,
+};
 use actix_web::{HttpResponse, web};
 use anyhow::anyhow;
 use croner::{Cron, Direction};
@@ -32,8 +35,9 @@ pub async fn scheduler_parse_schedule(
     user: User,
     body_params: web::Json<SchedulerParseScheduleParams>,
 ) -> Result<HttpResponse, SecutilsError> {
-    // First, try parse schedule as cron expression.
-    let schedule = match Cron::parse_pattern(&body_params.schedule) {
+    // Expand preset aliases to anchored cron expressions so the preview matches actual scheduling.
+    let effective_schedule = expand_schedule_preset(&body_params.schedule);
+    let schedule = match Cron::parse_pattern(&effective_schedule) {
         Ok(schedule) => schedule,
         Err(err) => {
             error!(user.id = %user.id, "Failed to parse schedule: {err}");

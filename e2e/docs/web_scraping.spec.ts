@@ -153,11 +153,24 @@ test.describe('Web scraping guide screenshots', () => {
     await highlightOn(trackPageButton);
     await page.screenshot({ path: join(IMG_DIR, 'detect_step1_empty.png') });
 
+    // Mock parse_schedule so the calendar button reaches a stable enabled state.
+    await page.route('**/api/scheduler/parse_schedule', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          minInterval: 3600000,
+          nextOccurrences: [1740003600, 1740007200, 1740010800, 1740014400, 1740018000],
+        }),
+      });
+    });
+
     // Create the tracker via API with hourly schedule and notifications.
+    // Use a fixed anchored cron (minute 0) so the anchor controls are deterministic.
     const createResponse = await page.request.post('/api/utils/web_scraping/page', {
       data: {
         name: 'World Clock',
-        config: { revisions: 3, job: { schedule: '@hourly' } },
+        config: { revisions: 3, job: { schedule: '0 0 * * * *' } },
         target: { extractor: extractorScript },
         notifications: true,
       },
@@ -172,6 +185,9 @@ test.describe('Web scraping guide screenshots', () => {
     await trackerRow.getByRole('button', { name: 'Edit' }).click();
     const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit tracker' }) });
     await expect(flyout).toBeVisible();
+
+    // Wait for the calendar button to settle (parse_schedule call resolved).
+    await expect(flyout.getByLabel('Show next occurrences')).toBeVisible({ timeout: 15000 });
 
     await flyout.getByText('Content extractor').first().scrollIntoViewIfNeeded();
     const saveButton = flyout.getByRole('button', { name: 'Save' });
@@ -1038,6 +1054,18 @@ test.describe('API tracker guide screenshots', () => {
 
     const API_URL = 'http://host.docker.internal:7171/api/ui/state';
 
+    // Mock parse_schedule so the calendar button reaches a stable enabled state.
+    await page.route('**/api/scheduler/parse_schedule', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          minInterval: 3600000,
+          nextOccurrences: [1740003600, 1740007200, 1740010800, 1740014400, 1740018000],
+        }),
+      });
+    });
+
     // Step 1: Navigate to API trackers and show the empty state.
     await goto(page, '/ws/web_scraping__api');
     const trackApiButton = page.getByRole('button', { name: 'Track API' });
@@ -1065,6 +1093,14 @@ test.describe('API tracker guide screenshots', () => {
       .filter({ has: page.locator('h3', { hasText: 'Change tracking' }) });
     const frequencySelect = changeTrackingGroup.locator('select');
     await frequencySelect.selectOption('@hourly');
+
+    // Pin the minute anchor to 0 so the anchor controls are deterministic.
+    await expect(flyout.getByText('UTC')).toBeVisible();
+    const frequencyRow = flyout.locator('.euiFormRow').filter({ has: page.locator('label', { hasText: 'Frequency' }) });
+    await frequencyRow.locator('select').nth(1).selectOption('0');
+
+    // Wait for the calendar button to settle (parse_schedule call resolved).
+    await expect(flyout.getByLabel('Show next occurrences')).toBeVisible({ timeout: 15000 });
 
     const notificationSwitch = flyout.getByLabel('Notification on change');
     await notificationSwitch.check();

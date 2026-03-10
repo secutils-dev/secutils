@@ -11,8 +11,26 @@ export const PAGE_TRACKER_SCHEDULES = [
   { value: PAGE_TRACKER_CUSTOM_SCHEDULE, text: 'Custom' },
 ];
 
+/// Recognizes anchored cron expressions produced by `expand_schedule_preset` and maps them back
+/// to their preset alias. Returns `null` for non-matching patterns.
+export function detectSchedulePreset(schedule: string): string | null {
+  const parts = schedule.split(' ');
+  if (parts.length !== 6 || parts[0] !== '0' || parts[4] !== '*') {
+    return null;
+  }
+  const [, min, hour, dom, , dow] = parts;
+  const isNum = (s: string) => /^\d+$/.test(s);
+
+  if (hour === '*' && dom === '*' && dow === '*' && isNum(min)) return '@hourly';
+  if (dom === '*' && dow === '*' && isNum(min) && isNum(hour)) return '@daily';
+  if (dom === '*' && isNum(min) && isNum(hour) && isNum(dow)) return '@weekly';
+  if (dow === '*' && isNum(min) && isNum(hour) && isNum(dom)) return '@monthly';
+  return null;
+}
+
 export function getScheduleMinInterval(schedule: string) {
-  switch (schedule) {
+  const effective = detectSchedulePreset(schedule) ?? schedule;
+  switch (effective) {
     case '@hourly':
       return 3600000;
     case '@daily':
@@ -25,6 +43,78 @@ export function getScheduleMinInterval(schedule: string) {
       return 0;
   }
 }
+
+export interface AnchorParams {
+  minute: number;
+  hour: number;
+  weekday: number;
+  dayOfMonth: number;
+}
+
+export function defaultAnchorParams(): AnchorParams {
+  const now = new Date();
+  return {
+    minute: now.getUTCMinutes(),
+    hour: now.getUTCHours(),
+    weekday: now.getUTCDay(),
+    dayOfMonth: Math.min(now.getUTCDate(), 28),
+  };
+}
+
+export function buildAnchoredCron(preset: string, params: AnchorParams): string {
+  switch (preset) {
+    case '@hourly':
+      return `0 ${params.minute} * * * *`;
+    case '@daily':
+      return `0 ${params.minute} ${params.hour} * * *`;
+    case '@weekly':
+      return `0 ${params.minute} ${params.hour} * * ${params.weekday}`;
+    case '@monthly':
+      return `0 ${params.minute} ${params.hour} ${params.dayOfMonth} * *`;
+    default:
+      return preset;
+  }
+}
+
+export function parseAnchorParams(schedule: string): AnchorParams | null {
+  const preset = detectSchedulePreset(schedule);
+  if (!preset) {
+    return null;
+  }
+
+  const [, min, hour, dom, , dow] = schedule.split(' ');
+  return {
+    minute: parseInt(min, 10),
+    hour: hour !== '*' ? parseInt(hour, 10) : 0,
+    weekday: dow !== '*' ? parseInt(dow, 10) : 0,
+    dayOfMonth: dom !== '*' ? parseInt(dom, 10) : 1,
+  };
+}
+
+export const WEEKDAY_OPTIONS = [
+  { value: '0', text: 'Sunday' },
+  { value: '1', text: 'Monday' },
+  { value: '2', text: 'Tuesday' },
+  { value: '3', text: 'Wednesday' },
+  { value: '4', text: 'Thursday' },
+  { value: '5', text: 'Friday' },
+  { value: '6', text: 'Saturday' },
+];
+
+export const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
+  value: String(i),
+  text: String(i).padStart(2, '0'),
+}));
+
+export const MINUTE_OPTIONS = Array.from({ length: 60 }, (_, i) => ({
+  value: String(i),
+  text: String(i).padStart(2, '0'),
+}));
+
+export const DAY_OF_MONTH_OPTIONS = Array.from({ length: 28 }, (_, i) => ({
+  value: String(i + 1),
+  text: String(i + 1),
+}));
 
 export function getRetryStrategies(retryIntervals: RetryInterval[]) {
   return [
