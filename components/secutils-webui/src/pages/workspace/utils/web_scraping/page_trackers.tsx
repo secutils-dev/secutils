@@ -304,7 +304,7 @@ export default function PageTrackers() {
               name: 'Next run',
               field: 'retrack.scheduledAt',
               width: '130px',
-              sortable: (tracker) => tracker.retrack.scheduledAt ?? Number.MAX_SAFE_INTEGER,
+              sortable: (tracker) => tracker.retrack.scheduledAt ?? null,
               render: (_, tracker: PageTracker) =>
                 tracker.retrack.scheduledAt != null ? (
                   <TimestampTableCell
@@ -319,7 +319,7 @@ export default function PageTrackers() {
               name: 'Last ran',
               field: 'retrack.lastRanAt',
               width: '130px',
-              sortable: (tracker) => tracker.retrack.lastRanAt ?? Number.MAX_SAFE_INTEGER,
+              sortable: (tracker) => tracker.retrack.lastRanAt ?? null,
               render: (_, tracker: PageTracker) =>
                 tracker.retrack.lastRanAt != null ? (
                   <TimestampTableCell
