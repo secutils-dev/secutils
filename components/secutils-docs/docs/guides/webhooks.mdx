@@ -216,6 +216,8 @@ interface Context {
   headers: Record<string, string>;
   // HTTP path of the received request.
   path: string;
+  // Raw query string of the received request (without the leading `?`), if present.
+  rawQuery?: string;
   // Parsed query string of the received request.
   query: Record<string, string>;
   // HTTP body of the received request in binary form.
@@ -239,6 +241,8 @@ interface ScriptResult {
   headers?: Record<string, string>;
   // Optional HTTP body of the response. If not specified, the default body of responder is used.
   body?: Uint8Array;
+  // When true, the request is not recorded in the responder's tracked request history.
+  skipRequest?: boolean;
 }
 ```
 
@@ -311,6 +315,84 @@ This script reads a user secret and includes it in the response. Secrets are man
   return {
     headers: { 'Content-Type': 'application/json' },
     body: Deno.core.encode(JSON.stringify({ apiKey }))
+  };
+})();
+```
+
+### Proxy requests to an upstream service (MITM)
+
+Responder scripts can forward incoming requests to a real backend using `Deno.core.ops.op_proxy_request()`, inspect or modify the response, and return it to the client. This turns the responder into a **man-in-the-middle (MITM) proxy** - useful for debugging, testing, and API traffic inspection.
+
+**Pure proxy** - forward every request as-is:
+
+```javascript
+(async () => {
+  return await Deno.core.ops.op_proxy_request({
+    url: 'https://real-backend:9200' + context.path,
+    method: context.method,
+    headers: context.headers,
+    body: context.body,
+  });
+})()
+```
+
+**Transform the response** - e.g. inject a field into JSON responses:
+
+```javascript
+(async () => {
+  const resp = await Deno.core.ops.op_proxy_request({
+    url: `https://real-backend:9200${context.path}`,
+    method: context.method,
+    headers: context.headers,
+    body: context.body,
+  });
+
+  if (resp.headers['content-type']?.includes('application/json')) {
+    const body = JSON.parse(Deno.core.decode(new Uint8Array(resp.body)));
+    body._proxied = true;
+    return {
+      statusCode: resp.statusCode,
+      headers: resp.headers,
+      body: Array.from(Deno.core.encode(JSON.stringify(body))),
+    };
+  }
+
+  return resp;
+})()
+```
+
+**Conditional proxy** - proxy only certain paths, mock the rest:
+
+```javascript
+(async () => {
+  if (context.path.startsWith('/_cluster')) {
+    return await Deno.core.ops.op_proxy_request({
+      url: `https://real-backend:9200${context.path}`,
+      method: context.method,
+      headers: context.headers,
+      body: context.body,
+    });
+  }
+  return {
+    statusCode: 200,
+    body: Array.from(Deno.core.encode(JSON.stringify({ mock: true }))),
+  };
+})()
+```
+
+See [`Deno.core.ops.op_proxy_request()`](/docs/guides/platform/deno_runtime#op_proxy_request) for the full API reference including request/response interfaces, error handling, and security considerations.
+
+### Selectively track requests
+
+By default every incoming request is recorded in the responder's tracked history (up to the configured limit). If you only care about certain requests, the script can return `skipRequest: true` to suppress tracking for the current request while still returning a normal response:
+
+```javascript
+(async () => {
+  // Only track non-health-check requests.
+  const skip = context.path === '/healthz' || context.path === '/readyz';
+  return {
+    body: Deno.core.encode('ok'),
+    skipRequest: skip,
   };
 })();
 ```

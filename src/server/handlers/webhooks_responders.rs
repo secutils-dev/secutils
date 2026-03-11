@@ -1,7 +1,7 @@
 use crate::{
     config::Config,
     error::Error as SecutilsError,
-    js_runtime::{JsRuntime, JsRuntimeConfig},
+    js_runtime::{JsRuntime, JsRuntimeConfig, ProxyState},
     server::app_state::AppState,
     utils::{
         UtilsResource,
@@ -10,20 +10,32 @@ use crate::{
 };
 use actix_web::{
     HttpRequest, HttpResponse,
-    body::MessageBody,
+    body::BoxBody,
     http::{
         StatusCode,
-        header::{HeaderName, HeaderValue},
+        header::{HeaderName as ActixHeaderName, HeaderValue as ActixHeaderValue},
     },
     web,
 };
 use anyhow::bail;
 use bytes::Bytes;
 use serde::Deserialize;
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::HashMap, sync::Arc};
+use tokio::sync::Semaphore;
 use tracing::{error, info, warn};
 
 const X_REPLACED_PATH_HEADER_NAME: &str = "x-replaced-path";
+
+type ResponderOutput = (u16, Option<Vec<(String, String)>>, Option<Vec<u8>>, bool);
+
+struct ResponderInfo<'a> {
+    resource: &'a str,
+    resource_group: &'a str,
+    id: uuid::Uuid,
+    name: &'a str,
+    restrict_to_public_urls: bool,
+    max_proxy_response_size: usize,
+}
 
 #[derive(Deserialize)]
 pub struct PathParams {
@@ -157,63 +169,92 @@ pub async fn webhooks_responders(
         return Ok(HttpResponse::NotFound().finish());
     }
 
-    let headers = request
-        .headers()
-        .iter()
-        .map(|(header_name, header_value)| {
-            (
-                Cow::Borrowed(header_name.as_str()),
-                Cow::Borrowed(header_value.as_bytes()),
-            )
-        })
-        .collect::<Vec<_>>();
-    webhooks
-        .create_responder_request(
-            responder.id,
-            RespondersRequestCreateParams {
-                client_address: request.peer_addr(),
-                method: Cow::Borrowed(request.method().as_str()),
-                headers: if headers.is_empty() {
-                    None
-                } else {
-                    Some(headers)
-                },
-                url: Cow::Owned(if let Some(query) = request.uri().query() {
-                    format!("{responder_path}?{query}")
-                } else {
-                    responder_path.to_string()
-                }),
-                body: if payload.is_empty() {
-                    None
-                } else {
-                    Some(Cow::Borrowed(&payload))
-                },
-            },
-        )
-        .await?;
-
     // Extract logging context before consuming responder to enrich logs.
     let responder_id = responder.id;
     let responder_name = responder.name;
     let (resource, resource_group) = UtilsResource::WebhooksResponders.into();
 
-    // Check if body is supposed to be a JavaScript code.
-    let secrets_access = &responder.settings.secrets;
-    let (status_code, headers, body) = match &responder.settings.script {
-        Some(script) => {
-            let query = web::Query::<HashMap<String, String>>::from_query(request.query_string())
-                .unwrap()
-                .into_inner();
+    // Configure subscription limits.
+    let subscription_config = user
+        .subscription
+        .get_features(&state.config)
+        .config
+        .webhooks;
 
-            let decrypted_secrets = if !secrets_access.is_none() {
-                state.api.secrets(&user).get_decrypted_secrets(secrets_access).await.unwrap_or_else(|err| {
-                    error!(user.id = %user.id, "Failed to decrypt secrets for responder script: {err:?}");
-                    HashMap::new()
-                })
-            } else {
+    // Acquire a concurrency permit for this responder.
+    let semaphore = state
+        .responder_semaphores
+        .entry(responder_id)
+        .or_insert_with(|| {
+            Arc::new(Semaphore::new(
+                subscription_config.max_concurrent_responder_requests,
+            ))
+        })
+        .clone();
+    let _permit = match semaphore.try_acquire_owned() {
+        Ok(permit) => permit,
+        Err(_) => {
+            warn!(
+                user.id = %user.id,
+                util.resource = resource,
+                util.resource_group = resource_group,
+                util.resource_id = %responder_id,
+                util.resource_name = responder_name,
+                "Responder '{}' has reached its concurrent request limit ({}).",
+                responder_name,
+                subscription_config.max_concurrent_responder_requests,
+            );
+            return Ok(HttpResponse::TooManyRequests()
+                .insert_header(("Retry-After", "1"))
+                .body(format!(
+                    "Responder '{}' has reached its concurrent request limit ({}). Try again later.",
+                    responder_name, subscription_config.max_concurrent_responder_requests,
+                )));
+        }
+    };
+
+    let responder_settings = responder.settings;
+    let query = web::Query::<HashMap<String, String>>::from_query(request.query_string())
+        .map(|query| query.into_inner())
+        .unwrap_or_default();
+
+    let decrypted_secrets = if !responder_settings.secrets.is_none() {
+        state
+            .api
+            .secrets(&user)
+            .get_decrypted_secrets(&responder_settings.secrets)
+            .await
+            .unwrap_or_else(|err| {
+                error!(user.id = %user.id, "Failed to decrypt secrets for responder handling: {err:?}");
                 HashMap::new()
-            };
+            })
+    } else {
+        HashMap::new()
+    };
 
+    let default_status_code = responder_settings.status_code;
+    let mut default_headers = responder_settings.headers.clone();
+    let mut default_body = responder_settings.body.clone().map(String::into_bytes);
+
+    if !decrypted_secrets.is_empty() {
+        if let Some(ref mut b) = default_body {
+            *b = resolve_secret_templates(
+                std::str::from_utf8(b).unwrap_or_default(),
+                &decrypted_secrets,
+            )
+            .into_bytes();
+        }
+        if let Some(ref mut h) = default_headers {
+            for (_, value) in h.iter_mut() {
+                if value.contains("${secrets.") {
+                    *value = resolve_secret_templates(value, &decrypted_secrets);
+                }
+            }
+        }
+    }
+
+    let script_outcome: Result<ResponderOutput, HttpResponse<BoxBody>> =
+        if let Some(script) = responder_settings.script.as_ref() {
             let js_script_context = ResponderScriptContext {
                 client_address: request.peer_addr(),
                 method: request.method().as_str(),
@@ -223,6 +264,7 @@ pub async fn webhooks_responders(
                     .map(|(name, value)| (name.as_str(), value.to_str().unwrap_or_default()))
                     .collect(),
                 path: responder_path.as_str(),
+                raw_query: request.uri().query(),
                 query: query
                     .iter()
                     .map(|(k, v)| (k.as_str(), v.as_str()))
@@ -231,97 +273,87 @@ pub async fn webhooks_responders(
                 secrets: decrypted_secrets,
             };
 
-            // Configure JavaScript runtime based on user's subscription level/overrides.
-            let subscription_config = user
-                .subscription
-                .get_features(&state.config)
-                .config
-                .webhooks;
-            let js_runtime_config = JsRuntimeConfig {
-                max_heap_size: subscription_config.js_runtime_heap_size,
-                max_user_script_execution_time: subscription_config
-                    .js_runtime_script_execution_time,
+            let responder_info = ResponderInfo {
+                resource,
+                resource_group,
+                id: responder_id,
+                name: &responder_name,
+                restrict_to_public_urls: subscription_config.restrict_to_public_urls,
+                max_proxy_response_size: subscription_config.max_proxy_response_size,
             };
-
-            let js_code = format!(r#"(async (globalThis) => {{ return {script}; }})(globalThis);"#);
-            let override_result = match JsRuntime::new(&js_runtime_config)
-                .execute_script::<Option<ResponderScriptResult>>(js_code, Some(js_script_context))
-                .await
+            match execute_responder_script::<Option<ResponderScriptResult>>(
+                &state,
+                *user.id,
+                &subscription_config,
+                script,
+                &js_script_context,
+                &responder_info,
+            )
+            .await
             {
-                Ok((override_result, execution_time)) => {
-                    info!(
-                        user.id = %user.id,
-                        util.resource = resource,
-                        util.resource_group = resource_group,
-                        util.resource_id = %responder_id,
-                        util.resource_name = responder_name,
-                        metrics.script_execution_time = execution_time.as_nanos() as u64,
-                        "Executed responder user script in {execution_time:.2?}.",
-                    );
-                    override_result.unwrap_or_default()
+                Ok(override_result) => {
+                    let override_result = override_result.unwrap_or_default();
+                    let skip_request = override_result.skip_request.unwrap_or(false);
+                    Ok((
+                        override_result.status_code.unwrap_or(default_status_code),
+                        override_result
+                            .headers
+                            .map(|headers| headers.into_iter().collect())
+                            .or(default_headers),
+                        override_result
+                            .body
+                            .map(|body| body.to_vec())
+                            .or(default_body),
+                        skip_request,
+                    ))
                 }
-                Err(err) => {
-                    error!(
-                        user.id = %user.id,
-                        util.resource = resource,
-                        util.resource_group = resource_group,
-                        util.resource_id = %responder_id,
-                        util.resource_name = responder_name,
-                        "Failed to execute responder user script: {err:?}"
-                    );
-                    return Ok(HttpResponse::InternalServerError().body(err.to_string()));
-                }
-            };
-
-            (
-                override_result
-                    .status_code
-                    .unwrap_or(responder.settings.status_code),
-                override_result
-                    .headers
-                    .map(|headers| headers.into_iter().collect())
-                    .or(responder.settings.headers),
-                override_result
-                    .body
-                    .map(|override_body| override_body.boxed())
-                    .or_else(|| responder.settings.body.map(|body| body.boxed())),
-            )
-        }
-        None => {
-            let mut body = responder.settings.body;
-            let mut headers = responder.settings.headers;
-
-            if !secrets_access.is_none() {
-                let secrets = state
-                    .api
-                    .secrets(&user)
-                    .get_decrypted_secrets(secrets_access)
-                    .await
-                    .unwrap_or_else(|err| {
-                        error!(user.id = %user.id, "Failed to decrypt secrets for template interpolation: {err:?}");
-                        HashMap::new()
-                    });
-
-                if !secrets.is_empty() {
-                    if let Some(ref mut b) = body {
-                        *b = resolve_secret_templates(b, &secrets);
-                    }
-                    if let Some(ref mut h) = headers {
-                        for (_, value) in h.iter_mut() {
-                            if value.contains("${secrets.") {
-                                *value = resolve_secret_templates(value, &secrets);
-                            }
-                        }
-                    }
-                }
+                Err(response) => Err(response),
             }
+        } else {
+            Ok((default_status_code, default_headers, default_body, false))
+        };
 
-            (
-                responder.settings.status_code,
-                headers,
-                body.map(|b| b.boxed()),
+    let skip_request = matches!(&script_outcome, Ok((_, _, _, true)));
+    if !skip_request {
+        let tracked_headers = request
+            .headers()
+            .iter()
+            .map(|(header_name, header_value)| {
+                (
+                    Cow::Borrowed(header_name.as_str()),
+                    Cow::Borrowed(header_value.as_bytes()),
+                )
+            })
+            .collect::<Vec<_>>();
+        webhooks
+            .create_responder_request(
+                responder_id,
+                RespondersRequestCreateParams {
+                    client_address: request.peer_addr(),
+                    method: Cow::Borrowed(request.method().as_str()),
+                    headers: if tracked_headers.is_empty() {
+                        None
+                    } else {
+                        Some(tracked_headers)
+                    },
+                    url: Cow::Owned(if let Some(query) = request.uri().query() {
+                        format!("{responder_path}?{query}")
+                    } else {
+                        responder_path.to_string()
+                    }),
+                    body: if payload.is_empty() {
+                        None
+                    } else {
+                        Some(Cow::Borrowed(&payload))
+                    },
+                },
             )
-        }
+            .await?;
+    }
+
+    let (status_code, headers, body, _) = match script_outcome {
+        Ok(output) => output,
+        Err(response) => return Ok(response),
     };
 
     // Prepare response, set response status code.
@@ -341,14 +373,14 @@ pub async fn webhooks_responders(
     };
 
     // Prepare response, set response headers.
-    let mut response = HttpResponse::new(status_code);
+    let mut response = HttpResponse::build(status_code);
     for (header_name, header_value) in headers.iter().flatten() {
         match (
-            HeaderName::from_bytes(header_name.as_bytes()),
-            HeaderValue::from_str(header_value),
+            ActixHeaderName::from_bytes(header_name.as_bytes()),
+            ActixHeaderValue::from_str(header_value),
         ) {
             (Ok(header_name), Ok(header_value)) => {
-                response.headers_mut().insert(header_name, header_value);
+                response.insert_header((header_name, header_value));
             }
             (Err(err), _) => {
                 error!(
@@ -377,10 +409,95 @@ pub async fn webhooks_responders(
 
     // Prepare response, set response body.
     Ok(if let Some(body) = body {
-        response.set_body(body)
+        response.body(body)
     } else {
-        response
+        response.finish()
     })
+}
+
+async fn execute_responder_script<R: for<'de> Deserialize<'de> + Send + 'static>(
+    state: &web::Data<AppState>,
+    user_id: uuid::Uuid,
+    subscription_config: &crate::config::SubscriptionWebhooksConfig,
+    script: &str,
+    js_script_context: &ResponderScriptContext<'_>,
+    responder: &ResponderInfo<'_>,
+) -> Result<R, HttpResponse<BoxBody>> {
+    let js_runtime_config = JsRuntimeConfig {
+        max_heap_size: subscription_config.js_runtime_heap_size,
+        max_user_script_execution_time: subscription_config.js_runtime_script_execution_time,
+    };
+
+    let proxy_state = ProxyState {
+        url_validator: Arc::new(state.api.network.clone()),
+        restrict_to_public_urls: responder.restrict_to_public_urls,
+        max_response_size: responder.max_proxy_response_size,
+    };
+
+    let js_code = format!(r#"(async (globalThis) => {{ return {script}; }})(globalThis);"#);
+    let js_script_context_json = match serde_json::to_string(js_script_context) {
+        Ok(json) => json,
+        Err(err) => {
+            error!(
+                user.id = %user_id,
+                util.resource = responder.resource,
+                util.resource_group = responder.resource_group,
+                util.resource_id = %responder.id,
+                util.resource_name = responder.name,
+                "Failed to serialize responder script context: {err:?}"
+            );
+            return Err(HttpResponse::InternalServerError().finish());
+        }
+    };
+
+    match JsRuntime::execute_script::<R>(
+        js_runtime_config,
+        js_code,
+        Some(js_script_context_json),
+        Some(proxy_state),
+    )
+    .await
+    {
+        Ok((script_result, execution_time)) => {
+            info!(
+                user.id = %user_id,
+                util.resource = responder.resource,
+                util.resource_group = responder.resource_group,
+                util.resource_id = %responder.id,
+                util.resource_name = responder.name,
+                metrics.script_execution_time = execution_time.as_nanos() as u64,
+                "Executed responder user script in {execution_time:.2?}.",
+            );
+            Ok(script_result)
+        }
+        Err(err) => {
+            let err_msg = err.to_string();
+            error!(
+                user.id = %user_id,
+                util.resource = responder.resource,
+                util.resource_group = responder.resource_group,
+                util.resource_id = %responder.id,
+                util.resource_name = responder.name,
+                "Failed to execute responder user script: {err:?}"
+            );
+
+            let response = if err_msg.contains("Script exceeded time limit")
+                || err_msg.contains("Upstream request timed out")
+            {
+                HttpResponse::GatewayTimeout().body(err_msg)
+            } else if err_msg.contains("URL not allowed")
+                || err_msg.contains("Failed to connect to upstream")
+                || err_msg.contains("Upstream request failed")
+            {
+                HttpResponse::BadGateway().body(err_msg)
+            } else if err_msg.contains("Upstream response body too large") {
+                HttpResponse::PayloadTooLarge().body(err_msg)
+            } else {
+                HttpResponse::InternalServerError().body(err_msg)
+            };
+            Err(response)
+        }
+    }
 }
 
 /// Replaces `${secrets.KEY}` patterns in a string with the corresponding decrypted secret values.
@@ -449,7 +566,12 @@ mod tests {
         },
     };
     use actix_web::{
-        FromRequest, body::MessageBody, dev::Payload, http::Method, test::TestRequest, web,
+        FromRequest,
+        body::MessageBody,
+        dev::Payload,
+        http::{Method, StatusCode},
+        test::TestRequest,
+        web,
     };
     use bytes::Bytes;
     use insta::assert_debug_snapshot;
@@ -906,7 +1028,7 @@ mod tests {
             Response HTTP/1.1 300 Multiple Choices
               headers:
                 "one": "two"
-              body: Sized(276)
+              body: Sized(300)
             ,
         }
         "###);
@@ -922,6 +1044,7 @@ mod tests {
                     "x-forwarded-host": "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
                 },
                 "path": "/one/two",
+                "rawQuery": "query=some",
                 "query": {
                     "query": "some",
                 },
@@ -935,6 +1058,64 @@ mod tests {
             .get_responder_requests(responder.id)
             .await?;
         assert_eq!(responder_requests.len(), 1);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn script_context_omits_raw_query_when_absent(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "no_query".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/no-qs".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 0,
+                    status_code: 200,
+                    body: None,
+                    headers: None,
+                    script: Some(
+                        "(() => { return { body: Deno.core.encode(JSON.stringify(context)) }; })()"
+                            .to_string(),
+                    ),
+                    secrets: SecretsAccess::None,
+                },
+            })
+            .await?;
+
+        let request = TestRequest::with_uri(
+            "https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/no-qs",
+        )
+        .insert_header(("x-replaced-path", "/no-qs"))
+        .insert_header((
+            "x-forwarded-host",
+            "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
+        ))
+        .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+            .await
+            .unwrap();
+
+        let body = response.into_body().try_into_bytes().unwrap();
+        let ctx: serde_json::Value = serde_json::from_slice(&body)?;
+        assert_eq!(ctx.get("rawQuery"), None);
+        assert_eq!(ctx["path"], "/no-qs");
+        assert_eq!(ctx["query"], json!({}));
 
         Ok(())
     }
@@ -1122,6 +1303,928 @@ mod tests {
         for (webhook_host, expected_result) in test_cases {
             assert_eq!(parse_webhook_host(&config, webhook_host)?, expected_result);
         }
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn script_timeout_returns_gateway_timeout(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "timeout_test".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/timeout".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 0,
+                    status_code: 200,
+                    body: None,
+                    headers: None,
+                    script: Some(
+                        "(() => { throw new Error('Script exceeded time limit'); })()".to_string(),
+                    ),
+                    secrets: SecretsAccess::None,
+                },
+            })
+            .await?;
+
+        let request = TestRequest::with_uri(
+            "https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/timeout",
+        )
+        .insert_header(("x-replaced-path", "/timeout"))
+        .insert_header((
+            "x-forwarded-host",
+            "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
+        ))
+        .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let app_state = web::Data::new(app_state);
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            actix_web::http::StatusCode::GATEWAY_TIMEOUT
+        );
+
+        let body = response.into_body().try_into_bytes().unwrap();
+        assert!(
+            std::str::from_utf8(&body)
+                .unwrap()
+                .contains("Script exceeded time limit"),
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn script_upstream_timeout_returns_gateway_timeout(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "upstream_timeout".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/up-timeout".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 0,
+                    status_code: 200,
+                    body: None,
+                    headers: None,
+                    script: Some(
+                        "(() => { throw new Error('Upstream request timed out'); })()".to_string(),
+                    ),
+                    secrets: SecretsAccess::None,
+                },
+            })
+            .await?;
+
+        let request = TestRequest::with_uri(
+            "https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/up-timeout",
+        )
+        .insert_header(("x-replaced-path", "/up-timeout"))
+        .insert_header((
+            "x-forwarded-host",
+            "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
+        ))
+        .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            actix_web::http::StatusCode::GATEWAY_TIMEOUT
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn script_url_not_allowed_returns_bad_gateway(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "ssrf_test".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/ssrf".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 0,
+                    status_code: 200,
+                    body: None,
+                    headers: None,
+                    script: Some(
+                        "(() => { throw new Error('URL not allowed: http://169.254.169.254'); })()"
+                            .to_string(),
+                    ),
+                    secrets: SecretsAccess::None,
+                },
+            })
+            .await?;
+
+        let request = TestRequest::with_uri(
+            "https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/ssrf",
+        )
+        .insert_header(("x-replaced-path", "/ssrf"))
+        .insert_header((
+            "x-forwarded-host",
+            "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
+        ))
+        .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_eq!(response.status(), actix_web::http::StatusCode::BAD_GATEWAY);
+
+        let body = response.into_body().try_into_bytes().unwrap();
+        assert!(
+            std::str::from_utf8(&body)
+                .unwrap()
+                .contains("URL not allowed")
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn script_connect_failure_returns_bad_gateway(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "connect_fail".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/connect-fail".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 0,
+                    status_code: 200,
+                    body: None,
+                    headers: None,
+                    script: Some(
+                        "(() => { throw new Error('Failed to connect to upstream'); })()"
+                            .to_string(),
+                    ),
+                    secrets: SecretsAccess::None,
+                },
+            })
+            .await?;
+
+        let request = TestRequest::with_uri(
+            "https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/connect-fail",
+        )
+        .insert_header(("x-replaced-path", "/connect-fail"))
+        .insert_header((
+            "x-forwarded-host",
+            "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
+        ))
+        .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_eq!(response.status(), actix_web::http::StatusCode::BAD_GATEWAY);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn script_upstream_request_failed_returns_bad_gateway(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "upstream_fail".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/up-fail".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 0,
+                    status_code: 200,
+                    body: None,
+                    headers: None,
+                    script: Some(
+                        "(() => { throw new Error('Upstream request failed'); })()".to_string(),
+                    ),
+                    secrets: SecretsAccess::None,
+                },
+            })
+            .await?;
+
+        let request = TestRequest::with_uri(
+            "https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/up-fail",
+        )
+        .insert_header(("x-replaced-path", "/up-fail"))
+        .insert_header((
+            "x-forwarded-host",
+            "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
+        ))
+        .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_eq!(response.status(), actix_web::http::StatusCode::BAD_GATEWAY);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn script_response_too_large_returns_payload_too_large(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "too_large".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/too-large".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 0,
+                    status_code: 200,
+                    body: None,
+                    headers: None,
+                    script: Some(
+                        "(() => { throw new Error('Upstream response body too large: 20971520 bytes exceeds limit'); })()".to_string(),
+                    ),
+                    secrets: SecretsAccess::None,
+                },
+            })
+            .await?;
+
+        let request = TestRequest::with_uri(
+            "https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/too-large",
+        )
+        .insert_header(("x-replaced-path", "/too-large"))
+        .insert_header((
+            "x-forwarded-host",
+            "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
+        ))
+        .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            actix_web::http::StatusCode::PAYLOAD_TOO_LARGE
+        );
+
+        let body = response.into_body().try_into_bytes().unwrap();
+        assert!(
+            std::str::from_utf8(&body)
+                .unwrap()
+                .contains("Upstream response body too large"),
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn script_generic_error_returns_internal_server_error(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "generic_err".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/generic-err".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 0,
+                    status_code: 200,
+                    body: None,
+                    headers: None,
+                    script: Some(
+                        "(() => { throw new Error('Something unexpected happened'); })()"
+                            .to_string(),
+                    ),
+                    secrets: SecretsAccess::None,
+                },
+            })
+            .await?;
+
+        let request = TestRequest::with_uri(
+            "https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/generic-err",
+        )
+        .insert_header(("x-replaced-path", "/generic-err"))
+        .insert_header((
+            "x-forwarded-host",
+            "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
+        ))
+        .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+
+        let body = response.into_body().try_into_bytes().unwrap();
+        assert!(
+            std::str::from_utf8(&body)
+                .unwrap()
+                .contains("Something unexpected happened"),
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn concurrent_request_limit_returns_too_many_requests(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        use std::sync::Arc;
+        use tokio::sync::Semaphore;
+
+        let app_state = mock_app_state(pool).await?;
+
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        let responder = app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "limited".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/limited".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 0,
+                    status_code: 200,
+                    body: Some("ok".to_string()),
+                    headers: None,
+                    script: None,
+                    secrets: SecretsAccess::None,
+                },
+            })
+            .await?;
+
+        let app_state = web::Data::new(app_state);
+
+        // Pre-fill the semaphore to exhaust all permits (default limit = 10).
+        let semaphore = Arc::new(Semaphore::new(10));
+        let _permits: Vec<_> = (0..10)
+            .map(|_| semaphore.clone().try_acquire_owned().unwrap())
+            .collect();
+        app_state
+            .responder_semaphores
+            .insert(responder.id, semaphore);
+
+        let request = TestRequest::with_uri(
+            "https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/limited",
+        )
+        .insert_header(("x-replaced-path", "/limited"))
+        .insert_header((
+            "x-forwarded-host",
+            "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
+        ))
+        .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            actix_web::http::StatusCode::TOO_MANY_REQUESTS
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("Retry-After")
+                .and_then(|v| v.to_str().ok()),
+            Some("1")
+        );
+
+        let body = response.into_body().try_into_bytes().unwrap();
+        let body_str = std::str::from_utf8(&body).unwrap();
+        assert!(body_str.contains("limited"));
+        assert!(body_str.contains("concurrent request limit"));
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn concurrent_request_succeeds_when_permits_available(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "available".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/available".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 0,
+                    status_code: 200,
+                    body: Some("ok".to_string()),
+                    headers: None,
+                    script: None,
+                    secrets: SecretsAccess::None,
+                },
+            })
+            .await?;
+
+        let request = TestRequest::with_uri(
+            "https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/available",
+        )
+        .insert_header(("x-replaced-path", "/available"))
+        .insert_header((
+            "x-forwarded-host",
+            "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
+        ))
+        .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
+
+        let body = response.into_body().try_into_bytes().unwrap();
+        assert_eq!(body, Bytes::from_static(b"ok"));
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn script_returning_null_uses_defaults(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "null_script".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/null-script".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 0,
+                    status_code: 201,
+                    body: Some("default-body".to_string()),
+                    headers: Some(vec![("x-default".to_string(), "yes".to_string())]),
+                    script: Some("(() => { return null; })()".to_string()),
+                    secrets: SecretsAccess::None,
+                },
+            })
+            .await?;
+
+        let request = TestRequest::with_uri(
+            "https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/null-script",
+        )
+        .insert_header(("x-replaced-path", "/null-script"))
+        .insert_header((
+            "x-forwarded-host",
+            "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
+        ))
+        .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_debug_snapshot!(response, @r###"
+        HttpResponse {
+            error: None,
+            res: 
+            Response HTTP/1.1 201 Created
+              headers:
+                "x-default": "yes"
+              body: Sized(12)
+            ,
+        }
+        "###);
+
+        let body = response.into_body().try_into_bytes().unwrap();
+        assert_eq!(body, Bytes::from_static(b"default-body"));
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn script_partial_override_merges_with_defaults(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "partial_override".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/partial".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 0,
+                    status_code: 200,
+                    body: Some("default-body".to_string()),
+                    headers: Some(vec![("x-default".to_string(), "yes".to_string())]),
+                    script: Some("(() => { return { statusCode: 202 }; })()".to_string()),
+                    secrets: SecretsAccess::None,
+                },
+            })
+            .await?;
+
+        let request = TestRequest::with_uri(
+            "https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/partial",
+        )
+        .insert_header(("x-replaced-path", "/partial"))
+        .insert_header((
+            "x-forwarded-host",
+            "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
+        ))
+        .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        // Script overrides status code to 202 but doesn't override headers/body, so defaults apply.
+        assert_debug_snapshot!(response, @r###"
+        HttpResponse {
+            error: None,
+            res: 
+            Response HTTP/1.1 202 Accepted
+              headers:
+                "x-default": "yes"
+              body: Sized(12)
+            ,
+        }
+        "###);
+
+        let body = response.into_body().try_into_bytes().unwrap();
+        assert_eq!(body, Bytes::from_static(b"default-body"));
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn script_skip_request_suppresses_tracking(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        let responder = app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "skip_tracking".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/skip".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 10,
+                    status_code: 200,
+                    body: Some("ok".to_string()),
+                    headers: None,
+                    script: Some(
+                        "(() => { return { statusCode: 204, skipRequest: true }; })()".to_string(),
+                    ),
+                    secrets: SecretsAccess::None,
+                },
+            })
+            .await?;
+
+        let request = TestRequest::with_uri(
+            "https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/skip",
+        )
+        .insert_header(("x-replaced-path", "/skip"))
+        .insert_header((
+            "x-forwarded-host",
+            "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
+        ))
+        .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let app_state = web::Data::new(app_state);
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_debug_snapshot!(response, @r###"
+        HttpResponse {
+            error: None,
+            res: 
+            Response HTTP/1.1 204 No Content
+              headers:
+              body: Sized(2)
+            ,
+        }
+        "###);
+
+        let requests = app_state
+            .api
+            .webhooks(&user)
+            .get_responder_requests(responder.id)
+            .await?;
+        assert_eq!(requests.len(), 0);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn script_skip_request_false_tracks_normally(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        let responder = app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "explicit_track".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/track".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 10,
+                    status_code: 200,
+                    body: Some("ok".to_string()),
+                    headers: None,
+                    script: Some("(() => { return { skipRequest: false }; })()".to_string()),
+                    secrets: SecretsAccess::None,
+                },
+            })
+            .await?;
+
+        let request = TestRequest::with_uri(
+            "https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/track",
+        )
+        .insert_header(("x-replaced-path", "/track"))
+        .insert_header((
+            "x-forwarded-host",
+            "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
+        ))
+        .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let app_state = web::Data::new(app_state);
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let requests = app_state
+            .api
+            .webhooks(&user)
+            .get_responder_requests(responder.id)
+            .await?;
+        assert_eq!(requests.len(), 1);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn script_without_skip_request_tracks_by_default(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        let responder = app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "default_track".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/default".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 10,
+                    status_code: 200,
+                    body: Some("ok".to_string()),
+                    headers: None,
+                    script: Some("(() => { return { statusCode: 200 }; })()".to_string()),
+                    secrets: SecretsAccess::None,
+                },
+            })
+            .await?;
+
+        let request = TestRequest::with_uri(
+            "https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/default",
+        )
+        .insert_header(("x-replaced-path", "/default"))
+        .insert_header((
+            "x-forwarded-host",
+            "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
+        ))
+        .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let app_state = web::Data::new(app_state);
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let requests = app_state
+            .api
+            .webhooks(&user)
+            .get_responder_requests(responder.id)
+            .await?;
+        assert_eq!(requests.len(), 1);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn script_failure_still_tracks_request(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        let responder = app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "failing_script".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Exact,
+                    path: "/fail".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 10,
+                    status_code: 200,
+                    body: None,
+                    headers: None,
+                    script: Some(
+                        "(() => { throw new Error('Script exceeded time limit'); })()".to_string(),
+                    ),
+                    secrets: SecretsAccess::None,
+                },
+            })
+            .await?;
+
+        let request = TestRequest::with_uri(
+            "https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/fail",
+        )
+        .insert_header(("x-replaced-path", "/fail"))
+        .insert_header((
+            "x-forwarded-host",
+            "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
+        ))
+        .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let app_state = web::Data::new(app_state);
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+
+        let requests = app_state
+            .api
+            .webhooks(&user)
+            .get_responder_requests(responder.id)
+            .await?;
+        assert_eq!(requests.len(), 1);
 
         Ok(())
     }

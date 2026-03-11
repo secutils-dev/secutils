@@ -398,7 +398,7 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
         isPathValid &&
         (!subdomainPrefix || isSubdomainPrefixValid(subdomainPrefix)) &&
         requestsToTrack >= 0 &&
-        requestsToTrack <= 100
+        requestsToTrack <= (uiState.subscription?.features?.webhooks.responderRequests ?? 100)
       }
       saveInProgress={updatingStatus?.status === 'pending'}
     >

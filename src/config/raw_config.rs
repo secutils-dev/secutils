@@ -115,6 +115,9 @@ mod tests {
         responder_custom_subdomain_prefix = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
+        restrict_to_public_urls = true
+        max_proxy_response_size = 10485760
+        max_concurrent_responder_requests = 10
         [subscriptions.basic.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -134,6 +137,9 @@ mod tests {
         responder_custom_subdomain_prefix = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
+        restrict_to_public_urls = true
+        max_proxy_response_size = 10485760
+        max_concurrent_responder_requests = 10
         [subscriptions.standard.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -153,6 +159,9 @@ mod tests {
         responder_custom_subdomain_prefix = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
+        restrict_to_public_urls = true
+        max_proxy_response_size = 10485760
+        max_concurrent_responder_requests = 10
         [subscriptions.professional.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -172,6 +181,9 @@ mod tests {
         responder_custom_subdomain_prefix = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
+        restrict_to_public_urls = true
+        max_proxy_response_size = 10485760
+        max_concurrent_responder_requests = 10
         [subscriptions.ultimate.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -442,6 +454,9 @@ mod tests {
                         responder_custom_subdomain_prefix: false,
                         js_runtime_heap_size: 10,
                         js_runtime_script_execution_time: 20ms,
+                        restrict_to_public_urls: true,
+                        max_proxy_response_size: 10485760,
+                        max_concurrent_responder_requests: 10,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 1,
@@ -474,6 +489,9 @@ mod tests {
                         responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 30,
                         js_runtime_script_execution_time: 40ms,
+                        restrict_to_public_urls: true,
+                        max_proxy_response_size: 10485760,
+                        max_concurrent_responder_requests: 10,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 2,
@@ -506,6 +524,9 @@ mod tests {
                         responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 50,
                         js_runtime_script_execution_time: 60ms,
+                        restrict_to_public_urls: true,
+                        max_proxy_response_size: 10485760,
+                        max_concurrent_responder_requests: 10,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 3,
@@ -538,6 +559,9 @@ mod tests {
                         responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 70,
                         js_runtime_script_execution_time: 80ms,
+                        restrict_to_public_urls: true,
+                        max_proxy_response_size: 10485760,
+                        max_concurrent_responder_requests: 10,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 4,

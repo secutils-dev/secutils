@@ -52,6 +52,7 @@ mod test {
                 responder_custom_subdomain_prefix: false,
                 js_runtime_heap_size: 2,
                 js_runtime_script_execution_time: Duration::from_secs(3),
+                ..Default::default()
             },
             web_scraping: SubscriptionWebScrapingConfig {
                 trackers: 1,
@@ -95,6 +96,7 @@ mod test {
                 responder_custom_subdomain_prefix: true,
                 js_runtime_heap_size: 3,
                 js_runtime_script_execution_time: Duration::from_secs(4),
+                ..Default::default()
             },
             web_scraping: SubscriptionWebScrapingConfig {
                 trackers: 2,
@@ -136,6 +138,7 @@ mod test {
                 responder_custom_subdomain_prefix: true,
                 js_runtime_heap_size: 4,
                 js_runtime_script_execution_time: Duration::from_secs(5),
+                ..Default::default()
             },
             web_scraping: SubscriptionWebScrapingConfig {
                 trackers: 3,

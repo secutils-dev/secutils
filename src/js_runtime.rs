@@ -1,11 +1,15 @@
 mod js_runtime_config;
+mod op_proxy_request;
 mod script_termination_reason;
 
-pub use self::js_runtime_config::JsRuntimeConfig;
+pub use self::{
+    js_runtime_config::JsRuntimeConfig,
+    op_proxy_request::{ProxyState, PublicUrlValidator},
+};
 use crate::js_runtime::script_termination_reason::ScriptTerminationReason;
-use anyhow::{Context, bail};
+use anyhow::Context;
 use deno_core::{PollEventLoopOptions, RuntimeOptions, scope, serde_v8, v8};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::{
     sync::{
         Arc,
@@ -18,85 +22,111 @@ use tracing::error;
 /// Defines a maximum interval on which script is checked for timeout.
 const SCRIPT_TIMEOUT_CHECK_INTERVAL: Duration = Duration::from_secs(2);
 
+deno_core::extension!(secutils_ext, ops = [op_proxy_request::op_proxy_request]);
+
 /// An abstraction over the V8/Deno runtime that allows any utilities to execute custom user
-/// JavaScript scripts.
-pub struct JsRuntime {
-    inner_runtime: deno_core::JsRuntime,
-    max_user_script_execution_time: Duration,
-}
+/// JavaScript scripts. Each invocation runs inside a dedicated `spawn_blocking` task with its own
+/// `CurrentThread` tokio runtime so that async Deno ops (e.g. `op_proxy_request`) work correctly.
+pub struct JsRuntime;
 
 impl JsRuntime {
-    /// Creates a new instance of the runtime.
-    pub fn new(config: &JsRuntimeConfig) -> Self {
-        Self {
-            inner_runtime: deno_core::JsRuntime::new(RuntimeOptions {
-                create_params: Some(
-                    v8::Isolate::create_params().heap_limits(0, config.max_heap_size),
-                ),
-                ..Default::default()
-            }),
-            max_user_script_execution_time: config.max_user_script_execution_time,
-        }
-    }
-
     /// Initializes the JS runtime platform, should be called only once and in the main thread.
     pub fn init_platform() {
         deno_core::JsRuntime::init_platform(None);
     }
 
-    /// Executes a user script and returns the result.
-    pub async fn execute_script<R: for<'de> Deserialize<'de>>(
-        &mut self,
-        js_code: impl Into<String>,
-        js_script_context: Option<impl Serialize>,
+    /// Executes a user script and returns the result. The script runs inside a `spawn_blocking`
+    /// task with its own `CurrentThread` tokio runtime and V8 isolate, providing full isolation
+    /// from other concurrent scripts and the main server.
+    ///
+    /// `js_script_context` is an optional JSON string that will be parsed by V8's native JSON
+    /// parser and made available as the global `context` variable.
+    pub async fn execute_script<R: for<'de> Deserialize<'de> + Send + 'static>(
+        config: JsRuntimeConfig,
+        js_code: String,
+        js_script_context: Option<String>,
+        proxy_state: Option<ProxyState>,
+    ) -> Result<(R, Duration), anyhow::Error> {
+        tokio::task::spawn_blocking(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .context("Failed to build CurrentThread tokio runtime for script execution")?;
+            rt.block_on(async {
+                Self::execute_script_internal(config, js_code, js_script_context, proxy_state).await
+            })
+        })
+        .await
+        .map_err(|join_err| anyhow::anyhow!("Script execution task panicked: {join_err}"))?
+    }
+
+    async fn execute_script_internal<R: for<'de> Deserialize<'de>>(
+        config: JsRuntimeConfig,
+        js_code: String,
+        js_script_context: Option<String>,
+        proxy_state: Option<ProxyState>,
     ) -> Result<(R, Duration), anyhow::Error> {
         let now = Instant::now();
+
+        let mut runtime = deno_core::JsRuntime::new(RuntimeOptions {
+            create_params: Some(v8::Isolate::create_params().heap_limits(0, config.max_heap_size)),
+            extensions: vec![secutils_ext::init()],
+            ..Default::default()
+        });
+
+        if let Some(proxy_state) = proxy_state {
+            let op_state = runtime.op_state();
+            op_state.borrow_mut().put(proxy_state);
+        }
 
         let termination_reason =
             Arc::new(AtomicUsize::new(ScriptTerminationReason::Unknown as usize));
         let timeout_token = Arc::new(AtomicBool::new(false));
-        let isolate_handle = self.inner_runtime.v8_isolate().thread_safe_handle();
+        let isolate_handle = runtime.v8_isolate().thread_safe_handle();
 
         // Track memory usage and terminate execution if threshold is exceeded.
         let isolate_handle_clone = isolate_handle.clone();
         let termination_reason_clone = termination_reason.clone();
         let timeout_token_clone = timeout_token.clone();
-        self.inner_runtime
-            .add_near_heap_limit_callback(move |current_value, _| {
-                error!("Approaching the memory limit of ({current_value}), terminating execution.");
+        runtime.add_near_heap_limit_callback(move |current_value, _| {
+            error!("Approaching the memory limit of ({current_value}), terminating execution.");
 
-                // Define termination reason and terminate execution.
-                isolate_handle_clone.terminate_execution();
+            isolate_handle_clone.terminate_execution();
 
-                timeout_token_clone.swap(true, Ordering::Relaxed);
-                termination_reason_clone.store(
-                    ScriptTerminationReason::MemoryLimit as usize,
-                    Ordering::Relaxed,
-                );
+            timeout_token_clone.swap(true, Ordering::Relaxed);
+            termination_reason_clone.store(
+                ScriptTerminationReason::MemoryLimit as usize,
+                Ordering::Relaxed,
+            );
 
-                // Give the runtime enough heap to terminate without crashing the process.
-                5 * current_value
-            });
+            // Give the runtime enough heap to terminate without crashing the process.
+            5 * current_value
+        });
 
-        // Set script context on a global scope if provided.
-        if let Some(script_context) = js_script_context {
-            scope!(scope, self.inner_runtime);
+        // Set script context on a global scope if provided (parse JSON via V8's native parser
+        // to avoid serde_json arbitrary_precision interop issues with serde_v8).
+        if let Some(ref json_str) = js_script_context {
+            scope!(scope, runtime);
 
             let context = scope.get_current_context();
             let scope = &mut v8::ContextScope::new(scope, context);
 
             let Some(context_key) = v8::String::new(scope, "context") else {
-                bail!("Cannot create script context key.");
+                anyhow::bail!("Cannot create script context key.");
             };
-            let context_value = serde_v8::to_v8(scope, script_context)
-                .with_context(|| "Cannot serialize script context")?;
+            let Some(json_v8) = v8::String::new(scope, json_str) else {
+                anyhow::bail!("Cannot create V8 string for script context.");
+            };
+            let Some(context_value) = v8::json::parse(scope, json_v8) else {
+                anyhow::bail!("Cannot parse script context JSON.");
+            };
             context
                 .global(scope)
                 .set(scope, context_key.into(), context_value);
         }
 
         // Track the time the script takes to execute, and terminate execution if threshold is exceeded.
-        let termination_timeout = self.max_user_script_execution_time;
+        let termination_timeout = config.max_user_script_execution_time;
         let termination_reason_clone = termination_reason.clone();
         let timeout_token_clone = timeout_token.clone();
         std::thread::spawn(move || {
@@ -129,32 +159,26 @@ impl JsRuntime {
             ScriptTerminationReason::Unknown => err,
         };
 
-        // Retrieve the result `Promise`.
-        let script_result_promise = self
-            .inner_runtime
-            .execute_script("<anon>", js_code.into())
-            .map_err(|err| {
-                timeout_token.swap(true, Ordering::Relaxed);
-                self.inner_runtime.v8_isolate().cancel_terminate_execution();
-                handle_error(err.into())
-            })?;
+        let script_result_promise = runtime.execute_script("<anon>", js_code).map_err(|err| {
+            timeout_token.swap(true, Ordering::Relaxed);
+            runtime.v8_isolate().cancel_terminate_execution();
+            handle_error(err.into())
+        })?;
 
-        // Wait for the promise to resolve.
-        let resolve = self.inner_runtime.resolve(script_result_promise);
-        let script_result = self
-            .inner_runtime
+        let resolve = runtime.resolve(script_result_promise);
+        let script_result = runtime
             .with_event_loop_promise(resolve, PollEventLoopOptions::default())
             .await
             .map_err(|err| {
                 timeout_token.swap(true, Ordering::Relaxed);
-                self.inner_runtime.v8_isolate().cancel_terminate_execution();
+                runtime.v8_isolate().cancel_terminate_execution();
                 handle_error(err.into())
             })?;
 
         // Abort termination thread, if script managed to complete.
         timeout_token.swap(true, Ordering::Relaxed);
 
-        scope!(scope, self.inner_runtime);
+        scope!(scope, runtime);
 
         let local = v8::Local::new(scope, script_result);
         serde_v8::from_v8(scope, local)
@@ -162,11 +186,53 @@ impl JsRuntime {
             .with_context(|| "Error deserializing script result")
     }
 }
+
 #[cfg(test)]
 pub mod tests {
-    use super::{JsRuntime, JsRuntimeConfig};
+    use super::{JsRuntime, JsRuntimeConfig, ProxyState, PublicUrlValidator};
     use deno_core::error::{CoreError, CoreErrorKind};
+    use futures::future::BoxFuture;
+    use reqwest_middleware::ClientBuilder;
     use serde::{Deserialize, Serialize};
+    use std::sync::Arc;
+    use url::Url;
+
+    /// A mock URL validator that always approves URLs.
+    #[derive(Clone)]
+    struct AllowAllValidator;
+    impl PublicUrlValidator for AllowAllValidator {
+        fn is_public_web_url<'a>(&'a self, _url: &'a Url) -> BoxFuture<'a, bool> {
+            Box::pin(futures::future::ready(true))
+        }
+    }
+
+    /// A mock URL validator that always rejects URLs.
+    #[derive(Clone)]
+    struct DenyAllValidator;
+    impl PublicUrlValidator for DenyAllValidator {
+        fn is_public_web_url<'a>(&'a self, _url: &'a Url) -> BoxFuture<'a, bool> {
+            Box::pin(futures::future::ready(false))
+        }
+    }
+
+    fn test_proxy_state(restrict_to_public_urls: bool) -> ProxyState {
+        ProxyState {
+            url_validator: Arc::new(AllowAllValidator),
+            restrict_to_public_urls,
+            max_response_size: 10_485_760,
+        }
+    }
+
+    fn test_proxy_state_with_validator(
+        validator: Arc<dyn PublicUrlValidator>,
+        restrict: bool,
+    ) -> ProxyState {
+        ProxyState {
+            url_validator: validator,
+            restrict_to_public_urls: restrict,
+            max_response_size: 10_485_760,
+        }
+    }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn can_execute_scripts() -> anyhow::Result<()> {
@@ -189,34 +255,33 @@ pub mod tests {
             arg_buf: vec![1, 2, 3],
         };
 
-        // Can access script context.
-        let mut runtime = JsRuntime::new(&config);
-        let (result, _) = runtime
-            .execute_script::<ScriptContext>(
-                r#"(async () => {{ return context; }})();"#,
-                Some(script_context.clone()),
-            )
-            .await?;
+        let (result, _) = JsRuntime::execute_script::<ScriptContext>(
+            config,
+            r#"(async () => {{ return context; }})();"#.to_string(),
+            Some(serde_json::to_string(&script_context)?),
+            None,
+        )
+        .await?;
         assert_eq!(result, script_context);
 
-        // Can do basic math.
-        let (result, _) = runtime
-            .execute_script::<usize>(
-                r#"(async () => {{ return context.arg_num * 2; }})();"#,
-                Some(script_context.clone()),
-            )
-            .await?;
+        let (result, _) = JsRuntime::execute_script::<usize>(
+            config,
+            r#"(async () => {{ return context.arg_num * 2; }})();"#.to_string(),
+            Some(serde_json::to_string(&script_context)?),
+            None,
+        )
+        .await?;
         assert_eq!(result, 230);
 
-        // Returns error from scripts
-        let result = runtime
-            .execute_script::<()>(
-                r#"(async () => {{ throw new Error("Uh oh."); }})();"#,
-                None::<()>,
-            )
-            .await
-            .unwrap_err()
-            .downcast::<CoreError>()?;
+        let result = JsRuntime::execute_script::<()>(
+            config,
+            r#"(async () => {{ throw new Error("Uh oh."); }})();"#.to_string(),
+            None,
+            None,
+        )
+        .await
+        .unwrap_err()
+        .downcast::<CoreError>()?;
         if let CoreErrorKind::Js(ref js_error) = *result.0 {
             assert_eq!(
                 js_error.exception_message,
@@ -236,12 +301,9 @@ pub mod tests {
             max_user_script_execution_time: std::time::Duration::from_secs(5),
         };
 
-        let mut runtime = JsRuntime::new(&config);
-
-        // Limit execution time (async).
-        let result = runtime
-            .execute_script::<String>(
-                r#"
+        let result = JsRuntime::execute_script::<String>(
+            config,
+            r#"
         (async () => {{
             return new Promise((resolve) => {
                 Deno.core.queueUserTimer(
@@ -252,28 +314,31 @@ pub mod tests {
                 );
             });
         }})();
-        "#,
-                None::<()>,
-            )
-            .await
-            .unwrap_err();
+        "#
+            .to_string(),
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
         assert_eq!(
             format!("{result}"),
             "Script exceeded time limit.".to_string()
         );
 
-        // Limit execution time (sync).
-        let result = runtime
-            .execute_script::<String>(
-                r#"
+        let result = JsRuntime::execute_script::<String>(
+            config,
+            r#"
         (() => {{
             while (true) {}
         }})();
-        "#,
-                None::<()>,
-            )
-            .await
-            .unwrap_err();
+        "#
+            .to_string(),
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
         assert_eq!(
             format!("{result}"),
             "Script exceeded time limit.".to_string()
@@ -289,26 +354,723 @@ pub mod tests {
             max_user_script_execution_time: std::time::Duration::from_secs(5),
         };
 
-        let mut runtime = JsRuntime::new(&config);
-
-        // Limit memory usage.
-        let result = runtime
-            .execute_script::<String>(
-                r#"
+        let result = JsRuntime::execute_script::<String>(
+            config,
+            r#"
         (async () => {{
            let s = "";
            while(true) { s += "Hello"; }
            return "Done";
         }})();
-        "#,
-                None::<()>,
-            )
-            .await
-            .unwrap_err();
+        "#
+            .to_string(),
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
         assert_eq!(
             format!("{result}"),
             "Script exceeded memory limit.".to_string()
         );
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_forwards_request() -> anyhow::Result<()> {
+        let mock_server = httpmock::MockServer::start_async().await;
+        let mock = mock_server
+            .mock_async(|when, then| {
+                when.method("GET").path("/hello");
+                then.status(200)
+                    .header("x-test", "test-value")
+                    .body("upstream-response");
+            })
+            .await;
+
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        #[derive(Deserialize, Debug)]
+        #[serde(rename_all = "camelCase")]
+        struct ProxyResult {
+            status_code: u16,
+            headers: std::collections::HashMap<String, String>,
+            #[serde(with = "serde_bytes")]
+            body: Vec<u8>,
+        }
+
+        let url = format!("{}/hello", mock_server.base_url());
+        let script = format!(
+            r#"(async () => {{
+                return await Deno.core.ops.op_proxy_request({{ url: "{url}" }});
+            }})()"#
+        );
+
+        let (result, _) = JsRuntime::execute_script::<ProxyResult>(
+            config,
+            script,
+            None,
+            Some(test_proxy_state(false)),
+        )
+        .await?;
+
+        assert_eq!(result.status_code, 200);
+        assert_eq!(result.headers.get("x-test").unwrap(), "test-value");
+        assert_eq!(String::from_utf8(result.body)?, "upstream-response");
+        mock.assert_async().await;
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_forwards_with_method_headers_body() -> anyhow::Result<()> {
+        let mock_server = httpmock::MockServer::start_async().await;
+        let mock = mock_server
+            .mock_async(|when, then| {
+                when.method("POST")
+                    .path("/api")
+                    .header("content-type", "application/json")
+                    .body(r#"{"key":"value"}"#);
+                then.status(201).body("created");
+            })
+            .await;
+
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        #[derive(Deserialize, Debug)]
+        #[serde(rename_all = "camelCase")]
+        struct ProxyResult {
+            status_code: u16,
+            #[serde(with = "serde_bytes")]
+            body: Vec<u8>,
+        }
+
+        let url = format!("{}/api", mock_server.base_url());
+        let script = format!(
+            r#"(async () => {{
+                const body = Deno.core.encode(JSON.stringify({{ key: "value" }}));
+                return await Deno.core.ops.op_proxy_request({{
+                    url: "{url}",
+                    method: "POST",
+                    headers: {{ "content-type": "application/json" }},
+                    body: Array.from(body),
+                }});
+            }})()"#
+        );
+
+        let (result, _) = JsRuntime::execute_script::<ProxyResult>(
+            config,
+            script,
+            None,
+            Some(test_proxy_state(false)),
+        )
+        .await?;
+
+        assert_eq!(result.status_code, 201);
+        assert_eq!(String::from_utf8(result.body)?, "created");
+        mock.assert_async().await;
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_transform_response() -> anyhow::Result<()> {
+        let mock_server = httpmock::MockServer::start_async().await;
+        mock_server
+            .mock_async(|when, then| {
+                when.method("GET").path("/data");
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .body(r#"{"original":true}"#);
+            })
+            .await;
+
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        #[derive(Deserialize, Debug)]
+        #[serde(rename_all = "camelCase")]
+        struct ProxyResult {
+            status_code: u16,
+            body: Vec<u8>,
+        }
+
+        let url = format!("{}/data", mock_server.base_url());
+        let script = format!(
+            r#"(async () => {{
+                const resp = await Deno.core.ops.op_proxy_request({{ url: "{url}" }});
+                const body = JSON.parse(Deno.core.decode(new Uint8Array(resp.body)));
+                body.modified = true;
+                return {{
+                    statusCode: resp.statusCode,
+                    headers: resp.headers,
+                    body: Array.from(Deno.core.encode(JSON.stringify(body))),
+                }};
+            }})()"#
+        );
+
+        let (result, _) = JsRuntime::execute_script::<ProxyResult>(
+            config,
+            script,
+            None,
+            Some(test_proxy_state(false)),
+        )
+        .await?;
+
+        assert_eq!(result.status_code, 200);
+        let body: serde_json::Value = serde_json::from_slice(&result.body)?;
+        assert_eq!(body["original"], true);
+        assert_eq!(body["modified"], true);
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_rejects_invalid_url() -> anyhow::Result<()> {
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        let result = JsRuntime::execute_script::<serde_json::Value>(
+            config,
+            r#"(async () => {
+                return await Deno.core.ops.op_proxy_request({ url: "not-a-url" });
+            })()"#
+                .to_string(),
+            None,
+            Some(test_proxy_state(false)),
+        )
+        .await
+        .unwrap_err();
+
+        let err_msg = format!("{result}");
+        assert!(
+            err_msg.contains("Invalid URL"),
+            "Expected 'Invalid URL' in: {err_msg}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_rejects_invalid_method() -> anyhow::Result<()> {
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        let result = JsRuntime::execute_script::<serde_json::Value>(
+            config,
+            r#"(async () => {
+                return await Deno.core.ops.op_proxy_request({
+                    url: "http://localhost:1234",
+                    method: "INVALID METHOD WITH SPACES",
+                });
+            })()"#
+                .to_string(),
+            None,
+            Some(test_proxy_state(false)),
+        )
+        .await
+        .unwrap_err();
+
+        let err_msg = format!("{result}");
+        assert!(
+            err_msg.contains("Invalid HTTP method"),
+            "Expected 'Invalid HTTP method' in: {err_msg}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_rejects_invalid_header_name() -> anyhow::Result<()> {
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        let result = JsRuntime::execute_script::<serde_json::Value>(
+            config,
+            r#"(async () => {
+                return await Deno.core.ops.op_proxy_request({
+                    url: "http://localhost:1234",
+                    headers: { "invalid header\nname": "value" },
+                });
+            })()"#
+                .to_string(),
+            None,
+            Some(test_proxy_state(false)),
+        )
+        .await
+        .unwrap_err();
+
+        let err_msg = format!("{result}");
+        assert!(
+            err_msg.contains("Invalid header name"),
+            "Expected 'Invalid header name' in: {err_msg}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_ssrf_rejects_non_public_url() -> anyhow::Result<()> {
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        let proxy = test_proxy_state_with_validator(Arc::new(DenyAllValidator), true);
+        let result = JsRuntime::execute_script::<serde_json::Value>(
+            config,
+            r#"(async () => {
+                return await Deno.core.ops.op_proxy_request({
+                    url: "http://internal-service:8080/secret",
+                });
+            })()"#
+                .to_string(),
+            None,
+            Some(proxy),
+        )
+        .await
+        .unwrap_err();
+
+        let err_msg = format!("{result}");
+        assert!(
+            err_msg.contains("URL not allowed"),
+            "Expected 'URL not allowed' in: {err_msg}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_ssrf_allows_when_disabled() -> anyhow::Result<()> {
+        let mock_server = httpmock::MockServer::start_async().await;
+        mock_server
+            .mock_async(|when, then| {
+                when.method("GET").path("/");
+                then.status(200).body("ok");
+            })
+            .await;
+
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        // DenyAllValidator would reject, but restrict_to_public_urls is false so it's skipped.
+        let proxy = test_proxy_state_with_validator(Arc::new(DenyAllValidator), false);
+        let url = mock_server.base_url();
+        let script = format!(
+            r#"(async () => {{
+                return await Deno.core.ops.op_proxy_request({{ url: "{url}" }});
+            }})()"#
+        );
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct R {
+            status_code: u16,
+        }
+
+        let (result, _) = JsRuntime::execute_script::<R>(config, script, None, Some(proxy)).await?;
+        assert_eq!(result.status_code, 200);
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_ssrf_with_mock_network() -> anyhow::Result<()> {
+        use crate::network::{Network, tests::MockResolver};
+        use lettre::transport::stub::AsyncStubTransport;
+        use std::net::Ipv4Addr;
+        use trust_dns_resolver::{
+            Name,
+            proto::rr::{RData, Record, rdata::A},
+        };
+
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        // Domain resolves to a private IP (127.0.0.1).
+        let local_network = Network::new(
+            MockResolver::new_with_records::<1>(vec![Record::from_rdata(
+                Name::new(),
+                300,
+                RData::A(A(Ipv4Addr::new(127, 0, 0, 1))),
+            )]),
+            AsyncStubTransport::new_ok(),
+            ClientBuilder::new(reqwest::Client::new()).build(),
+        );
+
+        let proxy = ProxyState {
+            url_validator: Arc::new(local_network),
+            restrict_to_public_urls: true,
+            max_response_size: 10_485_760,
+        };
+
+        let result = JsRuntime::execute_script::<serde_json::Value>(
+            config,
+            r#"(async () => {
+                return await Deno.core.ops.op_proxy_request({
+                    url: "http://evil.example.com/secret",
+                });
+            })()"#
+                .to_string(),
+            None,
+            Some(proxy),
+        )
+        .await
+        .unwrap_err();
+
+        let err_msg = format!("{result}");
+        assert!(
+            err_msg.contains("URL not allowed (non-public address)"),
+            "Expected SSRF rejection in: {err_msg}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_rejects_oversized_response() -> anyhow::Result<()> {
+        let mock_server = httpmock::MockServer::start_async().await;
+        mock_server
+            .mock_async(|when, then| {
+                when.method("GET").path("/big");
+                then.status(200).body("x".repeat(1024));
+            })
+            .await;
+
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        let mut proxy = test_proxy_state(false);
+        proxy.max_response_size = 100; // Only allow 100 bytes
+
+        let url = format!("{}/big", mock_server.base_url());
+        let script = format!(
+            r#"(async () => {{
+                return await Deno.core.ops.op_proxy_request({{ url: "{url}" }});
+            }})()"#
+        );
+
+        let result =
+            JsRuntime::execute_script::<serde_json::Value>(config, script, None, Some(proxy))
+                .await
+                .unwrap_err();
+
+        let err_msg = format!("{result}");
+        assert!(
+            err_msg.contains("Upstream response body too large"),
+            "Expected 'too large' in: {err_msg}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_connect_failure() -> anyhow::Result<()> {
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        // Connect to a port that's (almost certainly) not listening.
+        let result = JsRuntime::execute_script::<serde_json::Value>(
+            config,
+            r#"(async () => {
+                return await Deno.core.ops.op_proxy_request({
+                    url: "http://127.0.0.1:19876/nope",
+                });
+            })()"#
+                .to_string(),
+            None,
+            Some(test_proxy_state(false)),
+        )
+        .await
+        .unwrap_err();
+
+        let err_msg = format!("{result}");
+        assert!(
+            err_msg.contains("Failed to connect to upstream")
+                || err_msg.contains("Upstream request failed"),
+            "Expected connection error in: {err_msg}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_upstream_5xx_forwarded() -> anyhow::Result<()> {
+        let mock_server = httpmock::MockServer::start_async().await;
+        mock_server
+            .mock_async(|when, then| {
+                when.method("GET").path("/error");
+                then.status(503).body("service unavailable");
+            })
+            .await;
+
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct R {
+            status_code: u16,
+            #[serde(with = "serde_bytes")]
+            body: Vec<u8>,
+        }
+
+        let url = format!("{}/error", mock_server.base_url());
+        let script = format!(
+            r#"(async () => {{
+                return await Deno.core.ops.op_proxy_request({{ url: "{url}" }});
+            }})()"#
+        );
+
+        let (result, _) =
+            JsRuntime::execute_script::<R>(config, script, None, Some(test_proxy_state(false)))
+                .await?;
+
+        assert_eq!(result.status_code, 503);
+        assert_eq!(String::from_utf8(result.body)?, "service unavailable");
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_does_not_follow_redirects() -> anyhow::Result<()> {
+        let mock_server = httpmock::MockServer::start_async().await;
+        let mock = mock_server
+            .mock_async(|when, then| {
+                when.method("GET").path("/old");
+                then.status(302)
+                    .header("location", "http://example.com/new")
+                    .body("redirecting");
+            })
+            .await;
+
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct R {
+            status_code: u16,
+            headers: std::collections::HashMap<String, String>,
+            #[serde(with = "serde_bytes")]
+            body: Vec<u8>,
+        }
+
+        let url = format!("{}/old", mock_server.base_url());
+        let script = format!(
+            r#"(async () => {{
+                return await Deno.core.ops.op_proxy_request({{ url: "{url}" }});
+            }})()"#
+        );
+
+        let (result, _) =
+            JsRuntime::execute_script::<R>(config, script, None, Some(test_proxy_state(false)))
+                .await?;
+
+        assert_eq!(result.status_code, 302);
+        assert_eq!(
+            result.headers.get("location").unwrap(),
+            "http://example.com/new"
+        );
+        assert_eq!(String::from_utf8(result.body)?, "redirecting");
+        mock.assert_async().await;
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_does_not_follow_301_redirect() -> anyhow::Result<()> {
+        let mock_server = httpmock::MockServer::start_async().await;
+        let redirect_mock = mock_server
+            .mock_async(|when, then| {
+                when.method("GET").path("/moved");
+                then.status(301)
+                    .header("location", "/new-location")
+                    .body("moved permanently");
+            })
+            .await;
+        // If the client followed the redirect, it would hit /new-location.
+        let target_mock = mock_server
+            .mock_async(|when, then| {
+                when.method("GET").path("/new-location");
+                then.status(200).body("should not reach here");
+            })
+            .await;
+
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct R {
+            status_code: u16,
+            headers: std::collections::HashMap<String, String>,
+        }
+
+        let url = format!("{}/moved", mock_server.base_url());
+        let script = format!(
+            r#"(async () => {{
+                return await Deno.core.ops.op_proxy_request({{ url: "{url}" }});
+            }})()"#
+        );
+
+        let (result, _) =
+            JsRuntime::execute_script::<R>(config, script, None, Some(test_proxy_state(false)))
+                .await?;
+
+        assert_eq!(result.status_code, 301);
+        assert_eq!(result.headers.get("location").unwrap(), "/new-location");
+        redirect_mock.assert_async().await;
+        assert_eq!(target_mock.calls_async().await, 0);
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn crash_prevention_memory_bomb_does_not_crash_server() -> anyhow::Result<()> {
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        let result = JsRuntime::execute_script::<serde_json::Value>(
+            config,
+            r#"(async () => {
+                let s = "";
+                while(true) { s += "AAAAAAAAAAAAAAAA"; }
+            })()"#
+                .to_string(),
+            None,
+            Some(test_proxy_state(false)),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            format!("{result}").contains("Script exceeded memory limit"),
+            "Expected memory limit error: {result}"
+        );
+
+        // Verify we can still execute scripts after the memory bomb.
+        let (result, _) = JsRuntime::execute_script::<usize>(
+            config,
+            "(async () => { return 42; })()".to_string(),
+            None,
+            None,
+        )
+        .await?;
+        assert_eq!(result, 42);
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn crash_prevention_infinite_loop_does_not_hang() -> anyhow::Result<()> {
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(3),
+        };
+
+        let result = JsRuntime::execute_script::<serde_json::Value>(
+            config,
+            r#"(async () => { while(true) {} })()"#.to_string(),
+            None,
+            Some(test_proxy_state(false)),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            format!("{result}").contains("Script exceeded time limit"),
+            "Expected time limit error: {result}"
+        );
+
+        // Verify we can still execute scripts.
+        let (result, _) = JsRuntime::execute_script::<usize>(
+            config,
+            "(async () => { return 7; })()".to_string(),
+            None,
+            None,
+        )
+        .await?;
+        assert_eq!(result, 7);
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn scripts_without_proxy_still_work() -> anyhow::Result<()> {
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(5),
+        };
+
+        // Script that doesn't use op_proxy_request at all (regression test).
+        let (result, _) = JsRuntime::execute_script::<usize>(
+            config,
+            "(async () => { return 1 + 2 + 3; })()".to_string(),
+            None,
+            None,
+        )
+        .await?;
+        assert_eq!(result, 6);
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn concurrent_script_executions_are_isolated() -> anyhow::Result<()> {
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        // Launch multiple scripts concurrently and verify they don't interfere.
+        let handles: Vec<_> = (0..5)
+            .map(|i| {
+                let script = format!("(async () => {{ return {i} * 10; }})()");
+                tokio::spawn(async move {
+                    JsRuntime::execute_script::<usize>(config, script, None, None).await
+                })
+            })
+            .collect();
+
+        let mut results = Vec::new();
+        for handle in handles {
+            let (result, _) = handle.await??;
+            results.push(result);
+        }
+        results.sort();
+        assert_eq!(results, vec![0, 10, 20, 30, 40]);
 
         Ok(())
     }

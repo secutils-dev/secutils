@@ -14,6 +14,9 @@ pub struct ResponderScriptContext<'a> {
     pub headers: HashMap<&'a str, &'a str>,
     /// HTTP path of the received request.
     pub path: &'a str,
+    /// Raw query string of the received request (without the leading `?`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_query: Option<&'a str>,
     /// Parsed query string of the received request.
     pub query: HashMap<&'a str, &'a str>,
     /// HTTP body of the received request.
@@ -36,6 +39,7 @@ mod tests {
             method: "GET",
             headers: HashMap::new(),
             path: "/test",
+            raw_query: None,
             query: HashMap::new(),
             body: b"",
             secrets: HashMap::new(),
@@ -60,6 +64,7 @@ mod tests {
             method: "POST",
             headers: HashMap::new(),
             path: "/api",
+            raw_query: Some("foo=bar&baz=1"),
             query: HashMap::new(),
             body: b"hello",
             secrets,
@@ -67,5 +72,6 @@ mod tests {
         let json = serde_json::to_value(&ctx).unwrap();
         assert!(json.get("secrets").is_some());
         assert_eq!(json["secrets"]["API_KEY"], "sk-123");
+        assert_eq!(json["rawQuery"], "foo=bar&baz=1");
     }
 }

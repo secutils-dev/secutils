@@ -107,6 +107,7 @@ mod test {
                 responder_custom_subdomain_prefix: false,
                 js_runtime_heap_size: 2,
                 js_runtime_script_execution_time: Duration::from_secs(3),
+                ..Default::default()
             },
             web_scraping: SubscriptionWebScrapingConfig {
                 trackers: 1,

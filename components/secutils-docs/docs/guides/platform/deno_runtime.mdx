@@ -11,7 +11,7 @@ import CodeBlock from '@theme/CodeBlock';
 
 Webhook [responder scripts](/docs/guides/webhooks#annex-responder-script-examples) and API tracker [extractor](/docs/guides/web_scraping/api#annex-extractor-script) / [configurator](/docs/guides/web_scraping/api#annex-configurator-script) scripts run inside a **restricted [Deno](https://deno.com/) runtime**. The sandbox intentionally limits what code can do:
 
-- **No network access** - `fetch`, `XMLHttpRequest`, and all other network APIs are unavailable.
+- **Limited network access** - `fetch`, `XMLHttpRequest`, and standard network APIs are unavailable. Responder scripts can make outbound HTTP requests through [`Deno.core.ops.op_proxy_request()`](#op_proxy_request) with built-in SSRF protection.
 - **No file-system access** - reading or writing files is not possible.
 - **No `btoa` / `atob`** - the standard Base64 globals are not exposed (see [Base64 encoding](#base64-encoding) below for a workaround).
 
@@ -233,4 +233,91 @@ const restored = Deno.core.deserialize(packed);
 
 :::warning
 The serialization format is specific to V8 and is **not** portable across engines or language runtimes. Prefer JSON for data that will be consumed outside of the Deno sandbox.
+:::
+
+## Proxy requests {#op_proxy_request}
+
+### `Deno.core.ops.op_proxy_request(request)`
+
+Sends an HTTP request to an upstream server and returns the response. This enables responder scripts to act as a **MITM proxy** - forwarding requests to a real backend, inspecting or transforming responses, and returning them to the client. See [Proxy requests to an upstream service](/docs/guides/webhooks#proxy-requests-to-an-upstream-service-mitm) for usage examples.
+
+The `request` argument has the following interface:
+
+```typescript
+interface ProxyRequest {
+  // Target URL (required). Must be http:// or https://.
+  url: string;
+  // HTTP method. Defaults to "GET".
+  method?: string;
+  // Optional HTTP headers to send with the request.
+  headers?: Record<string, string>;
+  // Optional binary request body as an array of bytes.
+  body?: number[];
+}
+```
+
+The returned value has the following interface:
+
+```typescript
+interface ProxyResponse {
+  // HTTP status code from the upstream server.
+  statusCode: number;
+  // HTTP response headers from the upstream server.
+  headers: Record<string, string>;
+  // Response body as an array of bytes.
+  body: number[];
+}
+```
+
+Basic example:
+
+```javascript
+(async () => {
+  const resp = await Deno.core.ops.op_proxy_request({
+    url: 'https://api.example.com/data',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: Array.from(Deno.core.encode(JSON.stringify({ key: 'value' }))),
+  });
+  // resp.statusCode, resp.headers, resp.body are available
+  return resp;
+})()
+```
+
+**Error handling.** When the upstream request fails, the op throws a JavaScript error with a descriptive message. Scripts can catch these errors and return a custom response:
+
+```javascript
+(async () => {
+  try {
+    return await Deno.core.ops.op_proxy_request({ url: 'https://upstream/api' });
+  } catch (e) {
+    return {
+      statusCode: 502,
+      headers: { 'Content-Type': 'text/plain' },
+      body: Array.from(Deno.core.encode(`Proxy error: ${e.message}`)),
+    };
+  }
+})()
+```
+
+Possible error messages include:
+
+| Error                                     | Meaning                                                                               |
+|-------------------------------------------|---------------------------------------------------------------------------------------|
+| `Invalid URL '…': …`                      | The `url` field could not be parsed.                                                  |
+| `URL not allowed (non-public address): …` | SSRF protection blocked the URL because it resolves to a private/internal IP address. |
+| `Invalid HTTP method: '…'`                | The `method` value is not a valid HTTP method token.                                  |
+| `Invalid header name: '…'`                | A key in `headers` is not a valid HTTP header name.                                   |
+| `Invalid header value for '…'`            | A value in `headers` contains invalid characters.                                     |
+| `Upstream request timed out: …`           | The upstream server did not respond within the configured timeout.                    |
+| `Failed to connect to upstream: …`        | Could not establish a TCP connection to the upstream server.                          |
+| `Upstream request failed: …`              | A general upstream request failure (DNS, TLS, etc.).                                  |
+| `Upstream response body too large: …`     | The response body exceeded the configured size limit.                                 |
+
+:::caution Security
+By default, `op_proxy_request` only allows requests to **publicly routable** IP addresses. URLs that resolve to private or loopback addresses (e.g. `127.0.0.1`, `10.x.x.x`, `192.168.x.x`) are rejected to prevent [Server-Side Request Forgery (SSRF)](https://owasp.org/www-community/attacks/Server-Side_Request_Forgery). This restriction can be relaxed per subscription tier for local development scenarios.
+:::
+
+:::info Limits
+Each responder has a maximum number of concurrent proxy requests it can handle simultaneously (configurable per subscription tier). When the limit is reached, additional requests receive a `429 Too Many Requests` response with a `Retry-After` header. The upstream response body size is also limited (default: 10 MB) to prevent memory exhaustion.
 :::

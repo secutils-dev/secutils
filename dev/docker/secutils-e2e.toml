@@ -23,9 +23,10 @@ operators = ["@kratos", "@secutils", "@retrack"]
 
 [security.preconfigured_users]
 "e2e@secutils.dev" = { handle = "u", tier = "ultimate" }
+"demo@secutils.dev" = { handle = "demo", tier = "ultimate" }
 
 [scheduler]
-notifications_send = "0/15 * * * * *"
+notifications_send = "@weekly"
 
 [utils]
 webhook_url_type = "path"
@@ -47,3 +48,6 @@ web_scraping = { trackers = 10, tracker_revisions = 10, tracker_schedules = ["@"
 
 [subscriptions.professional]
 web_scraping = { tracker_schedules = ["@", "@hourly", "@daily", "@weekly", "@monthly", "@@"], min_schedule_interval = 600_000 }
+
+[subscriptions.ultimate]
+webhooks = { restrict_to_public_urls = false }

@@ -4,8 +4,11 @@ use crate::{
     network::{DnsResolver, EmailTransport, TokioDnsResolver},
     server::{Status, StatusLevel},
 };
+use dashmap::DashMap;
 use lettre::{AsyncSmtpTransport, Tokio1Executor};
 use std::sync::{Arc, RwLock};
+use tokio::sync::Semaphore;
+use uuid::Uuid;
 
 pub struct AppState<
     DR: DnsResolver = TokioDnsResolver,
@@ -14,6 +17,8 @@ pub struct AppState<
     pub config: Config,
     pub status: RwLock<Status>,
     pub api: Arc<Api<DR, ET>>,
+    /// Per-responder concurrency semaphores, keyed by responder ID.
+    pub responder_semaphores: DashMap<Uuid, Arc<Semaphore>>,
 }
 
 impl<DR: DnsResolver, ET: EmailTransport> AppState<DR, ET> {
@@ -25,6 +30,7 @@ impl<DR: DnsResolver, ET: EmailTransport> AppState<DR, ET> {
                 level: StatusLevel::Available,
             }),
             api,
+            responder_semaphores: DashMap::new(),
         }
     }
 }

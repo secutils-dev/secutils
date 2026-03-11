@@ -12,6 +12,8 @@ pub struct ResponderScriptResult {
     pub headers: Option<HashMap<String, String>>,
     /// Optional HTTP body of the response. If not specified, the default body of responder is used.
     pub body: Option<Bytes>,
+    /// When `true`, the request is not recorded in the responder's tracked request history.
+    pub skip_request: Option<bool>,
 }
 
 #[cfg(test)]
@@ -41,12 +43,29 @@ mod tests {
                 ),
                 status_code: Some(300),
                 body: Some(Bytes::from_static(&[1, 2, 3])),
+                skip_request: None,
             }
         );
 
         assert_eq!(
             serde_json::from_str::<ResponderScriptResult>(r#"{}"#)?,
             Default::default()
+        );
+
+        assert_eq!(
+            serde_json::from_str::<ResponderScriptResult>(r#"{"skipRequest": true}"#)?,
+            ResponderScriptResult {
+                skip_request: Some(true),
+                ..Default::default()
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<ResponderScriptResult>(r#"{"skipRequest": false}"#)?,
+            ResponderScriptResult {
+                skip_request: Some(false),
+                ..Default::default()
+            }
         );
 
         Ok(())

@@ -7,8 +7,12 @@ pub use self::{
     email_transport::{EmailTransport, EmailTransportError},
     ip_addr_ext::IpAddrExt,
 };
-use crate::config::{Config, SECUTILS_USER_AGENT};
+use crate::{
+    config::{Config, SECUTILS_USER_AGENT},
+    js_runtime::PublicUrlValidator,
+};
 use anyhow::Context;
+use futures::future::BoxFuture;
 use lettre::{
     AsyncSmtpTransport, Tokio1Executor, message::Mailbox,
     transport::smtp::authentication::Credentials,
@@ -27,6 +31,12 @@ pub struct Network<DR: DnsResolver, ET: EmailTransport> {
     pub resolver: DR,
     pub email_transport: ET,
     pub http_client: ClientWithMiddleware,
+}
+
+impl<DR: DnsResolver, ET: EmailTransport> PublicUrlValidator for Network<DR, ET> {
+    fn is_public_web_url<'a>(&'a self, url: &'a Url) -> BoxFuture<'a, bool> {
+        Box::pin(self.is_public_web_url(url))
+    }
 }
 
 impl<DR: DnsResolver, ET: EmailTransport> Network<DR, ET> {

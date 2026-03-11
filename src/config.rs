@@ -232,6 +232,9 @@ mod tests {
                         responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 10485760,
                         js_runtime_script_execution_time: 30s,
+                        restrict_to_public_urls: true,
+                        max_proxy_response_size: 10485760,
+                        max_concurrent_responder_requests: 10,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 100,
@@ -260,6 +263,9 @@ mod tests {
                         responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 10485760,
                         js_runtime_script_execution_time: 30s,
+                        restrict_to_public_urls: true,
+                        max_proxy_response_size: 10485760,
+                        max_concurrent_responder_requests: 10,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 100,
@@ -288,6 +294,9 @@ mod tests {
                         responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 10485760,
                         js_runtime_script_execution_time: 30s,
+                        restrict_to_public_urls: true,
+                        max_proxy_response_size: 10485760,
+                        max_concurrent_responder_requests: 10,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 100,
@@ -316,6 +325,9 @@ mod tests {
                         responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 10485760,
                         js_runtime_script_execution_time: 30s,
+                        restrict_to_public_urls: true,
+                        max_proxy_response_size: 10485760,
+                        max_concurrent_responder_requests: 10,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 100,
