@@ -325,7 +325,7 @@ This script reads a user secret and includes it in the response. Secrets are man
 
 Responder scripts can forward incoming requests to a real backend using `Deno.core.ops.op_proxy_request()`, inspect or modify the response, and return it to the client. This turns the responder into a **man-in-the-middle (MITM) proxy** - useful for debugging, testing, and API traffic inspection.
 
-**Pure proxy** - forward every request as-is:
+**Pure proxy** - forward every request as-is (with optional `insecure` for self-signed certs and `timeout` in milliseconds):
 
 ```javascript
 (async () => {
@@ -334,6 +334,8 @@ Responder scripts can forward incoming requests to a real backend using `Deno.co
     method: context.method,
     headers: context.headers,
     body: context.body,
+    insecure: true,  // accept self-signed certificates
+    timeout: 5000,   // fail after 5 seconds
   });
 })()
 ```

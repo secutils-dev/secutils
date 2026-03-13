@@ -253,6 +253,13 @@ interface ProxyRequest {
   headers?: Record<string, string>;
   // Optional binary request body as an array of bytes.
   body?: number[];
+  // Skip TLS certificate validation. Defaults to false.
+  // Useful for proxying to upstream servers with self-signed certificates.
+  insecure?: boolean;
+  // Per-request timeout in milliseconds.
+  // Clamped to the server-configured maximum (default: 30 000 ms).
+  // If omitted, the server default timeout applies.
+  timeout?: number;
 }
 ```
 
@@ -319,7 +326,7 @@ By default, `op_proxy_request` only allows requests to **publicly routable** IP 
 :::
 
 :::info Limits
-Each responder has a maximum number of concurrent proxy requests it can handle simultaneously (configurable per subscription tier). When the limit is reached, additional requests receive a `429 Too Many Requests` response with a `Retry-After` header. The upstream response body size is also limited (default: 10 MB) to prevent memory exhaustion.
+Each responder has a maximum number of concurrent proxy requests it can handle simultaneously (configurable per subscription tier). When the limit is reached, additional requests receive a `429 Too Many Requests` response with a `Retry-After` header. The upstream response body size is also limited (default: 10 MB) to prevent memory exhaustion. Every proxy request has a timeout (default: 30 s) that can be lowered per-request via the `timeout` field but cannot exceed the server-configured maximum.
 :::
 
 :::tip Response tracking

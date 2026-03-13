@@ -47,6 +47,7 @@ struct ResponderInfo<'a> {
     name: &'a str,
     restrict_to_public_urls: bool,
     max_proxy_response_size: usize,
+    max_proxy_request_timeout: std::time::Duration,
 }
 
 #[derive(Deserialize)]
@@ -294,6 +295,7 @@ pub async fn webhooks_responders(
                 name: &responder_name,
                 restrict_to_public_urls: subscription_config.restrict_to_public_urls,
                 max_proxy_response_size: subscription_config.max_proxy_response_size,
+                max_proxy_request_timeout: subscription_config.max_proxy_request_timeout,
             };
             match execute_responder_script::<Option<ResponderScriptResult>>(
                 &state,
@@ -500,6 +502,7 @@ async fn execute_responder_script<R: for<'de> Deserialize<'de> + Send + 'static>
         url_validator: Arc::new(state.api.network.clone()),
         restrict_to_public_urls: responder.restrict_to_public_urls,
         max_response_size: responder.max_proxy_response_size,
+        max_request_timeout: responder.max_proxy_request_timeout,
     };
 
     let js_code = format!(r#"(async (globalThis) => {{ return {script}; }})(globalThis);"#);

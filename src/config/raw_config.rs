@@ -119,6 +119,7 @@ mod tests {
         max_proxy_response_size = 10485760
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
+        max_proxy_request_timeout = 30000
         [subscriptions.basic.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -142,6 +143,7 @@ mod tests {
         max_proxy_response_size = 10485760
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
+        max_proxy_request_timeout = 30000
         [subscriptions.standard.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -165,6 +167,7 @@ mod tests {
         max_proxy_response_size = 10485760
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
+        max_proxy_request_timeout = 30000
         [subscriptions.professional.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -188,6 +191,7 @@ mod tests {
         max_proxy_response_size = 10485760
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
+        max_proxy_request_timeout = 30000
         [subscriptions.ultimate.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -462,6 +466,7 @@ mod tests {
                         max_proxy_response_size: 10485760,
                         max_concurrent_responder_requests: 10,
                         max_tracked_response_size: 1048576,
+                        max_proxy_request_timeout: 30s,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 1,
@@ -498,6 +503,7 @@ mod tests {
                         max_proxy_response_size: 10485760,
                         max_concurrent_responder_requests: 10,
                         max_tracked_response_size: 1048576,
+                        max_proxy_request_timeout: 30s,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 2,
@@ -534,6 +540,7 @@ mod tests {
                         max_proxy_response_size: 10485760,
                         max_concurrent_responder_requests: 10,
                         max_tracked_response_size: 1048576,
+                        max_proxy_request_timeout: 30s,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 3,
@@ -570,6 +577,7 @@ mod tests {
                         max_proxy_response_size: 10485760,
                         max_concurrent_responder_requests: 10,
                         max_tracked_response_size: 1048576,
+                        max_proxy_request_timeout: 30s,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 4,

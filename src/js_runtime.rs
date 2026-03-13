@@ -220,6 +220,7 @@ pub mod tests {
             url_validator: Arc::new(AllowAllValidator),
             restrict_to_public_urls,
             max_response_size: 10_485_760,
+            max_request_timeout: std::time::Duration::from_secs(30),
         }
     }
 
@@ -231,6 +232,7 @@ pub mod tests {
             url_validator: validator,
             restrict_to_public_urls: restrict,
             max_response_size: 10_485_760,
+            max_request_timeout: std::time::Duration::from_secs(30),
         }
     }
 
@@ -721,6 +723,7 @@ pub mod tests {
             url_validator: Arc::new(local_network),
             restrict_to_public_urls: true,
             max_response_size: 10_485_760,
+            max_request_timeout: std::time::Duration::from_secs(30),
         };
 
         let result = JsRuntime::execute_script::<serde_json::Value>(
@@ -1071,6 +1074,129 @@ pub mod tests {
         }
         results.sort();
         assert_eq!(results, vec![0, 10, 20, 30, 40]);
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_insecure_flag_works_with_http() -> anyhow::Result<()> {
+        let mock_server = httpmock::MockServer::start_async().await;
+        let mock = mock_server
+            .mock_async(|when, then| {
+                when.method("GET").path("/insecure-test");
+                then.status(200).body("insecure-ok");
+            })
+            .await;
+
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct R {
+            status_code: u16,
+            #[serde(with = "serde_bytes")]
+            body: Vec<u8>,
+        }
+
+        let url = format!("{}/insecure-test", mock_server.base_url());
+        let script = format!(
+            r#"(async () => {{
+                return await Deno.core.ops.op_proxy_request({{ url: "{url}", insecure: true }});
+            }})()"#
+        );
+
+        let (result, _) =
+            JsRuntime::execute_script::<R>(config, script, None, Some(test_proxy_state(false)))
+                .await?;
+
+        assert_eq!(result.status_code, 200);
+        assert_eq!(String::from_utf8(result.body)?, "insecure-ok");
+        mock.assert_async().await;
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_timeout_causes_error() -> anyhow::Result<()> {
+        let mock_server = httpmock::MockServer::start_async().await;
+        mock_server
+            .mock_async(|when, then| {
+                when.method("GET").path("/slow");
+                then.status(200)
+                    .body("slow-response")
+                    .delay(std::time::Duration::from_secs(5));
+            })
+            .await;
+
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        let url = format!("{}/slow", mock_server.base_url());
+        let script = format!(
+            r#"(async () => {{
+                return await Deno.core.ops.op_proxy_request({{ url: "{url}", timeout: 100 }});
+            }})()"#
+        );
+
+        let result = JsRuntime::execute_script::<serde_json::Value>(
+            config,
+            script,
+            None,
+            Some(test_proxy_state(false)),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            format!("{result}").contains("timed out"),
+            "Expected timeout error, got: {result}"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_timeout_clamped_to_server_max() -> anyhow::Result<()> {
+        let mock_server = httpmock::MockServer::start_async().await;
+        mock_server
+            .mock_async(|when, then| {
+                when.method("GET").path("/clamped");
+                then.status(200)
+                    .body("clamped-response")
+                    .delay(std::time::Duration::from_secs(3));
+            })
+            .await;
+
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+
+        let mut proxy = test_proxy_state(false);
+        proxy.max_request_timeout = std::time::Duration::from_millis(200);
+
+        let url = format!("{}/clamped", mock_server.base_url());
+        // Script asks for 60s but server max is 200ms, so it should time out.
+        let script = format!(
+            r#"(async () => {{
+                return await Deno.core.ops.op_proxy_request({{ url: "{url}", timeout: 60000 }});
+            }})()"#
+        );
+
+        let result =
+            JsRuntime::execute_script::<serde_json::Value>(config, script, None, Some(proxy))
+                .await
+                .unwrap_err();
+
+        assert!(
+            format!("{result}").contains("timed out"),
+            "Expected timeout error due to clamping, got: {result}"
+        );
 
         Ok(())
     }

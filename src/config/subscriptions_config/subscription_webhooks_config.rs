@@ -28,6 +28,10 @@ pub struct SubscriptionWebhooksConfig {
     /// Maximum response body size (in bytes) stored when response tracking is enabled.
     #[serde(default = "default_max_tracked_response_size")]
     pub max_tracked_response_size: usize,
+    /// Maximum per-request timeout for `op_proxy_request` in milliseconds. Defaults to 30 seconds.
+    #[serde_as(as = "DurationMilliSeconds<u64>")]
+    #[serde(default = "default_max_proxy_request_timeout")]
+    pub max_proxy_request_timeout: Duration,
 }
 
 fn default_restrict_to_public_urls() -> bool {
@@ -46,6 +50,10 @@ fn default_max_tracked_response_size() -> usize {
     1_048_576
 }
 
+fn default_max_proxy_request_timeout() -> Duration {
+    Duration::from_secs(30)
+}
+
 impl Default for SubscriptionWebhooksConfig {
     fn default() -> Self {
         Self {
@@ -58,6 +66,7 @@ impl Default for SubscriptionWebhooksConfig {
             max_proxy_response_size: default_max_proxy_response_size(),
             max_concurrent_responder_requests: default_max_concurrent_responder_requests(),
             max_tracked_response_size: default_max_tracked_response_size(),
+            max_proxy_request_timeout: default_max_proxy_request_timeout(),
         }
     }
 }
@@ -80,6 +89,7 @@ mod tests {
         max_proxy_response_size = 10485760
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
+        max_proxy_request_timeout = 30000
         "###);
     }
 
@@ -96,6 +106,7 @@ mod tests {
         max_proxy_response_size = 10485760
         max_concurrent_responder_requests = 10
         max_tracked_response_size = 1048576
+        max_proxy_request_timeout = 30000
     "#,
         )
         .unwrap();

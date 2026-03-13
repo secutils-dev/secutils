@@ -8,10 +8,12 @@ use std::{
     collections::HashMap,
     rc::Rc,
     sync::{Arc, OnceLock},
+    time::Duration,
 };
 use url::Url;
 
 static PROXY_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+static PROXY_CLIENT_INSECURE: OnceLock<reqwest::Client> = OnceLock::new();
 
 /// Trait for validating whether a URL is publicly accessible (not pointing to
 /// private/internal networks). Implemented by `Network<DR, ET>` so we can
@@ -26,6 +28,7 @@ pub struct ProxyState {
     pub url_validator: Arc<dyn PublicUrlValidator>,
     pub restrict_to_public_urls: bool,
     pub max_response_size: usize,
+    pub max_request_timeout: Duration,
 }
 
 #[derive(Deserialize)]
@@ -37,6 +40,9 @@ pub struct ProxyRequest {
     #[serde(default)]
     pub headers: HashMap<String, String>,
     pub body: Option<Vec<u8>>,
+    #[serde(default)]
+    pub insecure: bool,
+    pub timeout: Option<u64>,
 }
 
 fn default_method() -> String {
@@ -77,13 +83,32 @@ pub async fn op_proxy_request(
         .parse()
         .map_err(|_| JsErrorBox::generic(format!("Invalid HTTP method: '{}'", request.method)))?;
 
-    let client = PROXY_CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .redirect(RedirectPolicy::none())
-            .build()
-            .expect("Failed to build proxy HTTP client")
-    });
-    let mut req_builder = client.request(method, url);
+    let client = if request.insecure {
+        PROXY_CLIENT_INSECURE.get_or_init(|| {
+            reqwest::Client::builder()
+                .redirect(RedirectPolicy::none())
+                .danger_accept_invalid_certs(true)
+                .build()
+                .expect("Failed to build insecure proxy HTTP client")
+        })
+    } else {
+        PROXY_CLIENT.get_or_init(|| {
+            reqwest::Client::builder()
+                .redirect(RedirectPolicy::none())
+                .build()
+                .expect("Failed to build proxy HTTP client")
+        })
+    };
+
+    let max_timeout_ms = proxy.max_request_timeout.as_millis() as u64;
+    let timeout = Duration::from_millis(
+        request
+            .timeout
+            .unwrap_or(max_timeout_ms)
+            .min(max_timeout_ms),
+    );
+
+    let mut req_builder = client.request(method, url).timeout(timeout);
     for (k, v) in &request.headers {
         let name = http::HeaderName::from_bytes(k.as_bytes())
             .map_err(|_| JsErrorBox::generic(format!("Invalid header name: '{k}'")))?;
@@ -147,6 +172,8 @@ mod tests {
         assert_eq!(req.method, "POST");
         assert_eq!(req.headers.get("content-type").unwrap(), "application/json");
         assert_eq!(req.body, Some(vec![1, 2, 3]));
+        assert!(!req.insecure);
+        assert!(req.timeout.is_none());
     }
 
     #[test]
@@ -156,6 +183,19 @@ mod tests {
         assert_eq!(req.method, "GET");
         assert!(req.headers.is_empty());
         assert!(req.body.is_none());
+        assert!(!req.insecure);
+        assert!(req.timeout.is_none());
+    }
+
+    #[test]
+    fn proxy_request_deserialization_with_insecure_and_timeout() {
+        let req: ProxyRequest = serde_json::from_str(
+            r#"{"url": "https://example.com", "insecure": true, "timeout": 5000}"#,
+        )
+        .unwrap();
+        assert_eq!(req.url, "https://example.com");
+        assert!(req.insecure);
+        assert_eq!(req.timeout, Some(5000));
     }
 
     #[test]
