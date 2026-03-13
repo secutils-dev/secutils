@@ -235,6 +235,7 @@ mod tests {
                         restrict_to_public_urls: true,
                         max_proxy_response_size: 10485760,
                         max_concurrent_responder_requests: 10,
+                        max_tracked_response_size: 1048576,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 100,
@@ -266,6 +267,7 @@ mod tests {
                         restrict_to_public_urls: true,
                         max_proxy_response_size: 10485760,
                         max_concurrent_responder_requests: 10,
+                        max_tracked_response_size: 1048576,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 100,
@@ -297,6 +299,7 @@ mod tests {
                         restrict_to_public_urls: true,
                         max_proxy_response_size: 10485760,
                         max_concurrent_responder_requests: 10,
+                        max_tracked_response_size: 1048576,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 100,
@@ -328,6 +331,7 @@ mod tests {
                         restrict_to_public_urls: true,
                         max_proxy_response_size: 10485760,
                         max_concurrent_responder_requests: 10,
+                        max_tracked_response_size: 1048576,
                     },
                     web_scraping: SubscriptionWebScrapingConfig {
                         trackers: 100,

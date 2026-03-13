@@ -453,6 +453,10 @@ pub mod tests {
                     headers: None,
                     url: Cow::Borrowed("/?query=value"),
                     body: None,
+                    duration_ms: None,
+                    response_status_code: None,
+                    response_headers: None,
+                    response_body: None,
                 },
             )
             .await?
@@ -467,6 +471,10 @@ pub mod tests {
                     headers: None,
                     url: Cow::Borrowed("/?query=other-value"),
                     body: None,
+                    duration_ms: None,
+                    response_status_code: None,
+                    response_headers: None,
+                    response_body: None,
                 },
             )
             .await?
@@ -543,6 +551,10 @@ pub mod tests {
                     headers: None,
                     url: Cow::Borrowed("/?query=value"),
                     body: None,
+                    duration_ms: None,
+                    response_status_code: None,
+                    response_headers: None,
+                    response_body: None,
                 },
             )
             .await?;
@@ -555,6 +567,10 @@ pub mod tests {
                     headers: None,
                     url: Cow::Borrowed("/?query=other-value"),
                     body: None,
+                    duration_ms: None,
+                    response_status_code: None,
+                    response_headers: None,
+                    response_body: None,
                 },
             )
             .await?;
@@ -624,6 +640,10 @@ pub mod tests {
                     headers: None,
                     url: Cow::Borrowed("/?query=value"),
                     body: None,
+                    duration_ms: None,
+                    response_status_code: None,
+                    response_headers: None,
+                    response_body: None,
                 },
             )
             .await?

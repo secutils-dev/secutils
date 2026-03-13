@@ -25,6 +25,9 @@ pub struct SubscriptionWebhooksConfig {
     /// Maximum number of concurrent requests a single responder can handle simultaneously.
     #[serde(default = "default_max_concurrent_responder_requests")]
     pub max_concurrent_responder_requests: usize,
+    /// Maximum response body size (in bytes) stored when response tracking is enabled.
+    #[serde(default = "default_max_tracked_response_size")]
+    pub max_tracked_response_size: usize,
 }
 
 fn default_restrict_to_public_urls() -> bool {
@@ -39,6 +42,10 @@ fn default_max_concurrent_responder_requests() -> usize {
     10
 }
 
+fn default_max_tracked_response_size() -> usize {
+    1_048_576
+}
+
 impl Default for SubscriptionWebhooksConfig {
     fn default() -> Self {
         Self {
@@ -50,6 +57,7 @@ impl Default for SubscriptionWebhooksConfig {
             restrict_to_public_urls: default_restrict_to_public_urls(),
             max_proxy_response_size: default_max_proxy_response_size(),
             max_concurrent_responder_requests: default_max_concurrent_responder_requests(),
+            max_tracked_response_size: default_max_tracked_response_size(),
         }
     }
 }
@@ -71,6 +79,7 @@ mod tests {
         restrict_to_public_urls = true
         max_proxy_response_size = 10485760
         max_concurrent_responder_requests = 10
+        max_tracked_response_size = 1048576
         "###);
     }
 
@@ -86,6 +95,7 @@ mod tests {
         restrict_to_public_urls = true
         max_proxy_response_size = 10485760
         max_concurrent_responder_requests = 10
+        max_tracked_response_size = 1048576
     "#,
         )
         .unwrap();

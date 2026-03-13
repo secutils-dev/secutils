@@ -14,6 +14,7 @@ import {
 import { unix } from 'moment';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { buildHar } from './build_har';
 import type { Responder } from './responder';
 import type { ResponderRequest } from './responder_request';
 import { DataGrid, PageErrorState, PageLoadingState } from '../../../../components';
@@ -31,8 +32,8 @@ function binaryToText(binary: number[]) {
   return TEXT_DECODER.decode(new Uint8Array(binary));
 }
 
-function guessBodyContentType(request: ResponderRequest) {
-  for (const [headerName, headerValue] of request.headers ?? []) {
+function guessContentType(headers?: Array<[string, number[]]>) {
+  for (const [headerName, headerValue] of headers ?? []) {
     if (headerName.toLowerCase() === 'content-type') {
       const headerTextValue = binaryToText(headerValue).toLowerCase();
       if (headerTextValue.includes('json') || headerTextValue.includes('csp-report')) {
@@ -111,6 +112,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
     return () => clearInterval(intervalId);
   }, [autoRefresh, responder.enabled, responder.settings.requestsToTrack, loadRequests]);
 
+  const HIDDEN_COLUMNS = new Set(['responseStatusCode', 'responseHeaders', 'responseBody']);
   const columns: EuiDataGridColumn[] = [
     {
       id: 'timestamp',
@@ -124,10 +126,30 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
     { id: 'address', display: 'Client address', displayAsText: 'Client address', isExpandable: false },
     { id: 'method', display: 'Method', displayAsText: 'Method', initialWidth: 80, isExpandable: false },
     { id: 'url', display: 'URL', displayAsText: 'URL', isSortable: true },
-    { id: 'headers', display: 'Headers', displayAsText: 'Body' },
+    { id: 'headers', display: 'Headers', displayAsText: 'Headers' },
     { id: 'body', display: 'Body', displayAsText: 'Body' },
+    {
+      id: 'duration',
+      display: 'Duration',
+      displayAsText: 'Duration',
+      initialWidth: 100,
+      isExpandable: false,
+      isSortable: true,
+    },
+    {
+      id: 'responseStatusCode',
+      display: 'Resp. status',
+      displayAsText: 'Resp. status',
+      initialWidth: 110,
+      isExpandable: false,
+      isSortable: true,
+    },
+    { id: 'responseHeaders', display: 'Resp. headers', displayAsText: 'Resp. headers' },
+    { id: 'responseBody', display: 'Resp. body', displayAsText: 'Resp. body' },
   ];
-  const [visibleColumns, setVisibleColumns] = useState(() => columns.map(({ id }) => id));
+  const [visibleColumns, setVisibleColumns] = useState(() =>
+    columns.filter(({ id }) => !HIDDEN_COLUMNS.has(id)).map(({ id }) => id),
+  );
   const [sortingColumns, setSortingColumns] = useState<Array<{ id: string; direction: 'asc' | 'desc' }>>([]);
 
   const [pagination, setPagination] = useState<Pagination>({
@@ -196,13 +218,58 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
 
         if (isDetails) {
           return (
-            <EuiCodeBlock language={guessBodyContentType(request)} fontSize="m" isCopyable overflowHeight={'100%'}>
+            <EuiCodeBlock language={guessContentType(request.headers)} fontSize="m" isCopyable overflowHeight={'100%'}>
               {binaryToText(request.body)}
             </EuiCodeBlock>
           );
         }
 
         return `${request.body.length} bytes`;
+      }
+
+      if (columnId === 'duration') {
+        return request.durationMs != null ? `${request.durationMs} ms` : '-';
+      }
+
+      if (columnId === 'responseStatusCode') {
+        return request.responseStatusCode != null ? `${request.responseStatusCode}` : '-';
+      }
+
+      if (columnId === 'responseHeaders') {
+        if (!request.responseHeaders || request.responseHeaders.length === 0) {
+          return '-';
+        }
+
+        if (isDetails) {
+          return (
+            <EuiCodeBlock language="http" fontSize="m" isCopyable overflowHeight={'100%'}>
+              {request.responseHeaders.map(([name, value]) => `${name}: ${binaryToText(value)}`).join('\n')}
+            </EuiCodeBlock>
+          );
+        }
+
+        return `${request.responseHeaders.length} headers`;
+      }
+
+      if (columnId === 'responseBody') {
+        if (!request.responseBody || request.responseBody.length === 0) {
+          return '-';
+        }
+
+        if (isDetails) {
+          return (
+            <EuiCodeBlock
+              language={guessContentType(request.responseHeaders)}
+              fontSize="m"
+              isCopyable
+              overflowHeight={'100%'}
+            >
+              {binaryToText(request.responseBody)}
+            </EuiCodeBlock>
+          );
+        }
+
+        return `${request.responseBody.length} bytes`;
       }
 
       return null;
@@ -291,6 +358,39 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
         </EuiFlexItem>
         <EuiFlexItem grow={false}>
           <EuiFlexGroup alignItems={'center'} gutterSize={'s'} responsive={false}>
+            <EuiFlexItem grow={false}>
+              <EuiToolTip content="Export as HAR">
+                <EuiButtonIcon
+                  iconType="exportAction"
+                  aria-label="Export as HAR"
+                  isDisabled={requests.status !== 'succeeded' || requests.data.length === 0}
+                  onClick={() => {
+                    if (requests.status !== 'succeeded') {
+                      return;
+                    }
+                    const responderBaseUrl = uiState.user
+                      ? uiState.webhookUrlType === 'path'
+                        ? `${location.origin}/api/webhooks/${uiState.user.handle}`
+                        : `${location.protocol}//${
+                            responder.location.subdomainPrefix
+                              ? `${responder.location.subdomainPrefix}-${uiState.user.handle}`
+                              : uiState.user.handle
+                          }.webhooks.${location.host}`
+                      : location.origin;
+                    const har = buildHar(requests.data, responderBaseUrl);
+                    const blob = new Blob([JSON.stringify(har, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${responder.name}-history.har`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  }}
+                />
+              </EuiToolTip>
+            </EuiFlexItem>
             <EuiFlexItem grow={false}>
               <EuiToolTip content="Update">
                 <EuiButtonIcon

@@ -439,6 +439,10 @@ mod tests {
             url: Cow::Borrowed("/some-path?query=value"),
             body: Some(Cow::Owned(vec![4, 5, 6])),
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            duration_ms: None,
+            response_status_code: None,
+            response_headers: None,
+            response_body: None,
         })
     }
 

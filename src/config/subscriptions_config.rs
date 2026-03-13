@@ -73,6 +73,7 @@ mod tests {
         restrict_to_public_urls = true
         max_proxy_response_size = 10485760
         max_concurrent_responder_requests = 10
+        max_tracked_response_size = 1048576
         [basic.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -95,6 +96,7 @@ mod tests {
         restrict_to_public_urls = true
         max_proxy_response_size = 10485760
         max_concurrent_responder_requests = 10
+        max_tracked_response_size = 1048576
         [standard.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -117,6 +119,7 @@ mod tests {
         restrict_to_public_urls = true
         max_proxy_response_size = 10485760
         max_concurrent_responder_requests = 10
+        max_tracked_response_size = 1048576
         [professional.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -139,6 +142,7 @@ mod tests {
         restrict_to_public_urls = true
         max_proxy_response_size = 10485760
         max_concurrent_responder_requests = 10
+        max_tracked_response_size = 1048576
         [ultimate.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -174,6 +178,7 @@ mod tests {
         restrict_to_public_urls = true
         max_proxy_response_size = 10485760
         max_concurrent_responder_requests = 10
+        max_tracked_response_size = 1048576
         [basic.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -196,6 +201,7 @@ mod tests {
         restrict_to_public_urls = true
         max_proxy_response_size = 10485760
         max_concurrent_responder_requests = 10
+        max_tracked_response_size = 1048576
         [standard.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -218,6 +224,7 @@ mod tests {
         restrict_to_public_urls = true
         max_proxy_response_size = 10485760
         max_concurrent_responder_requests = 10
+        max_tracked_response_size = 1048576
         [professional.web_scraping]
         trackers = 100
         tracker_revisions = 30
@@ -240,6 +247,7 @@ mod tests {
         restrict_to_public_urls = true
         max_proxy_response_size = 10485760
         max_concurrent_responder_requests = 10
+        max_tracked_response_size = 1048576
         [ultimate.web_scraping]
         trackers = 100
         tracker_revisions = 30

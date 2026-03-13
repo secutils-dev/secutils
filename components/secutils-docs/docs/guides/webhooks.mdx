@@ -243,6 +243,8 @@ interface ScriptResult {
   body?: Uint8Array;
   // When true, the request is not recorded in the responder's tracked request history.
   skipRequest?: boolean;
+  // When true, the response sent to the client is also stored alongside the tracked request.
+  trackResponse?: boolean;
 }
 ```
 
@@ -396,6 +398,40 @@ By default every incoming request is recorded in the responder's tracked history
   };
 })();
 ```
+
+### Track responses
+
+By default, only the incoming request is stored in the history. If you also need to inspect the response sent back to the client (for example, to debug upstream proxy results), the script can return `trackResponse: true`. The response status code, headers, and body are then stored alongside the request in the same history row:
+
+```javascript
+(async () => {
+  const resp = await Deno.core.ops.op_proxy_request({
+    url: `https://backend.example.com${context.path}`,
+    method: context.method,
+    headers: context.headers,
+    body: context.body,
+  });
+  return {
+    ...resp,
+    // Only track the response when the upstream returned an error.
+    trackResponse: resp.statusCode >= 400,
+  };
+})()
+```
+
+The tracked response body is subject to a size limit (default 1 MB). If the response exceeds this limit, the stored copy is truncated, but the full response is still sent to the client.
+
+When a script **fails** (throws an error, times out, etc.), the error response is automatically captured in the tracked request without needing `trackResponse`. This provides crucial debugging visibility for script failures.
+
+:::tip
+If both `skipRequest: true` and `trackResponse: true` are set, `skipRequest` takes precedence and no tracking occurs at all.
+:::
+
+### Export request history as HAR
+
+The request history table includes an **Export as HAR** button that downloads the tracked requests (and responses, when available) as an [HTTP Archive (HAR)](http://www.softwareishard.com/blog/har-12-spec/) file. HAR files can be imported into browser DevTools, Charles Proxy, or other HTTP analysis tools for further inspection.
+
+The duration column shows the total server-side processing time for each request, and this value is included in the HAR file's timing information.
 
 ### Generate images and other binary content
 

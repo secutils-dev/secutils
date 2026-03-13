@@ -321,3 +321,7 @@ By default, `op_proxy_request` only allows requests to **publicly routable** IP 
 :::info Limits
 Each responder has a maximum number of concurrent proxy requests it can handle simultaneously (configurable per subscription tier). When the limit is reached, additional requests receive a `429 Too Many Requests` response with a `Retry-After` header. The upstream response body size is also limited (default: 10 MB) to prevent memory exhaustion.
 :::
+
+:::tip Response tracking
+When using `op_proxy_request`, you can store the upstream response alongside the tracked request by returning `trackResponse: true` in your script result. This is especially useful for debugging proxy issues. See [Track responses](/docs/guides/webhooks#track-responses) for details.
+:::

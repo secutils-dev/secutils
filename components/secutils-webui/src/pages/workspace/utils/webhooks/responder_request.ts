@@ -6,4 +6,8 @@ export interface ResponderRequest {
   url: string;
   body?: number[];
   createdAt: number;
+  durationMs?: number;
+  responseStatusCode?: number;
+  responseHeaders?: Array<[string, number[]]>;
+  responseBody?: number[];
 }

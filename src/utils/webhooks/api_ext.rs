@@ -202,6 +202,10 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
             created_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
             )?,
+            duration_ms: params.duration_ms,
+            response_status_code: params.response_status_code,
+            response_headers: params.response_headers,
+            response_body: params.response_body,
         };
 
         Self::validate_responder_request(&responder, &request)?;
@@ -413,6 +417,10 @@ mod tests {
             headers: None,
             url: Cow::Borrowed(url),
             body: None,
+            duration_ms: None,
+            response_status_code: None,
+            response_headers: None,
+            response_body: None,
         }
     }
 

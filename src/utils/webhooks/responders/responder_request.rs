@@ -29,6 +29,18 @@ pub struct ResponderRequest<'a> {
     /// Date and time when the request was captured.
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
+    /// Total server-side processing time in milliseconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u32>,
+    /// HTTP status code of the response (when response tracking is enabled).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_status_code: Option<u16>,
+    /// HTTP headers of the response (when response tracking is enabled).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_headers: Option<ResponderRequestHeaders<'a>>,
+    /// HTTP body of the response (when response tracking is enabled).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_body: Option<Cow<'a, [u8]>>,
 }
 
 #[cfg(test)]
@@ -49,7 +61,11 @@ mod tests {
             headers: Some(vec![(Cow::Borrowed("Content-Type"), Cow::Borrowed(&[1, 2, 3]))]),
             body: Some(Cow::Borrowed(&[4, 5, 6])),
             url: Cow::Borrowed("/some-path?query=value"),
-            created_at: OffsetDateTime::from_unix_timestamp(946720800)?
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            duration_ms: Some(42),
+            response_status_code: Some(200),
+            response_headers: Some(vec![(Cow::Borrowed("X-Resp"), Cow::Borrowed(&[7, 8]))]),
+            response_body: Some(Cow::Borrowed(&[9, 10])),
         }, @r###"
         {
           "id": "00000000-0000-0000-0000-000000000001",
@@ -71,7 +87,22 @@ mod tests {
             5,
             6
           ],
-          "createdAt": 946720800
+          "createdAt": 946720800,
+          "durationMs": 42,
+          "responseStatusCode": 200,
+          "responseHeaders": [
+            [
+              "X-Resp",
+              [
+                7,
+                8
+              ]
+            ]
+          ],
+          "responseBody": [
+            9,
+            10
+          ]
         }
         "###);
 
@@ -83,7 +114,11 @@ mod tests {
             headers: None,
             body: None,
             url: Cow::Borrowed("/some-path?query=value"),
-            created_at: OffsetDateTime::from_unix_timestamp(946720800)?
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            duration_ms: None,
+            response_status_code: None,
+            response_headers: None,
+            response_body: None,
         }, @r###"
         {
           "id": "00000000-0000-0000-0000-000000000001",
@@ -137,7 +172,11 @@ mod tests {
                 )]),
                 url: Cow::Borrowed("/some-path?query=value"),
                 body: Some(Cow::Borrowed(&[4, 5, 6])),
-                created_at: OffsetDateTime::from_unix_timestamp(946720800)?
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                duration_ms: None,
+                response_status_code: None,
+                response_headers: None,
+                response_body: None,
             }
         );
 
@@ -161,7 +200,11 @@ mod tests {
                 headers: None,
                 url: Cow::Borrowed("/some-path?query=value"),
                 body: None,
-                created_at: OffsetDateTime::from_unix_timestamp(946720800)?
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                duration_ms: None,
+                response_status_code: None,
+                response_headers: None,
+                response_body: None,
             }
         );
 

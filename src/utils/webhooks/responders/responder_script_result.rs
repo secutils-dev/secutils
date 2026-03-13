@@ -14,6 +14,8 @@ pub struct ResponderScriptResult {
     pub body: Option<Bytes>,
     /// When `true`, the request is not recorded in the responder's tracked request history.
     pub skip_request: Option<bool>,
+    /// When `true`, the response sent to the client is also stored alongside the tracked request.
+    pub track_response: Option<bool>,
 }
 
 #[cfg(test)]
@@ -44,6 +46,7 @@ mod tests {
                 status_code: Some(300),
                 body: Some(Bytes::from_static(&[1, 2, 3])),
                 skip_request: None,
+                track_response: None,
             }
         );
 
@@ -64,6 +67,33 @@ mod tests {
             serde_json::from_str::<ResponderScriptResult>(r#"{"skipRequest": false}"#)?,
             ResponderScriptResult {
                 skip_request: Some(false),
+                ..Default::default()
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<ResponderScriptResult>(r#"{"trackResponse": true}"#)?,
+            ResponderScriptResult {
+                track_response: Some(true),
+                ..Default::default()
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<ResponderScriptResult>(r#"{"trackResponse": false}"#)?,
+            ResponderScriptResult {
+                track_response: Some(false),
+                ..Default::default()
+            }
+        );
+
+        assert_eq!(
+            serde_json::from_str::<ResponderScriptResult>(
+                r#"{"skipRequest": true, "trackResponse": true}"#
+            )?,
+            ResponderScriptResult {
+                skip_request: Some(true),
+                track_response: Some(true),
                 ..Default::default()
             }
         );
