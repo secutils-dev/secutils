@@ -143,4 +143,82 @@ test.describe('Script editor context menu snippets', () => {
     await expect(lines).toContainText('statusCode', { timeout: 5000 });
     await expect(lines).toContainText('context', { timeout: 5000 });
   });
+
+  test('responder - insert request forwarder snippet', async ({ page }) => {
+    await page.goto('/ws/webhooks__responders');
+    const createButton = page.getByRole('button', { name: 'Create responder' });
+    await expect(createButton).toBeVisible({ timeout: 15000 });
+
+    await createButton.click();
+    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add responder' }) });
+    await expect(flyout).toBeVisible();
+
+    const advancedToggle = flyout.getByText('Advanced mode', { exact: true });
+    await advancedToggle.click();
+
+    const scriptLabel = flyout.getByText('Script', { exact: true });
+    await scriptLabel.scrollIntoViewIfNeeded();
+
+    const editor = flyout
+      .locator('.euiFormRow')
+      .filter({ has: page.getByText('Script', { exact: true }) })
+      .locator('.monaco-editor');
+    await expect(editor).toBeVisible({ timeout: 15000 });
+
+    await verifyContextMenuItemExists(editor, page, 'Insert Example: Request Forwarder');
+    await triggerSnippetAction(page, 'insert-snippet-responder-script-forwarder');
+
+    const lines = editorLines(editor);
+    await expect(lines).toContainText('op_proxy_request', { timeout: 5000 });
+    await expect(lines).toContainText('context.path', { timeout: 5000 });
+  });
+
+  test('responder - insert advanced request forwarder snippet', async ({ page }) => {
+    await page.goto('/ws/webhooks__responders');
+    const createButton = page.getByRole('button', { name: 'Create responder' });
+    await expect(createButton).toBeVisible({ timeout: 15000 });
+
+    await createButton.click();
+    const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add responder' }) });
+    await expect(flyout).toBeVisible();
+
+    const advancedToggle = flyout.getByText('Advanced mode', { exact: true });
+    await advancedToggle.click();
+
+    const scriptLabel = flyout.getByText('Script', { exact: true });
+    await scriptLabel.scrollIntoViewIfNeeded();
+
+    const editor = flyout
+      .locator('.euiFormRow')
+      .filter({ has: page.getByText('Script', { exact: true }) })
+      .locator('.monaco-editor');
+    await expect(editor).toBeVisible({ timeout: 15000 });
+
+    await verifyContextMenuItemExists(editor, page, 'Insert Example: Advanced Request Forwarder');
+    await triggerSnippetAction(page, 'insert-snippet-responder-script-forwarder-advanced');
+
+    const lines = editorLines(editor);
+    await expect(lines).toContainText('op_proxy_request', { timeout: 5000 });
+
+    // The advanced snippet is taller than the editor viewport, so scroll to reveal the bottom.
+    await page.evaluate(() => {
+      const m = (
+        window as Window & {
+          __test_monaco?: {
+            editor: {
+              getEditors(): Array<{ getModel(): { getLineCount(): number } | null; revealLine(line: number): void }>;
+            };
+          };
+        }
+      ).__test_monaco;
+      if (!m) return;
+      for (const ed of m.editor.getEditors()) {
+        const model = ed.getModel();
+        if (model) ed.revealLine(model.getLineCount());
+      }
+    });
+
+    await expect(lines).toContainText('trackResponse', { timeout: 5000 });
+    await expect(lines).toContainText('skipRequest', { timeout: 5000 });
+  });
 });
