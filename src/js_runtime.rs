@@ -24,6 +24,35 @@ const SCRIPT_TIMEOUT_CHECK_INTERVAL: Duration = Duration::from_secs(2);
 
 deno_core::extension!(secutils_ext, ops = [op_proxy_request::op_proxy_request]);
 
+/// Wraps a user script in an async IIFE that auto-converts the `body` field
+/// of the returned object: strings are UTF-8 encoded, objects/arrays are
+/// JSON-serialized, and plain number arrays become `Uint8Array` for backward
+/// compatibility.  `Uint8Array`/`ArrayBuffer` values pass through unchanged.
+pub fn wrap_script_with_body_conversion(script: &str) -> String {
+    let script = script.trim().trim_end_matches(';');
+    format!(
+        r#"(async (globalThis) => {{
+  const __result = await ({script});
+  if (__result && __result.body !== undefined && __result.body !== null) {{
+    const __body = __result.body;
+    if (__body instanceof Uint8Array || __body instanceof ArrayBuffer || ArrayBuffer.isView(__body)) {{
+    }} else if (typeof __body === 'string') {{
+      __result.body = Deno.core.encode(__body);
+    }} else if (Array.isArray(__body)) {{
+      if (__body.length === 0 || typeof __body[0] === 'number') {{
+        __result.body = new Uint8Array(__body);
+      }} else {{
+        __result.body = Deno.core.encode(JSON.stringify(__body));
+      }}
+    }} else {{
+      __result.body = Deno.core.encode(JSON.stringify(__body));
+    }}
+  }}
+  return __result;
+}})(globalThis);"#
+    )
+}
+
 /// An abstraction over the V8/Deno runtime that allows any utilities to execute custom user
 /// JavaScript scripts. Each invocation runs inside a dedicated `spawn_blocking` task with its own
 /// `CurrentThread` tokio runtime so that async Deno ops (e.g. `op_proxy_request`) work correctly.
@@ -216,24 +245,24 @@ pub mod tests {
     }
 
     fn test_proxy_state(restrict_to_public_urls: bool) -> ProxyState {
-        ProxyState {
-            url_validator: Arc::new(AllowAllValidator),
+        ProxyState::new(
+            Arc::new(AllowAllValidator),
             restrict_to_public_urls,
-            max_response_size: 10_485_760,
-            max_request_timeout: std::time::Duration::from_secs(30),
-        }
+            10_485_760,
+            std::time::Duration::from_secs(30),
+        )
     }
 
     fn test_proxy_state_with_validator(
         validator: Arc<dyn PublicUrlValidator>,
         restrict: bool,
     ) -> ProxyState {
-        ProxyState {
-            url_validator: validator,
-            restrict_to_public_urls: restrict,
-            max_response_size: 10_485_760,
-            max_request_timeout: std::time::Duration::from_secs(30),
-        }
+        ProxyState::new(
+            validator,
+            restrict,
+            10_485_760,
+            std::time::Duration::from_secs(30),
+        )
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -719,12 +748,12 @@ pub mod tests {
             ClientBuilder::new(reqwest::Client::new()).build(),
         );
 
-        let proxy = ProxyState {
-            url_validator: Arc::new(local_network),
-            restrict_to_public_urls: true,
-            max_response_size: 10_485_760,
-            max_request_timeout: std::time::Duration::from_secs(30),
-        };
+        let proxy = ProxyState::new(
+            Arc::new(local_network),
+            true,
+            10_485_760,
+            std::time::Duration::from_secs(30),
+        );
 
         let result = JsRuntime::execute_script::<serde_json::Value>(
             config,
@@ -1199,5 +1228,242 @@ pub mod tests {
         );
 
         Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_decompresses_gzip_response() -> anyhow::Result<()> {
+        let original = b"Hello, compressed world!";
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        std::io::Write::write_all(&mut encoder, original)?;
+        let compressed = encoder.finish()?;
+
+        let mock_server = httpmock::MockServer::start_async().await;
+        let mock = mock_server
+            .mock_async(|when, then| {
+                when.method("GET").path("/compressed");
+                then.status(200)
+                    .header("content-encoding", "gzip")
+                    .header("content-type", "text/plain")
+                    .body(compressed);
+            })
+            .await;
+
+        #[derive(Deserialize, Debug)]
+        #[serde(rename_all = "camelCase")]
+        struct ProxyResult {
+            status_code: u16,
+            headers: std::collections::HashMap<String, String>,
+            #[serde(with = "serde_bytes")]
+            body: Vec<u8>,
+        }
+
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+        let url = format!("{}/compressed", mock_server.base_url());
+        let script = format!(
+            r#"(async () => {{
+                return await Deno.core.ops.op_proxy_request({{ url: "{url}" }});
+            }})()"#
+        );
+
+        let (result, _) = JsRuntime::execute_script::<ProxyResult>(
+            config,
+            script,
+            None,
+            Some(test_proxy_state(false)),
+        )
+        .await?;
+
+        assert_eq!(result.status_code, 200);
+        assert_eq!(result.body, original);
+        assert!(!result.headers.contains_key("content-encoding"));
+        assert_eq!(
+            result.headers.get("x-original-content-encoding").unwrap(),
+            "gzip"
+        );
+        assert_eq!(result.headers.get("content-type").unwrap(), "text/plain");
+        mock.assert_async().await;
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn proxy_op_skips_decompression_when_disabled() -> anyhow::Result<()> {
+        let original = b"Hello, compressed world!";
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        std::io::Write::write_all(&mut encoder, original)?;
+        let compressed = encoder.finish()?;
+
+        let mock_server = httpmock::MockServer::start_async().await;
+        let mock = mock_server
+            .mock_async(|when, then| {
+                when.method("GET").path("/raw");
+                then.status(200)
+                    .header("content-encoding", "gzip")
+                    .body(compressed.clone());
+            })
+            .await;
+
+        #[derive(Deserialize, Debug)]
+        #[serde(rename_all = "camelCase")]
+        struct ProxyResult {
+            status_code: u16,
+            headers: std::collections::HashMap<String, String>,
+            #[serde(with = "serde_bytes")]
+            body: Vec<u8>,
+        }
+
+        let config = JsRuntimeConfig {
+            max_heap_size: 10 * 1024 * 1024,
+            max_user_script_execution_time: std::time::Duration::from_secs(10),
+        };
+        let url = format!("{}/raw", mock_server.base_url());
+        let script = format!(
+            r#"(async () => {{
+                return await Deno.core.ops.op_proxy_request({{ url: "{url}", decompress: false }});
+            }})()"#
+        );
+
+        let (result, _) = JsRuntime::execute_script::<ProxyResult>(
+            config,
+            script,
+            None,
+            Some(test_proxy_state(false)),
+        )
+        .await?;
+
+        assert_eq!(result.status_code, 200);
+        assert_eq!(result.body, compressed);
+        assert_eq!(result.headers.get("content-encoding").unwrap(), "gzip");
+        assert!(!result.headers.contains_key("x-original-content-encoding"));
+        mock.assert_async().await;
+
+        Ok(())
+    }
+
+    mod body_auto_convert {
+        use super::*;
+        use crate::{
+            js_runtime::wrap_script_with_body_conversion, utils::webhooks::ResponderScriptResult,
+        };
+
+        fn config() -> JsRuntimeConfig {
+            JsRuntimeConfig {
+                max_heap_size: 10 * 1024 * 1024,
+                max_user_script_execution_time: std::time::Duration::from_secs(5),
+            }
+        }
+
+        async fn run_script(user_script: &str) -> anyhow::Result<ResponderScriptResult> {
+            let (result, _) = JsRuntime::execute_script::<ResponderScriptResult>(
+                config(),
+                wrap_script_with_body_conversion(user_script),
+                None,
+                None,
+            )
+            .await?;
+            Ok(result)
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn body_uint8array() -> anyhow::Result<()> {
+            let result =
+                run_script(r#"(async () => ({ body: new Uint8Array([72, 73]) }))()"#).await?;
+            assert_eq!(result.body.as_deref(), Some(&[72u8, 73][..]));
+            Ok(())
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn body_deno_core_encode() -> anyhow::Result<()> {
+            let result =
+                run_script(r#"(async () => ({ body: Deno.core.encode("AB") }))()"#).await?;
+            assert_eq!(result.body.as_deref(), Some(&[65u8, 66][..]));
+            Ok(())
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn body_string() -> anyhow::Result<()> {
+            let result = run_script(r#"(async () => ({ body: "Hello" }))()"#).await?;
+            assert_eq!(result.body.as_deref(), Some(b"Hello".as_slice()));
+            Ok(())
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn body_object() -> anyhow::Result<()> {
+            let result = run_script(r#"(async () => ({ body: { key: "value" } }))()"#).await?;
+            assert_eq!(
+                result.body.as_deref(),
+                Some(br#"{"key":"value"}"#.as_slice())
+            );
+            Ok(())
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn body_array_of_objects() -> anyhow::Result<()> {
+            let result = run_script(r#"(async () => ({ body: [{ a: 1 }] }))()"#).await?;
+            assert_eq!(result.body.as_deref(), Some(br#"[{"a":1}]"#.as_slice()));
+            Ok(())
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn body_array_of_numbers() -> anyhow::Result<()> {
+            let result = run_script(r#"(async () => ({ body: [65, 66, 67] }))()"#).await?;
+            assert_eq!(result.body.as_deref(), Some(&[65u8, 66, 67][..]));
+            Ok(())
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn body_empty_array() -> anyhow::Result<()> {
+            let result = run_script(r#"(async () => ({ body: [] }))()"#).await?;
+            assert_eq!(result.body.as_deref(), Some(&[][..]));
+            Ok(())
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn body_number() -> anyhow::Result<()> {
+            let result = run_script(r#"(async () => ({ body: 42 }))()"#).await?;
+            assert_eq!(result.body.as_deref(), Some(b"42".as_slice()));
+            Ok(())
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn body_boolean() -> anyhow::Result<()> {
+            let result = run_script(r#"(async () => ({ body: true }))()"#).await?;
+            assert_eq!(result.body.as_deref(), Some(b"true".as_slice()));
+            Ok(())
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn body_null() -> anyhow::Result<()> {
+            let result = run_script(r#"(async () => ({ body: null }))()"#).await?;
+            assert_eq!(result.body, None);
+            Ok(())
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn body_undefined() -> anyhow::Result<()> {
+            let result = run_script(r#"(async () => ({ statusCode: 204 }))()"#).await?;
+            assert_eq!(result.body, None);
+            assert_eq!(result.status_code, Some(204));
+            Ok(())
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn body_array_from_encode() -> anyhow::Result<()> {
+            let result =
+                run_script(r#"(async () => ({ body: Array.from(Deno.core.encode("Hi")) }))()"#)
+                    .await?;
+            assert_eq!(result.body.as_deref(), Some(b"Hi".as_slice()));
+            Ok(())
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn script_with_trailing_semicolon() -> anyhow::Result<()> {
+            let result = run_script(r#"(async () => ({ body: "ok" }))();"#).await?;
+            assert_eq!(result.body.as_deref(), Some(b"ok".as_slice()));
+            Ok(())
+        }
     }
 }

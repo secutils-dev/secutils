@@ -13,6 +13,7 @@ import {
   highlightOff,
   highlightOn,
   PASSWORD,
+  pinEntityTimestamps,
 } from '../helpers';
 
 const IMG_DIR = join(DOCS_IMG_DIR, 'web_scraping');
@@ -506,6 +507,26 @@ test.describe('Web scraping guide screenshots', () => {
       '</html>',
     ].join('\n');
     await createResponderViaApi('track-me.html', '/track-me.html', htmlBody, HTML_CONTENT_TYPE);
+
+    // Sort responders by name so the grid order is deterministic across runs.
+    // Pinned timestamps make the default creation-time sort non-deterministic.
+    await page.route('**/api/utils/webhooks/responders', async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      if (!response.ok()) {
+        await route.fulfill({ response });
+        return;
+      }
+      const json = await response.json();
+      if (Array.isArray(json)) {
+        json.sort((a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name));
+        pinEntityTimestamps(json);
+      }
+      await route.fulfill({ response, json });
+    });
 
     await goto(page, '/ws/webhooks__responders');
     await screenshotResponderEditForm('no-changes.js', 'detect_resources_step2_no_changes_form.png');

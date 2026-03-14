@@ -1,7 +1,7 @@
 use crate::{
     config::Config,
     error::Error as SecutilsError,
-    js_runtime::{JsRuntime, JsRuntimeConfig, ProxyState},
+    js_runtime::{JsRuntime, JsRuntimeConfig, ProxyState, wrap_script_with_body_conversion},
     server::app_state::AppState,
     utils::{
         UtilsResource,
@@ -86,7 +86,7 @@ pub async fn webhooks_responders(
         }
     };
 
-    // Extract responder path either from path or from the request headers.
+    // Extract the responder path either from path or from the request headers.
     let mut responder_path = if let Some(responder_path) = path_params.responder_path {
         format!("/{responder_path}")
     } else {
@@ -389,7 +389,10 @@ pub async fn webhooks_responders(
                 };
                 (
                     Some(script_err.error_status_code),
-                    None,
+                    Some(vec![(
+                        Cow::Borrowed("content-type"),
+                        Cow::Borrowed(b"text/plain; charset=utf-8".as_slice()),
+                    )]),
                     Some(Cow::Owned(body)),
                 )
             }
@@ -508,14 +511,14 @@ async fn execute_responder_script<R: for<'de> Deserialize<'de> + Send + 'static>
         max_user_script_execution_time: subscription_config.js_runtime_script_execution_time,
     };
 
-    let proxy_state = ProxyState {
-        url_validator: Arc::new(state.api.network.clone()),
-        restrict_to_public_urls: responder.restrict_to_public_urls,
-        max_response_size: responder.max_proxy_response_size,
-        max_request_timeout: responder.max_proxy_request_timeout,
-    };
+    let proxy_state = ProxyState::new(
+        Arc::new(state.api.network.clone()),
+        responder.restrict_to_public_urls,
+        responder.max_proxy_response_size,
+        responder.max_proxy_request_timeout,
+    );
 
-    let js_code = format!(r#"(async (globalThis) => {{ return {script}; }})(globalThis);"#);
+    let js_code = wrap_script_with_body_conversion(script);
     let js_script_context_json = match serde_json::to_string(js_script_context) {
         Ok(json) => json,
         Err(err) => {

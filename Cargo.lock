@@ -4764,6 +4764,7 @@ dependencies = [
  "addr",
  "anyhow",
  "async-stream",
+ "brotli",
  "byte-unit",
  "bytes",
  "chrono",
@@ -4777,6 +4778,7 @@ dependencies = [
  "directories",
  "dotenvy",
  "figment",
+ "flate2",
  "futures",
  "getrandom 0.4.1",
  "handlebars",
@@ -4820,6 +4822,7 @@ dependencies = [
  "urlencoding",
  "uuid",
  "zip",
+ "zstd",
 ]
 
 [[package]]

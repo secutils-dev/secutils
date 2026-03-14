@@ -216,9 +216,7 @@ test.describe('Webhooks guide screenshots', () => {
     const scriptBody = [
       '(async () => {',
       '  return {',
-      '    body: Deno.core.encode(',
-      "      context.query.arg ?? 'Query string does not include `arg` parameter'",
-      '    )',
+      "    body: context.query.arg ?? 'Query string does not include `arg` parameter'",
       '  };',
       '})();',
     ].join('\n');

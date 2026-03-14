@@ -68,6 +68,28 @@ function bytesToBase64(bytes: number[]): string {
   return btoa(binary);
 }
 
+function isTextMimeType(mimeType: string): boolean {
+  const base = mimeType.split(';')[0].trim().toLowerCase();
+  return (
+    base.startsWith('text/') ||
+    base === 'application/json' ||
+    base === 'application/javascript' ||
+    base === 'application/xml' ||
+    base === 'application/xhtml+xml' ||
+    base === 'application/svg+xml' ||
+    base.endsWith('+json') ||
+    base.endsWith('+xml')
+  );
+}
+
+function tryDecodeUtf8(bytes: number[]): string | null {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(bytes));
+  } catch {
+    return null;
+  }
+}
+
 function headerValue(headerBytes: number[]): string {
   return new TextDecoder().decode(new Uint8Array(headerBytes));
 }
@@ -102,11 +124,12 @@ export function buildHar(requests: ResponderRequest[], responderUrl: string): Ha
     };
 
     if (req.body && req.body.length > 0) {
-      harRequest.postData = {
-        mimeType: contentTypeFromHeaders(req.headers),
-        text: bytesToBase64(req.body),
-        encoding: 'base64',
-      };
+      const reqMimeType = contentTypeFromHeaders(req.headers);
+      const reqUtf8 = isTextMimeType(reqMimeType) ? tryDecodeUtf8(req.body) : null;
+      harRequest.postData =
+        reqUtf8 !== null
+          ? { mimeType: reqMimeType, text: reqUtf8, encoding: '' }
+          : { mimeType: reqMimeType, text: bytesToBase64(req.body), encoding: 'base64' };
     }
 
     let harResponse: HarResponse;
@@ -116,13 +139,19 @@ export function buildHar(requests: ResponderRequest[], responderUrl: string): Ha
         value: headerValue(value),
       }));
 
+      const mimeType = contentTypeFromHeaders(req.responseHeaders);
       const content: HarContent = {
         size: req.responseBody?.length ?? 0,
-        mimeType: contentTypeFromHeaders(req.responseHeaders),
+        mimeType,
       };
       if (req.responseBody && req.responseBody.length > 0) {
-        content.text = bytesToBase64(req.responseBody);
-        content.encoding = 'base64';
+        const utf8 = isTextMimeType(mimeType) ? tryDecodeUtf8(req.responseBody) : null;
+        if (utf8 !== null) {
+          content.text = utf8;
+        } else {
+          content.text = bytesToBase64(req.responseBody);
+          content.encoding = 'base64';
+        }
       }
 
       harResponse = {

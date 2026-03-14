@@ -54,8 +54,8 @@ describe('buildHar', () => {
     expect(entry.response.headers).toEqual([{ name: 'content-type', value: 'application/json' }]);
     expect(entry.response.content.size).toBe(8);
     expect(entry.response.content.mimeType).toBe('application/json');
-    expect(entry.response.content.encoding).toBe('base64');
-    expect(entry.response.content.text).toBeDefined();
+    expect(entry.response.content.encoding).toBeUndefined();
+    expect(entry.response.content.text).toBe('{"id":1}');
   });
 
   it('base64-encodes binary request body', () => {
@@ -116,6 +116,66 @@ describe('buildHar', () => {
     const entry = har.log.entries[0];
     expect(entry.time).toBe(0);
     expect(entry.timings.wait).toBe(0);
+  });
+
+  it('emits plain text for text/html response body', () => {
+    const html = '<html><body>Hello</body></html>';
+    const requests: ResponderRequest[] = [
+      {
+        id: '7',
+        method: 'GET',
+        url: '/',
+        createdAt: 1700000000,
+        responseStatusCode: 200,
+        responseHeaders: [['content-type', Array.from(new TextEncoder().encode('text/html; charset=utf-8'))]],
+        responseBody: Array.from(new TextEncoder().encode(html)),
+      },
+    ];
+
+    const har = buildHar(requests, '');
+    const content = har.log.entries[0].response.content;
+    expect(content.text).toBe(html);
+    expect(content.encoding).toBeUndefined();
+  });
+
+  it('base64-encodes binary response body', () => {
+    const binaryBody = [0x00, 0x01, 0xff, 0xfe];
+    const requests: ResponderRequest[] = [
+      {
+        id: '8',
+        method: 'GET',
+        url: '/',
+        createdAt: 1700000000,
+        responseStatusCode: 200,
+        responseHeaders: [['content-type', Array.from(new TextEncoder().encode('application/octet-stream'))]],
+        responseBody: binaryBody,
+      },
+    ];
+
+    const har = buildHar(requests, '');
+    const content = har.log.entries[0].response.content;
+    expect(content.encoding).toBe('base64');
+    const decoded = atob(content.text!);
+    expect(Array.from(decoded).map((c) => c.charCodeAt(0))).toEqual(binaryBody);
+  });
+
+  it('emits plain text for JSON request postData', () => {
+    const jsonBody = '{"key":"value"}';
+    const requests: ResponderRequest[] = [
+      {
+        id: '9',
+        method: 'POST',
+        url: '/api',
+        createdAt: 1700000000,
+        headers: [['content-type', Array.from(new TextEncoder().encode('application/json'))]],
+        body: Array.from(new TextEncoder().encode(jsonBody)),
+      },
+    ];
+
+    const har = buildHar(requests, '');
+    const postData = har.log.entries[0].request.postData!;
+    expect(postData.text).toBe(jsonBody);
+    expect(postData.encoding).toBe('');
   });
 
   it('omits postData when body is absent', () => {

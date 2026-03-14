@@ -40,17 +40,18 @@ const bytes = Deno.core.encode('Hello, world!');
 // Uint8Array(13) [72, 101, 108, 108, 111, 44, 32, 119, 111, 114, 108, 100, 33]
 ```
 
-Use it whenever a script needs to return a binary body:
+Use it whenever a script needs to explicitly encode a string to binary:
 
 ```javascript
 (() => {
-  return {
-    body: Deno.core.encode(
-      JSON.stringify({ status: 'ok' })
-    )
-  };
+  const bytes = Deno.core.encode('raw binary payload');
+  return { body: bytes };
 })();
 ```
+
+:::tip
+Scripts can also return `body` as a plain string, object, or array - the runtime auto-converts them. See [Body auto-conversion](#body-auto-conversion) below.
+:::
 
 ### `Deno.core.decode(buffer)`
 
@@ -134,9 +135,7 @@ function fromBase64(base64) {
 (() => {
   const payload = JSON.stringify({ user: 'alice', role: 'admin' });
   const encoded = toBase64(payload);
-  return {
-    body: Deno.core.encode(encoded)
-  };
+  return { body: encoded };
 })();
 ```
 
@@ -154,7 +153,7 @@ Returns the **UTF-8 byte length** of a string without allocating a `Uint8Array`.
       'Content-Type': 'application/json',
       'Content-Length': String(Deno.core.byteLength(body)),
     },
-    body: Deno.core.encode(body),
+    body,
   };
 })();
 ```
@@ -260,6 +259,9 @@ interface ProxyRequest {
   // Clamped to the server-configured maximum (default: 30 000 ms).
   // If omitted, the server default timeout applies.
   timeout?: number;
+  // Automatically decompress the response body based on the Content-Encoding
+  // header (gzip, deflate, br, zstd). Defaults to true.
+  decompress?: boolean;
 }
 ```
 
@@ -271,7 +273,7 @@ interface ProxyResponse {
   statusCode: number;
   // HTTP response headers from the upstream server.
   headers: Record<string, string>;
-  // Response body as an array of bytes.
+  // Response body as an array of bytes (decompressed by default).
   body: number[];
 }
 ```
@@ -284,11 +286,33 @@ Basic example:
     url: 'https://api.example.com/data',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: Array.from(Deno.core.encode(JSON.stringify({ key: 'value' }))),
+    body: Deno.core.encode(JSON.stringify({ key: 'value' })),
   });
   // resp.statusCode, resp.headers, resp.body are available
   return resp;
 })()
+```
+
+#### Transparent decompression
+
+When the upstream server returns a compressed response (e.g. `Content-Encoding: gzip`), `op_proxy_request` **automatically decompresses** the body before returning it to the script. Supported encodings: `gzip`, `x-gzip`, `deflate`, `br` (Brotli), and `zstd` (Zstandard).
+
+After decompression, the original transport headers are preserved under renamed keys so you can still see what the upstream sent:
+
+| Original header    | Renamed to                    |
+|--------------------|-------------------------------|
+| `content-encoding` | `x-original-content-encoding` |
+| `content-length`   | `x-original-content-length`   |
+
+This means scripts can always work with the decompressed body directly (e.g. `JSON.parse(Deno.core.decode(new Uint8Array(resp.body)))`) regardless of whether the upstream compresses its responses.
+
+To **opt out** of automatic decompression (e.g. to forward compressed bytes as-is), pass `decompress: false`:
+
+```javascript
+const resp = await Deno.core.ops.op_proxy_request({
+  url: 'https://upstream/api',
+  decompress: false, // body stays compressed, content-encoding header is preserved
+});
 ```
 
 **Error handling.** When the upstream request fails, the op throws a JavaScript error with a descriptive message. Scripts can catch these errors and return a custom response:
@@ -301,7 +325,7 @@ Basic example:
     return {
       statusCode: 502,
       headers: { 'Content-Type': 'text/plain' },
-      body: Array.from(Deno.core.encode(`Proxy error: ${e.message}`)),
+      body: `Proxy error: ${e.message}`,
     };
   }
 })()
@@ -309,17 +333,18 @@ Basic example:
 
 Possible error messages include:
 
-| Error                                     | Meaning                                                                               |
-|-------------------------------------------|---------------------------------------------------------------------------------------|
-| `Invalid URL '…': …`                      | The `url` field could not be parsed.                                                  |
-| `URL not allowed (non-public address): …` | SSRF protection blocked the URL because it resolves to a private/internal IP address. |
-| `Invalid HTTP method: '…'`                | The `method` value is not a valid HTTP method token.                                  |
-| `Invalid header name: '…'`                | A key in `headers` is not a valid HTTP header name.                                   |
-| `Invalid header value for '…'`            | A value in `headers` contains invalid characters.                                     |
-| `Upstream request timed out: …`           | The upstream server did not respond within the configured timeout.                    |
-| `Failed to connect to upstream: …`        | Could not establish a TCP connection to the upstream server.                          |
-| `Upstream request failed: …`              | A general upstream request failure (DNS, TLS, etc.).                                  |
-| `Upstream response body too large: …`     | The response body exceeded the configured size limit.                                 |
+| Error                                             | Meaning                                                                               |
+|---------------------------------------------------|---------------------------------------------------------------------------------------|
+| `Invalid URL '…': …`                              | The `url` field could not be parsed.                                                  |
+| `URL not allowed (non-public address): …`         | SSRF protection blocked the URL because it resolves to a private/internal IP address. |
+| `Invalid HTTP method: '…'`                        | The `method` value is not a valid HTTP method token.                                  |
+| `Invalid header name: '…'`                        | A key in `headers` is not a valid HTTP header name.                                   |
+| `Invalid header value for '…'`                    | A value in `headers` contains invalid characters.                                     |
+| `Upstream request timed out: …`                   | The upstream server did not respond within the configured timeout.                    |
+| `Failed to connect to upstream: …`                | Could not establish a TCP connection to the upstream server.                          |
+| `Upstream request failed: …`                      | A general upstream request failure (DNS, TLS, etc.).                                  |
+| `Upstream response body too large: …`             | The response body exceeded the configured size limit.                                 |
+| `Failed to decompress gzip/deflate/brotli/zstd …` | The response body claimed a content-encoding but the data was invalid.                |
 
 :::caution Security
 By default, `op_proxy_request` only allows requests to **publicly routable** IP addresses. URLs that resolve to private or loopback addresses (e.g. `127.0.0.1`, `10.x.x.x`, `192.168.x.x`) are rejected to prevent [Server-Side Request Forgery (SSRF)](https://owasp.org/www-community/attacks/Server-Side_Request_Forgery). This restriction can be relaxed per subscription tier for local development scenarios.
@@ -332,3 +357,44 @@ Each responder has a maximum number of concurrent proxy requests it can handle s
 :::tip Response tracking
 When using `op_proxy_request`, you can store the upstream response alongside the tracked request by returning `trackResponse: true` in your script result. This is especially useful for debugging proxy issues. See [Track responses](/docs/guides/webhooks#track-responses) for details.
 :::
+
+## Body auto-conversion {#body-auto-conversion}
+
+Responder scripts can return `body` as several types - not just `Uint8Array`. The runtime automatically converts the value before sending the response:
+
+| Script returns                           | Conversion                      | Result                            |
+|------------------------------------------|---------------------------------|-----------------------------------|
+| `Uint8Array` or `ArrayBuffer`            | None (pass-through)             | Raw bytes                         |
+| `string`                                 | UTF-8 encode                    | UTF-8 bytes of the string         |
+| Plain object (e.g. `{ key: "value" }`)   | `JSON.stringify` + UTF-8 encode | UTF-8 bytes of the JSON           |
+| Array of non-numbers (e.g. `[{ a: 1 }]`) | `JSON.stringify` + UTF-8 encode | UTF-8 bytes of the JSON array     |
+| Array of numbers (e.g. `[72, 101]`)      | `new Uint8Array(arr)`           | Raw bytes (backward compatible)   |
+| `number` or `boolean`                    | `JSON.stringify` + UTF-8 encode | UTF-8 bytes of `"42"` or `"true"` |
+| `null` or `undefined`                    | Skipped                         | Uses the responder's default body |
+
+Examples:
+
+```javascript
+// Return a JSON object directly - no Deno.core.encode needed.
+(() => ({
+  headers: { 'Content-Type': 'application/json' },
+  body: { status: 'ok', count: 42 },
+}))();
+```
+
+```javascript
+// Return a plain text string.
+(() => ({ body: 'Hello, world!' }))();
+```
+
+```javascript
+// Modify a proxied JSON response and return the object.
+(async () => {
+  const resp = await Deno.core.ops.op_proxy_request({
+    url: 'https://api.example.com/data',
+  });
+  const data = JSON.parse(Deno.core.decode(new Uint8Array(resp.body)));
+  data._proxied = true;
+  return { ...resp, body: data };
+})()
+```

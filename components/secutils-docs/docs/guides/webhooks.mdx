@@ -174,10 +174,7 @@ The script should be provided in the form of an [Immediately Invoked Function Ex
                 <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: text/html; charset=utf-8</CodeBlock></td></tr>
                 <tr><td><b>Script</b></td><td><CodeBlock language="javascript">{`(async () => {
     return {
-      // Encode body as binary data.
-      body: Deno.core.encode(
-        context.query.arg ?? 'Query string does not include \`arg\` parameter'
-      )
+      body: context.query.arg ?? 'Query string does not include \`arg\` parameter'
     };
 })();`}</CodeBlock></td></tr>
                 </tbody>
@@ -240,13 +237,18 @@ interface ScriptResult {
   // Optional HTTP headers of the response. If not specified, the default headers of responder are used.
   headers?: Record<string, string>;
   // Optional HTTP body of the response. If not specified, the default body of responder is used.
-  body?: Uint8Array;
+  // Accepts Uint8Array, string, object, or array - see Body auto-conversion.
+  body?: Uint8Array | string | object;
   // When true, the request is not recorded in the responder's tracked request history.
   skipRequest?: boolean;
   // When true, the response sent to the client is also stored alongside the tracked request.
   trackResponse?: boolean;
 }
 ```
+
+:::tip Body auto-conversion
+The `body` field accepts multiple types: `Uint8Array` for raw bytes, a **string** (auto-encoded to UTF-8), a **plain object or array** (auto-serialized to JSON), or a **number/boolean** (auto-stringified). See [Body auto-conversion](/docs/guides/platform/deno_runtime#body-auto-conversion) for the full conversion table.
+:::
 
 ### Override response properties
 The script overrides the responder's response with a custom status code, headers, and body:
@@ -255,13 +257,8 @@ The script overrides the responder's response with a custom status code, headers
 (async () => {
   return {
     statusCode: 201,
-    headers: {
-      "Content-Type": "application/json"
-    },
-    // Encode body as binary data.
-    body: Deno.core.encode(
-      JSON.stringify({ a: 1, b: 2 })
-    )
+    headers: { "Content-Type": "application/json" },
+    body: { a: 1, b: 2 },
   };
 })();
 ```
@@ -278,7 +275,7 @@ This script inspects the incoming request properties and returns them as a JSON 
 
   // Override response with a custom HTML body.
   return {
-    body: Deno.core.encode(`
+    body: `
       <h2>Request headers</h2>
       <table>
         <tr><th>Header</th><th>Value</th></tr>
@@ -303,7 +300,7 @@ This script inspects the incoming request properties and returns them as a JSON 
 
       <h2>Request body</h2>
       <pre>${JSON.stringify(parsedJsonBody, null, 2)}</pre>
-    `)
+    `
   };
 })();
 ```
@@ -316,7 +313,7 @@ This script reads a user secret and includes it in the response. Secrets are man
   const apiKey = context.secrets.THIRD_PARTY_API_KEY ?? 'not-set';
   return {
     headers: { 'Content-Type': 'application/json' },
-    body: Deno.core.encode(JSON.stringify({ apiKey }))
+    body: { apiKey }
   };
 })();
 ```
@@ -340,7 +337,7 @@ Responder scripts can forward incoming requests to a real backend using `Deno.co
 })()
 ```
 
-**Transform the response** - e.g. inject a field into JSON responses:
+**Transform the response** - e.g., inject a field into JSON responses. Compressed responses (gzip, deflate, Brotli) are automatically decompressed, so `JSON.parse` works regardless of the upstream's `Content-Encoding`:
 
 ```javascript
 (async () => {
@@ -354,11 +351,7 @@ Responder scripts can forward incoming requests to a real backend using `Deno.co
   if (resp.headers['content-type']?.includes('application/json')) {
     const body = JSON.parse(Deno.core.decode(new Uint8Array(resp.body)));
     body._proxied = true;
-    return {
-      statusCode: resp.statusCode,
-      headers: resp.headers,
-      body: Array.from(Deno.core.encode(JSON.stringify(body))),
-    };
+    return { statusCode: resp.statusCode, headers: resp.headers, body };
   }
 
   return resp;
@@ -377,10 +370,7 @@ Responder scripts can forward incoming requests to a real backend using `Deno.co
       body: context.body,
     });
   }
-  return {
-    statusCode: 200,
-    body: Array.from(Deno.core.encode(JSON.stringify({ mock: true }))),
-  };
+  return { statusCode: 200, body: { mock: true } };
 })()
 ```
 
@@ -394,10 +384,7 @@ By default every incoming request is recorded in the responder's tracked history
 (async () => {
   // Only track non-health-check requests.
   const skip = context.path === '/healthz' || context.path === '/readyz';
-  return {
-    body: Deno.core.encode('ok'),
-    skipRequest: skip,
-  };
+  return { body: 'ok', skipRequest: skip };
 })();
 ```
 
