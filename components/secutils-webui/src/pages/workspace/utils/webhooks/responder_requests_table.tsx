@@ -12,13 +12,20 @@ import {
   EuiToolTip,
 } from '@elastic/eui';
 import { unix } from 'moment';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { buildHar } from './build_har';
 import type { Responder } from './responder';
 import type { ResponderRequest } from './responder_request';
 import { DataGrid, PageErrorState, PageLoadingState } from '../../../../components';
-import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
+import {
+  type AsyncData,
+  formatBytes,
+  getApiRequestConfig,
+  getApiUrl,
+  getErrorMessage,
+  ResponseError,
+} from '../../../../model';
 import { useWorkspaceContext } from '../../hooks';
 
 export interface ResponderRequestsTableProps {
@@ -30,6 +37,25 @@ const AUTO_REFRESH_INTERVAL_MS = 3000;
 const TEXT_DECODER = new TextDecoder();
 function binaryToText(binary: number[]) {
   return TEXT_DECODER.decode(new Uint8Array(binary));
+}
+
+function getSortValue(request: ResponderRequest, columnId: string): string | number {
+  switch (columnId) {
+    case 'timestamp':
+      return request.createdAt;
+    case 'url':
+      return request.url;
+    case 'duration':
+      return request.durationMs ?? -1;
+    case 'responseStatusCode':
+      return request.responseStatusCode ?? -1;
+    case 'body':
+      return request.body?.length ?? -1;
+    case 'responseBody':
+      return request.responseBody?.length ?? -1;
+    default:
+      return '';
+  }
 }
 
 function guessContentType(headers?: Array<[string, number[]]>) {
@@ -127,7 +153,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
     { id: 'method', display: 'Method', displayAsText: 'Method', initialWidth: 80, isExpandable: false },
     { id: 'url', display: 'URL', displayAsText: 'URL', isSortable: true },
     { id: 'headers', display: 'Headers', displayAsText: 'Headers' },
-    { id: 'body', display: 'Body', displayAsText: 'Body' },
+    { id: 'body', display: 'Body', displayAsText: 'Body', isSortable: true },
     {
       id: 'duration',
       display: 'Duration',
@@ -145,12 +171,33 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
       isSortable: true,
     },
     { id: 'responseHeaders', display: 'Resp. headers', displayAsText: 'Resp. headers' },
-    { id: 'responseBody', display: 'Resp. body', displayAsText: 'Resp. body' },
+    { id: 'responseBody', display: 'Resp. body', displayAsText: 'Resp. body', isSortable: true },
   ];
   const [visibleColumns, setVisibleColumns] = useState(() =>
     columns.filter(({ id }) => !HIDDEN_COLUMNS.has(id)).map(({ id }) => id),
   );
   const [sortingColumns, setSortingColumns] = useState<Array<{ id: string; direction: 'asc' | 'desc' }>>([]);
+
+  const sortedData = useMemo(() => {
+    if (requests.status !== 'succeeded') {
+      return [];
+    }
+    if (sortingColumns.length === 0) {
+      return requests.data;
+    }
+    return [...requests.data].sort((a, b) => {
+      for (const { id, direction } of sortingColumns) {
+        const aVal = getSortValue(a, id);
+        const bVal = getSortValue(b, id);
+        const cmp =
+          typeof aVal === 'number' && typeof bVal === 'number' ? aVal - bVal : String(aVal).localeCompare(String(bVal));
+        if (cmp !== 0) {
+          return direction === 'asc' ? cmp : -cmp;
+        }
+      }
+      return 0;
+    });
+  }, [requests, sortingColumns]);
 
   const [pagination, setPagination] = useState<Pagination>({
     pageIndex: 0,
@@ -174,11 +221,11 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
 
   const renderCellValue = useCallback(
     ({ rowIndex, columnId, isDetails }: EuiDataGridCellValueElementProps) => {
-      if (requests.status !== 'succeeded' || rowIndex >= requests.data.length) {
+      if (rowIndex >= sortedData.length) {
         return null;
       }
 
-      const request = requests.data[rowIndex];
+      const request = sortedData[rowIndex];
       if (columnId === 'timestamp') {
         return unix(request.createdAt).format('L HH:mm:ss');
       }
@@ -224,7 +271,11 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
           );
         }
 
-        return `${request.body.length} bytes`;
+        return (
+          <EuiToolTip content={`${request.body.length.toLocaleString()} bytes`}>
+            <span>{formatBytes(request.body.length)}</span>
+          </EuiToolTip>
+        );
       }
 
       if (columnId === 'duration') {
@@ -269,12 +320,16 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
           );
         }
 
-        return `${request.responseBody.length} bytes`;
+        return (
+          <EuiToolTip content={`${request.responseBody.length.toLocaleString()} bytes`}>
+            <span>{formatBytes(request.responseBody.length)}</span>
+          </EuiToolTip>
+        );
       }
 
       return null;
     },
-    [requests],
+    [sortedData],
   );
 
   if (responder.settings.requestsToTrack == 0) {
@@ -449,9 +504,8 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
         aria-label="Requests"
         columns={columns}
         columnVisibility={{ visibleColumns, setVisibleColumns }}
-        rowCount={requests.data.length}
+        rowCount={sortedData.length}
         renderCellValue={renderCellValue}
-        inMemory={{ level: 'sorting' }}
         sorting={{ columns: sortingColumns, onSort: setSortingColumns }}
         pagination={{
           ...pagination,

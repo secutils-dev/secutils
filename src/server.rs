@@ -74,6 +74,7 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
 
     JsRuntime::init_platform();
 
+    let max_responder_body_size = config.utils.max_responder_body_size;
     let state = web::Data::new(AppState::new(config, api.clone()));
     let http_server = HttpServer::new(move || {
         App::new()
@@ -106,15 +107,22 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
                         "/user/subscription",
                         web::post().to(handlers::security_subscription_update),
                     )
-                    .route(
-                        "/webhooks/retrack",
-                        web::post().to(handlers::webhooks_retrack),
+                    .service(
+                        web::scope("/webhooks")
+                            .route("/retrack", web::post().to(handlers::webhooks_retrack))
+                            .service(
+                                web::scope("")
+                                    .app_data(
+                                        web::PayloadConfig::default()
+                                            .limit(max_responder_body_size),
+                                    )
+                                    .route(
+                                        "/{user_handle}/{responder_path:.*}",
+                                        web::route().to(handlers::webhooks_responders),
+                                    )
+                                    .route("", web::route().to(handlers::webhooks_responders)),
+                            ),
                     )
-                    .route(
-                        "/webhooks/{user_handle}/{responder_path:.*}",
-                        web::route().to(handlers::webhooks_responders),
-                    )
-                    .route("/webhooks", web::route().to(handlers::webhooks_responders))
                     .route(
                         "/users",
                         web::get().to(handlers::security_users_get_by_email),

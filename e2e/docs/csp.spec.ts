@@ -545,7 +545,10 @@ test.describe('CSP guide screenshots', () => {
     const requestsGrid = page.getByRole('grid', { name: 'Requests' });
     await expect(requestsGrid).toBeVisible({ timeout: 15000 });
 
-    const bodyCell = requestsGrid.getByRole('gridcell').filter({ hasText: 'bytes' }).first();
+    const bodyCell = requestsGrid
+      .getByRole('gridcell')
+      .filter({ hasText: /\d+(\.\d+)?\s*(B|KB|MB)/ })
+      .first();
     await bodyCell.click();
     await page.keyboard.press('Enter');
 

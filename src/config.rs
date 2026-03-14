@@ -140,6 +140,7 @@ mod tests {
             utils: UtilsConfig {
                 webhook_url_type: Subdomain,
                 diff_context_radius: 3,
+                max_responder_body_size: 10485760,
             },
             smtp: Some(
                 SmtpConfig {

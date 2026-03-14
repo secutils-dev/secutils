@@ -12,7 +12,7 @@ pub struct ResponderScriptContext<'a> {
     pub method: &'a str,
     /// HTTP headers of the received request.
     pub headers: HashMap<&'a str, &'a str>,
-    /// HTTP path of the received request.
+    /// HTTP path of the received request (percent-encoded, preserving original encoding).
     pub path: &'a str,
     /// Raw query string of the received request (without the leading `?`).
     #[serde(skip_serializing_if = "Option::is_none")]

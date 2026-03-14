@@ -50,4 +50,4 @@ web_scraping = { trackers = 10, tracker_revisions = 10, tracker_schedules = ["@"
 web_scraping = { tracker_schedules = ["@", "@hourly", "@daily", "@weekly", "@monthly", "@@"], min_schedule_interval = 600_000 }
 
 [subscriptions.ultimate]
-webhooks = { restrict_to_public_urls = false }
+webhooks = { restrict_to_public_urls = false, max_concurrent_responder_requests = 100, js_runtime_heap_size = 52_428_800 }

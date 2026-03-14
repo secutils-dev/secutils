@@ -131,6 +131,16 @@ pub async fn webhooks_responders(
         responder_path.pop();
     }
 
+    // Extract the raw (percent-encoded) responder path from the URI for scripts that need
+    // to preserve encoding (e.g., base64 document IDs containing `/`, `+`, `=`).
+    let raw_uri_path = request.uri().path();
+    let raw_responder_path = {
+        let prefix = format!("/api/webhooks/{user_handle}");
+        raw_uri_path
+            .strip_prefix(prefix.as_str())
+            .unwrap_or(&responder_path)
+    };
+
     let responder_method = match request.method().try_into() {
         Ok(responder_method) => responder_method,
         Err(err) => {
@@ -278,7 +288,7 @@ pub async fn webhooks_responders(
                     .iter()
                     .map(|(name, value)| (name.as_str(), value.to_str().unwrap_or_default()))
                     .collect(),
-                path: responder_path.as_str(),
+                path: raw_responder_path,
                 raw_query: request.uri().query(),
                 query: query
                     .iter()
@@ -398,9 +408,9 @@ pub async fn webhooks_responders(
                         Some(tracked_headers)
                     },
                     url: Cow::Owned(if let Some(query) = request.uri().query() {
-                        format!("{responder_path}?{query}")
+                        format!("{raw_responder_path}?{query}")
                     } else {
-                        responder_path.to_string()
+                        raw_responder_path.to_string()
                     }),
                     body: if payload.is_empty() {
                         None
@@ -772,6 +782,67 @@ mod tests {
         assert_eq!(
             responder_requests[0].url,
             Cow::Borrowed("/one/two?query=value")
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn preserves_percent_encoding_in_tracked_path(pool: PgPool) -> anyhow::Result<()> {
+        let app_state = mock_app_state(pool).await?;
+        let user = mock_user()?;
+        app_state.api.db.upsert_user(&user).await?;
+
+        let responder = app_state
+            .api
+            .webhooks(&user)
+            .create_responder(RespondersCreateParams {
+                name: "name_one".to_string(),
+                location: ResponderLocation {
+                    path_type: ResponderPathType::Prefix,
+                    path: "/service".to_string(),
+                    subdomain_prefix: None,
+                },
+                method: ResponderMethod::Any,
+                enabled: true,
+                settings: ResponderSettings {
+                    requests_to_track: 3,
+                    status_code: 200,
+                    body: None,
+                    headers: None,
+                    script: None,
+                    secrets: SecretsAccess::None,
+                },
+            })
+            .await?;
+
+        // Simulate a request with percent-encoded characters in the path (base64 doc ID).
+        let request = TestRequest::with_uri(
+            "https://secutils.dev/api/webhooks/devhandle00000000000000000000000000000001/service/.doc/_create/Ln%2BtX6SI%2F3Vw%3D",
+        )
+        .method(Method::PUT)
+        .param("user_handle", "devhandle00000000000000000000000000000001")
+        .param("responder_path", "service/.doc/_create/Ln+tX6SI/3Vw=")
+        .to_http_request();
+        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
+            .await
+            .unwrap();
+        let app_state = web::Data::new(app_state);
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let requests = app_state
+            .api
+            .webhooks(&user)
+            .get_responder_requests(responder.id)
+            .await?;
+        assert_eq!(requests.len(), 1);
+        // The tracked URL must preserve percent-encoding from the original URI.
+        assert_eq!(
+            requests[0].url,
+            Cow::Borrowed("/service/.doc/_create/Ln%2BtX6SI%2F3Vw%3D")
         );
 
         Ok(())
