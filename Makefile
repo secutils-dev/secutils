@@ -15,7 +15,7 @@ DEPLOY_DEV_TAG      	?= latest
 DEPLOY_PROD_TAG     	?=
 DEPLOY_CAMOUFOX_TAG 	?=
 
-.PHONY: dev-up dev-down api webui webui-test docs e2e-up e2e-down e2e-test e2e-test-loop docs-screenshots docs-screenshots-loop docs-screenshots-diff docs-screenshots-analyze agent-push agent-pull clean
+.PHONY: dev-up dev-down api webui webui-test docs e2e-up e2e-down e2e-test e2e-test-loop docs-screenshots docs-screenshots-loop docs-screenshots-diff docs-screenshots-analyze agent-push agent-pull clean docker-df docker-prune docker-prune-images docker-prune-buildcache
 .PHONY: deploy-dev deploy-dev-api deploy-dev-webui deploy-dev-docs deploy-dev-retrack-api deploy-dev-retrack-scraper
 .PHONY: deploy-prod deploy-prod-api deploy-prod-webui deploy-prod-docs deploy-prod-retrack-api deploy-prod-retrack-scraper
 .PHONY: deploy-camoufox
@@ -203,6 +203,19 @@ agent-push: ## Push changes from this repo to the Agent workspace (excludes .git
 agent-pull: ## Pull changes from the Agent workspace into this repo (excludes .git and gitignored files).
 	@if [ -z "$(AGENT_WORKSPACE)" ]; then echo "Error: set AGENT_WORKSPACE to the Agent project path"; exit 1; fi
 	rsync -av --delete --exclude='.git' --filter=':- .gitignore' $(AGENT_WORKSPACE)/ ./
+
+## ---------- Docker Cleanup ----------
+
+docker-df: ## Show Docker disk usage summary.
+	docker system df
+
+docker-prune: docker-prune-images docker-prune-buildcache ## Remove dangling images and build cache.
+
+docker-prune-images: ## Remove dangling (untagged) Docker images.
+	docker image prune -f
+
+docker-prune-buildcache: ## Remove Docker BuildKit build cache.
+	docker builder prune -f
 
 ## ---------- Misc ----------
 
