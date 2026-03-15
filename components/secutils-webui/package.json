@@ -40,7 +40,7 @@
   "dependencies": {
     "@babel/runtime": "^7.28.6",
     "@elastic/datemath": "^5.0.3",
-    "@elastic/eui": "^113.1.0",
+    "@elastic/eui": "^113.2.1",
     "@emotion/css": "^11.13.5",
     "@emotion/react": "^11.14.0",
     "@monaco-editor/react": "^4.7.0",
@@ -81,16 +81,16 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^17.4.0",
-    "happy-dom": "^20.8.3",
+    "happy-dom": "^20.8.4",
     "parcel": "^2.16.4",
     "playwright-core": "1.56.1",
     "prettier": "^3.8.1",
     "process": "^0.11.10",
     "svgo": "^4.0.1",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.56.1",
+    "typescript-eslint": "^8.57.0",
     "url": "^0.11.4",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.0"
   },
   "optionalDependencies": {
     "@lmdb/lmdb-linux-arm64": "^3.5.1",
@@ -98,8 +98,8 @@
     "@parcel/watcher-linux-arm64-musl": "^2.5.6",
     "@parcel/watcher-linux-x64-glibc": "^2.5.6",
     "@swc/core-linux-arm64-musl": "^1.15.18",
-    "lightningcss-linux-arm64-musl": "^1.31.1",
-    "lightningcss-linux-x64-gnu": "^1.31.1"
+    "lightningcss-linux-arm64-musl": "^1.32.0",
+    "lightningcss-linux-x64-gnu": "^1.32.0"
   },
   "overrides": {
     "typescript": "^5.9.3"
