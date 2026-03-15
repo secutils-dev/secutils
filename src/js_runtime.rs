@@ -195,14 +195,28 @@ impl JsRuntime {
         })?;
 
         let resolve = runtime.resolve(script_result_promise);
-        let script_result = runtime
-            .with_event_loop_promise(resolve, PollEventLoopOptions::default())
-            .await
-            .map_err(|err| {
+        // Wrap the event loop in a tokio timeout to handle async operations
+        // (e.g. timers) that keep the event loop idle beyond the time limit.
+        // The watchdog thread above handles synchronous loops that block V8.
+        let script_result = match tokio::time::timeout(
+            config.max_user_script_execution_time,
+            runtime.with_event_loop_promise(resolve, PollEventLoopOptions::default()),
+        )
+        .await
+        {
+            Ok(Ok(result)) => result,
+            Ok(Err(err)) => {
                 timeout_token.swap(true, Ordering::Relaxed);
                 runtime.v8_isolate().cancel_terminate_execution();
-                handle_error(err.into())
-            })?;
+                return Err(handle_error(err.into()));
+            }
+            Err(_elapsed) => {
+                timeout_token.swap(true, Ordering::Relaxed);
+                runtime.v8_isolate().cancel_terminate_execution();
+                return Err(anyhow::anyhow!("Script execution timed out")
+                    .context("Script exceeded time limit."));
+            }
+        };
 
         // Abort termination thread, if script managed to complete.
         timeout_token.swap(true, Ordering::Relaxed);
