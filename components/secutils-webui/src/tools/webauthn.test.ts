@@ -22,7 +22,7 @@ describe('arrayBufferToSafeBase64Url', () => {
   });
 
   it('replaces + with - and / with _', () => {
-    // [251, 255, 254] in standard base64 is "u//+" — after URL-safe replacement: "u__-"
+    // [251, 255, 254] in standard base64 is "u//+" - after URL-safe replacement: "u__-"
     const encoded = arrayBufferToSafeBase64Url(toArrayBuffer([0xbb, 0xff, 0xfe]));
     expect(encoded).not.toContain('+');
     expect(encoded).not.toContain('/');

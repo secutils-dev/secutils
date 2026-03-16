@@ -115,6 +115,65 @@ Berlin time is [**01:02:03**](https://www.timeanddate.com/worldclock/germany/ber
 
 With this configuration, the tracker will check the content of the web page every hour and notify you if any changes are detected.
 
+## Record a content extractor script
+
+Instead of writing a content extractor script from scratch, you can **record browser interactions** using standard Playwright tools and import the recording into Secutils.dev. This is a great way to quickly get started, especially for scenarios that involve navigating through several pages or filling out forms.
+
+### Step 1: Record your interactions
+
+Use any of these methods to record a Playwright scenario:
+
+**Option A: Playwright codegen (CLI)**
+
+```bash
+npx playwright codegen https://your-target-site.com
+```
+
+This opens a browser window and the Playwright Inspector. Interact with the site as you normally would - the Inspector generates JavaScript code in real time. When done, click the **copy** button in the Inspector to copy the generated script.
+
+:::tip
+Use `--target=javascript-library` to generate a plain script (without the test framework wrapper), which produces slightly cleaner output for import.
+:::
+
+**Option B: Chrome DevTools Recorder**
+
+1. Open Chrome DevTools (**F12**).
+2. Go to the **Recorder** panel.
+3. Click **Create recording**, perform your interactions, then stop recording.
+4. Click **Export recording** → **JSON**.
+
+**Option C: Browser extensions**
+
+Several Chrome extensions can record Playwright scripts directly:
+- [Playwright Chrome Recorder](https://chromewebstore.google.com/detail/playwright-chrome-recorde/bfnbgoehgplaehdceponclakmhlgjlpd)
+
+### Step 2: Import into Secutils.dev
+
+1. Open the page tracker form (create new or edit existing).
+2. **Right-click** the `Content extractor` editor.
+3. Select **Import: Playwright recording** or **Import: Chrome DevTools recording** from the context menu.
+4. Paste the recorded script (or JSON export) into the dialog and click **Import**.
+
+The script is automatically transformed into the Secutils.dev extractor format - all browser setup/teardown boilerplate is stripped and the code is wrapped in the `execute(page)` function.
+
+### Step 3: Add a return statement
+
+The imported script contains a `TODO` comment reminding you to add a `return` statement. This determines what content the tracker will store and monitor for changes. For example:
+
+```javascript
+export async function execute(page) {
+  await page.goto('https://example.com/');
+  await page.getByRole('link', { name: 'Pricing' }).click();
+
+  // Return the content you want to track:
+  return await page.locator('.pricing-table').textContent();
+}
+```
+
+### Step 4: Debug and save
+
+Use the **Debug** button to run the script and verify the extracted content before saving the tracker.
+
 ## Track web page resources
 
 You can also use the page tracker utility to detect and track resources of any web page. This functionality falls under the category of [synthetic monitoring](https://en.wikipedia.org/wiki/Synthetic_monitoring) tools and helps ensure that the deployed application loads only the intended web resources (JavaScript and CSS) during its lifetime. If any unintended changes occur, which could result from a broken deployment or malicious activity, the tracker will promptly notify developers or IT personnel about the detected anomalies.

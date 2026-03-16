@@ -15,7 +15,7 @@ DEPLOY_DEV_TAG      	?= latest
 DEPLOY_PROD_TAG     	?=
 DEPLOY_CAMOUFOX_TAG 	?=
 
-.PHONY: dev-up dev-down api webui webui-test docs e2e-up e2e-down e2e-test e2e-test-loop docs-screenshots docs-screenshots-loop docs-screenshots-diff docs-screenshots-analyze agent-push agent-pull clean docker-df docker-prune docker-prune-images docker-prune-buildcache
+.PHONY: dev-up dev-down api webui webui-test docs e2e-up e2e-down e2e-test e2e-test-loop e2e-standalone-test docs-screenshots docs-screenshots-loop docs-screenshots-diff docs-screenshots-analyze agent-push agent-pull clean docker-df docker-prune docker-prune-images docker-prune-buildcache
 .PHONY: deploy-dev deploy-dev-api deploy-dev-webui deploy-dev-docs deploy-dev-retrack-api deploy-dev-retrack-scraper
 .PHONY: deploy-prod deploy-prod-api deploy-prod-webui deploy-prod-docs deploy-prod-retrack-api deploy-prod-retrack-scraper
 .PHONY: deploy-camoufox
@@ -67,6 +67,9 @@ e2e-down: ## Stop the e2e stack and remove volumes.
 
 e2e-test: ## Run Playwright e2e tests (use ARGS for extra flags, e.g. make e2e-test ARGS="--ui").
 	cd e2e && npx playwright test $(ARGS)
+
+e2e-standalone-test: ## Run standalone e2e tests (no Docker stack needed, e.g. codegen smoke tests).
+	cd e2e && npx playwright test --config=playwright.standalone.config.ts $(ARGS)
 
 e2e-test-loop: ## Run e2e tests repeatedly (RUNS=N default 10, ARGS=...). Logs + failure screenshots → /tmp/e2e-loop-results/.
 	@rm -rf $(E2E_LOOP_DIR) && mkdir -p $(E2E_LOOP_DIR); \

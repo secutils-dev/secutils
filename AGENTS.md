@@ -32,7 +32,26 @@ make e2e-report
 
 # Tear down the stack
 make e2e-down
+
+# Run standalone tests (no Docker stack needed, e.g. codegen smoke tests)
+make e2e-standalone-test
 ```
+
+### Standalone tests (`e2e/standalone/`)
+
+Standalone tests validate tooling and transformers against the currently installed Playwright
+version. They do **not** require the Docker application stack - only an installed browser
+(`npx playwright install chromium`).
+
+Tests live in `e2e/standalone/` and use `playwright.standalone.config.ts`. Run them with:
+
+```bash
+make e2e-standalone-test
+```
+
+The codegen transformer smoke test spawns `npx playwright codegen` to capture the current
+boilerplate format and verifies the web UI's script transformer can handle it. This catches
+breaking changes to codegen output when Playwright is upgraded.
 
 ### Debugging flaky tests
 

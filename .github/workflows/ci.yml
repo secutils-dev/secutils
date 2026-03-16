@@ -145,6 +145,10 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
 
+      - name: Run standalone tests (no Docker stack needed)
+        working-directory: e2e
+        run: npx playwright test --config=playwright.standalone.config.ts
+
       - name: Start services
         run: >
           docker compose

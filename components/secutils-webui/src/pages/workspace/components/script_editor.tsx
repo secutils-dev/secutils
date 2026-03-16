@@ -1,8 +1,26 @@
 import type { UseEuiTheme } from '@elastic/eui';
-import { EuiButtonIcon, EuiFlexGroup, EuiFlexItem, EuiFocusTrap, EuiPanel, useEuiTheme } from '@elastic/eui';
+import {
+  EuiButton,
+  EuiButtonIcon,
+  EuiCodeBlock,
+  EuiFlexGroup,
+  EuiFlexItem,
+  EuiFocusTrap,
+  EuiModal,
+  EuiModalBody,
+  EuiModalFooter,
+  EuiModalHeader,
+  EuiModalHeaderTitle,
+  EuiPanel,
+  EuiSpacer,
+  EuiText,
+  EuiTextArea,
+  useEuiTheme,
+} from '@elastic/eui';
 import { css } from '@emotion/react';
 import { Editor } from '@monaco-editor/react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ChangeEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 import type { monaco } from '../../../tools/monaco_setup';
@@ -97,6 +115,13 @@ export interface ScriptSnippet {
   template: string;
 }
 
+export interface ImportAction {
+  id: string;
+  label: string;
+  description: ReactNode;
+  transform: (input: string) => string;
+}
+
 let extraLibsConfigured = false;
 
 function registerExtraLibs(extraLibs?: ExtraLib[]) {
@@ -129,6 +154,7 @@ export interface Props {
   extraLibs?: ExtraLib[];
   language?: string;
   snippets?: ScriptSnippet[];
+  importActions?: ImportAction[];
 }
 
 const EDITOR_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions = {
@@ -157,28 +183,143 @@ function registerSnippetActions(editor: monaco.editor.IStandaloneCodeEditor, sni
   });
 }
 
+function registerImportActions(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  importActions: ImportAction[] | undefined,
+  onRequestImport: (action: ImportAction) => void,
+) {
+  (importActions ?? []).forEach((action, idx) => {
+    editor.addAction({
+      id: `import-${action.id}`,
+      label: action.label,
+      contextMenuGroupId: '1_import',
+      contextMenuOrder: idx,
+      run: () => onRequestImport(action),
+    });
+  });
+}
+
+interface ScriptImportModalProps {
+  action: ImportAction;
+  onConfirm: (transformedScript: string) => void;
+  onClose: () => void;
+}
+
+function ScriptImportModal({ action, onConfirm, onClose }: ScriptImportModalProps) {
+  const [rawInput, setRawInput] = useState('');
+
+  const { preview, error } = useMemo(() => {
+    if (!rawInput.trim()) {
+      return { preview: null, error: null };
+    }
+    try {
+      return { preview: action.transform(rawInput), error: null };
+    } catch (err) {
+      return { preview: null, error: err instanceof Error ? err.message : String(err) };
+    }
+  }, [rawInput, action]);
+
+  const handleInputChange = useCallback((e: ChangeEvent<HTMLTextAreaElement>) => {
+    setRawInput(e.target.value);
+  }, []);
+
+  const handleConfirm = useCallback(() => {
+    if (preview) {
+      onConfirm(preview);
+    }
+  }, [preview, onConfirm]);
+
+  return (
+    <EuiModal onClose={onClose} style={{ maxWidth: 720 }}>
+      <EuiModalHeader>
+        <EuiModalHeaderTitle>{action.label}</EuiModalHeaderTitle>
+      </EuiModalHeader>
+      <EuiModalBody>
+        <EuiText size="s">{action.description}</EuiText>
+        <EuiSpacer size="s" />
+        <EuiTextArea
+          placeholder="Paste recorded script or JSON here…"
+          value={rawInput}
+          onChange={handleInputChange}
+          rows={10}
+          fullWidth
+          compressed
+        />
+        {error ? (
+          <>
+            <EuiSpacer size="s" />
+            <EuiText size="s" color="danger">
+              <p>{error}</p>
+            </EuiText>
+          </>
+        ) : null}
+        {preview ? (
+          <>
+            <EuiSpacer size="m" />
+            <EuiText size="xs">
+              <strong>Preview</strong>
+            </EuiText>
+            <EuiSpacer size="xs" />
+            <EuiCodeBlock language="javascript" fontSize="s" paddingSize="s" overflowHeight={200}>
+              {preview}
+            </EuiCodeBlock>
+          </>
+        ) : null}
+      </EuiModalBody>
+      <EuiModalFooter>
+        <EuiButton onClick={onClose} color="text">
+          Cancel
+        </EuiButton>
+        <EuiButton onClick={handleConfirm} fill disabled={!preview}>
+          Import
+        </EuiButton>
+      </EuiModalFooter>
+    </EuiModal>
+  );
+}
+
 interface FullScreenEditorProps {
   value: string;
   onChange: (value?: string) => void;
   extraLibs?: ExtraLib[];
   snippets?: ScriptSnippet[];
+  importActions?: ImportAction[];
   language: string;
   onClose: () => void;
 }
 
-function FullScreenEditor({ value, onChange, extraLibs, snippets, language, onClose }: FullScreenEditorProps) {
+function FullScreenEditor({
+  value,
+  onChange,
+  extraLibs,
+  snippets,
+  importActions,
+  language,
+  onClose,
+}: FullScreenEditorProps) {
   const euiTheme = useEuiTheme();
   const { euiTheme: theme } = euiTheme;
+  const overlayZIndex = Number(theme.levels.mask) - 1;
+
+  const [activeImportAction, setActiveImportAction] = useState<ImportAction | null>(null);
+
+  const handleImportConfirm = useCallback(
+    (transformedScript: string) => {
+      onChange(transformedScript);
+      setActiveImportAction(null);
+    },
+    [onChange],
+  );
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !activeImportAction) {
         event.preventDefault();
         event.stopPropagation();
         onClose();
       }
     },
-    [onClose],
+    [onClose, activeImportAction],
   );
 
   useEffect(() => {
@@ -192,14 +333,14 @@ function FullScreenEditor({ value, onChange, extraLibs, snippets, language, onCl
   }, [handleKeyDown]);
 
   return createPortal(
-    <EuiFocusTrap onClickOutside={onClose}>
+    <EuiFocusTrap onClickOutside={activeImportAction ? undefined : onClose}>
       <div
         data-test-subj="scriptEditorFullScreen"
         css={css`
           animation: euiFullScreenOverlay 350ms cubic-bezier(0.34, 1.56, 0.64, 1);
           position: fixed;
           inset: 0;
-          z-index: ${theme.levels.modal};
+          z-index: ${overlayZIndex};
           display: flex;
           flex-direction: column;
           background-color: ${theme.colors.body};
@@ -249,21 +390,39 @@ function FullScreenEditor({ value, onChange, extraLibs, snippets, language, onCl
                   m.editor.defineTheme('euiTheme', createTheme(euiTheme));
                   registerExtraLibs(extraLibs);
                 }}
-                onMount={(editor) => registerSnippetActions(editor, snippets)}
+                onMount={(editor) => {
+                  registerSnippetActions(editor, snippets);
+                  registerImportActions(editor, importActions, setActiveImportAction);
+                }}
               />
             </EuiFlexItem>
           </EuiFlexGroup>
         </EuiPanel>
+        {activeImportAction ? (
+          <ScriptImportModal
+            action={activeImportAction}
+            onConfirm={handleImportConfirm}
+            onClose={() => setActiveImportAction(null)}
+          />
+        ) : null}
       </div>
     </EuiFocusTrap>,
     document.body,
   );
 }
 
-export function ScriptEditor({ onChange, defaultValue, extraLibs, language = 'javascript', snippets }: Props) {
+export function ScriptEditor({
+  onChange,
+  defaultValue,
+  extraLibs,
+  language = 'javascript',
+  snippets,
+  importActions,
+}: Props) {
   const euiTheme = useEuiTheme();
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [currentValue, setCurrentValue] = useState(defaultValue ?? '');
+  const [activeImportAction, setActiveImportAction] = useState<ImportAction | null>(null);
 
   const toggleFullScreen = useCallback(() => setIsFullScreen((prev) => !prev), []);
 
@@ -271,6 +430,15 @@ export function ScriptEditor({ onChange, defaultValue, extraLibs, language = 'ja
     (value?: string) => {
       setCurrentValue(value ?? '');
       onChange(value);
+    },
+    [onChange],
+  );
+
+  const handleImportConfirm = useCallback(
+    (transformedScript: string) => {
+      setCurrentValue(transformedScript);
+      onChange(transformedScript);
+      setActiveImportAction(null);
     },
     [onChange],
   );
@@ -292,7 +460,10 @@ export function ScriptEditor({ onChange, defaultValue, extraLibs, language = 'ja
           m.editor.defineTheme('euiTheme', createTheme(euiTheme));
           registerExtraLibs(extraLibs);
         }}
-        onMount={(editor) => registerSnippetActions(editor, snippets)}
+        onMount={(editor) => {
+          registerSnippetActions(editor, snippets);
+          registerImportActions(editor, importActions, setActiveImportAction);
+        }}
       />
       <EuiButtonIcon
         iconType="fullScreen"
@@ -317,10 +488,18 @@ export function ScriptEditor({ onChange, defaultValue, extraLibs, language = 'ja
           onChange={handleChange}
           extraLibs={extraLibs}
           snippets={snippets}
+          importActions={importActions}
           language={language}
           onClose={toggleFullScreen}
         />
       )}
+      {activeImportAction ? (
+        <ScriptImportModal
+          action={activeImportAction}
+          onConfirm={handleImportConfirm}
+          onClose={() => setActiveImportAction(null)}
+        />
+      ) : null}
     </div>
   );
 }
