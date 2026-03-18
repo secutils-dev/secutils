@@ -59,6 +59,47 @@ test.describe('User Secrets CRUD', () => {
     // Verify empty state again.
     await expect(page.getByText('No secrets yet')).toBeVisible({ timeout: 15000 });
   });
+
+  test('duplicate name rejection', async ({ page }) => {
+    // Create a secret via API
+    const createResponse = await page.request.post('/api/user/secrets', {
+      data: {
+        name: 'UNIQUE_SECRET',
+        value: 'secret-value-123',
+      },
+    });
+    expect(createResponse.ok()).toBeTruthy();
+
+    // Navigate to secrets settings
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    await page.getByText('Settings').click();
+    const secretsTab = page.getByRole('tab', { name: 'Secrets' });
+    await expect(secretsTab).toBeVisible({ timeout: 15000 });
+    await secretsTab.click();
+
+    // Wait for the secret to be visible
+    await expect(page.getByText('UNIQUE_SECRET', { exact: true })).toBeVisible({ timeout: 15000 });
+
+    // Try to create a new secret with the same name
+    await page.getByRole('button', { name: 'Add secret' }).click();
+    const modal = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add secret' }) });
+    await expect(modal).toBeVisible({ timeout: 15000 });
+
+    // Fill in the same name
+    await modal.getByPlaceholder('MY_API_KEY').fill('UNIQUE_SECRET');
+    await modal.getByPlaceholder('Enter secret value…').fill('another-value');
+
+    // Click Create button
+    await modal.getByRole('button', { name: 'Create' }).click();
+
+    // Expect toast message about duplicate name
+    await expect(page.getByText("A secret with name 'UNIQUE_SECRET' already exists.")).toBeVisible({ timeout: 15000 });
+    await dismissAllToasts(page);
+
+    // Close modal
+    await modal.getByRole('button', { name: 'Cancel' }).click();
+    await expect(modal).not.toBeVisible();
+  });
 });
 
 test.describe('Secrets access in tracker edit flyout', () => {

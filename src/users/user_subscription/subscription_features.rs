@@ -25,7 +25,8 @@ impl<'c> SubscriptionFeatures<'c> {
 mod test {
     use crate::{
         config::{
-            SubscriptionCertificatesConfig, SubscriptionConfig, SubscriptionWebScrapingConfig,
+            SubscriptionCertificatesConfig, SubscriptionConfig, SubscriptionScriptsConfig,
+            SubscriptionSecretsConfig, SubscriptionWebScrapingConfig,
             SubscriptionWebSecurityConfig, SubscriptionWebhooksConfig,
         },
         tests::mock_config,
@@ -86,7 +87,8 @@ mod test {
                     .collect(),
                 ),
             },
-            secrets: Default::default(),
+            secrets: SubscriptionSecretsConfig { max_secrets: 5 },
+            scripts: SubscriptionScriptsConfig { max_scripts: 6 },
         };
 
         config.subscriptions.standard = SubscriptionConfig {
@@ -128,7 +130,8 @@ mod test {
                     .collect(),
                 ),
             },
-            secrets: Default::default(),
+            secrets: SubscriptionSecretsConfig { max_secrets: 50 },
+            scripts: SubscriptionScriptsConfig { max_scripts: 60 },
         };
 
         config.subscriptions.professional = SubscriptionConfig {
@@ -153,7 +156,8 @@ mod test {
                 templates: 33,
                 private_key_algorithms: None,
             },
-            secrets: Default::default(),
+            secrets: SubscriptionSecretsConfig { max_secrets: 500 },
+            scripts: SubscriptionScriptsConfig { max_scripts: 600 },
         };
 
         let subscription = UserSubscription {

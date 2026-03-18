@@ -14,7 +14,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const SECRET: { name: string; createdAt: number; updatedAt: number } = {
+const SECRET: { id: string; name: string; createdAt: number; updatedAt: number } = {
+  id: '00000000-0000-0000-0000-000000000001',
   name: 'my-secret',
   createdAt: 1700000000,
   updatedAt: 1700000001,
@@ -64,56 +65,45 @@ describe('updateUserSecret', () => {
     const updated = { ...SECRET, updatedAt: 1700000099 };
     mockFetch.mockResolvedValueOnce(new Response(JSON.stringify(updated), { status: 200 }));
 
-    const result = await updateUserSecret('my-secret', 'new-value');
+    const result = await updateUserSecret('00000000-0000-0000-0000-000000000001', 'new-value');
     expect(result).toEqual(updated);
 
     const [url, config] = mockFetch.mock.calls[0];
-    expect(url).toBe('/api/user/secrets/my-secret');
+    expect(url).toBe('/api/user/secrets/00000000-0000-0000-0000-000000000001');
     expect(config.method).toBe('PUT');
     expect(JSON.parse(config.body)).toEqual({ value: 'new-value' });
   });
 
-  it('encodes the secret name in the URL', async () => {
-    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify(SECRET), { status: 200 }));
-
-    await updateUserSecret('my secret/key', 'v');
-    expect(mockFetch.mock.calls[0][0]).toBe('/api/user/secrets/my%20secret%2Fkey');
-  });
-
   it('throws with server message when response is not ok', async () => {
     mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ message: 'Not found' }), { status: 404 }));
-    await expect(updateUserSecret('x', 'y')).rejects.toThrow('Not found');
+    await expect(updateUserSecret('00000000-0000-0000-0000-000000000001', 'y')).rejects.toThrow('Not found');
   });
 
   it('throws fallback message when response body is not JSON', async () => {
     mockFetch.mockResolvedValueOnce(new Response('bad', { status: 500 }));
-    await expect(updateUserSecret('x', 'y')).rejects.toThrow('Failed to update secret.');
+    await expect(updateUserSecret('00000000-0000-0000-0000-000000000001', 'y')).rejects.toThrow(
+      'Failed to update secret.',
+    );
   });
 });
 
 describe('deleteUserSecret', () => {
   it('deletes a secret successfully', async () => {
     mockFetch.mockResolvedValueOnce(new Response(null, { status: 204 }));
-    await expect(deleteUserSecret('my-secret')).resolves.toBeUndefined();
+    await expect(deleteUserSecret('00000000-0000-0000-0000-000000000001')).resolves.toBeUndefined();
 
     const [url, config] = mockFetch.mock.calls[0];
-    expect(url).toBe('/api/user/secrets/my-secret');
+    expect(url).toBe('/api/user/secrets/00000000-0000-0000-0000-000000000001');
     expect(config.method).toBe('DELETE');
-  });
-
-  it('encodes the secret name in the URL', async () => {
-    mockFetch.mockResolvedValueOnce(new Response(null, { status: 204 }));
-    await deleteUserSecret('a/b c');
-    expect(mockFetch.mock.calls[0][0]).toBe('/api/user/secrets/a%2Fb%20c');
   });
 
   it('throws with server message when response is not ok', async () => {
     mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ message: 'Forbidden' }), { status: 403 }));
-    await expect(deleteUserSecret('x')).rejects.toThrow('Forbidden');
+    await expect(deleteUserSecret('00000000-0000-0000-0000-000000000001')).rejects.toThrow('Forbidden');
   });
 
   it('throws fallback message when response body is not JSON', async () => {
     mockFetch.mockResolvedValueOnce(new Response('nope', { status: 500 }));
-    await expect(deleteUserSecret('x')).rejects.toThrow('Failed to delete secret.');
+    await expect(deleteUserSecret('00000000-0000-0000-0000-000000000001')).rejects.toThrow('Failed to delete secret.');
   });
 });

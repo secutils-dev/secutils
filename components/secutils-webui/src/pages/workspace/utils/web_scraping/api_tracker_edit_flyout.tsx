@@ -15,7 +15,7 @@ import {
   EuiTitle,
 } from '@elastic/eui';
 import type { ChangeEvent } from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { ApiTracker, ApiTrackerTarget } from './api_tracker';
 import type { RetryInterval } from './consts';
@@ -40,8 +40,9 @@ import {
   ResponseError,
 } from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
-import type { ScriptSnippet } from '../../components/script_editor';
+import type { ImportAction, ScriptSnippet } from '../../components/script_editor';
 import { ScriptEditor } from '../../components/script_editor';
+import { ScriptImportSelector } from '../../components/script_import_selector';
 import { useWorkspaceContext } from '../../hooks';
 
 export interface Props {
@@ -228,6 +229,46 @@ export function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
   const onConfiguratorChange = useCallback((value?: string) => {
     setConfigurator(value ?? '');
   }, []);
+
+  // Import modal state for predefined scripts
+  const [importModalType, setImportModalType] = useState<'extractor' | 'configurator' | null>(null);
+  const handleImportScript = useCallback(
+    (content: string) => {
+      if (importModalType === 'extractor') {
+        setExtractor(content);
+      } else if (importModalType === 'configurator') {
+        setConfigurator(content);
+      }
+      setImportModalType(null);
+    },
+    [importModalType],
+  );
+
+  const extractorImportActions: ImportAction[] = useMemo(
+    () => [
+      {
+        id: 'import-predefined-script',
+        label: 'Import from predefined scripts',
+        description: 'Select an API extractor script from your library',
+        transform: (input: string) => input,
+        onTrigger: () => setImportModalType('extractor'),
+      },
+    ],
+    [],
+  );
+
+  const configuratorImportActions: ImportAction[] = useMemo(
+    () => [
+      {
+        id: 'import-predefined-script',
+        label: 'Import from predefined scripts',
+        description: 'Select an API configurator script from your library',
+        transform: (input: string) => input,
+        onTrigger: () => setImportModalType('configurator'),
+      },
+    ],
+    [],
+  );
 
   const [revisions, setRevisions] = useState<number>(tracker ? (tracker.retrack?.config?.revisions ?? 0) : 3);
   const [enabled, setEnabled] = useState<boolean>(tracker?.retrack?.enabled ?? true);
@@ -695,6 +736,7 @@ export function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
               defaultValue={extractor}
               extraLibs={[{ content: API_TRACKER_EXTRACTOR_TYPE_DEFS, filePath: 'ts:api-tracker-extractor.d.ts' }]}
               snippets={EXTRACTOR_SNIPPETS}
+              importActions={extractorImportActions}
             />
           </EuiFormRow>
           {isAdvancedMode ? (
@@ -717,6 +759,7 @@ export function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
                   { content: API_TRACKER_CONFIGURATOR_TYPE_DEFS, filePath: 'ts:api-tracker-configurator.d.ts' },
                 ]}
                 snippets={CONFIGURATOR_SNIPPETS}
+                importActions={configuratorImportActions}
               />
             </EuiFormRow>
           ) : null}
@@ -759,6 +802,13 @@ export function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
         onStatusChange={onDebugStatusChange}
         buildDebugRequest={buildDebugRequest}
       />
+      {importModalType ? (
+        <ScriptImportSelector
+          context="api_tracker"
+          onSelect={handleImportScript}
+          onClose={() => setImportModalType(null)}
+        />
+      ) : null}
     </EditorFlyout>
   );
 }

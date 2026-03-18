@@ -342,17 +342,27 @@ export async function fixCertificateTemplateValidityDates(page: Page) {
 /**
  * Intercept page tracker revision history responses and stabilize dynamic parts
  * (URLs, sizes, timestamps) so screenshots remain consistent across runs.
+ * If the server fails to execute the tracker (e.g. no browser available in CI),
+ * the optional `fallback` array is returned instead.
  */
-export async function fixTrackerResourceRevisions(page: Page) {
+export async function fixTrackerResourceRevisions(page: Page, fallback?: object[]) {
   await page.route('**/api/utils/web_scraping/page/*/history', async (route) => {
     const response = await route.fetch();
     if (!response.ok()) {
-      await route.fulfill({ response });
+      if (fallback) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(fallback) });
+      } else {
+        await route.fulfill({ response });
+      }
       return;
     }
     const json = await response.json();
     if (!Array.isArray(json)) {
-      await route.fulfill({ response, json });
+      if (fallback) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(fallback) });
+      } else {
+        await route.fulfill({ response, json });
+      }
       return;
     }
     for (const rev of json) {

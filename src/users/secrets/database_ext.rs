@@ -1,8 +1,9 @@
 use crate::{
     database::Database,
+    error::Error,
     users::{UserId, secrets::UserSecret},
 };
-use sqlx::{query, query_as};
+use sqlx::{error::ErrorKind as SqlxErrorKind, query, query_as};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -82,7 +83,7 @@ ORDER BY name ASC
     ) -> anyhow::Result<UserSecret> {
         let id = Uuid::now_v7();
         let now = OffsetDateTime::now_utc();
-        query!(
+        match query!(
             r#"
 INSERT INTO user_data_secrets (id, user_id, name, value, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -95,7 +96,23 @@ VALUES ($1, $2, $3, $4, $5, $6)
             now
         )
         .execute(&self.pool)
-        .await?;
+        .await
+        {
+            Ok(_) => {}
+            Err(err) => {
+                let is_conflict = err
+                    .as_database_error()
+                    .map(|db_err| matches!(db_err.kind(), SqlxErrorKind::UniqueViolation))
+                    .unwrap_or_default();
+                return Err(if is_conflict {
+                    anyhow::Error::from(Error::conflict(format!(
+                        "A secret with name '{name}' already exists."
+                    )))
+                } else {
+                    err.into()
+                });
+            }
+        }
 
         Ok(UserSecret {
             id,
@@ -107,11 +124,11 @@ VALUES ($1, $2, $3, $4, $5, $6)
         })
     }
 
-    /// Updates the encrypted value of an existing secret by user_id and name.
+    /// Updates the encrypted value of an existing secret by user_id and id.
     pub async fn update_user_secret(
         &self,
         user_id: UserId,
-        name: &str,
+        id: Uuid,
         encrypted_value: &[u8],
     ) -> anyhow::Result<Option<UserSecret>> {
         let now = OffsetDateTime::now_utc();
@@ -119,13 +136,13 @@ VALUES ($1, $2, $3, $4, $5, $6)
             RawUserSecret,
             r#"
 UPDATE user_data_secrets SET value = $1, updated_at = $2
-WHERE user_id = $3 AND name = $4
+WHERE user_id = $3 AND id = $4
 RETURNING id, user_id, name, value, created_at, updated_at
             "#,
             encrypted_value,
             now,
             *user_id,
-            name
+            id
         )
         .fetch_optional(&self.pool)
         .await?;
@@ -133,21 +150,21 @@ RETURNING id, user_id, name, value, created_at, updated_at
         Ok(raw.map(|r| r.into_user_secret(false)))
     }
 
-    /// Removes a secret by user_id and name.
+    /// Removes a secret by user_id and id.
     pub async fn remove_user_secret(
         &self,
         user_id: UserId,
-        name: &str,
+        id: Uuid,
     ) -> anyhow::Result<Option<UserSecret>> {
         let raw: Option<RawUserSecret> = query_as!(
             RawUserSecret,
             r#"
 DELETE FROM user_data_secrets
-WHERE user_id = $1 AND name = $2
+WHERE user_id = $1 AND id = $2
 RETURNING id as "id!", user_id as "user_id!", name as "name!", value as "value!", created_at as "created_at!", updated_at as "updated_at!"
             "#,
             *user_id,
-            name
+            id
         )
         .fetch_optional(&self.pool)
         .await?;
@@ -160,8 +177,10 @@ RETURNING id as "id!", user_id as "user_id!", name as "name!", value as "value!"
 mod tests {
     use crate::{
         database::Database,
+        error::Error,
         tests::{mock_user, mock_user_with_id},
     };
+    use actix_web::{ResponseError, http::StatusCode};
     use sqlx::PgPool;
     use uuid::uuid;
 
@@ -226,9 +245,13 @@ mod tests {
         db.upsert_user(&user).await?;
 
         assert!(
-            db.update_user_secret(user.id, "API_KEY", b"new-val")
-                .await?
-                .is_none()
+            db.update_user_secret(
+                user.id,
+                uuid!("00000000-0000-0000-0000-000000000099"),
+                b"new-val"
+            )
+            .await?
+            .is_none()
         );
 
         let original = db
@@ -236,7 +259,7 @@ mod tests {
             .await?;
 
         let updated = db
-            .update_user_secret(user.id, "API_KEY", b"new-val")
+            .update_user_secret(user.id, original.id, b"new-val")
             .await?
             .unwrap();
         assert_eq!(updated.name, "API_KEY");
@@ -259,15 +282,20 @@ mod tests {
         let user = mock_user()?;
         db.upsert_user(&user).await?;
 
-        assert!(db.remove_user_secret(user.id, "API_KEY").await?.is_none());
+        assert!(
+            db.remove_user_secret(user.id, uuid!("00000000-0000-0000-0000-000000000099"))
+                .await?
+                .is_none()
+        );
 
-        db.insert_user_secret(user.id, "API_KEY", b"enc-val")
+        let inserted = db
+            .insert_user_secret(user.id, "API_KEY", b"enc-val")
             .await?;
 
-        let removed = db.remove_user_secret(user.id, "API_KEY").await?.unwrap();
+        let removed = db.remove_user_secret(user.id, inserted.id).await?.unwrap();
         assert_eq!(removed.name, "API_KEY");
         assert!(db.get_user_secrets(user.id, false).await?.is_empty());
-        assert!(db.remove_user_secret(user.id, "API_KEY").await?.is_none());
+        assert!(db.remove_user_secret(user.id, inserted.id).await?.is_none());
 
         Ok(())
     }
@@ -303,17 +331,20 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn duplicate_name_rejected(pool: PgPool) -> anyhow::Result<()> {
+    async fn duplicate_name_returns_conflict_error(pool: PgPool) -> anyhow::Result<()> {
         let db = Database::create(pool).await?;
         let user = mock_user()?;
         db.upsert_user(&user).await?;
 
         db.insert_user_secret(user.id, "API_KEY", b"val-1").await?;
-        assert!(
-            db.insert_user_secret(user.id, "API_KEY", b"val-2")
-                .await
-                .is_err()
-        );
+        let err = db
+            .insert_user_secret(user.id, "API_KEY", b"val-2")
+            .await
+            .unwrap_err();
+
+        let typed = err.downcast::<Error>().unwrap();
+        assert_eq!(typed.status_code(), StatusCode::CONFLICT);
+        assert!(typed.root_cause.to_string().contains("API_KEY"));
 
         Ok(())
     }

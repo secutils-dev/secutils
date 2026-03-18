@@ -31,8 +31,9 @@ import {
   ResponseError,
 } from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
-import type { ScriptSnippet } from '../../components/script_editor';
 import { ScriptEditor } from '../../components/script_editor';
+import type { ImportAction, ScriptSnippet } from '../../components/script_editor';
+import { ScriptImportSelector } from '../../components/script_import_selector';
 import { useWorkspaceContext } from '../../hooks';
 
 export interface ResponderEditFlyoutProps {
@@ -222,6 +223,25 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
   const onUserScriptChange = useCallback((value?: string) => {
     setScript(value);
   }, []);
+
+  const [isImportModalVisible, setIsImportModalVisible] = useState(false);
+  const handleImportScript = useCallback((content: string) => {
+    setScript(content);
+    setIsImportModalVisible(false);
+  }, []);
+
+  const scriptImportActions: ImportAction[] = useMemo(
+    () => [
+      {
+        id: 'import-predefined-script',
+        label: 'Import from predefined scripts',
+        description: 'Select a responder script from your library',
+        transform: (input: string) => input,
+        onTrigger: () => setIsImportModalVisible(true),
+      },
+    ],
+    [],
+  );
 
   const existingSecrets = responder?.settings?.secrets;
   const [secretsMode, setSecretsMode] = useState<'none' | 'all' | 'selected'>(existingSecrets?.type ?? 'none');
@@ -596,10 +616,22 @@ export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutP
                 </span>
               }
             >
-              <ScriptEditor onChange={onUserScriptChange} defaultValue={script} snippets={SCRIPT_SNIPPETS} />
+              <ScriptEditor
+                onChange={onUserScriptChange}
+                defaultValue={script}
+                snippets={SCRIPT_SNIPPETS}
+                importActions={scriptImportActions}
+              />
             </EuiFormRow>
           ) : null}
         </EuiDescribedFormGroup>
+        {isImportModalVisible ? (
+          <ScriptImportSelector
+            context="responder"
+            onSelect={handleImportScript}
+            onClose={() => setIsImportModalVisible(false)}
+          />
+        ) : null}
         {isAdvancedMode ? (
           <EuiDescribedFormGroup
             title={<h3>Secrets</h3>}

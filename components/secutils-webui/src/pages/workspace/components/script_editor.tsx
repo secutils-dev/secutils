@@ -120,6 +120,13 @@ export interface ImportAction {
   label: string;
   description: ReactNode;
   transform: (input: string) => string;
+  /**
+   * Optional callback that bypasses the default import modal.
+   * When provided, this is called instead of showing the import modal.
+   * The callback should handle the import process (e.g., showing a custom selector)
+   * and eventually call onChange with the imported content.
+   */
+  onTrigger?: () => void;
 }
 
 let extraLibsConfigured = false;
@@ -155,6 +162,7 @@ export interface Props {
   language?: string;
   snippets?: ScriptSnippet[];
   importActions?: ImportAction[];
+  overlayZIndex?: number;
 }
 
 const EDITOR_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions = {
@@ -194,7 +202,13 @@ function registerImportActions(
       label: action.label,
       contextMenuGroupId: '1_import',
       contextMenuOrder: idx,
-      run: () => onRequestImport(action),
+      run: () => {
+        if (action.onTrigger) {
+          action.onTrigger();
+        } else {
+          onRequestImport(action);
+        }
+      },
     });
   });
 }
@@ -203,9 +217,10 @@ interface ScriptImportModalProps {
   action: ImportAction;
   onConfirm: (transformedScript: string) => void;
   onClose: () => void;
+  zIndex?: number;
 }
 
-function ScriptImportModal({ action, onConfirm, onClose }: ScriptImportModalProps) {
+function ScriptImportModal({ action, onConfirm, onClose, zIndex }: ScriptImportModalProps) {
   const [rawInput, setRawInput] = useState('');
 
   const { preview, error } = useMemo(() => {
@@ -230,7 +245,17 @@ function ScriptImportModal({ action, onConfirm, onClose }: ScriptImportModalProp
   }, [preview, onConfirm]);
 
   return (
-    <EuiModal onClose={onClose} style={{ maxWidth: 720 }}>
+    <EuiModal
+      onClose={onClose}
+      style={{ maxWidth: 720 }}
+      css={
+        zIndex !== undefined
+          ? css`
+              z-index: ${zIndex};
+            `
+          : undefined
+      }
+    >
       <EuiModalHeader>
         <EuiModalHeaderTitle>{action.label}</EuiModalHeaderTitle>
       </EuiModalHeader>
@@ -286,6 +311,7 @@ interface FullScreenEditorProps {
   importActions?: ImportAction[];
   language: string;
   onClose: () => void;
+  overlayZIndex?: number;
 }
 
 function FullScreenEditor({
@@ -296,10 +322,12 @@ function FullScreenEditor({
   importActions,
   language,
   onClose,
+  overlayZIndex,
 }: FullScreenEditorProps) {
   const euiTheme = useEuiTheme();
   const { euiTheme: theme } = euiTheme;
-  const overlayZIndex = Number(theme.levels.mask) - 1;
+  const resolvedOverlayZIndex = overlayZIndex ?? Number(theme.levels.mask) - 1;
+  const importModalZIndex = Math.max(resolvedOverlayZIndex + 1, Number(theme.levels.modal));
 
   const [activeImportAction, setActiveImportAction] = useState<ImportAction | null>(null);
 
@@ -340,7 +368,7 @@ function FullScreenEditor({
           animation: euiFullScreenOverlay 350ms cubic-bezier(0.34, 1.56, 0.64, 1);
           position: fixed;
           inset: 0;
-          z-index: ${overlayZIndex};
+          z-index: ${resolvedOverlayZIndex};
           display: flex;
           flex-direction: column;
           background-color: ${theme.colors.body};
@@ -403,6 +431,7 @@ function FullScreenEditor({
             action={activeImportAction}
             onConfirm={handleImportConfirm}
             onClose={() => setActiveImportAction(null)}
+            zIndex={importModalZIndex}
           />
         ) : null}
       </div>
@@ -418,11 +447,19 @@ export function ScriptEditor({
   language = 'javascript',
   snippets,
   importActions,
+  overlayZIndex,
 }: Props) {
   const euiTheme = useEuiTheme();
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [currentValue, setCurrentValue] = useState(defaultValue ?? '');
   const [activeImportAction, setActiveImportAction] = useState<ImportAction | null>(null);
+
+  // Sync with defaultValue changes (e.g., when importing a predefined script)
+  useEffect(() => {
+    if (defaultValue !== undefined) {
+      setCurrentValue((prev) => (defaultValue !== prev ? defaultValue : prev));
+    }
+  }, [defaultValue]);
 
   const toggleFullScreen = useCallback(() => setIsFullScreen((prev) => !prev), []);
 
@@ -491,6 +528,7 @@ export function ScriptEditor({
           importActions={importActions}
           language={language}
           onClose={toggleFullScreen}
+          overlayZIndex={overlayZIndex}
         />
       )}
       {activeImportAction ? (

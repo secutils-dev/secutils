@@ -19,13 +19,16 @@ import { SecretEditModal } from './secret_edit_modal';
 import type { PageToast } from '../pages/page';
 
 interface DeleteConfirmation {
+  id: string;
   name: string;
 }
 
 export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void }) {
   const [secrets, setSecrets] = useState<UserSecret[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editModal, setEditModal] = useState<{ visible: false } | { visible: true; editingName?: string }>({
+  const [editModal, setEditModal] = useState<
+    { visible: false } | { visible: true; editingId?: string; editingName?: string }
+  >({
     visible: false,
   });
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmation | null>(null);
@@ -46,10 +49,9 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
   }, [loadSecrets]);
 
   const handleSave = useCallback(
-    async (name: string, value: string) => {
-      const isUpdate = secrets.some((s) => s.name === name);
-      if (isUpdate) {
-        await updateUserSecret(name, value);
+    async (name: string, value: string, editingId?: string) => {
+      if (editingId !== undefined) {
+        await updateUserSecret(editingId, value);
         addToast({ id: 'update-secret', color: 'success', title: `Secret "${name}" updated` });
       } else {
         await createUserSecret(name, value);
@@ -57,13 +59,13 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
       }
       await loadSecrets();
     },
-    [secrets, loadSecrets, addToast],
+    [loadSecrets, addToast],
   );
 
   const handleDelete = useCallback(
-    async (name: string) => {
+    async (id: string, name: string) => {
       try {
-        await deleteUserSecret(name);
+        await deleteUserSecret(id);
         addToast({ id: 'delete-secret', color: 'success', title: `Secret "${name}" deleted` });
         await loadSecrets();
       } catch {
@@ -100,7 +102,8 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
           description: 'Update secret value',
           icon: 'pencil',
           type: 'icon',
-          onClick: (secret: UserSecret) => setEditModal({ visible: true, editingName: secret.name }),
+          onClick: (secret: UserSecret) =>
+            setEditModal({ visible: true, editingId: secret.id, editingName: secret.name }),
         },
         {
           name: 'Delete',
@@ -108,7 +111,7 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
           icon: 'trash',
           color: 'danger',
           type: 'icon',
-          onClick: (secret: UserSecret) => setDeleteConfirm({ name: secret.name }),
+          onClick: (secret: UserSecret) => setDeleteConfirm({ id: secret.id, name: secret.name }),
         },
       ],
     },
@@ -134,7 +137,7 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
         columns={columns}
         loading={loading}
         search={{ box: { incremental: true, placeholder: 'Search secrets…' } }}
-        sorting={{ sort: { field: 'name', direction: 'asc' } }}
+        sorting={{ sort: { field: 'updatedAt', direction: 'desc' } }}
         pagination={{ pageSize: 10, showPerPageOptions: true }}
         noItemsMessage={
           <EuiEmptyPrompt
@@ -146,16 +149,18 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
       />
       {editModal.visible ? (
         <SecretEditModal
+          editingId={editModal.editingId}
           editingName={editModal.editingName}
           onSave={handleSave}
           onClose={() => setEditModal({ visible: false })}
+          addToast={addToast}
         />
       ) : null}
       {deleteConfirm ? (
         <EuiConfirmModal
           title={`Delete secret "${deleteConfirm.name}"?`}
           onCancel={() => setDeleteConfirm(null)}
-          onConfirm={() => handleDelete(deleteConfirm.name)}
+          onConfirm={() => handleDelete(deleteConfirm.id, deleteConfirm.name)}
           cancelButtonText="Cancel"
           confirmButtonText="Delete"
           buttonColor="danger"

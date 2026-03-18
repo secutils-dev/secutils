@@ -8,6 +8,7 @@ dist
 .idea/
 .env
 .DS_Store
+.claude
 
 *.private.env.json
 deploy.env

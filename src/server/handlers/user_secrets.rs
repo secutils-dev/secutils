@@ -1,14 +1,11 @@
-use crate::{
-    server::{app_state::AppState, http_errors::generic_internal_server_error},
-    users::User,
-};
+use crate::{error::Error, server::app_state::AppState, users::User};
 use actix_web::{HttpResponse, web};
 use serde::Deserialize;
-use tracing::error;
+use uuid::Uuid;
 
 #[derive(Deserialize)]
-pub struct SecretNamePath {
-    pub secret_name: String,
+pub struct SecretIdPath {
+    pub secret_id: Uuid,
 }
 
 #[derive(Deserialize)]
@@ -25,14 +22,12 @@ pub struct UpdateSecretBody {
 }
 
 /// GET /api/user/secrets
-pub async fn user_secrets_list(state: web::Data<AppState>, user: User) -> HttpResponse {
-    match state.api.secrets(&user).list_secrets().await {
-        Ok(secrets) => HttpResponse::Ok().json(secrets),
-        Err(err) => {
-            error!(user.id = %user.id, "Failed to list secrets: {err:?}");
-            generic_internal_server_error()
-        }
-    }
+pub async fn user_secrets_list(
+    state: web::Data<AppState>,
+    user: User,
+) -> Result<HttpResponse, Error> {
+    let secrets = state.api.secrets(&user).list_secrets().await?;
+    Ok(HttpResponse::Ok().json(secrets))
 }
 
 /// POST /api/user/secrets
@@ -40,90 +35,40 @@ pub async fn user_secrets_create(
     state: web::Data<AppState>,
     user: User,
     body: web::Json<CreateSecretBody>,
-) -> HttpResponse {
-    match state
+) -> Result<HttpResponse, Error> {
+    let secret = state
         .api
         .secrets(&user)
         .create_secret(&body.name, &body.value)
-        .await
-    {
-        Ok(secret) => HttpResponse::Created().json(secret),
-        Err(err) => {
-            let err_string = format!("{err:?}");
-            if err_string.contains("unique constraint") || err_string.contains("duplicate key") {
-                HttpResponse::Conflict().json(serde_json::json!({
-                    "message": format!("A secret with name '{}' already exists.", body.name)
-                }))
-            } else if is_client_error(&err_string) {
-                HttpResponse::BadRequest().json(serde_json::json!({ "message": err.to_string() }))
-            } else {
-                error!(user.id = %user.id, "Failed to create secret: {err:?}");
-                generic_internal_server_error()
-            }
-        }
-    }
+        .await?;
+    Ok(HttpResponse::Created().json(secret))
 }
 
-/// PUT /api/user/secrets/{secret_name}
+/// PUT /api/user/secrets/{secret_id}
 pub async fn user_secrets_update(
     state: web::Data<AppState>,
     user: User,
-    path: web::Path<SecretNamePath>,
+    path: web::Path<SecretIdPath>,
     body: web::Json<UpdateSecretBody>,
-) -> HttpResponse {
-    match state
+) -> Result<HttpResponse, Error> {
+    let secret = state
         .api
         .secrets(&user)
-        .update_secret(&path.secret_name, &body.value)
-        .await
-    {
-        Ok(secret) => HttpResponse::Ok().json(secret),
-        Err(err) => {
-            let err_string = err.to_string();
-            if err_string.contains("not found") {
-                HttpResponse::NotFound().json(serde_json::json!({
-                    "message": format!("Secret '{}' not found.", path.secret_name)
-                }))
-            } else if is_client_error(&err_string) {
-                HttpResponse::BadRequest().json(serde_json::json!({ "message": err_string }))
-            } else {
-                error!(user.id = %user.id, "Failed to update secret '{}': {err:?}", path.secret_name);
-                generic_internal_server_error()
-            }
-        }
-    }
+        .update_secret(path.secret_id, &body.value)
+        .await?;
+    Ok(HttpResponse::Ok().json(secret))
 }
 
-/// DELETE /api/user/secrets/{secret_name}
+/// DELETE /api/user/secrets/{secret_id}
 pub async fn user_secrets_delete(
     state: web::Data<AppState>,
     user: User,
-    path: web::Path<SecretNamePath>,
-) -> HttpResponse {
-    match state
+    path: web::Path<SecretIdPath>,
+) -> Result<HttpResponse, Error> {
+    state
         .api
         .secrets(&user)
-        .delete_secret(&path.secret_name)
-        .await
-    {
-        Ok(_) => HttpResponse::NoContent().finish(),
-        Err(err) => {
-            let err_string = err.to_string();
-            if err_string.contains("not found") {
-                HttpResponse::NotFound().json(serde_json::json!({
-                    "message": format!("Secret '{}' not found.", path.secret_name)
-                }))
-            } else {
-                error!(user.id = %user.id, "Failed to delete secret '{}': {err:?}", path.secret_name);
-                generic_internal_server_error()
-            }
-        }
-    }
-}
-
-fn is_client_error(msg: &str) -> bool {
-    msg.contains("Secret name must")
-        || msg.contains("Secret value cannot")
-        || msg.contains("Secret value must")
-        || msg.contains("Maximum number of secrets")
+        .delete_secret(path.secret_id)
+        .await?;
+    Ok(HttpResponse::NoContent().finish())
 }

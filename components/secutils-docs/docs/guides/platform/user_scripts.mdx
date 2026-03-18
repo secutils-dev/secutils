@@ -1,0 +1,135 @@
+---
+sidebar_position: 3
+sidebar_label: User Scripts
+title: User Scripts
+description: Create, manage, and reuse JavaScript scripts across responders and trackers in Secutils.dev.
+---
+
+import Steps from '@site/src/components/Steps';
+import CodeBlock from '@theme/CodeBlock';
+
+# User Scripts
+
+Secutils.dev lets you save reusable JavaScript snippets as **user scripts** and import them directly into responder scripts, API tracker extractor/configurator scripts, and page tracker extractor scripts. Instead of duplicating the same logic in every responder or tracker, you write it once in **Settings → Scripts** and import it wherever you need it.
+
+## Script types
+
+Each script has a **type** that determines which contexts it can be imported in:
+
+| Type               | Label            | Can be imported in                       |
+|--------------------|------------------|------------------------------------------|
+| `responder`        | Responder        | Responder scripts                        |
+| `api_extractor`    | API Extractor    | API tracker data extractor scripts       |
+| `api_configurator` | API Configurator | API tracker request configurator scripts |
+| `page_extractor`   | Page Extractor   | Page tracker content extractor scripts   |
+| `universal`        | Universal        | Any context                              |
+
+When you open the import modal in an editor, only scripts compatible with that context are shown.
+
+## Managing scripts
+
+Navigate to **Settings → Scripts** to create and manage your scripts.
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/user_scripts/scripts_step1_empty.png',
+        caption: <>Open the account menu, click <b>Settings</b>, then select the <b>Scripts</b> tab. Click <b>Add script</b> to create your first script.</>,
+        alt: 'Navigate to Settings → Scripts and click Add script.',
+    },
+    {
+        img: '../../img/docs/guides/user_scripts/scripts_step2_form.png',
+        caption: <>Enter a <b>Name</b>, choose a <b>Type</b>, and write or paste the script content. Click <b>Create</b> when ready.</>,
+        alt: 'Fill in the script name, type, and content and click Create.',
+    },
+    {
+        img: '../../img/docs/guides/user_scripts/scripts_step3_created.png',
+        caption: 'The script appears in the table with its type badge and last-updated timestamp.',
+        alt: 'The newly created script appears in the scripts table.',
+    },
+    {
+        img: '../../img/docs/guides/user_scripts/scripts_step4_list.png',
+        caption: <>You can add more scripts as needed. Use the <b>Edit</b> action to update a script's content, <b>Duplicate</b> to create a copy, or <b>Delete</b> to remove it.</>,
+        alt: 'The scripts table showing multiple scripts with edit, duplicate, and delete actions.',
+    },
+]} />
+
+### Naming rules
+
+- Must start with a letter (a–z, A–Z)
+- Can contain letters, digits, underscores (`_`), and hyphens (`-`)
+- Maximum 128 characters
+
+### Limits
+
+- Up to **100** scripts per user (configurable per subscription tier)
+- Maximum script content size: **50 KB**
+
+## Importing a script into a responder
+
+When you create or edit a responder with **Advanced mode** enabled, the **Script** editor exposes an **Import** action in its toolbar. Clicking it opens a modal listing all scripts whose type is `responder` or `universal`.
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/user_scripts/scripts_step5_before_import.png',
+        caption: <>In the responder form, enable <b>Advanced mode</b>. The <b>Script</b> editor appears. Click the <b>Import</b> action (the download icon in the editor toolbar) to open the script picker.</>,
+        alt: 'Responder form with Advanced mode enabled showing the Script editor.',
+    },
+    {
+        img: '../../img/docs/guides/user_scripts/scripts_step6_import_modal.png',
+        caption: <>Select the script you want to import and click <b>Import</b>. Only scripts compatible with the responder context are listed.</>,
+        alt: 'Import modal showing the list of available responder scripts.',
+    },
+    {
+        img: '../../img/docs/guides/user_scripts/scripts_step7_imported.png',
+        caption: 'The selected script content is inserted into the editor, replacing any existing content.',
+        alt: 'Responder script editor after importing the predefined script.',
+    },
+]} />
+
+:::tip
+Importing a script copies its content into the editor at the time of import. Subsequent edits to the original script in **Settings → Scripts** do not automatically update responders or trackers that have already imported it.
+:::
+
+## Importing a script into an API tracker
+
+API tracker extractor and configurator editors each expose the same **Import** action. The modal shows only `api_extractor`, `api_configurator`, or `universal` scripts, depending on which editor triggered the import.
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/user_scripts/scripts_api_tracker_step1_before_import.png',
+        caption: <>In the API tracker form, enable <b>Advanced mode</b>. The <b>Data extractor</b> and <b>Request configurator</b> editors appear. Click the <b>Import</b> action in the desired editor to open the script picker.</>,
+        alt: 'API tracker form with Advanced mode enabled showing the Data extractor script editor.',
+    },
+    {
+        img: '../../img/docs/guides/user_scripts/scripts_api_tracker_step2_import_modal.png',
+        caption: <>Select the compatible script and click <b>Import</b>. Only scripts of the matching type (<code>api_extractor</code>, <code>api_configurator</code>, or <code>universal</code>) are listed.</>,
+        alt: 'Import modal showing the list of compatible API tracker scripts.',
+    },
+    {
+        img: '../../img/docs/guides/user_scripts/scripts_api_tracker_step3_imported.png',
+        caption: 'The script content is inserted into the editor.',
+        alt: 'API tracker Data extractor editor after importing the predefined script.',
+    },
+]} />
+
+## Importing a script into a page tracker
+
+The page tracker **Content extractor** editor works the same way. The import modal shows only `page_extractor` or `universal` scripts.
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/user_scripts/scripts_page_tracker_step1_before_import.png',
+        caption: <>In the page tracker form, the <b>Content extractor</b> editor is always visible. Click the <b>Import</b> action to open the script picker.</>,
+        alt: 'Page tracker form showing the Content extractor script editor.',
+    },
+    {
+        img: '../../img/docs/guides/user_scripts/scripts_page_tracker_step2_import_modal.png',
+        caption: <>Select the compatible script and click <b>Import</b>. Only <code>page_extractor</code> and <code>universal</code> scripts are listed.</>,
+        alt: 'Import modal showing the list of compatible page tracker scripts.',
+    },
+    {
+        img: '../../img/docs/guides/user_scripts/scripts_page_tracker_step3_imported.png',
+        caption: 'The script content is inserted into the Content extractor editor.',
+        alt: 'Page tracker Content extractor editor after importing the predefined script.',
+    },
+]} />

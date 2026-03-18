@@ -1,6 +1,7 @@
 import { getApiRequestConfig, getApiUrl } from './urls';
 
 export interface UserSecret {
+  id: string;
   name: string;
   createdAt: number;
   updatedAt: number;
@@ -26,8 +27,8 @@ export async function createUserSecret(name: string, value: string): Promise<Use
   return response.json();
 }
 
-export async function updateUserSecret(name: string, value: string): Promise<UserSecret> {
-  const response = await fetch(getApiUrl(`/api/user/secrets/${encodeURIComponent(name)}`), {
+export async function updateUserSecret(id: string, value: string): Promise<UserSecret> {
+  const response = await fetch(getApiUrl(`/api/user/secrets/${encodeURIComponent(id)}`), {
     ...getApiRequestConfig('PUT'),
     body: JSON.stringify({ value }),
   });
@@ -38,11 +39,8 @@ export async function updateUserSecret(name: string, value: string): Promise<Use
   return response.json();
 }
 
-export async function deleteUserSecret(name: string): Promise<void> {
-  const response = await fetch(
-    getApiUrl(`/api/user/secrets/${encodeURIComponent(name)}`),
-    getApiRequestConfig('DELETE'),
-  );
+export async function deleteUserSecret(id: string): Promise<void> {
+  const response = await fetch(getApiUrl(`/api/user/secrets/${encodeURIComponent(id)}`), getApiRequestConfig('DELETE'));
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     throw new Error(body?.message ?? 'Failed to delete secret.');

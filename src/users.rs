@@ -1,5 +1,6 @@
 pub mod api_ext;
 mod database_ext;
+mod scripts;
 mod secrets;
 mod user;
 mod user_data;
@@ -12,6 +13,7 @@ mod user_subscription;
 
 pub use self::{
     api_ext::errors::UserSignupError,
+    scripts::ScriptContext,
     secrets::SecretsAccess,
     user::User,
     user_data::UserData,

@@ -1,14 +1,15 @@
 use crate::{
     api::Api,
+    error::Error,
     network::{DnsResolver, EmailTransport},
     users::{
         User,
         secrets::{SecretsAccess, SecretsEncryption, UserSecret},
     },
 };
-use anyhow::{Context, bail};
 use std::collections::HashMap;
 use tracing::error;
+use uuid::Uuid;
 
 /// Maximum length for a secret name.
 const MAX_SECRET_NAME_LENGTH: usize = 128;
@@ -44,7 +45,9 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
             .max_secrets;
         let count = self.api.db.count_user_secrets(self.user.id).await?;
         if count as usize >= max_secrets {
-            bail!("Maximum number of secrets ({max_secrets}) reached.");
+            return Err(anyhow::Error::from(Error::client(format!(
+                "Maximum number of secrets ({max_secrets}) reached."
+            ))));
         }
 
         let encryption = self.get_encryption()?;
@@ -60,7 +63,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
     }
 
     /// Updates an existing secret's value.
-    pub async fn update_secret(&self, name: &str, value: &str) -> anyhow::Result<UserSecret> {
+    pub async fn update_secret(&self, id: Uuid, value: &str) -> anyhow::Result<UserSecret> {
         Self::validate_value(value)?;
 
         let encryption = self.get_encryption()?;
@@ -68,24 +71,28 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
         let secret = self
             .api
             .db
-            .update_user_secret(self.user.id, name, &encrypted_value)
+            .update_user_secret(self.user.id, id, &encrypted_value)
             .await?
-            .with_context(|| format!("Secret '{name}' not found."))?;
+            .ok_or_else(|| {
+                anyhow::Error::from(Error::not_found(format!("Secret '{id}' not found.")))
+            })?;
 
         self.sync_tracker_secrets().await;
         Ok(secret)
     }
 
-    /// Deletes a secret by name and cleans up dangling references in responders and trackers.
-    pub async fn delete_secret(&self, name: &str) -> anyhow::Result<UserSecret> {
+    /// Deletes a secret by id and cleans up dangling references in responders and trackers.
+    pub async fn delete_secret(&self, id: Uuid) -> anyhow::Result<UserSecret> {
         let secret = self
             .api
             .db
-            .remove_user_secret(self.user.id, name)
+            .remove_user_secret(self.user.id, id)
             .await?
-            .with_context(|| format!("Secret '{name}' not found."))?;
+            .ok_or_else(|| {
+                anyhow::Error::from(Error::not_found(format!("Secret '{id}' not found.")))
+            })?;
 
-        self.cleanup_deleted_secret(name).await;
+        self.cleanup_deleted_secret(&secret.name).await;
         self.sync_tracker_secrets().await;
         Ok(secret)
     }
@@ -218,29 +225,33 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
             .security
             .secrets_encryption_key
             .as_deref()
-            .with_context(|| "Secrets encryption key is not configured.")?;
+            .ok_or_else(|| {
+                anyhow::Error::from(Error::client("Secrets encryption key is not configured."))
+            })?;
         SecretsEncryption::new(key)
     }
 
     fn validate_name(name: &str) -> anyhow::Result<()> {
         if !is_valid_secret_name(name) {
-            bail!(
+            return Err(anyhow::Error::from(Error::client(format!(
                 "Secret name must start with a letter, contain only alphanumeric characters, \
                  underscores, or hyphens, and be at most {MAX_SECRET_NAME_LENGTH} characters."
-            );
+            ))));
         }
         Ok(())
     }
 
     fn validate_value(value: &str) -> anyhow::Result<()> {
         if value.is_empty() {
-            bail!("Secret value cannot be empty.");
+            return Err(anyhow::Error::from(Error::client(
+                "Secret value cannot be empty.",
+            )));
         }
         if value.len() > MAX_SECRET_VALUE_LENGTH {
-            bail!(
+            return Err(anyhow::Error::from(Error::client(format!(
                 "Secret value must be at most {} bytes.",
                 MAX_SECRET_VALUE_LENGTH
-            );
+            ))));
         }
         Ok(())
     }
@@ -427,9 +438,9 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        secrets_api.create_secret("MY_KEY", "old-value").await?;
+        let created = secrets_api.create_secret("MY_KEY", "old-value").await?;
 
-        let updated = secrets_api.update_secret("MY_KEY", "new-value").await?;
+        let updated = secrets_api.update_secret(created.id, "new-value").await?;
         assert_eq!(updated.name, "MY_KEY");
 
         let decrypted = secrets_api
@@ -450,7 +461,7 @@ mod tests {
 
         let err = api
             .secrets(&mock_user)
-            .update_secret("MISSING", "val")
+            .update_secret(uuid::Uuid::now_v7(), "val")
             .await
             .unwrap_err();
         assert!(err.to_string().contains("not found"));
@@ -467,10 +478,10 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        secrets_api.create_secret("TO_DELETE", "val").await?;
+        let created = secrets_api.create_secret("TO_DELETE", "val").await?;
         assert_eq!(secrets_api.list_secrets().await?.len(), 1);
 
-        let deleted = secrets_api.delete_secret("TO_DELETE").await?;
+        let deleted = secrets_api.delete_secret(created.id).await?;
         assert_eq!(deleted.name, "TO_DELETE");
         assert!(secrets_api.list_secrets().await?.is_empty());
 
@@ -487,7 +498,7 @@ mod tests {
 
         let err = api
             .secrets(&mock_user)
-            .delete_secret("MISSING")
+            .delete_secret(uuid::Uuid::now_v7())
             .await
             .unwrap_err();
         assert!(err.to_string().contains("not found"));
@@ -504,7 +515,7 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        secrets_api.create_secret("KEY_A", "val-a").await?;
+        let secret_a = secrets_api.create_secret("KEY_A", "val-a").await?;
         secrets_api.create_secret("KEY_B", "val-b").await?;
 
         let now = OffsetDateTime::from_unix_timestamp(946720800)?;
@@ -536,7 +547,7 @@ mod tests {
             .insert_responder(mock_user.id, &responder)
             .await?;
 
-        secrets_api.delete_secret("KEY_A").await?;
+        secrets_api.delete_secret(secret_a.id).await?;
 
         let responders = api.db.webhooks().get_responders(mock_user.id).await?;
         assert_eq!(responders.len(), 1);
@@ -561,7 +572,7 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        secrets_api.create_secret("ONLY_KEY", "val").await?;
+        let only_key = secrets_api.create_secret("ONLY_KEY", "val").await?;
 
         let now = OffsetDateTime::from_unix_timestamp(946720800)?;
         let responder = Responder {
@@ -592,7 +603,7 @@ mod tests {
             .insert_responder(mock_user.id, &responder)
             .await?;
 
-        secrets_api.delete_secret("ONLY_KEY").await?;
+        secrets_api.delete_secret(only_key.id).await?;
 
         let responders = api.db.webhooks().get_responders(mock_user.id).await?;
         assert_eq!(responders[0].settings.secrets, SecretsAccess::None);
@@ -611,7 +622,7 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        secrets_api.create_secret("KEY_X", "val").await?;
+        let key_x = secrets_api.create_secret("KEY_X", "val").await?;
 
         let now = OffsetDateTime::from_unix_timestamp(946720800)?;
         let responder = Responder {
@@ -640,7 +651,7 @@ mod tests {
             .insert_responder(mock_user.id, &responder)
             .await?;
 
-        secrets_api.delete_secret("KEY_X").await?;
+        secrets_api.delete_secret(key_x.id).await?;
 
         let responders = api.db.webhooks().get_responders(mock_user.id).await?;
         assert_eq!(responders[0].settings.secrets, SecretsAccess::All);
@@ -671,7 +682,7 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        secrets_api.create_secret("TK_A", "val-a").await?;
+        let tk_a = secrets_api.create_secret("TK_A", "val-a").await?;
         secrets_api.create_secret("TK_B", "val-b").await?;
 
         let tracker = mock_page_tracker(SecretsAccess::Selected {
@@ -682,7 +693,7 @@ mod tests {
             .insert_page_tracker(&tracker)
             .await?;
 
-        secrets_api.delete_secret("TK_A").await?;
+        secrets_api.delete_secret(tk_a.id).await?;
 
         let trackers = api
             .db
@@ -711,7 +722,7 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        secrets_api.create_secret("LONE_KEY", "val").await?;
+        let lone_key = secrets_api.create_secret("LONE_KEY", "val").await?;
 
         let tracker = mock_page_tracker(SecretsAccess::Selected {
             secrets: vec!["LONE_KEY".to_string()],
@@ -721,7 +732,7 @@ mod tests {
             .insert_page_tracker(&tracker)
             .await?;
 
-        secrets_api.delete_secret("LONE_KEY").await?;
+        secrets_api.delete_secret(lone_key.id).await?;
 
         let trackers = api
             .db
@@ -744,7 +755,7 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        secrets_api.create_secret("TK_X", "val").await?;
+        let tk_x = secrets_api.create_secret("TK_X", "val").await?;
 
         let tracker = mock_page_tracker(SecretsAccess::All);
         api.db
@@ -752,7 +763,7 @@ mod tests {
             .insert_page_tracker(&tracker)
             .await?;
 
-        secrets_api.delete_secret("TK_X").await?;
+        secrets_api.delete_secret(tk_x.id).await?;
 
         let trackers = api
             .db
@@ -889,7 +900,8 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         // Create secret first, before inserting the tracker so the initial sync is a no-op.
-        api.secrets(&mock_user)
+        let all_key = api
+            .secrets(&mock_user)
             .create_secret("ALL_KEY", "old-value")
             .await?;
 
@@ -917,7 +929,7 @@ mod tests {
         });
 
         api.secrets(&mock_user)
-            .update_secret("ALL_KEY", "new-value")
+            .update_secret(all_key.id, "new-value")
             .await?;
 
         retrack_get_mock.assert();
@@ -941,7 +953,8 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         // Create two secrets first. The tracker only uses SEL_KEY.
-        api.secrets(&mock_user)
+        let sel_key = api
+            .secrets(&mock_user)
             .create_secret("SEL_KEY", "old-value")
             .await?;
         api.secrets(&mock_user)
@@ -974,7 +987,7 @@ mod tests {
         });
 
         api.secrets(&mock_user)
-            .update_secret("SEL_KEY", "new-value")
+            .update_secret(sel_key.id, "new-value")
             .await?;
 
         retrack_get_mock.assert();
@@ -998,7 +1011,8 @@ mod tests {
         api.secrets(&mock_user)
             .create_secret("KEEP", "keep-val")
             .await?;
-        api.secrets(&mock_user)
+        let del_secret = api
+            .secrets(&mock_user)
             .create_secret("DEL", "del-val")
             .await?;
 
@@ -1027,7 +1041,7 @@ mod tests {
                 .json_body_obj(&retrack_tracker);
         });
 
-        api.secrets(&mock_user).delete_secret("DEL").await?;
+        api.secrets(&mock_user).delete_secret(del_secret.id).await?;
 
         retrack_get_mock.assert();
         retrack_update_mock.assert();

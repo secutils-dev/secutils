@@ -5,6 +5,10 @@ pub enum ErrorKind {
     ClientError,
     /// Error caused by the lack of privileges to perform an action.
     AccessForbidden,
+    /// Requested resource was not found.
+    NotFound,
+    /// Request conflicts with existing state (e.g. unique constraint violation).
+    Conflict,
     /// Unknown error.
     Unknown,
 }

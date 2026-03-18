@@ -90,10 +90,10 @@ ORDER BY updated_at
                 .map(|db_error| matches!(db_error.kind(), SqlxErrorKind::UniqueViolation))
                 .unwrap_or_default();
             bail!(if is_conflict_error {
-                SecutilsError::client_with_root_cause(
-                    anyhow!(err)
-                        .context(format!("Page tracker ('{}') already exists.", tracker.name)),
-                )
+                SecutilsError::conflict(format!(
+                    "Page tracker ('{}') already exists.",
+                    tracker.name
+                ))
             } else {
                 SecutilsError::from(anyhow!(err).context(format!(
                     "Couldn't create page tracker ('{}') due to unknown reason.",
@@ -139,10 +139,10 @@ WHERE user_id = $1 AND id = $2
                     .map(|db_error| matches!(db_error.kind(), SqlxErrorKind::UniqueViolation))
                     .unwrap_or_default();
                 bail!(if is_conflict_error {
-                    SecutilsError::client_with_root_cause(
-                        anyhow!(err)
-                            .context(format!("Page tracker ('{}') already exists.", tracker.name)),
-                    )
+                    SecutilsError::conflict(format!(
+                        "Page tracker ('{}') already exists.",
+                        tracker.name
+                    ))
                 } else {
                     SecutilsError::from(anyhow!(err).context(format!(
                         "Couldn't update page tracker ('{}') due to unknown reason.",
@@ -235,10 +235,7 @@ VALUES ( $1, $2, $3, $4, $5, $6, $7 )
                 .map(|db_error| matches!(db_error.kind(), SqlxErrorKind::UniqueViolation))
                 .unwrap_or_default();
             bail!(if is_conflict_error {
-                SecutilsError::client_with_root_cause(
-                    anyhow!(err)
-                        .context(format!("API tracker ('{}') already exists.", tracker.name)),
-                )
+                SecutilsError::conflict(format!("API tracker ('{}') already exists.", tracker.name))
             } else {
                 SecutilsError::from(anyhow!(err).context(format!(
                     "Couldn't create API tracker ('{}') due to unknown reason.",
@@ -284,10 +281,10 @@ WHERE user_id = $1 AND id = $2
                     .map(|db_error| matches!(db_error.kind(), SqlxErrorKind::UniqueViolation))
                     .unwrap_or_default();
                 bail!(if is_conflict_error {
-                    SecutilsError::client_with_root_cause(
-                        anyhow!(err)
-                            .context(format!("API tracker ('{}') already exists.", tracker.name)),
-                    )
+                    SecutilsError::conflict(format!(
+                        "API tracker ('{}') already exists.",
+                        tracker.name
+                    ))
                 } else {
                     SecutilsError::from(anyhow!(err).context(format!(
                         "Couldn't update API tracker ('{}') due to unknown reason.",
@@ -331,7 +328,7 @@ mod tests {
         database::Database,
         error::Error as SecutilsError,
         retrack::RetrackTracker,
-        tests::{mock_user, to_database_error},
+        tests::mock_user,
         utils::web_scraping::{
             ApiTracker, PageTracker,
             tests::{MockApiTrackerBuilder, MockPageTrackerBuilder},
@@ -423,10 +420,6 @@ mod tests {
             insert_error.root_cause.to_string(),
             @r###""Page tracker ('some-name') already exists.""###
         );
-        assert_debug_snapshot!(
-            to_database_error(insert_error.root_cause)?.message(),
-            @r###""duplicate key value violates unique constraint \"user_data_web_scraping_page_trackers_name_user_id_key\"""###
-        );
 
         Ok(())
     }
@@ -517,10 +510,6 @@ mod tests {
         assert_debug_snapshot!(
             update_error.root_cause.to_string(),
             @r###""Page tracker ('some-name') already exists.""###
-        );
-        assert_debug_snapshot!(
-            to_database_error(update_error.root_cause)?.message(),
-            @r###""duplicate key value violates unique constraint \"user_data_web_scraping_page_trackers_name_user_id_key\"""###
         );
 
         Ok(())
@@ -733,10 +722,6 @@ mod tests {
             insert_error.root_cause.to_string(),
             @r###""API tracker ('some-name') already exists.""###
         );
-        assert_debug_snapshot!(
-            to_database_error(insert_error.root_cause)?.message(),
-            @r###""duplicate key value violates unique constraint \"user_data_web_scraping_api_trackers_name_user_id_key\"""###
-        );
 
         Ok(())
     }
@@ -827,10 +812,6 @@ mod tests {
         assert_debug_snapshot!(
             update_error.root_cause.to_string(),
             @r###""API tracker ('some-name') already exists.""###
-        );
-        assert_debug_snapshot!(
-            to_database_error(update_error.root_cause)?.message(),
-            @r###""duplicate key value violates unique constraint \"user_data_web_scraping_api_trackers_name_user_id_key\"""###
         );
 
         Ok(())

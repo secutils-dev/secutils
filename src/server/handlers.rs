@@ -14,6 +14,7 @@ mod status_set;
 mod ui_state_get;
 mod user_data_get;
 mod user_data_set;
+mod user_scripts;
 mod user_secrets;
 mod utils_action;
 mod webhooks_responders;
@@ -36,6 +37,10 @@ pub use self::{
     ui_state_get::ui_state_get,
     user_data_get::user_data_get,
     user_data_set::user_data_set,
+    user_scripts::{
+        user_scripts_create, user_scripts_delete, user_scripts_get, user_scripts_list,
+        user_scripts_update,
+    },
     user_secrets::{
         user_secrets_create, user_secrets_delete, user_secrets_list, user_secrets_update,
     },

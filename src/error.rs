@@ -41,6 +41,28 @@ impl Error {
             kind: ErrorKind::AccessForbidden,
         }
     }
+
+    /// Creates a not-found error instance with the given message.
+    pub fn not_found<M>(message: M) -> Self
+    where
+        M: Display + Debug + Send + Sync + 'static,
+    {
+        Self {
+            root_cause: anyhow!(message),
+            kind: ErrorKind::NotFound,
+        }
+    }
+
+    /// Creates a conflict error instance with the given message.
+    pub fn conflict<M>(message: M) -> Self
+    where
+        M: Display + Debug + Send + Sync + 'static,
+    {
+        Self {
+            root_cause: anyhow!(message),
+            kind: ErrorKind::Conflict,
+        }
+    }
 }
 
 impl Display for Error {
@@ -60,6 +82,8 @@ impl ResponseError for Error {
         match self.kind {
             ErrorKind::ClientError => StatusCode::BAD_REQUEST,
             ErrorKind::AccessForbidden => StatusCode::FORBIDDEN,
+            ErrorKind::NotFound => StatusCode::NOT_FOUND,
+            ErrorKind::Conflict => StatusCode::CONFLICT,
             ErrorKind::Unknown => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -67,7 +91,10 @@ impl ResponseError for Error {
     fn error_response(&self) -> HttpResponse {
         HttpResponseBuilder::new(self.status_code()).json(json!({
             "message": match self.kind {
-                ErrorKind::ClientError | ErrorKind::AccessForbidden => self.root_cause.to_string(),
+                ErrorKind::ClientError
+                | ErrorKind::AccessForbidden
+                | ErrorKind::NotFound
+                | ErrorKind::Conflict => self.root_cause.to_string(),
                 ErrorKind::Unknown => "Internal Server Error".to_string(),
             }
         }))
@@ -200,6 +227,42 @@ mod tests {
         assert_eq!(
             body,
             Bytes::from_static(b"{\"message\":\"Internal Server Error\"}")
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn can_create_not_found_errors() -> anyhow::Result<()> {
+        let error = Error::not_found("Resource not found.");
+
+        assert_eq!(error.kind, ErrorKind::NotFound);
+        assert_debug_snapshot!(error, @r###""Resource not found.""###);
+
+        assert_eq!(error.status_code(), StatusCode::NOT_FOUND);
+
+        let body = error.error_response().into_body().try_into_bytes().unwrap();
+        assert_eq!(
+            body,
+            Bytes::from_static(b"{\"message\":\"Resource not found.\"}")
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn can_create_conflict_errors() -> anyhow::Result<()> {
+        let error = Error::conflict("Already exists.");
+
+        assert_eq!(error.kind, ErrorKind::Conflict);
+        assert_debug_snapshot!(error, @r###""Already exists.""###);
+
+        assert_eq!(error.status_code(), StatusCode::CONFLICT);
+
+        let body = error.error_response().into_body().try_into_bytes().unwrap();
+        assert_eq!(
+            body,
+            Bytes::from_static(b"{\"message\":\"Already exists.\"}")
         );
 
         Ok(())

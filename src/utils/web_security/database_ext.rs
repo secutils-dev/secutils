@@ -72,10 +72,10 @@ WHERE user_id = $1 AND id = $2
                 .map(|db_error| matches!(db_error.kind(), SqlxErrorKind::UniqueViolation))
                 .unwrap_or_default();
             bail!(if is_conflict_error {
-                SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
+                SecutilsError::conflict(format!(
                     "Content security policy ('{}') already exists.",
                     policy.name
-                )))
+                ))
             } else {
                 SecutilsError::from(anyhow!(err).context(format!(
                     "Couldn't create content security policy ('{}') due to unknown reason.",
@@ -124,10 +124,10 @@ WHERE user_id = $1 AND id = $2
                     .map(|db_error| matches!(db_error.kind(), SqlxErrorKind::UniqueViolation))
                     .unwrap_or_default();
                 bail!(if is_conflict_error {
-                    SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
+                    SecutilsError::conflict(format!(
                         "Content security policy ('{}') already exists.",
                         policy.name
-                    )))
+                    ))
                 } else {
                     SecutilsError::from(anyhow!(err).context(format!(
                         "Couldn't update content security policy ('{}') due to unknown reason.",
@@ -199,7 +199,7 @@ mod tests {
     use crate::{
         database::Database,
         error::Error as SecutilsError,
-        tests::{mock_user, to_database_error},
+        tests::mock_user,
         utils::web_security::{
             ContentSecurityPolicy, ContentSecurityPolicyDirective,
             ContentSecurityPolicyTrustedTypesDirectiveValue,
@@ -307,14 +307,10 @@ mod tests {
             .unwrap_err()
             .downcast::<SecutilsError>()
             .unwrap();
-        assert_eq!(insert_error.status_code(), 400);
+        assert_eq!(insert_error.status_code(), 409);
         assert_debug_snapshot!(
             insert_error.root_cause.to_string(),
             @r###""Content security policy ('csp-name') already exists.""###
-        );
-        assert_debug_snapshot!(
-            to_database_error(insert_error.root_cause)?.message(),
-            @r###""duplicate key value violates unique constraint \"user_data_web_security_csp_pkey\"""###
         );
 
         Ok(())
@@ -421,14 +417,10 @@ mod tests {
             .unwrap_err()
             .downcast::<SecutilsError>()
             .unwrap();
-        assert_eq!(update_error.status_code(), 400);
+        assert_eq!(update_error.status_code(), 409);
         assert_debug_snapshot!(
             update_error.root_cause.to_string(),
             @r###""Content security policy ('csp-name-a') already exists.""###
-        );
-        assert_debug_snapshot!(
-            to_database_error(update_error.root_cause)?.message(),
-            @r###""duplicate key value violates unique constraint \"user_data_web_security_csp_name_user_id_key\"""###
         );
 
         Ok(())

@@ -142,6 +142,7 @@ mod test {
                 ),
             },
             secrets: Default::default(),
+            scripts: Default::default(),
         };
 
         let subscription = UserSubscription {

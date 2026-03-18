@@ -133,6 +133,8 @@ mod tests {
         import_policy_from_url = true
         [subscriptions.basic.secrets]
         max_secrets = 100
+        [subscriptions.basic.scripts]
+        max_scripts = 100
         [subscriptions.standard.webhooks]
         responders = 100
         responder_requests = 30
@@ -157,6 +159,8 @@ mod tests {
         import_policy_from_url = true
         [subscriptions.standard.secrets]
         max_secrets = 100
+        [subscriptions.standard.scripts]
+        max_scripts = 100
         [subscriptions.professional.webhooks]
         responders = 100
         responder_requests = 30
@@ -181,6 +185,8 @@ mod tests {
         import_policy_from_url = true
         [subscriptions.professional.secrets]
         max_secrets = 100
+        [subscriptions.professional.scripts]
+        max_scripts = 100
         [subscriptions.ultimate.webhooks]
         responders = 100
         responder_requests = 30
@@ -205,6 +211,8 @@ mod tests {
         import_policy_from_url = true
         [subscriptions.ultimate.secrets]
         max_secrets = 100
+        [subscriptions.ultimate.scripts]
+        max_scripts = 100
 
         [utils]
         webhook_url_type = 'subdomain'
@@ -492,6 +500,9 @@ mod tests {
                     secrets: SubscriptionSecretsConfig {
                         max_secrets: 100,
                     },
+                    scripts: SubscriptionScriptsConfig {
+                        max_scripts: 100,
+                    },
                 },
                 standard: SubscriptionConfig {
                     webhooks: SubscriptionWebhooksConfig {
@@ -528,6 +539,9 @@ mod tests {
                     },
                     secrets: SubscriptionSecretsConfig {
                         max_secrets: 100,
+                    },
+                    scripts: SubscriptionScriptsConfig {
+                        max_scripts: 100,
                     },
                 },
                 professional: SubscriptionConfig {
@@ -566,6 +580,9 @@ mod tests {
                     secrets: SubscriptionSecretsConfig {
                         max_secrets: 100,
                     },
+                    scripts: SubscriptionScriptsConfig {
+                        max_scripts: 100,
+                    },
                 },
                 ultimate: SubscriptionConfig {
                     webhooks: SubscriptionWebhooksConfig {
@@ -598,6 +615,9 @@ mod tests {
                     },
                     secrets: SubscriptionSecretsConfig {
                         max_secrets: 100,
+                    },
+                    scripts: SubscriptionScriptsConfig {
+                        max_scripts: 100,
                     },
                 },
             },

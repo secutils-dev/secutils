@@ -26,3 +26,13 @@ export type {
 export { getCopyName, formatBytes } from './strings';
 export type { UserSecret } from './user_secrets';
 export { getUserSecrets, createUserSecret, updateUserSecret, deleteUserSecret } from './user_secrets';
+export type { UserScript, UserScriptType, UserScriptWithContent } from './user_scripts';
+export {
+  getUserScripts,
+  getUserScript,
+  createUserScript,
+  updateUserScript,
+  deleteUserScript,
+  USER_SCRIPT_TYPE_LABELS,
+  USER_SCRIPT_TYPE_OPTIONS,
+} from './user_scripts';

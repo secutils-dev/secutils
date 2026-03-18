@@ -23,9 +23,9 @@ pub use self::{
     smtp_catch_all_config::SmtpCatchAllConfig,
     smtp_config::SmtpConfig,
     subscriptions_config::{
-        SubscriptionCertificatesConfig, SubscriptionConfig, SubscriptionSecretsConfig,
-        SubscriptionWebScrapingConfig, SubscriptionWebSecurityConfig, SubscriptionWebhooksConfig,
-        SubscriptionsConfig,
+        SubscriptionCertificatesConfig, SubscriptionConfig, SubscriptionScriptsConfig,
+        SubscriptionSecretsConfig, SubscriptionWebScrapingConfig, SubscriptionWebSecurityConfig,
+        SubscriptionWebhooksConfig, SubscriptionsConfig,
     },
     utils_config::UtilsConfig,
 };
@@ -258,6 +258,9 @@ mod tests {
                     secrets: SubscriptionSecretsConfig {
                         max_secrets: 100,
                     },
+                    scripts: SubscriptionScriptsConfig {
+                        max_scripts: 100,
+                    },
                 },
                 standard: SubscriptionConfig {
                     webhooks: SubscriptionWebhooksConfig {
@@ -290,6 +293,9 @@ mod tests {
                     },
                     secrets: SubscriptionSecretsConfig {
                         max_secrets: 100,
+                    },
+                    scripts: SubscriptionScriptsConfig {
+                        max_scripts: 100,
                     },
                 },
                 professional: SubscriptionConfig {
@@ -324,6 +330,9 @@ mod tests {
                     secrets: SubscriptionSecretsConfig {
                         max_secrets: 100,
                     },
+                    scripts: SubscriptionScriptsConfig {
+                        max_scripts: 100,
+                    },
                 },
                 ultimate: SubscriptionConfig {
                     webhooks: SubscriptionWebhooksConfig {
@@ -356,6 +365,9 @@ mod tests {
                     },
                     secrets: SubscriptionSecretsConfig {
                         max_secrets: 100,
+                    },
+                    scripts: SubscriptionScriptsConfig {
+                        max_scripts: 100,
                     },
                 },
             },

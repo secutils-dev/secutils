@@ -117,8 +117,23 @@ test.describe('Web scraping guide screenshots', () => {
     const FIXED_CONTENT = '[All-in-one security toolbox for engineers and researchers](https://secutils.dev)';
     const FIXED_REVISION_TIMESTAMP = 1735689600; // Jan 1, 2025 00:00:00 UTC
     await page.route('**/api/utils/web_scraping/page/*/history', async (route) => {
+      const mockRevision = [
+        {
+          id: '00000000-0000-7000-8000-000000000001',
+          createdAt: FIXED_REVISION_TIMESTAMP,
+          data: { original: FIXED_CONTENT },
+        },
+      ];
       const response = await route.fetch();
+      if (!response.ok()) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(mockRevision) });
+        return;
+      }
       const json = await response.json();
+      if (!Array.isArray(json)) {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(mockRevision) });
+        return;
+      }
       for (const rev of json) {
         rev.createdAt = FIXED_REVISION_TIMESTAMP;
         if (typeof rev.data?.original === 'string') {
@@ -277,7 +292,13 @@ test.describe('Web scraping guide screenshots', () => {
     await page.screenshot({ path: join(IMG_DIR, 'resources_step3_created.png') });
 
     // Step 4: Click Update to fetch resources, with route interception for stability.
-    await fixTrackerResourceRevisions(page);
+    // Fallback mock is used when the server cannot execute the extractor (no browser available).
+    await fixTrackerResourceRevisions(page, [
+      mockResourceRevision([
+        { source: 'https://news.ycombinator.com/hn.js', type: 'Script', size: '6000', diff: '' },
+        { source: 'https://news.ycombinator.com/news.css', type: 'Stylesheet', size: '2000', diff: '' },
+      ]),
+    ]);
     await updateButton.click();
     await expect(page.getByText('hn.js')).toBeVisible({ timeout: 60000 });
     await page.screenshot({ path: join(IMG_DIR, 'resources_step4_result.png') });

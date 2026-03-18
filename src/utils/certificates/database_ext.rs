@@ -79,10 +79,10 @@ VALUES ( $1, $2, $3, $4, $5, $6, $7, $8 )
                 .map(|db_error| matches!(db_error.kind(), SqlxErrorKind::UniqueViolation))
                 .unwrap_or_default();
             bail!(if is_conflict_error {
-                SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
+                SecutilsError::conflict(format!(
                     "Private key ('{}') already exists.",
                     private_key.name
-                )))
+                ))
             } else {
                 SecutilsError::from(anyhow!(err).context(format!(
                     "Couldn't create private key ('{}') due to unknown reason.",
@@ -132,10 +132,10 @@ WHERE user_id = $1 AND id = $2
                     .map(|db_error| matches!(db_error.kind(), SqlxErrorKind::UniqueViolation))
                     .unwrap_or_default();
                 bail!(if is_conflict_error {
-                    SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
+                    SecutilsError::conflict(format!(
                         "Private key ('{}') already exists.",
                         private_key.name
-                    )))
+                    ))
                 } else {
                     SecutilsError::from(anyhow!(err).context(format!(
                         "Couldn't update private key ('{}') due to unknown reason.",
@@ -239,10 +239,10 @@ VALUES ( $1, $2, $3, $4, $5, $6 )
                 .map(|db_error| matches!(db_error.kind(), SqlxErrorKind::UniqueViolation))
                 .unwrap_or_default();
             bail!(if is_conflict_error {
-                SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
+                SecutilsError::conflict(format!(
                     "Certificate template ('{}') already exists.",
                     certificate_template.name
-                )))
+                ))
             } else {
                 SecutilsError::from(anyhow!(err).context(format!(
                     "Couldn't create certificate template ('{}') due to unknown reason.",
@@ -291,10 +291,10 @@ WHERE user_id = $1 AND id = $2
                     .map(|db_error| matches!(db_error.kind(), SqlxErrorKind::UniqueViolation))
                     .unwrap_or_default();
                 bail!(if is_conflict_error {
-                    SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
+                    SecutilsError::conflict(format!(
                         "Certificate template ('{}') already exists.",
                         certificate_template.name
-                    )))
+                    ))
                 } else {
                     SecutilsError::from(anyhow!(err).context(format!(
                         "Couldn't update certificate template ('{}') due to unknown reason.",
@@ -366,7 +366,7 @@ mod tests {
     use crate::{
         database::Database,
         error::Error as SecutilsError,
-        tests::{mock_user, to_database_error},
+        tests::mock_user,
         utils::certificates::{
             CertificateAttributes, CertificateTemplate, ExtendedKeyUsage, KeyUsage, PrivateKey,
             PrivateKeyAlgorithm, PrivateKeySize, SignatureAlgorithm, Version,
@@ -488,14 +488,10 @@ mod tests {
             .await
             .unwrap_err()
             .downcast::<SecutilsError>()?;
-        assert_eq!(insert_error.status_code(), 400);
+        assert_eq!(insert_error.status_code(), 409);
         assert_debug_snapshot!(
             insert_error.root_cause.to_string(),
             @r###""Private key ('pk-name') already exists.""###
-        );
-        assert_debug_snapshot!(
-            to_database_error(insert_error.root_cause)?.message(),
-            @r###""duplicate key value violates unique constraint \"user_data_certificates_private_keys_pkey\"""###
         );
 
         Ok(())
@@ -622,14 +618,10 @@ mod tests {
             .unwrap_err()
             .downcast::<SecutilsError>()
             .unwrap();
-        assert_eq!(update_error.status_code(), 400);
+        assert_eq!(update_error.status_code(), 409);
         assert_debug_snapshot!(
             update_error.root_cause.to_string(),
             @r###""Private key ('pk-name-a') already exists.""###
-        );
-        assert_debug_snapshot!(
-            to_database_error(update_error.root_cause)?.message(),
-            @r###""duplicate key value violates unique constraint \"user_data_certificates_private_keys_name_user_id_key\"""###
         );
 
         Ok(())
@@ -890,14 +882,10 @@ mod tests {
             .unwrap_err()
             .downcast::<SecutilsError>()
             .unwrap();
-        assert_eq!(insert_error.status_code(), 400);
+        assert_eq!(insert_error.status_code(), 409);
         assert_debug_snapshot!(
             insert_error.root_cause.to_string(),
             @r###""Certificate template ('ct-name') already exists.""###
-        );
-        assert_debug_snapshot!(
-            to_database_error(insert_error.root_cause)?.message(),
-            @r###""duplicate key value violates unique constraint \"user_data_certificates_certificate_templates_pkey\"""###
         );
 
         Ok(())
@@ -1034,14 +1022,10 @@ mod tests {
             .unwrap_err()
             .downcast::<SecutilsError>()
             .unwrap();
-        assert_eq!(update_error.status_code(), 400);
+        assert_eq!(update_error.status_code(), 409);
         assert_debug_snapshot!(
             update_error.root_cause.to_string(),
             @r###""Certificate template ('ct-name-a') already exists.""###
-        );
-        assert_debug_snapshot!(
-            to_database_error(update_error.root_cause)?.message(),
-            @r###""duplicate key value violates unique constraint \"user_data_certificates_certificate_templates_name_user_id_key\"""###
         );
 
         Ok(())

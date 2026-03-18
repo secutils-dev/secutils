@@ -16,7 +16,7 @@ import {
   EuiTitle,
 } from '@elastic/eui';
 import type { ChangeEvent } from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { RetryInterval } from './consts';
 import {
@@ -45,6 +45,7 @@ import { EditorFlyout } from '../../components/editor_flyout';
 import { PAGE_TRACKER_TYPE_DEFS } from '../../components/page_tracker_type_defs';
 import type { ImportAction, ScriptSnippet } from '../../components/script_editor';
 import { ScriptEditor } from '../../components/script_editor';
+import { ScriptImportSelector } from '../../components/script_import_selector';
 import { useWorkspaceContext } from '../../hooks';
 
 const EXTRACTOR_SNIPPETS: ScriptSnippet[] = [
@@ -154,6 +155,27 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
   }, []);
   const needsToSaveExtractorScript =
     !!extractorScript && (newTracker || tracker?.retrack?.target?.extractor !== extractorScript);
+
+  // Import modal state for predefined scripts
+  const [isImportModalVisible, setIsImportModalVisible] = useState(false);
+  const handleImportScript = useCallback((content: string) => {
+    setExtractorScript(content);
+    setIsImportModalVisible(false);
+  }, []);
+
+  const extractorImportActions: ImportAction[] = useMemo(
+    () => [
+      ...EXTRACTOR_IMPORT_ACTIONS,
+      {
+        id: 'import-predefined-script',
+        label: 'Import from predefined scripts',
+        description: 'Select a page extractor script from your library',
+        transform: (input: string) => input,
+        onTrigger: () => setIsImportModalVisible(true),
+      },
+    ],
+    [],
+  );
 
   const [revisions, setRevisions] = useState<number>(tracker ? (tracker.retrack?.config?.revisions ?? 0) : 3);
   const needsToSaveRevisions = newTracker || tracker?.retrack?.config?.revisions !== revisions;
@@ -516,7 +538,7 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
               defaultValue={extractorScript}
               extraLibs={[{ content: PAGE_TRACKER_TYPE_DEFS, filePath: 'ts:page-tracker.d.ts' }]}
               snippets={EXTRACTOR_SNIPPETS}
-              importActions={EXTRACTOR_IMPORT_ACTIONS}
+              importActions={extractorImportActions}
             />
           </EuiFormRow>
           {isAdvancedMode ? (
@@ -585,6 +607,13 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
         onStatusChange={onDebugStatusChange}
         buildDebugRequest={buildDebugRequest}
       />
+      {isImportModalVisible ? (
+        <ScriptImportSelector
+          context="page_tracker"
+          onSelect={handleImportScript}
+          onClose={() => setIsImportModalVisible(false)}
+        />
+      ) : null}
     </EditorFlyout>
   );
 }

@@ -9,7 +9,6 @@ use uuid::Uuid;
 #[serde(rename_all = "camelCase")]
 pub struct UserSecret {
     /// Unique identifier for the secret.
-    #[serde(skip)]
     pub id: Uuid,
     /// The user who owns this secret.
     #[serde(skip)]

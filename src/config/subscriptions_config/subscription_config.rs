@@ -1,6 +1,6 @@
 use crate::config::{
-    SubscriptionCertificatesConfig, SubscriptionSecretsConfig, SubscriptionWebScrapingConfig,
-    SubscriptionWebSecurityConfig, SubscriptionWebhooksConfig,
+    SubscriptionCertificatesConfig, SubscriptionScriptsConfig, SubscriptionSecretsConfig,
+    SubscriptionWebScrapingConfig, SubscriptionWebSecurityConfig, SubscriptionWebhooksConfig,
 };
 use serde_derive::{Deserialize, Serialize};
 
@@ -17,4 +17,7 @@ pub struct SubscriptionConfig {
     /// The config managing user secrets for a particular subscription.
     #[serde(default)]
     pub secrets: SubscriptionSecretsConfig,
+    /// The config managing user scripts for a particular subscription.
+    #[serde(default)]
+    pub scripts: SubscriptionScriptsConfig,
 }

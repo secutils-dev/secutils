@@ -33,6 +33,7 @@ import {
   isClientError,
   USER_SETTINGS_KEY_COMMON_UI_THEME,
 } from '../model';
+import { ScriptsTab } from './scripts_tab';
 import { SecretsTab } from './secrets_tab';
 import { signupWithPasskey } from '../model/webauthn';
 import { getOryApi } from '../tools/ory';
@@ -169,7 +170,7 @@ export function SettingsFlyout({ onClose }: Props) {
     </EuiFormRow>
   ) : null;
 
-  const [selectedTab, setSelectedTab] = useState<'general' | 'security' | 'secrets' | 'account'>('general');
+  const [selectedTab, setSelectedTab] = useState<'general' | 'security' | 'secrets' | 'scripts' | 'account'>('general');
   let selectedTabContent;
   if (selectedTab === 'general') {
     selectedTabContent = (
@@ -302,6 +303,8 @@ export function SettingsFlyout({ onClose }: Props) {
     );
   } else if (selectedTab === 'secrets') {
     selectedTabContent = <SecretsTab addToast={addToast} />;
+  } else if (selectedTab === 'scripts') {
+    selectedTabContent = <ScriptsTab addToast={addToast} />;
   } else {
     const subscription = uiState.user?.subscription;
     let trialSection = null;
@@ -451,6 +454,9 @@ export function SettingsFlyout({ onClose }: Props) {
           </EuiTab>
           <EuiTab onClick={() => setSelectedTab('secrets')} isSelected={selectedTab === 'secrets'}>
             Secrets
+          </EuiTab>
+          <EuiTab onClick={() => setSelectedTab('scripts')} isSelected={selectedTab === 'scripts'}>
+            Scripts
           </EuiTab>
           <EuiTab onClick={() => setSelectedTab('account')} isSelected={selectedTab === 'account'}>
             Account

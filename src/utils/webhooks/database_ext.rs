@@ -207,9 +207,7 @@ ORDER BY r.updated_at
                             responder.name
                         )
                     };
-                    bail!(SecutilsError::client_with_root_cause(
-                        anyhow!(err).context(error_message)
-                    ))
+                    bail!(SecutilsError::conflict(error_message))
                 }
                 _ => bail!(SecutilsError::from(anyhow!(err).context(format!(
                     "Couldn't create responder ('{}') due to unknown reason.",
@@ -272,9 +270,7 @@ ORDER BY r.updated_at
                             responder.name
                         )
                     };
-                    bail!(SecutilsError::client_with_root_cause(
-                        anyhow!(err).context(error_message)
-                    ))
+                    bail!(SecutilsError::conflict(error_message))
                 }
                 _ => bail!(SecutilsError::from(anyhow!(err).context(format!(
                     "Couldn't update responder ('{}') due to unknown reason.",
@@ -414,7 +410,7 @@ mod tests {
     use crate::{
         database::Database,
         error::Error as SecutilsError,
-        tests::{MockResponderBuilder, mock_user, to_database_error},
+        tests::{MockResponderBuilder, mock_user},
         utils::webhooks::{
             Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderRequest,
             ResponderStats,
@@ -530,10 +526,6 @@ mod tests {
             insert_error.root_cause.to_string(),
             @r###""Responder with such name ('some-name') already exists.""###
         );
-        assert_debug_snapshot!(
-            to_database_error(insert_error.root_cause)?.message(),
-            @r###""duplicate key value violates unique constraint \"user_data_webhooks_responders_name_user_id_key\"""###
-        );
 
         // Same path and method.
         let insert_error = webhooks
@@ -553,10 +545,6 @@ mod tests {
         assert_debug_snapshot!(
             insert_error.root_cause.to_string(),
             @r###""Responder with such location ('/ (Exact)') and method ('Post') already exists.""###
-        );
-        assert_debug_snapshot!(
-            to_database_error(insert_error.root_cause)?.message(),
-            @r###""duplicate key value violates unique constraint \"user_data_webhooks_responders_path_method_user_id_key\"""###
         );
 
         // Same path and ANY method.
@@ -706,10 +694,6 @@ mod tests {
         assert_debug_snapshot!(
             update_error.root_cause.to_string(),
             @r###""Responder with such name ('some-name') already exists.""###
-        );
-        assert_debug_snapshot!(
-            to_database_error(update_error.root_cause)?.message(),
-            @r###""duplicate key value violates unique constraint \"user_data_webhooks_responders_name_user_id_key\"""###
         );
 
         // Same path and method.
