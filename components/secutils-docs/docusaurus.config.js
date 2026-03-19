@@ -29,10 +29,19 @@ const config = {
       {
         generateLLMsTxt: true,
         generateLLMsFullTxt: true,
+        // The default plugin layout puts only a link index in `llms.txt`. Many LLM crawlers fetch that URL alone and
+        // see nothing useful. Put the full concatenated docs at `llms.txt` and keep the compact TOC as `llms-index.txt`.
+        llmsTxtFilename: 'llms-index.txt',
+        llmsFullTxtFilename: 'llms.txt',
+        rootContent:
+          'Compact index with links to each guide on the site. For all documentation in one file, use `llms.txt` in this directory.',
+        fullRootContent:
+          'Full Secutils.dev documentation (all guides) in one markdown document for LLM and offline use.',
         title: 'Secutils.dev Documentation',
         description:
           'Documentation and guides for Secutils.dev - an open-source, versatile toolbox for security-minded engineers.',
         includeBlog: false,
+        excludeImports: true,
       },
     ],
   ],
