@@ -1,2 +1,7 @@
 [target.'cfg(all())']
 rustflags = ["--cfg", "uuid_unstable"]
+
+[env]
+# Limit test parallelism to avoid exceeding PostgreSQL's max_connections (default 100).
+# Each #[sqlx::test] gets a pool of up to 5 connections plus 20 for the master pool.
+RUST_TEST_THREADS = "5"

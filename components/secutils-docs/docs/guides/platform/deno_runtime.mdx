@@ -351,7 +351,7 @@ By default, `op_proxy_request` only allows requests to **publicly routable** IP 
 :::
 
 :::info Limits
-Each responder has a maximum number of concurrent proxy requests it can handle simultaneously (configurable per subscription tier). When the limit is reached, additional requests receive a `429 Too Many Requests` response with a `Retry-After` header. The upstream response body size is also limited (default: 10 MB) to prevent memory exhaustion. Every proxy request has a timeout (default: 30 s) that can be lowered per-request via the `timeout` field but cannot exceed the server-configured maximum.
+Each responder has a maximum number of concurrent proxy requests it can handle simultaneously (configurable per subscription tier). When the limit is reached, additional requests receive a `429 Too Many Requests` response with a `Retry-After` header. The upstream response body size is also limited (default: 10 MB) to prevent memory exhaustion. Every proxy request has a timeout (default: 30 s) that can be lowered per-request via the `timeout` field but cannot exceed the server-configured maximum. All proxy requests use **HTTP/1.1** - HTTP/2 is not supported.
 :::
 
 :::tip Response tracking

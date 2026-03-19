@@ -62,7 +62,9 @@ impl ProxyState {
             &self.client
         };
         cell.get_or_init(|| {
-            let mut builder = reqwest::Client::builder().redirect(RedirectPolicy::none());
+            let mut builder = reqwest::Client::builder()
+                .redirect(RedirectPolicy::none())
+                .http1_only();
             if insecure {
                 builder = builder.danger_accept_invalid_certs(true);
             }
