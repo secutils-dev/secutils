@@ -12,7 +12,9 @@ mod send_message;
 mod status_get;
 mod status_set;
 mod ui_state_get;
+mod user_data_export;
 mod user_data_get;
+mod user_data_import;
 mod user_data_set;
 mod user_scripts;
 mod user_secrets;
@@ -35,7 +37,9 @@ pub use self::{
     status_get::status_get,
     status_set::status_set,
     ui_state_get::ui_state_get,
+    user_data_export::user_data_export,
     user_data_get::user_data_get,
+    user_data_import::{user_data_import, user_data_import_preview},
     user_data_set::user_data_set,
     user_scripts::{
         user_scripts_create, user_scripts_delete, user_scripts_get, user_scripts_list,

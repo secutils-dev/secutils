@@ -6,7 +6,8 @@ use crate::{
 };
 use anyhow::{Context, bail};
 use retrack_types::trackers::{
-    Tracker, TrackerCreateParams, TrackerDataRevision, TrackerDebugParams, TrackerExecutionLog,
+    Tracker, TrackerCreateParams, TrackerDataRevision, TrackerDataRevisionImportParams,
+    TrackerDataRevisionImportResult, TrackerDebugParams, TrackerExecutionLog,
     TrackerListRevisionsParams, TrackerUpdateParams,
 };
 use serde::de::DeserializeOwned;
@@ -50,6 +51,26 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> RetrackApi<'a, DR, ET> {
             .json()
             .await
             .context(format!("Cannot deserialize trackers ({tags_query})."))
+    }
+
+    /// Retrieves Retrack trackers with the specified IDs.
+    pub async fn bulk_get_trackers(&self, ids: &[Uuid]) -> anyhow::Result<Vec<Tracker>> {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let endpoint = format!("{}api/trackers/_bulk_get", self.api.config.retrack.host);
+        self.api
+            .network
+            .http_client
+            .post(&endpoint)
+            .json(&serde_json::json!({ "ids": ids }))
+            .send()
+            .await
+            .with_context(|| "Cannot bulk-retrieve trackers.")?
+            .json()
+            .await
+            .context("Cannot deserialize bulk-retrieved trackers.")
     }
 
     /// Retrieves the Retrack tracker with the specified ID.
@@ -203,6 +224,31 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> RetrackApi<'a, DR, ET> {
             .with_context(|| format!("Cannot deserialize tracker revisions ({id})."))
     }
 
+    /// Retrieves data revisions for multiple trackers in a single batch request.
+    pub async fn list_tracker_revisions_batch(
+        &self,
+        tracker_ids: &[Uuid],
+        size: usize,
+    ) -> anyhow::Result<HashMap<Uuid, Vec<TrackerDataRevision>>> {
+        self.api
+            .network
+            .http_client
+            .post(format!(
+                "{}api/trackers/revisions",
+                self.api.config.retrack.host
+            ))
+            .json(&serde_json::json!({
+                "trackerIds": tracker_ids,
+                "size": size,
+            }))
+            .send()
+            .await
+            .context("Cannot retrieve batch tracker data revisions.")?
+            .json()
+            .await
+            .context("Cannot deserialize batch tracker data revisions.")
+    }
+
     /// Clears the Retrack tracker revisions by the specified ID.
     pub async fn clear_tracker_revisions(&self, id: Uuid) -> anyhow::Result<()> {
         let response = self
@@ -330,6 +376,43 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> RetrackApi<'a, DR, ET> {
 
         let error_message = format!(
             "Failed to clear tracker execution logs ({id}): {}",
+            response.text().await?
+        );
+        if status_code.is_client_error() {
+            bail!(SecutilsError::client(error_message))
+        } else {
+            bail!(error_message)
+        }
+    }
+
+    /// Bulk-imports historical revisions for a tracker.
+    pub async fn import_tracker_revisions(
+        &self,
+        id: Uuid,
+        revisions: &[TrackerDataRevisionImportParams],
+    ) -> anyhow::Result<TrackerDataRevisionImportResult> {
+        let response = self
+            .api
+            .network
+            .http_client
+            .post(format!(
+                "{}api/trackers/{id}/revisions/_import",
+                self.api.config.retrack.host
+            ))
+            .json(revisions)
+            .send()
+            .await
+            .with_context(|| format!("Cannot import tracker revisions ({id})."))?;
+
+        let status_code = response.status();
+        if status_code.is_success() {
+            return response.json().await.context(format!(
+                "Cannot deserialize tracker revision import result ({id})."
+            ));
+        }
+
+        let error_message = format!(
+            "Failed to import tracker revisions ({id}): {}",
             response.text().await?
         );
         if status_code.is_client_error() {

@@ -79,6 +79,34 @@ ORDER BY r.updated_at
             .collect())
     }
 
+    /// Retrieves responders for the specified user matching the given IDs.
+    pub async fn bulk_get_responders(
+        &self,
+        user_id: UserId,
+        ids: &[Uuid],
+    ) -> anyhow::Result<Vec<Responder>> {
+        let raw_responders = query_as!(
+            RawResponder,
+            r#"
+SELECT id, name, location, method, enabled, settings, created_at, updated_at
+FROM user_data_webhooks_responders
+WHERE user_id = $1 AND id = ANY($2)
+ORDER BY updated_at
+                "#,
+            *user_id,
+            ids
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        let mut responders = vec![];
+        for raw_responder in raw_responders {
+            responders.push(Responder::try_from(raw_responder)?);
+        }
+
+        Ok(responders)
+    }
+
     /// Retrieves responder for the specified user with the specified ID.
     pub async fn get_responder(
         &self,
@@ -324,6 +352,42 @@ ORDER BY r.updated_at
         Ok(requests)
     }
 
+    /// Retrieves all tracked requests for multiple responders in a single query.
+    pub async fn bulk_get_responder_requests(
+        &self,
+        user_id: UserId,
+        responder_ids: &[Uuid],
+    ) -> anyhow::Result<Vec<ResponderRequest<'static>>> {
+        if responder_ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let raw_requests = query_as!(
+            RawResponderRequest,
+            r#"
+SELECT h.id, h.responder_id, h.data, h.created_at
+FROM unnest($1::uuid[]) AS r(responder_id)
+CROSS JOIN LATERAL (
+    SELECT *
+    FROM user_data_webhooks_responders_history h2
+    WHERE h2.user_id = $2 AND h2.responder_id = r.responder_id
+    ORDER BY h2.created_at
+) h
+            "#,
+            responder_ids,
+            *user_id
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        let mut requests = vec![];
+        for raw_request in raw_requests {
+            requests.push(ResponderRequest::try_from(raw_request)?);
+        }
+
+        Ok(requests)
+    }
+
     /// Removes responder requests.
     pub async fn clear_responder_requests(
         &self,
@@ -410,7 +474,7 @@ mod tests {
     use crate::{
         database::Database,
         error::Error as SecutilsError,
-        tests::{MockResponderBuilder, mock_user},
+        tests::{MockResponderBuilder, mock_user, mock_user_with_id},
         utils::webhooks::{
             Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderRequest,
             ResponderStats,
@@ -1497,6 +1561,242 @@ mod tests {
                 .await?
                 .is_empty()
         );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_responders_empty(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let responders = db.webhooks().bulk_get_responders(user.id, &[]).await?;
+        assert!(responders.is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_responders_returns_matching(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let responders = vec![
+            MockResponderBuilder::create(
+                uuid!("00000000-0000-0000-0000-000000000001"),
+                "some-name",
+                "/",
+            )?
+            .build(),
+            MockResponderBuilder::create(
+                uuid!("00000000-0000-0000-0000-000000000002"),
+                "some-name-2",
+                "/path",
+            )?
+            .build(),
+            MockResponderBuilder::create(
+                uuid!("00000000-0000-0000-0000-000000000003"),
+                "some-name-3",
+                "/other",
+            )?
+            .build(),
+        ];
+
+        let webhooks = db.webhooks();
+        for responder in responders.iter() {
+            webhooks.insert_responder(user.id, responder).await?;
+        }
+
+        let result = webhooks
+            .bulk_get_responders(
+                user.id,
+                &[
+                    uuid!("00000000-0000-0000-0000-000000000001"),
+                    uuid!("00000000-0000-0000-0000-000000000003"),
+                ],
+            )
+            .await?;
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], responders[0]);
+        assert_eq!(result[1], responders[2]);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn bulk_get_responders_ignores_non_existent(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let responder = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "/",
+        )?
+        .build();
+
+        let webhooks = db.webhooks();
+        webhooks.insert_responder(user.id, &responder).await?;
+
+        let result = webhooks
+            .bulk_get_responders(
+                user.id,
+                &[
+                    uuid!("00000000-0000-0000-0000-000000000001"),
+                    uuid!("00000000-0000-0000-0000-000000000099"),
+                ],
+            )
+            .await?;
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], responder);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn bulk_get_responders_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
+        let user_a = mock_user()?;
+        let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user_a).await?;
+        db.insert_user(&user_b).await?;
+
+        let responder = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "/",
+        )?
+        .build();
+
+        let webhooks = db.webhooks();
+        webhooks.insert_responder(user_a.id, &responder).await?;
+
+        let result = webhooks
+            .bulk_get_responders(user_b.id, &[uuid!("00000000-0000-0000-0000-000000000001")])
+            .await?;
+        assert!(result.is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_responder_requests_empty(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let requests = db
+            .webhooks()
+            .bulk_get_responder_requests(user.id, &[])
+            .await?;
+        assert!(requests.is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_responder_requests_returns_all_for_given_responders(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let responder_a = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "responder-a",
+            "/a",
+        )?
+        .build();
+        let responder_b = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000002"),
+            "responder-b",
+            "/b",
+        )?
+        .build();
+        let responder_c = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000003"),
+            "responder-c",
+            "/c",
+        )?
+        .build();
+
+        let webhooks = db.webhooks();
+        webhooks.insert_responder(user.id, &responder_a).await?;
+        webhooks.insert_responder(user.id, &responder_b).await?;
+        webhooks.insert_responder(user.id, &responder_c).await?;
+
+        webhooks
+            .insert_responder_request(
+                user.id,
+                &create_request(
+                    uuid!("00000000-0000-0000-0000-000000000010"),
+                    responder_a.id,
+                )?,
+            )
+            .await?;
+        webhooks
+            .insert_responder_request(
+                user.id,
+                &create_request(
+                    uuid!("00000000-0000-0000-0000-000000000020"),
+                    responder_b.id,
+                )?,
+            )
+            .await?;
+        // responder_c has no requests.
+
+        // Only request IDs for responders A and B.
+        let requests = webhooks
+            .bulk_get_responder_requests(user.id, &[responder_a.id, responder_b.id])
+            .await?;
+        assert_eq!(requests.len(), 2);
+        assert!(
+            requests
+                .iter()
+                .any(|r| r.id == uuid!("00000000-0000-0000-0000-000000000010"))
+        );
+        assert!(
+            requests
+                .iter()
+                .any(|r| r.id == uuid!("00000000-0000-0000-0000-000000000020"))
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn bulk_get_responder_requests_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
+        let user_a = mock_user()?;
+        let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user_a).await?;
+        db.insert_user(&user_b).await?;
+
+        let responder = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "/",
+        )?
+        .build();
+
+        let webhooks = db.webhooks();
+        webhooks.insert_responder(user_a.id, &responder).await?;
+        webhooks
+            .insert_responder_request(
+                user_a.id,
+                &create_request(uuid!("00000000-0000-0000-0000-000000000010"), responder.id)?,
+            )
+            .await?;
+
+        // user_b queries for user_a's responder requests - should get nothing.
+        let requests = webhooks
+            .bulk_get_responder_requests(user_b.id, &[responder.id])
+            .await?;
+        assert!(requests.is_empty());
 
         Ok(())
     }

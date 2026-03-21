@@ -122,6 +122,7 @@ pub async fn web_security_handle_action<DR: DnsResolver, ET: EmailTransport>(
 
 #[cfg(test)]
 pub mod tests {
+    pub use crate::utils::web_security::api_ext::ContentSecurityPoliciesCreateParams;
     use crate::{
         tests::{mock_api, mock_user},
         users::{SharedResource, UserShareId},
@@ -130,8 +131,7 @@ pub mod tests {
             web_security::{
                 ContentSecurityPolicy, ContentSecurityPolicyContent,
                 ContentSecurityPolicyDirective, ContentSecurityPolicySandboxDirectiveValue,
-                ContentSecurityPolicyTrustedTypesDirectiveValue,
-                api_ext::ContentSecurityPoliciesCreateParams, web_security_handle_action,
+                ContentSecurityPolicyTrustedTypesDirectiveValue, web_security_handle_action,
             },
         },
     };

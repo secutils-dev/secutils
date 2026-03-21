@@ -1,6 +1,17 @@
 use crate::users::UserId;
 use time::OffsetDateTime;
 
+pub mod export;
+pub mod import;
+mod shared;
+
+pub use self::{
+    export::{UserDataExportParams, generate_export},
+    import::{
+        UserDataImportParams, UserDataImportPreviewParams, execute_import, generate_import_preview,
+    },
+};
+
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct UserData<V> {
     pub user_id: UserId,

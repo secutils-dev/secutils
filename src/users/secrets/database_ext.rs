@@ -62,6 +62,29 @@ ORDER BY name ASC
             .collect())
     }
 
+    /// Lists secrets for a user matching the specified IDs (metadata only, no values).
+    pub async fn bulk_get_user_secrets(
+        &self,
+        user_id: UserId,
+        ids: &[Uuid],
+    ) -> anyhow::Result<Vec<UserSecret>> {
+        let raw: Vec<RawUserSecret> = query_as!(
+            RawUserSecret,
+            r#"
+SELECT id, user_id, name, value, created_at, updated_at
+FROM user_data_secrets
+WHERE user_id = $1 AND id = ANY($2)
+ORDER BY name ASC
+            "#,
+            *user_id,
+            ids
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(raw.into_iter().map(|r| r.into_user_secret(false)).collect())
+    }
+
     /// Counts secrets for a user.
     pub async fn count_user_secrets(&self, user_id: UserId) -> anyhow::Result<i64> {
         let count = sqlx::query_scalar!(
@@ -345,6 +368,88 @@ mod tests {
         let typed = err.downcast::<Error>().unwrap();
         assert_eq!(typed.status_code(), StatusCode::CONFLICT);
         assert!(typed.root_cause.to_string().contains("API_KEY"));
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_secrets_empty(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
+        let user = mock_user()?;
+        db.upsert_user(&user).await?;
+
+        let secrets = db.bulk_get_user_secrets(user.id, &[]).await?;
+        assert!(secrets.is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_secrets_returns_matching(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
+        let user = mock_user()?;
+        db.upsert_user(&user).await?;
+
+        let secret_a = db
+            .insert_user_secret(user.id, "API_KEY", b"encrypted-a")
+            .await?;
+        let secret_b = db
+            .insert_user_secret(user.id, "DB_PASSWORD", b"encrypted-b")
+            .await?;
+        db.insert_user_secret(user.id, "TOKEN", b"encrypted-c")
+            .await?;
+
+        let secrets = db
+            .bulk_get_user_secrets(user.id, &[secret_a.id, secret_b.id])
+            .await?;
+        assert_eq!(secrets.len(), 2);
+        assert_eq!(secrets[0].name, "API_KEY");
+        assert_eq!(secrets[1].name, "DB_PASSWORD");
+        // bulk_get_user_secrets returns metadata only (no values).
+        assert!(secrets[0].encrypted_value.is_none());
+        assert!(secrets[1].encrypted_value.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn bulk_get_secrets_ignores_non_existent(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
+        let user = mock_user()?;
+        db.upsert_user(&user).await?;
+
+        let secret = db
+            .insert_user_secret(user.id, "API_KEY", b"encrypted")
+            .await?;
+
+        let secrets = db
+            .bulk_get_user_secrets(
+                user.id,
+                &[secret.id, uuid!("00000000-0000-0000-0000-000000000099")],
+            )
+            .await?;
+        assert_eq!(secrets.len(), 1);
+        assert_eq!(secrets[0].name, "API_KEY");
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn bulk_get_secrets_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
+        let user_a = mock_user()?;
+        let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
+        db.upsert_user(&user_a).await?;
+        db.upsert_user(&user_b).await?;
+
+        let secret_a = db
+            .insert_user_secret(user_a.id, "SHARED_NAME", b"val-a")
+            .await?;
+        db.insert_user_secret(user_b.id, "SHARED_NAME", b"val-b")
+            .await?;
+
+        let secrets = db.bulk_get_user_secrets(user_b.id, &[secret_a.id]).await?;
+        assert!(secrets.is_empty());
 
         Ok(())
     }

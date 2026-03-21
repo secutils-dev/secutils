@@ -1,0 +1,65 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT id, name, location, method, enabled, settings, created_at, updated_at\nFROM user_data_webhooks_responders\nWHERE user_id = $1 AND id = ANY($2)\nORDER BY updated_at\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "location",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "method",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 4,
+        "name": "enabled",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "settings",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "7db50735905e01d713daef22d47b8a86bd8d097ad5be95420ef8416e16c57c96"
+}

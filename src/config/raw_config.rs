@@ -1,6 +1,6 @@
 use crate::config::{
-    ComponentsConfig, RetrackConfig, SchedulerJobsConfig, SecurityConfig, SmtpConfig,
-    SubscriptionsConfig, database_config::DatabaseConfig, http_config::HttpConfig,
+    ComponentsConfig, PlatformConfig, RetrackConfig, SchedulerJobsConfig, SecurityConfig,
+    SmtpConfig, SubscriptionsConfig, database_config::DatabaseConfig, http_config::HttpConfig,
     utils_config::UtilsConfig,
 };
 use figment::{Figment, Metadata, Profile, Provider, providers, providers::Format, value};
@@ -32,6 +32,9 @@ pub struct RawConfig {
     pub http: HttpConfig,
     /// Configuration for the Retrack service.
     pub retrack: RetrackConfig,
+    /// Platform-level configuration (limits, settings exposed to UI).
+    #[serde(default)]
+    pub platform: PlatformConfig,
 }
 
 impl RawConfig {
@@ -60,6 +63,7 @@ impl Default for RawConfig {
             smtp: None,
             http: HttpConfig::default(),
             retrack: RetrackConfig::default(),
+            platform: PlatformConfig::default(),
         }
     }
 }
@@ -226,6 +230,9 @@ mod tests {
 
         [retrack]
         host = 'http://localhost:7676/'
+
+        [platform]
+        max_import_file_size = 10485760
         "###);
     }
 
@@ -653,6 +660,9 @@ mod tests {
                     query: None,
                     fragment: None,
                 },
+            },
+            platform: PlatformConfig {
+                max_import_file_size: 10485760,
             },
         }
         "###);

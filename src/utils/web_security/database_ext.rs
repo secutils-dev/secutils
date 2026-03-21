@@ -160,6 +160,34 @@ WHERE user_id = $1 AND id = $2
         Ok(())
     }
 
+    /// Retrieves content security policies for the specified user matching the given IDs.
+    pub async fn bulk_get_content_security_policies(
+        &self,
+        user_id: UserId,
+        ids: &[Uuid],
+    ) -> anyhow::Result<Vec<ContentSecurityPolicy>> {
+        let raw_policies = query_as!(
+            RawContentSecurityPolicy,
+            r#"
+    SELECT id, name, directives, created_at, updated_at
+    FROM user_data_web_security_csp
+    WHERE user_id = $1 AND id = ANY($2)
+    ORDER BY updated_at
+                    "#,
+            *user_id,
+            ids
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        let mut policies = vec![];
+        for raw_policy in raw_policies {
+            policies.push(ContentSecurityPolicy::try_from(raw_policy)?);
+        }
+
+        Ok(policies)
+    }
+
     /// Retrieves all content security policies for the specified user.
     pub async fn get_content_security_policies(
         &self,
@@ -199,7 +227,7 @@ mod tests {
     use crate::{
         database::Database,
         error::Error as SecutilsError,
-        tests::mock_user,
+        tests::{mock_user, mock_user_with_id},
         utils::web_security::{
             ContentSecurityPolicy, ContentSecurityPolicyDirective,
             ContentSecurityPolicyTrustedTypesDirectiveValue,
@@ -576,6 +604,144 @@ mod tests {
                 .await?,
             content_security_policies
         );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_content_security_policies_empty(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let policies = db
+            .web_security()
+            .bulk_get_content_security_policies(user.id, &[])
+            .await?;
+        assert!(policies.is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_content_security_policies_returns_matching(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let policies = vec![
+            ContentSecurityPolicy {
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
+                name: "csp-name".to_string(),
+                directives: get_mock_directives()?,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
+            },
+            ContentSecurityPolicy {
+                id: uuid!("00000000-0000-0000-0000-000000000002"),
+                name: "csp-name-2".to_string(),
+                directives: get_mock_directives()?,
+                created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
+            },
+            ContentSecurityPolicy {
+                id: uuid!("00000000-0000-0000-0000-000000000003"),
+                name: "csp-name-3".to_string(),
+                directives: get_mock_directives()?,
+                created_at: OffsetDateTime::from_unix_timestamp(946920800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946920810)?,
+            },
+        ];
+
+        for policy in policies.iter() {
+            db.web_security()
+                .insert_content_security_policy(user.id, policy)
+                .await?;
+        }
+
+        let result = db
+            .web_security()
+            .bulk_get_content_security_policies(
+                user.id,
+                &[
+                    uuid!("00000000-0000-0000-0000-000000000001"),
+                    uuid!("00000000-0000-0000-0000-000000000003"),
+                ],
+            )
+            .await?;
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], policies[0]);
+        assert_eq!(result[1], policies[2]);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn bulk_get_content_security_policies_ignores_non_existent(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let policy = ContentSecurityPolicy {
+            id: uuid!("00000000-0000-0000-0000-000000000001"),
+            name: "csp-name".to_string(),
+            directives: get_mock_directives()?,
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
+        };
+        db.web_security()
+            .insert_content_security_policy(user.id, &policy)
+            .await?;
+
+        let result = db
+            .web_security()
+            .bulk_get_content_security_policies(
+                user.id,
+                &[
+                    uuid!("00000000-0000-0000-0000-000000000001"),
+                    uuid!("00000000-0000-0000-0000-000000000099"),
+                ],
+            )
+            .await?;
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], policy);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn bulk_get_content_security_policies_isolated_per_user(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_a = mock_user()?;
+        let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user_a).await?;
+        db.insert_user(&user_b).await?;
+
+        let policy = ContentSecurityPolicy {
+            id: uuid!("00000000-0000-0000-0000-000000000001"),
+            name: "csp-name".to_string(),
+            directives: get_mock_directives()?,
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
+        };
+        db.web_security()
+            .insert_content_security_policy(user_a.id, &policy)
+            .await?;
+
+        let result = db
+            .web_security()
+            .bulk_get_content_security_policies(
+                user_b.id,
+                &[uuid!("00000000-0000-0000-0000-000000000001")],
+            )
+            .await?;
+        assert!(result.is_empty());
 
         Ok(())
     }

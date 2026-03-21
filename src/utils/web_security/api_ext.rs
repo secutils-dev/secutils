@@ -67,6 +67,19 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
             .await
     }
 
+    /// Retrieves content security policies with the specified IDs.
+    pub async fn bulk_get_content_security_policies(
+        &self,
+        user_id: UserId,
+        ids: &[Uuid],
+    ) -> anyhow::Result<Vec<ContentSecurityPolicy>> {
+        self.api
+            .db
+            .web_security()
+            .bulk_get_content_security_policies(user_id, ids)
+            .await
+    }
+
     /// Creates content security policy with the specified parameters and stores it in the database.
     pub async fn create_content_security_policy(
         &self,

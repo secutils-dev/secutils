@@ -11,6 +11,7 @@ import {
   EuiFlyoutHeader,
   EuiFormRow,
   EuiLink,
+  EuiLoadingSpinner,
   EuiSelect,
   EuiSpacer,
   EuiTab,
@@ -22,7 +23,7 @@ import { css } from '@emotion/react';
 import type { UiNodeInputAttributes } from '@ory/kratos-client-fetch';
 import { unix, utc } from 'moment/moment';
 import type { ChangeEvent } from 'react';
-import { lazy, useCallback, useState } from 'react';
+import { lazy, Suspense, useCallback, useState } from 'react';
 
 import { useAppContext } from '../hooks';
 import type { AsyncData, SerializedPublicKeyCredentialCreationOptions } from '../model';
@@ -40,6 +41,8 @@ import { getOryApi } from '../tools/ory';
 import { isWebAuthnSupported } from '../tools/webauthn';
 
 const ConfirmAccessModal = lazy(() => import('../pages/signin/confirm_access_modal'));
+const ExportDataModal = lazy(() => import('./export_data_modal'));
+const ImportDataModal = lazy(() => import('./import_data_modal'));
 
 export interface Props {
   onClose: () => void;
@@ -68,6 +71,9 @@ export function SettingsFlyout({ onClose }: Props) {
 
   const [setPasswordStatus, setSetPasswordStatus] = useState<AsyncData<null> | null>(null);
   const [setPasskeyStatus, setSetPasskeyStatus] = useState<AsyncData<null> | null>(null);
+
+  const [exportModalVisible, setExportModalVisible] = useState(false);
+  const [importModalVisible, setImportModalVisible] = useState(false);
 
   const changeInProgress = setPasswordStatus?.status === 'pending' || setPasskeyStatus?.status === 'pending';
   const passkeySection = isPasskeySupported ? (
@@ -425,6 +431,39 @@ export function SettingsFlyout({ onClose }: Props) {
           </EuiFormRow>
           {trialSection}
         </EuiDescribedFormGroup>
+        <EuiDescribedFormGroup
+          title={<h3>Data</h3>}
+          description={'Export or import your Secutils.dev data as a portable JSON file.'}
+        >
+          <EuiFormRow fullWidth>
+            <EuiFlexGroup>
+              <EuiFlexItem grow={false}>
+                <EuiButton iconType="exportAction" onClick={() => setExportModalVisible(true)}>
+                  Export data
+                </EuiButton>
+              </EuiFlexItem>
+              <EuiFlexItem grow={false}>
+                <EuiButton iconType="importAction" onClick={() => setImportModalVisible(true)}>
+                  Import data
+                </EuiButton>
+              </EuiFlexItem>
+            </EuiFlexGroup>
+          </EuiFormRow>
+        </EuiDescribedFormGroup>
+        {exportModalVisible && (
+          <Suspense fallback={<EuiLoadingSpinner size="l" />}>
+            <ExportDataModal addToast={addToast} onClose={() => setExportModalVisible(false)} />
+          </Suspense>
+        )}
+        {importModalVisible && (
+          <Suspense fallback={<EuiLoadingSpinner size="l" />}>
+            <ImportDataModal
+              addToast={addToast}
+              onClose={() => setImportModalVisible(false)}
+              maxImportFileSize={uiState.platform.maxImportFileSize}
+            />
+          </Suspense>
+        )}
       </>
     );
   }

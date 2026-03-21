@@ -21,6 +21,7 @@ use crate::{
     },
 };
 use anyhow::bail;
+use std::collections::HashMap;
 use time::OffsetDateTime;
 use url::Url;
 use uuid::Uuid;
@@ -244,6 +245,34 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
             .webhooks()
             .get_responder_requests(self.user.id, responder_id)
             .await
+    }
+
+    /// Returns responders with the specified IDs.
+    pub async fn bulk_get_responders(&self, ids: &[Uuid]) -> anyhow::Result<Vec<Responder>> {
+        self.api
+            .db
+            .webhooks()
+            .bulk_get_responders(self.user.id, ids)
+            .await
+    }
+
+    /// Returns all requests for the specified responders as a map keyed by responder ID.
+    pub async fn bulk_get_responder_requests(
+        &self,
+        responder_ids: &[Uuid],
+    ) -> anyhow::Result<HashMap<Uuid, Vec<ResponderRequest<'static>>>> {
+        let requests = self
+            .api
+            .db
+            .webhooks()
+            .bulk_get_responder_requests(self.user.id, responder_ids)
+            .await?;
+
+        let mut map: HashMap<Uuid, Vec<ResponderRequest<'static>>> = HashMap::new();
+        for request in requests {
+            map.entry(request.responder_id).or_default().push(request);
+        }
+        Ok(map)
     }
 
     /// Removes all persisted requests for the specified responder.

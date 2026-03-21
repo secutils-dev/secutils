@@ -33,6 +33,7 @@ export function AppContainer() {
     license: { maxEndpoints: Infinity },
     utils: [],
     webhookUrlType: 'path',
+    platform: { maxImportFileSize: 10 * 1024 * 1024 },
   });
   const refreshUiState = useCallback(() => {
     fetch(getApiUrl('/api/ui/state'), getApiRequestConfig())

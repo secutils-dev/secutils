@@ -249,6 +249,19 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
         self.api.db.certificates().get_private_keys(user_id).await
     }
 
+    /// Retrieves private keys (with pkcs8 data) with the specified IDs.
+    pub async fn bulk_get_private_keys_for_export(
+        &self,
+        user_id: UserId,
+        ids: &[Uuid],
+    ) -> anyhow::Result<Vec<PrivateKey>> {
+        self.api
+            .db
+            .certificates()
+            .bulk_get_private_keys_for_export(user_id, ids)
+            .await
+    }
+
     /// Retrieves the certificate template with the specified ID.
     pub async fn get_certificate_template(
         &self,
@@ -409,6 +422,19 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
             .db
             .certificates()
             .get_certificate_templates(user_id)
+            .await
+    }
+
+    /// Retrieves certificate templates with the specified IDs.
+    pub async fn bulk_get_certificate_templates(
+        &self,
+        user_id: UserId,
+        ids: &[Uuid],
+    ) -> anyhow::Result<Vec<CertificateTemplate>> {
+        self.api
+            .db
+            .certificates()
+            .bulk_get_certificate_templates(user_id, ids)
             .await
     }
 

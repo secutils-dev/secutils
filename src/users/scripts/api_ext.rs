@@ -39,6 +39,11 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> ScriptsApiExt<'a, 'u, DR, ET> 
         })
     }
 
+    /// Returns scripts with the specified IDs.
+    pub async fn bulk_get_scripts(&self, ids: &[Uuid]) -> anyhow::Result<Vec<UserScript>> {
+        self.api.db.bulk_get_user_scripts(self.user.id, ids).await
+    }
+
     /// Gets a single script by id including its content.
     pub async fn get_script(&self, id: Uuid) -> anyhow::Result<Option<UserScript>> {
         self.api.db.get_user_script_by_id(self.user.id, id).await

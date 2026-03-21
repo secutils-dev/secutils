@@ -148,6 +148,45 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         Ok(trackers)
     }
 
+    /// Returns page trackers with the specified IDs, enriched with Retrack data.
+    pub async fn bulk_get_page_trackers(&self, ids: &[Uuid]) -> anyhow::Result<Vec<PageTracker>> {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let web_scraping = self.api.db.web_scraping(self.user.id);
+        let mut trackers = web_scraping.bulk_get_page_trackers(ids).await?;
+
+        let retrack_ids = trackers.iter().map(|t| t.retrack.id()).collect::<Vec<_>>();
+        let mut retrack_trackers_map = self
+            .api
+            .retrack()
+            .bulk_get_trackers(&retrack_ids)
+            .await?
+            .into_iter()
+            .map(|t| (t.id, t))
+            .collect::<HashMap<_, _>>();
+
+        let (resource, resource_group) = UtilsResource::WebScrapingPage.into();
+        for tracker in trackers.iter_mut() {
+            if let Some(retrack_tracker) = retrack_trackers_map.remove(&tracker.retrack.id()) {
+                tracker.retrack = RetrackTracker::from_value(retrack_tracker);
+            } else {
+                error!(
+                    user.id = %self.user.id,
+                    util.resource_id = %tracker.id,
+                    util.resource_name = tracker.name,
+                    util.resource = resource,
+                    util.resource_group = resource_group,
+                    retrack.id = %tracker.retrack.id(),
+                    "Page tracker is not found in Retrack."
+                );
+            }
+        }
+
+        Ok(trackers)
+    }
+
     /// Returns a page tracker by its ID.
     pub async fn get_page_tracker(&self, id: Uuid) -> anyhow::Result<Option<PageTracker>> {
         let web_scraping = self.api.db.web_scraping(self.user.id);
@@ -752,6 +791,45 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                 retrack.id = %retrack_tracker.id,
                 "Found a dangling Retrack tracker that needs to be removed."
             );
+        }
+
+        Ok(trackers)
+    }
+
+    /// Returns API trackers with the specified IDs, enriched with Retrack data.
+    pub async fn bulk_get_api_trackers(&self, ids: &[Uuid]) -> anyhow::Result<Vec<ApiTracker>> {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let web_scraping = self.api.db.web_scraping(self.user.id);
+        let mut trackers = web_scraping.bulk_get_api_trackers(ids).await?;
+
+        let retrack_ids = trackers.iter().map(|t| t.retrack.id()).collect::<Vec<_>>();
+        let mut retrack_trackers_map = self
+            .api
+            .retrack()
+            .bulk_get_trackers(&retrack_ids)
+            .await?
+            .into_iter()
+            .map(|t| (t.id, t))
+            .collect::<HashMap<_, _>>();
+
+        let (resource, resource_group) = UtilsResource::WebScrapingApi.into();
+        for tracker in trackers.iter_mut() {
+            if let Some(retrack_tracker) = retrack_trackers_map.remove(&tracker.retrack.id()) {
+                tracker.retrack = RetrackTracker::from_value(retrack_tracker);
+            } else {
+                error!(
+                    user.id = %self.user.id,
+                    util.resource_id = %tracker.id,
+                    util.resource_name = tracker.name,
+                    util.resource = resource,
+                    util.resource_group = resource_group,
+                    retrack.id = %tracker.retrack.id(),
+                    "API tracker is not found in Retrack."
+                );
+            }
         }
 
         Ok(trackers)
@@ -1393,7 +1471,7 @@ mod tests {
             tags::prepare_tags,
             tests::{RetrackTrackerValue, mock_retrack_tracker},
         },
-        tests::{mock_api, mock_api_with_config, mock_config, mock_user},
+        tests::{mock_api, mock_api_with_config, mock_config, mock_retrack_api_tracker, mock_user},
         users::SecretsAccess,
         utils::{
             UtilsResource,
@@ -3082,6 +3160,97 @@ mod tests {
     }
 
     #[sqlx::test]
+    async fn properly_bulk_gets_page_trackers(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let web_scraping = api.web_scraping(&mock_user);
+
+        // Returns empty for empty ids.
+        assert!(web_scraping.bulk_get_page_trackers(&[]).await?.is_empty());
+
+        let retrack_tracker_one = mock_retrack_tracker()?;
+        let mut retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker_one);
+        });
+        let tracker_one = web_scraping
+            .create_page_tracker(PageTrackerCreateParams {
+                name: "name_one".to_string(),
+                enabled: true,
+                config: PageTrackerConfig {
+                    revisions: 3,
+                    job: None,
+                },
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                    accept_invalid_certificates: false,
+                    engine: None,
+                },
+                notifications: false,
+                secrets: Default::default(),
+            })
+            .await?;
+        retrack_create_api_mock.assert();
+        retrack_create_api_mock.delete();
+
+        let mut retrack_tracker_two = mock_retrack_tracker()?;
+        retrack_tracker_two.id = uuid!("00000000-0000-0000-0000-000000000020");
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker_two);
+        });
+        let tracker_two = web_scraping
+            .create_page_tracker(PageTrackerCreateParams {
+                name: "name_two".to_string(),
+                enabled: true,
+                config: PageTrackerConfig {
+                    revisions: 3,
+                    job: None,
+                },
+                target: PageTrackerTarget {
+                    extractor: "export async function execute(p) { await p.goto('https://secutils.dev/'); return await p.content(); }".to_string(),
+                    accept_invalid_certificates: false,
+                    engine: None,
+                },
+                notifications: false,
+                secrets: Default::default(),
+            })
+            .await?;
+        retrack_create_api_mock.assert();
+
+        let retrack_bulk_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/trackers/_bulk_get")
+                .json_body(serde_json::json!({
+                    "ids": [retrack_tracker_one.id, retrack_tracker_two.id]
+                }));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&[retrack_tracker_one.clone(), retrack_tracker_two.clone()]);
+        });
+        assert_eq!(
+            web_scraping
+                .bulk_get_page_trackers(&[tracker_one.id, tracker_two.id])
+                .await?,
+            vec![tracker_one.clone(), tracker_two.clone()],
+        );
+        retrack_bulk_get_api_mock.assert();
+
+        Ok(())
+    }
+
+    #[sqlx::test]
     async fn properly_saves_page_revision(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         let mock_user = mock_user()?;
@@ -3323,46 +3492,6 @@ mod tests {
         Ok(())
     }
 
-    fn mock_api_retrack_tracker() -> anyhow::Result<Tracker> {
-        Ok(Tracker {
-            id: uuid!("00000000-0000-0000-0000-000000000010"),
-            name: "name_one".to_string(),
-            enabled: true,
-            target: TrackerTarget::Api(ApiTarget {
-                requests: vec![TargetRequest {
-                    url: "https://api.example.com/data".parse()?,
-                    method: None,
-                    headers: None,
-                    body: None,
-                    media_type: None,
-                    accept_statuses: None,
-                    accept_invalid_certificates: false,
-                }],
-                configurator: None,
-                extractor: None,
-                params: None,
-            }),
-            job_id: None,
-            config: TrackerConfig {
-                revisions: 3,
-                timeout: None,
-                job: Some(SchedulerJobConfig {
-                    schedule: "0 0 * * * *".to_string(),
-                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
-                        interval: Duration::from_secs(120),
-                        max_attempts: 5,
-                    }),
-                }),
-            },
-            tags: vec![],
-            actions: vec![],
-            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
-            updated_at: OffsetDateTime::from_unix_timestamp(946720800)?,
-            scheduled_at: None,
-            last_ran_at: None,
-        })
-    }
-
     #[sqlx::test]
     async fn properly_creates_new_api_tracker(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
@@ -3371,7 +3500,7 @@ mod tests {
         let retrack_server = MockServer::start();
         config.retrack.host = Url::parse(&retrack_server.base_url())?;
 
-        let retrack_tracker = mock_api_retrack_tracker()?;
+        let retrack_tracker = mock_retrack_api_tracker()?;
         let retrack_create_api_mock = retrack_server.mock(|when, then| {
             when.method(httpmock::Method::POST)
                 .path("/api/trackers")
@@ -3820,7 +3949,7 @@ mod tests {
         let retrack_server = MockServer::start();
         config.retrack.host = Url::parse(&retrack_server.base_url())?;
 
-        let retrack_tracker = mock_api_retrack_tracker()?;
+        let retrack_tracker = mock_retrack_api_tracker()?;
         let retrack_create_api_mock = retrack_server.mock(|when, then| {
             when.method(httpmock::Method::POST)
                 .path("/api/trackers")
@@ -4198,7 +4327,7 @@ mod tests {
         let retrack_server = MockServer::start();
         config.retrack.host = Url::parse(&retrack_server.base_url())?;
 
-        let retrack_tracker = mock_api_retrack_tracker()?;
+        let retrack_tracker = mock_retrack_api_tracker()?;
         let retrack_create_api_mock = retrack_server.mock(|when, then| {
             when.method(httpmock::Method::POST)
                 .path("/api/trackers")
@@ -4581,7 +4710,7 @@ mod tests {
 
         let web_scraping = api.web_scraping(&mock_user);
 
-        let retrack_tracker_one = mock_api_retrack_tracker()?;
+        let retrack_tracker_one = mock_retrack_api_tracker()?;
         let mut retrack_create_api_mock = retrack_server.mock(|when, then| {
             when.method(httpmock::Method::POST).path("/api/trackers");
             then.status(200)
@@ -4614,7 +4743,7 @@ mod tests {
         retrack_create_api_mock.assert();
         retrack_create_api_mock.delete();
 
-        let mut retrack_tracker_two = mock_api_retrack_tracker()?;
+        let mut retrack_tracker_two = mock_retrack_api_tracker()?;
         retrack_tracker_two.id = uuid!("00000000-0000-0000-0000-000000000020");
         let retrack_create_api_mock = retrack_server.mock(|when, then| {
             when.method(httpmock::Method::POST).path("/api/trackers");
@@ -4766,7 +4895,7 @@ mod tests {
                 .is_none()
         );
 
-        let retrack_tracker = mock_api_retrack_tracker()?;
+        let retrack_tracker = mock_retrack_api_tracker()?;
         let retrack_create_api_mock = retrack_server.mock(|when, then| {
             when.method(httpmock::Method::POST).path("/api/trackers");
             then.status(200)
@@ -4827,7 +4956,7 @@ mod tests {
 
         let web_scraping = api.web_scraping(&mock_user);
 
-        let retrack_tracker_one = mock_api_retrack_tracker()?;
+        let retrack_tracker_one = mock_retrack_api_tracker()?;
         let mut retrack_create_api_mock = retrack_server.mock(|when, then| {
             when.method(httpmock::Method::POST).path("/api/trackers");
             then.status(200)
@@ -4860,7 +4989,7 @@ mod tests {
         retrack_create_api_mock.assert();
         retrack_create_api_mock.delete();
 
-        let mut retrack_tracker_two = mock_api_retrack_tracker()?;
+        let mut retrack_tracker_two = mock_retrack_api_tracker()?;
         retrack_tracker_two.id = uuid!("00000000-0000-0000-0000-000000000020");
         let retrack_create_api_mock = retrack_server.mock(|when, then| {
             when.method(httpmock::Method::POST).path("/api/trackers");
@@ -4919,6 +5048,109 @@ mod tests {
     }
 
     #[sqlx::test]
+    async fn properly_bulk_gets_api_trackers(pool: PgPool) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        let mock_user = mock_user()?;
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let web_scraping = api.web_scraping(&mock_user);
+
+        // Returns empty for empty ids.
+        assert!(web_scraping.bulk_get_api_trackers(&[]).await?.is_empty());
+
+        let retrack_tracker_one = mock_retrack_api_tracker()?;
+        let mut retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker_one);
+        });
+        let tracker_one = web_scraping
+            .create_api_tracker(ApiTrackerCreateParams {
+                name: "name_one".to_string(),
+                enabled: true,
+                config: ApiTrackerConfig {
+                    revisions: 3,
+                    job: None,
+                },
+                target: ApiTrackerTarget {
+                    url: "https://api.example.com/data".parse()?,
+                    method: None,
+                    headers: None,
+                    body: None,
+                    media_type: None,
+                    accept_statuses: None,
+                    accept_invalid_certificates: false,
+                    configurator: None,
+                    extractor: None,
+                },
+                notifications: false,
+                secrets: Default::default(),
+            })
+            .await?;
+        retrack_create_api_mock.assert();
+        retrack_create_api_mock.delete();
+
+        let mut retrack_tracker_two = mock_retrack_api_tracker()?;
+        retrack_tracker_two.id = uuid!("00000000-0000-0000-0000-000000000020");
+        let retrack_create_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker_two);
+        });
+        let tracker_two = web_scraping
+            .create_api_tracker(ApiTrackerCreateParams {
+                name: "name_two".to_string(),
+                enabled: true,
+                config: ApiTrackerConfig {
+                    revisions: 3,
+                    job: None,
+                },
+                target: ApiTrackerTarget {
+                    url: "https://api.example.com/data".parse()?,
+                    method: None,
+                    headers: None,
+                    body: None,
+                    media_type: None,
+                    accept_statuses: None,
+                    accept_invalid_certificates: false,
+                    configurator: None,
+                    extractor: None,
+                },
+                notifications: false,
+                secrets: Default::default(),
+            })
+            .await?;
+        retrack_create_api_mock.assert();
+
+        let retrack_bulk_get_api_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/api/trackers/_bulk_get")
+                .json_body(serde_json::json!({
+                    "ids": [retrack_tracker_one.id, retrack_tracker_two.id]
+                }));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&[retrack_tracker_one.clone(), retrack_tracker_two.clone()]);
+        });
+        assert_eq!(
+            web_scraping
+                .bulk_get_api_trackers(&[tracker_one.id, tracker_two.id])
+                .await?,
+            vec![tracker_one.clone(), tracker_two.clone()],
+        );
+        retrack_bulk_get_api_mock.assert();
+
+        Ok(())
+    }
+
+    #[sqlx::test]
     async fn properly_clears_api_tracker_revision_history(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
         let mock_user = mock_user()?;
@@ -4929,7 +5161,7 @@ mod tests {
         let api = mock_api_with_config(pool, config).await?;
         api.db.insert_user(&mock_user).await?;
 
-        let retrack_tracker = mock_api_retrack_tracker()?;
+        let retrack_tracker = mock_retrack_api_tracker()?;
         let retrack_create_api_mock = retrack_server.mock(|when, then| {
             when.method(httpmock::Method::POST).path("/api/trackers");
             then.status(200)

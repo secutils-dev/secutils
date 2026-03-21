@@ -19,7 +19,7 @@ pub enum SecretsAccess {
 /// but postcard cannot round-trip that representation because it requires `deserialize_any`.
 /// This enum uses serde's default (index-based) encoding which postcard handles natively.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub(crate) enum RawSecretsAccess {
+pub enum RawSecretsAccess {
     None,
     All,
     Selected(Vec<String>),

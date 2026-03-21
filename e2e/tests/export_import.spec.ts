@@ -1,0 +1,927 @@
+import { expect, test } from '@playwright/test';
+
+import { ensureUserAndLogin } from '../helpers';
+
+test.describe('Data Export and Import', () => {
+  test.beforeEach(async ({ request, page }) => {
+    await ensureUserAndLogin(request, page);
+  });
+
+  test('can navigate to Account tab with data actions in settings', async ({ page }) => {
+    // Open settings flyout.
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    const settingsButton = page.getByText('Settings');
+    await expect(settingsButton).toBeVisible();
+    await settingsButton.click();
+
+    // Navigate to Account tab.
+    const accountTab = page.getByRole('tab', { name: 'Account' });
+    await expect(accountTab).toBeVisible({ timeout: 15000 });
+    await accountTab.click();
+
+    // Verify export and import buttons are visible.
+    await expect(page.getByRole('button', { name: 'Export data' })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: 'Import data' })).toBeVisible({ timeout: 15000 });
+  });
+
+  test('can open export modal', async ({ page }) => {
+    // Open settings flyout and navigate to Account tab.
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    await page.getByText('Settings').click();
+    const accountTab = page.getByRole('tab', { name: 'Account' });
+    await expect(accountTab).toBeVisible({ timeout: 15000 });
+    await accountTab.click();
+
+    // Click the export button.
+    await page.getByRole('button', { name: 'Export data' }).click();
+
+    // Verify the export modal is visible (use .euiModal to distinguish from the flyout dialog).
+    const modal = page.locator('.euiModal').filter({ has: page.getByText('Export data') });
+    await expect(modal).toBeVisible({ timeout: 15000 });
+
+    // Verify Cancel button works.
+    await modal.getByRole('button', { name: 'Cancel' }).click();
+    await expect(modal).not.toBeVisible();
+  });
+
+  test('can open import modal', async ({ page }) => {
+    // Open settings flyout and navigate to the Account tab.
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    await page.getByText('Settings').click();
+    const accountTab = page.getByRole('tab', { name: 'Account' });
+    await expect(accountTab).toBeVisible({ timeout: 15000 });
+    await accountTab.click();
+
+    // Click import button.
+    await page.getByRole('button', { name: 'Import data' }).click();
+
+    // Verify the import modal is visible (use .euiModal to distinguish from the flyout dialog).
+    const modal = page.locator('.euiModal').filter({ has: page.getByText('Import data') });
+    await expect(modal).toBeVisible({ timeout: 15000 });
+
+    // Verify mode selection is present.
+    await expect(modal.getByText('Merge')).toBeVisible();
+    await expect(modal.getByText('Apply')).toBeVisible();
+
+    // Verify Cancel button works.
+    await modal.getByRole('button', { name: 'Cancel' }).click();
+    await expect(modal).not.toBeVisible();
+  });
+
+  test('export API returns valid data', async ({ page }) => {
+    // First, create a script via the API so there's data to export.
+    const createResponse = await page.request.post('/api/user/scripts', {
+      data: { name: 'export_test_script', scriptType: 'responder', content: 'console.log("test")' },
+    });
+    expect(createResponse.ok()).toBeTruthy();
+    const script = await createResponse.json();
+
+    // Call the export API.
+    const exportResponse = await page.request.post('/api/user/data/_export', {
+      data: {
+        include: {
+          scripts: { type: 'selected', ids: [script.id] },
+        },
+      },
+    });
+    expect(exportResponse.ok()).toBeTruthy();
+
+    const exportData = await exportResponse.json();
+    expect(exportData.version).toBe(1);
+    expect(exportData.exportedAt).toBeTruthy();
+    expect(exportData.data.scripts).toHaveLength(1);
+    expect(exportData.data.scripts[0].name).toBe('export_test_script');
+    expect(exportData.data.scripts[0].content).toBe('console.log("test")');
+
+    // Clean up.
+    await page.request.delete(`/api/user/scripts/${encodeURIComponent(script.id)}`);
+  });
+
+  test('import preview API detects conflicts', async ({ page }) => {
+    // Create a script.
+    const createResponse = await page.request.post('/api/user/scripts', {
+      data: { name: 'conflict_script', scriptType: 'responder', content: 'original' },
+    });
+    expect(createResponse.ok()).toBeTruthy();
+    const script = await createResponse.json();
+
+    // Create an import file that conflicts with the existing script.
+    const importFile = {
+      version: 1,
+      exportedAt: 1577880000,
+      data: {
+        scripts: [
+          {
+            id: '019568f0-0000-7000-8000-000000000001',
+            name: 'conflict_script',
+            scriptType: 'responder',
+            content: 'new content',
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+          },
+        ],
+      },
+    };
+
+    const previewResponse = await page.request.post('/api/user/data/_import_preview', {
+      data: { data: importFile, mode: 'merge' },
+    });
+    expect(previewResponse.ok()).toBeTruthy();
+
+    const preview = await previewResponse.json();
+    expect(preview.valid).toBe(true);
+    expect(preview.summary.scripts.total).toBe(1);
+    expect(preview.summary.scripts.conflicts).toHaveLength(1);
+    expect(preview.summary.scripts.conflicts[0].name).toBe('conflict_script');
+
+    // Clean up.
+    await page.request.delete(`/api/user/scripts/${encodeURIComponent(script.id)}`);
+  });
+
+  test('import with rename conflict resolution', async ({ page }) => {
+    // Create a script.
+    const createResponse = await page.request.post('/api/user/scripts', {
+      data: { name: 'rename_test', scriptType: 'responder', content: 'original' },
+    });
+    expect(createResponse.ok()).toBeTruthy();
+
+    // Import a script with the same name, using rename resolution.
+    const importFile = {
+      version: 1,
+      exportedAt: 1577880000,
+      data: {
+        scripts: [
+          {
+            id: '019568f0-0000-7000-8000-000000000010',
+            name: 'rename_test',
+            scriptType: 'responder',
+            content: 'imported content',
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+          },
+        ],
+      },
+    };
+
+    const importResponse = await page.request.post('/api/user/data/_import', {
+      data: {
+        data: importFile,
+        mode: 'merge',
+        selections: {
+          scripts: [
+            { sourceId: '019568f0-0000-7000-8000-000000000010', action: 'import', conflictResolution: 'rename' },
+          ],
+          secrets: [],
+          responders: [],
+          certificateTemplates: [],
+          privateKeys: [],
+          contentSecurityPolicies: [],
+          pageTrackers: [],
+          apiTrackers: [],
+        },
+      },
+    });
+    expect(importResponse.ok()).toBeTruthy();
+    const result = await importResponse.json();
+    expect(result.results.scripts.imported).toBe(1);
+
+    // Verify both scripts exist - original and renamed copy.
+    const listResponse = await page.request.get('/api/user/scripts');
+    const scripts = await listResponse.json();
+    expect(scripts.find((s: { name: string }) => s.name === 'rename_test')).toBeTruthy();
+    expect(scripts.find((s: { name: string }) => s.name === 'rename_test (Copy 1)')).toBeTruthy();
+
+    // Clean up.
+    for (const s of scripts.filter((s: { name: string }) => s.name.startsWith('rename_test'))) {
+      await page.request.delete(`/api/user/scripts/${encodeURIComponent(s.id)}`);
+    }
+  });
+
+  test('import with overwrite conflict resolution', async ({ page }) => {
+    // Create a script.
+    const createResponse = await page.request.post('/api/user/scripts', {
+      data: { name: 'overwrite_test', scriptType: 'responder', content: 'original' },
+    });
+    expect(createResponse.ok()).toBeTruthy();
+
+    // Import a script with the same name, using overwrite resolution.
+    const importFile = {
+      version: 1,
+      exportedAt: 1577880000,
+      data: {
+        scripts: [
+          {
+            id: '019568f0-0000-7000-8000-000000000011',
+            name: 'overwrite_test',
+            scriptType: 'responder',
+            content: 'overwritten content',
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+          },
+        ],
+      },
+    };
+
+    const importResponse = await page.request.post('/api/user/data/_import', {
+      data: {
+        data: importFile,
+        mode: 'merge',
+        selections: {
+          scripts: [
+            { sourceId: '019568f0-0000-7000-8000-000000000011', action: 'import', conflictResolution: 'overwrite' },
+          ],
+          secrets: [],
+          responders: [],
+          certificateTemplates: [],
+          privateKeys: [],
+          contentSecurityPolicies: [],
+          pageTrackers: [],
+          apiTrackers: [],
+        },
+      },
+    });
+    expect(importResponse.ok()).toBeTruthy();
+    const result = await importResponse.json();
+    expect(result.results.scripts.imported).toBe(1);
+
+    // Verify only one script exists with the new content.
+    const listResponse = await page.request.get('/api/user/scripts');
+    const scripts = await listResponse.json();
+    const found = scripts.filter((s: { name: string }) => s.name === 'overwrite_test');
+    expect(found).toHaveLength(1);
+    expect(found[0].content).toBe('overwritten content');
+
+    // Clean up.
+    await page.request.delete(`/api/user/scripts/${encodeURIComponent(found[0].id)}`);
+  });
+
+  test('apply mode with deletions via API', async ({ page }) => {
+    // Create two scripts.
+    const create1 = await page.request.post('/api/user/scripts', {
+      data: { name: 'keep_script', scriptType: 'responder', content: 'keep' },
+    });
+    expect(create1.ok()).toBeTruthy();
+
+    const create2 = await page.request.post('/api/user/scripts', {
+      data: { name: 'delete_script', scriptType: 'responder', content: 'delete me' },
+    });
+    expect(create2.ok()).toBeTruthy();
+    const script2 = await create2.json();
+
+    // Import file only has keep_script.
+    const importFile = {
+      version: 1,
+      exportedAt: 1577880000,
+      data: {
+        scripts: [
+          {
+            id: '019568f0-0000-7000-8000-000000000020',
+            name: 'keep_script',
+            scriptType: 'responder',
+            content: 'keep',
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+          },
+        ],
+      },
+    };
+
+    // Preview should detect delete_script for deletion.
+    const previewResponse = await page.request.post('/api/user/data/_import_preview', {
+      data: { data: importFile, mode: 'apply' },
+    });
+    expect(previewResponse.ok()).toBeTruthy();
+    const preview = await previewResponse.json();
+    expect(preview.toDelete.scripts).toHaveLength(1);
+    expect(preview.toDelete.scripts[0].name).toBe('delete_script');
+
+    // Import with apply mode, confirming the deletion.
+    const importResponse = await page.request.post('/api/user/data/_import', {
+      data: {
+        data: importFile,
+        mode: 'apply',
+        selections: {
+          scripts: [
+            { sourceId: '019568f0-0000-7000-8000-000000000020', action: 'import', conflictResolution: 'overwrite' },
+          ],
+          secrets: [],
+          responders: [],
+          certificateTemplates: [],
+          privateKeys: [],
+          contentSecurityPolicies: [],
+          pageTrackers: [],
+          apiTrackers: [],
+        },
+        applyDeletions: {
+          scripts: [script2.id],
+          secrets: [],
+          responders: [],
+          certificateTemplates: [],
+          privateKeys: [],
+          contentSecurityPolicies: [],
+          pageTrackers: [],
+          apiTrackers: [],
+        },
+      },
+    });
+    expect(importResponse.ok()).toBeTruthy();
+    const result = await importResponse.json();
+    expect(result.results.scripts.deleted).toBe(1);
+
+    // Verify delete_script is gone.
+    const listResponse = await page.request.get('/api/user/scripts');
+    const scripts = await listResponse.json();
+    expect(scripts.find((s: { name: string }) => s.name === 'delete_script')).toBeUndefined();
+    expect(scripts.find((s: { name: string }) => s.name === 'keep_script')).toBeTruthy();
+
+    // Clean up.
+    for (const s of scripts.filter((s: { name: string }) => s.name === 'keep_script')) {
+      await page.request.delete(`/api/user/scripts/${encodeURIComponent(s.id)}`);
+    }
+  });
+
+  test('_import_preview endpoint in `apply` mode returns preview without changes', async ({ page }) => {
+    // Create a script.
+    const createResponse = await page.request.post('/api/user/scripts', {
+      data: { name: 'dryrun_script', scriptType: 'responder', content: 'test' },
+    });
+    expect(createResponse.ok()).toBeTruthy();
+    const script = await createResponse.json();
+
+    // Preview with `apply` mode and an empty file - should show dryrun_script for deletion.
+    const previewResponse = await page.request.post('/api/user/data/_import_preview', {
+      data: {
+        data: {
+          version: 1,
+          exportedAt: 1577880000,
+          data: { scripts: [] },
+        },
+        mode: 'apply',
+      },
+    });
+    expect(previewResponse.ok()).toBeTruthy();
+    const result = await previewResponse.json();
+    expect(result.toDelete.scripts.find((s: { name: string }) => s.name === 'dryrun_script')).toBeTruthy();
+
+    // Verify the script still exists (dry-run didn't delete it).
+    const listResponse = await page.request.get('/api/user/scripts');
+    const scripts = await listResponse.json();
+    expect(scripts.find((s: { name: string }) => s.name === 'dryrun_script')).toBeTruthy();
+
+    // Clean up.
+    await page.request.delete(`/api/user/scripts/${encodeURIComponent(script.id)}`);
+  });
+
+  test('full export-import round trip via API', async ({ page }) => {
+    // Create a script.
+    const createResponse = await page.request.post('/api/user/scripts', {
+      data: { name: 'roundtrip_script', scriptType: 'responder', content: 'roundtrip content' },
+    });
+    expect(createResponse.ok()).toBeTruthy();
+    const script = await createResponse.json();
+
+    // Export.
+    const exportResponse = await page.request.post('/api/user/data/_export', {
+      data: {
+        include: {
+          scripts: { type: 'selected', ids: [script.id] },
+        },
+      },
+    });
+    expect(exportResponse.ok()).toBeTruthy();
+    const exportData = await exportResponse.json();
+
+    // Delete the original script.
+    await page.request.delete(`/api/user/scripts/${encodeURIComponent(script.id)}`);
+
+    // Verify it's gone.
+    const listResponse = await page.request.get('/api/user/scripts');
+    const scripts = await listResponse.json();
+    expect(scripts.find((s: { name: string }) => s.name === 'roundtrip_script')).toBeUndefined();
+
+    // Import.
+    const importResponse = await page.request.post('/api/user/data/_import', {
+      data: {
+        data: exportData,
+        mode: 'merge',
+        selections: {
+          scripts: [
+            {
+              sourceId: exportData.data.scripts[0].id,
+              action: 'import',
+            },
+          ],
+          secrets: [],
+          responders: [],
+          certificateTemplates: [],
+          privateKeys: [],
+          contentSecurityPolicies: [],
+          pageTrackers: [],
+          apiTrackers: [],
+        },
+      },
+    });
+    expect(importResponse.ok()).toBeTruthy();
+
+    const result = await importResponse.json();
+    expect(result.results.scripts.imported).toBe(1);
+
+    // Verify the script exists again.
+    const listAfter = await page.request.get('/api/user/scripts');
+    const scriptsAfter = await listAfter.json();
+    expect(scriptsAfter.find((s: { name: string }) => s.name === 'roundtrip_script')).toBeTruthy();
+  });
+
+  test('comprehensive import and validation of all entity types', async ({ page }) => {
+    // ── UUIDs for import entities ──────────────────────────────────────
+    const UUID_SCRIPT = '019568f0-0000-7000-8000-000000000101';
+    const UUID_SECRET = '019568f0-0000-7000-8000-000000000102';
+    const UUID_CSP = '019568f0-0000-7000-8000-000000000103';
+    const UUID_CERT_TEMPLATE = '019568f0-0000-7000-8000-000000000104';
+    const UUID_PK = '019568f0-0000-7000-8000-000000000105';
+    const UUID_RESPONDER = '019568f0-0000-7000-8000-000000000106';
+    const UUID_RESP_HISTORY = '019568f0-0000-7000-8000-000000000116';
+    const UUID_PAGE_TRACKER = '019568f0-0000-7000-8000-000000000107';
+    const UUID_PAGE_REV = '019568f0-0000-7000-8000-000000000117';
+    const UUID_API_TRACKER = '019568f0-0000-7000-8000-000000000108';
+    const UUID_API_REV_1 = '019568f0-0000-7000-8000-000000000118';
+    const UUID_API_REV_2 = '019568f0-0000-7000-8000-000000000128';
+
+    const SECRET_NAME = 'IMPORT_SECRET';
+    const SECRET_VALUE = 'e2e-secret-42';
+    const SECRETS_PASSPHRASE = 'e2e-secrets-passphrase';
+    const PK_PASSPHRASE = 'test-pass-123';
+
+    // ── Step 1: Create secret + private key, export both with passphrase, delete originals ──
+    const secretCreateRes = await page.request.post('/api/user/secrets', {
+      data: { name: SECRET_NAME, value: SECRET_VALUE },
+    });
+    expect(secretCreateRes.ok()).toBeTruthy();
+
+    const pkCreateRes = await page.request.post('/api/utils/certificates/private_keys', {
+      data: { keyName: 'temp-pk-for-export', alg: { keyType: 'ed25519' }, passphrase: PK_PASSPHRASE },
+    });
+    expect(pkCreateRes.ok()).toBeTruthy();
+    const tempKey = await pkCreateRes.json();
+
+    // Export secret (encrypted) + private key together to get real crypto blobs.
+    const helperExportRes = await page.request.post('/api/user/data/_export', {
+      data: {
+        include: {
+          secrets: { type: 'all' },
+          privateKeys: { type: 'selected', ids: [tempKey.id] },
+        },
+        secretsPassphrase: SECRETS_PASSPHRASE,
+      },
+    });
+    expect(helperExportRes.ok()).toBeTruthy();
+    const helperExport = await helperExportRes.json();
+
+    const pkcs8Base64 = helperExport.data.privateKeys[0].pkcs8;
+    const secretsEncryption = helperExport.secretsEncryption;
+    const encryptedSecretValue = helperExport.data.secrets[0].encryptedValue;
+    expect(secretsEncryption).toBeDefined();
+    expect(encryptedSecretValue).toBeDefined();
+
+    // Delete the originals so the import starts fresh.
+    const exportedSecretId = helperExport.data.secrets[0].id;
+    await page.request.delete(`/api/user/secrets/${encodeURIComponent(exportedSecretId)}`);
+    await page.request.delete(`/api/utils/certificates/private_keys/${encodeURIComponent(tempKey.id)}`);
+
+    // ── Step 3: Get a user handle for webhook URLs ───────────────────────
+    const stateRes = await page.request.get('/api/ui/state');
+    const state = await stateRes.json();
+    const userHandle = state.user.handle;
+
+    // ── Step 4: Build the comprehensive import JSON ────────────────────
+    const RESPONDER_SCRIPT = [
+      '(() => {',
+      '  return {',
+      "    body: Deno.core.encode('secret:' + context.secrets.IMPORT_SECRET),",
+      "    headers: { 'content-type': 'text/plain' },",
+      '    statusCode: 200,',
+      '    trackResponse: true',
+      '  };',
+      '})()',
+    ].join('\n');
+
+    const PAGE_EXTRACTOR_SCRIPT = [
+      'export async function execute(p, context) {',
+      "  const secret = context?.params?.secrets?.IMPORT_SECRET ?? 'NO_SECRET';",
+      "  return '<p>secret:' + secret + '</p>';",
+      '}',
+    ].join('\n');
+
+    const API_CONFIGURATOR_SCRIPT = ['(() => {', '  return { requests: context.requests };', '})()'].join('\n');
+
+    const API_EXTRACTOR_SCRIPT = [
+      '(() => {',
+      '  const resp = context.responses?.[0];',
+      "  const raw = resp?.body ? Deno.core.decode(new Uint8Array(resp.body)) : '{}';",
+      "  const secret = context.params?.secrets?.IMPORT_SECRET ?? 'NO_SECRET';",
+      '  return {',
+      '    body: Deno.core.encode(JSON.stringify({',
+      '      extracted: true,',
+      '      secret: secret,',
+      '      status: resp?.status ?? null',
+      '    }, null, 2))',
+      '  };',
+      '})()',
+    ].join('\n');
+
+    const importFile = {
+      version: 1,
+      exportedAt: 1577880000,
+      secretsEncryption,
+      data: {
+        scripts: [
+          {
+            id: UUID_SCRIPT,
+            name: 'import-test-script',
+            scriptType: 'responder',
+            content: "console.log('imported-script')",
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+          },
+        ],
+        secrets: [
+          {
+            id: UUID_SECRET,
+            name: SECRET_NAME,
+            encryptedValue: encryptedSecretValue,
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+          },
+        ],
+        contentSecurityPolicies: [
+          {
+            id: UUID_CSP,
+            name: 'import-test-csp',
+            directives: [
+              { name: 'default-src', value: ["'self'"] },
+              { name: 'script-src', value: ["'self'", 'https://cdn.example.com'] },
+            ],
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+          },
+        ],
+        certificateTemplates: [
+          {
+            id: UUID_CERT_TEMPLATE,
+            name: 'import-test-cert-template',
+            attributes: {
+              commonName: 'Import Test CA',
+              country: 'US',
+              keyAlgorithm: { keyType: 'ed25519' },
+              signatureAlgorithm: 'ed25519',
+              notValidBefore: 1577836800,
+              notValidAfter: 1893456000,
+              version: 3,
+              isCa: true,
+              keyUsage: ['digitalSignature'],
+              extendedKeyUsage: ['tlsWebServerAuthentication'],
+            },
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+          },
+        ],
+        privateKeys: [
+          {
+            id: UUID_PK,
+            name: 'import-test-private-key',
+            alg: { keyType: 'ed25519' },
+            pkcs8: pkcs8Base64,
+            encrypted: true,
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+          },
+        ],
+        responders: [
+          {
+            id: UUID_RESPONDER,
+            name: 'import-test-responder',
+            location: { pathType: '=', path: '/import-resp-test' },
+            method: 'GET',
+            enabled: true,
+            settings: {
+              requestsToTrack: 10,
+              statusCode: 200,
+              script: RESPONDER_SCRIPT,
+              secrets: { type: 'all' },
+            },
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+            history: [
+              {
+                id: UUID_RESP_HISTORY,
+                responderId: UUID_RESPONDER,
+                clientAddress: '172.18.0.1:12345',
+                method: 'GET',
+                url: '/import-resp-test',
+                createdAt: 1577836800,
+                responseStatusCode: 200,
+                responseBody: 'pre-import-response',
+              },
+            ],
+          },
+        ],
+        pageTrackers: [
+          {
+            id: UUID_PAGE_TRACKER,
+            name: 'import-test-page-tracker',
+            retrack: {
+              enabled: true,
+              config: { revisions: 3 },
+              target: { type: 'page', extractor: PAGE_EXTRACTOR_SCRIPT },
+              notifications: false,
+            },
+            secrets: { type: 'all' },
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+            history: [
+              {
+                id: UUID_PAGE_REV,
+                trackerId: UUID_PAGE_TRACKER,
+                data: { original: '<p>imported-revision-content</p>' },
+                createdAt: 1577836800,
+              },
+            ],
+          },
+        ],
+        apiTrackers: [
+          {
+            id: UUID_API_TRACKER,
+            name: 'import-test-api-tracker',
+            retrack: {
+              enabled: true,
+              config: { revisions: 5 },
+              target: {
+                type: 'api',
+                requests: [{ url: 'http://host.docker.internal:7171/api/ui/state', method: 'GET' }],
+                configurator: API_CONFIGURATOR_SCRIPT,
+                extractor: API_EXTRACTOR_SCRIPT,
+              },
+              notifications: false,
+            },
+            secrets: { type: 'all' },
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+            history: [
+              {
+                id: UUID_API_REV_1,
+                trackerId: UUID_API_TRACKER,
+                data: { original: { revision: 1, data: 'first' } },
+                createdAt: 1577836800,
+              },
+              {
+                id: UUID_API_REV_2,
+                trackerId: UUID_API_TRACKER,
+                data: { original: { revision: 2, data: 'second' } },
+                createdAt: 1577836900,
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    // ── Step 5: Import preview ─────────────────────────────────────────
+    const previewRes = await page.request.post('/api/user/data/_import_preview', {
+      data: { data: importFile, mode: 'merge' },
+    });
+    if (!previewRes.ok()) {
+      const errorBody = await previewRes.text();
+      throw new Error(`Import preview failed (${previewRes.status()}): ${errorBody}`);
+    }
+    const preview = await previewRes.json();
+
+    expect(preview.valid).toBe(true);
+    expect(preview.summary.scripts.total).toBe(1);
+    expect(preview.summary.secrets.total).toBe(1);
+    expect(preview.summary.secrets.total).toBe(1);
+    expect(preview.summary.responders.total).toBe(1);
+    expect(preview.summary.certificateTemplates.total).toBe(1);
+    expect(preview.summary.privateKeys.total).toBe(1);
+    expect(preview.summary.contentSecurityPolicies.total).toBe(1);
+    expect(preview.summary.pageTrackers.total).toBe(1);
+    expect(preview.summary.apiTrackers.total).toBe(1);
+
+    // ── Step 6: Execute import ─────────────────────────────────────────
+    const importRes = await page.request.post('/api/user/data/_import', {
+      data: {
+        data: importFile,
+        mode: 'merge',
+        secretsPassphrase: SECRETS_PASSPHRASE,
+        selections: {
+          scripts: [{ sourceId: UUID_SCRIPT, action: 'import' }],
+          secrets: [{ sourceId: UUID_SECRET, action: 'import' }],
+          responders: [{ sourceId: UUID_RESPONDER, action: 'import' }],
+          certificateTemplates: [{ sourceId: UUID_CERT_TEMPLATE, action: 'import' }],
+          privateKeys: [{ sourceId: UUID_PK, action: 'import' }],
+          contentSecurityPolicies: [{ sourceId: UUID_CSP, action: 'import' }],
+          pageTrackers: [{ sourceId: UUID_PAGE_TRACKER, action: 'import' }],
+          apiTrackers: [{ sourceId: UUID_API_TRACKER, action: 'import' }],
+        },
+      },
+    });
+    expect(importRes.ok()).toBeTruthy();
+    const importResult = await importRes.json();
+
+    expect(importResult.results.scripts.imported).toBe(1);
+    expect(importResult.results.secrets.imported).toBe(1);
+    expect(importResult.results.responders.imported).toBe(1);
+    expect(importResult.results.certificateTemplates.imported).toBe(1);
+    expect(importResult.results.privateKeys.imported).toBe(1);
+    expect(importResult.results.contentSecurityPolicies.imported).toBe(1);
+    expect(importResult.results.pageTrackers.imported).toBe(1);
+    expect(importResult.results.apiTrackers.imported).toBe(1);
+
+    // ── Step 7a: Validate script ───────────────────────────────────────
+    const scriptsRes = await page.request.get('/api/user/scripts');
+    const scripts = await scriptsRes.json();
+    const importedScript = scripts.find((s: { name: string }) => s.name === 'import-test-script');
+    expect(importedScript).toBeDefined();
+    expect(importedScript.scriptType).toBe('responder');
+    expect(importedScript.content).toBe("console.log('imported-script')");
+
+    // ── Step 7b: Validate secret ───────────────────────────────────────
+    const secretsRes = await page.request.get('/api/user/secrets');
+    const secrets = await secretsRes.json();
+    expect(secrets.find((s: { name: string }) => s.name === SECRET_NAME)).toBeDefined();
+
+    // ── Step 7c: Validate CSP ──────────────────────────────────────────
+    const cspRes = await page.request.get('/api/utils/web_security/csp');
+    const csps = await cspRes.json();
+    const importedCsp = csps.find((c: { name: string }) => c.name === 'import-test-csp');
+    expect(importedCsp).toBeDefined();
+    expect(importedCsp.directives).toHaveLength(2);
+    expect(importedCsp.directives).toEqual(
+      expect.arrayContaining([
+        { name: 'default-src', value: ["'self'"] },
+        { name: 'script-src', value: ["'self'", 'https://cdn.example.com'] },
+      ]),
+    );
+
+    // ── Step 7d: Validate certificate template ─────────────────────────
+    const templatesRes = await page.request.get('/api/utils/certificates/templates');
+    const templates = await templatesRes.json();
+    const importedTemplate = templates.find((t: { name: string }) => t.name === 'import-test-cert-template');
+    expect(importedTemplate).toBeDefined();
+    expect(importedTemplate.attributes.commonName).toBe('Import Test CA');
+    expect(importedTemplate.attributes.country).toBe('US');
+    expect(importedTemplate.attributes.keyAlgorithm).toEqual({ keyType: 'ed25519' });
+    expect(importedTemplate.attributes.signatureAlgorithm).toBe('ed25519');
+    expect(importedTemplate.attributes.isCa).toBe(true);
+    expect(importedTemplate.attributes.version).toBe(3);
+    expect(importedTemplate.attributes.keyUsage).toEqual(['digitalSignature']);
+    expect(importedTemplate.attributes.extendedKeyUsage).toEqual(['tlsWebServerAuthentication']);
+
+    // ── Step 7e: Validate private key + passphrase export ──────────────
+    const keysRes = await page.request.get('/api/utils/certificates/private_keys');
+    const keys = await keysRes.json();
+    const importedKey = keys.find((k: { name: string }) => k.name === 'import-test-private-key');
+    expect(importedKey).toBeDefined();
+    expect(importedKey.alg).toEqual({ keyType: 'ed25519' });
+    expect(importedKey.encrypted).toBe(true);
+
+    // Export with the original passphrase to prove it's correct.
+    const keyExportRes = await page.request.post(
+      `/api/utils/certificates/private_keys/${encodeURIComponent(importedKey.id)}/export`,
+      { data: { format: 'pkcs8', passphrase: PK_PASSPHRASE } },
+    );
+    expect(keyExportRes.ok()).toBeTruthy();
+
+    // ── Step 7f: Validate responder config ─────────────────────────────
+    const respondersRes = await page.request.get('/api/utils/webhooks/responders');
+    const responders = await respondersRes.json();
+    const importedResponder = responders.find((r: { name: string }) => r.name === 'import-test-responder');
+    expect(importedResponder).toBeDefined();
+    expect(importedResponder.location).toEqual({ pathType: '=', path: '/import-resp-test' });
+    expect(importedResponder.method).toBe('GET');
+    expect(importedResponder.enabled).toBe(true);
+    expect(importedResponder.settings.statusCode).toBe(200);
+    expect(importedResponder.settings.requestsToTrack).toBe(10);
+    expect(importedResponder.settings.script).toContain('context.secrets.IMPORT_SECRET');
+    expect(importedResponder.settings.secrets).toEqual({ type: 'all' });
+
+    // ── Step 7g: Validate imported responder history ────────────────────
+    const historyRes = await page.request.get(
+      `/api/utils/webhooks/responders/${encodeURIComponent(importedResponder.id)}/history`,
+    );
+    expect(historyRes.ok()).toBeTruthy();
+    const history = await historyRes.json();
+    expect(history).toHaveLength(1);
+    expect(history[0].method).toBe('GET');
+    expect(history[0].url).toContain('/import-resp-test');
+    expect(history[0].responseStatusCode).toBe(200);
+    // responseBody is returned as a byte array by the API.
+    const importedResponseBody = new TextDecoder().decode(new Uint8Array(history[0].responseBody));
+    expect(importedResponseBody).toBe('pre-import-response');
+
+    // ── Step 7h: Call responder webhook + validate a new tracked entry ────
+    const webhookUrl = `/api/webhooks/${userHandle}/import-resp-test`;
+    const webhookRes = await page.request.fetch(webhookUrl, { method: 'GET' });
+    expect(webhookRes.ok()).toBeTruthy();
+    const webhookBody = await webhookRes.text();
+    expect(webhookBody).toBe(`secret:${SECRET_VALUE}`);
+
+    // Re-fetch history: should now have 2 entries.
+    const historyAfterRes = await page.request.get(
+      `/api/utils/webhooks/responders/${encodeURIComponent(importedResponder.id)}/history`,
+    );
+    const historyAfter = await historyAfterRes.json();
+    expect(historyAfter).toHaveLength(2);
+    // The newest entry should have the secret-based response (byte array).
+    const newestEntry = historyAfter.find((e: { responseBody?: number[] }) => {
+      if (!e.responseBody) return false;
+      const body = new TextDecoder().decode(new Uint8Array(e.responseBody));
+      return body === `secret:${SECRET_VALUE}`;
+    });
+    expect(newestEntry).toBeDefined();
+    expect(newestEntry.responseStatusCode).toBe(200);
+
+    // ── Step 7i: Validate page tracker config + imported revision ───────
+    const pageTrackersRes = await page.request.get('/api/utils/web_scraping/page');
+    const pageTrackers = await pageTrackersRes.json();
+    const importedPageTracker = pageTrackers.find((t: { name: string }) => t.name === 'import-test-page-tracker');
+    expect(importedPageTracker).toBeDefined();
+    expect(importedPageTracker.secrets).toEqual({ type: 'all' });
+
+    const pageHistoryUrl = `/api/utils/web_scraping/page/${encodeURIComponent(importedPageTracker.id)}/history`;
+    const pageHistoryRes = await page.request.post(pageHistoryUrl, {
+      data: { refresh: false },
+    });
+    expect(pageHistoryRes.ok()).toBeTruthy();
+    const pageHistory = await pageHistoryRes.json();
+    expect(pageHistory).toHaveLength(1);
+    expect(pageHistory[0].data.original).toBe('<p>imported-revision-content</p>');
+
+    // ── Step 7j: Trigger page tracker update + validate new revision ────
+    const res = await page.request.post(pageHistoryUrl, {
+      data: { refresh: true },
+      timeout: 60000,
+    });
+    if (!res.ok()) {
+      throw new Error(`Page tracker update failed after 3 attempts (${res.status()}): ${await res.text()}`);
+    }
+
+    const pageHistoryAfterRes = await page.request.post(pageHistoryUrl, {
+      data: { refresh: false },
+    });
+    const pageHistoryAfter = await pageHistoryAfterRes.json();
+    expect(pageHistoryAfter).toHaveLength(2);
+    // The new revision should contain the secret value picked up from the imported secret.
+    const newPageRevision = pageHistoryAfter.find((r: { data: { original: string } }) =>
+      r.data.original?.includes(`secret:${SECRET_VALUE}`),
+    );
+    expect(newPageRevision).toBeDefined();
+
+    // ── Step 7k: Validate API tracker config + imported revisions ───────
+    const apiTrackersRes = await page.request.get('/api/utils/web_scraping/api');
+    const apiTrackers = await apiTrackersRes.json();
+    const importedApiTracker = apiTrackers.find((t: { name: string }) => t.name === 'import-test-api-tracker');
+    expect(importedApiTracker).toBeDefined();
+    expect(importedApiTracker.secrets).toEqual({ type: 'all' });
+
+    const apiHistoryUrl = `/api/utils/web_scraping/api/${encodeURIComponent(importedApiTracker.id)}/history`;
+    const apiHistoryRes = await page.request.post(apiHistoryUrl, {
+      data: { refresh: false },
+    });
+    expect(apiHistoryRes.ok()).toBeTruthy();
+    const apiHistory = await apiHistoryRes.json();
+    expect(apiHistory).toHaveLength(2);
+    const apiRevisionData = apiHistory.map((r: { data: { original: unknown } }) => r.data.original);
+    expect(apiRevisionData).toEqual(
+      expect.arrayContaining([
+        { revision: 1, data: 'first' },
+        { revision: 2, data: 'second' },
+      ]),
+    );
+
+    // ── Step 7l: Trigger API tracker update + validate new revision ─────
+    const apiUpdateRes = await page.request.post(apiHistoryUrl, {
+      data: { refresh: true },
+      timeout: 60000,
+    });
+    expect(apiUpdateRes.ok()).toBeTruthy();
+
+    const apiHistoryAfterRes = await page.request.post(apiHistoryUrl, {
+      data: { refresh: false },
+    });
+    const apiHistoryAfter = await apiHistoryAfterRes.json();
+    expect(apiHistoryAfter).toHaveLength(3);
+    // The newest revision should contain the secret value from the extractor.
+    const newestApiRevision = apiHistoryAfter.find((r: { data: { original: unknown } }) => {
+      const original = r.data.original;
+      if (typeof original === 'object' && original !== null && 'secret' in original) {
+        return (original as { secret: string }).secret === SECRET_VALUE;
+      }
+      // The extractor returns a JSON-encoded body, so the original might be a string.
+      if (typeof original === 'string') {
+        return original.includes(SECRET_VALUE);
+      }
+      return false;
+    });
+    expect(newestApiRevision).toBeDefined();
+  });
+});

@@ -167,7 +167,7 @@ pub async fn certificates_handle_action<DR: DnsResolver, ET: EmailTransport>(
 pub mod tests {
     pub use super::certificate_templates::tests::*;
     use super::certificates_handle_action;
-    pub use crate::utils::certificates::api_ext::PrivateKeysCreateParams;
+    pub use crate::utils::certificates::api_ext::{PrivateKeysCreateParams, TemplatesCreateParams};
     use crate::{
         tests::{mock_api, mock_user},
         users::{SharedResource, UserShareId},
@@ -176,7 +176,6 @@ pub mod tests {
             certificates::{
                 CertificateAttributes, CertificateTemplate, ExtendedKeyUsage, KeyUsage, PrivateKey,
                 PrivateKeyAlgorithm, PrivateKeySize, SignatureAlgorithm, Version,
-                api_ext::TemplatesCreateParams,
             },
         },
     };

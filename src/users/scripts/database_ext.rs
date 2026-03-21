@@ -65,6 +65,31 @@ ORDER BY name ASC
             .collect::<Result<Vec<_>, _>>()
     }
 
+    /// Lists scripts for a user matching the specified IDs.
+    pub async fn bulk_get_user_scripts(
+        &self,
+        user_id: UserId,
+        ids: &[Uuid],
+    ) -> anyhow::Result<Vec<UserScript>> {
+        let raw: Vec<RawUserScript> = query_as!(
+            RawUserScript,
+            r#"
+SELECT id, user_id, name, type, content, created_at, updated_at
+FROM user_data_scripts
+WHERE user_id = $1 AND id = ANY($2)
+ORDER BY name ASC
+            "#,
+            *user_id,
+            ids
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        raw.into_iter()
+            .map(|r| r.into_user_script())
+            .collect::<Result<Vec<_>, _>>()
+    }
+
     /// Counts scripts for a user.
     pub async fn count_user_scripts(&self, user_id: UserId) -> anyhow::Result<i64> {
         let count = sqlx::query_scalar!(
@@ -394,6 +419,85 @@ mod tests {
 
         db.remove_user_by_email(&user.email).await?;
         assert_eq!(db.count_user_scripts(user.id).await?, 0);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_scripts_empty(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
+        let user = mock_user()?;
+        db.upsert_user(&user).await?;
+
+        let scripts = db.bulk_get_user_scripts(user.id, &[]).await?;
+        assert!(scripts.is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_scripts_returns_matching(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
+        let user = mock_user()?;
+        db.upsert_user(&user).await?;
+
+        let script_a = db
+            .insert_user_script(user.id, "alpha_script", "responder", "content_a")
+            .await?;
+        let script_b = db
+            .insert_user_script(user.id, "beta_script", "api_extractor", "content_b")
+            .await?;
+        db.insert_user_script(user.id, "gamma_script", "universal", "content_c")
+            .await?;
+
+        let scripts = db
+            .bulk_get_user_scripts(user.id, &[script_a.id, script_b.id])
+            .await?;
+        assert_eq!(scripts.len(), 2);
+        assert_eq!(scripts[0].name, "alpha_script");
+        assert_eq!(scripts[1].name, "beta_script");
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn bulk_get_scripts_ignores_non_existent(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
+        let user = mock_user()?;
+        db.upsert_user(&user).await?;
+
+        let script = db
+            .insert_user_script(user.id, "my_script", "responder", "content")
+            .await?;
+
+        let scripts = db
+            .bulk_get_user_scripts(
+                user.id,
+                &[script.id, uuid!("00000000-0000-0000-0000-000000000099")],
+            )
+            .await?;
+        assert_eq!(scripts.len(), 1);
+        assert_eq!(scripts[0].name, "my_script");
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn bulk_get_scripts_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
+        let db = Database::create(pool).await?;
+        let user_a = mock_user()?;
+        let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
+        db.upsert_user(&user_a).await?;
+        db.upsert_user(&user_b).await?;
+
+        let script_a = db
+            .insert_user_script(user_a.id, "shared_name", "responder", "content_a")
+            .await?;
+        db.insert_user_script(user_b.id, "shared_name", "responder", "content_b")
+            .await?;
+
+        let scripts = db.bulk_get_user_scripts(user_b.id, &[script_a.id]).await?;
+        assert!(scripts.is_empty());
 
         Ok(())
     }

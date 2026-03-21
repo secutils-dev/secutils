@@ -16,7 +16,10 @@ pub use self::{
     scripts::ScriptContext,
     secrets::SecretsAccess,
     user::User,
-    user_data::UserData,
+    user_data::{
+        UserData, UserDataExportParams, UserDataImportParams, UserDataImportPreviewParams,
+        execute_import, generate_export, generate_import_preview,
+    },
     user_data_key::UserDataKey,
     user_data_namespace::UserDataNamespace,
     user_id::UserId,

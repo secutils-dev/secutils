@@ -189,6 +189,88 @@ ORDER BY updated_at
         Ok(private_keys)
     }
 
+    /// Retrieves all private keys for the specified user with full pkcs8 data (for export).
+    pub async fn get_private_keys_for_export(
+        &self,
+        user_id: UserId,
+    ) -> anyhow::Result<Vec<PrivateKey>> {
+        let raw_private_keys = query_as!(
+            RawPrivateKey,
+            r#"
+SELECT id, name, alg, pkcs8, encrypted, created_at, updated_at
+FROM user_data_certificates_private_keys
+WHERE user_id = $1
+ORDER BY updated_at
+                "#,
+            *user_id
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        let mut private_keys = vec![];
+        for raw_private_key in raw_private_keys {
+            private_keys.push(PrivateKey::try_from(raw_private_key)?);
+        }
+
+        Ok(private_keys)
+    }
+
+    /// Retrieves private keys for the specified user matching the given IDs, with full pkcs8 data.
+    pub async fn bulk_get_private_keys_for_export(
+        &self,
+        user_id: UserId,
+        ids: &[Uuid],
+    ) -> anyhow::Result<Vec<PrivateKey>> {
+        let raw_private_keys = query_as!(
+            RawPrivateKey,
+            r#"
+SELECT id, name, alg, pkcs8, encrypted, created_at, updated_at
+FROM user_data_certificates_private_keys
+WHERE user_id = $1 AND id = ANY($2)
+ORDER BY updated_at
+                "#,
+            *user_id,
+            ids
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        let mut private_keys = vec![];
+        for raw_private_key in raw_private_keys {
+            private_keys.push(PrivateKey::try_from(raw_private_key)?);
+        }
+
+        Ok(private_keys)
+    }
+
+    /// Retrieves certificate templates for the specified user matching the given IDs.
+    pub async fn bulk_get_certificate_templates(
+        &self,
+        user_id: UserId,
+        ids: &[Uuid],
+    ) -> anyhow::Result<Vec<CertificateTemplate>> {
+        let raw_templates = query_as!(
+            RawCertificateTemplate,
+            r#"
+SELECT id, name, attributes, created_at, updated_at
+FROM user_data_certificates_certificate_templates
+WHERE user_id = $1 AND id = ANY($2)
+ORDER BY updated_at
+                "#,
+            *user_id,
+            ids
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        let mut templates = vec![];
+        for raw_template in raw_templates {
+            templates.push(CertificateTemplate::try_from(raw_template)?);
+        }
+
+        Ok(templates)
+    }
+
     /// Retrieves certificate template for the specified user with the specified ID.
     pub async fn get_certificate_template(
         &self,
@@ -366,7 +448,7 @@ mod tests {
     use crate::{
         database::Database,
         error::Error as SecutilsError,
-        tests::mock_user,
+        tests::{mock_user, mock_user_with_id},
         utils::certificates::{
             CertificateAttributes, CertificateTemplate, ExtendedKeyUsage, KeyUsage, PrivateKey,
             PrivateKeyAlgorithm, PrivateKeySize, SignatureAlgorithm, Version,
@@ -1175,6 +1257,402 @@ mod tests {
             db.certificates().get_certificate_templates(user.id).await?,
             certificate_templates
         );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_certificate_templates_empty(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let templates = db
+            .certificates()
+            .bulk_get_certificate_templates(user.id, &[])
+            .await?;
+        assert!(templates.is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_certificate_templates_returns_matching(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let templates = vec![
+            CertificateTemplate {
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
+                name: "ct-name".to_string(),
+                attributes: get_mock_certificate_attributes()?,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
+            },
+            CertificateTemplate {
+                id: uuid!("00000000-0000-0000-0000-000000000002"),
+                name: "ct-name-2".to_string(),
+                attributes: get_mock_certificate_attributes()?,
+                created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
+            },
+            CertificateTemplate {
+                id: uuid!("00000000-0000-0000-0000-000000000003"),
+                name: "ct-name-3".to_string(),
+                attributes: get_mock_certificate_attributes()?,
+                created_at: OffsetDateTime::from_unix_timestamp(946920800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946920810)?,
+            },
+        ];
+
+        for template in templates.iter() {
+            db.certificates()
+                .insert_certificate_template(user.id, template)
+                .await?;
+        }
+
+        let result = db
+            .certificates()
+            .bulk_get_certificate_templates(
+                user.id,
+                &[
+                    uuid!("00000000-0000-0000-0000-000000000001"),
+                    uuid!("00000000-0000-0000-0000-000000000003"),
+                ],
+            )
+            .await?;
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], templates[0]);
+        assert_eq!(result[1], templates[2]);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn bulk_get_certificate_templates_ignores_non_existent(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let template = CertificateTemplate {
+            id: uuid!("00000000-0000-0000-0000-000000000001"),
+            name: "ct-name".to_string(),
+            attributes: get_mock_certificate_attributes()?,
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
+        };
+        db.certificates()
+            .insert_certificate_template(user.id, &template)
+            .await?;
+
+        let result = db
+            .certificates()
+            .bulk_get_certificate_templates(
+                user.id,
+                &[
+                    uuid!("00000000-0000-0000-0000-000000000001"),
+                    uuid!("00000000-0000-0000-0000-000000000099"),
+                ],
+            )
+            .await?;
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], template);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn bulk_get_certificate_templates_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
+        let user_a = mock_user()?;
+        let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user_a).await?;
+        db.insert_user(&user_b).await?;
+
+        let template = CertificateTemplate {
+            id: uuid!("00000000-0000-0000-0000-000000000001"),
+            name: "ct-name".to_string(),
+            attributes: get_mock_certificate_attributes()?,
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
+        };
+        db.certificates()
+            .insert_certificate_template(user_a.id, &template)
+            .await?;
+
+        let result = db
+            .certificates()
+            .bulk_get_certificate_templates(
+                user_b.id,
+                &[uuid!("00000000-0000-0000-0000-000000000001")],
+            )
+            .await?;
+        assert!(result.is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_get_private_keys_for_export_empty(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let keys = db
+            .certificates()
+            .get_private_keys_for_export(user.id)
+            .await?;
+        assert!(keys.is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_get_private_keys_for_export_includes_pkcs8(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let private_keys = vec![
+            PrivateKey {
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
+                name: "pk-name".to_string(),
+                alg: PrivateKeyAlgorithm::Rsa {
+                    key_size: PrivateKeySize::Size2048,
+                },
+                pkcs8: vec![1, 2, 3],
+                encrypted: true,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
+            },
+            PrivateKey {
+                id: uuid!("00000000-0000-0000-0000-000000000002"),
+                name: "pk-name-2".to_string(),
+                alg: PrivateKeyAlgorithm::Dsa {
+                    key_size: PrivateKeySize::Size2048,
+                },
+                pkcs8: vec![4, 5, 6],
+                encrypted: false,
+                created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
+            },
+        ];
+
+        for private_key in private_keys.iter() {
+            db.certificates()
+                .insert_private_key(user.id, private_key)
+                .await?;
+        }
+
+        let result = db
+            .certificates()
+            .get_private_keys_for_export(user.id)
+            .await?;
+        assert_eq!(result.len(), 2);
+        // Unlike get_private_keys, get_private_keys_for_export includes pkcs8 data.
+        assert_eq!(result[0].pkcs8, vec![1, 2, 3]);
+        assert_eq!(result[1].pkcs8, vec![4, 5, 6]);
+        assert_eq!(result, private_keys);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn get_private_keys_for_export_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
+        let user_a = mock_user()?;
+        let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user_a).await?;
+        db.insert_user(&user_b).await?;
+
+        db.certificates()
+            .insert_private_key(
+                user_a.id,
+                &PrivateKey {
+                    id: uuid!("00000000-0000-0000-0000-000000000001"),
+                    name: "pk-name".to_string(),
+                    alg: PrivateKeyAlgorithm::Rsa {
+                        key_size: PrivateKeySize::Size2048,
+                    },
+                    pkcs8: vec![1, 2, 3],
+                    encrypted: true,
+                    created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
+                },
+            )
+            .await?;
+
+        let result = db
+            .certificates()
+            .get_private_keys_for_export(user_b.id)
+            .await?;
+        assert!(result.is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_private_keys_for_export_empty(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let keys = db
+            .certificates()
+            .bulk_get_private_keys_for_export(user.id, &[])
+            .await?;
+        assert!(keys.is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_private_keys_for_export_returns_matching(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let private_keys = vec![
+            PrivateKey {
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
+                name: "pk-name".to_string(),
+                alg: PrivateKeyAlgorithm::Rsa {
+                    key_size: PrivateKeySize::Size2048,
+                },
+                pkcs8: vec![1, 2, 3],
+                encrypted: true,
+                created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
+            },
+            PrivateKey {
+                id: uuid!("00000000-0000-0000-0000-000000000002"),
+                name: "pk-name-2".to_string(),
+                alg: PrivateKeyAlgorithm::Dsa {
+                    key_size: PrivateKeySize::Size2048,
+                },
+                pkcs8: vec![4, 5, 6],
+                encrypted: false,
+                created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
+            },
+            PrivateKey {
+                id: uuid!("00000000-0000-0000-0000-000000000003"),
+                name: "pk-name-3".to_string(),
+                alg: PrivateKeyAlgorithm::Ed25519,
+                pkcs8: vec![7, 8, 9],
+                encrypted: false,
+                created_at: OffsetDateTime::from_unix_timestamp(946920800)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(946920810)?,
+            },
+        ];
+
+        for private_key in private_keys.iter() {
+            db.certificates()
+                .insert_private_key(user.id, private_key)
+                .await?;
+        }
+
+        let result = db
+            .certificates()
+            .bulk_get_private_keys_for_export(
+                user.id,
+                &[
+                    uuid!("00000000-0000-0000-0000-000000000001"),
+                    uuid!("00000000-0000-0000-0000-000000000003"),
+                ],
+            )
+            .await?;
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], private_keys[0]);
+        assert_eq!(result[1], private_keys[2]);
+        // Verify pkcs8 data is included.
+        assert_eq!(result[0].pkcs8, vec![1, 2, 3]);
+        assert_eq!(result[1].pkcs8, vec![7, 8, 9]);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn bulk_get_private_keys_for_export_ignores_non_existent(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let private_key = PrivateKey {
+            id: uuid!("00000000-0000-0000-0000-000000000001"),
+            name: "pk-name".to_string(),
+            alg: PrivateKeyAlgorithm::Rsa {
+                key_size: PrivateKeySize::Size2048,
+            },
+            pkcs8: vec![1, 2, 3],
+            encrypted: true,
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
+        };
+        db.certificates()
+            .insert_private_key(user.id, &private_key)
+            .await?;
+
+        let result = db
+            .certificates()
+            .bulk_get_private_keys_for_export(
+                user.id,
+                &[
+                    uuid!("00000000-0000-0000-0000-000000000001"),
+                    uuid!("00000000-0000-0000-0000-000000000099"),
+                ],
+            )
+            .await?;
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], private_key);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn bulk_get_private_keys_for_export_isolated_per_user(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user_a = mock_user()?;
+        let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user_a).await?;
+        db.insert_user(&user_b).await?;
+
+        db.certificates()
+            .insert_private_key(
+                user_a.id,
+                &PrivateKey {
+                    id: uuid!("00000000-0000-0000-0000-000000000001"),
+                    name: "pk-name".to_string(),
+                    alg: PrivateKeyAlgorithm::Rsa {
+                        key_size: PrivateKeySize::Size2048,
+                    },
+                    pkcs8: vec![1, 2, 3],
+                    encrypted: true,
+                    created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+                    updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
+                },
+            )
+            .await?;
+
+        let result = db
+            .certificates()
+            .bulk_get_private_keys_for_export(
+                user_b.id,
+                &[uuid!("00000000-0000-0000-0000-000000000001")],
+            )
+            .await?;
+        assert!(result.is_empty());
 
         Ok(())
     }

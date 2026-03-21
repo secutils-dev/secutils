@@ -93,7 +93,10 @@ mod tests {
         templates::create_templates,
         users::{SubscriptionTier, UserSubscription},
     };
-    pub use crate::{network::tests::*, scheduler::tests::*, server::tests::*, utils::tests::*};
+    pub use crate::{
+        network::tests::*, retrack::tests::*, scheduler::tests::*, server::tests::*,
+        utils::tests::*,
+    };
     use ctor::ctor;
     use reqwest::Client;
     use reqwest_middleware::ClientBuilder;
@@ -251,6 +254,7 @@ mod tests {
                 ultimate: SubscriptionConfig::default(),
             },
             retrack: Default::default(),
+            platform: Default::default(),
         })
     }
 
@@ -295,6 +299,20 @@ mod tests {
     ) -> anyhow::Result<Api<DR, AsyncStubTransport>> {
         Ok(Api::new(
             mock_config()?,
+            Database::create(pool).await?,
+            mock_search_index()?,
+            network,
+            create_templates()?,
+        ))
+    }
+
+    pub async fn mock_api_with_network_and_config<DR: DnsResolver>(
+        pool: PgPool,
+        network: Network<DR, AsyncStubTransport>,
+        config: Config,
+    ) -> anyhow::Result<Api<DR, AsyncStubTransport>> {
+        Ok(Api::new(
+            config,
             Database::create(pool).await?,
             mock_search_index()?,
             network,

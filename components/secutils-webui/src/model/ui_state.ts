@@ -39,6 +39,14 @@ export interface SubscriptionState {
   featureOverviewUrl?: string;
 }
 
+/**
+ * Platform-level settings exposed by the server.
+ */
+export interface PlatformState {
+  /** Maximum allowed size (in bytes) for user data import files. */
+  maxImportFileSize: number;
+}
+
 export interface UiState {
   synced: boolean;
   status: ServerStatus;
@@ -49,4 +57,5 @@ export interface UiState {
   utils: Util[];
   webhookUrlType: WebhookUrlType;
   subscription?: SubscriptionState;
+  platform: PlatformState;
 }

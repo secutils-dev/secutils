@@ -7,7 +7,10 @@ pub use self::retrack_tracker::RetrackTracker;
 
 #[cfg(test)]
 pub mod tests {
-    pub use super::retrack_tracker::RetrackTrackerValue;
+    pub use super::{
+        retrack_tracker::RetrackTrackerValue,
+        tags::{RETRACK_RESOURCE_TAG, RETRACK_USER_TAG},
+    };
     use retrack_types::{
         scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
         trackers::{PageTarget, Tracker, TrackerConfig, TrackerTarget},

@@ -1,0 +1,47 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT id, name, attributes, created_at, updated_at\nFROM user_data_certificates_certificate_templates\nWHERE user_id = $1 AND id = ANY($2)\nORDER BY updated_at\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "attributes",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2214a3de014edc8ba87468f80fdf62ea200ca5aa482a30990b018392645f58ec"
+}

@@ -28,6 +28,15 @@ pub struct UiState<'a> {
     pub settings: Option<UserSettings>,
     pub utils: Vec<Util>,
     pub webhook_url_type: WebhookUrlType,
+    pub platform: UiPlatformState,
+}
+
+/// Platform-level settings exposed to the UI.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UiPlatformState {
+    /// Maximum allowed size (in bytes) for user data import files.
+    pub max_import_file_size: usize,
 }
 
 #[cfg(test)]
@@ -42,7 +51,7 @@ mod tests {
 
     use crate::{
         server::{
-            Status, StatusLevel, UiState, WebhookUrlType,
+            Status, StatusLevel, UiPlatformState, UiState, WebhookUrlType,
             ui_state::subscription_state::SubscriptionState,
         },
         tests::{mock_config, mock_user},
@@ -89,6 +98,9 @@ mod tests {
                 utils: None,
             }],
             webhook_url_type: WebhookUrlType::Path,
+            platform: UiPlatformState {
+                max_import_file_size: 10 * 1024 * 1024,
+            },
         };
         assert_json_snapshot!(ui_state, @r###"
         {
@@ -140,7 +152,10 @@ mod tests {
               "name": "some-name"
             }
           ],
-          "webhookUrlType": "path"
+          "webhookUrlType": "path",
+          "platform": {
+            "maxImportFileSize": 10485760
+          }
         }
         "###);
 
@@ -160,6 +175,9 @@ mod tests {
             settings: None,
             utils: vec![],
             webhook_url_type: WebhookUrlType::Subdomain,
+            platform: UiPlatformState {
+                max_import_file_size: 10 * 1024 * 1024,
+            },
         };
         assert_json_snapshot!(ui_state, @r###"
         {
@@ -168,7 +186,10 @@ mod tests {
             "level": "available"
           },
           "utils": [],
-          "webhookUrlType": "subdomain"
+          "webhookUrlType": "subdomain",
+          "platform": {
+            "maxImportFileSize": 10485760
+          }
         }
         "###);
 

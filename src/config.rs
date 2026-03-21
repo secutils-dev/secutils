@@ -1,6 +1,7 @@
 mod components_config;
 mod database_config;
 mod http_config;
+mod platform_config;
 mod raw_config;
 mod retrack_config;
 mod scheduler_jobs_config;
@@ -16,6 +17,7 @@ pub use self::{
     components_config::ComponentsConfig,
     database_config::DatabaseConfig,
     http_config::HttpConfig,
+    platform_config::PlatformConfig,
     raw_config::RawConfig,
     retrack_config::RetrackConfig,
     scheduler_jobs_config::SchedulerJobsConfig,
@@ -57,6 +59,8 @@ pub struct Config {
     pub subscriptions: SubscriptionsConfig,
     /// Configuration for the Retrack service.
     pub retrack: RetrackConfig,
+    /// Platform-level configuration (limits, settings exposed to UI).
+    pub platform: PlatformConfig,
 }
 
 impl AsRef<Config> for Config {
@@ -78,6 +82,7 @@ impl From<RawConfig> for Config {
             utils: raw_config.utils,
             scheduler: raw_config.scheduler,
             retrack: raw_config.retrack,
+            platform: raw_config.platform,
         }
     }
 }
@@ -389,6 +394,9 @@ mod tests {
                     query: None,
                     fragment: None,
                 },
+            },
+            platform: PlatformConfig {
+                max_import_file_size: 10485760,
             },
         }
         "###);

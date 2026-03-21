@@ -106,9 +106,7 @@ services:
       dockerfile: Dockerfile.web-scraper-camoufox
     ports:
       - "7777:7777"
-    environment:
-      - DISPLAY=:99
-    command: ["/bin/sh", "-c", "Xvfb :99 -screen 0 1280x720x24 & sleep 1 && python /app/camoufox_launcher.py"]
+    environment: []
     security_opt:
       - seccomp:unconfined
     restart: unless-stopped

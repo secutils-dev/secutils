@@ -47,6 +47,30 @@ ORDER BY updated_at
         Ok(trackers)
     }
 
+    /// Retrieves page trackers matching the given IDs.
+    pub async fn bulk_get_page_trackers(&self, ids: &[Uuid]) -> anyhow::Result<Vec<PageTracker>> {
+        let raw_trackers = query_as!(
+            RawPageTracker,
+            r#"
+SELECT id, name, retrack_id, user_id, secrets, created_at, updated_at
+FROM user_data_web_scraping_page_trackers
+WHERE user_id = $1 AND id = ANY($2)
+ORDER BY updated_at
+                "#,
+            *self.user_id,
+            ids
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        let mut trackers = vec![];
+        for raw_tracker in raw_trackers {
+            trackers.push(PageTracker::try_from(raw_tracker)?);
+        }
+
+        Ok(trackers)
+    }
+
     /// Retrieves page tracker for the specified user.
     pub async fn get_page_tracker(&self, id: Uuid) -> anyhow::Result<Option<PageTracker>> {
         query_as!(
@@ -193,6 +217,29 @@ ORDER BY updated_at
         Ok(trackers)
     }
 
+    /// Retrieves API trackers matching the given IDs.
+    pub async fn bulk_get_api_trackers(&self, ids: &[Uuid]) -> anyhow::Result<Vec<ApiTracker>> {
+        let raw_trackers: Vec<RawApiTracker> = sqlx::query_as(
+            r#"
+SELECT id, name, user_id, retrack_id, secrets, created_at, updated_at
+FROM user_data_web_scraping_api_trackers
+WHERE user_id = $1 AND id = ANY($2)
+ORDER BY updated_at
+            "#,
+        )
+        .bind(*self.user_id)
+        .bind(ids)
+        .fetch_all(self.pool)
+        .await?;
+
+        let mut trackers = vec![];
+        for raw_tracker in raw_trackers {
+            trackers.push(ApiTracker::try_from(raw_tracker)?);
+        }
+
+        Ok(trackers)
+    }
+
     /// Retrieves API tracker for the specified user.
     pub async fn get_api_tracker(&self, id: Uuid) -> anyhow::Result<Option<ApiTracker>> {
         let raw_tracker: Option<RawApiTracker> = sqlx::query_as(
@@ -328,7 +375,7 @@ mod tests {
         database::Database,
         error::Error as SecutilsError,
         retrack::RetrackTracker,
-        tests::mock_user,
+        tests::{mock_user, mock_user_with_id},
         utils::web_scraping::{
             ApiTracker, PageTracker,
             tests::{MockApiTrackerBuilder, MockPageTrackerBuilder},
@@ -944,6 +991,232 @@ mod tests {
         }
 
         assert_eq!(web_scraping.get_api_trackers().await?, trackers);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_page_trackers_empty(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let trackers = db.web_scraping(user.id).bulk_get_page_trackers(&[]).await?;
+        assert!(trackers.is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_page_trackers_returns_matching(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let trackers = vec![
+            MockPageTrackerBuilder::create(
+                uuid!("00000000-0000-0000-0000-000000000001"),
+                "some-name",
+                RetrackTracker::from_reference(uuid!("00000000-0000-0000-0000-000000000010")),
+            )?
+            .build(),
+            MockPageTrackerBuilder::create(
+                uuid!("00000000-0000-0000-0000-000000000002"),
+                "some-name-2",
+                RetrackTracker::from_reference(uuid!("00000000-0000-0000-0000-000000000020")),
+            )?
+            .build(),
+            MockPageTrackerBuilder::create(
+                uuid!("00000000-0000-0000-0000-000000000003"),
+                "some-name-3",
+                RetrackTracker::from_reference(uuid!("00000000-0000-0000-0000-000000000030")),
+            )?
+            .build(),
+        ];
+
+        let web_scraping = db.web_scraping(user.id);
+        for tracker in trackers.iter() {
+            web_scraping.insert_page_tracker(tracker).await?;
+        }
+
+        let result = web_scraping
+            .bulk_get_page_trackers(&[
+                uuid!("00000000-0000-0000-0000-000000000001"),
+                uuid!("00000000-0000-0000-0000-000000000003"),
+            ])
+            .await?;
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], trackers[0]);
+        assert_eq!(result[1], trackers[2]);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn bulk_get_page_trackers_ignores_non_existent(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tracker = MockPageTrackerBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            RetrackTracker::from_reference(uuid!("00000000-0000-0000-0000-000000000010")),
+        )?
+        .build();
+
+        let web_scraping = db.web_scraping(user.id);
+        web_scraping.insert_page_tracker(&tracker).await?;
+
+        let result = web_scraping
+            .bulk_get_page_trackers(&[
+                uuid!("00000000-0000-0000-0000-000000000001"),
+                uuid!("00000000-0000-0000-0000-000000000099"),
+            ])
+            .await?;
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], tracker);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn bulk_get_page_trackers_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
+        let user_a = mock_user()?;
+        let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user_a).await?;
+        db.insert_user(&user_b).await?;
+
+        let tracker = MockPageTrackerBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            RetrackTracker::from_reference(uuid!("00000000-0000-0000-0000-000000000010")),
+        )?
+        .build();
+
+        db.web_scraping(user_a.id)
+            .insert_page_tracker(&tracker)
+            .await?;
+
+        let result = db
+            .web_scraping(user_b.id)
+            .bulk_get_page_trackers(&[uuid!("00000000-0000-0000-0000-000000000001")])
+            .await?;
+        assert!(result.is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_api_trackers_empty(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let trackers = db.web_scraping(user.id).bulk_get_api_trackers(&[]).await?;
+        assert!(trackers.is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_bulk_get_api_trackers_returns_matching(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let trackers = vec![
+            MockApiTrackerBuilder::create(
+                uuid!("00000000-0000-0000-0000-000000000001"),
+                "some-name",
+                RetrackTracker::from_reference(uuid!("00000000-0000-0000-0000-000000000010")),
+            )?
+            .build(),
+            MockApiTrackerBuilder::create(
+                uuid!("00000000-0000-0000-0000-000000000002"),
+                "some-name-2",
+                RetrackTracker::from_reference(uuid!("00000000-0000-0000-0000-000000000020")),
+            )?
+            .build(),
+            MockApiTrackerBuilder::create(
+                uuid!("00000000-0000-0000-0000-000000000003"),
+                "some-name-3",
+                RetrackTracker::from_reference(uuid!("00000000-0000-0000-0000-000000000030")),
+            )?
+            .build(),
+        ];
+
+        let web_scraping = db.web_scraping(user.id);
+        for tracker in trackers.iter() {
+            web_scraping.insert_api_tracker(tracker).await?;
+        }
+
+        let result = web_scraping
+            .bulk_get_api_trackers(&[
+                uuid!("00000000-0000-0000-0000-000000000001"),
+                uuid!("00000000-0000-0000-0000-000000000003"),
+            ])
+            .await?;
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], trackers[0]);
+        assert_eq!(result[1], trackers[2]);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn bulk_get_api_trackers_ignores_non_existent(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tracker = MockApiTrackerBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            RetrackTracker::from_reference(uuid!("00000000-0000-0000-0000-000000000010")),
+        )?
+        .build();
+
+        let web_scraping = db.web_scraping(user.id);
+        web_scraping.insert_api_tracker(&tracker).await?;
+
+        let result = web_scraping
+            .bulk_get_api_trackers(&[
+                uuid!("00000000-0000-0000-0000-000000000001"),
+                uuid!("00000000-0000-0000-0000-000000000099"),
+            ])
+            .await?;
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], tracker);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn bulk_get_api_trackers_isolated_per_user(pool: PgPool) -> anyhow::Result<()> {
+        let user_a = mock_user()?;
+        let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user_a).await?;
+        db.insert_user(&user_b).await?;
+
+        let tracker = MockApiTrackerBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            RetrackTracker::from_reference(uuid!("00000000-0000-0000-0000-000000000010")),
+        )?
+        .build();
+
+        db.web_scraping(user_a.id)
+            .insert_api_tracker(&tracker)
+            .await?;
+
+        let result = db
+            .web_scraping(user_b.id)
+            .bulk_get_api_trackers(&[uuid!("00000000-0000-0000-0000-000000000001")])
+            .await?;
+        assert!(result.is_empty());
 
         Ok(())
     }

@@ -6,7 +6,9 @@ mod ui_state;
 
 #[cfg(test)]
 pub use self::app_state::tests;
-pub use self::ui_state::{Status, StatusLevel, SubscriptionState, UiState, WebhookUrlType};
+pub use self::ui_state::{
+    Status, StatusLevel, SubscriptionState, UiPlatformState, UiState, WebhookUrlType,
+};
 
 use crate::{
     api::Api,
@@ -90,6 +92,18 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
                     .route("/send_message", web::post().to(handlers::send_message))
                     .route("/user/data", web::post().to(handlers::user_data_set))
                     .route("/user/data", web::get().to(handlers::user_data_get))
+                    .route(
+                        "/user/data/_export",
+                        web::post().to(handlers::user_data_export),
+                    )
+                    .route(
+                        "/user/data/_import_preview",
+                        web::post().to(handlers::user_data_import_preview),
+                    )
+                    .route(
+                        "/user/data/_import",
+                        web::post().to(handlers::user_data_import),
+                    )
                     .route("/user/secrets", web::get().to(handlers::user_secrets_list))
                     .route(
                         "/user/secrets",

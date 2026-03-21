@@ -1,6 +1,6 @@
 use crate::{
     error::Error as SecutilsError,
-    server::{AppState, SubscriptionState, UiState},
+    server::{AppState, SubscriptionState, UiPlatformState, UiState},
     users::{ClientUserShare, User, UserDataNamespace, UserShare},
 };
 use actix_web::{HttpResponse, web};
@@ -51,5 +51,8 @@ pub async fn ui_state_get(
         settings,
         utils,
         webhook_url_type: state.config.utils.webhook_url_type,
+        platform: UiPlatformState {
+            max_import_file_size: state.config.platform.max_import_file_size,
+        },
     }))
 }

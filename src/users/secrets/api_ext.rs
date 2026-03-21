@@ -31,6 +31,11 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
         self.api.db.get_user_secrets(self.user.id, false).await
     }
 
+    /// Returns secrets with the specified IDs.
+    pub async fn bulk_get_secrets(&self, ids: &[Uuid]) -> anyhow::Result<Vec<UserSecret>> {
+        self.api.db.bulk_get_user_secrets(self.user.id, ids).await
+    }
+
     /// Creates a new secret after validating name, value, and subscription limits.
     pub async fn create_secret(&self, name: &str, value: &str) -> anyhow::Result<UserSecret> {
         Self::validate_name(name)?;
@@ -192,7 +197,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
         }
     }
 
-    async fn decrypt_all_secrets(&self) -> anyhow::Result<HashMap<String, String>> {
+    pub async fn decrypt_all_secrets(&self) -> anyhow::Result<HashMap<String, String>> {
         let encryption = self.get_encryption()?;
         let secrets = self.api.db.get_user_secrets(self.user.id, true).await?;
         let mut map = HashMap::with_capacity(secrets.len());

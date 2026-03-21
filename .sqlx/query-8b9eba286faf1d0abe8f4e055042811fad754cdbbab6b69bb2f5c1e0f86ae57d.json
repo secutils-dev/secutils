@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nSELECT h.id, h.responder_id, h.data, h.created_at\nFROM unnest($1::uuid[]) AS r(responder_id)\nCROSS JOIN LATERAL (\n    SELECT *\n    FROM user_data_webhooks_responders_history h2\n    WHERE h2.user_id = $2 AND h2.responder_id = r.responder_id\n    ORDER BY h2.created_at\n) h\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "responder_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "data",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "UuidArray",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "8b9eba286faf1d0abe8f4e055042811fad754cdbbab6b69bb2f5c1e0f86ae57d"
+}

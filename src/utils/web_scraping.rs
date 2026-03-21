@@ -5,6 +5,7 @@ mod page_trackers;
 mod schedule;
 
 pub use self::{
+    api_ext::{ApiTrackerCreateParams, PageTrackerCreateParams},
     api_trackers::{ApiTracker, ApiTrackerConfig, ApiTrackerTarget},
     page_trackers::{PageTracker, PageTrackerConfig, PageTrackerTarget},
     schedule::{expand_job_config, expand_schedule_preset},
@@ -259,7 +260,7 @@ pub mod tests {
     use url::Url;
     use uuid::{Uuid, uuid};
 
-    fn mock_retrack_api_tracker() -> anyhow::Result<Tracker> {
+    pub fn mock_retrack_api_tracker() -> anyhow::Result<Tracker> {
         Ok(Tracker {
             id: uuid!("00000000-0000-0000-0000-000000000010"),
             name: "api_one".to_string(),
