@@ -10,7 +10,7 @@ import importPlugin from 'eslint-plugin-import';
 
 export default tsEsLint.config(
   {
-    ignores: ['dist'],
+    ignores: ['dist', '.parcel-cache'],
   },
   eslint.configs.recommended,
   ...tsEsLint.configs.recommended,
@@ -35,15 +35,12 @@ export default tsEsLint.config(
   },
   {
     files: ['**/*.ts', '**/*.tsx'],
-    extends: [importPlugin.flatConfigs.recommended, importPlugin.flatConfigs.typescript],
+    plugins: { import: importPlugin },
     languageOptions: {
       ecmaVersion: 2018,
       sourceType: 'module',
       parserOptions: { project: ['./tsconfig.json'] },
       globals: { ...globals.browser },
-    },
-    settings: {
-      'import/resolver': { typescript: true },
     },
     rules: {
       '@typescript-eslint/explicit-function-return-type': 'off',

@@ -5,4 +5,5 @@
     "jsx": "react",
     "jsxImportSource": "@emotion/react"
   },
+  "include": ["src", "retrack", "vitest.config.ts"]
 }
