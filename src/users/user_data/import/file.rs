@@ -1,5 +1,6 @@
 use crate::{
     users::{
+        UserSettings,
         secrets::SecretsEncryptionMeta,
         user_data::{
             export::{ExportedPrivateKey, ExportedResponder, ExportedTracker},
@@ -46,6 +47,8 @@ pub struct UserDataImportFileData {
     pub page_trackers: Vec<ExportedTracker>,
     #[serde(default)]
     pub api_trackers: Vec<ExportedTracker>,
+    #[serde(default)]
+    pub settings: Option<UserSettings>,
 }
 
 #[derive(Debug, Deserialize)]

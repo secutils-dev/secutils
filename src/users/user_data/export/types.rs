@@ -1,7 +1,7 @@
 use crate::{
     retrack::RetrackTracker,
     users::{
-        SecretsAccess, scripts::UserScript, secrets::SecretsEncryptionMeta,
+        SecretsAccess, UserSettings, scripts::UserScript, secrets::SecretsEncryptionMeta,
         user_data::shared::DataFileSecret,
     },
     utils::{
@@ -52,6 +52,8 @@ pub struct UserDataExportData {
     pub page_trackers: Vec<ExportedTracker>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub api_trackers: Vec<ExportedTracker>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings: Option<UserSettings>,
 }
 
 /// An exported responder with optional history.
@@ -287,6 +289,7 @@ mod tests {
                 content_security_policies: vec![],
                 page_trackers: vec![],
                 api_trackers: vec![],
+                settings: None,
             },
         };
         assert_json_snapshot!(export, @r###"
@@ -318,6 +321,7 @@ mod tests {
             content_security_policies: vec![],
             page_trackers: vec![],
             api_trackers: vec![],
+            settings: None,
         };
         let json = serde_json::to_value(&data).unwrap();
         // All fields should be omitted since all are empty.
@@ -339,6 +343,7 @@ mod tests {
                 content_security_policies: vec![],
                 page_trackers: vec![],
                 api_trackers: vec![],
+                settings: None,
             },
         };
         let json = serde_json::to_value(&export).unwrap();
@@ -451,7 +456,7 @@ mod tests {
             updated_at: datetime!(2020-06-01 00:00:00 UTC),
         });
         assert_eq!(exported.name, "test-key");
-        assert_eq!(exported.encrypted, true);
+        assert!(exported.encrypted);
         // pkcs8 should be base64-encoded
         let decoded = openssl::base64::decode_block(&exported.pkcs8).unwrap();
         assert_eq!(decoded, vec![10, 20, 30, 40]);

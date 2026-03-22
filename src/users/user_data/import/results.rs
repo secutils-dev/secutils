@@ -75,6 +75,15 @@ pub struct ImportPreviewSummary {
     pub content_security_policies: ImportEntitySummary,
     pub page_trackers: ImportEntitySummary,
     pub api_trackers: ImportEntitySummary,
+    pub settings: ImportSettingsSummary,
+}
+
+/// Settings-specific preview summary.
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportSettingsSummary {
+    pub included: bool,
+    pub has_existing: bool,
 }
 
 /// Per-entity-type result counts.
@@ -107,4 +116,5 @@ pub struct ImportResultsSummary {
     pub content_security_policies: ImportEntityResult,
     pub page_trackers: ImportEntityResult,
     pub api_trackers: ImportEntityResult,
+    pub settings: ImportEntityResult,
 }

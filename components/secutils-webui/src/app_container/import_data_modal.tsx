@@ -27,7 +27,12 @@ import {
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import type { ApplyDeletionSelections, ImportEntitySelection, ImportPreview } from '../model/user_data_export';
+import type {
+  ApplyDeletionSelections,
+  ImportEntitySelection,
+  ImportParams,
+  ImportPreview,
+} from '../model/user_data_export';
 import { executeImport, previewImport } from '../model/user_data_export';
 import type { PageToast } from '../pages/page';
 
@@ -46,6 +51,7 @@ interface EntityRowConfig {
 }
 
 const ENTITY_ROW_CONFIGS: EntityRowConfig[] = [
+  { id: 'settings', label: 'Settings', icon: 'gear' },
   { id: 'scripts', label: 'Scripts', icon: 'console' },
   { id: 'secrets', label: 'Secrets', icon: 'lock' },
   { id: 'responders', label: 'Responders', icon: 'node' },
@@ -82,6 +88,8 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
   const [deletionSelections, setDeletionSelections] = useState<Record<string, Set<string>>>({});
   // Expanded rows in the preview table.
   const [expandedRows, setExpandedRows] = useState<Record<string, ReactNode>>({});
+  // Whether to import settings.
+  const [importSettings, setImportSettings] = useState(true);
 
   const fileHasEncryptedSecrets = fileData != null && (fileData as Record<string, unknown>).secretsEncryption != null;
 
@@ -131,8 +139,9 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
       // Initialize import selections: import everything by default.
       const newSelections: Record<string, Map<string, ImportEntitySelection>> = {};
       for (const [entityType, summary] of Object.entries(result.summary)) {
+        if (!('total' in summary)) continue; // skip settings
         const map = new Map<string, ImportEntitySelection>();
-        const conflictMap = new Map((summary.conflicts ?? []).map((c) => [c.sourceId, c]));
+        const conflictMap = new Map((summary.conflicts ?? []).map((c: { sourceId: string }) => [c.sourceId, c]));
         const data = (fileData as Record<string, unknown>).data as Record<string, unknown[]>;
         const items = (data[entityType] ?? []) as Array<{ id: string; name: string }>;
         for (const item of items) {
@@ -146,6 +155,9 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
         newSelections[entityType] = map;
       }
       setSelections(newSelections);
+
+      // Initialize settings import based on whether settings are included.
+      setImportSettings(result.summary.settings?.included ?? false);
 
       // Initialize deletion selections for Apply mode (all unchecked by default).
       if (mode === 'apply' && result.toDelete) {
@@ -187,16 +199,17 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
         };
       }
 
-      const params = {
+      const params: ImportParams = {
         data: fileData,
         mode,
-        selections: Object.fromEntries(
-          Object.entries(selections).map(([key, map]) => [key, Array.from(map.values())]),
-        ) as Record<string, ImportEntitySelection[]>,
+        selections: {
+          importSettings,
+          ...Object.fromEntries(Object.entries(selections).map(([key, map]) => [key, Array.from(map.values())])),
+        } as ImportParams['selections'],
         secretsPassphrase: fileHasEncryptedSecrets && secretsPassphrase ? secretsPassphrase : undefined,
         applyDeletions,
       };
-      const result = await executeImport(params as Parameters<typeof executeImport>[0]);
+      const result = await executeImport(params);
       const summary: Record<
         string,
         { imported: number; updated: number; skipped: number; deleted: number; failed: number; errors: string[] }
@@ -225,7 +238,17 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
     } finally {
       setImporting(false);
     }
-  }, [fileData, mode, preview, selections, deletionSelections, secretsPassphrase, fileHasEncryptedSecrets, addToast]);
+  }, [
+    fileData,
+    mode,
+    preview,
+    selections,
+    deletionSelections,
+    importSettings,
+    secretsPassphrase,
+    fileHasEncryptedSecrets,
+    addToast,
+  ]);
 
   const toggleEntitySelection = useCallback((entityType: string, sourceId: string) => {
     setSelections((prev) => {
@@ -291,7 +314,8 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
     });
   }, []);
 
-  const hasAnyConflicts = preview != null && Object.values(preview.summary).some((s) => (s.conflicts ?? []).length > 0);
+  const hasAnyConflicts =
+    preview != null && Object.values(preview.summary).some((s) => 'conflicts' in s && (s.conflicts ?? []).length > 0);
 
   // Determine bulk conflict resolution state from all selected conflicting items.
   const bulkConflictResolution = useMemo((): string => {
@@ -319,7 +343,10 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
       const data = (fileData as Record<string, unknown>).data as Record<string, unknown[]>;
       return ((data[entityType] ?? []) as Array<{ id: string; name: string }>).map((item) => ({
         ...item,
-        hasConflict: (summary.conflicts ?? []).some((c) => c.sourceId === item.id),
+        hasConflict:
+          'conflicts' in summary
+            ? (summary.conflicts ?? []).some((c: { sourceId: string }) => c.sourceId === item.id)
+            : false,
       }));
     },
     [preview, fileData],
@@ -350,7 +377,7 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
       const conflictMap = new Map<string, unknown>();
       if (preview) {
         const summary = preview.summary[entityType as keyof typeof preview.summary];
-        if (summary) {
+        if (summary && 'conflicts' in summary) {
           for (const c of summary.conflicts ?? []) {
             conflictMap.set(c.sourceId, c);
           }
@@ -496,8 +523,9 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
   const visibleRows = useMemo(() => {
     if (!preview) return [];
     return ENTITY_ROW_CONFIGS.filter((r) => {
+      if (r.id === 'settings') return preview.summary.settings?.included ?? false;
       const summary = preview.summary[r.id as keyof typeof preview.summary];
-      const hasItems = summary && summary.total > 0;
+      const hasItems = summary && 'total' in summary && summary.total > 0;
       const hasDeletes = getDeleteItems(r.id).length > 0;
       return hasItems || hasDeletes;
     });
@@ -520,7 +548,7 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
     (entityType: string): number => {
       if (!preview) return 0;
       const summary = preview.summary[entityType as keyof typeof preview.summary];
-      return summary ? summary.total : 0;
+      return summary && 'total' in summary ? summary.total : 0;
     },
     [preview],
   );
@@ -543,17 +571,17 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
     return count;
   }, [selections]);
 
+  const hasSettingsInFile = preview?.summary.settings?.included ?? false;
+  const allGloballySelected = importTotalSelected === importTotalAvailable && (!hasSettingsInFile || importSettings);
+  const noneGloballySelected = importTotalSelected === 0 && (!hasSettingsInFile || !importSettings);
+
   const toggleAllGlobalImport = useCallback(() => {
+    const shouldSelectAll = !allGloballySelected;
+    if (hasSettingsInFile) {
+      setImportSettings(shouldSelectAll);
+    }
     setSelections((prev) => {
-      const currentTotal = Object.values(prev).reduce((sum, map) => {
-        let c = 0;
-        map.forEach((sel) => {
-          if (sel.action === 'import') c++;
-        });
-        return sum + c;
-      }, 0);
-      const maxTotal = Object.values(prev).reduce((sum, map) => sum + map.size, 0);
-      const newAction = currentTotal === maxTotal ? 'skip' : 'import';
+      const newAction = shouldSelectAll ? 'import' : 'skip';
       const next: Record<string, Map<string, ImportEntitySelection>> = {};
       for (const [key, map] of Object.entries(prev)) {
         const newMap = new Map(map);
@@ -564,7 +592,7 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
       }
       return next;
     });
-  }, []);
+  }, [allGloballySelected, hasSettingsInFile]);
 
   const outerColumns: Array<EuiBasicTableColumn<EntityRowConfig>> = useMemo(
     () => [
@@ -573,13 +601,22 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
         name: (
           <EuiCheckbox
             id="import-global-selectall"
-            checked={importTotalSelected === importTotalAvailable && importTotalAvailable > 0}
-            indeterminate={importTotalSelected > 0 && importTotalSelected < importTotalAvailable}
+            checked={allGloballySelected}
+            indeterminate={!allGloballySelected && !noneGloballySelected}
             onChange={toggleAllGlobalImport}
           />
         ),
         width: '36px',
         render: (_id: string, row: EntityRowConfig) => {
+          if (row.id === 'settings') {
+            return (
+              <EuiCheckbox
+                id="import-cat-settings"
+                checked={importSettings}
+                onChange={() => setImportSettings((prev) => !prev)}
+              />
+            );
+          }
           const total = totalForType(row.id);
           const selected = selectedCountForType(row.id);
           if (total === 0) return null;
@@ -612,6 +649,11 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
         width: '80px',
         align: 'right' as const,
         render: (row: EntityRowConfig) => {
+          if (row.id === 'settings') {
+            return preview?.summary.settings?.hasExisting && importSettings ? (
+              <EuiBadge color="warning">will overwrite</EuiBadge>
+            ) : null;
+          }
           const total = totalForType(row.id);
           const selected = selectedCountForType(row.id);
           if (total === 0) {
@@ -629,24 +671,29 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
         name: '',
         width: '40px',
         isExpander: true,
-        render: (row: EntityRowConfig) => (
-          <EuiButtonIcon
-            onClick={() => toggleExpanded(row.id)}
-            aria-label={expandedRows[row.id] ? 'Collapse' : 'Expand'}
-            iconType={expandedRows[row.id] ? 'arrowDown' : 'arrowRight'}
-          />
-        ),
+        render: (row: EntityRowConfig) => {
+          if (row.id === 'settings') return null;
+          return (
+            <EuiButtonIcon
+              onClick={() => toggleExpanded(row.id)}
+              aria-label={expandedRows[row.id] ? 'Collapse' : 'Expand'}
+              iconType={expandedRows[row.id] ? 'arrowDown' : 'arrowRight'}
+            />
+          );
+        },
       },
     ],
     [
+      allGloballySelected,
+      noneGloballySelected,
       totalForType,
       selectedCountForType,
       getDeleteItems,
       expandedRows,
+      importSettings,
+      preview,
       toggleAllEntitySelections,
       toggleExpanded,
-      importTotalSelected,
-      importTotalAvailable,
       toggleAllGlobalImport,
     ],
   );
@@ -749,18 +796,20 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
             No items found in the import file.
           </EuiText>
         ) : (
-          <EuiBasicTable
-            items={visibleRows}
-            itemId="id"
-            responsiveBreakpoint={false}
-            columns={outerColumns}
-            itemIdToExpandedRowMap={expandedRows}
-          />
+          visibleRows.length > 0 && (
+            <EuiBasicTable
+              items={visibleRows}
+              itemId="id"
+              responsiveBreakpoint={false}
+              columns={outerColumns}
+              itemIdToExpandedRowMap={expandedRows}
+            />
+          )
         )}
       </>
     );
   } else if (step === 'result' && importResult) {
-    const entityTypeLabels: Record<string, string> = {};
+    const entityTypeLabels: Record<string, string> = { settings: 'Settings' };
     for (const r of ENTITY_ROW_CONFIGS) {
       entityTypeLabels[r.id] = r.label;
     }

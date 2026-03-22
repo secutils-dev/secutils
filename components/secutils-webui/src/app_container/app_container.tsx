@@ -13,9 +13,8 @@ import {
   getUserShareId,
   removeUserShareId,
   ResponseError,
-  setUserData,
+  setUserSettings,
   USER_SETTINGS_KEY_COMMON_UI_THEME,
-  USER_SETTINGS_USER_DATA_TYPE,
 } from '../model';
 import type { PageToast } from '../pages/page';
 
@@ -80,7 +79,7 @@ export function AppContainer() {
       setSettings((currentSettings) => ({ ...currentSettings, ...settingsToUpdate }));
       setLocalSettings((currentSettings) => ({ ...currentSettings, ...settingsToUpdate }));
 
-      setUserData<UserSettings>(USER_SETTINGS_USER_DATA_TYPE, settingsToUpdate)
+      setUserSettings(settingsToUpdate)
         .then((settings) => {
           setSettings(settings ?? undefined);
           setLocalSettings(settings ?? undefined);

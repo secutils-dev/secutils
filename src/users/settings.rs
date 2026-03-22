@@ -1,3 +1,6 @@
+mod api_ext;
+mod database_ext;
+
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -51,7 +54,7 @@ const KNOWN_USER_SETTINGS: [KnownUserSettingDescriptor; 6] = [
 ];
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
-pub struct UserSettings(BTreeMap<String, serde_json::Value>);
+pub struct UserSettings(pub BTreeMap<String, serde_json::Value>);
 
 #[derive(Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct UserSettingsSetter(pub BTreeMap<String, Option<serde_json::Value>>);

@@ -1284,7 +1284,7 @@ mod tests {
         let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
-        let templates = vec![
+        let templates = [
             CertificateTemplate {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "ct-name".to_string(),
@@ -1519,7 +1519,7 @@ mod tests {
         let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
-        let private_keys = vec![
+        let private_keys = [
             PrivateKey {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "pk-name".to_string(),

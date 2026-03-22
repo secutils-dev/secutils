@@ -8,6 +8,7 @@ export type ExportTrackableSelection =
 
 export interface ExportParams {
   include: {
+    settings?: boolean;
     scripts?: ExportSelection;
     secrets?: ExportSelection;
     responders?: ExportTrackableSelection;
@@ -36,6 +37,11 @@ export interface ImportEntitySummary {
   conflicts: ImportConflict[];
 }
 
+export interface ImportSettingsSummary {
+  included: boolean;
+  hasExisting: boolean;
+}
+
 export interface ApplyDeleteItem {
   id: string;
   name: string;
@@ -56,6 +62,7 @@ export interface ImportPreview {
   valid: boolean;
   version: number;
   summary: {
+    settings: ImportSettingsSummary;
     scripts: ImportEntitySummary;
     secrets: ImportEntitySummary;
     responders: ImportEntitySummary;
@@ -90,6 +97,7 @@ export interface ImportParams {
   data: unknown;
   mode: 'merge' | 'apply';
   selections: {
+    importSettings?: boolean;
     scripts: ImportEntitySelection[];
     secrets: ImportEntitySelection[];
     responders: ImportEntitySelection[];
@@ -114,6 +122,7 @@ export interface ImportEntityResult {
 
 export interface ImportResult {
   results: {
+    settings: ImportEntityResult;
     scripts: ImportEntityResult;
     secrets: ImportEntityResult;
     responders: ImportEntityResult;

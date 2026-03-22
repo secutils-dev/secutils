@@ -76,11 +76,18 @@ test.describe('Data Export and Import', () => {
     expect(createResponse.ok()).toBeTruthy();
     const script = await createResponse.json();
 
+    // Set some user settings to export.
+    const setSettingsRes = await page.request.post('/api/user/settings', {
+      data: { 'common.uiTheme': 'dark' },
+    });
+    expect(setSettingsRes.ok()).toBeTruthy();
+
     // Call the export API.
     const exportResponse = await page.request.post('/api/user/data/_export', {
       data: {
         include: {
           scripts: { type: 'selected', ids: [script.id] },
+          settings: true,
         },
       },
     });
@@ -92,9 +99,15 @@ test.describe('Data Export and Import', () => {
     expect(exportData.data.scripts).toHaveLength(1);
     expect(exportData.data.scripts[0].name).toBe('export_test_script');
     expect(exportData.data.scripts[0].content).toBe('console.log("test")');
+    expect(exportData.data.settings).toBeDefined();
+    expect(exportData.data.settings['common.uiTheme']).toBe('dark');
 
     // Clean up.
     await page.request.delete(`/api/user/scripts/${encodeURIComponent(script.id)}`);
+    // Reset settings.
+    await page.request.post('/api/user/settings', {
+      data: { 'common.uiTheme': null },
+    });
   });
 
   test('import preview API detects conflicts', async ({ page }) => {
@@ -648,6 +661,10 @@ test.describe('Data Export and Import', () => {
             ],
           },
         ],
+        settings: {
+          'common.uiTheme': 'dark',
+          'common.showOnlyFavorites': true,
+        },
         apiTrackers: [
           {
             id: UUID_API_TRACKER,
@@ -705,6 +722,7 @@ test.describe('Data Export and Import', () => {
     expect(preview.summary.contentSecurityPolicies.total).toBe(1);
     expect(preview.summary.pageTrackers.total).toBe(1);
     expect(preview.summary.apiTrackers.total).toBe(1);
+    expect(preview.summary.settings.included).toBe(true);
 
     // ── Step 6: Execute import ─────────────────────────────────────────
     const importRes = await page.request.post('/api/user/data/_import', {
@@ -721,12 +739,14 @@ test.describe('Data Export and Import', () => {
           contentSecurityPolicies: [{ sourceId: UUID_CSP, action: 'import' }],
           pageTrackers: [{ sourceId: UUID_PAGE_TRACKER, action: 'import' }],
           apiTrackers: [{ sourceId: UUID_API_TRACKER, action: 'import' }],
+          importSettings: true,
         },
       },
     });
     expect(importRes.ok()).toBeTruthy();
     const importResult = await importRes.json();
 
+    expect(importResult.results.settings.imported).toBe(1);
     expect(importResult.results.scripts.imported).toBe(1);
     expect(importResult.results.secrets.imported).toBe(1);
     expect(importResult.results.responders.imported).toBe(1);
@@ -735,6 +755,13 @@ test.describe('Data Export and Import', () => {
     expect(importResult.results.contentSecurityPolicies.imported).toBe(1);
     expect(importResult.results.pageTrackers.imported).toBe(1);
     expect(importResult.results.apiTrackers.imported).toBe(1);
+
+    // ── Step 7-settings: Validate imported settings ────────────────────
+    const settingsRes = await page.request.get('/api/user/settings');
+    expect(settingsRes.ok()).toBeTruthy();
+    const importedSettings = await settingsRes.json();
+    expect(importedSettings['common.uiTheme']).toBe('dark');
+    expect(importedSettings['common.showOnlyFavorites']).toBe(true);
 
     // ── Step 7a: Validate script ───────────────────────────────────────
     const scriptsRes = await page.request.get('/api/user/scripts');

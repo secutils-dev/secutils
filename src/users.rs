@@ -2,12 +2,10 @@ pub mod api_ext;
 mod database_ext;
 mod scripts;
 mod secrets;
+mod settings;
 mod user;
 mod user_data;
-mod user_data_key;
-mod user_data_namespace;
 mod user_id;
-mod user_settings;
 mod user_share;
 mod user_subscription;
 
@@ -15,21 +13,17 @@ pub use self::{
     api_ext::errors::UserSignupError,
     scripts::ScriptContext,
     secrets::SecretsAccess,
+    settings::{UserSettings, UserSettingsSetter},
     user::User,
     user_data::{
-        UserData, UserDataExportParams, UserDataImportParams, UserDataImportPreviewParams,
-        execute_import, generate_export, generate_import_preview,
+        UserDataExportParams, UserDataImportParams, UserDataImportPreviewParams, execute_import,
+        generate_export, generate_import_preview,
     },
-    user_data_key::UserDataKey,
-    user_data_namespace::UserDataNamespace,
     user_id::UserId,
-    user_settings::{UserSettings, UserSettingsSetter},
     user_share::{ClientUserShare, SharedResource, UserShare, UserShareId},
     user_subscription::{
         ClientSubscriptionFeatures, SubscriptionFeatures, SubscriptionTier, UserSubscription,
     },
 };
 
-pub(crate) use self::{
-    api_ext::user_data_setters::DictionaryDataUserDataSetter, secrets::RawSecretsAccess,
-};
+pub(crate) use self::secrets::RawSecretsAccess;

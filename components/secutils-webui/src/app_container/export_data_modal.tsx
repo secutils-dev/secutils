@@ -63,13 +63,14 @@ interface HistoryState {
 type EntityCategory = keyof SelectionState;
 
 interface EntityRow {
-  id: EntityCategory;
+  id: EntityCategory | 'settings';
   label: string;
   icon: string;
   historyKey?: keyof HistoryState;
 }
 
 const ENTITY_ROWS: EntityRow[] = [
+  { id: 'settings', label: 'Settings', icon: 'gear' },
   { id: 'scripts', label: 'Scripts', icon: 'console' },
   { id: 'secrets', label: 'Secrets', icon: 'lock' },
   { id: 'responders', label: 'Responders', icon: 'node', historyKey: 'responders' },
@@ -114,6 +115,7 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
     apiTrackers: false,
   });
   const [expandedRows, setExpandedRows] = useState<Record<string, ReactNode>>({});
+  const [includeSettings, setIncludeSettings] = useState(true);
   const [includeSecretValues, setIncludeSecretValues] = useState(false);
   const [secretsPassphrase, setSecretsPassphrase] = useState('');
   const [secretsPassphraseRepeat, setSecretsPassphraseRepeat] = useState('');
@@ -186,14 +188,17 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
 
   const totalSelected = Object.values(selection).reduce((sum, set) => sum + set.size, 0);
   const totalAvailable = Object.values(allItems).reduce((sum, items) => sum + items.length, 0);
+  const hasAnythingSelected = totalSelected > 0 || includeSettings;
+
+  const allGloballySelected = totalSelected === totalAvailable && includeSettings;
+  const noneGloballySelected = totalSelected === 0 && !includeSettings;
 
   const toggleAllGlobal = useCallback(() => {
-    setSelection((prev) => {
-      const currentTotal = Object.values(prev).reduce((sum, set) => sum + set.size, 0);
-      const maxTotal = Object.values(allItems).reduce((sum, items) => sum + items.length, 0);
-      if (currentTotal === maxTotal) {
-        // Deselect all.
-        const empty: SelectionState = {
+    const shouldSelectAll = !allGloballySelected;
+    setIncludeSettings(shouldSelectAll);
+    setSelection(() => {
+      if (!shouldSelectAll) {
+        return {
           scripts: new Set(),
           secrets: new Set(),
           responders: new Set(),
@@ -203,10 +208,8 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
           pageTrackers: new Set(),
           apiTrackers: new Set(),
         };
-        return empty;
       }
-      // Select all.
-      const full: SelectionState = {
+      return {
         scripts: new Set(allItems.scripts.map((i) => i.id)),
         secrets: new Set(allItems.secrets.map((i) => i.id)),
         responders: new Set(allItems.responders.map((i) => i.id)),
@@ -216,9 +219,8 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
         pageTrackers: new Set(allItems.pageTrackers.map((i) => i.id)),
         apiTrackers: new Set(allItems.apiTrackers.map((i) => i.id)),
       };
-      return full;
     });
-  }, [allItems]);
+  }, [allItems, allGloballySelected]);
 
   const handleExport = useCallback(async () => {
     setExporting(true);
@@ -233,6 +235,7 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
       };
       const params: ExportParams = {
         include: {
+          settings: includeSettings || undefined,
           scripts: sel('scripts'),
           secrets: sel('secrets'),
           responders: trackableSel('responders', 'responders'),
@@ -256,16 +259,20 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
     } finally {
       setExporting(false);
     }
-  }, [selection, history, includeSecretValues, secretsPassphrase, addToast, onClose]);
+  }, [selection, history, includeSettings, includeSecretValues, secretsPassphrase, addToast, onClose]);
 
-  // Only show entity types that have items.
-  const visibleRows = useMemo(() => ENTITY_ROWS.filter((r) => allItems[r.id].length > 0), [allItems]);
+  // Only show entity types that have items (settings row is always visible).
+  const visibleRows = useMemo(
+    () => ENTITY_ROWS.filter((r) => r.id === 'settings' || allItems[r.id as EntityCategory].length > 0),
+    [allItems],
+  );
 
   // Build expanded row content. We need to rebuild when selection changes.
   const buildExpandedContent = useCallback(
     (row: EntityRow): ReactNode => {
-      const items = allItems[row.id];
-      const sel = selection[row.id];
+      const category = row.id as EntityCategory;
+      const items = allItems[category];
+      const sel = selection[category];
       const allSelected = sel.size === items.length && items.length > 0;
       const someSelected = sel.size > 0 && sel.size < items.length;
 
@@ -278,7 +285,7 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
               label="Name"
               checked={allSelected}
               indeterminate={someSelected}
-              onChange={() => toggleAllInCategory(row.id)}
+              onChange={() => toggleAllInCategory(category)}
             />
           ),
           render: (_name: string, item: NamedItem) => (
@@ -286,7 +293,7 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
               id={`export-inner-${row.id}-${item.id}`}
               label={item.name}
               checked={sel.has(item.id)}
-              onChange={() => toggleItem(row.id, item.id)}
+              onChange={() => toggleItem(category, item.id)}
             />
           ),
         },
@@ -417,15 +424,25 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
         name: (
           <EuiCheckbox
             id="export-global-selectall"
-            checked={totalSelected === totalAvailable && totalAvailable > 0}
-            indeterminate={totalSelected > 0 && totalSelected < totalAvailable}
+            checked={allGloballySelected}
+            indeterminate={!allGloballySelected && !noneGloballySelected}
             onChange={toggleAllGlobal}
           />
         ),
         width: '36px',
         render: (_id: string, row: EntityRow) => {
-          const items = allItems[row.id];
-          const sel = selection[row.id];
+          if (row.id === 'settings') {
+            return (
+              <EuiCheckbox
+                id="export-cat-settings"
+                checked={includeSettings}
+                onChange={() => setIncludeSettings((prev) => !prev)}
+              />
+            );
+          }
+          const category = row.id as EntityCategory;
+          const items = allItems[category];
+          const sel = selection[category];
           const allSelected = sel.size === items.length && items.length > 0;
           const someSelected = sel.size > 0 && sel.size < items.length;
           return (
@@ -433,7 +450,7 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
               id={`export-cat-${row.id}`}
               checked={allSelected}
               indeterminate={someSelected}
-              onChange={() => toggleAllInCategory(row.id)}
+              onChange={() => toggleAllInCategory(category)}
             />
           );
         },
@@ -457,8 +474,10 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
         width: '80px',
         align: 'right' as const,
         render: (row: EntityRow) => {
-          const items = allItems[row.id];
-          const sel = selection[row.id];
+          if (row.id === 'settings') return null;
+          const category = row.id as EntityCategory;
+          const items = allItems[category];
+          const sel = selection[category];
           return (
             <EuiText size="s" color={sel.size === items.length ? 'success' : sel.size > 0 ? 'warning' : 'subdued'}>
               {sel.size}/{items.length}
@@ -470,23 +489,27 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
         name: '',
         width: '40px',
         isExpander: true,
-        render: (row: EntityRow) => (
-          <EuiButtonIcon
-            onClick={() => toggleExpanded(row)}
-            aria-label={expandedRows[row.id] ? 'Collapse' : 'Expand'}
-            iconType={expandedRows[row.id] ? 'arrowDown' : 'arrowRight'}
-          />
-        ),
+        render: (row: EntityRow) => {
+          if (row.id === 'settings') return null;
+          return (
+            <EuiButtonIcon
+              onClick={() => toggleExpanded(row)}
+              aria-label={expandedRows[row.id] ? 'Collapse' : 'Expand'}
+              iconType={expandedRows[row.id] ? 'arrowDown' : 'arrowRight'}
+            />
+          );
+        },
       },
     ],
     [
+      allGloballySelected,
       allItems,
+      noneGloballySelected,
       selection,
       expandedRows,
+      includeSettings,
       toggleAllInCategory,
       toggleExpanded,
-      totalSelected,
-      totalAvailable,
       toggleAllGlobal,
     ],
   );
@@ -503,10 +526,6 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
               <EuiLoadingSpinner size="l" />
             </EuiFlexItem>
           </EuiFlexGroup>
-        ) : visibleRows.length === 0 ? (
-          <EuiText size="s" color="subdued">
-            No data available to export.
-          </EuiText>
         ) : (
           <EuiBasicTable
             items={visibleRows}
@@ -524,13 +543,13 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
           fill
           isLoading={exporting}
           disabled={
-            totalSelected === 0 ||
+            !hasAnythingSelected ||
             loading ||
             (includeSecretValues && (secretsPassphrase.length < 8 || secretsPassphrase !== secretsPassphraseRepeat))
           }
           iconType="exportAction"
         >
-          Export {totalSelected > 0 ? `(${totalSelected} items)` : ''}
+          Export {hasAnythingSelected ? `(${totalSelected + (includeSettings ? 1 : 0)} items)` : ''}
         </EuiButton>
       </EuiModalFooter>
     </EuiModal>

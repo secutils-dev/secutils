@@ -25,7 +25,7 @@ mod tests {
             conflict_resolution: None,
         };
         let sel_ref = &sel;
-        assert!(should_skip(Some(&&sel_ref)));
+        assert!(should_skip(Some(&sel_ref)));
     }
 
     #[test]

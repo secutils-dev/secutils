@@ -55,7 +55,7 @@ mod tests {
         };
         let existing: HashSet<String> = HashSet::new();
         let sel_ref = &sel;
-        let result = resolve_name("foo", Some(&&sel_ref), &existing);
+        let result = resolve_name("foo", Some(&sel_ref), &existing);
         assert_eq!(result, "foo (Copy 1)");
     }
 }

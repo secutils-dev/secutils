@@ -39,7 +39,7 @@ use importers::{
 };
 use results::{
     ApplyDeleteItem, ApplyDeleteSummary, ImportEntitySummary, ImportPreviewSummary,
-    ImportResultsSummary, UserDataImportPreview, UserDataImportResult,
+    ImportResultsSummary, ImportSettingsSummary, UserDataImportPreview, UserDataImportResult,
 };
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -251,6 +251,14 @@ pub async fn generate_import_preview<DR: DnsResolver, ET: EmailTransport>(
         Vec::new()
     };
 
+    // Settings preview: check if the file includes settings and if the user has existing settings.
+    let settings_included = file.data.settings.is_some();
+    let has_existing_settings = if settings_included || is_apply {
+        api.settings(user).get_settings().await?.is_some()
+    } else {
+        false
+    };
+
     let to_delete = is_apply.then_some(ApplyDeleteSummary {
         scripts: scripts_deletions,
         secrets: secrets_deletions,
@@ -274,6 +282,10 @@ pub async fn generate_import_preview<DR: DnsResolver, ET: EmailTransport>(
             content_security_policies: csps_summary,
             page_trackers: page_trackers_summary,
             api_trackers: api_trackers_summary,
+            settings: ImportSettingsSummary {
+                included: settings_included,
+                has_existing: has_existing_settings,
+            },
         },
         warnings,
         to_delete,
@@ -409,7 +421,25 @@ pub async fn execute_import<DR: DnsResolver, ET: EmailTransport>(
     )
     .await;
 
-    // 9. Apply mode deletions (reverse dependency order: trackers → CSPs → keys → templates → responders → secrets → scripts).
+    // 9. Import settings.
+    let mut settings_result = ImportEntityResult::default();
+    if params.selections.import_settings {
+        if let Some(ref settings) = file.data.settings {
+            match api.settings(user).replace_settings(settings).await {
+                Ok(_) => settings_result.imported = 1,
+                Err(err) => {
+                    settings_result.failed = 1;
+                    settings_result
+                        .errors
+                        .push(format!("Failed to import settings: {err}"));
+                }
+            }
+        }
+    } else if file.data.settings.is_some() {
+        settings_result.skipped = 1;
+    }
+
+    // 10. Apply mode deletions (reverse dependency order: trackers → CSPs → keys → templates → responders → secrets → scripts).
     if params.mode == ImportMode::Apply
         && let Some(ref deletions) = params.apply_deletions
     {
@@ -493,6 +523,7 @@ pub async fn execute_import<DR: DnsResolver, ET: EmailTransport>(
             content_security_policies: csps_result,
             page_trackers: page_trackers_result,
             api_trackers: api_trackers_result,
+            settings: settings_result,
         },
     })
 }
@@ -524,6 +555,7 @@ mod tests {
                 content_security_policies: vec![],
                 page_trackers: vec![],
                 api_trackers: vec![],
+                settings: None,
             },
         }
     }
@@ -600,6 +632,7 @@ mod tests {
                 content_security_policies: vec![],
                 page_trackers: vec![],
                 api_trackers: vec![],
+                settings: None,
             },
         };
 
@@ -669,6 +702,7 @@ mod tests {
                 content_security_policies: vec![],
                 page_trackers: vec![],
                 api_trackers: vec![],
+                settings: None,
             },
         };
 

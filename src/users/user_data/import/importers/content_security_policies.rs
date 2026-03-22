@@ -120,6 +120,7 @@ mod tests {
                 content_security_policies: csps,
                 page_trackers: vec![],
                 api_trackers: vec![],
+                settings: None,
             },
         }
     }

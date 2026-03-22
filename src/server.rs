@@ -90,8 +90,11 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
                     .route("/status", web::post().to(handlers::status_set))
                     .route("/search", web::post().to(handlers::search))
                     .route("/send_message", web::post().to(handlers::send_message))
-                    .route("/user/data", web::post().to(handlers::user_data_set))
-                    .route("/user/data", web::get().to(handlers::user_data_get))
+                    .route(
+                        "/user/settings",
+                        web::post().to(handlers::user_settings_set),
+                    )
+                    .route("/user/settings", web::get().to(handlers::user_settings_get))
                     .route(
                         "/user/data/_export",
                         web::post().to(handlers::user_data_export),

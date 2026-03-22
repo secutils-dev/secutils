@@ -1013,7 +1013,7 @@ mod tests {
         let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
-        let trackers = vec![
+        let trackers = [
             MockPageTrackerBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",
@@ -1126,7 +1126,7 @@ mod tests {
         let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
-        let trackers = vec![
+        let trackers = [
             MockApiTrackerBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",

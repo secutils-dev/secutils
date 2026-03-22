@@ -1,7 +1,7 @@
 use crate::{
     error::Error as SecutilsError,
     server::{AppState, SubscriptionState, UiPlatformState, UiState},
-    users::{ClientUserShare, User, UserDataNamespace, UserShare},
+    users::{ClientUserShare, User, UserShare},
 };
 use actix_web::{HttpResponse, web};
 use anyhow::anyhow;
@@ -15,12 +15,7 @@ pub async fn ui_state_get(
 ) -> Result<HttpResponse, SecutilsError> {
     // Settings only available for authenticated users.
     let settings = if let Some(ref user) = user {
-        state
-            .api
-            .users()
-            .get_data(user.id, UserDataNamespace::UserSettings)
-            .await?
-            .map(|user_data| user_data.value)
+        state.api.settings(user).get_settings().await?
     } else {
         None
     };

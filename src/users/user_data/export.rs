@@ -260,6 +260,13 @@ pub async fn generate_export<DR: DnsResolver, ET: EmailTransport>(
         }
     };
 
+    // Export settings.
+    let settings = if include.settings {
+        api.settings(user).get_settings().await?
+    } else {
+        None
+    };
+
     Ok(UserDataExport {
         version: EXPORT_VERSION,
         exported_at: OffsetDateTime::now_utc(),
@@ -273,6 +280,7 @@ pub async fn generate_export<DR: DnsResolver, ET: EmailTransport>(
             content_security_policies,
             page_trackers,
             api_trackers,
+            settings,
         },
     })
 }
@@ -326,6 +334,7 @@ mod tests {
             content_security_policies: None,
             page_trackers: None,
             api_trackers: None,
+            settings: false,
         }
     }
 
@@ -1258,6 +1267,7 @@ mod tests {
                     ids: vec![fake_id],
                     include_history: false,
                 }),
+                settings: false,
             },
         };
 
@@ -1362,7 +1372,7 @@ mod tests {
                 .query_param("tag", &tags[2]);
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&[retrack_tracker.clone()]);
+                .json_body_obj(&std::slice::from_ref(&retrack_tracker));
         });
 
         // Mock POST /api/trackers/revisions - assert size equals subscription limit (3, not DEFAULT=10).
@@ -1370,7 +1380,7 @@ mod tests {
             id: uuid::uuid!("00000000-0000-0000-0000-000000000001"),
             tracker_id: retrack_tracker.id,
             data: retrack_types::trackers::TrackerDataValue::new(json!("rev1")),
-            created_at: time::OffsetDateTime::from_unix_timestamp(946720800)?,
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
         };
         let retrack_revisions_mock = retrack_server.mock(|when, then| {
             when.method(httpmock::Method::POST)
@@ -1481,7 +1491,7 @@ mod tests {
                 .query_param("tag", &tags[2]);
             then.status(200)
                 .header("Content-Type", "application/json")
-                .json_body_obj(&[retrack_tracker.clone()]);
+                .json_body_obj(&std::slice::from_ref(&retrack_tracker));
         });
 
         // Mock POST /api/trackers/revisions - assert size equals subscription limit (3, not DEFAULT=10).
@@ -1489,7 +1499,7 @@ mod tests {
             id: uuid::uuid!("00000000-0000-0000-0000-000000000001"),
             tracker_id: retrack_tracker.id,
             data: retrack_types::trackers::TrackerDataValue::new(json!("api-rev1")),
-            created_at: time::OffsetDateTime::from_unix_timestamp(946720800)?,
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
         };
         let retrack_revisions_mock = retrack_server.mock(|when, then| {
             when.method(httpmock::Method::POST)

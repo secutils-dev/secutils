@@ -77,6 +77,8 @@ pub struct ImportSelections {
     pub page_trackers: Vec<ImportEntitySelection>,
     #[serde(default)]
     pub api_trackers: Vec<ImportEntitySelection>,
+    #[serde(default)]
+    pub import_settings: bool,
 }
 
 #[derive(Debug, Deserialize)]

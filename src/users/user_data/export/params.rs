@@ -58,6 +58,8 @@ pub struct UserDataExportInclude {
     pub page_trackers: Option<ExportTrackableSelection>,
     #[serde(default)]
     pub api_trackers: Option<ExportTrackableSelection>,
+    #[serde(default)]
+    pub settings: bool,
 }
 
 #[cfg(test)]

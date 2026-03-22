@@ -137,6 +137,7 @@ mod tests {
                 content_security_policies: vec![],
                 page_trackers: vec![],
                 api_trackers: vec![],
+                settings: None,
             },
         }
     }

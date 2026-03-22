@@ -9,7 +9,7 @@ import Steps from '@site/src/components/Steps';
 
 # Export & Import Data
 
-Secutils.dev allows you to export and import your data for backup, migration between accounts, or configuration management. The export/import feature supports all entity types: scripts, secrets, responders (with history), certificate templates, private keys, content security policies, and trackers (page and API, with history).
+Secutils.dev allows you to export and import your data for backup, migration between accounts, or configuration management. The export/import feature supports all entity types: scripts, secrets, responders (with history), certificate templates, private keys, content security policies, trackers (page and API, with history), and user settings.
 
 ## Getting started
 
@@ -45,6 +45,7 @@ The export feature lets you selectively choose which entities to include in the 
 - **Content security policies** - CSP configurations
 - **Page trackers** - web page change trackers, optionally including revision history
 - **API trackers** - API endpoint trackers, optionally including revision history
+- **Settings** - user preferences such as UI theme, favorites, and sidebar state
 
 When exporting secrets, you can optionally include their values by enabling **Include secret values** and providing a passphrase (minimum 8 characters). The values are encrypted using AES-256-GCM with an Argon2id-derived key, so the export file is safe to store - but you must remember the passphrase to import the values later.
 
@@ -90,7 +91,8 @@ The export file uses JSON format with a version field for forward compatibility:
     "privateKeys": [...],
     "contentSecurityPolicies": [...],
     "pageTrackers": [...],
-    "apiTrackers": [...]
+    "apiTrackers": [...],
+    "settings": { "common.uiTheme": "dark", ... }
   }
 }
 ```

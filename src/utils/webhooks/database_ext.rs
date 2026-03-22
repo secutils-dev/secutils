@@ -1583,7 +1583,7 @@ mod tests {
         let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
-        let responders = vec![
+        let responders = [
             MockResponderBuilder::create(
                 uuid!("00000000-0000-0000-0000-000000000001"),
                 "some-name",

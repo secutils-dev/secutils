@@ -1,14 +1,12 @@
 mod raw_user;
-mod raw_user_data;
 mod raw_user_share;
 
-use self::{raw_user::RawUser, raw_user_data::RawUserData, raw_user_share::RawUserShare};
+use self::{raw_user::RawUser, raw_user_share::RawUserShare};
 use crate::{
     database::Database,
-    users::{SharedResource, User, UserData, UserDataKey, UserId, UserShare, UserShareId},
+    users::{SharedResource, User, UserId, UserShare, UserShareId},
 };
 use anyhow::bail;
-use serde::{Deserialize, Serialize};
 use sqlx::{query, query_as, query_scalar};
 
 /// Extends primary database with the user management-related methods.
@@ -194,84 +192,6 @@ RETURNING id
         .map(UserId::from))
     }
 
-    /// Retrieves user data from the `UserData` table using user id and data key.
-    pub async fn get_user_data<R: for<'de> Deserialize<'de>>(
-        &self,
-        user_id: UserId,
-        user_data_key: impl Into<UserDataKey<'_>>,
-    ) -> anyhow::Result<Option<UserData<R>>> {
-        let user_data_key = user_data_key.into();
-        let namespace = user_data_key.namespace.as_ref();
-        let key = user_data_key.key.unwrap_or_default();
-        query_as!(
-            RawUserData,
-            r#"
-SELECT user_id, key, value, timestamp
-FROM user_data
-WHERE user_id = $1 AND namespace = $2 AND key = $3
-                "#,
-            *user_id,
-            namespace,
-            key
-        )
-        .fetch_optional(&self.pool)
-        .await?
-        .map(UserData::try_from)
-        .transpose()
-    }
-
-    /// Sets user data in the `UserData` table using user id and data key.
-    pub async fn upsert_user_data<R: Serialize>(
-        &self,
-        user_data_key: impl Into<UserDataKey<'_>>,
-        user_data: UserData<R>,
-    ) -> anyhow::Result<()> {
-        let user_data_key = user_data_key.into();
-        let namespace = user_data_key.namespace.as_ref();
-        let key = user_data_key.key.unwrap_or_default();
-        let raw_user_data = RawUserData::try_from(&user_data)?;
-        query!(
-            r#"
-INSERT INTO user_data (user_id, namespace, key, value, timestamp)
-VALUES ( $1, $2, $3, $4, $5 )
-ON CONFLICT(user_id, namespace, key) DO UPDATE SET value=excluded.value, timestamp=excluded.timestamp
-        "#,
-            raw_user_data.user_id,
-            namespace,
-            key,
-            raw_user_data.value,
-            raw_user_data.timestamp
-        )
-            .execute(&self.pool)
-            .await?;
-
-        Ok(())
-    }
-
-    /// Deletes user data from the `UserData` table using user id and data key.
-    pub async fn remove_user_data(
-        &self,
-        user_id: UserId,
-        user_data_key: impl Into<UserDataKey<'_>>,
-    ) -> anyhow::Result<()> {
-        let user_data_key = user_data_key.into();
-        let namespace = user_data_key.namespace.as_ref();
-        let key = user_data_key.key.unwrap_or_default();
-        query!(
-            r#"
-DELETE FROM user_data
-WHERE user_id = $1 AND namespace = $2 AND key = $3
-            "#,
-            *user_id,
-            namespace,
-            key
-        )
-        .execute(&self.pool)
-        .await?;
-
-        Ok(())
-    }
-
     /// Retrieves user share from `user_shares` table using user share ID.
     pub async fn get_user_share(&self, id: UserShareId) -> anyhow::Result<Option<UserShare>> {
         query_as!(
@@ -357,8 +277,7 @@ mod tests {
         database::Database,
         tests::{MockUserBuilder, mock_user_with_id, to_database_error},
         users::{
-            SharedResource, SubscriptionTier, UserData, UserDataNamespace, UserId, UserShare,
-            UserShareId, UserSubscription,
+            SharedResource, SubscriptionTier, UserId, UserShare, UserShareId, UserSubscription,
         },
     };
     use insta::assert_debug_snapshot;
@@ -819,86 +738,6 @@ mod tests {
             db.remove_user_by_email("prod@secutils.dev")
                 .await?
                 .is_none()
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn can_manipulate_user_data(pool: PgPool) -> anyhow::Result<()> {
-        let db = Database::create(pool).await?;
-        let user = MockUserBuilder::new(
-            uuid!("00000000-0000-0000-0000-000000000001").into(),
-            "dev@secutils.dev",
-            "devhandle",
-            OffsetDateTime::now_utc(),
-        )
-        .set_is_activated()
-        .build();
-
-        // No user and no data yet.
-        assert_eq!(
-            db.get_user_data::<String>(user.id, UserDataNamespace::UserSettings)
-                .await?,
-            None
-        );
-
-        db.upsert_user(&user).await?;
-
-        // Nodata yet.
-        assert_eq!(
-            db.get_user_data::<String>(user.id, UserDataNamespace::UserSettings)
-                .await?,
-            None
-        );
-
-        // Insert data.
-        db.upsert_user_data(
-            UserDataNamespace::UserSettings,
-            UserData::new(
-                user.id,
-                "data",
-                OffsetDateTime::from_unix_timestamp(946720800)?,
-            ),
-        )
-        .await?;
-        assert_eq!(
-            db.get_user_data::<String>(user.id, UserDataNamespace::UserSettings)
-                .await?,
-            Some(UserData::new(
-                user.id,
-                "data".to_string(),
-                OffsetDateTime::from_unix_timestamp(946720800)?
-            ))
-        );
-
-        // Update data.
-        db.upsert_user_data(
-            UserDataNamespace::UserSettings,
-            UserData::new(
-                user.id,
-                "data-new",
-                OffsetDateTime::from_unix_timestamp(946720800)?,
-            ),
-        )
-        .await?;
-        assert_eq!(
-            db.get_user_data::<String>(user.id, UserDataNamespace::UserSettings)
-                .await?,
-            Some(UserData::new(
-                user.id,
-                "data-new".to_string(),
-                OffsetDateTime::from_unix_timestamp(946720800)?
-            ))
-        );
-
-        // Remove data.
-        db.remove_user_data(user.id, UserDataNamespace::UserSettings)
-            .await?;
-        assert_eq!(
-            db.get_user_data::<String>(user.id, UserDataNamespace::UserSettings)
-                .await?,
-            None
         );
 
         Ok(())

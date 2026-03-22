@@ -631,7 +631,7 @@ mod tests {
         let db = Database::create(pool).await?;
         db.insert_user(&user).await?;
 
-        let policies = vec![
+        let policies = [
             ContentSecurityPolicy {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "csp-name".to_string(),

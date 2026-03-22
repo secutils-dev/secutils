@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\nSELECT user_id, key, value, timestamp\nFROM user_data\nWHERE user_id = $1 AND namespace = $2 AND key = $3\n                ",
+  "query": "\nSELECT user_id, value, created_at, updated_at\nFROM user_settings\nWHERE user_id = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -10,25 +10,23 @@
       },
       {
         "ordinal": 1,
-        "name": "key",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 2,
         "name": "value",
         "type_info": "Bytea"
       },
       {
+        "ordinal": 2,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
         "ordinal": 3,
-        "name": "timestamp",
+        "name": "updated_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Text",
-        "Text"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -38,5 +36,5 @@
       false
     ]
   },
-  "hash": "dcb605cadaeb5e99f0ce5351e64c0da818f3b818ab2693f1ea6f3d1f134a253c"
+  "hash": "207e0ac104032a84aa0a80733c36da00a234afed29272fc2e1a7f5e2d074a846"
 }
