@@ -97,11 +97,8 @@ function ariaToPlaywright(ariaSelector: string): string {
   return `page.getByLabel(${quote(body)})`;
 }
 
-function quote(value: string): string {
-  if (value.includes("'") && !value.includes('"')) {
-    return `"${value}"`;
-  }
-  return `'${value.replace(/'/g, "\\'")}'`;
+function quote(value: string) {
+  return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 }
 
 function buttonOption(step: DevToolsStep): string {
@@ -161,11 +158,13 @@ function stepToPlaywright(step: DevToolsStep): string | null {
       return null;
 
     case 'scroll': {
+      const scrollX = Number(step.x) || 0;
+      const scrollY = Number(step.y) || 0;
       if (step.selectors?.length) {
         const loc = pickSelector(step.selectors);
-        return `await ${loc}.evaluate((el) => el.scrollTo(${step.x ?? 0}, ${step.y ?? 0}));`;
+        return `await ${loc}.evaluate((el) => el.scrollTo(${scrollX}, ${scrollY}));`;
       }
-      return `await page.evaluate(() => window.scrollTo(${step.x ?? 0}, ${step.y ?? 0}));`;
+      return `await page.evaluate(() => window.scrollTo(${scrollX}, ${scrollY}));`;
     }
 
     case 'waitForElement': {
