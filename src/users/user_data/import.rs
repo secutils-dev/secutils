@@ -189,10 +189,13 @@ pub async fn generate_import_preview<DR: DnsResolver, ET: EmailTransport>(
     })
     .await?;
 
+    // Use database-level queries for trackers instead of the API-level methods,
+    // since we only need (id, name) pairs for conflict/deletion detection and
+    // don't need Retrack service enrichment.
+    let web_scraping_db = api.db.web_scraping(user.id);
     let existing_page_trackers =
         fetch_existing(!import_page_trackers.is_empty() || is_apply, || async {
-            Ok(api
-                .web_scraping(user)
+            Ok(web_scraping_db
                 .get_page_trackers()
                 .await?
                 .into_iter()
@@ -203,8 +206,7 @@ pub async fn generate_import_preview<DR: DnsResolver, ET: EmailTransport>(
 
     let existing_api_trackers =
         fetch_existing(!import_api_trackers.is_empty() || is_apply, || async {
-            Ok(api
-                .web_scraping(user)
+            Ok(web_scraping_db
                 .get_api_trackers()
                 .await?
                 .into_iter()

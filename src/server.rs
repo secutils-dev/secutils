@@ -22,9 +22,10 @@ use crate::{
     templates::create_templates,
 };
 use actix_cors::Cors;
-use actix_web::{App, HttpServer, Result, middleware, web};
+use actix_web::{App, HttpResponse, HttpServer, Result, middleware, web};
 use anyhow::Context;
 pub use app_state::AppState;
+use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use tracing::info;
@@ -77,6 +78,7 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
     JsRuntime::init_platform();
 
     let max_responder_body_size = config.utils.max_responder_body_size;
+    let max_import_file_size = config.platform.max_import_file_size;
     let state = web::Data::new(AppState::new(config, api.clone()));
     let http_server = HttpServer::new(move || {
         App::new()
@@ -95,17 +97,27 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
                         web::post().to(handlers::user_settings_set),
                     )
                     .route("/user/settings", web::get().to(handlers::user_settings_get))
-                    .route(
-                        "/user/data/_export",
-                        web::post().to(handlers::user_data_export),
-                    )
-                    .route(
-                        "/user/data/_import_preview",
-                        web::post().to(handlers::user_data_import_preview),
-                    )
-                    .route(
-                        "/user/data/_import",
-                        web::post().to(handlers::user_data_import),
+                    .service(
+                        web::scope("/user/data")
+                            .app_data(
+                                web::JsonConfig::default()
+                                    .limit(max_import_file_size)
+                                    .error_handler(|err, _req| {
+                                        let error_message = err.to_string();
+                                        actix_web::error::InternalError::from_response(
+                                            err,
+                                            HttpResponse::BadRequest()
+                                                .json(json!({ "message": error_message })),
+                                        )
+                                        .into()
+                                    }),
+                            )
+                            .route("/_export", web::post().to(handlers::user_data_export))
+                            .route(
+                                "/_import_preview",
+                                web::post().to(handlers::user_data_import_preview),
+                            )
+                            .route("/_import", web::post().to(handlers::user_data_import)),
                     )
                     .route("/user/secrets", web::get().to(handlers::user_secrets_list))
                     .route(

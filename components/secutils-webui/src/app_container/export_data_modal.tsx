@@ -254,8 +254,12 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
       );
       addToast({ id: 'export-success', color: 'success', title: 'Data exported successfully.' });
       onClose();
-    } catch {
-      addToast({ id: 'export-error', color: 'danger', title: 'Failed to export data.' });
+    } catch (err) {
+      addToast({
+        id: 'export-error',
+        color: 'danger',
+        title: err instanceof Error ? err.message : 'Failed to export data.',
+      });
     } finally {
       setExporting(false);
     }
