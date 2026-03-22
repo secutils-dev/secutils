@@ -453,6 +453,7 @@ test.describe('Data Export and Import', () => {
     const UUID_CERT_TEMPLATE = '019568f0-0000-7000-8000-000000000104';
     const UUID_PK = '019568f0-0000-7000-8000-000000000105';
     const UUID_RESPONDER = '019568f0-0000-7000-8000-000000000106';
+    const UUID_RESPONDER_NO_HISTORY = '019568f0-0000-7000-8000-000000000109';
     const UUID_RESP_HISTORY = '019568f0-0000-7000-8000-000000000116';
     const UUID_PAGE_TRACKER = '019568f0-0000-7000-8000-000000000107';
     const UUID_PAGE_REV = '019568f0-0000-7000-8000-000000000117';
@@ -637,6 +638,17 @@ test.describe('Data Export and Import', () => {
               },
             ],
           },
+          {
+            id: UUID_RESPONDER_NO_HISTORY,
+            name: 'import-test-responder-no-history',
+            location: { pathType: '=', path: '/import-resp-no-hist' },
+            method: 'POST',
+            enabled: true,
+            settings: { requestsToTrack: 5, statusCode: 204 },
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+            // No history field — simulates export of a responder with empty history.
+          },
         ],
         pageTrackers: [
           {
@@ -716,7 +728,7 @@ test.describe('Data Export and Import', () => {
     expect(preview.summary.scripts.total).toBe(1);
     expect(preview.summary.secrets.total).toBe(1);
     expect(preview.summary.secrets.total).toBe(1);
-    expect(preview.summary.responders.total).toBe(1);
+    expect(preview.summary.responders.total).toBe(2);
     expect(preview.summary.certificateTemplates.total).toBe(1);
     expect(preview.summary.privateKeys.total).toBe(1);
     expect(preview.summary.contentSecurityPolicies.total).toBe(1);
@@ -733,7 +745,10 @@ test.describe('Data Export and Import', () => {
         selections: {
           scripts: [{ sourceId: UUID_SCRIPT, action: 'import' }],
           secrets: [{ sourceId: UUID_SECRET, action: 'import' }],
-          responders: [{ sourceId: UUID_RESPONDER, action: 'import' }],
+          responders: [
+            { sourceId: UUID_RESPONDER, action: 'import' },
+            { sourceId: UUID_RESPONDER_NO_HISTORY, action: 'import' },
+          ],
           certificateTemplates: [{ sourceId: UUID_CERT_TEMPLATE, action: 'import' }],
           privateKeys: [{ sourceId: UUID_PK, action: 'import' }],
           contentSecurityPolicies: [{ sourceId: UUID_CSP, action: 'import' }],
@@ -749,7 +764,7 @@ test.describe('Data Export and Import', () => {
     expect(importResult.results.settings.imported).toBe(1);
     expect(importResult.results.scripts.imported).toBe(1);
     expect(importResult.results.secrets.imported).toBe(1);
-    expect(importResult.results.responders.imported).toBe(1);
+    expect(importResult.results.responders.imported).toBe(2);
     expect(importResult.results.certificateTemplates.imported).toBe(1);
     expect(importResult.results.privateKeys.imported).toBe(1);
     expect(importResult.results.contentSecurityPolicies.imported).toBe(1);
@@ -830,6 +845,25 @@ test.describe('Data Export and Import', () => {
     expect(importedResponder.settings.requestsToTrack).toBe(10);
     expect(importedResponder.settings.script).toContain('context.secrets.IMPORT_SECRET');
     expect(importedResponder.settings.secrets).toEqual({ type: 'all' });
+
+    // ── Step 7f-2: Validate no-history responder config ──────────────────
+    const importedResponderNoHistory = responders.find(
+      (r: { name: string }) => r.name === 'import-test-responder-no-history',
+    );
+    expect(importedResponderNoHistory).toBeDefined();
+    expect(importedResponderNoHistory.location).toEqual({ pathType: '=', path: '/import-resp-no-hist' });
+    expect(importedResponderNoHistory.method).toBe('POST');
+    expect(importedResponderNoHistory.enabled).toBe(true);
+    expect(importedResponderNoHistory.settings.statusCode).toBe(204);
+    expect(importedResponderNoHistory.settings.requestsToTrack).toBe(5);
+
+    // Validate that the no-history responder has empty history.
+    const noHistoryRes = await page.request.get(
+      `/api/utils/webhooks/responders/${encodeURIComponent(importedResponderNoHistory.id)}/history`,
+    );
+    expect(noHistoryRes.ok()).toBeTruthy();
+    const noHistory = await noHistoryRes.json();
+    expect(noHistory).toHaveLength(0);
 
     // ── Step 7g: Validate imported responder history ────────────────────
     const historyRes = await page.request.get(

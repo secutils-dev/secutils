@@ -62,7 +62,7 @@ pub struct UserDataExportData {
 pub struct ExportedResponder {
     #[serde(flatten)]
     pub responder: Responder,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub history: Vec<ExportedResponderRequest>,
 }
 
@@ -407,6 +407,23 @@ mod tests {
         assert_eq!(json["enabled"], true);
         // history is empty so should be omitted
         assert!(json.get("history").is_none());
+    }
+
+    #[test]
+    fn deserialize_exported_responder_without_history() {
+        let json = json!({
+            "id": "00000000-0000-0000-0000-000000000000",
+            "name": "resp-no-history",
+            "location": { "pathType": "=", "path": "/test" },
+            "method": "GET",
+            "enabled": true,
+            "settings": { "statusCode": 200 },
+            "createdAt": 1577836800,
+            "updatedAt": 1590969600
+        });
+        let exported: ExportedResponder = serde_json::from_value(json).unwrap();
+        assert_eq!(exported.responder.name, "resp-no-history");
+        assert!(exported.history.is_empty());
     }
 
     #[test]
