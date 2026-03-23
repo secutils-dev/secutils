@@ -84,4 +84,11 @@ export default tsEsLint.config(
     },
   },
   eslintPluginPrettierRecommended,
+  // Re-enable curly after prettier config (which disables formatting rules).
+  // This is intentional: curly enforces braces, prettier formats them.
+  {
+    rules: {
+      curly: ['error', 'all'],
+    },
+  },
 );

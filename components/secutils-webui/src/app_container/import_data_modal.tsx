@@ -66,6 +66,8 @@ interface ImportItem {
   id: string;
   name: string;
   hasConflict: boolean;
+  /** Whether renaming can resolve this item's conflict. False for location+method conflicts. */
+  renameAllowed: boolean;
 }
 
 export default function ImportDataModal({ addToast, onClose, maxImportFileSize }: Props) {
@@ -127,7 +129,9 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
   );
 
   const handlePreview = useCallback(async () => {
-    if (!fileData) return;
+    if (!fileData) {
+      return;
+    }
     setLoading(true);
     try {
       const result = await previewImport({ data: fileData, mode });
@@ -139,17 +143,26 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
       // Initialize import selections: import everything by default.
       const newSelections: Record<string, Map<string, ImportEntitySelection>> = {};
       for (const [entityType, summary] of Object.entries(result.summary)) {
-        if (!('total' in summary)) continue; // skip settings
+        if (!('total' in summary)) {
+          continue;
+        } // skip settings
         const map = new Map<string, ImportEntitySelection>();
-        const conflictMap = new Map((summary.conflicts ?? []).map((c: { sourceId: string }) => [c.sourceId, c]));
+        // Group all conflicts by sourceId so we can check rename eligibility across all conflicts for an item.
+        const conflictsBySource = new Map<string, Array<{ sourceId: string; renameAllowed?: boolean }>>();
+        for (const c of summary.conflicts ?? []) {
+          const arr = conflictsBySource.get(c.sourceId) ?? [];
+          arr.push(c);
+          conflictsBySource.set(c.sourceId, arr);
+        }
         const data = (fileData as Record<string, unknown>).data as Record<string, unknown[]>;
         const items = (data[entityType] ?? []) as Array<{ id: string; name: string }>;
         for (const item of items) {
-          const conflict = conflictMap.get(item.id);
+          const conflicts = conflictsBySource.get(item.id);
+          const canRename = conflicts ? conflicts.every((c) => c.renameAllowed !== false) : true;
           map.set(item.id, {
             sourceId: item.id,
             action: 'import',
-            conflictResolution: conflict ? 'rename' : undefined,
+            conflictResolution: conflicts ? (canRename ? 'rename' : 'overwrite') : undefined,
           });
         }
         newSelections[entityType] = map;
@@ -182,7 +195,9 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
   }, [fileData, mode, addToast]);
 
   const handleImport = useCallback(async () => {
-    if (!fileData || !preview) return;
+    if (!fileData || !preview) {
+      return;
+    }
     setImporting(true);
     try {
       let applyDeletions: ApplyDeletionSelections | undefined;
@@ -286,21 +301,40 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
     [],
   );
 
-  const setAllConflictResolutions = useCallback((resolution: 'rename' | 'overwrite' | 'skip') => {
-    setSelections((prev) => {
-      const next = { ...prev };
-      for (const [entityType, map] of Object.entries(next)) {
-        const newMap = new Map(map);
-        newMap.forEach((sel, id) => {
-          if (sel.conflictResolution != null) {
-            newMap.set(id, { ...sel, conflictResolution: resolution });
+  const setAllConflictResolutions = useCallback(
+    (resolution: 'rename' | 'overwrite' | 'skip') => {
+      setSelections((prev) => {
+        const next = { ...prev };
+        for (const [entityType, map] of Object.entries(next)) {
+          // Build a set of sourceIds that can't be renamed from preview conflicts.
+          const nonRenameableIds = new Set<string>();
+          if (preview) {
+            const summary = preview.summary[entityType as keyof typeof preview.summary];
+            if (summary && 'conflicts' in summary) {
+              for (const c of summary.conflicts ?? []) {
+                if (c.renameAllowed === false) {
+                  nonRenameableIds.add(c.sourceId);
+                }
+              }
+            }
           }
-        });
-        next[entityType] = newMap;
-      }
-      return next;
-    });
-  }, []);
+          const newMap = new Map(map);
+          newMap.forEach((sel, id) => {
+            if (sel.conflictResolution != null) {
+              // If rename is requested but item doesn't allow it, fall back to overwrite.
+              newMap.set(id, {
+                ...sel,
+                conflictResolution: resolution === 'rename' && nonRenameableIds.has(id) ? 'overwrite' : resolution,
+              });
+            }
+          });
+          next[entityType] = newMap;
+        }
+        return next;
+      });
+    },
+    [preview],
+  );
 
   const toggleDeletion = useCallback((entityType: string, id: string) => {
     setDeletionSelections((prev) => {
@@ -317,9 +351,33 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
   const hasAnyConflicts =
     preview != null && Object.values(preview.summary).some((s) => 'conflicts' in s && (s.conflicts ?? []).length > 0);
 
+  const hasNonRenameableConflicts = useMemo(() => {
+    if (!preview) {
+      return false;
+    }
+    for (const [entityType, summary] of Object.entries(preview.summary)) {
+      if (!('conflicts' in summary)) {
+        continue;
+      }
+      const entitySelections = selections[entityType];
+      for (const c of summary.conflicts ?? []) {
+        if (c.renameAllowed === false) {
+          // Only count if the item is still selected for import.
+          const sel = entitySelections?.get(c.sourceId);
+          if (!sel || sel.action === 'import') {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }, [preview, selections]);
+
   // Determine bulk conflict resolution state from all selected conflicting items.
   const bulkConflictResolution = useMemo((): string => {
-    if (!hasAnyConflicts) return '';
+    if (!hasAnyConflicts) {
+      return '';
+    }
     const resolutions = new Set<string>();
     for (const map of Object.values(selections)) {
       map.forEach((sel) => {
@@ -337,24 +395,32 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
   // Helper to get items and conflict info for an entity type.
   const getEntityItems = useCallback(
     (entityType: string): ImportItem[] => {
-      if (!preview || !fileData) return [];
+      if (!preview || !fileData) {
+        return [];
+      }
       const summary = preview.summary[entityType as keyof typeof preview.summary];
-      if (!summary) return [];
+      if (!summary) {
+        return [];
+      }
       const data = (fileData as Record<string, unknown>).data as Record<string, unknown[]>;
-      return ((data[entityType] ?? []) as Array<{ id: string; name: string }>).map((item) => ({
-        ...item,
-        hasConflict:
-          'conflicts' in summary
-            ? (summary.conflicts ?? []).some((c: { sourceId: string }) => c.sourceId === item.id)
-            : false,
-      }));
+      const conflicts = 'conflicts' in summary ? (summary.conflicts ?? []) : [];
+      return ((data[entityType] ?? []) as Array<{ id: string; name: string }>).map((item) => {
+        const itemConflicts = conflicts.filter((c: { sourceId: string }) => c.sourceId === item.id);
+        return {
+          ...item,
+          hasConflict: itemConflicts.length > 0,
+          renameAllowed: itemConflicts.length === 0 || itemConflicts.every((c) => c.renameAllowed !== false),
+        };
+      });
     },
     [preview, fileData],
   );
 
   const getDeleteItems = useCallback(
     (entityType: string): Array<{ id: string; name: string }> => {
-      if (!preview || !preview.toDelete || mode !== 'apply') return [];
+      if (!preview || !preview.toDelete || mode !== 'apply') {
+        return [];
+      }
       return (preview.toDelete[entityType as keyof typeof preview.toDelete] ?? []) as Array<{
         id: string;
         name: string;
@@ -422,16 +488,24 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
           width: '130px',
           render: (item: ImportItem) => {
             const sel = entitySelections.get(item.id);
-            if (!item.hasConflict || sel?.action !== 'import') return null;
-            return (
-              <EuiSelect
-                compressed
-                options={[
+            if (!item.hasConflict || sel?.action !== 'import') {
+              return null;
+            }
+            const options = item.renameAllowed
+              ? [
                   { value: 'rename', text: 'Rename' },
                   { value: 'overwrite', text: 'Overwrite' },
                   { value: 'skip', text: 'Skip' },
-                ]}
-                value={sel.conflictResolution ?? 'rename'}
+                ]
+              : [
+                  { value: 'overwrite', text: 'Overwrite' },
+                  { value: 'skip', text: 'Skip' },
+                ];
+            return (
+              <EuiSelect
+                compressed
+                options={options}
+                value={sel.conflictResolution ?? (item.renameAllowed ? 'rename' : 'overwrite')}
                 onChange={(e) =>
                   setConflictResolution(entityType, item.id, e.target.value as 'rename' | 'overwrite' | 'skip')
                 }
@@ -521,9 +595,13 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
 
   // Visible entity rows for import preview.
   const visibleRows = useMemo(() => {
-    if (!preview) return [];
+    if (!preview) {
+      return [];
+    }
     return ENTITY_ROW_CONFIGS.filter((r) => {
-      if (r.id === 'settings') return preview.summary.settings?.included ?? false;
+      if (r.id === 'settings') {
+        return preview.summary.settings?.included ?? false;
+      }
       const summary = preview.summary[r.id as keyof typeof preview.summary];
       const hasItems = summary && 'total' in summary && summary.total > 0;
       const hasDeletes = getDeleteItems(r.id).length > 0;
@@ -534,10 +612,14 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
   const selectedCountForType = useCallback(
     (entityType: string): number => {
       const map = selections[entityType];
-      if (!map) return 0;
+      if (!map) {
+        return 0;
+      }
       let count = 0;
       map.forEach((sel) => {
-        if (sel.action === 'import') count++;
+        if (sel.action === 'import') {
+          count++;
+        }
       });
       return count;
     },
@@ -546,7 +628,9 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
 
   const totalForType = useCallback(
     (entityType: string): number => {
-      if (!preview) return 0;
+      if (!preview) {
+        return 0;
+      }
       const summary = preview.summary[entityType as keyof typeof preview.summary];
       return summary && 'total' in summary ? summary.total : 0;
     },
@@ -557,7 +641,9 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
     let count = 0;
     for (const map of Object.values(selections)) {
       map.forEach((sel) => {
-        if (sel.action === 'import') count++;
+        if (sel.action === 'import') {
+          count++;
+        }
       });
     }
     return count;
@@ -619,7 +705,9 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
           }
           const total = totalForType(row.id);
           const selected = selectedCountForType(row.id);
-          if (total === 0) return null;
+          if (total === 0) {
+            return null;
+          }
           return (
             <EuiCheckbox
               id={`import-cat-${row.id}`}
@@ -672,7 +760,9 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
         width: '40px',
         isExpander: true,
         render: (row: EntityRowConfig) => {
-          if (row.id === 'settings') return null;
+          if (row.id === 'settings') {
+            return null;
+          }
           return (
             <EuiButtonIcon
               onClick={() => toggleExpanded(row.id)}
@@ -773,7 +863,7 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
             <EuiButtonGroup
               legend="Bulk conflict resolution"
               options={[
-                { id: 'rename', label: 'Rename' },
+                { id: 'rename', label: 'Rename', isDisabled: hasNonRenameableConflicts },
                 { id: 'overwrite', label: 'Overwrite' },
                 { id: 'skip', label: 'Skip' },
                 { id: 'custom', label: 'Custom', isDisabled: true },
@@ -787,6 +877,14 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
               buttonSize="compressed"
               type="single"
             />
+            {hasNonRenameableConflicts && (
+              <>
+                <EuiSpacer size="xs" />
+                <EuiText size="xs" color="subdued">
+                  Some conflicts cannot be resolved by renaming.
+                </EuiText>
+              </>
+            )}
             <EuiSpacer size="s" />
           </>
         )}

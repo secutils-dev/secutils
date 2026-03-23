@@ -1,6 +1,10 @@
 use serde::Serialize;
 use uuid::Uuid;
 
+fn is_true(v: &bool) -> bool {
+    *v
+}
+
 /// A detected conflict between an import file and existing data.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -9,8 +13,12 @@ pub struct ImportConflict {
     pub source_id: Uuid,
     /// Name of the entity in the import file.
     pub name: String,
-    /// ID of the existing entity with the same name.
+    /// ID of the existing entity with the same name or matching location+method.
     pub existing_id: Uuid,
+    /// Whether renaming would resolve this conflict. False for location+method conflicts
+    /// where only overwrite or skip are valid resolutions.
+    #[serde(skip_serializing_if = "is_true")]
+    pub rename_allowed: bool,
 }
 
 /// Per-entity-type summary in the preview.

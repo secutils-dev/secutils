@@ -30,8 +30,12 @@ import {
 } from '../../../../model';
 
 function formatDurationMs(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  if (ms < 1000) {
+    return `${Math.round(ms)}ms`;
+  }
+  if (ms < 60_000) {
+    return `${(ms / 1000).toFixed(1)}s`;
+  }
   return `${(ms / 60_000).toFixed(1)}m`;
 }
 
@@ -216,7 +220,9 @@ export function TrackerExecutionLogs({ kind, tracker }: TrackerExecutionLogsProp
         isExpander: true,
         render: (log: TrackerExecutionLog) => {
           const hasPhases = log.phases && log.phases.length > 0;
-          if (!hasPhases) return null;
+          if (!hasPhases) {
+            return null;
+          }
           return (
             <EuiIcon
               type={expandedRows[log.id] ? 'arrowDown' : 'arrowRight'}
@@ -240,16 +246,28 @@ export function TrackerExecutionLogs({ kind, tracker }: TrackerExecutionLogsProp
   }, []);
 
   const sortedItems = useMemo(() => {
-    if (logs.status !== 'succeeded' || !sorting.sort) return logs.status === 'succeeded' ? logs.data : [];
+    if (logs.status !== 'succeeded' || !sorting.sort) {
+      return logs.status === 'succeeded' ? logs.data : [];
+    }
     const { field, direction } = sorting.sort;
     const sorted = [...logs.data].sort((a, b) => {
       const aVal = a[field as keyof TrackerExecutionLog];
       const bVal = b[field as keyof TrackerExecutionLog];
-      if (aVal == null && bVal == null) return 0;
-      if (aVal == null) return 1;
-      if (bVal == null) return -1;
-      if (aVal < bVal) return -1;
-      if (aVal > bVal) return 1;
+      if (aVal == null && bVal == null) {
+        return 0;
+      }
+      if (aVal == null) {
+        return 1;
+      }
+      if (bVal == null) {
+        return -1;
+      }
+      if (aVal < bVal) {
+        return -1;
+      }
+      if (aVal > bVal) {
+        return 1;
+      }
       return 0;
     });
     return direction === 'desc' ? sorted.reverse() : sorted;

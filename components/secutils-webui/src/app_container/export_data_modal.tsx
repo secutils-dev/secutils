@@ -478,7 +478,9 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
         width: '80px',
         align: 'right' as const,
         render: (row: EntityRow) => {
-          if (row.id === 'settings') return null;
+          if (row.id === 'settings') {
+            return null;
+          }
           const category = row.id as EntityCategory;
           const items = allItems[category];
           const sel = selection[category];
@@ -494,7 +496,9 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
         width: '40px',
         isExpander: true,
         render: (row: EntityRow) => {
-          if (row.id === 'settings') return null;
+          if (row.id === 'settings') {
+            return null;
+          }
           return (
             <EuiButtonIcon
               onClick={() => toggleExpanded(row)}

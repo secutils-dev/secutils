@@ -62,11 +62,21 @@ function getBodyLanguage(headers: Array<{ label: string }>): string {
     ?.label.split(':')[1]
     ?.trim()
     .toLowerCase();
-  if (!contentType) return 'json';
-  if (contentType.includes('html')) return 'html';
-  if (contentType.includes('json')) return 'json';
-  if (contentType.includes('javascript')) return 'javascript';
-  if (contentType.includes('css')) return 'css';
+  if (!contentType) {
+    return 'json';
+  }
+  if (contentType.includes('html')) {
+    return 'html';
+  }
+  if (contentType.includes('json')) {
+    return 'json';
+  }
+  if (contentType.includes('javascript')) {
+    return 'javascript';
+  }
+  if (contentType.includes('css')) {
+    return 'css';
+  }
   return 'plaintext';
 }
 
@@ -210,7 +220,9 @@ export function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
   }, []);
 
   const [body, setBody] = useState<string>(() => {
-    if (target?.body === undefined) return '';
+    if (target?.body === undefined) {
+      return '';
+    }
     return typeof target.body === 'string' ? target.body : JSON.stringify(target.body, null, 2);
   });
   const onBodyChange = useCallback((value?: string) => {
@@ -289,7 +301,9 @@ export function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
   const [secretsLoaded, setSecretsLoaded] = useState(false);
 
   useEffect(() => {
-    if (secretsMode !== 'selected' || secretsLoaded) return;
+    if (secretsMode !== 'selected' || secretsLoaded) {
+      return;
+    }
     fetch(getApiUrl('/api/user/secrets'), getApiRequestConfig())
       .then(async (res) => {
         if (res.ok) {

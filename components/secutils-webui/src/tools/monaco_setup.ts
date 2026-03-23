@@ -16,10 +16,18 @@ loader.config({ monaco });
 
 self.MonacoEnvironment = {
   getWorkerUrl: (_: string, label: string) => {
-    if (label === 'javascript' || label === 'typescript') return '/tools/monaco/ts.worker.js';
-    if (label === 'json') return '/tools/monaco/json.worker.js';
-    if (label === 'html' || label === 'handlebars' || label === 'razor') return '/tools/monaco/html.worker.js';
-    if (label === 'css' || label === 'scss' || label === 'less') return '/tools/monaco/css.worker.js';
+    if (label === 'javascript' || label === 'typescript') {
+      return '/tools/monaco/ts.worker.js';
+    }
+    if (label === 'json') {
+      return '/tools/monaco/json.worker.js';
+    }
+    if (label === 'html' || label === 'handlebars' || label === 'razor') {
+      return '/tools/monaco/html.worker.js';
+    }
+    if (label === 'css' || label === 'scss' || label === 'less') {
+      return '/tools/monaco/css.worker.js';
+    }
     return '/tools/monaco/editor.worker.js';
   },
 };

@@ -30,6 +30,8 @@ export interface ImportConflict {
   sourceId: string;
   name: string;
   existingId: string;
+  /** False when conflict is on location+method — only overwrite/skip are valid. Defaults to true if absent. */
+  renameAllowed?: boolean;
 }
 
 export interface ImportEntitySummary {

@@ -21,10 +21,18 @@ export function detectSchedulePreset(schedule: string): string | null {
   const [, min, hour, dom, , dow] = parts;
   const isNum = (s: string) => /^\d+$/.test(s);
 
-  if (hour === '*' && dom === '*' && dow === '*' && isNum(min)) return '@hourly';
-  if (dom === '*' && dow === '*' && isNum(min) && isNum(hour)) return '@daily';
-  if (dom === '*' && isNum(min) && isNum(hour) && isNum(dow)) return '@weekly';
-  if (dow === '*' && isNum(min) && isNum(hour) && isNum(dom)) return '@monthly';
+  if (hour === '*' && dom === '*' && dow === '*' && isNum(min)) {
+    return '@hourly';
+  }
+  if (dom === '*' && dow === '*' && isNum(min) && isNum(hour)) {
+    return '@daily';
+  }
+  if (dom === '*' && isNum(min) && isNum(hour) && isNum(dow)) {
+    return '@weekly';
+  }
+  if (dow === '*' && isNum(min) && isNum(hour) && isNum(dom)) {
+    return '@monthly';
+  }
   return null;
 }
 

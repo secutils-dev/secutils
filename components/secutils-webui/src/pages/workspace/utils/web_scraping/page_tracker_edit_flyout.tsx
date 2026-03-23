@@ -195,7 +195,9 @@ export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
   const [secretsLoaded, setSecretsLoaded] = useState(false);
 
   useEffect(() => {
-    if (secretsMode !== 'selected' || secretsLoaded) return;
+    if (secretsMode !== 'selected' || secretsLoaded) {
+      return;
+    }
     fetch(getApiUrl('/api/user/secrets'), getApiRequestConfig())
       .then(async (res) => {
         if (res.ok) {

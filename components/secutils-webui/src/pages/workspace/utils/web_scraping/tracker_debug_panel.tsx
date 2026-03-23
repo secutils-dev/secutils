@@ -40,8 +40,12 @@ export interface TrackerDebugPanelProps {
 }
 
 function statusColor(status: number): 'success' | 'warning' | 'danger' | 'default' {
-  if (status >= 200 && status < 300) return 'success';
-  if (status >= 300 && status < 400) return 'warning';
+  if (status >= 200 && status < 300) {
+    return 'success';
+  }
+  if (status >= 300 && status < 400) {
+    return 'warning';
+  }
   return 'danger';
 }
 
@@ -58,10 +62,18 @@ function formatJson(value: unknown): string {
 
 function detectLanguage(raw?: string, headers?: Record<string, string>): string {
   const ct = headers?.['content-type'] ?? '';
-  if (ct.includes('html')) return 'html';
-  if (ct.includes('xml')) return 'xml';
-  if (ct.includes('css')) return 'css';
-  if (ct.includes('javascript')) return 'javascript';
+  if (ct.includes('html')) {
+    return 'html';
+  }
+  if (ct.includes('xml')) {
+    return 'xml';
+  }
+  if (ct.includes('css')) {
+    return 'css';
+  }
+  if (ct.includes('javascript')) {
+    return 'javascript';
+  }
   if (raw) {
     try {
       JSON.parse(raw);
@@ -484,7 +496,9 @@ function ResultDetail({ debugResult }: { debugResult: DebugResult }) {
 }
 
 function StageDetailPanel({ stage, debugResult }: { stage: PipelineStage | null; debugResult: DebugResult }) {
-  if (!stage) return null;
+  if (!stage) {
+    return null;
+  }
   const params = debugResult.target.type === 'api' ? debugResult.target.params : undefined;
   switch (stage.kind) {
     case 'configurator':
@@ -511,7 +525,9 @@ export function TrackerDebugPanel({ isOpen, onClose, onStatusChange, buildDebugR
   const stages = useMemo(() => (result?.status === 'succeeded' ? buildPipelineStages(result.data) : []), [result]);
 
   const runDebug = useCallback(() => {
-    if (result?.status === 'pending') return;
+    if (result?.status === 'pending') {
+      return;
+    }
 
     setResult({ status: 'pending' });
     onStatusChange?.('pending');
@@ -523,7 +539,9 @@ export function TrackerDebugPanel({ isOpen, onClose, onStatusChange, buildDebugR
       body,
     })
       .then(async (res) => {
-        if (!res.ok) throw await ResponseError.fromResponse(res);
+        if (!res.ok) {
+          throw await ResponseError.fromResponse(res);
+        }
         const data: DebugResult = await res.json();
         setResult({ status: 'succeeded', data });
 
@@ -573,7 +591,9 @@ export function TrackerDebugPanel({ isOpen, onClose, onStatusChange, buildDebugR
     onClose();
   }, [onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   const modalCss = css`
     width: 75vw;

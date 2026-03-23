@@ -985,4 +985,194 @@ test.describe('Data Export and Import', () => {
     });
     expect(newestApiRevision).toBeDefined();
   });
+
+  test('conflict resolution options adapt to conflict type', async ({ page }) => {
+    // ── Setup: create existing entities that will conflict ──────────────
+    const scriptRes = await page.request.post('/api/user/scripts', {
+      data: { name: 'conflict-script', scriptType: 'responder', content: 'console.log("existing")' },
+    });
+    expect(scriptRes.ok()).toBeTruthy();
+
+    // Responder that will conflict by location+method only (different name).
+    const responderRes = await page.request.post('/api/utils/webhooks/responders', {
+      data: {
+        name: 'existing-resp',
+        location: { pathType: '=', path: '/conflict-path' },
+        method: 'GET',
+        enabled: true,
+        settings: { requestsToTrack: 1, statusCode: 200 },
+      },
+    });
+    expect(responderRes.ok()).toBeTruthy();
+
+    // Responder that will conflict by BOTH name AND location+method (the typical
+    // "import from your own account" scenario).
+    const responderBothRes = await page.request.post('/api/utils/webhooks/responders', {
+      data: {
+        name: 'same-name-resp',
+        location: { pathType: '=', path: '/both-conflict' },
+        method: 'POST',
+        enabled: true,
+        settings: { requestsToTrack: 1, statusCode: 200 },
+      },
+    });
+    expect(responderBothRes.ok()).toBeTruthy();
+
+    // ── Build import file with conflicting entities ─────────────────────
+    const importFile = {
+      version: 1,
+      exportedAt: 1577880000,
+      data: {
+        scripts: [
+          {
+            id: '019568f0-0000-7000-8000-000000000201',
+            name: 'conflict-script', // Same name → name conflict, rename allowed
+            scriptType: 'responder',
+            content: 'console.log("imported")',
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+          },
+        ],
+        responders: [
+          {
+            id: '019568f0-0000-7000-8000-000000000202',
+            name: 'imported-resp', // Different name, same location+method → rename NOT allowed
+            location: { pathType: '=', path: '/conflict-path' },
+            method: 'GET',
+            enabled: true,
+            settings: { requestsToTrack: 1, statusCode: 200 },
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+          },
+          {
+            id: '019568f0-0000-7000-8000-000000000203',
+            name: 'same-name-resp', // Same name AND same location+method → rename NOT allowed
+            location: { pathType: '=', path: '/both-conflict' },
+            method: 'POST',
+            enabled: true,
+            settings: { requestsToTrack: 1, statusCode: 200 },
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+          },
+        ],
+      },
+    };
+
+    // ── Step 1: Verify preview API returns correct renameAllowed flags ──
+    const previewRes = await page.request.post('/api/user/data/_import_preview', {
+      data: { data: importFile, mode: 'merge' },
+    });
+    expect(previewRes.ok()).toBeTruthy();
+    const preview = await previewRes.json();
+    expect(preview.valid).toBe(true);
+
+    // Script conflict: rename is allowed (name-only conflict).
+    expect(preview.summary.scripts.conflicts).toHaveLength(1);
+    expect(preview.summary.scripts.conflicts[0].renameAllowed).toBeUndefined(); // true is omitted
+
+    // Responder conflicts: rename is NOT allowed for either type.
+    expect(preview.summary.responders.conflicts).toHaveLength(2);
+    // Location-only conflict (different name, same path+method).
+    const locOnlyConflict = preview.summary.responders.conflicts.find(
+      (c: { sourceId: string }) => c.sourceId === '019568f0-0000-7000-8000-000000000202',
+    );
+    expect(locOnlyConflict.renameAllowed).toBe(false);
+    // Both name AND location+method conflict — rename still NOT allowed.
+    const bothConflict = preview.summary.responders.conflicts.find(
+      (c: { sourceId: string }) => c.sourceId === '019568f0-0000-7000-8000-000000000203',
+    );
+    expect(bothConflict.renameAllowed).toBe(false);
+
+    // ── Step 2: Open import modal and upload file ──────────────────────
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    await page.getByText('Settings').click();
+    const accountTab = page.getByRole('tab', { name: 'Account' });
+    await expect(accountTab).toBeVisible({ timeout: 15000 });
+    await accountTab.click();
+    await page.getByRole('button', { name: 'Import data' }).click();
+
+    const modal = page.locator('.euiModal[role="dialog"]');
+    await expect(modal).toBeVisible({ timeout: 15000 });
+    await expect(modal.getByText('Import data')).toBeVisible();
+
+    // Create a temporary file and upload it via the file picker.
+    const fileBuffer = Buffer.from(JSON.stringify(importFile));
+    const filePicker = modal.locator('input[type="file"]');
+    await filePicker.setInputFiles({
+      name: 'test-conflicts.secutils.json',
+      mimeType: 'application/json',
+      buffer: fileBuffer,
+    });
+
+    // Click Preview.
+    await modal.getByRole('button', { name: 'Preview' }).click();
+    await expect(modal.getByText('Review import')).toBeVisible({ timeout: 15000 });
+
+    // ── Step 3: Verify bulk Rename button is disabled ────────────────────
+    const renameButton = modal.getByRole('button', { name: 'Rename' });
+    await expect(renameButton).toBeVisible();
+    await expect(renameButton).toBeDisabled();
+
+    // Overwrite and Skip should be enabled.
+    await expect(modal.getByRole('button', { name: 'Overwrite' })).toBeEnabled();
+    await expect(modal.getByRole('button', { name: 'Skip' })).toBeEnabled();
+
+    // ── Step 4: Verify help text about location+method conflicts ────────
+    await expect(modal.getByText('Some conflicts cannot be resolved by renaming.')).toBeVisible();
+
+    // ── Step 5: Expand Scripts section and check resolution options ─────
+    const scriptsRow = modal.locator('tr', { has: page.getByText('Scripts') });
+    await scriptsRow.getByRole('button', { name: 'Expand' }).click();
+
+    // The script's resolution dropdown should have Rename, Overwrite, Skip.
+    const scriptSelect = modal.locator('select').first();
+    const scriptOptions = await scriptSelect.locator('option').allTextContents();
+    expect(scriptOptions).toEqual(['Rename', 'Overwrite', 'Skip']);
+
+    // ── Step 6: Expand Responders section and check resolution options ──
+    const respondersRow = modal.locator('tr', { has: page.getByText('Responders') });
+    await respondersRow.getByRole('button', { name: 'Expand' }).click();
+
+    // Both responder dropdowns should NOT have Rename (location-only and name+location conflicts).
+    const responderSelects = modal.locator('tr:has(td) select');
+    // Skip the first select (script's), check the responder ones.
+    const allSelects = await responderSelects.all();
+    for (let i = 0; i < allSelects.length; i++) {
+      // First select belongs to the script (expanded first).
+      if (i === 0) continue;
+      const options = await allSelects[i].locator('option').allTextContents();
+      expect(options).toEqual(['Overwrite', 'Skip']);
+    }
+
+    // ── Step 7: Uncheck non-renameable responders → bulk Rename re-enabled ──
+    const importedRespCheckbox = modal.getByRole('checkbox', { name: 'imported-resp' });
+    const sameNameRespCheckbox = modal.getByRole('checkbox', { name: 'same-name-resp' });
+    await importedRespCheckbox.uncheck();
+    await sameNameRespCheckbox.uncheck();
+
+    // Now bulk Rename should be enabled (only script conflict remains, which is renameable).
+    await expect(renameButton).toBeEnabled();
+
+    // Help text about non-renameable conflicts should disappear.
+    await expect(modal.getByText('Some conflicts cannot be resolved by renaming.')).not.toBeVisible();
+
+    // Re-check the responders by clicking their labels (more reliable than .check()
+    // which can conflict with React re-renders detaching/reattaching elements).
+    await modal.getByText('imported-resp').click();
+    await modal.getByText('same-name-resp').click();
+
+    // Rename should be disabled again.
+    await expect(renameButton).toBeDisabled();
+
+    // ── Step 8: Import with Overwrite and verify success ────────────────
+    // Click Overwrite in bulk to set all conflicts to overwrite.
+    await modal.getByRole('button', { name: 'Overwrite' }).click();
+    await modal.getByRole('button', { name: 'Import' }).click();
+
+    // Wait for result.
+    await expect(modal.getByText('Import complete')).toBeVisible({ timeout: 15000 });
+
+    // Verify no errors.
+    await expect(modal.getByText('Errors')).not.toBeVisible();
+  });
 });

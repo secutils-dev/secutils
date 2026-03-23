@@ -18,7 +18,9 @@ export function TrackerHealthDots({ logs }: { logs: TrackerExecutionLog[] | unde
   const { euiTheme } = useEuiTheme();
 
   const sortedLogs = useMemo(() => {
-    if (!logs || logs.length === 0) return [];
+    if (!logs || logs.length === 0) {
+      return [];
+    }
     return [...logs].sort((a, b) => a.startedAt - b.startedAt).slice(-MAX_DOTS);
   }, [logs]);
 

@@ -11,7 +11,7 @@ use crate::{
             },
         },
     },
-    utils::webhooks::ResponderRequest,
+    utils::webhooks::{ResponderMethod, ResponderRequest},
 };
 use std::{
     borrow::Cow,
@@ -29,13 +29,14 @@ pub async fn import_responders<DR: DnsResolver, ET: EmailTransport>(
 ) -> ImportEntityResult {
     let mut result = ImportEntityResult::default();
 
-    // Pre-fetch existing responders once for overwritten resolution.
+    // Pre-fetch existing responders once for overwrite resolution.
     let existing_responders = api
         .webhooks(user)
         .get_responders()
         .await
         .unwrap_or_default();
     let mut used_names: HashSet<_> = existing_responders.iter().map(|r| r.name.clone()).collect();
+    let mut deleted_ids: HashSet<Uuid> = HashSet::new();
 
     for exported in responders {
         let resp = &exported.responder;
@@ -46,13 +47,33 @@ pub async fn import_responders<DR: DnsResolver, ET: EmailTransport>(
         }
 
         let name = resolve_name(&resp.name, selection, &used_names);
+        let is_overwrite =
+            selection.is_some_and(|s| s.conflict_resolution == Some(ConflictResolution::Overwrite));
 
-        // Handle overwrite.
-        if selection.is_some_and(|s| s.conflict_resolution == Some(ConflictResolution::Overwrite))
-            && let Some(e) = existing_responders.iter().find(|r| r.name == resp.name)
-        {
-            let _ = api.webhooks(user).remove_responder(e.id).await;
-            used_names.remove(&resp.name);
+        if is_overwrite {
+            // Delete existing responder with the same name.
+            if let Some(e) = existing_responders
+                .iter()
+                .find(|r| r.name == resp.name && !deleted_ids.contains(&r.id))
+                && deleted_ids.insert(e.id)
+            {
+                let _ = api.webhooks(user).remove_responder(e.id).await;
+                used_names.remove(&e.name);
+            }
+
+            // Delete any existing responder that conflicts on location+method.
+            let import_loc = resp.location.to_string();
+            if let Some(e) = existing_responders.iter().find(|r| {
+                !deleted_ids.contains(&r.id)
+                    && r.location.to_string() == import_loc
+                    && (r.method == resp.method
+                        || r.method == ResponderMethod::Any
+                        || resp.method == ResponderMethod::Any)
+            }) && deleted_ids.insert(e.id)
+            {
+                let _ = api.webhooks(user).remove_responder(e.id).await;
+                used_names.remove(&e.name);
+            }
         }
 
         // Clone the responder and assign new ID and timestamps.
@@ -182,16 +203,25 @@ mod tests {
     use uuid::Uuid;
 
     fn minimal_responder(id: Uuid, name: &str) -> ExportedResponder {
+        responder_with_location(id, name, "/test", ResponderMethod::Get)
+    }
+
+    fn responder_with_location(
+        id: Uuid,
+        name: &str,
+        path: &str,
+        method: ResponderMethod,
+    ) -> ExportedResponder {
         ExportedResponder {
             responder: Responder {
                 id,
                 name: name.to_string(),
                 location: ResponderLocation {
                     path_type: ResponderPathType::Exact,
-                    path: "/test".to_string(),
+                    path: path.to_string(),
                     subdomain_prefix: None,
                 },
-                method: ResponderMethod::Get,
+                method,
                 enabled: true,
                 settings: ResponderSettings {
                     requests_to_track: 1,
@@ -258,6 +288,80 @@ mod tests {
         let responders = api.webhooks(&user).get_responders().await?;
         assert_eq!(responders.len(), 1);
         assert_eq!(responders[0].name, "my_responder");
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn import_responders_overwrite_resolves_location_conflict(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api_with_config(pool, mock_config()?).await?;
+        let user = mock_user()?;
+        api.db.upsert_user(&user).await?;
+
+        // Create an existing responder with a specific location+method.
+        let existing_id = Uuid::now_v7();
+        let existing = Responder {
+            id: existing_id,
+            name: "old-name".to_string(),
+            location: ResponderLocation {
+                path_type: ResponderPathType::Exact,
+                path: "/my-path".to_string(),
+                subdomain_prefix: None,
+            },
+            method: ResponderMethod::Get,
+            enabled: true,
+            settings: ResponderSettings {
+                requests_to_track: 1,
+                status_code: 200,
+                body: None,
+                headers: None,
+                script: None,
+                secrets: crate::users::SecretsAccess::None,
+            },
+            created_at: datetime!(2020-01-01 00:00:00 UTC),
+            updated_at: datetime!(2020-01-01 00:00:00 UTC),
+        };
+        api.db
+            .webhooks()
+            .insert_responder(user.id, &existing)
+            .await?;
+
+        // Import a responder with a different name but the same location+method.
+        let import_id = Uuid::now_v7();
+        let file = make_responders_file(vec![responder_with_location(
+            import_id,
+            "new-name",
+            "/my-path",
+            ResponderMethod::Get,
+        )]);
+
+        let params = UserDataImportParams {
+            data: file,
+            mode: ImportMode::Merge,
+            secrets_passphrase: None,
+            apply_deletions: None,
+            selections: ImportSelections {
+                responders: vec![ImportEntitySelection {
+                    source_id: import_id,
+                    action: ImportAction::Import,
+                    conflict_resolution: Some(
+                        super::super::super::params::ConflictResolution::Overwrite,
+                    ),
+                }],
+                ..Default::default()
+            },
+        };
+
+        let result = execute_import(&api, &user, params).await?;
+        assert_eq!(result.results.responders.imported, 1);
+        assert_eq!(result.results.responders.failed, 0);
+
+        // The old responder should be deleted and replaced by the new one.
+        let responders = api.webhooks(&user).get_responders().await?;
+        assert_eq!(responders.len(), 1);
+        assert_eq!(responders[0].name, "new-name");
 
         Ok(())
     }

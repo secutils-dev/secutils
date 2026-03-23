@@ -24,8 +24,9 @@ use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
     users::User,
+    utils::webhooks::Responder,
 };
-use detect_conflicts::detect_conflicts;
+use detect_conflicts::{detect_conflicts, detect_responder_conflicts};
 use detect_deletions::detect_deletions;
 use detect_duplicates::detect_intra_file_duplicates;
 use importers::{
@@ -145,16 +146,11 @@ pub async fn generate_import_preview<DR: DnsResolver, ET: EmailTransport>(
     })
     .await?;
 
-    let existing_responders = fetch_existing(!import_responders.is_empty() || is_apply, || async {
-        Ok(api
-            .webhooks(user)
-            .get_responders()
-            .await?
-            .into_iter()
-            .map(|r| (r.id, r.name))
-            .collect())
-    })
-    .await?;
+    let existing_responders: Vec<Responder> = if !import_responders.is_empty() || is_apply {
+        api.webhooks(user).get_responders().await?
+    } else {
+        Vec::new()
+    };
 
     let existing_templates = fetch_existing(!import_templates.is_empty() || is_apply, || async {
         Ok(api
@@ -219,8 +215,28 @@ pub async fn generate_import_preview<DR: DnsResolver, ET: EmailTransport>(
     let (scripts_summary, scripts_deletions) =
         entity_preview(&import_scripts, &existing_scripts, is_apply);
     let (secrets_summary, _) = entity_preview(&import_secrets, &existing_secrets, is_apply);
-    let (responders_summary, responders_deletions) =
-        entity_preview(&import_responders, &existing_responders, is_apply);
+    // Responders use a dedicated conflict detector that checks location+method in addition to name.
+    let import_responder_refs: Vec<&Responder> =
+        file.data.responders.iter().map(|r| &r.responder).collect();
+    let existing_responder_refs: Vec<&Responder> = existing_responders.iter().collect();
+    let responders_summary = ImportEntitySummary {
+        total: import_responder_refs.len(),
+        conflicts: detect_responder_conflicts(&import_responder_refs, &existing_responder_refs),
+    };
+    let existing_responder_pairs: Vec<(Uuid, String)> = existing_responders
+        .iter()
+        .map(|r| (r.id, r.name.clone()))
+        .collect();
+    let responders_deletions = if is_apply {
+        let existing_refs: Vec<(Uuid, &str)> = existing_responder_pairs
+            .iter()
+            .map(|(id, name)| (*id, name.as_str()))
+            .collect();
+        let import_names: Vec<&str> = import_responders.iter().map(|(_, n)| *n).collect();
+        detect_deletions(&import_names, &existing_refs)
+    } else {
+        Vec::new()
+    };
     let (templates_summary, templates_deletions) =
         entity_preview(&import_templates, &existing_templates, is_apply);
     let (keys_summary, keys_deletions) = entity_preview(&import_keys, &existing_keys, is_apply);
