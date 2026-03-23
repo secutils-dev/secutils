@@ -198,7 +198,8 @@ The e2e project uses ESLint + Prettier with these key rules:
 Docs screenshot tests generate screenshots used in the documentation site
 (`components/secutils-docs/`). Each test file in `e2e/docs/` corresponds to a guide topic
 (e.g. `csp.spec.ts`, `webhooks.spec.ts`, `digital_certificates.spec.ts`,
-`web_scraping.spec.ts`). Screenshots are saved directly into
+`web_scraping.spec.ts`, `export_import.spec.ts`, `home.spec.ts`, `secrets.spec.ts`,
+`user_scripts.spec.ts`). Screenshots are saved directly into
 `components/secutils-docs/static/img/docs/guides/<topic>/`.
 
 ```bash
@@ -223,11 +224,13 @@ All docs tests import from `helpers.ts`. Key exports:
 | `highlightOn(locator)`                      | Add a red dashed outline around an element for visual emphasis.                                                                         |
 | `highlightOff(locator)`                     | Remove the highlight outline.                                                                                                           |
 | `dismissAllToasts(page)`                    | Dismiss every visible toast notification (iterate all, not just one).                                                                   |
-| `pinEntityTimestamps(json)`                 | Replace `createdAt`/`updatedAt` with `FIXED_ENTITY_TIMESTAMP` in a JSON value.                                                          |
+| `pinEntityTimestamps(json)`                 | Replace `createdAt`/`updatedAt` (and `scheduledAt`/`lastRanAt` for scheduled trackers) with `FIXED_ENTITY_TIMESTAMP` in a JSON value.   |
 | `fixEntityTimestamps(page, pattern)`        | Set up a route handler that pins timestamps in GET JSON responses matching `pattern`.                                                   |
 | `fixResponderRequestFields(page)`           | Intercept responder request history API and pin `createdAt`/`clientAddress` to fixed values.                                            |
 | `fixCertificateTemplateValidityDates(page)` | Pin `notValidBefore`/`notValidAfter` to fixed dates while preserving their duration.                                                    |
 | `fixTrackerResourceRevisions(page)`         | Stabilize tracker revision history: strip URL query strings, normalize webhook subdomains, compute deterministic sizes, fix timestamps. |
+| `fixTrackerExecutionLogs(page)`             | Intercept tracker execution log responses and pin `startedAt`/`finishedAt`/phase durations to fixed values.                             |
+| `fixTrackerHealthDots(page)`                | Intercept tracker health summary (`logs_summary`) responses and pin timestamps to fixed values for stable health dot screenshots.       |
 
 ### Screenshot stability
 
@@ -285,6 +288,10 @@ Each source of dynamic data needs explicit stabilization in the test code:
   `element.evaluate()` after the UI renders them.
 - **Home page summary**: Intercept `/api/ui/home/summary` and call `pinEntityTimestamps()`
   on `recentItems` to avoid relative time strings.
+- **Tracker execution logs**: Intercept `*/logs` responses and pin `startedAt`/`finishedAt`
+  and phase durations with `fixTrackerExecutionLogs(page)`.
+- **Tracker health dots**: Intercept `*/logs_summary` responses and pin timestamps with
+  `fixTrackerHealthDots(page)`.
 
 General pattern for stabilization - intercept with `page.route()`, call `route.fetch()`
 to get the real response, mutate the JSON, then `route.fulfill({ response, json })`:
