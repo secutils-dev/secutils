@@ -1,0 +1,25 @@
+# Build artifacts
+target/
+node_modules/
+dist/
+.parcel-cache/
+
+# Version control
+.git/
+.gitmodules
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment and secrets
+.env
+
+# Testing
+e2e/
+
+# CI/CD
+.github/
+.husky/
