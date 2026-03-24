@@ -7,6 +7,12 @@ description: Learn how to create and use webhooks in Secutils.dev.
 
 import Steps from '@site/src/components/Steps';
 import CodeBlock from '@theme/CodeBlock';
+import SampleFields from '@site/src/components/SampleFields';
+
+import htmlResponderSample from '@site/static/samples/webhooks/html-responder.secutils.json';
+import jsonResponderSample from '@site/static/samples/webhooks/json-responder.secutils.json';
+import honeypotResponderSample from '@site/static/samples/webhooks/honeypot-responder.secutils.json';
+import dynamicResponderSample from '@site/static/samples/webhooks/dynamic-responder.secutils.json';
 
 # What is a webhook?
 
@@ -35,20 +41,17 @@ In this guide you'll create a simple responder that returns a static HTML page:
     {
         img: '../img/docs/guides/webhooks/html_step2_form.png',
         caption: <>Fill in the responder form and click <b>Save</b>.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>HTML Responder</CodeBlock></td></tr>
-                <tr><td><b>Path</b></td><td><CodeBlock>/html-responder</CodeBlock></td></tr>
-                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: text/html; charset=utf-8</CodeBlock></td></tr>
-                <tr><td><b>Body</b></td><td><CodeBlock language="html">{`<!DOCTYPE html>
-<html lang="en">
-<head>
-    <title>My HTML responder</title>
-</head>
-<body>Hello World</body>
-</html>`}</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={htmlResponderSample}
+                entity="responders"
+                samplePath="webhooks/html-responder"
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Path', path: 'location.path' },
+                    { label: 'Headers', path: 'settings.headers', language: 'http' },
+                    { label: 'Body', path: 'settings.body', language: 'html' },
+                ]}
+            /></>,
         alt: 'Fill in the responder name, path, headers, and body.',
     },
     {
@@ -75,16 +78,17 @@ In this guide you'll create a simple responder that returns a JSON value:
     {
         img: '../img/docs/guides/webhooks/json_step2_form.png',
         caption: <>Fill in the responder form and click <b>Save</b>.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>JSON Responder</CodeBlock></td></tr>
-                <tr><td><b>Path</b></td><td><CodeBlock>/json-responder</CodeBlock></td></tr>
-                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: application/json</CodeBlock></td></tr>
-                <tr><td><b>Body</b></td><td><CodeBlock language="json">{`{
-    "message": "Hello World"
-}`}</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={jsonResponderSample}
+                entity="responders"
+                samplePath="webhooks/json-responder"
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Path', path: 'location.path' },
+                    { label: 'Headers', path: 'settings.headers', language: 'http' },
+                    { label: 'Body', path: 'settings.body', language: 'json' },
+                ]}
+            /></>,
         alt: 'Configure the JSON responder with name, path, headers, and a JSON body.',
     },
     {
@@ -115,25 +119,18 @@ In this guide, you'll create a responder that returns an HTML page with custom <
     {
         img: '../img/docs/guides/webhooks/tracking_step2_form.png',
         caption: <>Enable <b>Advanced mode</b>, set <b>Tracking</b> to 5, and fill in the rest of the form. Click <b>Save</b>.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>Notion Honeypot</CodeBlock></td></tr>
-                <tr><td><b>Path</b></td><td><CodeBlock>/notion-honeypot</CodeBlock></td></tr>
-                <tr><td><b>Tracking</b></td><td><CodeBlock>5</CodeBlock></td></tr>
-                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: text/html; charset=utf-8</CodeBlock></td></tr>
-                <tr><td><b>Body</b></td><td><CodeBlock language="html">{`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta property="iframely:image"
-        content="https://raw.githubusercontent.com/secutils-dev/secutils/main/assets/logo/secutils-logo-initials.png" />
-  <meta property="iframely:description"
-        content="Inspect incoming HTTP request headers and body with the honeypot endpoint" />
-  <title>My HTML responder</title>
-</head>
-<body>Hello World</body>
-</html>`}</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={honeypotResponderSample}
+                entity="responders"
+                samplePath="webhooks/honeypot-responder"
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Path', path: 'location.path' },
+                    { label: 'Tracking', path: 'settings.requestsToTrack' },
+                    { label: 'Headers', path: 'settings.headers', language: 'http' },
+                    { label: 'Body', path: 'settings.body', language: 'html' },
+                ]}
+            /></>,
         alt: 'Configure the honeypot responder with tracking enabled and rich meta-tags in the body.',
     },
     {
@@ -166,19 +163,18 @@ The script should be provided in the form of an [Immediately Invoked Function Ex
     {
         img: '../img/docs/guides/webhooks/dynamic_step2_form.png',
         caption: <>Enable <b>Advanced mode</b>, set <b>Tracking</b> to 5, and fill in the form with a custom script.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>Dynamic</CodeBlock></td></tr>
-                <tr><td><b>Path</b></td><td><CodeBlock>/dynamic</CodeBlock></td></tr>
-                <tr><td><b>Tracking</b></td><td><CodeBlock>5</CodeBlock></td></tr>
-                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: text/html; charset=utf-8</CodeBlock></td></tr>
-                <tr><td><b>Script</b></td><td><CodeBlock language="javascript">{`(async () => {
-    return {
-      body: context.query.arg ?? 'Query string does not include \`arg\` parameter'
-    };
-})();`}</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={dynamicResponderSample}
+                entity="responders"
+                samplePath="webhooks/dynamic-responder"
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Path', path: 'location.path' },
+                    { label: 'Tracking', path: 'settings.requestsToTrack' },
+                    { label: 'Headers', path: 'settings.headers', language: 'http' },
+                    { label: 'Script', path: 'settings.script', language: 'javascript' },
+                ]}
+            /></>,
         alt: 'Configure the dynamic responder with a custom script that reads the query string.',
     },
     {

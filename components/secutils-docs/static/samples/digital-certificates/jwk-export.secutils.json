@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "exportedAt": 0,
+  "data": {
+    "certificateTemplates": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000021",
+        "name": "jwk",
+        "attributes": {
+          "keyAlgorithm": { "keyType": "ecdsa", "curve": "secp384r1" },
+          "signatureAlgorithm": "sha256",
+          "notValidBefore": 1577836800,
+          "notValidAfter": 1609459200,
+          "version": 3,
+          "isCa": false
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ],
+    "responders": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000022",
+        "name": "Subtle Crypto",
+        "location": { "pathType": "=", "path": "/subtle-crypto" },
+        "method": "ANY",
+        "enabled": true,
+        "settings": {
+          "requestsToTrack": 10,
+          "statusCode": 200,
+          "headers": [["Content-Type", "text/html; charset=utf-8"]],
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>Subtle Crypto</title>\n  <style>\n    .center { text-align: center }\n    pre {\n      outline: 1px solid #ccc;\n      padding: 5px;\n      margin: 1em auto;\n      width: 30%;\n      overflow: hidden;\n      text-overflow: ellipsis;\n    }\n  </style>\n  <script type=\"text/javascript\">\n    document.addEventListener(\"DOMContentLoaded\", async function main() {\n      document.getElementById(\"p8_upload\").addEventListener(\"change\", (e) => {\n        if (e.target.files.length === 0) {\n          return;\n        }\n\n        const reader = new FileReader();\n        reader.onload = async () => {\n          // Import generated PKCS#8 key as SubtleCrypto's CryptoKey.\n          const cryptoKey = await window.crypto.subtle.importKey(\n              \"pkcs8\",\n              new Uint8Array(reader.result),\n              { name: \"ECDSA\", namedCurve: \"P-384\" },\n              true,\n              [\"sign\"]\n          )\n\n          // Export CryptoKey as JWK and render it.\n          document.getElementById(\"jwk\").textContent = JSON.stringify(\n              await window.crypto.subtle.exportKey('jwk', cryptoKey),\n              null,\n              2\n          );\n        };\n        reader.readAsArrayBuffer(e.target.files[0]);\n      });\n    });\n  </script>\n</head>\n<body>\n<h1 class=\"center\">PKCS#8 ➡ JSON Web Key (JWK)</h1>\n<div class=\"center\">\n  <label for=\"p8_upload\">Choose PKCS#8 key (*.p8)</label>\n  <input\n      type=\"file\"\n      id=\"p8_upload\"\n      name=\"p8_upload\"\n      accept=\".p8\" />\n  <br />\n</div>\n<pre id=\"jwk\">No PKCS#8 key is loaded yet...</pre>\n</body>\n</html>"
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ]
+  }
+}

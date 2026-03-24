@@ -39,7 +39,7 @@ export function WorkspacePage() {
   const euiTheme = useEuiTheme();
   const navigate = useNavigate();
 
-  const { actions, isSettingsOpen, hideSettings } = usePageHeaderActions();
+  const { actions, isSettingsOpen, hideSettings, pendingImportUrl, clearPendingImportUrl } = usePageHeaderActions();
 
   const { uiState, settings, setSettings } = useAppContext();
   const { util: utilIdFromParam = UTIL_HANDLES.home, deepLink: deepLinkFromParam } = useParams<{
@@ -280,7 +280,13 @@ export function WorkspacePage() {
     >
       <Suspense fallback={<PageLoadingState />}>
         <WorkspaceContext.Provider value={{ setTitleActions, setTitle }}>{content}</WorkspaceContext.Provider>
-        {isSettingsOpen ? <SettingsFlyout onClose={hideSettings} /> : null}
+        {isSettingsOpen ? (
+          <SettingsFlyout
+            onClose={hideSettings}
+            importUrl={pendingImportUrl}
+            onImportUrlConsumed={clearPendingImportUrl}
+          />
+        ) : null}
       </Suspense>
     </Page>
   );

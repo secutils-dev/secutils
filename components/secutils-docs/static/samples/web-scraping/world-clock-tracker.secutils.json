@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "exportedAt": 0,
+  "data": {
+    "pageTrackers": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000041",
+        "name": "World Clock",
+        "retrack": {
+          "enabled": true,
+          "config": {
+            "revisions": 3,
+            "job": {
+              "schedule": "0 0 0/1 * * ? *"
+            }
+          },
+          "target": {
+            "type": "page",
+            "extractor": "export async function execute(page) {\n    // Navigate to the Berlin world clock page.\n    await page.goto('https://www.timeanddate.com/worldclock/germany/berlin');\n\n    // Wait for the time element to be visible and get its value.\n    const time = await page.locator('css=#qlook #ct').textContent();\n\n    // Return the time formatted as markdown with a link to the world clock page.\n    return `Berlin time is [**${time}**](https://www.timeanddate.com/worldclock/germany/berlin)`;\n};"
+          },
+          "notifications": true
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ]
+  }
+}

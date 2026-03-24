@@ -46,9 +46,11 @@ const ImportDataModal = lazy(() => import('./import_data_modal'));
 
 export interface Props {
   onClose: () => void;
+  importUrl?: string | null;
+  onImportUrlConsumed?: () => void;
 }
 
-export function SettingsFlyout({ onClose }: Props) {
+export function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed }: Props) {
   const { settings, setSettings, uiState, refreshUiState, addToast } = useAppContext();
 
   const uiTheme = settings?.[USER_SETTINGS_KEY_COMMON_UI_THEME] as EuiThemeColorMode | undefined;
@@ -73,7 +75,7 @@ export function SettingsFlyout({ onClose }: Props) {
   const [setPasskeyStatus, setSetPasskeyStatus] = useState<AsyncData<null> | null>(null);
 
   const [exportModalVisible, setExportModalVisible] = useState(false);
-  const [importModalVisible, setImportModalVisible] = useState(false);
+  const [importModalVisible, setImportModalVisible] = useState(!!importUrl);
 
   const changeInProgress = setPasswordStatus?.status === 'pending' || setPasskeyStatus?.status === 'pending';
   const passkeySection = isPasskeySupported ? (
@@ -176,7 +178,9 @@ export function SettingsFlyout({ onClose }: Props) {
     </EuiFormRow>
   ) : null;
 
-  const [selectedTab, setSelectedTab] = useState<'general' | 'security' | 'secrets' | 'scripts' | 'account'>('general');
+  const [selectedTab, setSelectedTab] = useState<'general' | 'security' | 'secrets' | 'scripts' | 'account'>(
+    importUrl ? 'account' : 'general',
+  );
   let selectedTabContent;
   if (selectedTab === 'general') {
     selectedTabContent = (
@@ -459,8 +463,12 @@ export function SettingsFlyout({ onClose }: Props) {
           <Suspense fallback={<EuiLoadingSpinner size="l" />}>
             <ImportDataModal
               addToast={addToast}
-              onClose={() => setImportModalVisible(false)}
+              onClose={() => {
+                setImportModalVisible(false);
+                onImportUrlConsumed?.();
+              }}
               maxImportFileSize={uiState.platform.maxImportFileSize}
+              importUrl={importUrl ?? undefined}
             />
           </Suspense>
         )}

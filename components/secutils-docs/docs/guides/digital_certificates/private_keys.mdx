@@ -7,6 +7,10 @@ description: Learn how to create and use private keys in Secutils.dev.
 
 import Steps from '@site/src/components/Steps';
 import CodeBlock from '@theme/CodeBlock';
+import SampleFields from '@site/src/components/SampleFields';
+
+import rsaPrivateKeySample from '@site/static/samples/digital-certificates/rsa-private-key.secutils.json';
+import ecdsaPrivateKeySample from '@site/static/samples/digital-certificates/ecdsa-private-key.secutils.json';
 
 # What is a private key?
 
@@ -29,23 +33,30 @@ In this guide, you'll create the simplest possible RSA key and verify its validi
     {
         img: '../../img/docs/guides/digital_certificates/private_keys/rsa_step2_general.png',
         caption: <>Fill in the <b>General</b> section of the private key form.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>RSA</CodeBlock></td></tr>
-                <tr><td><b>Key algorithm</b></td><td><CodeBlock>RSA</CodeBlock></td></tr>
-                <tr><td><b>Key size</b></td><td><CodeBlock>2048 bit</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={rsaPrivateKeySample}
+                entity="privateKeys"
+                samplePath="digital-certificates/rsa-private-key"
+                hideImportButton
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Key algorithm', path: 'alg.keyType' },
+                    { label: 'Key size', path: 'alg.keySize' },
+                ]}
+            /></>,
         alt: 'Fill in the General section: name, key algorithm, and key size.',
     },
     {
         img: '../../img/docs/guides/digital_certificates/private_keys/rsa_step3_security.png',
         caption: <>Scroll down to <b>Security</b> and set encryption to <b>None</b>. Click <b>Save</b> when done.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Encryption</b></td><td><CodeBlock>None</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={rsaPrivateKeySample}
+                entity="privateKeys"
+                samplePath="digital-certificates/rsa-private-key"
+                fields={[
+                    { label: 'Encryption', path: 'encrypted' },
+                ]}
+            /></>,
         alt: 'Set encryption to None and click Save.',
     },
     {
@@ -108,25 +119,34 @@ In this guide, you'll generate an ECDSA elliptic curve private key protected by 
     {
         img: '../../img/docs/guides/digital_certificates/private_keys/ecdsa_step2_general.png',
         caption: <>Fill in the <b>General</b> section with ECDSA key parameters.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>ECC</CodeBlock></td></tr>
-                <tr><td><b>Key algorithm</b></td><td><CodeBlock>ECDSA</CodeBlock></td></tr>
-                <tr><td><b>Curve name</b></td><td><CodeBlock>secp384r1 / NIST P-384</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={ecdsaPrivateKeySample}
+                entity="privateKeys"
+                samplePath="digital-certificates/ecdsa-private-key"
+                hideImportButton
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Key algorithm', path: 'alg.keyType' },
+                    { label: 'Curve name', path: 'alg.curve' },
+                ]}
+            /></>,
         alt: 'Fill in the General section: name, ECDSA key algorithm, and curve name.',
     },
     {
         img: '../../img/docs/guides/digital_certificates/private_keys/ecdsa_step3_security.png',
         caption: <>Scroll down to <b>Security</b> and set a passphrase to protect the key. Click <b>Save</b> when done.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Encryption</b></td><td><CodeBlock>Passphrase</CodeBlock></td></tr>
-                <tr><td><b>Passphrase</b></td><td><CodeBlock>pass</CodeBlock></td></tr>
-                <tr><td><b>Repeat passphrase</b></td><td><CodeBlock>pass</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={ecdsaPrivateKeySample}
+                entity="privateKeys"
+                samplePath="digital-certificates/ecdsa-private-key"
+                fields={[
+                    { label: 'Encryption', path: 'encrypted' },
+                ]}
+                extraFields={[
+                    { label: 'Passphrase', value: 'pass' },
+                    { label: 'Repeat passphrase', value: 'pass' },
+                ]}
+            /></>,
         alt: 'Set encryption to Passphrase, enter and repeat the passphrase, and click Save.',
     },
     {

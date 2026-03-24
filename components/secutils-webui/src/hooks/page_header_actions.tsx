@@ -8,10 +8,36 @@ import {
   useEuiTheme,
 } from '@elastic/eui';
 import { css } from '@emotion/react';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { useAppContext } from './use_app_context';
 import { getOryApi } from '../tools/ory';
+
+const IMPORT_URL_PARAM = 'import_url';
+
+function consumeImportUrlParam(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  const importUrl = params.get(IMPORT_URL_PARAM);
+  if (!importUrl) {
+    return null;
+  }
+
+  // Only allow same-origin URLs.
+  try {
+    if (new URL(importUrl, window.location.origin).origin !== window.location.origin) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  // Remove the param from the URL to avoid re-triggering on refresh.
+  params.delete(IMPORT_URL_PARAM);
+  const newSearch = params.size > 0 ? `?${params.toString()}` : '';
+  window.history.replaceState(null, '', `${window.location.pathname}${newSearch}`);
+
+  return importUrl;
+}
 
 export function usePageHeaderActions() {
   const { uiState } = useAppContext();
@@ -20,6 +46,21 @@ export function usePageHeaderActions() {
 
   const [isAccountPopoverOpen, setIsAccountPopoverOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [pendingImportUrl, setPendingImportUrl] = useState<string | null>(null);
+
+  // On mount, check for import_url query parameter.
+  useEffect(() => {
+    const importUrl = consumeImportUrlParam();
+    if (importUrl) {
+      setPendingImportUrl(importUrl);
+      refreshUiState();
+      setIsSettingsOpen(true);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const clearPendingImportUrl = useCallback(() => {
+    setPendingImportUrl(null);
+  }, []);
 
   const onToggleSettings = () => {
     // Refresh UI state every time settings are opened.
@@ -113,5 +154,11 @@ export function usePageHeaderActions() {
         </EuiButton>,
       ];
 
-  return { actions, isSettingsOpen, hideSettings: () => setIsSettingsOpen(false) };
+  return {
+    actions,
+    isSettingsOpen,
+    hideSettings: () => setIsSettingsOpen(false),
+    pendingImportUrl,
+    clearPendingImportUrl,
+  };
 }

@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "exportedAt": 0,
+  "data": {
+    "pageTrackers": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000043",
+        "name": "GitHub",
+        "retrack": {
+          "enabled": true,
+          "config": {
+            "revisions": 3
+          },
+          "target": {
+            "type": "page",
+            "extractor": "export async function execute(page, { previousContent }) {\n    // Load built-in utilities for tracking resources.\n    const { resources: utils } = await import(`data:text/javascript,${encodeURIComponent(\n      await (await fetch('https://secutils.dev/retrack/utilities.js')).text()\n    )}`);\n\n    // Start tracking resources.\n    utils.startTracking(page);\n\n    // Navigate to the target page.\n    await page.goto('https://github.com');\n    await page.waitForTimeout(1000);\n\n    // Stop tracking and return resources.\n    const resources = await utils.stopTracking(page);\n\n    // Format resources as a table,\n    // showing diff status if previous content is available.\n    return utils.formatAsTable(\n      previousContent\n        ? utils.setDiffStatus(previousContent.original.source, resources)\n        : resources\n    );\n};"
+          },
+          "notifications": false
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ]
+  }
+}

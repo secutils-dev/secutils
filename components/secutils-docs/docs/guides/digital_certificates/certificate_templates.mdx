@@ -7,6 +7,10 @@ description: Learn how to create and use digital certificate templates in Secuti
 
 import Steps from '@site/src/components/Steps';
 import CodeBlock from '@theme/CodeBlock';
+import SampleFields from '@site/src/components/SampleFields';
+
+import httpsServerSample from '@site/static/samples/digital-certificates/https-server.secutils.json';
+import jwkExportSample from '@site/static/samples/digital-certificates/jwk-export.secutils.json';
 
 # What is a digital certificate?
 
@@ -29,36 +33,47 @@ In this guide you'll create a template for generating a private key and self-sig
     {
         img: '../../img/docs/guides/digital_certificates/certificate_templates/https_step2_general.png',
         caption: <>Fill in the <b>General</b> section of the template form.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>https-server</CodeBlock></td></tr>
-                <tr><td><b>Key algorithm</b></td><td><CodeBlock>RSA</CodeBlock></td></tr>
-                <tr><td><b>Key size</b></td><td><CodeBlock>2048 bit</CodeBlock></td></tr>
-                <tr><td><b>Signature algorithm</b></td><td><CodeBlock>SHA-256</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={httpsServerSample}
+                entity="certificateTemplates"
+                samplePath="digital-certificates/https-server"
+                hideImportButton
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Key algorithm', path: 'attributes.keyAlgorithm.keyType' },
+                    { label: 'Key size', path: 'attributes.keyAlgorithm.keySize' },
+                    { label: 'Signature algorithm', path: 'attributes.signatureAlgorithm' },
+                ]}
+            /></>,
         alt: 'Fill in the General section: name, key algorithm, key size, and signature algorithm.',
     },
     {
         img: '../../img/docs/guides/digital_certificates/certificate_templates/https_step3_extensions.png',
         caption: <>Scroll down to <b>Extensions</b> and configure the certificate type, key usage, and extended key usage.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Certificate type</b></td><td><CodeBlock>End Entity</CodeBlock></td></tr>
-                <tr><td><b>Key usage</b></td><td><CodeBlock>Key encipherment, Digital signature</CodeBlock></td></tr>
-                <tr><td><b>Extended key usage</b></td><td><CodeBlock>TLS Web server authentication</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={httpsServerSample}
+                entity="certificateTemplates"
+                samplePath="digital-certificates/https-server"
+                hideImportButton
+                fields={[
+                    { label: 'Certificate type', path: 'attributes.isCa' },
+                    { label: 'Key usage', path: 'attributes.keyUsage' },
+                    { label: 'Extended key usage', path: 'attributes.extendedKeyUsage' },
+                ]}
+            /></>,
         alt: 'Configure Extensions: certificate type, key usage, and extended key usage.',
     },
     {
         img: '../../img/docs/guides/digital_certificates/certificate_templates/https_step4_dn.png',
         caption: <>Scroll down to <b>Distinguished Name (DN)</b> and set the common name to <code>localhost</code>. Click <b>Save</b> when done.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Common name (CN)</b></td><td><CodeBlock>localhost</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={httpsServerSample}
+                entity="certificateTemplates"
+                samplePath="digital-certificates/https-server"
+                fields={[
+                    { label: 'Common name (CN)', path: 'attributes.commonName' },
+                ]}
+            /></>,
         alt: 'Set the common name (CN) to localhost.',
     },
     {
@@ -142,14 +157,18 @@ In this guide, you will generate a private key in PKCS#8 format and then export 
     {
         img: '../../img/docs/guides/digital_certificates/certificate_templates/jwk_step2_general.png',
         caption: <>Fill in the <b>General</b> section with ECDSA key parameters. Click <b>Save</b> when done.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>jwk</CodeBlock></td></tr>
-                <tr><td><b>Key algorithm</b></td><td><CodeBlock>ECDSA</CodeBlock></td></tr>
-                <tr><td><b>Curve name</b></td><td><CodeBlock>secp384r1 / NIST P-384</CodeBlock></td></tr>
-                <tr><td><b>Signature algorithm</b></td><td><CodeBlock>SHA-256</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={jwkExportSample}
+                entity="certificateTemplates"
+                samplePath="digital-certificates/jwk-export"
+                hideImportButton
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Key algorithm', path: 'attributes.keyAlgorithm.keyType' },
+                    { label: 'Curve name', path: 'attributes.keyAlgorithm.curve' },
+                    { label: 'Signature algorithm', path: 'attributes.signatureAlgorithm' },
+                ]}
+            /></>,
         alt: 'Fill in the General section: name, ECDSA key algorithm, curve, and signature algorithm.',
     },
     {
@@ -169,72 +188,17 @@ In this guide, you will generate a private key in PKCS#8 format and then export 
     {
         img: '../../img/docs/guides/digital_certificates/certificate_templates/jwk_step5_responder_form.png',
         caption: <>Navigate to <a href="https://secutils.dev/ws/webhooks__responders"><b>Webhooks → Responders</b></a>, click <strong>Create responder</strong>, and configure a responder that serves an HTML page with the <b>Web Crypto API</b> to convert PKCS#8 keys to JWK. Click <b>Save</b>.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>Subtle Crypto</CodeBlock></td></tr>
-                <tr><td><b>Path</b></td><td><CodeBlock>/subtle-crypto</CodeBlock></td></tr>
-                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: text/html; charset=utf-8</CodeBlock></td></tr>
-                <tr><td><b>Body</b></td><td><CodeBlock language="html">{`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <title>Subtle Crypto</title>
-  <style>
-    .center { text-align: center }
-    pre {
-      outline: 1px solid #ccc;
-      padding: 5px;
-      margin: 1em auto;
-      width: 30%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-  </style>
-  <script type="text/javascript">
-    document.addEventListener("DOMContentLoaded", async function main() {
-      document.getElementById("p8_upload").addEventListener("change", (e) => {
-        if (e.target.files.length === 0) {
-          return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = async () => {
-          // Import generated PKCS#8 key as SubtleCrypto's CryptoKey.
-          const cryptoKey = await window.crypto.subtle.importKey(
-              "pkcs8",
-              new Uint8Array(reader.result),
-              { name: "ECDSA", namedCurve: "P-384" },
-              true,
-              ["sign"]
-          )
-
-          // Export CryptoKey as JWK and render it.
-          document.getElementById("jwk").textContent = JSON.stringify(
-              await window.crypto.subtle.exportKey('jwk', cryptoKey),
-              null,
-              2
-          );
-        };
-        reader.readAsArrayBuffer(e.target.files[0]);
-      });
-    });
-  </script>
-</head>
-<body>
-<h1 class="center">PKCS#8 ➡ JSON Web Key (JWK)</h1>
-<div class="center">
-  <label for="p8_upload">Choose PKCS#8 key (*.p8)</label>
-  <input
-      type="file"
-      id="p8_upload"
-      name="p8_upload"
-      accept=".p8" />
-  <br />
-</div>
-<pre id="jwk">No PKCS#8 key is loaded yet...</pre>
-</body>
-</html>`}</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={jwkExportSample}
+                entity="responders"
+                samplePath="digital-certificates/jwk-export"
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Path', path: 'location.path' },
+                    { label: 'Headers', path: 'settings.headers', language: 'http' },
+                    { label: 'Body', path: 'settings.body', language: 'html' },
+                ]}
+            /></>,
         alt: 'Create a Subtle Crypto responder with an HTML page that converts PKCS#8 to JWK.',
     },
     {

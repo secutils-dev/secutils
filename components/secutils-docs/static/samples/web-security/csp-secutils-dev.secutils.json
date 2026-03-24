@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "exportedAt": 0,
+  "data": {
+    "contentSecurityPolicies": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000010",
+        "name": "secutils.dev",
+        "directives": [
+          { "name": "default-src", "value": ["'self'", "api.secutils.dev"] },
+          { "name": "style-src", "value": ["'self'", "fonts.googleapis.com"] }
+        ],
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ]
+  }
+}

@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "exportedAt": 0,
+  "data": {
+    "responders": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000060",
+        "name": "no-changes.js",
+        "location": { "pathType": "=", "path": "/no-changes.js" },
+        "method": "ANY",
+        "enabled": true,
+        "settings": {
+          "requestsToTrack": 10,
+          "statusCode": 200,
+          "headers": [["Content-Type", "application/javascript; charset=utf-8"]],
+          "body": "document.body.insertAdjacentHTML(\n    'beforeend',\n    'Source: no-changes.js<br>'\n);"
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      },
+      {
+        "id": "019568f0-0000-7000-8000-000000000061",
+        "name": "changed.js",
+        "location": { "pathType": "=", "path": "/changed.js" },
+        "method": "ANY",
+        "enabled": true,
+        "settings": {
+          "requestsToTrack": 10,
+          "statusCode": 200,
+          "headers": [["Content-Type", "application/javascript; charset=utf-8"]],
+          "body": "document.body.insertAdjacentHTML(\n    'beforeend',\n    'Source: changed.js, Changed: no<br>'\n);"
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      },
+      {
+        "id": "019568f0-0000-7000-8000-000000000062",
+        "name": "removed.js",
+        "location": { "pathType": "=", "path": "/removed.js" },
+        "method": "ANY",
+        "enabled": true,
+        "settings": {
+          "requestsToTrack": 10,
+          "statusCode": 200,
+          "headers": [["Content-Type", "application/javascript; charset=utf-8"]],
+          "body": "document.body.insertAdjacentHTML(\n    'beforeend',\n    'Source: removed.js<br>'\n);"
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      },
+      {
+        "id": "019568f0-0000-7000-8000-000000000063",
+        "name": "added.js",
+        "location": { "pathType": "=", "path": "/added.js" },
+        "method": "ANY",
+        "enabled": true,
+        "settings": {
+          "requestsToTrack": 10,
+          "statusCode": 200,
+          "headers": [["Content-Type", "application/javascript; charset=utf-8"]],
+          "body": "document.body.insertAdjacentHTML(\n    'beforeend',\n    'Source: added.js<br>'\n);"
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      },
+      {
+        "id": "019568f0-0000-7000-8000-000000000064",
+        "name": "track-me.html",
+        "location": { "pathType": "=", "path": "/track-me.html" },
+        "method": "ANY",
+        "enabled": true,
+        "settings": {
+          "requestsToTrack": 10,
+          "statusCode": 200,
+          "headers": [["Content-Type", "text/html; charset=utf-8"]],
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n    <title>Evaluate resources tracker</title>\n    <script type=\"text/javascript\" src=\"./no-changes.js\" defer></script>\n    <script type=\"text/javascript\" src=\"./changed.js\" defer></script>\n    <script type=\"text/javascript\" src=\"./removed.js\" defer></script>\n</head>\n<body></body>\n</html>"
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ],
+    "pageTrackers": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000065",
+        "name": "Demo",
+        "retrack": {
+          "enabled": true,
+          "config": {
+            "revisions": 3
+          },
+          "target": {
+            "type": "page",
+            "extractor": "export async function execute(page, { previousContent }) {\n    // Load built-in utilities for tracking resources.\n    const { resources: utils } = await import(`data:text/javascript,${encodeURIComponent(\n      await (await fetch('https://secutils.dev/retrack/utilities.js')).text()\n    )}`);\n\n    // Start tracking resources.\n    utils.startTracking(page);\n\n    // Navigate to the target page.\n    // Replace [YOUR UNIQUE ID] with your unique handle!\n    await page.goto('https://[YOUR UNIQUE ID].webhooks.secutils.dev/track-me.html');\n    await page.waitForTimeout(1000);\n\n    // Stop tracking and return resources.\n    const resources = await utils.stopTracking(page);\n\n    // Format resources as a table,\n    // showing diff status if previous content is available.\n    return utils.formatAsTable(\n      previousContent\n        ? utils.setDiffStatus(previousContent.original.source, resources)\n        : resources\n    );\n};"
+          },
+          "notifications": false
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ]
+  }
+}

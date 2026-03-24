@@ -1,0 +1,30 @@
+.su-sample-fields {
+  margin: 0.5rem 0 1rem;
+}
+
+.su-sample-fields__import-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  padding: 0.35rem 0.9rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #fff;
+  background-color: var(--ifm-color-primary);
+  text-decoration: none;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+
+  &:hover {
+    background-color: var(--ifm-color-primary-dark);
+    color: #fff;
+    text-decoration: none;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  }
+
+  &::before {
+    content: '\2913'; /* ⤓ downwards arrow */
+    font-size: 1rem;
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "exportedAt": 0,
+  "data": {
+    "responders": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000004",
+        "name": "Dynamic",
+        "location": { "pathType": "=", "path": "/dynamic" },
+        "method": "ANY",
+        "enabled": true,
+        "settings": {
+          "requestsToTrack": 5,
+          "statusCode": 200,
+          "headers": [["Content-Type", "text/html; charset=utf-8"]],
+          "script": "(async () => {\n  return {\n    body: context.query.arg ?? 'Query string does not include `arg` parameter'\n  };\n})();"
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ]
+  }
+}

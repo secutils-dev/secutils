@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "exportedAt": 0,
+  "data": {
+    "responders": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000003",
+        "name": "Notion Honeypot",
+        "location": { "pathType": "=", "path": "/notion-honeypot" },
+        "method": "ANY",
+        "enabled": true,
+        "settings": {
+          "requestsToTrack": 5,
+          "statusCode": 200,
+          "headers": [["Content-Type", "text/html; charset=utf-8"]],
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta property=\"iframely:image\"\n        content=\"https://raw.githubusercontent.com/secutils-dev/secutils/main/assets/logo/secutils-logo-initials.png\" />\n  <meta property=\"iframely:description\"\n        content=\"Inspect incoming HTTP request headers and body with the honeypot endpoint\" />\n  <title>My HTML responder</title>\n</head>\n<body>Hello World</body>\n</html>"
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ]
+  }
+}

@@ -40,6 +40,8 @@ interface Props {
   addToast: (toast: PageToast) => void;
   onClose: () => void;
   maxImportFileSize: number;
+  /** When set, the modal fetches this URL instead of showing the file picker. */
+  importUrl?: string;
 }
 
 type Step = 'upload' | 'preview' | 'result';
@@ -70,12 +72,12 @@ interface ImportItem {
   renameAllowed: boolean;
 }
 
-export default function ImportDataModal({ addToast, onClose, maxImportFileSize }: Props) {
-  const [step, setStep] = useState<Step>('upload');
+export default function ImportDataModal({ addToast, onClose, maxImportFileSize, importUrl }: Props) {
+  const [step, setStep] = useState<Step>(importUrl ? 'preview' : 'upload');
   const [mode, setMode] = useState<'merge' | 'apply'>('merge');
   const [fileData, setFileData] = useState<unknown>(null);
   const [parseError, setParseError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(!!importUrl);
   const [importing, setImporting] = useState(false);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [importResult, setImportResult] = useState<Record<
@@ -94,6 +96,38 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
   const [importSettings, setImportSettings] = useState(true);
 
   const fileHasEncryptedSecrets = fileData != null && (fileData as Record<string, unknown>).secretsEncryption != null;
+
+  // When importUrl is provided, fetch the sample file and set fileData.
+  // The preview is then triggered by the separate useEffect below.
+  useEffect(() => {
+    if (!importUrl) {
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(importUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch: ${response.statusText}`);
+        }
+        const data = await response.json();
+        if (!cancelled) {
+          setFileData(data);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setParseError(err instanceof Error ? err.message : 'Failed to fetch sample data.');
+          setStep('upload');
+          setLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [importUrl]);
 
   const handleFileChange = useCallback(
     (files: FileList | null) => {
@@ -193,6 +227,13 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
       setLoading(false);
     }
   }, [fileData, mode, addToast]);
+
+  // Auto-trigger preview when fileData arrives from a URL import.
+  useEffect(() => {
+    if (importUrl && fileData && !preview) {
+      handlePreview();
+    }
+  }, [importUrl, fileData, preview, handlePreview]);
 
   const handleImport = useCallback(async () => {
     if (!fileData || !preview) {
@@ -849,6 +890,12 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize }
   } else if (step === 'preview' && preview) {
     content = (
       <>
+        {importUrl && (
+          <>
+            <EuiCallOut title="Importing sample data from documentation" color="primary" size="s" iconType="document" />
+            <EuiSpacer size="s" />
+          </>
+        )}
         {(preview.warnings ?? []).map((w, i) => (
           <EuiCallOut key={i} title={w} color="warning" size="s" iconType="warning" />
         ))}

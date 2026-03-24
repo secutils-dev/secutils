@@ -5,8 +5,11 @@ const { themes } = require('prism-react-renderer');
 const lightTheme = themes.vsLight;
 const darkTheme = themes.vsDark;
 
+const SECUTILS_ENV = process.env.SECUTILS_ENV?.toLowerCase();
 const BASE_URL =
-    process.env.SECUTILS_ENV?.toLowerCase() === 'dev' ? 'https://dev.secutils.dev' : 'https://secutils.dev';
+    SECUTILS_ENV === 'dev' ? 'https://dev.secutils.dev'
+    : SECUTILS_ENV === 'e2e' ? 'http://localhost:7171'
+    : 'https://secutils.dev';
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
@@ -16,6 +19,9 @@ const config = {
   url: BASE_URL,
   baseUrl: '/docs/',
   baseUrlIssueBanner: true,
+  customFields: {
+    baseUrl: BASE_URL,
+  },
 
   organizationName: 'secutils-dev',
   projectName: 'secutils-docs',

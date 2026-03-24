@@ -7,6 +7,13 @@ description: Learn how to create and use page trackers in Secutils.dev.
 
 import Steps from '@site/src/components/Steps';
 import CodeBlock from '@theme/CodeBlock';
+import SampleFields from '@site/src/components/SampleFields';
+
+import hackerNewsTrackerSample from '@site/static/samples/web-scraping/hacker-news-tracker.secutils.json';
+import worldClockTrackerSample from '@site/static/samples/web-scraping/world-clock-tracker.secutils.json';
+import hnResourcesTrackerSample from '@site/static/samples/web-scraping/hacker-news-resources-tracker.secutils.json';
+import githubResourcesTrackerSample from '@site/static/samples/web-scraping/github-resources-tracker.secutils.json';
+import detectResourceChangesSample from '@site/static/samples/web-scraping/detect-resource-changes.secutils.json';
 
 # What is a page tracker?
 
@@ -35,22 +42,15 @@ In this guide, you'll create a simple page tracker for the top post on [Hacker N
     {
         img: '../../img/docs/guides/web_scraping/create_step2_form.png',
         caption: <>Configure the tracker and click <b>Save</b>.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>Hacker News Top Post</CodeBlock></td></tr>
-                <tr><td><b>Frequency</b></td><td><CodeBlock>Manually</CodeBlock></td></tr>
-                <tr><td><b>Content extractor</b></td><td><CodeBlock language="javascript">{`export async function execute(page) {
-    // Navigate to the Hacker News homepage.
-    await page.goto('https://news.ycombinator.com/');
-
-    // Get the link to the top post.
-    const titleLink = page.locator('css=.titleline a').first();
-
-    // Return the title and link of the top post formatted as markdown.
-    return \`[\${(await titleLink.textContent()).trim()}](\${await titleLink.getAttribute('href')})\`;
-  };`}</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={hackerNewsTrackerSample}
+                entity="pageTrackers"
+                samplePath="web-scraping/hacker-news-tracker"
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Content extractor', path: 'retrack.target.extractor', language: 'javascript' },
+                ]}
+            /></>,
         alt: 'Configure the tracker name, frequency, and content extractor script.',
     },
     {
@@ -83,22 +83,15 @@ In this guide, you'll create a page tracker and test it with changing content:
     {
         img: '../../img/docs/guides/web_scraping/detect_step2_form.png',
         caption: <>Configure the tracker with an hourly frequency and click <b>Save</b>.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>World Clock</CodeBlock></td></tr>
-                <tr><td><b>Frequency</b></td><td><CodeBlock>Hourly</CodeBlock></td></tr>
-                <tr><td><b>Content extractor</b></td><td><CodeBlock language="javascript">{`export async function execute(page) {
-    // Navigate to the Berlin world clock page.
-    await page.goto('https://www.timeanddate.com/worldclock/germany/berlin');
-
-    // Wait for the time element to be visible and get its value.
-    const time = await page.locator('css=#qlook #ct').textContent();
-
-    // Return the time formatted as markdown with a link to the world clock page.
-    return \`Berlin time is [**\${time}**](https://www.timeanddate.com/worldclock/germany/berlin)\`;
-};`}</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={worldClockTrackerSample}
+                entity="pageTrackers"
+                samplePath="web-scraping/world-clock-tracker"
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Content extractor', path: 'retrack.target.extractor', language: 'javascript' },
+                ]}
+            /></>,
         alt: 'Configure the tracker with an hourly frequency and a content extractor for the Berlin world clock.',
     },
     {
@@ -232,35 +225,15 @@ In this guide, you'll create a simple page tracker to track resources of the [Ha
     {
         img: '../../img/docs/guides/web_scraping/resources_step2_form.png',
         caption: <>Configure the tracker with a resource-tracking content extractor script and click <b>Save</b>.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>Hacker News (resources)</CodeBlock></td></tr>
-                <tr><td><b>Content extractor</b></td><td><CodeBlock language="javascript">{`export async function execute(page, { previousContent }) {
-    // Load built-in utilities for tracking resources.
-    const { resources: utils } = await import(\`data:text/javascript,\${encodeURIComponent(
-      await (await fetch('https://secutils.dev/retrack/utilities.js')).text()
-    )}\`);
-
-    // Start tracking resources.
-    utils.startTracking(page);
-
-    // Navigate to the target page.
-    await page.goto('https://news.ycombinator.com');
-    await page.waitForTimeout(1000);
-
-    // Stop tracking and return resources.
-    const resources = await utils.stopTracking(page);
-
-    // Format resources as a table,
-    // showing diff status if previous content is available.
-    return utils.formatAsTable(
-      previousContent
-        ? utils.setDiffStatus(previousContent.original.source, resources)
-        : resources
-    );
-};`}</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={hnResourcesTrackerSample}
+                entity="pageTrackers"
+                samplePath="web-scraping/hacker-news-resources-tracker"
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Content extractor', path: 'retrack.target.extractor', language: 'javascript' },
+                ]}
+            /></>,
         alt: 'Configure the tracker with a resource-tracking content extractor script.',
     },
     {
@@ -290,35 +263,15 @@ In this guide, you will create a page tracker for the GitHub home page and learn
     {
         img: '../../img/docs/guides/web_scraping/filter_step2_form.png',
         caption: <>Configure a tracker for the GitHub home page and click <b>Save</b>.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>GitHub</CodeBlock></td></tr>
-                <tr><td><b>Content extractor</b></td><td><CodeBlock language="javascript">{`export async function execute(page, { previousContent }) {
-    // Load built-in utilities for tracking resources.
-    const { resources: utils } = await import(\`data:text/javascript,\${encodeURIComponent(
-      await (await fetch('https://secutils.dev/retrack/utilities.js')).text()
-    )}\`);
-
-    // Start tracking resources.
-    utils.startTracking(page);
-
-    // Navigate to the target page.
-    await page.goto('https://github.com');
-    await page.waitForTimeout(1000);
-
-    // Stop tracking and return resources.
-    const resources = await utils.stopTracking(page);
-
-    // Format resources as a table,
-    // showing diff status if previous content is available.
-    return utils.formatAsTable(
-      previousContent
-        ? utils.setDiffStatus(previousContent.original.source, resources)
-        : resources
-    );
-};`}</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={githubResourcesTrackerSample}
+                entity="pageTrackers"
+                samplePath="web-scraping/github-resources-tracker"
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Content extractor', path: 'retrack.target.extractor', language: 'javascript' },
+                ]}
+            /></>,
         alt: 'Create a tracker for the GitHub home page with the resource-tracking script.',
     },
     {
@@ -383,87 +336,91 @@ In this guide, you will create several webhook responders that emulate JavaScrip
     {
         img: '../../img/docs/guides/web_scraping/detect_resources_step2_no_changes_form.png',
         caption: <>Create a JavaScript responder that <b>will remain unchanged</b> across revisions and click <b>Save</b>.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>no-changes.js</CodeBlock></td></tr>
-                <tr><td><b>Path</b></td><td><CodeBlock>/no-changes.js</CodeBlock></td></tr>
-                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: application/javascript; charset=utf-8</CodeBlock></td></tr>
-                <tr><td><b>Body</b></td><td><CodeBlock language="javascript">{`document.body.insertAdjacentHTML(
-    'beforeend',
-    'Source: no-changes.js<br>'
-);`}</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={detectResourceChangesSample}
+                entity="responders"
+                index={0}
+                samplePath="web-scraping/detect-resource-changes"
+                hideImportButton
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Path', path: 'location.path' },
+                    { label: 'Headers', path: 'settings.headers', language: 'http' },
+                    { label: 'Body', path: 'settings.body', language: 'javascript' },
+                ]}
+            /></>,
         alt: 'Create the no-changes.js responder.',
     },
     {
         img: '../../img/docs/guides/web_scraping/detect_resources_step3_changed_form.png',
         caption: <>Create a JavaScript responder that <b>will change</b> across revisions and click <b>Save</b>.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>changed.js</CodeBlock></td></tr>
-                <tr><td><b>Path</b></td><td><CodeBlock>/changed.js</CodeBlock></td></tr>
-                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: application/javascript; charset=utf-8</CodeBlock></td></tr>
-                <tr><td><b>Body</b></td><td><CodeBlock language="javascript">{`document.body.insertAdjacentHTML(
-    'beforeend',
-    'Source: changed.js, Changed: no<br>'
-);`}</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={detectResourceChangesSample}
+                entity="responders"
+                index={1}
+                samplePath="web-scraping/detect-resource-changes"
+                hideImportButton
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Path', path: 'location.path' },
+                    { label: 'Headers', path: 'settings.headers', language: 'http' },
+                    { label: 'Body', path: 'settings.body', language: 'javascript' },
+                ]}
+            /></>,
         alt: 'Create the changed.js responder.',
     },
     {
         img: '../../img/docs/guides/web_scraping/detect_resources_step4_removed_form.png',
         caption: <>Create a JavaScript responder that <b>will be removed</b> across revisions and click <b>Save</b>.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>removed.js</CodeBlock></td></tr>
-                <tr><td><b>Path</b></td><td><CodeBlock>/removed.js</CodeBlock></td></tr>
-                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: application/javascript; charset=utf-8</CodeBlock></td></tr>
-                <tr><td><b>Body</b></td><td><CodeBlock language="javascript">{`document.body.insertAdjacentHTML(
-    'beforeend',
-    'Source: removed.js<br>'
-);`}</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={detectResourceChangesSample}
+                entity="responders"
+                index={2}
+                samplePath="web-scraping/detect-resource-changes"
+                hideImportButton
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Path', path: 'location.path' },
+                    { label: 'Headers', path: 'settings.headers', language: 'http' },
+                    { label: 'Body', path: 'settings.body', language: 'javascript' },
+                ]}
+            /></>,
         alt: 'Create the removed.js responder.',
     },
     {
         img: '../../img/docs/guides/web_scraping/detect_resources_step5_added_form.png',
         caption: <>Create a JavaScript responder that <b>will be added</b> in a new revision and click <b>Save</b>.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>added.js</CodeBlock></td></tr>
-                <tr><td><b>Path</b></td><td><CodeBlock>/added.js</CodeBlock></td></tr>
-                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: application/javascript; charset=utf-8</CodeBlock></td></tr>
-                <tr><td><b>Body</b></td><td><CodeBlock language="javascript">{`document.body.insertAdjacentHTML(
-    'beforeend',
-    'Source: added.js<br>'
-);`}</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={detectResourceChangesSample}
+                entity="responders"
+                index={3}
+                samplePath="web-scraping/detect-resource-changes"
+                hideImportButton
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Path', path: 'location.path' },
+                    { label: 'Headers', path: 'settings.headers', language: 'http' },
+                    { label: 'Body', path: 'settings.body', language: 'javascript' },
+                ]}
+            /></>,
         alt: 'Create the added.js responder.',
     },
     {
         img: '../../img/docs/guides/web_scraping/detect_resources_step6_html_form.png',
         caption: <>Create a responder that serves a simple HTML page referencing the first three scripts (except <code>added.js</code>) and click <b>Save</b>.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>track-me.html</CodeBlock></td></tr>
-                <tr><td><b>Path</b></td><td><CodeBlock>/track-me.html</CodeBlock></td></tr>
-                <tr><td><b>Headers</b></td><td><CodeBlock language="http">Content-Type: text/html; charset=utf-8</CodeBlock></td></tr>
-                <tr><td><b>Body</b></td><td><CodeBlock language="html">{`<!DOCTYPE html>
-<html lang="en">
-<head>
-    <title>Evaluate resources tracker</title>
-    <script type="text/javascript" src="./no-changes.js" defer></script>
-    <script type="text/javascript" src="./changed.js" defer></script>
-    <script type="text/javascript" src="./removed.js" defer></script>
-</head>
-<body></body>
-</html>`}</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={detectResourceChangesSample}
+                entity="responders"
+                index={4}
+                samplePath="web-scraping/detect-resource-changes"
+                hideImportButton
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Path', path: 'location.path' },
+                    { label: 'Headers', path: 'settings.headers', language: 'http' },
+                    { label: 'Body', path: 'settings.body', language: 'html' },
+                ]}
+            /></>,
         alt: 'Create the track-me.html responder serving an HTML page with three script tags.',
     },
     {
@@ -479,36 +436,15 @@ In this guide, you will create several webhook responders that emulate JavaScrip
     {
         img: '../../img/docs/guides/web_scraping/detect_resources_step9_tracker_form.png',
         caption: <>Configure a tracker for the <code>track-me.html</code> responder and click <b>Save</b>.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>Demo</CodeBlock></td></tr>
-                <tr><td><b>Content extractor</b></td><td><CodeBlock language="javascript">{`export async function execute(page, { previousContent }) {
-    // Load built-in utilities for tracking resources.
-    const { resources: utils } = await import(\`data:text/javascript,\${encodeURIComponent(
-      await (await fetch('https://secutils.dev/retrack/utilities.js')).text()
-    )}\`);
-
-    // Start tracking resources.
-    utils.startTracking(page);
-
-    // Navigate to the target page.
-    // Replace [YOUR UNIQUE ID] with your unique handle!
-    await page.goto('https://[YOUR UNIQUE ID].webhooks.secutils.dev/track-me.html');
-    await page.waitForTimeout(1000);
-
-    // Stop tracking and return resources.
-    const resources = await utils.stopTracking(page);
-
-    // Format resources as a table,
-    // showing diff status if previous content is available.
-    return utils.formatAsTable(
-      previousContent
-        ? utils.setDiffStatus(previousContent.original.source, resources)
-        : resources
-    );
-};`}</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={detectResourceChangesSample}
+                entity="pageTrackers"
+                samplePath="web-scraping/detect-resource-changes"
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'Content extractor', path: 'retrack.target.extractor', language: 'javascript' },
+                ]}
+            /></>,
         alt: 'Configure a tracker for the track-me.html responder with the resource-tracking script.',
     },
     {

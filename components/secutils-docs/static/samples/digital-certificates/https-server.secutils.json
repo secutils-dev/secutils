@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "exportedAt": 0,
+  "data": {
+    "certificateTemplates": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000020",
+        "name": "https-server",
+        "attributes": {
+          "commonName": "localhost",
+          "keyAlgorithm": { "keyType": "rsa", "keySize": "2048" },
+          "signatureAlgorithm": "sha256",
+          "notValidBefore": 1577836800,
+          "notValidAfter": 1609459200,
+          "version": 3,
+          "isCa": false,
+          "keyUsage": ["keyEncipherment", "digitalSignature"],
+          "extendedKeyUsage": ["tlsWebServerAuthentication"]
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "exportedAt": 0,
+  "data": {
+    "apiTrackers": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000051",
+        "name": "State via POST",
+        "retrack": {
+          "enabled": true,
+          "config": {
+            "revisions": 3
+          },
+          "target": {
+            "type": "api",
+            "requests": [
+              {
+                "url": "https://api.example.com/state",
+                "method": "POST",
+                "headers": {
+                  "content-type": "application/json"
+                },
+                "body": {
+                  "title": "Test Post",
+                  "body": "This is a test post body.",
+                  "userId": 1
+                }
+              }
+            ]
+          },
+          "notifications": false
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ]
+  }
+}

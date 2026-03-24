@@ -7,6 +7,10 @@ description: Learn how to create and use API trackers in Secutils.dev.
 
 import Steps from '@site/src/components/Steps';
 import CodeBlock from '@theme/CodeBlock';
+import SampleFields from '@site/src/components/SampleFields';
+
+import applicationStateSample from '@site/static/samples/web-scraping/application-state-api-tracker.secutils.json';
+import postApiTrackerSample from '@site/static/samples/web-scraping/post-api-tracker.secutils.json';
 
 # What is an API tracker?
 
@@ -29,14 +33,15 @@ In this guide, you'll create a simple API tracker to monitor a public JSON API e
     {
         img: '../../img/docs/guides/web_scraping/api_create_step2_form.png',
         caption: <>Configure the tracker and click <b>Save</b>.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>Application State</CodeBlock></td></tr>
-                <tr><td><b>URL</b></td><td><CodeBlock>https://api.example.com/state</CodeBlock></td></tr>
-                <tr><td><b>Method</b></td><td><CodeBlock>GET</CodeBlock></td></tr>
-                <tr><td><b>Frequency</b></td><td><CodeBlock>Manually</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={applicationStateSample}
+                entity="apiTrackers"
+                samplePath="web-scraping/application-state-api-tracker"
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'URL', path: 'retrack.target.requests.0.url' },
+                ]}
+            /></>,
         alt: 'Configure the API tracker with name, URL, method, and frequency.',
     },
     {
@@ -69,19 +74,17 @@ In this guide, you'll create an API tracker that sends a POST request with a JSO
     {
         img: '../../img/docs/guides/web_scraping/api_post_step2_form.png',
         caption: <>Configure the tracker with a POST method and JSON body and click <b>Save</b>.<br/><br/>
-            <table className="su-table">
-                <tbody>
-                <tr><td><b>Name</b></td><td><CodeBlock>State via POST</CodeBlock></td></tr>
-                <tr><td><b>URL</b></td><td><CodeBlock>https://api.example.com/state</CodeBlock></td></tr>
-                <tr><td><b>Method</b></td><td><CodeBlock>POST</CodeBlock></td></tr>
-                <tr><td><b>Headers</b></td><td><CodeBlock>Content-Type: application/json</CodeBlock></td></tr>
-                <tr><td><b>Body</b></td><td><CodeBlock language="json">{`{
-  "title": "Test Post",
-  "body": "This is a test post body.",
-  "userId": 1
-}`}</CodeBlock></td></tr>
-                </tbody>
-            </table></>,
+            <SampleFields
+                sample={postApiTrackerSample}
+                entity="apiTrackers"
+                samplePath="web-scraping/post-api-tracker"
+                fields={[
+                    { label: 'Name', path: 'name' },
+                    { label: 'URL', path: 'retrack.target.requests.0.url' },
+                    { label: 'Method', path: 'retrack.target.requests.0.method' },
+                    { label: 'Body', path: 'retrack.target.requests.0.body', language: 'json' },
+                ]}
+            /></>,
         alt: 'Configure the API tracker with a POST method and JSON body.',
     },
     {

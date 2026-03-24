@@ -59,7 +59,7 @@ export default function Steps({ steps }: StepsProps): React.ReactElement {
                   if (e.key === 'Enter' || e.key === ' ') openLightbox(step.img, alt);
                 }}
               />
-              <p className="su-steps__caption">{step.caption}</p>
+              <div className="su-steps__caption">{step.caption}</div>
             </div>
           </div>
         );

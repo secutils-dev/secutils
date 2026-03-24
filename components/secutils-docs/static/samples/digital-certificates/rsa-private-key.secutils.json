@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "exportedAt": 0,
+  "data": {
+    "privateKeys": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000030",
+        "name": "RSA",
+        "alg": {
+          "keyType": "rsa",
+          "keySize": "2048"
+        },
+        "pkcs8": "MIIEogIBAAKCAQEAs169CQMDZGcOvCbTeEkGViU5Znwfs9xIMM15CnLuVxdkqJeuH6NXIexRFSvb39gAAAXDcsgpbf6pQuUHXA0XkWykYfRsEgyMKqZgsQSQKcj6oIqf1wLtRLUqyxM0ftNrSqCJetghG4UebcbBuDfHYOHH3V6TgqZrM+NZrL7GkKYGKPIx9R0xeLrWyDT5hBXQPRycwTh1+Zs5f6B3yxyxJ/0ta4FxhjQ1g4fZvPA5vl6jyDzybO8olxhdUINk1ZCwSXQbJpT5NJCPTHFUYyUnf5mY6ClxMuDKQsiksV/KOuE7CCdI39gL+Amo3A/Dv3J+4XsBiCCa55WABHkYspoECwIDAQABAoIBAAGUrXKrT/x70lBsLppaEB3N9C2xLzSgcRMAdbdW26ze0J9I43+HmI9qZ1GsTbUMmdkdD1F4XB9lnLmxe+Jn8EY7905VH0KzLMB9L70/ozB4zEAUhmPPa4Hj72tTmm5ntJXuNkNj4/EXJaw3/31Yj1sfXbLXmT/GzR2iYSgVAlWNbTsk2NPiiVNC/9JRaqBi4jQgSIj+qOp64cq0gUrMJHsKR8+61cC92ag6Ywmbl8WtgX+OPegAgSx/bqJ5QB5zTzARBs3OLNWnmofGuaEDtyeqziqh+mtAJVHB9ejev9NN41AgHkOrWen2e4/d3vRc5hygnGSHlvJDg9UufSheCrkCgYEA6KGswuW7E2VO87T1T5KMvZb6GGmsQM/joIICZOUmQvexBwOLw9N9K3Lh2x5G9kvFWpjyiuoYlVsmidfAYMr330N2L33rJtUUkvZA8qruo0bQHeRIYxn/tmzbuSWzLao9VRbxsiTAXcdl6caeF4Wx4t89sBY3Q8J/oDFINkHII/8CgYEAxWNl3avPgOFRkpUTDF2mEJ5SF+EeElazPBgksSA2s/LrlyxXzKiyTbf7W6NiTda1w86XMibHnf9VLb5WWbfm7EYqfc+dMNuFyA52K4HLr1zVVOSJBLAWtajIBpg8awaKjNiTss/nrdxgNJOCyO6oRjso66Dm+gD6mrAo0bmMb/UCgYBphQRXN1tfFeH1G4z2NhRO3w+8SRqQH3wxzycE2wg68h1DgDFCd0jcj3SxLo+jooT3bk7+Aed6v+jAN7QUc5xxkikmq6ghah+19atKJ4ytVS6LkIPhJ+bcuY4E8nvO59yAHzMsygzTvOGWY7hMFSG2NerGV51jx/KaGCCYM8hzwwKBgCrwqatkgfqmialats8c3FCHMJKzTWht5gXvtqO1v1C8StYTNnJ2THutx4ey7mLCj74uBiRJ3WkYr74Ixx4zbI//36SI8sg7KUpRIxHp5ZabmmkiYlBbwkT4l7MfkR0zShbD0rW2ls7yvxcQ9AWkLYVBv3ArC7RdXCckpWyicdO1AoGAE4WFPrJ7HrA+7u87k6cL+9bIbfPuM3qe/A9UJWQd7zFlfMCIuK0YgUO5ivqUVqsu4PT0cVTB+ZBXf52ScIBDwJ7hpzoQnbr59kV+snSMKEDu0fK7lSCnRWgslq6RQ1Cpr4us9NkGhty1WP9pEv68qJCDHyfSiN2+knbFaejGbKI=",
+        "encrypted": false,
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ]
+  }
+}

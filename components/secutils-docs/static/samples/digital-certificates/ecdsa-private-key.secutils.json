@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "exportedAt": 0,
+  "data": {
+    "privateKeys": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000031",
+        "name": "ECC",
+        "alg": {
+          "keyType": "ecdsa",
+          "curve": "secp384r1"
+        },
+        "pkcs8": "MIIBJDBfBgkqhkiG9w0BBQ0wUjAxBgkqhkiG9w0BBQwwJAQQoFMsLcKJeQwio1lhOWrjywICCAAwDAYIKoZIhvcNAgkFADAdBglghkgBZQMEASoEEKUT7CEtk4S/wWA8FCbmOekEgcDSEa5Bm0Vxw3wkGYxi62wgZHoRjUoPpSwwsJgAp6dnt1JT/YXZ1ou6+qE0sodov5Q2JMo8e5NxPleO8dgd5KWbNgehDZaKTAq9Xgi8SXLI6rpk8KO+zxvYLzrVTLmuEuG+JjKnUp5qSakFt04UHaIgzldbVn6ovs2cK/n5kKKC5ChEu1M7qobbHvIfyYhD6YyVbz3snsXiUf0SazzY1MkKHEcKPNnLqwTE7RJ1LOg/WC1LWs3EmPKpKvT5cTyC5yU=",
+        "encrypted": true,
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "exportedAt": 0,
+  "data": {
+    "responders": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000010",
+        "name": "CSP Reporting",
+        "location": { "pathType": "=", "path": "/csp-reporting" },
+        "method": "POST",
+        "enabled": true,
+        "settings": {
+          "requestsToTrack": 10,
+          "statusCode": 200
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      },
+      {
+        "id": "019568f0-0000-7000-8000-000000000011",
+        "name": "CSP Eval Test",
+        "location": { "pathType": "=", "path": "/csp-eval-test" },
+        "method": "ANY",
+        "enabled": true,
+        "settings": {
+          "requestsToTrack": 10,
+          "statusCode": 200,
+          "headers": [["Content-Security-Policy", "script-src 'self' 'unsafe-inline' 'report-sample'; report-uri [CSP Reporting responder URL]"]],
+          "body": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>Evaluate CSP</title>\n</head>\n<body>\n<label for=\"eval-input\">Expression to evaluate:</label>\n<input id=\"eval-input\" type=\"text\" value=\"alert('xss')\"/>\n<button id=\"eval-test\">Eval</button>\n<script type=\"text/javascript\" defer>\n  (async function main() {\n    const evalTestBtn = document.getElementById('eval-test');\n    evalTestBtn.addEventListener('click', () => {\n      const evalExpression = document.getElementById('eval-input');\n      window.eval(evalExpression.value);\n    });\n  })();\n</script>\n</body>\n</html>"
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ],
+    "contentSecurityPolicies": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000012",
+        "name": "CSP Reporting",
+        "directives": [
+          { "name": "script-src", "value": ["'self'", "'unsafe-inline'", "'report-sample'"] },
+          { "name": "report-uri", "value": ["[CSP Reporting responder URL]"] }
+        ],
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ]
+  }
+}

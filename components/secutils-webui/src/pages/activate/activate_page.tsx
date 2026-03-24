@@ -42,7 +42,7 @@ export function ActivatePage() {
   const { addToast, uiState } = useAppContext();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { actions, isSettingsOpen, hideSettings } = usePageHeaderActions();
+  const { actions, isSettingsOpen, hideSettings, pendingImportUrl, clearPendingImportUrl } = usePageHeaderActions();
 
   const [code, setCode] = useState<string | undefined>(searchParams.get('code') ?? undefined);
   const onCodeChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
@@ -271,7 +271,13 @@ export function ActivatePage() {
     >
       <>
         {pageBody}
-        {isSettingsOpen ? <SettingsFlyout onClose={hideSettings} /> : null}
+        {isSettingsOpen ? (
+          <SettingsFlyout
+            onClose={hideSettings}
+            importUrl={pendingImportUrl}
+            onImportUrlConsumed={clearPendingImportUrl}
+          />
+        ) : null}
       </>
     </Page>
   );

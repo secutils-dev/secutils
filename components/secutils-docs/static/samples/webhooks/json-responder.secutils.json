@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "exportedAt": 0,
+  "data": {
+    "responders": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000002",
+        "name": "JSON Responder",
+        "location": { "pathType": "=", "path": "/json-responder" },
+        "method": "ANY",
+        "enabled": true,
+        "settings": {
+          "requestsToTrack": 10,
+          "statusCode": 200,
+          "headers": [["Content-Type", "application/json"]],
+          "body": "{\n  \"message\": \"Hello World\"\n}"
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ]
+  }
+}

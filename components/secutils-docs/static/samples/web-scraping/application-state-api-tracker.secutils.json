@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "exportedAt": 0,
+  "data": {
+    "apiTrackers": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000050",
+        "name": "Application State",
+        "retrack": {
+          "enabled": true,
+          "config": {
+            "revisions": 3
+          },
+          "target": {
+            "type": "api",
+            "requests": [
+              {
+                "url": "https://api.example.com/state"
+              }
+            ]
+          },
+          "notifications": false
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ]
+  }
+}

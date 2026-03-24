@@ -58,6 +58,8 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile.docs
+      args:
+        - SECUTILS_ENV=e2e
     restart: unless-stopped
     networks:
       - net

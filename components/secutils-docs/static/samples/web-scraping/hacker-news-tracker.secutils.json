@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "exportedAt": 0,
+  "data": {
+    "pageTrackers": [
+      {
+        "id": "019568f0-0000-7000-8000-000000000040",
+        "name": "Hacker News Top Post",
+        "retrack": {
+          "enabled": true,
+          "config": {
+            "revisions": 3
+          },
+          "target": {
+            "type": "page",
+            "extractor": "export async function execute(page) {\n    // Navigate to the Hacker News homepage.\n    await page.goto('https://news.ycombinator.com/');\n\n    // Get the link to the top post.\n    const titleLink = page.locator('css=.titleline a').first();\n\n    // Return the title and link of the top post formatted as markdown.\n    return `[${(await titleLink.textContent()).trim()}](${await titleLink.getAttribute('href')})`;\n  };"
+          },
+          "notifications": false
+        },
+        "createdAt": 1577836800,
+        "updatedAt": 1577836800
+      }
+    ]
+  }
+}
