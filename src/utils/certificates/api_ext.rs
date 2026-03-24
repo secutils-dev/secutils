@@ -79,7 +79,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
             .await
     }
 
-    /// Generate private key with the specified parameters and stores it in the database.
+    /// Generate a private key with the specified parameters and stores it in the database.
     pub async fn create_private_key(
         &self,
         user_id: UserId,
@@ -139,7 +139,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
             )));
         };
 
-        // If name update is needed, extract it from parameters.
+        // If a name update is needed, extract it from parameters.
         let name = if let Some(name) = params.key_name {
             Self::assert_private_key_name(&name)?;
             name.to_string()
@@ -147,7 +147,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
             private_key.name
         };
 
-        // If passphrase update is needed, try to decrypt private key using the provided passphrase.
+        // If a passphrase update is needed, try to decrypt private key using the provided passphrase.
         let (pkcs8, encrypted) = if params.passphrase != params.new_passphrase {
             let pkcs8_private_key = Self::import_private_key_from_pkcs8(
                 &private_key.pkcs8,
@@ -155,7 +155,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
             )
             .map_err(|err| {
                 SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
-                    "Unable to decrypt private key ('{id}') with the provided passphrase."
+                    "Unable to decrypt private key ('{name}') with the provided passphrase."
                 )))
             })?;
             (
@@ -210,12 +210,13 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
             )));
         };
 
-        // Try to decrypt private key using the provided passphrase.
+        // Try to decrypt a private key using the provided passphrase.
         let pkcs8_private_key =
             Self::import_private_key_from_pkcs8(&private_key.pkcs8, params.passphrase.as_deref())
                 .map_err(|err| {
                 SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
-                    "Unable to decrypt private key ('{id}') with the provided passphrase."
+                    "Unable to decrypt private key ('{}') with the provided passphrase.",
+                    private_key.name
                 )))
             })?;
 
@@ -237,8 +238,8 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
 
         export_result.map_err(|err| {
             SecutilsError::client_with_root_cause(anyhow!(err).context(format!(
-                "Unable to export private key ('{id}') to the specified format ('{:?}').",
-                params.format
+                "Unable to export private key ('{}') to the specified format ('{:?}').",
+                private_key.name, params.format
             )))
             .into()
         })
@@ -627,9 +628,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
                 Ok(MessageDigest::null())
             }
             _ => Err(anyhow!(
-                "Public key ({:?}) and signature ({:?}) algorithms are not compatible",
-                pk_alg,
-                sig_alg
+                "Public key ({pk_alg:?}) and signature ({sig_alg:?}) algorithms are not compatible",
             )),
         }
     }
