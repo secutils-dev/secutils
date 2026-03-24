@@ -134,6 +134,11 @@ mod tests {
                 port: 5432,
                 username: "postgres",
                 password: None,
+                max_connections: 100,
+                min_connections: 5,
+                acquire_timeout: 10s,
+                max_lifetime: 1800s,
+                idle_timeout: 600s,
             },
             security: SecurityConfig {
                 session_cookie_name: "id",

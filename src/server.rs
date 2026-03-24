@@ -57,7 +57,12 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
     );
     let database = Database::create(
         PgPoolOptions::new()
-            .max_connections(100)
+            .max_connections(config.db.max_connections)
+            .min_connections(config.db.min_connections)
+            .acquire_timeout(config.db.acquire_timeout)
+            .max_lifetime(config.db.max_lifetime)
+            .idle_timeout(config.db.idle_timeout)
+            .test_before_acquire(true)
             .connect(&db_url)
             .await?,
     )

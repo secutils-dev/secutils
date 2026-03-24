@@ -99,6 +99,11 @@ mod tests {
         host = 'localhost'
         port = 5432
         username = 'postgres'
+        max_connections = 100
+        min_connections = 5
+        acquire_timeout = 10
+        max_lifetime = 1800
+        idle_timeout = 600
 
         [security]
         session_cookie_name = 'id'
@@ -395,6 +400,11 @@ mod tests {
                 password: Some(
                     "password",
                 ),
+                max_connections: 100,
+                min_connections: 5,
+                acquire_timeout: 10s,
+                max_lifetime: 1800s,
+                idle_timeout: 600s,
             },
             security: SecurityConfig {
                 session_cookie_name: "id2",

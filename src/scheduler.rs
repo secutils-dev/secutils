@@ -239,6 +239,7 @@ pub mod tests {
                 port: connect_options.get_port(),
                 username: connect_options.get_username().to_string(),
                 password: env::var("DATABASE_PASSWORD").ok(),
+                ..Default::default()
             },
             ..mock_config()?
         })
