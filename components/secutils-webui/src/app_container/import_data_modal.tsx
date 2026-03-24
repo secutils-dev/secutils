@@ -414,6 +414,26 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize, 
     return false;
   }, [preview, selections]);
 
+  // Check if any selected-for-import items have conflicts.
+  const hasSelectedConflicts = useMemo(() => {
+    if (!preview) {
+      return false;
+    }
+    for (const [entityType, summary] of Object.entries(preview.summary)) {
+      if (!('conflicts' in summary)) {
+        continue;
+      }
+      const entitySelections = selections[entityType];
+      for (const c of summary.conflicts ?? []) {
+        const sel = entitySelections?.get(c.sourceId);
+        if (!sel || sel.action === 'import') {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, [preview, selections]);
+
   // Determine bulk conflict resolution state from all selected conflicting items.
   const bulkConflictResolution = useMemo((): string => {
     if (!hasAnyConflicts) {
@@ -910,9 +930,9 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize, 
             <EuiButtonGroup
               legend="Bulk conflict resolution"
               options={[
-                { id: 'rename', label: 'Rename', isDisabled: hasNonRenameableConflicts },
-                { id: 'overwrite', label: 'Overwrite' },
-                { id: 'skip', label: 'Skip' },
+                { id: 'rename', label: 'Rename', isDisabled: !hasSelectedConflicts || hasNonRenameableConflicts },
+                { id: 'overwrite', label: 'Overwrite', isDisabled: !hasSelectedConflicts },
+                { id: 'skip', label: 'Skip', isDisabled: !hasSelectedConflicts },
                 { id: 'custom', label: 'Custom', isDisabled: true },
               ]}
               idSelected={bulkConflictResolution}
