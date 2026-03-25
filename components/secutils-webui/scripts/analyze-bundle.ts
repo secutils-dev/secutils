@@ -168,7 +168,10 @@ function scanBundles(config: Config): {
     return { relPath, raw, gzip, brotli };
   });
 
-  // Categorize each file.
+  // Categorize each file. Parcel code-splits routes into multiple chunks with the same name
+  // prefix (e.g., responders.{hash1}.js, responders.{hash2}.js). We sum all of them together
+  // since they're all loaded as part of the same feature. Use `build:analyze` (which cleans
+  // dist/ first) to avoid counting stale files from previous builds.
   const bundles: Record<string, BundleEntry> = {};
   const uncategorized: FileEntry[] = [];
 
