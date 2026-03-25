@@ -1,0 +1,21 @@
+{
+  "thresholds": {
+    "individual": 10,
+    "total": 5,
+    "category": 8
+  },
+  "trackedBundles": [
+    { "name": "secutils-webui-js", "pattern": "secutils-webui.*.js", "category": "main" },
+    { "name": "secutils-webui-css", "pattern": "secutils-webui.*.css", "category": "main" },
+    { "name": "scripts_tab-js", "pattern": "scripts_tab.*.js", "category": "feature" },
+    { "name": "scripts_tab-css", "pattern": "scripts_tab.*.css", "category": "feature" },
+    { "name": "page_trackers", "pattern": "page_trackers.*.js", "category": "feature" },
+    { "name": "api_trackers", "pattern": "api_trackers.*.js", "category": "feature" },
+    { "name": "responders", "pattern": "responders.*.js", "category": "feature" },
+    { "name": "certificates_certificate_templates", "pattern": "certificates_certificate_templates.*.js", "category": "feature" },
+    { "name": "certificates_private_keys", "pattern": "certificates_private_keys.*.js", "category": "feature" },
+    { "name": "web_security_csp_policies", "pattern": "web_security_csp_policies.*.js", "category": "feature" },
+    { "name": "shared_certificate_template", "pattern": "shared_certificate_template.*.js", "category": "feature" },
+    { "name": "web_security_csp_shared_policy", "pattern": "web_security_csp_shared_policy.*.js", "category": "feature" }
+  ]
+}

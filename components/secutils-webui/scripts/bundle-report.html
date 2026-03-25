@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bundle Size Report</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    :root {
+      --bg: #fff; --fg: #1a1a2e; --card: #f8f9fa; --border: #dee2e6;
+      --red: #dc3545; --green: #198754; --red-bg: rgba(220,53,69,0.08); --green-bg: rgba(25,135,84,0.08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a1a2e; --fg: #e0e0e0; --card: #16213e; --border: #334;
+        --red: #ff6b6b; --green: #51cf66; --red-bg: rgba(255,107,107,0.12); --green-bg: rgba(81,207,102,0.12);
+      }
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--fg); padding: 24px; max-width: 1200px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; margin-bottom: 16px; }
+    h2 { font-size: 1.2rem; margin: 24px 0 12px; }
+    .controls { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+    .controls label { font-weight: 600; }
+    select, input[type="file"] { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--fg); font-size: 0.9rem; }
+    .empty { text-align: center; padding: 80px 20px; color: #888; }
+    .charts { display: grid; grid-template-columns: 1fr; gap: 24px; }
+    .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: right; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+    th:first-child, td:first-child { text-align: left; }
+    th { font-weight: 600; background: var(--card); position: sticky; top: 0; }
+    .regression { background: var(--red-bg); }
+    .improvement { background: var(--green-bg); }
+    .warn { color: var(--red); font-weight: 700; }
+    .good { color: var(--green); }
+    canvas { max-height: 350px; }
+  </style>
+</head>
+<body>
+  <h1>Bundle Size Report</h1>
+  <div class="controls">
+    <input type="file" id="fileInput" accept=".jsonl,.json,.txt">
+    <label for="metric">Metric:</label>
+    <select id="metric">
+      <option value="brotli" selected>Brotli</option>
+      <option value="gzip">Gzip</option>
+      <option value="raw">Raw</option>
+    </select>
+  </div>
+
+  <div id="empty" class="empty">
+    <p>Load a <code>history.jsonl</code> file to view bundle size trends.</p>
+    <p style="margin-top:8px;font-size:0.85rem;color:#999;">Typically at <code>components/secutils-webui/.bundlesize/history.jsonl</code></p>
+  </div>
+
+  <div id="content" style="display:none;">
+    <div class="charts">
+      <div class="chart-card"><h2>Total Bundle Size Over Time</h2><canvas id="totalChart"></canvas></div>
+      <div class="chart-card"><h2>Category Breakdown</h2><canvas id="categoryChart"></canvas></div>
+      <div class="chart-card"><h2>Tracked Bundles</h2><canvas id="bundleChart"></canvas></div>
+    </div>
+
+    <h2>Latest vs Previous</h2>
+    <table id="comparisonTable"></table>
+
+    <h2>Full History</h2>
+    <div style="max-height:400px;overflow:auto;">
+      <table id="historyTable"></table>
+    </div>
+  </div>
+
+  <script>
+    const COLORS = ['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc948','#b07aa1','#ff9da7','#9c755f','#bab0ac'];
+    let charts = [];
+    let data = [];
+
+    function fmt(bytes) {
+      if (!bytes && bytes !== 0) return '—';
+      if (bytes === 0) return '0 B';
+      const u = ['B','KB','MB','GB'];
+      const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), u.length - 1);
+      return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 2)} ${u[i]}`;
+    }
+
+    function pct(cur, prev) {
+      if (!prev) return null;
+      return ((cur - prev) / prev) * 100;
+    }
+
+    function fmtPct(p) {
+      if (p === null) return '—';
+      return `${p > 0 ? '+' : ''}${p.toFixed(1)}%`;
+    }
+
+    function label(entry) {
+      const sha = entry.commitSha?.slice(0, 7) || '?';
+      const date = new Date(entry.timestamp).toLocaleDateString('en-GB', { month: 'short', day: 'numeric' });
+      return `${date} (${sha})`;
+    }
+
+    function render() {
+      const m = document.getElementById('metric').value;
+      charts.forEach(c => c.destroy());
+      charts = [];
+
+      const labels = data.map(label);
+      const catNames = [...new Set(data.flatMap(d => Object.keys(d.categories || {})))].filter(c => c !== 'total');
+      const bundleNames = [...new Set(data.flatMap(d => Object.keys(d.bundles || {})))];
+
+      // Total chart.
+      charts.push(new Chart(document.getElementById('totalChart'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: `Total (${m})`, data: data.map(d => d.categories?.total?.[m] || 0), borderColor: COLORS[0], backgroundColor: COLORS[0] + '33', fill: true, tension: 0.3 },
+            ...(m !== 'raw' ? [{ label: 'Total (raw)', data: data.map(d => d.categories?.total?.raw || 0), borderColor: COLORS[1], borderDash: [5,5], fill: false, tension: 0.3 }] : []),
+          ],
+        },
+        options: { responsive: true, plugins: { legend: { position: 'top' } }, scales: { y: { ticks: { callback: v => fmt(v) } } } },
+      }));
+
+      // Category chart.
+      charts.push(new Chart(document.getElementById('categoryChart'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: catNames.map((cat, i) => ({
+            label: cat,
+            data: data.map(d => d.categories?.[cat]?.[m] || 0),
+            borderColor: COLORS[i % COLORS.length],
+            backgroundColor: COLORS[i % COLORS.length] + '44',
+            fill: true,
+            tension: 0.3,
+          })),
+        },
+        options: { responsive: true, plugins: { legend: { position: 'top' } }, scales: { y: { stacked: true, ticks: { callback: v => fmt(v) } } } },
+      }));
+
+      // Bundle chart.
+      charts.push(new Chart(document.getElementById('bundleChart'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: bundleNames.map((name, i) => ({
+            label: name,
+            data: data.map(d => d.bundles?.[name]?.[m] || 0),
+            borderColor: COLORS[i % COLORS.length],
+            fill: false,
+            tension: 0.3,
+          })),
+        },
+        options: { responsive: true, plugins: { legend: { position: 'top' } }, scales: { y: { ticks: { callback: v => fmt(v) } } } },
+      }));
+
+      // Comparison table.
+      renderComparison(m);
+      renderHistory(m);
+    }
+
+    function renderComparison(m) {
+      const table = document.getElementById('comparisonTable');
+      if (data.length < 2) {
+        table.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;">Need at least 2 builds for comparison.</td></tr>';
+        return;
+      }
+      const cur = data.at(-1), prev = data.at(-2);
+      let html = '<thead><tr><th>Bundle</th><th>Previous</th><th>Current</th><th>Diff</th><th>Change</th></tr></thead><tbody>';
+
+      const allKeys = [...new Set([...Object.keys(cur.bundles || {}), ...Object.keys(prev.bundles || {})])];
+      for (const key of allKeys) {
+        const c = cur.bundles?.[key]?.[m] || 0;
+        const p = prev.bundles?.[key]?.[m] || 0;
+        const change = pct(c, p);
+        const cls = change > 5 ? 'regression' : change < -2 ? 'improvement' : '';
+        const pctCls = change > 10 ? 'warn' : change < -2 ? 'good' : '';
+        html += `<tr class="${cls}"><td>${key}</td><td>${fmt(p)}</td><td>${fmt(c)}</td><td>${fmt(c - p)}</td><td class="${pctCls}">${fmtPct(change)}</td></tr>`;
+      }
+
+      // Category rows.
+      html += '<tr><th colspan="5" style="text-align:left;padding-top:16px;">Categories</th></tr>';
+      for (const cat of Object.keys(cur.categories || {})) {
+        const c = cur.categories[cat]?.[m] || 0;
+        const p = prev.categories?.[cat]?.[m] || 0;
+        const change = pct(c, p);
+        const cls = cat === 'total' ? '' : (change > 5 ? 'regression' : change < -2 ? 'improvement' : '');
+        const pctCls = change > 8 ? 'warn' : change < -2 ? 'good' : '';
+        const bold = cat === 'total' ? 'font-weight:700;' : '';
+        html += `<tr class="${cls}" style="${bold}"><td>${cat}</td><td>${fmt(p)}</td><td>${fmt(c)}</td><td>${fmt(c - p)}</td><td class="${pctCls}">${fmtPct(change)}</td></tr>`;
+      }
+
+      html += '</tbody>';
+      table.innerHTML = html;
+    }
+
+    function renderHistory(m) {
+      const table = document.getElementById('historyTable');
+      let html = '<thead><tr><th>Date</th><th>Commit</th><th>Total Raw</th><th>Total ' + m.charAt(0).toUpperCase() + m.slice(1) + '</th><th>Bundles</th></tr></thead><tbody>';
+      for (let i = data.length - 1; i >= 0; i--) {
+        const d = data[i];
+        const date = new Date(d.timestamp).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
+        const sha = d.commitSha?.slice(0, 7) || '?';
+        const total = d.categories?.total || {};
+        const bundleCount = Object.keys(d.bundles || {}).length;
+        html += `<tr><td>${date}</td><td title="${d.commitMessage || ''}">${sha}</td><td>${fmt(total.raw)}</td><td>${fmt(total[m])}</td><td>${bundleCount} tracked</td></tr>`;
+      }
+      html += '</tbody>';
+      table.innerHTML = html;
+    }
+
+    document.getElementById('fileInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const text = ev.target.result.trim();
+        if (!text) { alert('File is empty.'); return; }
+        try {
+          data = text.split('\n').filter(Boolean).map(line => JSON.parse(line));
+        } catch (err) {
+          alert('Error parsing file: ' + err.message);
+          return;
+        }
+        document.getElementById('empty').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+        render();
+      };
+      reader.readAsText(file);
+    });
+
+    document.getElementById('metric').addEventListener('change', () => {
+      if (data.length) render();
+    });
+  </script>
+</body>
+</html>

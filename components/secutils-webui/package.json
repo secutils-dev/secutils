@@ -110,6 +110,9 @@
     "lint": "eslint . --fix",
     "test": "vitest run",
     "test:watch": "vitest",
-    "clean": "rm -rf dist .parcel-cache"
+    "clean": "rm -rf dist .parcel-cache",
+    "analyze": "node scripts/analyze-bundle.ts",
+    "build:analyze": "npm run build && npm run analyze",
+    "report": "open scripts/bundle-report.html 2>/dev/null || xdg-open scripts/bundle-report.html 2>/dev/null || echo 'Open scripts/bundle-report.html in your browser'"
   }
 }

@@ -35,11 +35,11 @@ import {
   USER_SETTINGS_KEY_COMMON_UI_THEME,
 } from '../model';
 import { SecretsTab } from './secrets_tab';
-const ScriptsTab = lazy(() => import('./scripts_tab'));
 import { signupWithPasskey } from '../model/webauthn';
 import { getOryApi } from '../tools/ory';
 import { isWebAuthnSupported } from '../tools/webauthn';
 
+const ScriptsTab = lazy(() => import('./scripts_tab'));
 const ConfirmAccessModal = lazy(() => import('../pages/signin/confirm_access_modal'));
 const ExportDataModal = lazy(() => import('./export_data_modal'));
 const ImportDataModal = lazy(() => import('./import_data_modal'));
