@@ -15,12 +15,11 @@ import {
   EuiToolTip,
   useEuiTheme,
 } from '@elastic/eui';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { UTIL_HANDLES } from '..';
 import type { ApiTracker } from './api_tracker';
-import { ApiTrackerEditFlyout } from './api_tracker_edit_flyout';
 import { PageTrackerRevision } from './page_tracker_revision';
 import type { TrackerDataRevision } from './tracker_data_revision';
 import { TrackerHealthDots } from './tracker_health_dots';
@@ -40,6 +39,8 @@ import { ItemsTableFilter, useItemsTableFilter } from '../../components/items_ta
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
+
+const ApiTrackerEditFlyout = lazy(() => import('./api_tracker_edit_flyout'));
 
 export default function ApiTrackers() {
   const { uiState, setTitleActions } = useWorkspaceContext();
@@ -99,15 +100,17 @@ export default function ApiTrackers() {
 
   const editFlyout =
     trackerToEdit !== null ? (
-      <ApiTrackerEditFlyout
-        onClose={(success) => {
-          if (success) {
-            loadTrackers();
-          }
-          setTrackerToEdit(null);
-        }}
-        tracker={trackerToEdit}
-      />
+      <Suspense fallback={null}>
+        <ApiTrackerEditFlyout
+          onClose={(success) => {
+            if (success) {
+              loadTrackers();
+            }
+            setTrackerToEdit(null);
+          }}
+          tracker={trackerToEdit}
+        />
+      </Suspense>
     ) : null;
 
   const getSearchFields = useCallback((tracker: ApiTracker) => [tracker.name, tracker.id], []);

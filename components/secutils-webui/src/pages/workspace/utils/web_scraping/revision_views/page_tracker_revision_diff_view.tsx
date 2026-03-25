@@ -22,7 +22,7 @@ type DiffLayout = 'sideBySide' | 'inline';
 
 const DIFF_HEIGHT = '40vh';
 
-export function PageTrackerRevisionDiffView({
+export default function PageTrackerRevisionDiffView({
   originalContent,
   modifiedContent,
   language,

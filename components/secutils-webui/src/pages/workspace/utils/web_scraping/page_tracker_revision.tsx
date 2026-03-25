@@ -1,14 +1,16 @@
-import { EuiMarkdownFormat } from '@elastic/eui';
+import { EuiLoadingSpinner, EuiMarkdownFormat } from '@elastic/eui';
+import { lazy, Suspense } from 'react';
 
 import { containsHTMLTags, detectLanguage, revisionDataToString } from './revision_utils';
 import { PageTrackerRevisionCodeView } from './revision_views/page_tracker_revision_code_view';
-import { PageTrackerRevisionDiffView } from './revision_views/page_tracker_revision_diff_view';
 import {
   isPageTrackerRevisionTableViewData,
   PageTrackerRevisionTableView,
 } from './revision_views/page_tracker_revision_table_view';
 import type { TrackerDataRevision } from './tracker_data_revision';
 import type { TrackerRevisionsViewMode } from './tracker_revisions';
+
+const PageTrackerRevisionDiffView = lazy(() => import('./revision_views/page_tracker_revision_diff_view'));
 
 export interface PageTrackerRevisionProps {
   revision: TrackerDataRevision;
@@ -28,11 +30,13 @@ export function PageTrackerRevision({ revision, mode, previousRevision }: PageTr
     const language = typeof data === 'string' ? detectLanguage(data) : 'json';
 
     return (
-      <PageTrackerRevisionDiffView
-        originalContent={originalContent}
-        modifiedContent={modifiedContent}
-        language={language}
-      />
+      <Suspense fallback={<EuiLoadingSpinner size="l" />}>
+        <PageTrackerRevisionDiffView
+          originalContent={originalContent}
+          modifiedContent={modifiedContent}
+          language={language}
+        />
+      </Suspense>
     );
   }
 

@@ -16,12 +16,11 @@ import {
   EuiToolTip,
   useEuiTheme,
 } from '@elastic/eui';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { UTIL_HANDLES } from '..';
 import type { Responder } from './responder';
-import { ResponderEditFlyout } from './responder_edit_flyout';
 import { ResponderName } from './responder_name';
 import { ResponderRequestsTable } from './responder_requests_table';
 import type { ResponderStats } from './responder_stats';
@@ -38,6 +37,8 @@ import { ItemsTableFilter, useItemsTableFilter } from '../../components/items_ta
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
+
+const ResponderEditFlyout = lazy(() => import('./responder_edit_flyout'));
 
 export default function Responders() {
   const theme = useEuiTheme();
@@ -140,15 +141,17 @@ export default function Responders() {
   const [itemIdToExpandedRowMap, setItemIdToExpandedRowMap] = useState<Record<string, ReactNode>>({});
   const editFlyout =
     responderToEdit !== null ? (
-      <ResponderEditFlyout
-        onClose={(success) => {
-          if (success) {
-            loadResponders();
-          }
-          setResponderToEdit(null);
-        }}
-        responder={responderToEdit}
-      />
+      <Suspense fallback={null}>
+        <ResponderEditFlyout
+          onClose={(success) => {
+            if (success) {
+              loadResponders();
+            }
+            setResponderToEdit(null);
+          }}
+          responder={responderToEdit}
+        />
+      </Suspense>
     ) : null;
 
   const removeConfirmModal = responderToRemove ? (

@@ -154,7 +154,7 @@ const SCRIPT_SNIPPETS: ScriptSnippet[] = [
   },
 ];
 
-export function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutProps) {
+export default function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutProps) {
   const { addToast, uiState } = useWorkspaceContext();
   const maxTicks = useRangeTicks();
 

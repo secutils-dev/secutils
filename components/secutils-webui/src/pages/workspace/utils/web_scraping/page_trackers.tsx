@@ -14,12 +14,11 @@ import {
   EuiToolTip,
   useEuiTheme,
 } from '@elastic/eui';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { UTIL_HANDLES } from '..';
 import type { PageTracker } from './page_tracker';
-import { PageTrackerEditFlyout } from './page_tracker_edit_flyout';
 import { PageTrackerRevision } from './page_tracker_revision';
 import type { TrackerDataRevision } from './tracker_data_revision';
 import { TrackerHealthDots } from './tracker_health_dots';
@@ -39,6 +38,8 @@ import { ItemsTableFilter, useItemsTableFilter } from '../../components/items_ta
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
+
+const PageTrackerEditFlyout = lazy(() => import('./page_tracker_edit_flyout'));
 
 export default function PageTrackers() {
   const { uiState, setTitleActions } = useWorkspaceContext();
@@ -98,15 +99,17 @@ export default function PageTrackers() {
 
   const editFlyout =
     trackerToEdit !== null ? (
-      <PageTrackerEditFlyout
-        onClose={(success) => {
-          if (success) {
-            loadTrackers();
-          }
-          setTrackerToEdit(null);
-        }}
-        tracker={trackerToEdit}
-      />
+      <Suspense fallback={null}>
+        <PageTrackerEditFlyout
+          onClose={(success) => {
+            if (success) {
+              loadTrackers();
+            }
+            setTrackerToEdit(null);
+          }}
+          tracker={trackerToEdit}
+        />
+      </Suspense>
     ) : null;
 
   // Filter configuration: search by name and ID

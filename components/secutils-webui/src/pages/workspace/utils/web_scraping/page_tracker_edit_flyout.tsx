@@ -112,7 +112,7 @@ export interface Props {
   tracker?: Partial<PageTracker>;
 }
 
-export function PageTrackerEditFlyout({ onClose, tracker }: Props) {
+export default function PageTrackerEditFlyout({ onClose, tracker }: Props) {
   const { addToast, uiState } = useWorkspaceContext();
   const maxTicks = useRangeTicks();
 

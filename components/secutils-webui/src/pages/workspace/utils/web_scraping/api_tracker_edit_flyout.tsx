@@ -162,7 +162,7 @@ const CONFIGURATOR_SNIPPETS: ScriptSnippet[] = [
 
 const DEFAULT_EXTRACTOR_SCRIPT = '';
 
-export function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
+export default function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
   const { addToast, uiState } = useWorkspaceContext();
   const maxTicks = useRangeTicks();
 
