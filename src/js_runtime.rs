@@ -346,16 +346,20 @@ pub mod tests {
             max_user_script_execution_time: std::time::Duration::from_secs(5),
         };
 
+        // Async timer that exceeds the execution time limit should be killed
+        // by the tokio::time::timeout wrapper around the event loop.
         let result = JsRuntime::execute_script::<String>(
             config,
             r#"
         (async () => {{
             return new Promise((resolve) => {
-                Deno.core.queueUserTimer(
-                    Deno.core.getTimerDepth() + 1,
-                    false,
+                Deno.core.createTimer(
+                    () => resolve("Done"),
                     10 * 1000,
-                    () => resolve("Done")
+                    undefined,
+                    false,
+                    true,
+                    false
                 );
             });
         }})();
