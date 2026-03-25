@@ -39,7 +39,7 @@ const TYPE_COLOR: Record<UserScriptType, string> = {
   universal: 'accent',
 };
 
-export function ScriptsTab({ addToast }: { addToast: (toast: PageToast) => void }) {
+export default function ScriptsTab({ addToast }: { addToast: (toast: PageToast) => void }) {
   const [scripts, setScripts] = useState<UserScript[]>([]);
   const [loading, setLoading] = useState(true);
   const [editModal, setEditModal] = useState<

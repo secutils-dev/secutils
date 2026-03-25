@@ -34,8 +34,8 @@ import {
   isClientError,
   USER_SETTINGS_KEY_COMMON_UI_THEME,
 } from '../model';
-import { ScriptsTab } from './scripts_tab';
 import { SecretsTab } from './secrets_tab';
+const ScriptsTab = lazy(() => import('./scripts_tab'));
 import { signupWithPasskey } from '../model/webauthn';
 import { getOryApi } from '../tools/ory';
 import { isWebAuthnSupported } from '../tools/webauthn';
@@ -314,7 +314,11 @@ export function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed }: Prop
   } else if (selectedTab === 'secrets') {
     selectedTabContent = <SecretsTab addToast={addToast} />;
   } else if (selectedTab === 'scripts') {
-    selectedTabContent = <ScriptsTab addToast={addToast} />;
+    selectedTabContent = (
+      <Suspense fallback={<EuiLoadingSpinner size="l" />}>
+        <ScriptsTab addToast={addToast} />
+      </Suspense>
+    );
   } else {
     const subscription = uiState.user?.subscription;
     let trialSection = null;
