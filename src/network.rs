@@ -122,14 +122,13 @@ impl Network<TokioDnsResolver, AsyncSmtpTransport<Tokio1Executor>> {
 #[cfg(test)]
 pub mod tests {
     use super::Network;
+    use hickory_resolver::{
+        Name, ResolveError,
+        proto::rr::{RData, Record, rdata::A},
+    };
     use lettre::transport::stub::AsyncStubTransport;
     use reqwest::Client;
     use std::net::Ipv4Addr;
-    use trust_dns_resolver::{
-        Name,
-        error::{ResolveError, ResolveErrorKind},
-        proto::rr::{RData, Record, rdata::A},
-    };
     use url::Url;
 
     pub use super::dns_resolver::tests::*;
@@ -174,9 +173,7 @@ pub mod tests {
 
         // Hosts that fail to resolve aren't supported and gracefully handled.
         let broken_network = Network::new(
-            MockResolver::new_with_error(ResolveError::from(ResolveErrorKind::Message(
-                "can not lookup IPs",
-            ))),
+            MockResolver::new_with_error(ResolveError::from("can not lookup IPs")),
             AsyncStubTransport::new_ok(),
             Client::new().into(),
         );

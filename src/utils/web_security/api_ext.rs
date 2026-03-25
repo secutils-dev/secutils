@@ -461,14 +461,14 @@ mod tests {
             },
         },
     };
+    use hickory_resolver::{
+        Name,
+        proto::rr::{RData, Record, rdata::A},
+    };
     use httpmock::MockServer;
     use insta::assert_debug_snapshot;
     use sqlx::PgPool;
     use std::{net::Ipv4Addr, slice};
-    use trust_dns_resolver::{
-        Name,
-        proto::rr::{RData, Record, rdata::A},
-    };
     use url::Url;
     use uuid::uuid;
 

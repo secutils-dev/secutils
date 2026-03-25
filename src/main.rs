@@ -80,11 +80,11 @@ mod tests {
         search::SearchItem,
         users::{User, UserId},
     };
+    use hickory_resolver::proto::rr::Record;
     use lettre::transport::stub::AsyncStubTransport;
     use std::{collections::HashMap, ops::Add, time::Duration};
     use tantivy::Index;
     use time::OffsetDateTime;
-    use trust_dns_resolver::proto::rr::Record;
     use url::Url;
 
     use crate::{

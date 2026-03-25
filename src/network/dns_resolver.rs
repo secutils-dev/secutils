@@ -1,26 +1,30 @@
 use futures::future::BoxFuture;
-use trust_dns_resolver::{
-    TokioAsyncResolver,
+use hickory_resolver::{
+    ResolveError, TokioResolver,
     config::{ResolverConfig, ResolverOpts},
-    error::ResolveError,
     lookup_ip::LookupIp,
 };
 
-/// Trait describing a facade for a `AsyncResolver` from `trust-dns-resolver`.
+/// Trait describing a facade for a DNS resolver.
 pub trait DnsResolver: Sync + Send + 'static {
     fn lookup_ip<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<LookupIp, ResolveError>>;
 }
 
-/// A wrapper around `TokioAsyncResolver` from `trust-dns-resolver`.
+/// A wrapper around `TokioResolver` from `hickory-resolver`.
 #[derive(Clone)]
 pub struct TokioDnsResolver {
-    inner: TokioAsyncResolver,
+    inner: TokioResolver,
 }
 
 impl TokioDnsResolver {
     pub fn create() -> Self {
         Self {
-            inner: TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default()),
+            inner: TokioResolver::builder_with_config(
+                ResolverConfig::default(),
+                Default::default(),
+            )
+            .with_options(ResolverOpts::default())
+            .build(),
         }
     }
 }
@@ -35,10 +39,8 @@ impl DnsResolver for TokioDnsResolver {
 pub mod tests {
     use crate::network::DnsResolver;
     use futures::future::BoxFuture;
-    use std::sync::Arc;
-    use trust_dns_resolver::{
-        Name,
-        error::ResolveError,
+    use hickory_resolver::{
+        Name, ResolveError,
         lookup::Lookup,
         lookup_ip::LookupIp,
         proto::{
@@ -46,6 +48,7 @@ pub mod tests {
             rr::{Record, RecordType},
         },
     };
+    use std::sync::Arc;
 
     #[derive(Clone)]
     pub struct MockResolver<const N: usize = 0> {
