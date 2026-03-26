@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAML Decoder | Secutils.dev</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root, [data-theme="dark"] {
+    --bg: #141519; --surface: #1d1e24; --surface-hover: #2c2d33;
+    --border: #343741; --text: #dfe5ef; --text-muted: #98a2b3;
+    --primary: #fed047; --primary-hover: #fdc615;
+    --primary-text: #642340;
+    --accent: #642340;
+    --badge-bg: #2B394F; --badge-text: #98A8C3;
+    --error: #f87171;
+    --radius: 12px;
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --mono: 'Roboto Mono', 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+[data-theme="light"] {
+    --bg: #f5f7fa; --surface: #ffffff; --surface-hover: #f1f3f5;
+    --border: #d3dae6; --text: #343741; --text-muted: #69707d;
+    --primary: #fed047; --primary-hover: #fdc615;
+    --primary-text: #642340;
+    --accent: #642340;
+    --badge-bg: #E3E8F2; --badge-text: #505F79;
+    --error: #dc2626;
+}
+body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; transition: background .25s, color .25s; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 48px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; transition: background .25s, border-color .25s; }
+.logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.logo-svg { flex-shrink: 0; }
+.logo-svg .logo-text-fill { fill: var(--text); }
+.logo-badge { display: inline-flex; align-items: center; padding: 4px 16px; border-radius: 4px; border: none; background: var(--badge-bg); color: var(--badge-text); font-size: 12px; font-weight: 450; line-height: 16px; white-space: nowrap; }
+.header-right { display: flex; gap: 8px; align-items: center; }
+.btn { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
+.btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); font-weight: 600; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+.theme-toggle { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .2s; }
+.theme-toggle:hover { background: var(--surface-hover); color: var(--text); }
+.theme-toggle svg { width: 16px; height: 16px; fill: currentColor; }
+.theme-toggle .icon-sun { display: none; }
+.theme-toggle .icon-moon { display: block; }
+[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; flex: 1; min-height: 0; }
+.panel-label { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+.editor-area { width: 100%; height: 100%; min-height: 400px; font: 13px/1.6 var(--mono); background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; resize: none; outline: none; transition: border-color .15s, background .25s, color .25s; }
+.editor-area:focus { border-color: var(--primary); }
+.editor-area.invalid { border-color: var(--error); }
+.decoded-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; overflow: hidden; transition: background .25s, border-color .25s; }
+.tab-bar { display: flex; border-bottom: 1px solid var(--border); }
+.tab-btn { padding: 8px 16px; cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; color: var(--text-muted); font: 13px/1 var(--font); transition: all .15s; }
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--text); border-color: var(--primary); }
+.tab-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; padding-right: 8px; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+.xml-view { flex: 1; overflow: auto; min-height: 0; }
+.xml-view pre { margin: 0; padding: 14px; background: transparent; font: 13px/1.6 var(--mono); color: var(--text); }
+.xml-view pre code { background: transparent; }
+.xml-view pre code.hljs { background: transparent; padding: 0; }
+
+.attr-view { flex: 1; overflow: auto; min-height: 0; padding: 14px; }
+.attr-view table { width: 100%; border-collapse: collapse; }
+.attr-view td { padding: 8px 12px; font: 13px/1.4 var(--mono); border-bottom: 1px solid var(--border); vertical-align: top; }
+.attr-view td:first-child { color: var(--text-muted); white-space: nowrap; }
+.attr-view td:last-child { color: var(--text); word-break: break-all; }
+.attr-view .empty-msg { text-align: center; color: var(--text-muted); padding: 24px; font-size: 13px; }
+
+#decoded-panel:fullscreen { background: var(--bg); padding: 16px; overflow: auto; }
+#decoded-panel:fullscreen .decoded-panel { height: 100%; }
+
+.fullscreen-btn { padding: 6px; border: none; background: none; color: var(--text-muted); cursor: pointer; border-radius: 4px; transition: all .15s; display: flex; align-items: center; }
+.fullscreen-btn:hover { color: var(--text); background: var(--surface-hover); }
+.fullscreen-btn svg { width: 16px; height: 16px; }
+
+.su-footer { text-align: center; padding: 16px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; transition: border-color .25s, color .25s; }
+
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); color: var(--text); padding: 10px 18px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; z-index: 200; animation: fadeIn .2s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+@media (max-width: 640px) {
+    header { padding: 0 12px; }
+    .logo-svg { height: 20px; }
+    .logo-badge { font-size: 11px; padding: 2px 7px; }
+    .btn { padding: 6px 10px; font-size: 12px; }
+    main { padding: 16px 12px; }
+    .grid { grid-template-columns: 1fr; }
+    .editor-area { min-height: 200px; }
+}
+    </style>
+</head>
+<body>
+    <header>
+        <a class="logo" href="https://secutils.dev" target="_blank" rel="noopener">
+            <svg class="logo-svg" height="24" role="img" viewBox="0 0 98 16" xmlns="http://www.w3.org/2000/svg">
+                <path d="m3 0h10c1.662 0 3 1.338 3 3v10c0 1.662-1.338 3-3 3h-10c-1.662 0-3-1.338-3-3v-10c0-1.662 1.338-3 3-3z" fill="#fed047"/>
+                <path aria-label="SU" d="m11.285 12q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667t1.216-0.26667 1.216 0.26667q0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50133-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832t0.46933 1.4613q0 0.69334-0.30933 1.2053-0.30933 0.50133-0.864 0.77867-0.55467 0.27733-1.312 0.27733z" fill="#642340"/>
+                <path class="logo-text-fill" aria-label="SECUTILS.DEV" d="m93.158 12.117-1.9733-7.7867h1.1733l1.2587 5.184q0.11733 0.46933 0.20267 0.91734 0.08533 0.448 0.128 0.69334 0.04267-0.24533 0.128-0.69334 0.096-0.45867 0.21333-0.928l1.2053-5.1733h1.184l-1.984 7.7867zm-7.8294 0v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-6.5174 0v-7.7867h2.176q0.768 0 1.3333 0.29867 0.56534 0.288 0.87467 0.832 0.32 0.53334 0.32 1.248v3.008q0 0.736-0.32 1.2693-0.30933 0.53334-0.87467 0.832-0.56534 0.29867-1.3333 0.29867zm1.152-1.0347h1.024q0.62934 0 1.0027-0.36267 0.37333-0.36267 0.37333-1.0027v-3.008q0-0.61867-0.37333-0.98134-0.37334-0.37333-1.0027-0.37333h-1.024zm-5.2374 1.1413q-0.416 0-0.68267-0.24533-0.256-0.256-0.256-0.672 0-0.416 0.256-0.672 0.26667-0.26667 0.68267-0.26667 0.416 0 0.672 0.26667 0.26667 0.256 0.26667 0.672 0 0.416-0.26667 0.672-0.256 0.24533-0.672 0.24533zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733zm-8.288-0.10667v-7.7867h1.152v6.7414h3.4027v1.0453zm-6.6987 0v-1.0453h1.568v-5.696h-1.568v-1.0453h4.32v1.0453h-1.5787v5.696h1.5787v1.0453zm-4.8214 0v-6.7414h-2.08v-1.0453h5.3227v1.0453h-2.0907v6.7414zm-5.824 0.10667q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.3147 0q-1.0987 0-1.7493-0.608-0.64-0.61867-0.64-1.664v-3.456q0-1.056 0.64-1.664 0.65067-0.608 1.7493-0.608 1.088 0 1.728 0.61867 0.65067 0.608 0.65067 1.6533h-1.152q0-0.608-0.33067-0.928-0.32-0.32-0.896-0.32-0.58667 0-0.91734 0.32-0.32 0.32-0.32 0.928v3.456q0 0.608 0.32 0.928 0.33067 0.32 0.91734 0.32 0.576 0 0.896-0.32 0.33067-0.32 0.33067-0.928h1.152q0 1.0453-0.65067 1.664-0.64 0.608-1.728 0.608zm-8.6827-0.10667v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-4.1707 0.10667q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667-0.23467-0.32-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34134-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733z"/>
+            </svg>
+            <span class="logo-badge">SAML Decoder</span>
+        </a>
+        <div class="header-right">
+            <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+                <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8.5 15h-1v-2h1v2Zm-3.674-3.107-1.414 1.414-.707-.707 1.414-1.415.707.708Zm8.479.707-.707.707-1.414-1.414.707-.708 1.414 1.415Z"/><path fill-rule="evenodd" d="M8 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 1a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" clip-rule="evenodd"/><path d="M3.005 8.505h-2v-1h2v1Zm12 0h-2v-1h2v1ZM4.82 4.114l-.708.707-1.414-1.414.707-.707L4.82 4.114Zm8.492-.707-1.414 1.414-.708-.707L12.605 2.7l.707.707ZM8.5 3h-1V1h1v2Z"/></svg>
+                <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4.05 12.95A6.982 6.982 0 0 1 2 8c0-1.79.684-3.583 2.05-4.95A6.982 6.982 0 0 1 9 1a1 1 0 0 1 .708 1.707 4.982 4.982 0 0 0-1.465 3.536 4.98 4.98 0 0 0 1.465 3.535 4.98 4.98 0 0 0 3.535 1.465 1 1 0 0 1 .707 1.707A6.981 6.981 0 0 1 9 15a6.983 6.983 0 0 1-4.95-2.05Zm.708-.707A5.983 5.983 0 0 0 9 14c1.535 0 3.07-.586 4.242-1.757a5.98 5.98 0 0 1-4.018-1.545L9 10.485a5.982 5.982 0 0 1-1.758-4.242A5.986 5.986 0 0 1 9 2a5.983 5.983 0 0 0-4.243 1.757A5.98 5.98 0 0 0 3 8l.006.288a5.978 5.978 0 0 0 1.75 3.955Z"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <div class="grid">
+            <div style="display:flex;flex-direction:column">
+                <div class="panel-label">Encoded SAML (Base64)</div>
+                <textarea id="encoded-saml" spellcheck="false" placeholder="Paste your Base64 encoded SAML here..." class="editor-area"></textarea>
+            </div>
+            <div style="display:flex;flex-direction:column">
+                <div class="panel-label">Decoded</div>
+                <div id="decoded-panel" class="decoded-panel" style="flex:1;min-height:400px">
+                    <div class="tab-bar">
+                        <nav id="decoded-tabs" style="display:flex;flex:1">
+                            <button class="tab-btn active" data-tab="xml">XML</button>
+                            <button class="tab-btn" data-tab="attributes">Attributes</button>
+                        </nav>
+                        <div class="tab-actions">
+                            <button id="share-button" class="btn btn-primary" style="padding:4px 10px;font-size:12px">Share</button>
+                            <button id="copy-button" class="btn" style="padding:4px 10px;font-size:12px">Copy</button>
+                            <button id="fullscreen-btn" class="fullscreen-btn" title="Toggle Fullscreen">
+                                <svg id="fullscreen-enter-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                                <svg id="fullscreen-exit-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="decoded-tab-content" style="flex:1;display:flex;flex-direction:column;min-height:0">
+                        <div id="xml-tab" class="tab-content active" style="flex:1;min-height:0">
+                            <div class="xml-view" style="height:100%">
+                                <pre style="height:100%;overflow:auto"><code id="decoded-xml-container" class="language-xml"></code></pre>
+                            </div>
+                        </div>
+                        <div id="attributes-tab" class="tab-content" style="flex:1;min-height:0">
+                            <div class="attr-view" style="height:100%;overflow:auto">
+                                <table style="width:100%;border-collapse:collapse">
+                                    <tbody id="attributes-table-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="su-footer">
+        <p>Decode Base64-encoded SAML responses, requests, and metadata.</p>
+    </footer>
+
+<script>
+(function() {
+    var toggle = document.getElementById('themeToggle');
+    var root = document.documentElement;
+    function setTheme(t) {
+        root.setAttribute('data-theme', t);
+        try { localStorage.setItem('su-tool-theme', t); } catch(e) {}
+    }
+    toggle.addEventListener('click', function() {
+        setTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    });
+    try {
+        var saved = localStorage.getItem('su-tool-theme');
+        if (saved) setTheme(saved);
+        else if (window.matchMedia('(prefers-color-scheme: light)').matches) setTheme('light');
+    } catch(e) {}
+})();
+
+document.addEventListener('DOMContentLoaded', function() {
+    var encodedSamlInput = document.getElementById('encoded-saml');
+    var xmlContainer = document.getElementById('decoded-xml-container');
+    var copyButton = document.getElementById('copy-button');
+    var shareButton = document.getElementById('share-button');
+    var tabsContainer = document.getElementById('decoded-tabs');
+    var attributesTableBody = document.getElementById('attributes-table-body');
+    var tabContents = document.getElementById('decoded-tab-content');
+    var fullscreenBtn = document.getElementById('fullscreen-btn');
+    var fullscreenEnterIcon = document.getElementById('fullscreen-enter-icon');
+    var fullscreenExitIcon = document.getElementById('fullscreen-exit-icon');
+    var decodedPanel = document.getElementById('decoded-panel');
+
+    var rawDecodedXml = '';
+
+    function prettyPrintXml(xml) {
+        var PADDING = '  ';
+        var indent = 0;
+        var formattedXml = '';
+
+        xml = xml.replace(/>\s*</g, '><').trim();
+        var reg = /(>)(<)(\/*)/g;
+        xml = xml.replace(reg, '$1\r\n$2$3');
+        var lines = xml.split('\r\n');
+
+        lines.forEach(function(line) {
+            var trimmedLine = line.trim();
+            if (!trimmedLine) return;
+
+            var isClosingTag = trimmedLine.startsWith('</');
+            if (isClosingTag && indent > 0) indent--;
+            formattedXml += PADDING.repeat(indent) + trimmedLine + '\n';
+            if (trimmedLine.startsWith('<') && !isClosingTag && !trimmedLine.endsWith('/>') && !trimmedLine.includes('</')) {
+                indent++;
+            }
+        });
+
+        return formattedXml.trim();
+    }
+
+    function buildStaticXmlView(xmlString) {
+        return hljs.highlight(xmlString, { language: 'xml' }).value;
+    }
+
+    function parseAndDisplayAttributes(xmlString) {
+        attributesTableBody.innerHTML = '';
+        if (!xmlString) return;
+
+        try {
+            var parser = new DOMParser();
+            var xmlDoc = parser.parseFromString(xmlString, 'text/xml');
+            var parserError = xmlDoc.querySelector('parsererror');
+            if (parserError) return;
+
+            var attributeNodes = xmlDoc.getElementsByTagNameNS('*', 'Attribute');
+            if (attributeNodes.length === 0) {
+                attributesTableBody.innerHTML = '<tr><td colspan="2" class="empty-msg">No attributes found.</td></tr>';
+                return;
+            }
+
+            for (var i = 0; i < attributeNodes.length; i++) {
+                var node = attributeNodes[i];
+                var name = node.getAttribute('Name') || node.getAttribute('FriendlyName') || 'N/A';
+                var valueNodes = node.getElementsByTagNameNS('*', 'AttributeValue');
+                var valueHtml = '';
+                if (valueNodes.length > 0) {
+                    var values = Array.from(valueNodes).map(function(vn) { return vn.textContent.trim(); });
+                    valueHtml = values.join('<br>');
+                }
+                var row = attributesTableBody.insertRow();
+                var cellName = row.insertCell();
+                var cellValue = row.insertCell();
+                cellName.textContent = name;
+                cellValue.innerHTML = valueHtml;
+            }
+        } catch (e) {
+            attributesTableBody.innerHTML = '<tr><td colspan="2" class="empty-msg" style="color:var(--error)">Error parsing attributes.</td></tr>';
+        }
+    }
+
+    function decodeSaml() {
+        var samlValue = encodedSamlInput.value.trim();
+        encodedSamlInput.classList.remove('invalid');
+
+        if (!samlValue) {
+            xmlContainer.innerHTML = '';
+            rawDecodedXml = '';
+            parseAndDisplayAttributes('');
+            return;
+        }
+
+        try {
+            try { samlValue = decodeURIComponent(samlValue); } catch(e) {}
+            var decodedString = atob(samlValue);
+
+            if (decodedString.trim().startsWith('<')) {
+                var prettyXml = prettyPrintXml(decodedString);
+                rawDecodedXml = prettyXml;
+                xmlContainer.innerHTML = buildStaticXmlView(prettyXml);
+                parseAndDisplayAttributes(prettyXml);
+            } else {
+                throw new Error('Decoded content is not valid XML.');
+            }
+        } catch (error) {
+            var errorMessage = 'Error: ' + error.message + '\n\nPlease check if the input is a valid Base64-encoded SAML document.';
+            xmlContainer.textContent = errorMessage;
+            rawDecodedXml = errorMessage;
+            encodedSamlInput.classList.add('invalid');
+            parseAndDisplayAttributes('');
+        }
+    }
+
+    encodedSamlInput.addEventListener('input', decodeSaml);
+
+    copyButton.addEventListener('click', function() {
+        var activeTab = tabsContainer.querySelector('.active').dataset.tab;
+        var contentToCopy = '';
+
+        if (activeTab === 'xml') {
+            contentToCopy = rawDecodedXml;
+        } else {
+            var rows = attributesTableBody.querySelectorAll('tr');
+            rows.forEach(function(row) {
+                var cells = row.querySelectorAll('td');
+                if (cells.length === 2) {
+                    var values = cells[1].innerHTML.replace(/<br>/g, ', ');
+                    contentToCopy += cells[0].textContent + ': ' + values + '\n';
+                }
+            });
+        }
+
+        if (!contentToCopy) return;
+        navigator.clipboard.writeText(contentToCopy.trim()).then(function() {
+            copyButton.textContent = 'Copied!';
+            setTimeout(function() { copyButton.textContent = 'Copy'; }, 2000);
+        });
+    });
+
+    shareButton.addEventListener('click', function() {
+        var samlValue = encodedSamlInput.value.trim();
+        if (!samlValue) return;
+
+        var encodedSamlForUrl = encodeURIComponent(samlValue);
+        var shareUrl = window.location.origin + window.location.pathname + '?saml=' + encodedSamlForUrl;
+
+        navigator.clipboard.writeText(shareUrl).then(function() {
+            shareButton.textContent = 'Linked!';
+            setTimeout(function() { shareButton.textContent = 'Share'; }, 2000);
+        });
+    });
+
+    tabsContainer.addEventListener('click', function(e) {
+        if (e.target.classList.contains('tab-btn')) {
+            tabsContainer.querySelectorAll('.tab-btn').forEach(function(btn) { btn.classList.remove('active'); });
+            e.target.classList.add('active');
+            tabContents.querySelectorAll('.tab-content').forEach(function(content) { content.classList.remove('active'); });
+            document.getElementById(e.target.dataset.tab + '-tab').classList.add('active');
+        }
+    });
+
+    fullscreenBtn.addEventListener('click', function() {
+        if (!document.fullscreenElement) {
+            decodedPanel.requestFullscreen().catch(function(err) {
+                alert('Error attempting to enable full-screen mode: ' + err.message + ' (' + err.name + ')');
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    });
+
+    document.addEventListener('fullscreenchange', function() {
+        if (document.fullscreenElement) {
+            fullscreenEnterIcon.style.display = 'none';
+            fullscreenExitIcon.style.display = 'block';
+        } else {
+            fullscreenEnterIcon.style.display = 'block';
+            fullscreenExitIcon.style.display = 'none';
+        }
+    });
+
+    var urlParams = new URLSearchParams(window.location.search);
+    var samlFromQuery = urlParams.get('saml');
+    if (samlFromQuery) encodedSamlInput.value = samlFromQuery;
+    decodeSaml();
+});
+</script>
+</body>
+</html>

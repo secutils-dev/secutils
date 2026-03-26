@@ -9,6 +9,7 @@ on:
     paths-ignore:
       - '*.md'
       - '.husky/**'
+      - 'dev/tools/**'
       - 'LICENSE'
 
 env:
