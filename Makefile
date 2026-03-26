@@ -15,7 +15,7 @@ DEPLOY_DEV_TAG      	?= latest
 DEPLOY_PROD_TAG     	?=
 DEPLOY_CAMOUFOX_TAG 	?=
 
-.PHONY: dev-up dev-down api webui webui-test docs e2e-up e2e-down e2e-test e2e-test-loop e2e-standalone-test docs-screenshots docs-screenshots-loop docs-screenshots-diff docs-screenshots-analyze agent-push agent-pull clean docker-df docker-prune docker-prune-images docker-prune-buildcache
+.PHONY: dev-up dev-down api webui webui-test docs e2e-up e2e-down e2e-test e2e-test-loop e2e-standalone-test docs-screenshots docs-screenshots-loop docs-screenshots-diff docs-screenshots-analyze agent-push agent-pull clean docker-df docker-prune docker-prune-images docker-prune-buildcache docker-pin-digests
 .PHONY: deploy-dev deploy-dev-api deploy-dev-webui deploy-dev-docs deploy-dev-retrack-api deploy-dev-retrack-scraper
 .PHONY: deploy-prod deploy-prod-api deploy-prod-webui deploy-prod-docs deploy-prod-retrack-api deploy-prod-retrack-scraper
 .PHONY: deploy-camoufox
@@ -137,6 +137,9 @@ docker-webui: ## Build the Web UI Docker image.
 
 docker-docs: ## Build the Docs Docker image.
 	docker build --tag secutils-docs:latest -f Dockerfile.docs .
+
+docker-pin-digests: ## Re-pin base images in root Dockerfiles to current SHA256 digests.
+	./dev/scripts/docker-pin-digests.sh
 
 ## ---------- Deploy (build & push to Docker registry) ----------
 
