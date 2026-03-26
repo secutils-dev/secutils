@@ -4,16 +4,11 @@ import type { ContentSecurityPolicy } from './content_security_policy';
 import { serializeContentSecurityPolicyDirectives } from './content_security_policy';
 import type { ContentSecurityPolicyProps } from './content_security_policy_form';
 import { ContentSecurityPolicyForm } from './content_security_policy_form';
-import { useFormChanges } from '../../../../../hooks';
-import {
-  type AsyncData,
-  getApiRequestConfig,
-  getApiUrl,
-  getErrorMessage,
-  isClientError,
-  ResponseError,
-} from '../../../../../model';
+import { useFormChanges, useUserTags } from '../../../../../hooks';
+import type { AsyncData } from '../../../../../model';
+import { getApiRequestConfig, getApiUrl, getErrorMessage, isClientError, ResponseError } from '../../../../../model';
 import { EditorFlyout } from '../../../components/editor_flyout';
+import { TagsComboBox } from '../../../components/tags_combo_box';
 import { useWorkspaceContext } from '../../../hooks';
 
 export interface ContentSecurityPolicyEditFlyoutProps {
@@ -29,10 +24,14 @@ export function ContentSecurityPolicyEditFlyout({ onClose, policy }: ContentSecu
     directives: policy?.directives ? new Map(policy.directives) : new Map(),
   });
 
+  const { allTags, setAllTags } = useUserTags();
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(policy?.tags?.map((t) => t.id) ?? []);
+
   const isDuplicate = !!policy && !policy.id;
   const hasFormChanges = useFormChanges({
     name: policyToSave.name,
     directives: serializeContentSecurityPolicyDirectives(policyToSave.directives),
+    selectedTagIds,
   });
   const hasChanges = isDuplicate || hasFormChanges;
 
@@ -57,6 +56,7 @@ export function ContentSecurityPolicyEditFlyout({ onClose, policy }: ContentSecu
                 body: JSON.stringify({
                   name: policyToSave.name !== policy?.name ? policyToSave.name : null,
                   directives: serializeContentSecurityPolicyDirectives(policyToSave.directives),
+                  tagIds: selectedTagIds,
                 }),
               }),
               `Successfully updated "${policyToSave.name}" policy`,
@@ -71,6 +71,7 @@ export function ContentSecurityPolicyEditFlyout({ onClose, policy }: ContentSecu
                     type: 'directives',
                     value: serializeContentSecurityPolicyDirectives(policyToSave.directives),
                   },
+                  tagIds: selectedTagIds,
                 }),
               }),
               `Successfully saved "${policyToSave.name}" policy`,
@@ -108,7 +109,18 @@ export function ContentSecurityPolicyEditFlyout({ onClose, policy }: ContentSecu
       canSave={policyToSave.name.length > 0 && policyToSave.directives?.size > 0}
       saveInProgress={updatingStatus?.status === 'pending'}
     >
-      <ContentSecurityPolicyForm policy={policyToSave} onChange={setPolicyToSave} />
+      <ContentSecurityPolicyForm
+        policy={policyToSave}
+        onChange={setPolicyToSave}
+        generalSectionExtra={
+          <TagsComboBox
+            allTags={allTags}
+            selectedTagIds={selectedTagIds}
+            onChange={setSelectedTagIds}
+            onTagCreated={(tag) => setAllTags((prev) => [...prev, tag])}
+          />
+        }
+      />
     </EditorFlyout>
   );
 }

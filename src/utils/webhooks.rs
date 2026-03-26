@@ -3,7 +3,7 @@ mod database_ext;
 mod responders;
 
 pub use self::{
-    api_ext::RespondersRequestCreateParams,
+    api_ext::{RespondersCreateParams, RespondersRequestCreateParams, RespondersUpdateParams},
     responders::{
         Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderRequest,
         ResponderRequestHeaders, ResponderScriptContext, ResponderScriptResult, ResponderSettings,
@@ -87,7 +87,7 @@ pub mod tests {
     pub use crate::utils::webhooks::api_ext::{RespondersCreateParams, RespondersUpdateParams};
     use crate::{
         tests::{mock_api, mock_user},
-        users::SecretsAccess,
+        users::{EntityTag, SecretsAccess},
         utils::{
             UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
             webhooks::{
@@ -128,6 +128,7 @@ pub mod tests {
                         script: None,
                         secrets: SecretsAccess::None,
                     },
+                    tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
@@ -146,6 +147,11 @@ pub mod tests {
 
         pub fn with_location(mut self, location: ResponderLocation) -> Self {
             self.responder.location = location;
+            self
+        }
+
+        pub fn with_tag_ids(mut self, tag_ids: &[Uuid]) -> Self {
+            self.responder.tags = tag_ids.iter().map(|id| EntityTag::from(*id)).collect();
             self
         }
 
@@ -189,6 +195,7 @@ pub mod tests {
                     headers: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
         let responder_two = webhooks
@@ -202,6 +209,7 @@ pub mod tests {
                 method: ResponderMethod::Get,
                 enabled: false,
                 settings: responder_one.settings.clone(),
+                tag_ids: vec![],
             })
             .await?;
         let action_result = webhooks_handle_action(
@@ -307,6 +315,7 @@ pub mod tests {
                     headers: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -361,6 +370,7 @@ pub mod tests {
                     headers: None,
                     secrets: SecretsAccess::None,
                 },
+                tags: vec![],
                 created_at: responder.created_at,
                 updated_at: updated_responder.updated_at
             }
@@ -394,6 +404,7 @@ pub mod tests {
                     headers: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -442,6 +453,7 @@ pub mod tests {
                     headers: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
         let request_one = webhooks
@@ -540,6 +552,7 @@ pub mod tests {
                     headers: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
         webhooks
@@ -629,6 +642,7 @@ pub mod tests {
                     headers: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
         let request_one = webhooks

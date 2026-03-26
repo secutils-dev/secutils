@@ -71,7 +71,7 @@ function resolveValue(obj: unknown, path: string): string | undefined {
     return current.map(([k, v]: [string, string]) => `${k}: ${v}`).join('\n');
   }
 
-  // Directives for CSP are stored as [{name, value}, ...] — render as "directive source1 source2"
+  // Directives for CSP are stored as [{name, value}, ...] - render as "directive source1 source2"
   if (path === 'directives' && Array.isArray(current)) {
     return current.map((d: { name: string; value: string[] }) => `${d.name} ${d.value.join(' ')}`).join('\n');
   }
@@ -81,7 +81,7 @@ function resolveValue(obj: unknown, path: string): string | undefined {
     return current ? 'Certificate Authority' : 'End Entity';
   }
 
-  // keyUsage / extendedKeyUsage arrays — convert camelCase to readable labels
+  // keyUsage / extendedKeyUsage arrays - convert camelCase to readable labels
   if ((path === 'attributes.keyUsage' || path === 'attributes.extendedKeyUsage') && Array.isArray(current)) {
     return current.map((v: string) => v.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()).trim()).join(', ');
   }

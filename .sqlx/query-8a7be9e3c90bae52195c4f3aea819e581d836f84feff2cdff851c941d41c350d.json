@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nWITH inserted AS (\n    INSERT INTO user_data_secrets_tags (secret_id, tag_id)\n    SELECT $1, unnest($2::uuid[])\n    RETURNING secret_id, tag_id\n)\nSELECT t.id, t.name, t.color\nFROM inserted i\nJOIN user_tags t ON i.tag_id = t.id\nORDER BY t.name ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "color",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "8a7be9e3c90bae52195c4f3aea819e581d836f84feff2cdff851c941d41c350d"
+}

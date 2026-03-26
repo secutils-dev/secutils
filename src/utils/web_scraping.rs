@@ -311,10 +311,19 @@ pub mod tests {
                     user_id: mock_user()?.id,
                     retrack,
                     secrets: SecretsAccess::None,
+                    tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
             })
+        }
+
+        pub fn with_tag_ids(mut self, tag_ids: &[Uuid]) -> Self {
+            self.tracker.tags = tag_ids
+                .iter()
+                .map(|id| crate::users::EntityTag::from(*id))
+                .collect();
+            self
         }
 
         pub fn build(self) -> PageTracker {
@@ -339,10 +348,19 @@ pub mod tests {
                     user_id: mock_user()?.id,
                     retrack,
                     secrets: SecretsAccess::None,
+                    tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
             })
+        }
+
+        pub fn with_tag_ids(mut self, tag_ids: &[Uuid]) -> Self {
+            self.tracker.tags = tag_ids
+                .iter()
+                .map(|id| crate::users::EntityTag::from(*id))
+                .collect();
+            self
         }
 
         pub fn build(self) -> ApiTracker {
@@ -417,6 +435,7 @@ pub mod tests {
                 },
                 notifications: true,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
 
@@ -595,6 +614,7 @@ pub mod tests {
                 },
                 notifications: true,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -713,6 +733,7 @@ pub mod tests {
                     notifications: false,
                 })),
                 secrets: SecretsAccess::None,
+                tags: vec![],
                 created_at: tracker.created_at,
                 updated_at: updated_tracker.updated_at
             }
@@ -762,6 +783,7 @@ pub mod tests {
                 },
                 notifications: true,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -841,6 +863,7 @@ pub mod tests {
                 },
                 notifications: true,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -931,6 +954,7 @@ pub mod tests {
                 },
                 notifications: true,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -1038,6 +1062,7 @@ pub mod tests {
                 },
                 notifications: true,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1220,6 +1245,7 @@ pub mod tests {
                 },
                 notifications: true,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -1338,6 +1364,7 @@ pub mod tests {
                     notifications: false,
                 })),
                 secrets: SecretsAccess::None,
+                tags: vec![],
                 created_at: tracker.created_at,
                 updated_at: updated_tracker.updated_at
             }
@@ -1392,6 +1419,7 @@ pub mod tests {
                 },
                 notifications: true,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -1475,6 +1503,7 @@ pub mod tests {
                 },
                 notifications: true,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -1570,6 +1599,7 @@ pub mod tests {
                 },
                 notifications: true,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();

@@ -19,6 +19,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 pub use self::{
+    api_ext::TemplatesCreateParams,
     certificate_templates::{CertificateAttributes, CertificateTemplate},
     export_format::ExportFormat,
     private_keys::{PrivateKey, PrivateKeyAlgorithm, PrivateKeyEllipticCurve, PrivateKeySize},
@@ -221,6 +222,7 @@ pub mod tests {
                     key_name: "pk".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -231,6 +233,7 @@ pub mod tests {
                     key_name: "pk-2".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -267,6 +270,7 @@ pub mod tests {
                     key_name: "pk".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -350,6 +354,7 @@ pub mod tests {
                     key_name: "pk".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -393,6 +398,7 @@ pub mod tests {
                     key_name: "pk".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -434,6 +440,7 @@ pub mod tests {
                     key_name: "pk".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -472,6 +479,7 @@ pub mod tests {
                 TemplatesCreateParams {
                     template_name: "ct".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -481,6 +489,7 @@ pub mod tests {
                 TemplatesCreateParams {
                     template_name: "ct-2".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -516,6 +525,7 @@ pub mod tests {
                 TemplatesCreateParams {
                     template_name: "ct".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -632,6 +642,7 @@ pub mod tests {
                 TemplatesCreateParams {
                     template_name: "ct".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -674,6 +685,7 @@ pub mod tests {
                 TemplatesCreateParams {
                     template_name: "ct".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -714,6 +726,7 @@ pub mod tests {
                 TemplatesCreateParams {
                     template_name: "ct".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -753,6 +766,7 @@ pub mod tests {
                 TemplatesCreateParams {
                     template_name: "ct".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;

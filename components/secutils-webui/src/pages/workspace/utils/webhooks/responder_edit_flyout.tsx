@@ -21,19 +21,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent } from 'react';
 
 import type { Responder } from './responder';
-import { useFormChanges, useRangeTicks } from '../../../../hooks';
-import {
-  type AsyncData,
-  getApiRequestConfig,
-  getApiUrl,
-  getErrorMessage,
-  isClientError,
-  ResponseError,
-} from '../../../../model';
+import { useFormChanges, useRangeTicks, useUserTags } from '../../../../hooks';
+import type { AsyncData } from '../../../../model';
+import { getApiRequestConfig, getApiUrl, getErrorMessage, isClientError, ResponseError } from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
 import { ScriptEditor } from '../../components/script_editor';
 import type { ImportAction, ScriptSnippet } from '../../components/script_editor';
 import { ScriptImportSelector } from '../../components/script_import_selector';
+import { TagsComboBox } from '../../components/tags_combo_box';
 import { useWorkspaceContext } from '../../hooks';
 
 export interface ResponderEditFlyoutProps {
@@ -261,6 +256,9 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
   const [availableSecrets, setAvailableSecrets] = useState<Array<{ label: string }>>([]);
   const [secretsLoaded, setSecretsLoaded] = useState(false);
 
+  const { allTags, setAllTags } = useUserTags();
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(responder?.tags?.map((t) => t.id) ?? []);
+
   useEffect(() => {
     if (secretsMode !== 'selected' || secretsLoaded) {
       return;
@@ -316,6 +314,7 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
     script,
     secretsMode,
     selectedSecretNames,
+    selectedTagIds,
   });
   const hasChanges = isDuplicate || hasFormChanges;
 
@@ -367,6 +366,7 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
               ? { type: 'all' as const }
               : { type: 'selected' as const, secrets: selectedSecretNames.map((s) => s.label) },
       },
+      tagIds: selectedTagIds,
     };
 
     const [requestPromise, successMessage, errorMessage] = !newResponder
@@ -428,6 +428,7 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
     script,
     secretsMode,
     selectedSecretNames,
+    selectedTagIds,
     responder,
     updatingStatus,
     supportsCustomSubdomainPrefixes,
@@ -478,6 +479,12 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
           <EuiFormRow label="Name" helpText="Arbitrary responder name." fullWidth>
             <EuiFieldText autoFocus value={name} required type={'text'} onChange={onNameChange} />
           </EuiFormRow>
+          <TagsComboBox
+            allTags={allTags}
+            selectedTagIds={selectedTagIds}
+            onChange={setSelectedTagIds}
+            onTagCreated={(tag) => setAllTags((prev) => [...prev, tag])}
+          />
           {isAdvancedMode ? (
             <EuiFormRow label="Tracking" helpText="Responder will track only specified number of incoming requests">
               <EuiRange

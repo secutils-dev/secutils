@@ -29,7 +29,7 @@ use crate::{
         },
     },
     scheduler::CronExt,
-    users::{SecretsAccess, User},
+    users::{EntityTag, SecretsAccess, User},
     utils::{
         UtilsResource,
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
@@ -145,6 +145,13 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             );
         }
 
+        let mut tags_map = web_scraping
+            .get_page_tracker_tags(&trackers.iter().map(|t| t.id).collect::<Vec<_>>())
+            .await?;
+        for tracker in &mut trackers {
+            tracker.tags = tags_map.remove(&tracker.id).unwrap_or_default();
+        }
+
         Ok(trackers)
     }
 
@@ -184,6 +191,13 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             }
         }
 
+        let mut tags_map = web_scraping
+            .get_page_tracker_tags(&trackers.iter().map(|t| t.id).collect::<Vec<_>>())
+            .await?;
+        for tracker in &mut trackers {
+            tracker.tags = tags_map.remove(&tracker.id).unwrap_or_default();
+        }
+
         Ok(trackers)
     }
 
@@ -207,6 +221,10 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                     "Page tracker is not found in Retrack."
                 );
             }
+
+            tracker.tags = (web_scraping.get_page_tracker_tags(&[tracker.id]).await?)
+                .remove(&tracker.id)
+                .unwrap_or_default();
 
             Some(tracker)
         } else {
@@ -269,29 +287,33 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             user_id: self.user.id,
             retrack: RetrackTracker::from_value(retrack_tracker),
             secrets: params.secrets.clone(),
+            tags: params.tag_ids.into_iter().map(EntityTag::from).collect(),
             created_at,
             updated_at: created_at,
         };
 
         let web_scraping = self.api.db.web_scraping(self.user.id);
-        if let Err(err) = web_scraping.insert_page_tracker(&tracker).await {
-            // If the tracker creation failed, remove it from Retrack.
-            if let Err(err) = retrack.remove_tracker(tracker.retrack.id()).await {
-                let (resource, resource_group) = utils_resource.into();
-                error!(
-                    util.resource = resource,
-                    util.resource_group = resource_group,
-                    util.resource_id = %tracker.id,
-                    util.resource_name = tracker.name,
-                    retrack.id = %tracker.retrack.id(),
-                    "Failed to remove tracker from Retrack: {err:?}"
-                );
+        let tags = match web_scraping.insert_page_tracker(&tracker).await {
+            Ok(tags) => tags,
+            Err(err) => {
+                // If the tracker creation failed, remove it from Retrack.
+                if let Err(err) = retrack.remove_tracker(tracker.retrack.id()).await {
+                    let (resource, resource_group) = utils_resource.into();
+                    error!(
+                        util.resource = resource,
+                        util.resource_group = resource_group,
+                        util.resource_id = %tracker.id,
+                        util.resource_name = tracker.name,
+                        retrack.id = %tracker.retrack.id(),
+                        "Failed to remove tracker from Retrack: {err:?}"
+                    );
+                }
+
+                return Err(err);
             }
+        };
 
-            return Err(err);
-        }
-
-        Ok(tracker)
+        Ok(PageTracker { tags, ..tracker })
     }
 
     /// Updates existing page tracker.
@@ -393,6 +415,10 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             )
             .await?;
 
+        let existing_tags = (web_scraping.get_page_tracker_tags(&[id]).await?)
+            .remove(&id)
+            .unwrap_or_default();
+
         let tracker = PageTracker {
             name: params.name.unwrap_or(existing_tracker.name),
             retrack: RetrackTracker::from_value(retrack_tracker),
@@ -400,6 +426,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                 .secrets
                 .clone()
                 .unwrap_or(existing_tracker.secrets.clone()),
+            tags: existing_tags,
             // Preserve timestamp only up to seconds.
             updated_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
@@ -407,9 +434,15 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             ..existing_tracker
         };
 
-        web_scraping.update_page_tracker(&tracker).await?;
+        let updated_tags = web_scraping
+            .update_page_tracker(&tracker, params.tag_ids)
+            .await?;
 
-        Ok(tracker)
+        Ok(if let Some(tags) = updated_tags {
+            PageTracker { tags, ..tracker }
+        } else {
+            tracker
+        })
     }
 
     /// Removes existing page tracker and all history.
@@ -764,7 +797,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         let mut retrack_trackers_map = retrack_trackers
             .into_iter()
             .map(|tracker| (tracker.id, tracker))
-            .collect::<std::collections::HashMap<_, _>>();
+            .collect::<HashMap<_, _>>();
         for tracker in trackers.iter_mut() {
             if let Some(retrack_tracker) = retrack_trackers_map.remove(&tracker.retrack.id()) {
                 tracker.retrack = RetrackTracker::from_value(retrack_tracker);
@@ -791,6 +824,16 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                 retrack.id = %retrack_tracker.id,
                 "Found a dangling Retrack tracker that needs to be removed."
             );
+        }
+
+        let mut tags_map = self
+            .api
+            .db
+            .web_scraping(self.user.id)
+            .get_api_tracker_tags(&trackers.iter().map(|t| t.id).collect::<Vec<_>>())
+            .await?;
+        for tracker in &mut trackers {
+            tracker.tags = tags_map.remove(&tracker.id).unwrap_or_default();
         }
 
         Ok(trackers)
@@ -832,6 +875,13 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             }
         }
 
+        let mut tags_map = web_scraping
+            .get_api_tracker_tags(&trackers.iter().map(|t| t.id).collect::<Vec<_>>())
+            .await?;
+        for tracker in &mut trackers {
+            tracker.tags = tags_map.remove(&tracker.id).unwrap_or_default();
+        }
+
         Ok(trackers)
     }
 
@@ -855,6 +905,10 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                     "API tracker is not found in Retrack."
                 );
             }
+
+            tracker.tags = (web_scraping.get_api_tracker_tags(&[tracker.id]).await?)
+                .remove(&tracker.id)
+                .unwrap_or_default();
 
             Some(tracker)
         } else {
@@ -949,28 +1003,32 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             user_id: self.user.id,
             retrack: RetrackTracker::from_value(retrack_tracker),
             secrets: params.secrets.clone(),
+            tags: params.tag_ids.into_iter().map(EntityTag::from).collect(),
             created_at,
             updated_at: created_at,
         };
 
         let web_scraping = self.api.db.web_scraping(self.user.id);
-        if let Err(err) = web_scraping.insert_api_tracker(&tracker).await {
-            if let Err(err) = retrack.remove_tracker(tracker.retrack.id()).await {
-                let (resource, resource_group) = utils_resource.into();
-                error!(
-                    util.resource = resource,
-                    util.resource_group = resource_group,
-                    util.resource_id = %tracker.id,
-                    util.resource_name = tracker.name,
-                    retrack.id = %tracker.retrack.id(),
-                    "Failed to remove tracker from Retrack: {err:?}"
-                );
+        let tags = match web_scraping.insert_api_tracker(&tracker).await {
+            Ok(tags) => tags,
+            Err(err) => {
+                if let Err(err) = retrack.remove_tracker(tracker.retrack.id()).await {
+                    let (resource, resource_group) = utils_resource.into();
+                    error!(
+                        util.resource = resource,
+                        util.resource_group = resource_group,
+                        util.resource_id = %tracker.id,
+                        util.resource_name = tracker.name,
+                        retrack.id = %tracker.retrack.id(),
+                        "Failed to remove tracker from Retrack: {err:?}"
+                    );
+                }
+
+                return Err(err);
             }
+        };
 
-            return Err(err);
-        }
-
-        Ok(tracker)
+        Ok(ApiTracker { tags, ..tracker })
     }
 
     /// Updates existing API tracker.
@@ -1075,15 +1133,22 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                 .secrets
                 .clone()
                 .unwrap_or(existing_tracker.secrets.clone()),
+            tags: existing_tracker.tags,
             updated_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
             )?,
             ..existing_tracker
         };
 
-        web_scraping.update_api_tracker(&tracker).await?;
+        let updated_tags = web_scraping
+            .update_api_tracker(&tracker, params.tag_ids)
+            .await?;
 
-        Ok(tracker)
+        Ok(if let Some(tags) = updated_tags {
+            ApiTracker { tags, ..tracker }
+        } else {
+            tracker
+        })
     }
 
     /// Removes existing API tracker and all history.
@@ -1581,6 +1646,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -1670,6 +1736,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -1738,6 +1805,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -1783,6 +1851,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker name cannot be empty.""###
         );
@@ -1796,6 +1865,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker name cannot be longer than 100 characters.""###
         );
@@ -1812,6 +1882,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker revisions count cannot be greater than 30.""###
         );
@@ -1831,6 +1902,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###"
         Error {
@@ -1855,6 +1927,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker schedule must have at least 10s between occurrences, but detected 5s.""###
         );
@@ -1877,6 +1950,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
         );
@@ -1899,6 +1973,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
         );
@@ -1921,6 +1996,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker min retry interval cannot be less than 1m, but received 30s.""###
         );
@@ -1945,6 +2021,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
         );
@@ -1969,6 +2046,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
         );
@@ -1992,6 +2070,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
         );
@@ -2009,6 +2088,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Page tracker extractor script cannot be empty.""###
         );
@@ -2079,6 +2159,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -2600,6 +2681,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -2872,6 +2954,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -2900,6 +2983,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -3046,6 +3130,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -3102,6 +3187,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -3130,6 +3216,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -3197,6 +3284,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -3225,6 +3313,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -3293,6 +3382,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -3401,6 +3491,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -3473,6 +3564,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -3585,6 +3677,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -3655,6 +3748,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker name cannot be empty.""###
         );
@@ -3668,6 +3762,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker name cannot be longer than 100 characters.""###
         );
@@ -3684,6 +3779,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker revisions count cannot be greater than 30.""###
         );
@@ -3703,6 +3799,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###"
         Error {
@@ -3727,6 +3824,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker schedule must have at least 10s between occurrences, but detected 5s.""###
         );
@@ -3749,6 +3847,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker max retry attempts cannot be zero or greater than 10, but received 0.""###
         );
@@ -3771,6 +3870,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker max retry attempts cannot be zero or greater than 10, but received 11.""###
         );
@@ -3793,6 +3893,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker min retry interval cannot be less than 1m, but received 30s.""###
         );
@@ -3817,6 +3918,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker retry strategy max interval cannot be less than 1m, but received 30s.""###
         );
@@ -3841,6 +3943,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker retry strategy max interval cannot be greater than 12h, but received 13h.""###
         );
@@ -3865,6 +3968,7 @@ mod tests {
                 target: target.clone(),
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""Tracker retry strategy max interval cannot be greater than 1h, but received 2h.""###
         );
@@ -3888,6 +3992,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""API tracker URL must use http or https scheme.""###
         );
@@ -3911,6 +4016,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""API tracker configurator script cannot be empty when provided.""###
         );
@@ -3934,6 +4040,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             }).await),
             @r###""API tracker extractor script cannot be empty when provided.""###
         );
@@ -4015,6 +4122,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -4417,6 +4525,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -4738,6 +4847,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -4772,6 +4882,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -4923,6 +5034,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -4984,6 +5096,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -5018,6 +5131,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -5091,6 +5205,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -5125,6 +5240,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -5198,6 +5314,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -5713,6 +5830,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
 
@@ -5758,6 +5876,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();
@@ -5884,6 +6003,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
 
@@ -5957,6 +6077,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_api_mock.assert();

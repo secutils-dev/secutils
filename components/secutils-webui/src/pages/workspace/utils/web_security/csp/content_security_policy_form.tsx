@@ -9,7 +9,7 @@ import {
   EuiSpacer,
   EuiSwitch,
 } from '@elastic/eui';
-import type { ChangeEvent } from 'react';
+import type { ChangeEvent, ReactNode } from 'react';
 import { useState } from 'react';
 
 import type { ContentSecurityPolicy } from './content_security_policy';
@@ -23,6 +23,7 @@ export interface ContentSecurityPolicyFormProps {
   policy: ContentSecurityPolicyProps;
   onChange?: (policy: ContentSecurityPolicyProps) => void;
   isReadOnly?: boolean;
+  generalSectionExtra?: ReactNode;
 }
 
 const FETCH_DIRECTIVES: Array<{ directive: string; label: string; helpText: string }> = [
@@ -113,7 +114,12 @@ const OTHER_FETCH_DIRECTIVES: Array<{ directive: string; label: string; helpText
   },
 ];
 
-export function ContentSecurityPolicyForm({ policy, onChange, isReadOnly = false }: ContentSecurityPolicyFormProps) {
+export function ContentSecurityPolicyForm({
+  policy,
+  onChange,
+  isReadOnly = false,
+  generalSectionExtra,
+}: ContentSecurityPolicyFormProps) {
   const [name, setName] = useState<string>(policy?.name ?? '');
   const onNameChange = (e: ChangeEvent<HTMLInputElement>) => {
     setName(e.target.value);
@@ -383,6 +389,7 @@ export function ContentSecurityPolicyForm({ policy, onChange, isReadOnly = false
         <EuiFormRow label="Name" helpText="Arbitrary CSP policy name." fullWidth isDisabled={isReadOnly}>
           <EuiFieldText value={name} required type={'text'} onChange={onNameChange} readOnly={isReadOnly} />
         </EuiFormRow>
+        {generalSectionExtra}
       </EuiDescribedFormGroup>
       {fetchDirectives.length > 0 || otherFetchDirectives.length > 0 ? (
         <EuiDescribedFormGroup

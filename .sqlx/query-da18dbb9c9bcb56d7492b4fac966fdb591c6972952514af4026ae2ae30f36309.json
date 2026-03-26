@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM user_data_web_scraping_page_trackers_tags WHERE tracker_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "da18dbb9c9bcb56d7492b4fac966fdb591c6972952514af4026ae2ae30f36309"
+}

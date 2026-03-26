@@ -27,15 +27,11 @@ import { TrackerName } from './tracker_name';
 import { TrackerRevisions } from './tracker_revisions';
 import { useTrackerHealth } from './use_tracker_health';
 import { PageErrorState, PageLoadingState } from '../../../../components';
-import {
-  type AsyncData,
-  getApiRequestConfig,
-  getApiUrl,
-  getCopyName,
-  getErrorMessage,
-  ResponseError,
-} from '../../../../model';
-import { ItemsTableFilter, useItemsTableFilter } from '../../components/items_table_filter';
+import { useUserTags } from '../../../../hooks';
+import type { AsyncData } from '../../../../model';
+import { getApiRequestConfig, getApiUrl, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
+import { getTagsColumn } from '../../components/entity_tags_column';
+import { ItemsTableFilter, TagsFilter, useItemsTableFilter } from '../../components/items_table_filter';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
@@ -50,6 +46,7 @@ export default function ApiTrackers() {
 
   const [trackerToRemove, setTrackerToRemove] = useState<ApiTracker | null>(null);
   const [trackerToEdit, setTrackerToEdit] = useState<Partial<ApiTracker> | null | undefined>(null);
+  const { allTags } = useUserTags();
 
   const createButton = useMemo(
     () => (
@@ -114,10 +111,12 @@ export default function ApiTrackers() {
     ) : null;
 
   const getSearchFields = useCallback((tracker: ApiTracker) => [tracker.name, tracker.id], []);
+  const getItemTags = useCallback((tracker: ApiTracker) => tracker.tags, []);
 
-  const { filteredItems, query, setQuery } = useItemsTableFilter({
+  const { filteredItems, query, setQuery, selectedTagIds, setSelectedTagIds } = useItemsTableFilter({
     items: trackers.status === 'succeeded' ? trackers.data : [],
     getSearchFields,
+    getItemTags,
   });
 
   const { data: healthData, refetch: refetchHealth } = useTrackerHealth(
@@ -261,7 +260,9 @@ export default function ApiTrackers() {
             refetchHealth();
           }}
           placeholder="Search by name or ID..."
-        />
+        >
+          <TagsFilter tags={allTags} selectedTagIds={selectedTagIds} onSelectedTagIdsChange={setSelectedTagIds} />
+        </ItemsTableFilter>
         <EuiSpacer size="m" />
         <EuiInMemoryTable
           pagination={pagination}
@@ -371,6 +372,7 @@ export default function ApiTrackers() {
                 />
               ),
             },
+            getTagsColumn(),
             {
               name: <></>,
               render: () => <EuiSpacer size={'xxl'} />,

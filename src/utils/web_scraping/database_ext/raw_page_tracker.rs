@@ -26,6 +26,7 @@ impl TryFrom<RawPageTracker> for PageTracker {
                 .map(Into::into)
                 .unwrap_or_default(),
             created_at: raw.created_at,
+            tags: vec![],
             updated_at: raw.updated_at,
         })
     }
@@ -79,6 +80,7 @@ mod tests {
                     id: uuid!("00000000-0000-0000-0000-000000000002")
                 },
                 secrets: SecretsAccess::None,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             }
@@ -98,6 +100,7 @@ mod tests {
                     id: uuid!("00000000-0000-0000-0000-000000000002")
                 },
                 secrets: SecretsAccess::None,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?
             })?,

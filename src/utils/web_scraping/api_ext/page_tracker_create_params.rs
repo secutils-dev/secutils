@@ -3,6 +3,7 @@ use crate::{
     utils::web_scraping::{PageTrackerConfig, page_trackers::PageTrackerTarget},
 };
 use serde::Deserialize;
+use uuid::Uuid;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +23,9 @@ pub struct PageTrackerCreateParams {
     /// Controls which user secrets are available to this tracker's extractor script.
     #[serde(default)]
     pub secrets: SecretsAccess,
+    /// Tag IDs to assign to this page tracker.
+    #[serde(default)]
+    pub tag_ids: Vec<Uuid>,
 }
 
 const fn default_true() -> bool {
@@ -72,6 +76,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: SecretsAccess::None,
+                tag_ids: vec![],
             }
         );
 
@@ -124,6 +129,7 @@ mod tests {
                 },
                 notifications: true,
                 secrets: SecretsAccess::None,
+                tag_ids: vec![],
             }
         );
 
@@ -160,6 +166,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: SecretsAccess::None,
+                tag_ids: vec![],
             }
         );
 

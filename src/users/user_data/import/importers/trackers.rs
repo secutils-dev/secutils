@@ -1,3 +1,4 @@
+use super::tags::remap_tag_ids;
 use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
@@ -35,21 +36,21 @@ pub async fn import_trackers<DR: DnsResolver, ET: EmailTransport>(
     trackers: &[ExportedTracker],
     selections: &HashMap<Uuid, &ImportEntitySelection>,
     kind: TrackerKind,
+    tag_id_map: &HashMap<Uuid, Uuid>,
 ) -> ImportEntityResult {
+    let web_scraping_api = api.web_scraping(user);
     let mut result = ImportEntityResult::default();
 
     // Pre-fetch existing trackers once for overwrite resolution and name uniqueness.
     let existing_tracker_names: HashMap<String, Uuid> = match kind {
-        TrackerKind::Page => api
-            .web_scraping(user)
+        TrackerKind::Page => web_scraping_api
             .get_page_trackers()
             .await
             .unwrap_or_default()
             .into_iter()
             .map(|t| (t.name, t.id))
             .collect(),
-        TrackerKind::Api => api
-            .web_scraping(user)
+        TrackerKind::Api => web_scraping_api
             .get_api_trackers()
             .await
             .unwrap_or_default()
@@ -74,16 +75,10 @@ pub async fn import_trackers<DR: DnsResolver, ET: EmailTransport>(
         {
             match kind {
                 TrackerKind::Page => {
-                    let _ = api
-                        .web_scraping(user)
-                        .remove_page_tracker(*existing_id)
-                        .await;
+                    let _ = web_scraping_api.remove_page_tracker(*existing_id).await;
                 }
                 TrackerKind::Api => {
-                    let _ = api
-                        .web_scraping(user)
-                        .remove_api_tracker(*existing_id)
-                        .await;
+                    let _ = web_scraping_api.remove_api_tracker(*existing_id).await;
                 }
             }
             used_names.remove(&tracker.name);
@@ -107,13 +102,10 @@ pub async fn import_trackers<DR: DnsResolver, ET: EmailTransport>(
                     },
                     notifications: retrack.notifications,
                     secrets: tracker.secrets.clone(),
+                    tag_ids: remap_tag_ids(&tracker.tags, tag_id_map),
                 };
 
-                match api
-                    .web_scraping(user)
-                    .create_page_tracker(create_params)
-                    .await
-                {
+                match web_scraping_api.create_page_tracker(create_params).await {
                     Ok(created) => {
                         used_names.insert(name);
                         result.imported += 1;
@@ -185,13 +177,10 @@ pub async fn import_trackers<DR: DnsResolver, ET: EmailTransport>(
                     },
                     notifications: retrack.notifications,
                     secrets: tracker.secrets.clone(),
+                    tag_ids: remap_tag_ids(&tracker.tags, tag_id_map),
                 };
 
-                match api
-                    .web_scraping(user)
-                    .create_api_tracker(create_params)
-                    .await
-                {
+                match web_scraping_api.create_api_tracker(create_params).await {
                     Ok(created) => {
                         used_names.insert(name);
                         result.imported += 1;
@@ -272,6 +261,7 @@ mod tests {
             exported_at: datetime!(2020-01-01 12:00:00 UTC),
             secrets_encryption: None,
             data: UserDataImportFileData {
+                tags: vec![],
                 scripts: vec![],
                 secrets: vec![],
                 responders: vec![],

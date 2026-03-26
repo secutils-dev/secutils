@@ -4,16 +4,11 @@ import { useState } from 'react';
 import type { CertificateTemplate } from './certificate_template';
 import type { CertificateTemplateProps } from './certificate_template_form';
 import { CertificateTemplateForm } from './certificate_template_form';
-import { useFormChanges } from '../../../../hooks';
-import {
-  type AsyncData,
-  getApiRequestConfig,
-  getApiUrl,
-  getErrorMessage,
-  isClientError,
-  ResponseError,
-} from '../../../../model';
+import { useFormChanges, useUserTags } from '../../../../hooks';
+import type { AsyncData } from '../../../../model';
+import { getApiRequestConfig, getApiUrl, getErrorMessage, isClientError, ResponseError } from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
+import { TagsComboBox } from '../../components/tags_combo_box';
 import { useWorkspaceContext } from '../../hooks';
 
 export interface CertificateTemplateEditFlyoutProps {
@@ -42,8 +37,15 @@ export function CertificateTemplateEditFlyout({ onClose, template }: Certificate
         },
   });
 
+  const { allTags, setAllTags } = useUserTags();
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(template?.tags?.map((t) => t.id) ?? []);
+
   const isDuplicate = !!template && !template.id;
-  const hasFormChanges = useFormChanges({ name: templateToSave.name, attributes: templateToSave.attributes });
+  const hasFormChanges = useFormChanges({
+    name: templateToSave.name,
+    attributes: templateToSave.attributes,
+    selectedTagIds,
+  });
   const hasChanges = isDuplicate || hasFormChanges;
 
   const [updatingStatus, setUpdatingStatus] = useState<AsyncData<void>>();
@@ -66,6 +68,7 @@ export function CertificateTemplateEditFlyout({ onClose, template }: Certificate
                 body: JSON.stringify({
                   templateName: templateToSave.name !== template?.name ? templateToSave.name : null,
                   attributes: templateToSave.attributes,
+                  tagIds: selectedTagIds,
                 }),
               }),
               `Successfully updated "${templateToSave.name}" certificate template`,
@@ -74,7 +77,11 @@ export function CertificateTemplateEditFlyout({ onClose, template }: Certificate
           : [
               fetch(getApiUrl('/api/utils/certificates/templates'), {
                 ...getApiRequestConfig('POST'),
-                body: JSON.stringify({ templateName: templateToSave.name, attributes: templateToSave.attributes }),
+                body: JSON.stringify({
+                  templateName: templateToSave.name,
+                  attributes: templateToSave.attributes,
+                  tagIds: selectedTagIds,
+                }),
               }),
               `Successfully saved "${templateToSave.name}" certificate template`,
               `Unable to save "${templateToSave.name}" certificate template, please try again later`,
@@ -110,7 +117,18 @@ export function CertificateTemplateEditFlyout({ onClose, template }: Certificate
       canSave={templateToSave.name.length > 0}
       saveInProgress={updatingStatus?.status === 'pending'}
     >
-      <CertificateTemplateForm template={templateToSave} onChange={setTemplateToSave} />
+      <CertificateTemplateForm
+        template={templateToSave}
+        onChange={setTemplateToSave}
+        generalSectionExtra={
+          <TagsComboBox
+            allTags={allTags}
+            selectedTagIds={selectedTagIds}
+            onChange={setSelectedTagIds}
+            onTagCreated={(tag) => setAllTags((prev) => [...prev, tag])}
+          />
+        }
+      />
     </EditorFlyout>
   );
 }

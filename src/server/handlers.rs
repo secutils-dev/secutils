@@ -18,6 +18,7 @@ mod user_scripts;
 mod user_secrets;
 mod user_settings_get;
 mod user_settings_set;
+mod user_tags;
 mod utils_action;
 mod webhooks_responders;
 mod webhooks_retrack;
@@ -48,6 +49,7 @@ pub use self::{
     },
     user_settings_get::user_settings_get,
     user_settings_set::user_settings_set,
+    user_tags::{user_tags_create, user_tags_delete, user_tags_list, user_tags_update},
     utils_action::utils_action,
     webhooks_responders::webhooks_responders,
     webhooks_retrack::webhooks_retrack,

@@ -26,15 +26,11 @@ import { CertificateTemplateShareModal } from './certificate_template_share_moda
 import { SELF_SIGNED_PROD_WARNING_USER_SETTINGS_KEY } from './consts';
 import { privateKeyAlgString } from './private_key_alg';
 import { PageErrorState, PageLoadingState } from '../../../../components';
-import {
-  type AsyncData,
-  getApiRequestConfig,
-  getApiUrl,
-  getCopyName,
-  getErrorMessage,
-  ResponseError,
-} from '../../../../model';
-import { ItemsTableFilter, useItemsTableFilter } from '../../components/items_table_filter';
+import { useUserTags } from '../../../../hooks';
+import type { AsyncData } from '../../../../model';
+import { getApiRequestConfig, getApiUrl, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
+import { getTagsColumn } from '../../components/entity_tags_column';
+import { ItemsTableFilter, TagsFilter, useItemsTableFilter } from '../../components/items_table_filter';
 import { useWorkspaceContext } from '../../hooks';
 import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
 
@@ -48,6 +44,7 @@ export default function CertificatesCertificateTemplates() {
   const [templateToEdit, setTemplateToEdit] = useState<Partial<CertificateTemplate> | null | undefined>(null);
   const [templateToRemove, setTemplateToRemove] = useState<CertificateTemplate | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const { allTags } = useUserTags();
 
   const docsButton = (
     <EuiButtonEmpty
@@ -169,9 +166,12 @@ export default function CertificatesCertificateTemplates() {
     (template: CertificateTemplate) => [template.name, template.id, getDistinguishedNameString(template.attributes)],
     [],
   );
-  const { filteredItems, query, setQuery } = useItemsTableFilter({
+  const getItemTags = useCallback((template: CertificateTemplate) => template.tags, []);
+
+  const { filteredItems, query, setQuery, selectedTagIds, setSelectedTagIds } = useItemsTableFilter({
     items: templates.status === 'succeeded' ? templates.data : [],
     getSearchFields,
+    getItemTags,
   });
 
   const [pagination, setPagination] = useState<Pagination>({
@@ -283,7 +283,9 @@ export default function CertificatesCertificateTemplates() {
           onQueryChange={setQuery}
           onRefresh={loadCertificateTemplates}
           placeholder="Search by name or ID..."
-        />
+        >
+          <TagsFilter tags={allTags} selectedTagIds={selectedTagIds} onSelectedTagIdsChange={setSelectedTagIds} />
+        </ItemsTableFilter>
         <EuiSpacer size="m" />
         <EuiInMemoryTable
           pagination={pagination}
@@ -356,6 +358,7 @@ export default function CertificatesCertificateTemplates() {
               mobileOptions: { only: true },
               render: (_, template) => signatureAlgorithmString(template.attributes),
             },
+            getTagsColumn(),
             {
               name: 'Actions',
               field: 'headers',

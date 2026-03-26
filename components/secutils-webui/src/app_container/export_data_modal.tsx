@@ -34,6 +34,7 @@ import {
   getPageTrackers,
   getPrivateKeys,
   getResponders,
+  getTags,
 } from '../model/user_data_export';
 import type { PageToast } from '../pages/page';
 import { Downloader } from '../tools/downloader';
@@ -44,6 +45,7 @@ interface Props {
 }
 
 interface SelectionState {
+  tags: Set<string>;
   scripts: Set<string>;
   secrets: Set<string>;
   responders: Set<string>;
@@ -71,6 +73,7 @@ interface EntityRow {
 
 const ENTITY_ROWS: EntityRow[] = [
   { id: 'settings', label: 'Settings', icon: 'gear' },
+  { id: 'tags', label: 'Tags', icon: 'tag' },
   { id: 'scripts', label: 'Scripts', icon: 'console' },
   { id: 'secrets', label: 'Secrets', icon: 'lock' },
   { id: 'responders', label: 'Responders', icon: 'node', historyKey: 'responders' },
@@ -90,6 +93,7 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [allItems, setAllItems] = useState<Record<EntityCategory, NamedItem[]>>({
+    tags: [],
     scripts: [],
     secrets: [],
     responders: [],
@@ -100,6 +104,7 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
     apiTrackers: [],
   });
   const [selection, setSelection] = useState<SelectionState>({
+    tags: new Set(),
     scripts: new Set(),
     secrets: new Set(),
     responders: new Set(),
@@ -122,6 +127,7 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
 
   useEffect(() => {
     Promise.all([
+      getTags(),
       getUserScripts(),
       getUserSecrets(),
       getResponders(),
@@ -131,8 +137,9 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
       getPageTrackers(),
       getApiTrackers(),
     ])
-      .then(([s, sec, resp, ct, pk, csp, pt, at]) => {
+      .then(([tags, s, sec, resp, ct, pk, csp, pt, at]) => {
         const items: Record<EntityCategory, NamedItem[]> = {
+          tags,
           scripts: s,
           secrets: sec,
           responders: resp,
@@ -145,6 +152,7 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
         setAllItems(items);
         // Select all by default.
         setSelection({
+          tags: new Set(tags.map((i) => i.id)),
           scripts: new Set(s.map((i) => i.id)),
           secrets: new Set(sec.map((i) => i.id)),
           responders: new Set(resp.map((i) => i.id)),
@@ -199,6 +207,7 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
     setSelection(() => {
       if (!shouldSelectAll) {
         return {
+          tags: new Set(),
           scripts: new Set(),
           secrets: new Set(),
           responders: new Set(),
@@ -210,6 +219,7 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
         };
       }
       return {
+        tags: new Set(allItems.tags.map((i) => i.id)),
         scripts: new Set(allItems.scripts.map((i) => i.id)),
         secrets: new Set(allItems.secrets.map((i) => i.id)),
         responders: new Set(allItems.responders.map((i) => i.id)),
@@ -236,6 +246,7 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
       const params: ExportParams = {
         include: {
           settings: includeSettings || undefined,
+          tags: sel('tags'),
           scripts: sel('scripts'),
           secrets: sel('secrets'),
           responders: trackableSel('responders', 'responders'),

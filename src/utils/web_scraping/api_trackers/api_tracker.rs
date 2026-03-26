@@ -1,6 +1,6 @@
 use crate::{
     retrack::RetrackTracker,
-    users::{SecretsAccess, UserId},
+    users::{EntityTag, SecretsAccess, UserId},
 };
 use serde::Serialize;
 use time::OffsetDateTime;
@@ -21,6 +21,9 @@ pub struct ApiTracker {
     /// Controls which user secrets are available to this tracker's scripts.
     #[serde(default, skip_serializing_if = "SecretsAccess::is_none")]
     pub secrets: SecretsAccess,
+    /// Tags assigned to this tracker.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<EntityTag>,
     /// Date and time when the tracker was created.
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
@@ -57,6 +60,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
             },
             secrets: SecretsAccess::None,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -103,6 +107,7 @@ mod tests {
                 notifications: false,
             })),
             secrets: SecretsAccess::None,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };

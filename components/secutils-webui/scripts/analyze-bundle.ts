@@ -281,7 +281,7 @@ function printTable(report: Report, previous: Report | null, config: Config): vo
   const line = '─'.repeat(72);
 
   console.log('');
-  console.log(`Bundle Size Report — ${shaShort} (${report.commitMessage})`);
+  console.log(`Bundle Size Report - ${shaShort} (${report.commitMessage})`);
   console.log(line);
   console.log('Bundle'.padEnd(28) + 'Raw'.padStart(11) + 'Brotli'.padStart(11) + 'Change'.padStart(11) + '  Status');
   console.log(line);
@@ -372,7 +372,7 @@ function printTable(report: Report, previous: Report | null, config: Config): vo
   console.log(line);
 
   if (!previous) {
-    console.log('\nFirst build recorded — no comparison available.');
+    console.log('\nFirst build recorded - no comparison available.');
   }
 
   if (warnings.length > 0) {

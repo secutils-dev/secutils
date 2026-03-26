@@ -54,6 +54,7 @@ interface EntityRowConfig {
 
 const ENTITY_ROW_CONFIGS: EntityRowConfig[] = [
   { id: 'settings', label: 'Settings', icon: 'gear' },
+  { id: 'tags', label: 'Tags', icon: 'tag' },
   { id: 'scripts', label: 'Scripts', icon: 'console' },
   { id: 'secrets', label: 'Secrets', icon: 'lock' },
   { id: 'responders', label: 'Responders', icon: 'node' },

@@ -1,3 +1,5 @@
+import type { EntityTag } from '../../../../../model';
+
 export type ContentSecurityPolicyDirectives = Map<string, string[]>;
 export type SerializedContentSecurityPolicyDirectives = Array<{ name: string; value: string[] }>;
 
@@ -5,6 +7,7 @@ export interface ContentSecurityPolicy<Directives = ContentSecurityPolicyDirecti
   id: string;
   name: string;
   directives: Directives;
+  tags?: EntityTag[];
   createdAt: number;
   updatedAt: number;
 }

@@ -13,10 +13,13 @@ import type { EuiBasicTableColumn } from '@elastic/eui';
 import { unix } from 'moment/moment';
 import { useCallback, useEffect, useState } from 'react';
 
-import type { UserSecret } from '../model';
-import { createUserSecret, deleteUserSecret, getUserSecrets, updateUserSecret } from '../model';
 import { SecretEditModal } from './secret_edit_modal';
+import { useUserTags } from '../hooks';
+import { createUserSecret, deleteUserSecret, getUserSecrets, updateUserSecret } from '../model';
+import type { UserSecret } from '../model';
 import type { PageToast } from '../pages/page';
+import { getTagsColumn } from '../pages/workspace/components/entity_tags_column';
+import { ItemsTableFilter, TagsFilter, useItemsTableFilter } from '../pages/workspace/components/items_table_filter';
 
 interface DeleteConfirmation {
   id: string;
@@ -27,11 +30,12 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
   const [secrets, setSecrets] = useState<UserSecret[]>([]);
   const [loading, setLoading] = useState(true);
   const [editModal, setEditModal] = useState<
-    { visible: false } | { visible: true; editingId?: string; editingName?: string }
+    { visible: false } | { visible: true; editingId?: string; editingName?: string; initialTagIds?: string[] }
   >({
     visible: false,
   });
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmation | null>(null);
+  const { allTags } = useUserTags();
 
   const loadSecrets = useCallback(async () => {
     setLoading(true);
@@ -49,12 +53,12 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
   }, [loadSecrets]);
 
   const handleSave = useCallback(
-    async (name: string, value: string, editingId?: string) => {
+    async (name: string, value: string, editingId?: string, tagIds?: string[]) => {
       if (editingId !== undefined) {
-        await updateUserSecret(editingId, value);
+        await updateUserSecret(editingId, value, tagIds);
         addToast({ id: 'update-secret', color: 'success', title: `Secret "${name}" updated` });
       } else {
-        await createUserSecret(name, value);
+        await createUserSecret(name, value, tagIds);
         addToast({ id: 'create-secret', color: 'success', title: `Secret "${name}" created` });
       }
       await loadSecrets();
@@ -76,6 +80,14 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
     [loadSecrets, addToast],
   );
 
+  const getSearchFields = useCallback((secret: UserSecret) => [secret.name, secret.id], []);
+  const getItemTags = useCallback((secret: UserSecret) => secret.tags, []);
+  const { filteredItems, query, setQuery, selectedTagIds, setSelectedTagIds } = useItemsTableFilter({
+    items: secrets,
+    getSearchFields,
+    getItemTags,
+  });
+
   const columns: Array<EuiBasicTableColumn<UserSecret>> = [
     {
       field: 'name',
@@ -87,6 +99,7 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
         </EuiText>
       ),
     },
+    getTagsColumn(),
     {
       field: 'updatedAt',
       name: 'Last updated',
@@ -103,7 +116,12 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
           icon: 'pencil',
           type: 'icon',
           onClick: (secret: UserSecret) =>
-            setEditModal({ visible: true, editingId: secret.id, editingName: secret.name }),
+            setEditModal({
+              visible: true,
+              editingId: secret.id,
+              editingName: secret.name,
+              initialTagIds: secret.tags?.map((t) => t.id),
+            }),
         },
         {
           name: 'Delete',
@@ -132,11 +150,14 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
         </EuiFlexItem>
       </EuiFlexGroup>
       <EuiSpacer size="m" />
+      <ItemsTableFilter query={query} onQueryChange={setQuery} onRefresh={loadSecrets} placeholder="Search secrets…">
+        <TagsFilter tags={allTags} selectedTagIds={selectedTagIds} onSelectedTagIdsChange={setSelectedTagIds} />
+      </ItemsTableFilter>
+      <EuiSpacer size="m" />
       <EuiInMemoryTable
-        items={secrets}
+        items={filteredItems}
         columns={columns}
         loading={loading}
-        search={{ box: { incremental: true, placeholder: 'Search secrets…' } }}
         sorting={{ sort: { field: 'updatedAt', direction: 'desc' } }}
         pagination={{ pageSize: 10, showPerPageOptions: true }}
         noItemsMessage={
@@ -151,6 +172,7 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
         <SecretEditModal
           editingId={editModal.editingId}
           editingName={editModal.editingName}
+          initialTagIds={editModal.initialTagIds}
           onSave={handleSave}
           onClose={() => setEditModal({ visible: false })}
           addToast={addToast}

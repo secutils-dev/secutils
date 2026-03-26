@@ -265,6 +265,7 @@ mod tests {
                 Version::Three,
             )
             .build(),
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -280,6 +281,7 @@ mod tests {
             },
             pkcs8: vec![1, 2, 3],
             encrypted: true,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -294,6 +296,7 @@ mod tests {
             directives: vec![ContentSecurityPolicyDirective::DefaultSrc(
                 ["'self'".to_string()].into_iter().collect(),
             )],
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -375,6 +378,7 @@ mod tests {
             id: uuid!("00000000-0000-0000-0000-000000000002"),
             name: "mid-csp".to_string(),
             directives: vec![],
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(1000000000)?,
         };
@@ -394,6 +398,7 @@ mod tests {
                 Version::Three,
             )
             .build(),
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(1100000000)?,
         };
@@ -408,6 +413,7 @@ mod tests {
             alg: PrivateKeyAlgorithm::Ed25519,
             pkcs8: vec![1, 2, 3],
             encrypted: false,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(1050000000)?,
         };
@@ -466,6 +472,7 @@ mod tests {
             id: uuid!("00000000-0000-0000-0000-000000000020"),
             name: "user-b-csp".to_string(),
             directives: vec![],
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };

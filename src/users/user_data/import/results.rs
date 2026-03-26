@@ -42,6 +42,8 @@ pub struct ApplyDeleteItem {
 #[serde(rename_all = "camelCase")]
 pub struct ApplyDeleteSummary {
     #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<ApplyDeleteItem>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub scripts: Vec<ApplyDeleteItem>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub secrets: Vec<ApplyDeleteItem>,
@@ -75,6 +77,7 @@ pub struct UserDataImportPreview {
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportPreviewSummary {
+    pub tags: ImportEntitySummary,
     pub scripts: ImportEntitySummary,
     pub secrets: ImportEntitySummary,
     pub responders: ImportEntitySummary,
@@ -116,6 +119,7 @@ pub struct UserDataImportResult {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportResultsSummary {
+    pub tags: ImportEntityResult,
     pub scripts: ImportEntityResult,
     pub secrets: ImportEntityResult,
     pub responders: ImportEntityResult,

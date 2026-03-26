@@ -713,6 +713,7 @@ mod tests {
                     script: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -816,6 +817,7 @@ mod tests {
                     script: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -880,6 +882,7 @@ mod tests {
                     script: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -955,6 +958,7 @@ mod tests {
                     script: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1030,6 +1034,7 @@ mod tests {
                     script: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
         let responder_two = app_state
@@ -1052,6 +1057,7 @@ mod tests {
                     script: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1165,6 +1171,7 @@ mod tests {
                         ),
                         secrets: SecretsAccess::None,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1258,6 +1265,7 @@ mod tests {
                     ),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1366,6 +1374,7 @@ mod tests {
                     script: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1502,6 +1511,7 @@ mod tests {
                     ),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1565,6 +1575,7 @@ mod tests {
                     ),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1621,6 +1632,7 @@ mod tests {
                     ),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1681,6 +1693,7 @@ mod tests {
                     ),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1735,6 +1748,7 @@ mod tests {
                     ),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1789,6 +1803,7 @@ mod tests {
                     ),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1854,6 +1869,7 @@ mod tests {
                     ),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1919,6 +1935,7 @@ mod tests {
                     script: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1997,6 +2014,7 @@ mod tests {
                     script: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -2050,6 +2068,7 @@ mod tests {
                     script: Some("(() => { return null; })()".to_string()),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -2113,6 +2132,7 @@ mod tests {
                     script: Some("(() => { return { statusCode: 202 }; })()".to_string()),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -2179,6 +2199,7 @@ mod tests {
                     ),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -2246,6 +2267,7 @@ mod tests {
                     script: Some("(() => { return { skipRequest: false }; })()".to_string()),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -2304,6 +2326,7 @@ mod tests {
                     script: Some("(() => { return { statusCode: 200 }; })()".to_string()),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -2364,6 +2387,7 @@ mod tests {
                     ),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -2428,6 +2452,7 @@ mod tests {
                     ),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -2496,6 +2521,7 @@ mod tests {
                     script: Some("(() => { return {}; })()".to_string()),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -2563,6 +2589,7 @@ mod tests {
                     ),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -2621,6 +2648,7 @@ mod tests {
                     script: Some("(() => { throw new Error('something broke'); })()".to_string()),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -2685,6 +2713,7 @@ mod tests {
                     script: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 

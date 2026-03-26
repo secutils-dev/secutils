@@ -3,11 +3,30 @@ use crate::{
     error::Error,
     network::{DnsResolver, EmailTransport},
     users::{
-        User,
-        scripts::{ScriptContext, UserScript},
+        EntityTag, User,
+        scripts::{ScriptContext, UserScript, UserScriptType},
     },
 };
+use serde::Deserialize;
+use time::OffsetDateTime;
 use uuid::Uuid;
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptCreateParams {
+    pub name: String,
+    pub script_type: String,
+    pub content: String,
+    #[serde(default)]
+    pub tag_ids: Vec<Uuid>,
+}
+
+#[derive(Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptUpdateParams {
+    pub content: String,
+    pub tag_ids: Option<Vec<Uuid>>,
+}
 
 /// Maximum length for a script name.
 const MAX_SCRIPT_NAME_LENGTH: usize = 128;
@@ -29,7 +48,14 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> ScriptsApiExt<'a, 'u, DR, ET> 
         &self,
         context: Option<ScriptContext>,
     ) -> anyhow::Result<Vec<UserScript>> {
-        let scripts = self.api.db.get_user_scripts(self.user.id).await?;
+        let scripts_db = self.api.db.scripts();
+        let mut scripts = scripts_db.get_user_scripts(self.user.id).await?;
+        let mut tags_map = scripts_db
+            .get_script_tags(&scripts.iter().map(|s| s.id).collect::<Vec<_>>())
+            .await?;
+        for script in &mut scripts {
+            script.tags = tags_map.remove(&script.id).unwrap_or_default();
+        }
         Ok(match context {
             Some(ctx) => scripts
                 .into_iter()
@@ -41,25 +67,38 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> ScriptsApiExt<'a, 'u, DR, ET> 
 
     /// Returns scripts with the specified IDs.
     pub async fn bulk_get_scripts(&self, ids: &[Uuid]) -> anyhow::Result<Vec<UserScript>> {
-        self.api.db.bulk_get_user_scripts(self.user.id, ids).await
+        let scripts_db = self.api.db.scripts();
+        let mut scripts = scripts_db.bulk_get_user_scripts(self.user.id, ids).await?;
+        let mut tags_map = scripts_db
+            .get_script_tags(&scripts.iter().map(|s| s.id).collect::<Vec<_>>())
+            .await?;
+        for script in &mut scripts {
+            script.tags = tags_map.remove(&script.id).unwrap_or_default();
+        }
+        Ok(scripts)
     }
 
     /// Gets a single script by id including its content.
     pub async fn get_script(&self, id: Uuid) -> anyhow::Result<Option<UserScript>> {
-        self.api.db.get_user_script_by_id(self.user.id, id).await
+        let scripts_db = self.api.db.scripts();
+        match scripts_db.get_user_script_by_id(self.user.id, id).await? {
+            Some(mut script) => {
+                script.tags = (scripts_db.get_script_tags(&[script.id]).await?)
+                    .remove(&script.id)
+                    .unwrap_or_default();
+                Ok(Some(script))
+            }
+            None => Ok(None),
+        }
     }
 
     /// Creates a new script after validating name, content, and subscription limits.
-    pub async fn create_script(
-        &self,
-        name: &str,
-        script_type: &str,
-        content: &str,
-    ) -> anyhow::Result<UserScript> {
-        Self::validate_name(name)?;
-        Self::validate_content(content)?;
-        Self::validate_script_type(script_type)?;
+    pub async fn create_script(&self, params: ScriptCreateParams) -> anyhow::Result<UserScript> {
+        Self::validate_name(&params.name)?;
+        Self::validate_content(&params.content)?;
+        Self::validate_script_type(&params.script_type)?;
 
+        let scripts_db = self.api.db.scripts();
         let max_scripts = self
             .user
             .subscription
@@ -67,36 +106,69 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> ScriptsApiExt<'a, 'u, DR, ET> 
             .config
             .scripts
             .max_scripts;
-        let count = self.api.db.count_user_scripts(self.user.id).await?;
+        let count = scripts_db.count_user_scripts(self.user.id).await?;
         if count as usize >= max_scripts {
             return Err(anyhow::Error::from(Error::client(format!(
                 "Maximum number of scripts ({max_scripts}) reached."
             ))));
         }
 
-        let script = self
-            .api
-            .db
-            .insert_user_script(self.user.id, name, script_type, content)
-            .await?;
+        // Preserve timestamp only up to seconds.
+        let created_at =
+            OffsetDateTime::from_unix_timestamp(OffsetDateTime::now_utc().unix_timestamp())?;
+        let script = UserScript {
+            id: Uuid::now_v7(),
+            user_id: self.user.id,
+            name: params.name,
+            script_type: UserScriptType::from_str(&params.script_type)?,
+            content: params.content,
+            tags: params.tag_ids.into_iter().map(EntityTag::from).collect(),
+            created_at,
+            updated_at: created_at,
+        };
 
-        Ok(script)
+        let tags = scripts_db.insert_user_script(self.user.id, &script).await?;
+
+        Ok(UserScript { tags, ..script })
     }
 
     /// Updates an existing script's content.
-    pub async fn update_script(&self, id: Uuid, content: &str) -> anyhow::Result<UserScript> {
-        Self::validate_content(content)?;
+    pub async fn update_script(
+        &self,
+        id: Uuid,
+        params: ScriptUpdateParams,
+    ) -> anyhow::Result<UserScript> {
+        Self::validate_content(&params.content)?;
 
-        let script = self
-            .api
-            .db
-            .update_user_script(self.user.id, id, content)
+        let scripts_db = self.api.db.scripts();
+        let existing_script = scripts_db
+            .get_user_script_by_id(self.user.id, id)
             .await?
             .ok_or_else(|| {
                 anyhow::Error::from(Error::not_found(format!("Script '{id}' not found.")))
             })?;
 
-        Ok(script)
+        let script = UserScript {
+            content: params.content,
+            // Preserve timestamp only up to seconds.
+            updated_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
+            ..existing_script
+        };
+
+        let tags = scripts_db
+            .update_user_script(self.user.id, &script, params.tag_ids)
+            .await?;
+
+        Ok(if let Some(updated_tags) = tags {
+            UserScript {
+                tags: updated_tags,
+                ..script
+            }
+        } else {
+            script
+        })
     }
 
     /// Deletes a script by id.
@@ -104,6 +176,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> ScriptsApiExt<'a, 'u, DR, ET> 
         let script = self
             .api
             .db
+            .scripts()
             .remove_user_script(self.user.id, id)
             .await?
             .ok_or_else(|| {
@@ -165,7 +238,7 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 mod tests {
     use crate::{
         tests::{mock_api_with_config, mock_config, mock_user},
-        users::scripts::UserScriptType,
+        users::scripts::{ScriptCreateParams, ScriptUpdateParams, UserScriptType},
     };
     use sqlx::PgPool;
 
@@ -179,19 +252,44 @@ mod tests {
 
         let scripts_api = api.scripts(&mock_user);
         scripts_api
-            .create_script("responder_script", "responder", "content")
+            .create_script(ScriptCreateParams {
+                name: "responder_script".into(),
+                script_type: "responder".into(),
+                content: "content".into(),
+                tag_ids: vec![],
+            })
             .await?;
         scripts_api
-            .create_script("api_configurator_script", "api_configurator", "content")
+            .create_script(ScriptCreateParams {
+                name: "api_configurator_script".into(),
+                script_type: "api_configurator".into(),
+                content: "content".into(),
+                tag_ids: vec![],
+            })
             .await?;
         scripts_api
-            .create_script("api_extractor_script", "api_extractor", "content")
+            .create_script(ScriptCreateParams {
+                name: "api_extractor_script".into(),
+                script_type: "api_extractor".into(),
+                content: "content".into(),
+                tag_ids: vec![],
+            })
             .await?;
         scripts_api
-            .create_script("page_extractor_script", "page_extractor", "content")
+            .create_script(ScriptCreateParams {
+                name: "page_extractor_script".into(),
+                script_type: "page_extractor".into(),
+                content: "content".into(),
+                tag_ids: vec![],
+            })
             .await?;
         scripts_api
-            .create_script("universal_script", "universal", "content")
+            .create_script(ScriptCreateParams {
+                name: "universal_script".into(),
+                script_type: "universal".into(),
+                content: "content".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
         let responder_scripts = scripts_api
@@ -270,19 +368,34 @@ mod tests {
         let scripts_api = api.scripts(&mock_user);
 
         let err = scripts_api
-            .create_script("", "responder", "content")
+            .create_script(ScriptCreateParams {
+                name: "".into(),
+                script_type: "responder".into(),
+                content: "content".into(),
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err();
         assert!(err.to_string().contains("Script name cannot be empty"));
 
         let err = scripts_api
-            .create_script("   ", "responder", "content")
+            .create_script(ScriptCreateParams {
+                name: "   ".into(),
+                script_type: "responder".into(),
+                content: "content".into(),
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err();
         assert!(err.to_string().contains("Script name cannot be empty"));
 
         let err = scripts_api
-            .create_script(&"a".repeat(129), "responder", "content")
+            .create_script(ScriptCreateParams {
+                name: "a".repeat(129),
+                script_type: "responder".into(),
+                content: "content".into(),
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err();
         assert!(
@@ -302,13 +415,23 @@ mod tests {
         let scripts_api = api.scripts(&mock_user);
 
         let err = scripts_api
-            .create_script("VALID_NAME", "responder", "")
+            .create_script(ScriptCreateParams {
+                name: "VALID_NAME".into(),
+                script_type: "responder".into(),
+                content: "".into(),
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err();
         assert!(err.to_string().contains("Script content cannot be empty"));
 
         let err = scripts_api
-            .create_script("VALID_NAME", "responder", &"x".repeat(50 * 1024 + 1))
+            .create_script(ScriptCreateParams {
+                name: "VALID_NAME".into(),
+                script_type: "responder".into(),
+                content: "x".repeat(50 * 1024 + 1),
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err();
         assert!(err.to_string().contains("Script content must be at most"));
@@ -325,7 +448,12 @@ mod tests {
         let scripts_api = api.scripts(&mock_user);
 
         let err = scripts_api
-            .create_script("VALID_NAME", "invalid_type", "content")
+            .create_script(ScriptCreateParams {
+                name: "VALID_NAME".into(),
+                script_type: "invalid_type".into(),
+                content: "content".into(),
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err();
         assert!(err.to_string().contains("Invalid script type"));
@@ -340,7 +468,12 @@ mod tests {
         ] {
             let name = format!("script_{}", script_type);
             let script = scripts_api
-                .create_script(&name, script_type, "content")
+                .create_script(ScriptCreateParams {
+                    name: name.clone(),
+                    script_type: script_type.into(),
+                    content: "content".into(),
+                    tag_ids: vec![],
+                })
                 .await?;
             assert_eq!(script.name, name);
         }
@@ -358,14 +491,29 @@ mod tests {
 
         let scripts_api = api.scripts(&mock_user);
         scripts_api
-            .create_script("SCRIPT_A", "responder", "content-a")
+            .create_script(ScriptCreateParams {
+                name: "SCRIPT_A".into(),
+                script_type: "responder".into(),
+                content: "content-a".into(),
+                tag_ids: vec![],
+            })
             .await?;
         scripts_api
-            .create_script("SCRIPT_B", "responder", "content-b")
+            .create_script(ScriptCreateParams {
+                name: "SCRIPT_B".into(),
+                script_type: "responder".into(),
+                content: "content-b".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
         let err = scripts_api
-            .create_script("SCRIPT_C", "responder", "content-c")
+            .create_script(ScriptCreateParams {
+                name: "SCRIPT_C".into(),
+                script_type: "responder".into(),
+                content: "content-c".into(),
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err();
         assert!(err.to_string().contains("Maximum number of scripts (2)"));
@@ -381,7 +529,12 @@ mod tests {
 
         let scripts_api = api.scripts(&mock_user);
         let created = scripts_api
-            .create_script("MY_SCRIPT", "responder", "console.log('hello');")
+            .create_script(ScriptCreateParams {
+                name: "MY_SCRIPT".into(),
+                script_type: "responder".into(),
+                content: "console.log('hello');".into(),
+                tag_ids: vec![],
+            })
             .await?;
         assert_eq!(created.name, "MY_SCRIPT");
         assert_eq!(created.script_type, UserScriptType::Responder);
@@ -409,7 +562,12 @@ mod tests {
 
         // Create and retrieve
         let created = scripts_api
-            .create_script("TEST_SCRIPT", "api_extractor", "return data;")
+            .create_script(ScriptCreateParams {
+                name: "TEST_SCRIPT".into(),
+                script_type: "api_extractor".into(),
+                content: "return data;".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
         let script = scripts_api.get_script(created.id).await?.unwrap();
@@ -428,10 +586,23 @@ mod tests {
 
         let scripts_api = api.scripts(&mock_user);
         let created = scripts_api
-            .create_script("MY_SCRIPT", "responder", "old-content")
+            .create_script(ScriptCreateParams {
+                name: "MY_SCRIPT".into(),
+                script_type: "responder".into(),
+                content: "old-content".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
-        let updated = scripts_api.update_script(created.id, "new-content").await?;
+        let updated = scripts_api
+            .update_script(
+                created.id,
+                ScriptUpdateParams {
+                    content: "new-content".into(),
+                    tag_ids: None,
+                },
+            )
+            .await?;
         assert_eq!(updated.name, "MY_SCRIPT");
         assert_eq!(updated.content, "new-content");
 
@@ -450,7 +621,13 @@ mod tests {
 
         let err = api
             .scripts(&mock_user)
-            .update_script(uuid::Uuid::now_v7(), "content")
+            .update_script(
+                uuid::Uuid::now_v7(),
+                ScriptUpdateParams {
+                    content: "content".into(),
+                    tag_ids: None,
+                },
+            )
             .await
             .unwrap_err();
         assert!(err.to_string().contains("not found"));
@@ -466,7 +643,12 @@ mod tests {
 
         let scripts_api = api.scripts(&mock_user);
         let created = scripts_api
-            .create_script("TO_DELETE", "responder", "content")
+            .create_script(ScriptCreateParams {
+                name: "TO_DELETE".into(),
+                script_type: "responder".into(),
+                content: "content".into(),
+                tag_ids: vec![],
+            })
             .await?;
         assert_eq!(scripts_api.list_scripts(None).await?.len(), 1);
 

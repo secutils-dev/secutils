@@ -33,6 +33,29 @@ impl fmt::Display for UserScriptType {
 }
 
 impl UserScriptType {
+    /// Returns the string representation of this script type.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            UserScriptType::Responder => "responder",
+            UserScriptType::ApiConfigurator => "api_configurator",
+            UserScriptType::ApiExtractor => "api_extractor",
+            UserScriptType::PageExtractor => "page_extractor",
+            UserScriptType::Universal => "universal",
+        }
+    }
+
+    /// Parses a string into a `UserScriptType`.
+    pub fn from_str(s: &str) -> anyhow::Result<Self> {
+        match s {
+            "responder" => Ok(UserScriptType::Responder),
+            "api_configurator" => Ok(UserScriptType::ApiConfigurator),
+            "api_extractor" => Ok(UserScriptType::ApiExtractor),
+            "page_extractor" => Ok(UserScriptType::PageExtractor),
+            "universal" => Ok(UserScriptType::Universal),
+            _ => anyhow::bail!("Unknown script type: {s}"),
+        }
+    }
+
     /// Returns true if this script type is compatible with the given context.
     ///
     /// Compatibility matrix:
@@ -80,6 +103,9 @@ pub struct UserScript {
     pub script_type: UserScriptType,
     /// The script content (the actual code).
     pub content: String,
+    /// Tags assigned to this script.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<crate::users::EntityTag>,
     /// When the script was first created.
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,

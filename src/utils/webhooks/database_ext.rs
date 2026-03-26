@@ -4,7 +4,7 @@ mod raw_responder_request;
 use crate::{
     database::Database,
     error::Error as SecutilsError,
-    users::UserId,
+    users::{EntityTag, RawEntityTag, UserId, group_entity_tags},
     utils::webhooks::{
         Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderRequest,
         ResponderStats,
@@ -13,7 +13,8 @@ use crate::{
 use anyhow::{anyhow, bail};
 use raw_responder::RawResponder;
 use raw_responder_request::RawResponderRequest;
-use sqlx::{Pool, Postgres, query, query_as};
+use sqlx::{Acquire, Pool, Postgres, query, query_as};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// A database extension for the webhooks utility-related operations.
@@ -41,12 +42,10 @@ ORDER BY updated_at
         .fetch_all(self.pool)
         .await?;
 
-        let mut responders = vec![];
-        for raw_responder in raw_responders {
-            responders.push(Responder::try_from(raw_responder)?);
-        }
-
-        Ok(responders)
+        raw_responders
+            .into_iter()
+            .map(Responder::try_from)
+            .collect::<anyhow::Result<Vec<_>>>()
     }
 
     /// Retrieves stats for all responders.
@@ -99,12 +98,10 @@ ORDER BY updated_at
         .fetch_all(self.pool)
         .await?;
 
-        let mut responders = vec![];
-        for raw_responder in raw_responders {
-            responders.push(Responder::try_from(raw_responder)?);
-        }
-
-        Ok(responders)
+        raw_responders
+            .into_iter()
+            .map(Responder::try_from)
+            .collect::<anyhow::Result<Vec<_>>>()
     }
 
     /// Retrieves responder for the specified user with the specified ID.
@@ -129,7 +126,7 @@ ORDER BY updated_at
         .transpose()
     }
 
-    /// Retrieves responder for the specified subdomain prefix, path and method.
+    /// Retrieves the responder for the specified subdomain prefix, path and method.
     pub async fn find_responder(
         &self,
         user_id: UserId,
@@ -177,17 +174,19 @@ ORDER BY updated_at
             .transpose()
     }
 
-    /// Inserts responder.
+    /// Inserts responder (and associated tags).
     pub async fn insert_responder(
         &self,
         user_id: UserId,
         responder: &Responder,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Vec<EntityTag>> {
         let raw_responder = RawResponder::try_from(responder)?;
         let id = *user_id;
         let raw_any_method = RawResponder::get_raw_method(ResponderMethod::Any)?;
+
         // Construct a query that inserts a new responder only if there is no other existing
         // responder that already covers the same location and method.
+        let mut tx = self.pool.begin().await?;
         let result = query!(
                 r#"
         WITH new_responder(user_id, id, name, location, method, enabled, settings, created_at, updated_at) AS (
@@ -211,11 +210,11 @@ ORDER BY updated_at
                 raw_responder.updated_at,
                 raw_any_method
             )
-            .execute(self.pool)
+            .execute(&mut *tx)
             .await;
 
         match result {
-            Ok(result) if result.rows_affected() > 0 => Ok(()),
+            Ok(result) if result.rows_affected() > 0 => {}
             Ok(_) => {
                 bail!(SecutilsError::client(format!(
                     "Responder with such location ('{:?}') and method ('{:?}') conflicts with another responder.",
@@ -243,6 +242,20 @@ ORDER BY updated_at
                 )))),
             },
         }
+
+        let tags = if responder.tags.is_empty() {
+            vec![]
+        } else {
+            Self::set_responder_tags(
+                &mut *tx,
+                responder.id,
+                &responder.tags.iter().map(|t| t.id).collect::<Vec<_>>(),
+            )
+            .await?
+        };
+
+        tx.commit().await?;
+        Ok(tags)
     }
 
     /// Updates responder.
@@ -250,11 +263,14 @@ ORDER BY updated_at
         &self,
         user_id: UserId,
         responder: &Responder,
-    ) -> anyhow::Result<()> {
+        tag_ids: Option<Vec<Uuid>>,
+    ) -> anyhow::Result<Option<Vec<EntityTag>>> {
         let raw_responder = RawResponder::try_from(responder)?;
         let raw_any_method = RawResponder::get_raw_method(ResponderMethod::Any)?;
+
         // Construct a query that updates a new responder only if there is no other existing
         // responder that already covers the same location and method.
+        let mut tx = self.pool.begin().await?;
         let result = query!(
             r#"
     UPDATE user_data_webhooks_responders
@@ -274,11 +290,11 @@ ORDER BY updated_at
             raw_responder.updated_at,
             raw_any_method
         )
-            .execute(self.pool)
+            .execute(&mut *tx)
             .await;
 
         match result {
-            Ok(result) if result.rows_affected() > 0 => Ok(()),
+            Ok(result) if result.rows_affected() > 0 => {}
             Ok(_) => {
                 bail!(SecutilsError::client(format!(
                     "Responder with such location ('{:?}') and method ('{:?}') doesn't exist or conflicts with another responder.",
@@ -306,6 +322,15 @@ ORDER BY updated_at
                 )))),
             },
         }
+
+        let updated_tags = if let Some(ref tag_ids) = tag_ids {
+            Some(Self::set_responder_tags(&mut *tx, responder.id, tag_ids).await?)
+        } else {
+            None
+        };
+
+        tx.commit().await?;
+        Ok(updated_tags)
     }
 
     /// Removes responder for the specified user with the specified ID.
@@ -460,6 +485,71 @@ CROSS JOIN LATERAL (
 
         Ok(())
     }
+
+    /// Fetches tags for a batch of responders. Returns a map from responder_id to its tags.
+    pub async fn get_responder_tags(
+        &self,
+        entity_ids: &[Uuid],
+    ) -> anyhow::Result<HashMap<Uuid, Vec<EntityTag>>> {
+        if entity_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let rows = query_as!(
+            RawEntityTag,
+            r#"
+SELECT jt.responder_id AS entity_id, t.id, t.name, t.color
+FROM user_data_webhooks_responders_tags jt
+JOIN user_tags t ON jt.tag_id = t.id
+WHERE jt.responder_id = ANY($1)
+ORDER BY t.name ASC
+            "#,
+            entity_ids
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(group_entity_tags(rows))
+    }
+
+    /// Replaces all tag associations for a responder and returns the resolved tags.
+    async fn set_responder_tags<'a>(
+        executor: impl Acquire<'a, Database = Postgres>,
+        entity_id: Uuid,
+        tag_ids: &[Uuid],
+    ) -> anyhow::Result<Vec<EntityTag>> {
+        let mut conn = executor.acquire().await?;
+        query!(
+            "DELETE FROM user_data_webhooks_responders_tags WHERE responder_id = $1",
+            entity_id
+        )
+        .execute(&mut *conn)
+        .await?;
+
+        if tag_ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Insert new associations and return resolved tags in a single round-trip.
+        Ok(query_as!(
+            EntityTag,
+            r#"
+WITH inserted AS (
+    INSERT INTO user_data_webhooks_responders_tags (responder_id, tag_id)
+    SELECT $1, unnest($2::uuid[])
+    RETURNING responder_id, tag_id
+)
+SELECT t.id, t.name, t.color
+FROM inserted i
+JOIN user_tags t ON i.tag_id = t.id
+ORDER BY t.name ASC
+            "#,
+            entity_id,
+            tag_ids
+        )
+        .fetch_all(&mut *conn)
+        .await?)
+    }
 }
 
 impl Database {
@@ -475,6 +565,7 @@ mod tests {
         database::Database,
         error::Error as SecutilsError,
         tests::{MockResponderBuilder, mock_user, mock_user_with_id},
+        users::EntityTag,
         utils::webhooks::{
             Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderRequest,
             ResponderStats,
@@ -695,6 +786,7 @@ mod tests {
                 )?
                 .with_body("some")
                 .build(),
+                None,
             )
             .await?;
 
@@ -750,6 +842,7 @@ mod tests {
                     "/path",
                 )?
                 .build(),
+                None,
             )
             .await
             .unwrap_err()
@@ -770,6 +863,7 @@ mod tests {
                     "/",
                 )?
                 .build(),
+                None,
             )
             .await
             .unwrap_err()
@@ -791,6 +885,7 @@ mod tests {
                 )?
                 .with_method(ResponderMethod::Post)
                 .build(),
+                None,
             )
             .await
             .unwrap_err()
@@ -812,6 +907,7 @@ mod tests {
                 )?
                 .with_method(ResponderMethod::Post)
                 .build(),
+                None,
             )
             .await
             .unwrap_err()
@@ -832,6 +928,7 @@ mod tests {
                     "/path",
                 )?
                 .build(),
+                None,
             )
             .await
             .unwrap_err()
@@ -863,6 +960,7 @@ mod tests {
                     "/",
                 )?
                 .build(),
+                None,
             )
             .await
             .unwrap_err()
@@ -1797,6 +1895,485 @@ mod tests {
             .bulk_get_responder_requests(user_b.id, &[responder.id])
             .await?;
         assert!(requests.is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_set_and_get_responder_tags(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag_a = db.insert_user_tag(user.id, "alpha", "primary").await?;
+        let tag_b = db.insert_user_tag(user.id, "beta", "danger").await?;
+
+        let responder = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "/",
+        )?
+        .with_tag_ids(&[tag_a.id, tag_b.id])
+        .build();
+
+        let webhooks = db.webhooks();
+        let tags = webhooks.insert_responder(user.id, &responder).await?;
+        assert_eq!(tags.len(), 2);
+        assert_eq!(
+            tags,
+            vec![
+                EntityTag {
+                    id: tag_a.id,
+                    name: "alpha".to_string(),
+                    color: "primary".to_string()
+                },
+                EntityTag {
+                    id: tag_b.id,
+                    name: "beta".to_string(),
+                    color: "danger".to_string()
+                },
+            ]
+        );
+
+        // Verify via get_responder_tags as well.
+        let tags_map = webhooks.get_responder_tags(&[responder.id]).await?;
+        assert_eq!(tags_map[&responder.id], tags);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn update_responder_replaces_tags(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag_a = db.insert_user_tag(user.id, "alpha", "primary").await?;
+        let tag_b = db.insert_user_tag(user.id, "beta", "danger").await?;
+        let tag_c = db.insert_user_tag(user.id, "gamma", "success").await?;
+
+        let responder = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "/",
+        )?
+        .with_tag_ids(&[tag_a.id, tag_b.id])
+        .build();
+
+        let webhooks = db.webhooks();
+        webhooks.insert_responder(user.id, &responder).await?;
+
+        // Update to replace tags with B, C.
+        let updated = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "/",
+        )?
+        .build();
+        let tags = webhooks
+            .update_responder(user.id, &updated, Some(vec![tag_b.id, tag_c.id]))
+            .await?
+            .unwrap();
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].name, "beta");
+        assert_eq!(tags[1].name, "gamma");
+
+        // Verify A is gone.
+        let tags_map = webhooks.get_responder_tags(&[responder.id]).await?;
+        let tag_names: Vec<&str> = tags_map[&responder.id]
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
+        assert_eq!(tag_names, vec!["beta", "gamma"]);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn update_responder_clears_all_tags(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag = db.insert_user_tag(user.id, "alpha", "primary").await?;
+
+        let responder = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "/",
+        )?
+        .with_tag_ids(&[tag.id])
+        .build();
+
+        let webhooks = db.webhooks();
+        webhooks.insert_responder(user.id, &responder).await?;
+
+        // Update with empty tag list to clear all tags.
+        let updated = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "/",
+        )?
+        .build();
+        let tags = webhooks
+            .update_responder(user.id, &updated, Some(vec![]))
+            .await?
+            .unwrap();
+        assert!(tags.is_empty());
+
+        let tags_map = webhooks.get_responder_tags(&[responder.id]).await?;
+        assert!(!tags_map.contains_key(&responder.id) || tags_map[&responder.id].is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_responder_with_nonexistent_tag_ids_fails(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let responder = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "/",
+        )?
+        .with_tag_ids(&[uuid!("00000000-0000-0000-0000-000000000099")])
+        .build();
+
+        let webhooks = db.webhooks();
+        let result = webhooks.insert_responder(user.id, &responder).await;
+        assert!(result.is_err());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_responder_returns_tags_ordered_by_name(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag_z = db.insert_user_tag(user.id, "zebra", "primary").await?;
+        let tag_a = db.insert_user_tag(user.id, "alpha", "danger").await?;
+        let tag_m = db.insert_user_tag(user.id, "middle", "success").await?;
+
+        // Pass tag IDs in reverse order to verify sorting.
+        let responder = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "/",
+        )?
+        .with_tag_ids(&[tag_z.id, tag_a.id, tag_m.id])
+        .build();
+
+        let webhooks = db.webhooks();
+        let tags = webhooks.insert_responder(user.id, &responder).await?;
+        let names: Vec<&str> = tags.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, vec!["alpha", "middle", "zebra"]);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_responder_with_tags_is_atomic(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag_a = db.insert_user_tag(user.id, "alpha", "primary").await?;
+        let tag_b = db.insert_user_tag(user.id, "beta", "danger").await?;
+
+        let responder = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "/",
+        )?
+        .with_tag_ids(&[tag_a.id, tag_b.id])
+        .build();
+
+        let webhooks = db.webhooks();
+        let tags = webhooks.insert_responder(user.id, &responder).await?;
+
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].name, "alpha");
+        assert_eq!(tags[1].name, "beta");
+
+        // Verify responder was persisted.
+        let fetched = webhooks.get_responder(user.id, responder.id).await?;
+        assert!(fetched.is_some());
+
+        // Verify tags are retrievable.
+        let tags_map = webhooks.get_responder_tags(&[responder.id]).await?;
+        assert_eq!(tags_map[&responder.id], tags);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_responder_with_tags_empty_tags(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let responder = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "/",
+        )?
+        .build();
+
+        let webhooks = db.webhooks();
+        let tags = webhooks.insert_responder(user.id, &responder).await?;
+
+        assert!(tags.is_empty());
+
+        let fetched = webhooks.get_responder(user.id, responder.id).await?;
+        assert!(fetched.is_some());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn update_responder_with_tags_replaces_tags(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag_a = db.insert_user_tag(user.id, "alpha", "primary").await?;
+        let tag_b = db.insert_user_tag(user.id, "beta", "danger").await?;
+        let tag_c = db.insert_user_tag(user.id, "gamma", "success").await?;
+
+        let responder = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "/",
+        )?
+        .with_tag_ids(&[tag_a.id, tag_b.id])
+        .build();
+
+        let webhooks = db.webhooks();
+        webhooks.insert_responder(user.id, &responder).await?;
+
+        // Update responder and replace tags with B, C.
+        let updated = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "updated-name",
+            "/path",
+        )?
+        .build();
+        let tags = webhooks
+            .update_responder(user.id, &updated, Some(vec![tag_b.id, tag_c.id]))
+            .await?
+            .unwrap();
+
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].name, "beta");
+        assert_eq!(tags[1].name, "gamma");
+
+        // Verify the responder name was updated.
+        let fetched = webhooks
+            .get_responder(user.id, responder.id)
+            .await?
+            .unwrap();
+        assert_eq!(fetched.name, "updated-name");
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn update_responder_with_tags_clears_tags(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag = db.insert_user_tag(user.id, "alpha", "primary").await?;
+
+        let responder = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "/",
+        )?
+        .with_tag_ids(&[tag.id])
+        .build();
+
+        let webhooks = db.webhooks();
+        webhooks.insert_responder(user.id, &responder).await?;
+
+        // Update with an empty tag list to clear all tags.
+        let tags = webhooks
+            .update_responder(user.id, &responder, Some(vec![]))
+            .await?
+            .unwrap();
+        assert!(tags.is_empty());
+
+        // Verify tags are cleared.
+        let tags_map = webhooks.get_responder_tags(&[responder.id]).await?;
+        assert!(!tags_map.contains_key(&responder.id) || tags_map[&responder.id].is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_responder_with_tags_rolls_back_on_invalid_tags(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let responder = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "/",
+        )?
+        .with_tag_ids(&[uuid!("00000000-0000-0000-0000-000000000099")])
+        .build();
+
+        let webhooks = db.webhooks();
+        let result = webhooks.insert_responder(user.id, &responder).await;
+        assert!(result.is_err());
+
+        // Responder should not exist because the transaction was rolled back.
+        let fetched = webhooks.get_responder(user.id, responder.id).await?;
+        assert!(fetched.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_responder_with_tags_handles_duplicate_tag_ids(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag = db.insert_user_tag(user.id, "alpha", "primary").await?;
+
+        let responder = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "/",
+        )?
+        // Pass the same tag ID twice.
+        .with_tag_ids(&[tag.id, tag.id])
+        .build();
+
+        let webhooks = db.webhooks();
+
+        let result = webhooks.insert_responder(user.id, &responder).await;
+
+        // Should either succeed with dedup or fail - either way, responder state is consistent.
+        match result {
+            Ok(tags) => {
+                assert_eq!(tags.len(), 1);
+                assert_eq!(tags[0].name, "alpha");
+            }
+            Err(_) => {
+                // If it fails due to unique violation, responder should be rolled back.
+                let fetched = webhooks.get_responder(user.id, responder.id).await?;
+                assert!(fetched.is_none());
+            }
+        }
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn update_responder_with_tags_rolls_back_on_invalid_tags(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag = db.insert_user_tag(user.id, "alpha", "primary").await?;
+
+        let responder = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "/",
+        )?
+        .with_tag_ids(&[tag.id])
+        .build();
+
+        let webhooks = db.webhooks();
+        webhooks.insert_responder(user.id, &responder).await?;
+
+        // Try updating with a nonexistent tag ID.
+        let updated = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "updated-name",
+            "/new-path",
+        )?
+        .build();
+        let result = webhooks
+            .update_responder(
+                user.id,
+                &updated,
+                Some(vec![uuid!("00000000-0000-0000-0000-000000000099")]),
+            )
+            .await;
+        assert!(result.is_err());
+
+        // Responder name should NOT have changed (transaction rolled back).
+        let fetched = webhooks
+            .get_responder(user.id, responder.id)
+            .await?
+            .unwrap();
+        assert_eq!(fetched.name, "some-name");
+
+        // Original tags should still be intact.
+        let tags_map = webhooks.get_responder_tags(&[responder.id]).await?;
+        assert_eq!(tags_map[&responder.id].len(), 1);
+        assert_eq!(tags_map[&responder.id][0].name, "alpha");
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_responder_with_tags_isolated_between_users(pool: PgPool) -> anyhow::Result<()> {
+        let user_a = mock_user()?;
+        let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user_a).await?;
+        db.insert_user(&user_b).await?;
+
+        let tag_a = db.insert_user_tag(user_a.id, "alpha", "primary").await?;
+        let tag_b = db.insert_user_tag(user_b.id, "beta", "danger").await?;
+
+        let responder_a = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "responder-a",
+            "/a",
+        )?
+        .with_tag_ids(&[tag_a.id])
+        .build();
+        let responder_b = MockResponderBuilder::create(
+            uuid!("00000000-0000-0000-0000-000000000003"),
+            "responder-b",
+            "/b",
+        )?
+        .with_tag_ids(&[tag_b.id])
+        .build();
+
+        let webhooks = db.webhooks();
+        let tags_a = webhooks.insert_responder(user_a.id, &responder_a).await?;
+        let tags_b = webhooks.insert_responder(user_b.id, &responder_b).await?;
+
+        assert_eq!(tags_a.len(), 1);
+        assert_eq!(tags_a[0].name, "alpha");
+        assert_eq!(tags_b.len(), 1);
+        assert_eq!(tags_b[0].name, "beta");
+
+        // Each user's responder tags are independent.
+        let map_a = webhooks.get_responder_tags(&[responder_a.id]).await?;
+        let map_b = webhooks.get_responder_tags(&[responder_b.id]).await?;
+        assert_eq!(map_a[&responder_a.id].len(), 1);
+        assert_eq!(map_b[&responder_b.id].len(), 1);
+        assert_eq!(map_a[&responder_a.id][0].name, "alpha");
+        assert_eq!(map_b[&responder_b.id][0].name, "beta");
 
         Ok(())
     }

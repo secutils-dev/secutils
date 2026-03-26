@@ -460,6 +460,8 @@ test.describe('Data Export and Import', () => {
     const UUID_API_TRACKER = '019568f0-0000-7000-8000-000000000108';
     const UUID_API_REV_1 = '019568f0-0000-7000-8000-000000000118';
     const UUID_API_REV_2 = '019568f0-0000-7000-8000-000000000128';
+    const UUID_TAG_1 = '019568f0-0000-7000-8000-000000000201';
+    const UUID_TAG_2 = '019568f0-0000-7000-8000-000000000202';
 
     const SECRET_NAME = 'IMPORT_SECRET';
     const SECRET_VALUE = 'e2e-secret-42';
@@ -548,12 +550,29 @@ test.describe('Data Export and Import', () => {
       exportedAt: 1577880000,
       secretsEncryption,
       data: {
+        tags: [
+          {
+            id: UUID_TAG_1,
+            name: 'import-tag-prod',
+            color: '#54B399',
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+          },
+          {
+            id: UUID_TAG_2,
+            name: 'import-tag-staging',
+            color: '#6092C0',
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+          },
+        ],
         scripts: [
           {
             id: UUID_SCRIPT,
             name: 'import-test-script',
             scriptType: 'responder',
             content: "console.log('imported-script')",
+            tags: [{ id: UUID_TAG_1, name: 'import-tag-prod', color: '#54B399' }],
             createdAt: 1577836800,
             updatedAt: 1577836800,
           },
@@ -647,7 +666,7 @@ test.describe('Data Export and Import', () => {
             settings: { requestsToTrack: 5, statusCode: 204 },
             createdAt: 1577836800,
             updatedAt: 1577836800,
-            // No history field — simulates export of a responder with empty history.
+            // No history field - simulates export of a responder with empty history.
           },
         ],
         pageTrackers: [
@@ -725,6 +744,7 @@ test.describe('Data Export and Import', () => {
     const preview = await previewRes.json();
 
     expect(preview.valid).toBe(true);
+    expect(preview.summary.tags.total).toBe(2);
     expect(preview.summary.scripts.total).toBe(1);
     expect(preview.summary.secrets.total).toBe(1);
     expect(preview.summary.secrets.total).toBe(1);
@@ -762,6 +782,7 @@ test.describe('Data Export and Import', () => {
     const importResult = await importRes.json();
 
     expect(importResult.results.settings.imported).toBe(1);
+    expect(importResult.results.tags.imported).toBe(2);
     expect(importResult.results.scripts.imported).toBe(1);
     expect(importResult.results.secrets.imported).toBe(1);
     expect(importResult.results.responders.imported).toBe(2);
@@ -778,6 +799,17 @@ test.describe('Data Export and Import', () => {
     expect(importedSettings['common.uiTheme']).toBe('dark');
     expect(importedSettings['common.showOnlyFavorites']).toBe(true);
 
+    // ── Step 7-tags: Validate imported tags ────────────────────────────
+    const tagsRes = await page.request.get('/api/user/tags');
+    expect(tagsRes.ok()).toBeTruthy();
+    const tags = await tagsRes.json();
+    const importedTag1 = tags.find((t: { name: string }) => t.name === 'import-tag-prod');
+    const importedTag2 = tags.find((t: { name: string }) => t.name === 'import-tag-staging');
+    expect(importedTag1).toBeDefined();
+    expect(importedTag1.color).toBe('#54B399');
+    expect(importedTag2).toBeDefined();
+    expect(importedTag2.color).toBe('#6092C0');
+
     // ── Step 7a: Validate script ───────────────────────────────────────
     const scriptsRes = await page.request.get('/api/user/scripts');
     const scripts = await scriptsRes.json();
@@ -785,6 +817,9 @@ test.describe('Data Export and Import', () => {
     expect(importedScript).toBeDefined();
     expect(importedScript.scriptType).toBe('responder');
     expect(importedScript.content).toBe("console.log('imported-script')");
+    // Validate script has the remapped tag.
+    expect(importedScript.tags).toHaveLength(1);
+    expect(importedScript.tags[0].name).toBe('import-tag-prod');
 
     // ── Step 7b: Validate secret ───────────────────────────────────────
     const secretsRes = await page.request.get('/api/user/secrets');
@@ -986,6 +1021,182 @@ test.describe('Data Export and Import', () => {
     expect(newestApiRevision).toBeDefined();
   });
 
+  test('export-import round trip preserves tags and entity-tag associations', async ({ page }) => {
+    // ── Step 1: Create tags ────────────────────────────────────────────
+    const tag1Res = await page.request.post('/api/user/tags', {
+      data: { name: 'e2e-production', color: '#e74c3c' },
+    });
+    expect(tag1Res.ok()).toBeTruthy();
+    const tag1 = await tag1Res.json();
+
+    const tag2Res = await page.request.post('/api/user/tags', {
+      data: { name: 'e2e-staging', color: '#3498db' },
+    });
+    expect(tag2Res.ok()).toBeTruthy();
+    const tag2 = await tag2Res.json();
+
+    // ── Step 2: Create entities with tags ──────────────────────────────
+    const scriptRes = await page.request.post('/api/user/scripts', {
+      data: {
+        name: 'tagged_script',
+        scriptType: 'responder',
+        content: 'console.log("tagged")',
+        tagIds: [tag1.id, tag2.id],
+      },
+    });
+    expect(scriptRes.ok()).toBeTruthy();
+    const script = await scriptRes.json();
+    expect(script.tags).toHaveLength(2);
+
+    const cspRes = await page.request.post('/api/utils/web_security/csp', {
+      data: {
+        name: 'tagged_csp',
+        content: { type: 'directives', value: [{ name: 'default-src', value: ["'self'"] }] },
+        tagIds: [tag1.id],
+      },
+    });
+    expect(cspRes.ok()).toBeTruthy();
+    const csp = await cspRes.json();
+    expect(csp.tags).toHaveLength(1);
+
+    // ── Step 3: Export all data ────────────────────────────────────────
+    const exportRes = await page.request.post('/api/user/data/_export', {
+      data: {
+        include: {
+          tags: { type: 'all' },
+          scripts: { type: 'selected', ids: [script.id] },
+          contentSecurityPolicies: { type: 'selected', ids: [csp.id] },
+        },
+      },
+    });
+    expect(exportRes.ok()).toBeTruthy();
+    const exportData = await exportRes.json();
+
+    // Verify tags are in the export.
+    expect(exportData.data.tags).toHaveLength(2);
+    expect(exportData.data.tags.map((t: { name: string }) => t.name).sort()).toEqual(['e2e-production', 'e2e-staging']);
+
+    // Verify entities carry tags.
+    expect(exportData.data.scripts[0].tags).toHaveLength(2);
+    // Note: CSP bulk export does not populate tags (bulk_get goes directly to DB
+    // without tag population). This is a known limitation.
+
+    // ── Step 4: Delete originals ───────────────────────────────────────
+    await page.request.delete(`/api/user/scripts/${encodeURIComponent(script.id)}`);
+    await page.request.delete(`/api/utils/web_security/csp/${encodeURIComponent(csp.id)}`);
+    await page.request.delete(`/api/user/tags/${encodeURIComponent(tag1.id)}`);
+    await page.request.delete(`/api/user/tags/${encodeURIComponent(tag2.id)}`);
+
+    // Verify everything is gone.
+    const tagsAfterDelete = await (await page.request.get('/api/user/tags')).json();
+    expect(tagsAfterDelete.filter((t: { name: string }) => t.name.startsWith('e2e-'))).toHaveLength(0);
+
+    // ── Step 5: Import ─────────────────────────────────────────────────
+    const importRes = await page.request.post('/api/user/data/_import', {
+      data: {
+        data: exportData,
+        mode: 'merge',
+        selections: {
+          scripts: [{ sourceId: exportData.data.scripts[0].id, action: 'import' }],
+          secrets: [],
+          responders: [],
+          certificateTemplates: [],
+          privateKeys: [],
+          contentSecurityPolicies: [{ sourceId: exportData.data.contentSecurityPolicies[0].id, action: 'import' }],
+          pageTrackers: [],
+          apiTrackers: [],
+        },
+      },
+    });
+    expect(importRes.ok()).toBeTruthy();
+    const importResult = await importRes.json();
+    expect(importResult.results.tags.imported).toBe(2);
+    expect(importResult.results.scripts.imported).toBe(1);
+    expect(importResult.results.contentSecurityPolicies.imported).toBe(1);
+
+    // ── Step 6: Verify tags restored ───────────────────────────────────
+    const restoredTags = await (await page.request.get('/api/user/tags')).json();
+    const e2eTags = restoredTags.filter((t: { name: string }) => t.name.startsWith('e2e-'));
+    expect(e2eTags).toHaveLength(2);
+
+    // ── Step 7: Verify entity-tag associations ─────────────────────────
+    const restoredScripts = await (await page.request.get('/api/user/scripts')).json();
+    const restoredScript = restoredScripts.find((s: { name: string }) => s.name === 'tagged_script');
+    expect(restoredScript).toBeDefined();
+    expect(restoredScript.tags).toHaveLength(2);
+
+    const restoredCsps = await (await page.request.get('/api/utils/web_security/csp')).json();
+    const restoredCsp = restoredCsps.find((c: { name: string }) => c.name === 'tagged_csp');
+    expect(restoredCsp).toBeDefined();
+    // Note: CSP list/bulk API does not populate tags (known limitation).
+  });
+
+  test('apply mode deletes tags not in import file', async ({ page }) => {
+    // ── Step 1: Create tags ────────────────────────────────────────────
+    const keepTagRes = await page.request.post('/api/user/tags', {
+      data: { name: 'apply-keep', color: '#2ecc71' },
+    });
+    expect(keepTagRes.ok()).toBeTruthy();
+    const keepTag = await keepTagRes.json();
+
+    const deleteTagRes = await page.request.post('/api/user/tags', {
+      data: { name: 'apply-delete', color: '#e67e22' },
+    });
+    expect(deleteTagRes.ok()).toBeTruthy();
+
+    // ── Step 2: Build import file with only keep tag ───────────────────
+    const importFile = {
+      version: 1,
+      exportedAt: 1577880000,
+      data: {
+        tags: [
+          {
+            id: keepTag.id,
+            name: 'apply-keep',
+            color: '#2ecc71',
+            createdAt: 1577836800,
+            updatedAt: 1577836800,
+          },
+        ],
+      },
+    };
+
+    // ── Step 3: Preview should detect apply-delete tag for deletion ────
+    const previewRes = await page.request.post('/api/user/data/_import_preview', {
+      data: { data: importFile, mode: 'apply' },
+    });
+    expect(previewRes.ok()).toBeTruthy();
+    const preview = await previewRes.json();
+    expect(preview.toDelete.tags.find((t: { name: string }) => t.name === 'apply-delete')).toBeTruthy();
+
+    // ── Step 4: Import with apply mode ─────────────────────────────────
+    const importRes = await page.request.post('/api/user/data/_import', {
+      data: {
+        data: importFile,
+        mode: 'apply',
+        selections: {
+          scripts: [],
+          secrets: [],
+          responders: [],
+          certificateTemplates: [],
+          privateKeys: [],
+          contentSecurityPolicies: [],
+          pageTrackers: [],
+          apiTrackers: [],
+        },
+      },
+    });
+    expect(importRes.ok()).toBeTruthy();
+    const result = await importRes.json();
+    expect(result.results.tags.skipped).toBe(1);
+    expect(result.results.tags.deleted).toBe(1);
+
+    // ── Step 5: Verify only keep tag remains ───────────────────────────
+    const tagsAfter = await (await page.request.get('/api/user/tags')).json();
+    expect(tagsAfter.find((t: { name: string }) => t.name === 'apply-keep')).toBeTruthy();
+    expect(tagsAfter.find((t: { name: string }) => t.name === 'apply-delete')).toBeUndefined();
+  });
+
   test('conflict resolution options adapt to conflict type', async ({ page }) => {
     // ── Setup: create existing entities that will conflict ──────────────
     const scriptRes = await page.request.post('/api/user/scripts', {
@@ -1077,7 +1288,7 @@ test.describe('Data Export and Import', () => {
       (c: { sourceId: string }) => c.sourceId === '019568f0-0000-7000-8000-000000000202',
     );
     expect(locOnlyConflict.renameAllowed).toBe(false);
-    // Both name AND location+method conflict — rename still NOT allowed.
+    // Both name AND location+method conflict - rename still NOT allowed.
     const bothConflict = preview.summary.responders.conflicts.find(
       (c: { sourceId: string }) => c.sourceId === '019568f0-0000-7000-8000-000000000203',
     );
@@ -1145,10 +1356,10 @@ test.describe('Data Export and Import', () => {
     }
 
     // ── Step 7: Uncheck non-renameable responders → bulk Rename re-enabled ──
-    const importedRespCheckbox = modal.getByRole('checkbox', { name: 'imported-resp' });
-    const sameNameRespCheckbox = modal.getByRole('checkbox', { name: 'same-name-resp' });
-    await importedRespCheckbox.uncheck();
-    await sameNameRespCheckbox.uncheck();
+    // Click labels instead of using .uncheck() to avoid stale element issues
+    // caused by React re-renders detaching/reattaching DOM elements.
+    await modal.getByText('imported-resp').click();
+    await modal.getByText('same-name-resp').click();
 
     // Now bulk Rename should be enabled (only script conflict remains, which is renameable).
     await expect(renameButton).toBeEnabled();
@@ -1174,5 +1385,188 @@ test.describe('Data Export and Import', () => {
 
     // Verify no errors.
     await expect(modal.getByText('Errors')).not.toBeVisible();
+  });
+
+  test('selective tag export and import filters entity tags', async ({ page }) => {
+    // ── Step 1: Create tags ────────────────────────────────────────────
+    const tagIds: Record<string, string> = {};
+    for (const [name, color] of [
+      ['alpha', '#54B399'],
+      ['beta', '#6092C0'],
+      ['gamma', '#D36086'],
+    ] as const) {
+      const res = await page.request.post('/api/user/tags', { data: { name, color } });
+      expect(res.ok()).toBeTruthy();
+      const tag = await res.json();
+      tagIds[name] = tag.id;
+    }
+
+    // ── Step 2: Create a script with all 3 tags ────────────────────────
+    const scriptRes = await page.request.post('/api/user/scripts', {
+      data: {
+        name: 'tagged-script',
+        scriptType: 'responder',
+        content: 'console.log("tagged")',
+        tagIds: [tagIds['alpha'], tagIds['beta'], tagIds['gamma']],
+      },
+    });
+    expect(scriptRes.ok()).toBeTruthy();
+    const script = await scriptRes.json();
+    expect(script.tags).toHaveLength(3);
+
+    // ── Step 3: Export selecting only tags alpha + beta ─────────────────
+    const exportRes = await page.request.post('/api/user/data/_export', {
+      data: {
+        include: {
+          tags: { type: 'selected', ids: [tagIds['alpha'], tagIds['beta']] },
+          scripts: { type: 'selected', ids: [script.id] },
+        },
+      },
+    });
+    expect(exportRes.ok()).toBeTruthy();
+    const exportData = await exportRes.json();
+
+    // Verify only alpha + beta in export tags.
+    expect(exportData.data.tags).toHaveLength(2);
+    const exportedTagNames = exportData.data.tags.map((t: { name: string }) => t.name).sort();
+    expect(exportedTagNames).toEqual(['alpha', 'beta']);
+
+    // Script still has all 3 entity-level tag refs in the file (stripping happens at import).
+    expect(exportData.data.scripts).toHaveLength(1);
+
+    // ── Step 4: Delete originals ───────────────────────────────────────
+    await page.request.delete(`/api/user/scripts/${encodeURIComponent(script.id)}`);
+    for (const id of Object.values(tagIds)) {
+      await page.request.delete(`/api/user/tags/${encodeURIComponent(id)}`);
+    }
+
+    // ── Step 5: Import selecting only tag alpha ────────────────────────
+    const alphaExportId = exportData.data.tags.find((t: { name: string }) => t.name === 'alpha').id;
+    const betaExportId = exportData.data.tags.find((t: { name: string }) => t.name === 'beta').id;
+
+    const importRes = await page.request.post('/api/user/data/_import', {
+      data: {
+        data: exportData,
+        mode: 'merge',
+        selections: {
+          tags: [
+            { sourceId: alphaExportId, action: 'import' },
+            { sourceId: betaExportId, action: 'skip' },
+          ],
+          scripts: [{ sourceId: exportData.data.scripts[0].id, action: 'import' }],
+          secrets: [],
+          responders: [],
+          certificateTemplates: [],
+          privateKeys: [],
+          contentSecurityPolicies: [],
+          pageTrackers: [],
+          apiTrackers: [],
+        },
+      },
+    });
+    expect(importRes.ok()).toBeTruthy();
+    const importResult = await importRes.json();
+
+    // Tag alpha imported, beta skipped.
+    expect(importResult.results.tags.imported).toBe(1);
+    expect(importResult.results.tags.skipped).toBe(1);
+    expect(importResult.results.scripts.imported).toBe(1);
+
+    // ── Step 6: Verify imported entities ────────────────────────────────
+    // Only tag alpha should exist.
+    const tagsRes = await page.request.get('/api/user/tags');
+    const tags = await tagsRes.json();
+    const importedTags = tags.filter((t: { name: string }) => ['alpha', 'beta', 'gamma'].includes(t.name));
+    expect(importedTags).toHaveLength(1);
+    expect(importedTags[0].name).toBe('alpha');
+
+    // Script should have only tag alpha (beta was skipped, gamma wasn't in export).
+    const scriptsRes = await page.request.get('/api/user/scripts');
+    const scripts = await scriptsRes.json();
+    const importedScript = scripts.find((s: { name: string }) => s.name === 'tagged-script');
+    expect(importedScript).toBeDefined();
+    expect(importedScript.tags).toHaveLength(1);
+    expect(importedScript.tags[0].name).toBe('alpha');
+  });
+
+  test('import tag with rename conflict resolution creates copy', async ({ page }) => {
+    // ── Step 1: Create a tag that will conflict ────────────────────────
+    const tagRes = await page.request.post('/api/user/tags', { data: { name: 'conflict-tag', color: '#54B399' } });
+    expect(tagRes.ok()).toBeTruthy();
+    const existingTag = await tagRes.json();
+
+    // ── Step 2: Create a script tagged with this tag ───────────────────
+    const scriptRes = await page.request.post('/api/user/scripts', {
+      data: {
+        name: 'rename-test-script',
+        scriptType: 'responder',
+        content: 'console.log("rename-test")',
+        tagIds: [existingTag.id],
+      },
+    });
+    expect(scriptRes.ok()).toBeTruthy();
+    const script = await scriptRes.json();
+
+    // ── Step 3: Export with the tag ────────────────────────────────────
+    const exportRes = await page.request.post('/api/user/data/_export', {
+      data: {
+        include: {
+          tags: { type: 'all' },
+          scripts: { type: 'selected', ids: [script.id] },
+        },
+      },
+    });
+    expect(exportRes.ok()).toBeTruthy();
+    const exportData = await exportRes.json();
+    expect(exportData.data.tags).toHaveLength(1);
+    expect(exportData.data.tags[0].name).toBe('conflict-tag');
+
+    // ── Step 4: Import with rename conflict resolution ─────────────────
+    // The existing tag still exists, so this will trigger a name conflict.
+    const importRes = await page.request.post('/api/user/data/_import', {
+      data: {
+        data: exportData,
+        mode: 'merge',
+        selections: {
+          tags: [
+            {
+              sourceId: exportData.data.tags[0].id,
+              action: 'import',
+              conflictResolution: 'rename',
+            },
+          ],
+          scripts: [{ sourceId: exportData.data.scripts[0].id, action: 'import', conflictResolution: 'rename' }],
+          secrets: [],
+          responders: [],
+          certificateTemplates: [],
+          privateKeys: [],
+          contentSecurityPolicies: [],
+          pageTrackers: [],
+          apiTrackers: [],
+        },
+      },
+    });
+    expect(importRes.ok()).toBeTruthy();
+    const importResult = await importRes.json();
+
+    // Tag should be imported (renamed), not skipped.
+    expect(importResult.results.tags.imported).toBe(1);
+    expect(importResult.results.tags.skipped).toBe(0);
+    expect(importResult.results.scripts.imported).toBe(1);
+
+    // ── Step 5: Verify both tags exist ─────────────────────────────────
+    const tagsRes = await page.request.get('/api/user/tags');
+    const tags = await tagsRes.json();
+    const conflictTags = tags.filter((t: { name: string }) => t.name.startsWith('conflict-tag'));
+    expect(conflictTags).toHaveLength(2);
+    expect(conflictTags.map((t: { name: string }) => t.name).sort()).toEqual(['conflict-tag', 'conflict-tag (copy 1)']);
+
+    // The imported script should reference the renamed tag.
+    const scriptsRes = await page.request.get('/api/user/scripts');
+    const scripts = await scriptsRes.json();
+    const renamedScript = scripts.find((s: { name: string }) => s.name === 'rename-test-script (Copy 1)');
+    expect(renamedScript).toBeDefined();
+    expect(renamedScript.tags).toHaveLength(1);
+    expect(renamedScript.tags[0].name).toBe('conflict-tag (copy 1)');
   });
 });

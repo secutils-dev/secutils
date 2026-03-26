@@ -10,6 +10,7 @@ mod should_skip;
 
 pub use self::{
     file::ImportedScript,
+    importers::tags::remap_tag_ids,
     params::{
         ConflictResolution, ImportAction, ImportEntitySelection, ImportMode, UserDataImportParams,
         UserDataImportPreviewParams,
@@ -36,6 +37,7 @@ use importers::{
     responders::import_responders,
     scripts::import_scripts,
     secrets::import_secrets,
+    tags::import_tags,
     trackers::{TrackerKind, import_trackers},
 };
 use results::{
@@ -73,6 +75,12 @@ pub async fn generate_import_preview<DR: DnsResolver, ET: EmailTransport>(
     let is_apply = params.mode == ImportMode::Apply;
 
     // Extract (id, name) pairs from import file for each entity type.
+    let import_tags: Vec<(Uuid, &str)> = file
+        .data
+        .tags
+        .iter()
+        .map(|t| (t.id, t.name.as_str()))
+        .collect();
     let import_scripts: Vec<(Uuid, &str)> = file
         .data
         .scripts
@@ -124,6 +132,17 @@ pub async fn generate_import_preview<DR: DnsResolver, ET: EmailTransport>(
 
     // Fetch existing data only when needed: conflict detection requires imports to be non-empty,
     // while Apply mode always needs existing data for deletion detection.
+    let existing_tags = fetch_existing(!import_tags.is_empty() || is_apply, || async {
+        Ok(api
+            .tags(user)
+            .list_tags()
+            .await?
+            .into_iter()
+            .map(|t| (t.id, t.name))
+            .collect())
+    })
+    .await?;
+
     let existing_scripts = fetch_existing(!import_scripts.is_empty() || is_apply, || async {
         Ok(api
             .scripts(user)
@@ -212,6 +231,7 @@ pub async fn generate_import_preview<DR: DnsResolver, ET: EmailTransport>(
         .await?;
 
     // Compute summaries and deletion candidates for each entity type.
+    let (tags_summary, tags_deletions) = entity_preview(&import_tags, &existing_tags, is_apply);
     let (scripts_summary, scripts_deletions) =
         entity_preview(&import_scripts, &existing_scripts, is_apply);
     let (secrets_summary, _) = entity_preview(&import_secrets, &existing_secrets, is_apply);
@@ -278,6 +298,7 @@ pub async fn generate_import_preview<DR: DnsResolver, ET: EmailTransport>(
     };
 
     let to_delete = is_apply.then_some(ApplyDeleteSummary {
+        tags: tags_deletions,
         scripts: scripts_deletions,
         secrets: secrets_deletions,
         responders: responders_deletions,
@@ -292,6 +313,7 @@ pub async fn generate_import_preview<DR: DnsResolver, ET: EmailTransport>(
         valid: true,
         version: file.version,
         summary: ImportPreviewSummary {
+            tags: tags_summary,
             scripts: scripts_summary,
             secrets: secrets_summary,
             responders: responders_summary,
@@ -369,6 +391,7 @@ pub async fn execute_import<DR: DnsResolver, ET: EmailTransport>(
                 .collect::<HashMap<Uuid, &params::ImportEntitySelection>>()
         };
     }
+    let tags_selections = selection_map!(params.selections.tags);
     let scripts_selections = selection_map!(params.selections.scripts);
     let secrets_selections = selection_map!(params.selections.secrets);
     let responders_selections = selection_map!(params.selections.responders);
@@ -378,11 +401,31 @@ pub async fn execute_import<DR: DnsResolver, ET: EmailTransport>(
     let page_trackers_selections = selection_map!(params.selections.page_trackers);
     let api_trackers_selections = selection_map!(params.selections.api_trackers);
 
-    // 1. Import scripts.
-    let mut scripts_result =
-        import_scripts(api, user, &file.data.scripts, &scripts_selections).await;
+    // 1. Import tags (must run before entities that reference tag IDs).
+    // Filter to only selected tags; deselected tags won't enter the tag_id_map,
+    // so remap_tag_ids() will naturally drop them from imported entities.
+    let file_tags: Vec<_> = file
+        .data
+        .tags
+        .iter()
+        .filter(|t| !should_skip(tags_selections.get(&t.id)))
+        .cloned()
+        .collect();
+    let skipped_tags = file.data.tags.len() - file_tags.len();
+    let (tag_id_map, mut tags_result) = import_tags(api, user, &file_tags, &tags_selections).await;
+    tags_result.skipped += skipped_tags;
 
-    // 2. Import secrets.
+    // 2. Import scripts.
+    let mut scripts_result = import_scripts(
+        api,
+        user,
+        &file.data.scripts,
+        &scripts_selections,
+        &tag_id_map,
+    )
+    .await;
+
+    // 3. Import secrets.
     let mut secrets_result = import_secrets(
         api,
         user,
@@ -390,56 +433,73 @@ pub async fn execute_import<DR: DnsResolver, ET: EmailTransport>(
         &secrets_selections,
         params.secrets_passphrase.as_deref(),
         file.secrets_encryption.as_ref(),
+        &tag_id_map,
     )
     .await;
 
-    // 3. Import responders.
-    let mut responders_result =
-        import_responders(api, user, &file.data.responders, &responders_selections).await;
+    // 4. Import responders.
+    let mut responders_result = import_responders(
+        api,
+        user,
+        &file.data.responders,
+        &responders_selections,
+        &tag_id_map,
+    )
+    .await;
 
-    // 4. Import certificate templates.
+    // 5. Import certificate templates.
     let mut templates_result = import_certificate_templates(
         api,
         user,
         &file.data.certificate_templates,
         &templates_selections,
+        &tag_id_map,
     )
     .await;
 
-    // 5. Import private keys.
-    let mut keys_result =
-        import_private_keys(api, user, &file.data.private_keys, &keys_selections).await;
+    // 6. Import private keys.
+    let mut keys_result = import_private_keys(
+        api,
+        user,
+        &file.data.private_keys,
+        &keys_selections,
+        &tag_id_map,
+    )
+    .await;
 
-    // 6. Import CSPs.
+    // 7. Import CSPs.
     let mut csps_result = import_content_security_policies(
         api,
         user,
         &file.data.content_security_policies,
         &csps_selections,
+        &tag_id_map,
     )
     .await;
 
-    // 7. Import page trackers.
+    // 8. Import page trackers.
     let mut page_trackers_result = import_trackers(
         api,
         user,
         &file.data.page_trackers,
         &page_trackers_selections,
         TrackerKind::Page,
+        &tag_id_map,
     )
     .await;
 
-    // 8. Import API trackers.
+    // 9. Import API trackers.
     let mut api_trackers_result = import_trackers(
         api,
         user,
         &file.data.api_trackers,
         &api_trackers_selections,
         TrackerKind::Api,
+        &tag_id_map,
     )
     .await;
 
-    // 9. Import settings.
+    // 10. Import settings.
     let mut settings_result = ImportEntityResult::default();
     if params.selections.import_settings {
         if let Some(ref settings) = file.data.settings {
@@ -457,7 +517,24 @@ pub async fn execute_import<DR: DnsResolver, ET: EmailTransport>(
         settings_result.skipped = 1;
     }
 
-    // 10. Apply mode deletions (reverse dependency order: trackers → CSPs → keys → templates → responders → secrets → scripts).
+    // 11. Apply mode deletions.
+    // Tags are auto-deleted when not in the import file (no explicit user confirmation needed).
+    if params.mode == ImportMode::Apply {
+        let import_tag_names: std::collections::HashSet<&str> =
+            file.data.tags.iter().map(|t| t.name.as_str()).collect();
+        let tags = api.tags(user);
+        if let Ok(existing_tags) = tags.list_tags().await {
+            for existing_tag in existing_tags {
+                if !import_tag_names.contains(existing_tag.name.as_str())
+                    && tags.delete_tag(existing_tag.id).await.is_ok()
+                {
+                    tags_result.deleted += 1;
+                }
+            }
+        }
+    }
+
+    // Entity deletions require explicit user confirmation via apply_deletions.
     if params.mode == ImportMode::Apply
         && let Some(ref deletions) = params.apply_deletions
     {
@@ -533,6 +610,7 @@ pub async fn execute_import<DR: DnsResolver, ET: EmailTransport>(
 
     Ok(UserDataImportResult {
         results: ImportResultsSummary {
+            tags: tags_result,
             scripts: scripts_result,
             secrets: secrets_result,
             responders: responders_result,
@@ -549,7 +627,10 @@ pub async fn execute_import<DR: DnsResolver, ET: EmailTransport>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::{mock_api_with_config, mock_config, mock_user};
+    use crate::{
+        tests::{mock_api_with_config, mock_config, mock_user},
+        users::scripts::ScriptCreateParams,
+    };
     use file::{ImportedScript, UserDataImportFile, UserDataImportFileData};
     use params::{
         ImportAction, ImportEntitySelection, ImportMode, ImportSelections, UserDataImportParams,
@@ -565,6 +646,7 @@ mod tests {
             exported_at: datetime!(2020-01-01 12:00:00 UTC),
             secrets_encryption: None,
             data: UserDataImportFileData {
+                tags: vec![],
                 scripts: vec![],
                 secrets: vec![],
                 responders: vec![],
@@ -627,7 +709,12 @@ mod tests {
 
         // Create existing script.
         api.scripts(&user)
-            .create_script("my_script", "responder", "content")
+            .create_script(ScriptCreateParams {
+                name: "my_script".into(),
+                script_type: "responder".into(),
+                content: "content".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
         let file = UserDataImportFile {
@@ -635,11 +722,13 @@ mod tests {
             exported_at: datetime!(2020-01-01 12:00:00 UTC),
             secrets_encryption: None,
             data: UserDataImportFileData {
+                tags: vec![],
                 scripts: vec![ImportedScript {
                     id: Uuid::now_v7(),
                     name: "my_script".to_string(),
                     script_type: "responder".to_string(),
                     content: "new content".to_string(),
+                    tags: vec![],
                     created_at: datetime!(2020-01-01 00:00:00 UTC),
                     updated_at: datetime!(2020-01-01 00:00:00 UTC),
                 }],
@@ -676,7 +765,12 @@ mod tests {
 
         // Create an existing script that's NOT in the import file.
         api.scripts(&user)
-            .create_script("orphan_script", "responder", "content")
+            .create_script(ScriptCreateParams {
+                name: "orphan_script".into(),
+                script_type: "responder".into(),
+                content: "content".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
         let params = UserDataImportPreviewParams {
@@ -705,11 +799,13 @@ mod tests {
             exported_at: datetime!(2020-01-01 12:00:00 UTC),
             secrets_encryption: None,
             data: UserDataImportFileData {
+                tags: vec![],
                 scripts: vec![ImportedScript {
                     id: script_id,
                     name: "skip_me".to_string(),
                     script_type: "responder".to_string(),
                     content: "content".to_string(),
+                    tags: vec![],
                     created_at: datetime!(2020-01-01 00:00:00 UTC),
                     updated_at: datetime!(2020-01-01 00:00:00 UTC),
                 }],

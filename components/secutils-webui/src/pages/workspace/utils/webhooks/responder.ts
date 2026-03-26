@@ -1,3 +1,5 @@
+import type { EntityTag } from '../../../../model';
+
 export interface SecretsAccess {
   type: 'none' | 'all' | 'selected';
   secrets?: string[];
@@ -21,6 +23,7 @@ export interface Responder {
     script?: string;
     secrets?: SecretsAccess;
   };
+  tags?: EntityTag[];
   createdAt: number;
   updatedAt: number;
 }

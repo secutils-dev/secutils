@@ -3,6 +3,7 @@ use crate::{
     utils::web_scraping::{ApiTrackerConfig, api_trackers::ApiTrackerTarget},
 };
 use serde::Deserialize;
+use uuid::Uuid;
 
 #[derive(Deserialize, Debug, Default, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +21,8 @@ pub struct ApiTrackerUpdateParams {
     pub notifications: bool,
     /// Controls which user secrets are available to this tracker's scripts.
     pub secrets: Option<SecretsAccess>,
+    /// Tag IDs to assign. When `Some`, replaces all tags; when `None`, tags are unchanged.
+    pub tag_ids: Option<Vec<Uuid>>,
 }
 
 #[cfg(test)]
@@ -41,6 +44,7 @@ mod tests {
                 target: None,
                 notifications: false,
                 secrets: None,
+                tag_ids: None,
             }
         );
 
@@ -53,6 +57,7 @@ mod tests {
                 target: None,
                 notifications: false,
                 secrets: None,
+                tag_ids: None,
             }
         );
 
@@ -68,6 +73,7 @@ mod tests {
                 target: None,
                 notifications: false,
                 secrets: None,
+                tag_ids: None,
             }
         );
 
@@ -131,6 +137,7 @@ mod tests {
                 }),
                 notifications: true,
                 secrets: None,
+                tag_ids: None,
             }
         );
 

@@ -1,6 +1,6 @@
 use crate::{
     users::{
-        UserSettings,
+        EntityTag, UserSettings, UserTag,
         secrets::SecretsEncryptionMeta,
         user_data::{
             export::{ExportedPrivateKey, ExportedResponder, ExportedTracker},
@@ -32,6 +32,8 @@ pub struct UserDataImportFile {
 #[serde(rename_all = "camelCase")]
 pub struct UserDataImportFileData {
     #[serde(default)]
+    pub tags: Vec<UserTag>,
+    #[serde(default)]
     pub scripts: Vec<ImportedScript>,
     #[serde(default)]
     pub secrets: Vec<DataFileSecret>,
@@ -58,6 +60,8 @@ pub struct ImportedScript {
     pub name: String,
     pub script_type: String,
     pub content: String,
+    #[serde(default)]
+    pub tags: Vec<EntityTag>,
     #[allow(dead_code)]
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,

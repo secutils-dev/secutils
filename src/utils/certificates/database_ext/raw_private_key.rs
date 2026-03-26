@@ -25,6 +25,7 @@ impl TryFrom<RawPrivateKey> for PrivateKey {
             alg: postcard::from_bytes::<RawPrivateKeyAlgorithm>(&raw.alg)?.into(),
             pkcs8: raw.pkcs8,
             encrypted: raw.encrypted,
+            tags: vec![],
             created_at: raw.created_at,
             updated_at: raw.updated_at,
         })
@@ -76,6 +77,7 @@ mod tests {
                 },
                 pkcs8: vec![1, 2, 3],
                 encrypted: true,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             }
@@ -101,6 +103,7 @@ mod tests {
                 },
                 pkcs8: vec![1, 2, 3],
                 encrypted: false,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             }
@@ -120,6 +123,7 @@ mod tests {
                 },
                 pkcs8: vec![1, 2, 3],
                 encrypted: true,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             })?,
@@ -145,6 +149,7 @@ mod tests {
                 },
                 pkcs8: vec![1, 2, 3],
                 encrypted: false,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             })?,

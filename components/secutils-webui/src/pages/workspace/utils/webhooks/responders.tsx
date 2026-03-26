@@ -25,15 +25,11 @@ import { ResponderName } from './responder_name';
 import { ResponderRequestsTable } from './responder_requests_table';
 import type { ResponderStats } from './responder_stats';
 import { PageErrorState, PageLoadingState } from '../../../../components';
-import {
-  type AsyncData,
-  getApiRequestConfig,
-  getApiUrl,
-  getCopyName,
-  getErrorMessage,
-  ResponseError,
-} from '../../../../model';
-import { ItemsTableFilter, useItemsTableFilter } from '../../components/items_table_filter';
+import { useUserTags } from '../../../../hooks';
+import type { AsyncData } from '../../../../model';
+import { getApiRequestConfig, getApiUrl, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
+import { getTagsColumn } from '../../components/entity_tags_column';
+import { ItemsTableFilter, TagsFilter, useItemsTableFilter } from '../../components/items_table_filter';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
@@ -49,6 +45,7 @@ export default function Responders() {
   >({ status: 'pending' });
   const [responderToRemove, setResponderToRemove] = useState<Responder | null>(null);
   const [responderToEdit, setResponderToEdit] = useState<Partial<Responder> | null | undefined>(null);
+  const { allTags } = useUserTags();
 
   const createButton = useMemo(
     () => (
@@ -132,10 +129,13 @@ export default function Responders() {
     [],
   );
 
+  const getItemTags = useCallback((responder: Responder) => responder.tags, []);
+
   // Use the filter hook with URL sync
-  const { filteredItems, query, setQuery } = useItemsTableFilter({
+  const { filteredItems, query, setQuery, selectedTagIds, setSelectedTagIds } = useItemsTableFilter({
     items: responders.status === 'succeeded' ? responders.data.responders : [],
     getSearchFields,
+    getItemTags,
   });
 
   const [itemIdToExpandedRowMap, setItemIdToExpandedRowMap] = useState<Record<string, ReactNode>>({});
@@ -270,7 +270,9 @@ export default function Responders() {
           onQueryChange={setQuery}
           onRefresh={loadResponders}
           placeholder="Search by name, path, or ID..."
-        />
+        >
+          <TagsFilter tags={allTags} selectedTagIds={selectedTagIds} onSelectedTagIdsChange={setSelectedTagIds} />
+        </ItemsTableFilter>
         <EuiSpacer size="m" />
         <EuiInMemoryTable
           pagination={pagination}
@@ -369,6 +371,7 @@ export default function Responders() {
                 />
               ),
             },
+            getTagsColumn(),
             {
               name: 'Actions',
               field: 'headers',

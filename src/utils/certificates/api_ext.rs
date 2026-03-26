@@ -19,7 +19,7 @@ use crate::{
     api::Api,
     error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
-    users::{SharedResource, UserId, UserShare},
+    users::{EntityTag, SharedResource, UserId, UserShare},
     utils::{
         certificates::{
             CertificateTemplate, ExportFormat, ExtendedKeyUsage, KeyUsage, PrivateKey,
@@ -72,11 +72,14 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
         user_id: UserId,
         id: Uuid,
     ) -> anyhow::Result<Option<PrivateKey>> {
-        self.api
-            .db
-            .certificates()
-            .get_private_key(user_id, id)
-            .await
+        let certificates_db = self.api.db.certificates();
+        let Some(mut key) = certificates_db.get_private_key(user_id, id).await? else {
+            return Ok(None);
+        };
+        key.tags = (certificates_db.get_private_key_tags(&[key.id]).await?)
+            .remove(&key.id)
+            .unwrap_or_default();
+        Ok(Some(key))
     }
 
     /// Generate a private key with the specified parameters and stores it in the database.
@@ -99,17 +102,22 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
                 params.passphrase.as_deref(),
             )?,
             encrypted: params.passphrase.is_some(),
+            tags: params.tag_ids.into_iter().map(EntityTag::from).collect(),
             created_at,
             updated_at: created_at,
         };
 
-        self.api
+        let tags = self
+            .api
             .db
             .certificates()
             .insert_private_key(user_id, &private_key)
             .await?;
 
-        Ok(private_key)
+        Ok(PrivateKey {
+            tags,
+            ..private_key
+        })
     }
 
     /// Updates private key (only name and passphrases are updatable).
@@ -121,9 +129,9 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
     ) -> anyhow::Result<()> {
         let includes_new_passphrase =
             params.passphrase.is_some() || params.new_passphrase.is_some();
-        if params.key_name.is_none() && !includes_new_passphrase {
+        if params.key_name.is_none() && !includes_new_passphrase && params.tag_ids.is_none() {
             bail!(SecutilsError::client(format!(
-                "Either new name or passphrase should be provided ({id})."
+                "Either new name, passphrase, or tags should be provided ({id})."
             )));
         }
 
@@ -181,11 +189,15 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
                     name,
                     pkcs8,
                     encrypted,
+                    tags: private_key.tags,
                     updated_at,
                     ..private_key
                 },
+                params.tag_ids,
             )
-            .await
+            .await?;
+
+        Ok(())
     }
 
     /// Removes private key with the specified ID.
@@ -247,7 +259,15 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
 
     /// Retrieves all private keys that belong to the specified user.
     pub async fn get_private_keys(&self, user_id: UserId) -> anyhow::Result<Vec<PrivateKey>> {
-        self.api.db.certificates().get_private_keys(user_id).await
+        let certificates_db = self.api.db.certificates();
+        let mut keys = certificates_db.get_private_keys(user_id).await?;
+        let mut tags_map = certificates_db
+            .get_private_key_tags(&keys.iter().map(|k| k.id).collect::<Vec<_>>())
+            .await?;
+        for key in &mut keys {
+            key.tags = tags_map.remove(&key.id).unwrap_or_default();
+        }
+        Ok(keys)
     }
 
     /// Retrieves private keys (with pkcs8 data) with the specified IDs.
@@ -256,11 +276,17 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
         user_id: UserId,
         ids: &[Uuid],
     ) -> anyhow::Result<Vec<PrivateKey>> {
-        self.api
-            .db
-            .certificates()
+        let certificates_db = self.api.db.certificates();
+        let mut keys = certificates_db
             .bulk_get_private_keys_for_export(user_id, ids)
-            .await
+            .await?;
+        let mut tags_map = certificates_db
+            .get_private_key_tags(&keys.iter().map(|k| k.id).collect::<Vec<_>>())
+            .await?;
+        for key in &mut keys {
+            key.tags = tags_map.remove(&key.id).unwrap_or_default();
+        }
+        Ok(keys)
     }
 
     /// Retrieves the certificate template with the specified ID.
@@ -269,11 +295,21 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
         user_id: UserId,
         id: Uuid,
     ) -> anyhow::Result<Option<CertificateTemplate>> {
-        self.api
-            .db
-            .certificates()
+        let certificates_db = self.api.db.certificates();
+        let Some(mut template) = certificates_db
             .get_certificate_template(user_id, id)
-            .await
+            .await?
+        else {
+            return Ok(None);
+        };
+
+        template.tags = (certificates_db
+            .get_certificate_template_tags(&[template.id])
+            .await?)
+            .remove(&template.id)
+            .unwrap_or_default();
+
+        Ok(Some(template))
     }
 
     /// Creates certificate template with the specified parameters and stores it in the database.
@@ -291,17 +327,22 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
             id: Uuid::now_v7(),
             name: params.template_name,
             attributes: params.attributes,
+            tags: params.tag_ids.into_iter().map(EntityTag::from).collect(),
             created_at,
             updated_at: created_at,
         };
 
-        self.api
+        let tags = self
+            .api
             .db
             .certificates()
             .insert_certificate_template(user_id, &certificate_template)
             .await?;
 
-        Ok(certificate_template)
+        Ok(CertificateTemplate {
+            tags,
+            ..certificate_template
+        })
     }
 
     /// Updates certificate template.
@@ -313,9 +354,9 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
     ) -> anyhow::Result<()> {
         if let Some(name) = &params.template_name {
             Self::assert_certificate_template_name(name)?;
-        } else if params.attributes.is_none() {
+        } else if params.attributes.is_none() && params.tag_ids.is_none() {
             bail!(SecutilsError::client(format!(
-                "Either new name or attributes should be provided ({id})."
+                "Either new name, attributes, or tags should be provided ({id})."
             )));
         }
 
@@ -344,11 +385,15 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
                     } else {
                         certificate_template.attributes
                     },
+                    tags: certificate_template.tags,
                     updated_at,
                     ..certificate_template
                 },
+                params.tag_ids,
             )
-            .await
+            .await?;
+
+        Ok(())
     }
 
     /// Removes certificate template with the specified ID.
@@ -419,11 +464,15 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
         &self,
         user_id: UserId,
     ) -> anyhow::Result<Vec<CertificateTemplate>> {
-        self.api
-            .db
-            .certificates()
-            .get_certificate_templates(user_id)
-            .await
+        let certificates_db = self.api.db.certificates();
+        let mut templates = certificates_db.get_certificate_templates(user_id).await?;
+        let mut tags_map = certificates_db
+            .get_certificate_template_tags(&templates.iter().map(|t| t.id).collect::<Vec<_>>())
+            .await?;
+        for template in &mut templates {
+            template.tags = tags_map.remove(&template.id).unwrap_or_default();
+        }
+        Ok(templates)
     }
 
     /// Retrieves certificate templates with the specified IDs.
@@ -432,11 +481,17 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
         user_id: UserId,
         ids: &[Uuid],
     ) -> anyhow::Result<Vec<CertificateTemplate>> {
-        self.api
-            .db
-            .certificates()
+        let certificates_db = self.api.db.certificates();
+        let mut templates = certificates_db
             .bulk_get_certificate_templates(user_id, ids)
-            .await
+            .await?;
+        let mut tags_map = certificates_db
+            .get_certificate_template_tags(&templates.iter().map(|t| t.id).collect::<Vec<_>>())
+            .await?;
+        for template in &mut templates {
+            template.tags = tags_map.remove(&template.id).unwrap_or_default();
+        }
+        Ok(templates)
     }
 
     /// Shares certificate template with the specified ID.
@@ -965,6 +1020,7 @@ mod tests {
                             key_name: format!("pk-{:?}-{:?}", alg, pass),
                             alg,
                             passphrase: pass.map(|p| p.to_string()),
+                            tag_ids: vec![],
                         },
                     )
                     .await?;
@@ -998,6 +1054,7 @@ mod tests {
                         key_name: "".to_string(),
                         alg: PrivateKeyAlgorithm::Ed25519,
                         passphrase: None,
+                        tag_ids: vec![],
                     },
                 )
                 .await,
@@ -1016,6 +1073,7 @@ mod tests {
                         key_name: "a".repeat(101),
                         alg: PrivateKeyAlgorithm::Ed25519,
                         passphrase: None,
+                        tag_ids: vec![],
                     },
                 )
                 .await,
@@ -1044,6 +1102,7 @@ mod tests {
                     key_name: "pk".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1066,6 +1125,7 @@ mod tests {
                     key_name: None,
                     passphrase: None,
                     new_passphrase: Some("pass".to_string()),
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -1100,6 +1160,7 @@ mod tests {
                     key_name: None,
                     passphrase: Some("pass".to_string()),
                     new_passphrase: Some("pass-1".to_string()),
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -1147,6 +1208,7 @@ mod tests {
                     key_name: None,
                     passphrase: Some("pass-1".to_string()),
                     new_passphrase: None,
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -1203,6 +1265,7 @@ mod tests {
                     key_name: "pk".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: Some("pass".to_string()),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1216,6 +1279,7 @@ mod tests {
                     key_name: Some("pk-new".to_string()),
                     passphrase: None,
                     new_passphrase: None,
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -1247,6 +1311,7 @@ mod tests {
                     key_name: Some("pk-new-new".to_string()),
                     passphrase: Some("pass".to_string()),
                     new_passphrase: Some("pass-1".to_string()),
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -1282,6 +1347,7 @@ mod tests {
                     key_name: Some("pk".to_string()),
                     passphrase: Some("pass-1".to_string()),
                     new_passphrase: None,
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -1318,6 +1384,7 @@ mod tests {
                     key_name: "pk".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1330,6 +1397,7 @@ mod tests {
                     key_name: Some("".to_string()),
                     passphrase: None,
                     new_passphrase: None,
+                    tag_ids: None,
                 },
             )
             .await,
@@ -1349,6 +1417,7 @@ mod tests {
                     key_name: Some("a".repeat(101)),
                     passphrase: None,
                     new_passphrase: None,
+                    tag_ids: None,
                 },
             )
             .await,
@@ -1369,13 +1438,14 @@ mod tests {
                         key_name: None,
                         passphrase: None,
                         new_passphrase: None,
+                        tag_ids: None,
                     },
                 )
                 .await
                 .unwrap_err()
                 .to_string(),
             format!(
-                "Either new name or passphrase should be provided ({}).",
+                "Either new name, passphrase, or tags should be provided ({}).",
                 private_key.id
             )
         );
@@ -1390,6 +1460,7 @@ mod tests {
                         key_name: None,
                         passphrase: Some("some".to_string()),
                         new_passphrase: Some("some".to_string()),
+                        tag_ids: None,
                     },
                 )
                 .await
@@ -1420,6 +1491,7 @@ mod tests {
                     key_name: "pk".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1471,6 +1543,7 @@ mod tests {
                     key_name: None,
                     passphrase: None,
                     new_passphrase: Some("pass".to_string()),
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -1531,6 +1604,7 @@ mod tests {
                     key_name: "pk".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1578,6 +1652,7 @@ mod tests {
                     key_name: "pk".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await
@@ -1597,6 +1672,7 @@ mod tests {
                     key_name: "pk-2".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await
@@ -1640,6 +1716,7 @@ mod tests {
                 TemplatesCreateParams {
                     template_name: "ct".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1668,6 +1745,7 @@ mod tests {
                 TemplatesCreateParams {
                     template_name: "".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await,
@@ -1684,6 +1762,7 @@ mod tests {
                 TemplatesCreateParams {
                     template_name: "a".repeat(101),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await,
@@ -1711,6 +1790,7 @@ mod tests {
                 TemplatesCreateParams {
                     template_name: "ct".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1740,6 +1820,7 @@ mod tests {
                             [ExtendedKeyUsage::EmailProtection].into_iter().collect(),
                         ),
                     }),
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -1787,6 +1868,7 @@ mod tests {
                 TemplatesCreateParams {
                     template_name: "ct".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1799,6 +1881,7 @@ mod tests {
                 TemplatesUpdateParams {
                     template_name: Some("ct-new".to_string()),
                     attributes: None,
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -1839,6 +1922,7 @@ mod tests {
                             [ExtendedKeyUsage::EmailProtection].into_iter().collect(),
                         ),
                     }),
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -1887,6 +1971,7 @@ mod tests {
                 TemplatesCreateParams {
                     template_name: "ct".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1898,6 +1983,7 @@ mod tests {
                 TemplatesUpdateParams {
                     template_name: Some("".to_string()),
                     attributes: Some(get_mock_certificate_attributes()?),
+                    tag_ids: None,
                 },
             )
             .await,
@@ -1916,6 +2002,7 @@ mod tests {
                 TemplatesUpdateParams {
                     template_name: Some("a".repeat(101)),
                     attributes: Some(get_mock_certificate_attributes()?),
+                    tag_ids: None,
                 },
             )
             .await,
@@ -1935,13 +2022,14 @@ mod tests {
                     TemplatesUpdateParams {
                         template_name: None,
                         attributes: None,
+                        tag_ids: None,
                     },
                 )
                 .await
                 .unwrap_err()
                 .to_string(),
             format!(
-                "Either new name or attributes should be provided ({}).",
+                "Either new name, attributes, or tags should be provided ({}).",
                 certificate_template.id
             )
         );
@@ -1963,6 +2051,7 @@ mod tests {
                 TemplatesCreateParams {
                     template_name: "ct".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -2009,6 +2098,7 @@ mod tests {
                 TemplatesCreateParams {
                     template_name: "ct".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -2023,6 +2113,7 @@ mod tests {
                 TemplatesCreateParams {
                     template_name: "ct-2".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -2133,6 +2224,7 @@ mod tests {
                 TemplatesCreateParams {
                     template_name: "ct".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -2181,6 +2273,7 @@ mod tests {
                 TemplatesCreateParams {
                     template_name: "ct".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -2221,6 +2314,7 @@ mod tests {
                 TemplatesCreateParams {
                     template_name: "ct".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -2281,6 +2375,7 @@ mod tests {
                 TemplatesCreateParams {
                     template_name: "ct".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tag_ids: vec![],
                 },
             )
             .await?;

@@ -1,8 +1,10 @@
 import { getApiRequestConfig, getApiUrl } from './urls';
+import type { EntityTag } from './user_tags';
 
 export interface UserSecret {
   id: string;
   name: string;
+  tags?: EntityTag[];
   createdAt: number;
   updatedAt: number;
 }
@@ -15,10 +17,10 @@ export async function getUserSecrets(): Promise<UserSecret[]> {
   return response.json();
 }
 
-export async function createUserSecret(name: string, value: string): Promise<UserSecret> {
+export async function createUserSecret(name: string, value: string, tagIds?: string[]): Promise<UserSecret> {
   const response = await fetch(getApiUrl('/api/user/secrets'), {
     ...getApiRequestConfig('POST'),
-    body: JSON.stringify({ name, value }),
+    body: JSON.stringify({ name, value, ...(tagIds !== undefined ? { tagIds } : {}) }),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -27,10 +29,10 @@ export async function createUserSecret(name: string, value: string): Promise<Use
   return response.json();
 }
 
-export async function updateUserSecret(id: string, value: string): Promise<UserSecret> {
+export async function updateUserSecret(id: string, value: string, tagIds?: string[]): Promise<UserSecret> {
   const response = await fetch(getApiUrl(`/api/user/secrets/${encodeURIComponent(id)}`), {
     ...getApiRequestConfig('PUT'),
-    body: JSON.stringify({ value }),
+    body: JSON.stringify({ value, ...(tagIds !== undefined ? { tagIds } : {}) }),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);

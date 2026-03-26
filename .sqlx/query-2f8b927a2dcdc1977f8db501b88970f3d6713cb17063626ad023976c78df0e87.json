@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nUPDATE user_data_scripts SET content = $1, updated_at = $2\nWHERE user_id = $3 AND id = $4\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Timestamptz",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2f8b927a2dcdc1977f8db501b88970f3d6713cb17063626ad023976c78df0e87"
+}

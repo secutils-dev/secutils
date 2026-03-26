@@ -7,7 +7,7 @@ import {
   EuiLink,
   EuiSelect,
 } from '@elastic/eui';
-import type { ChangeEvent } from 'react';
+import type { ChangeEvent, ReactNode } from 'react';
 import { useState } from 'react';
 
 import type { CertificateAttributes, SignatureAlgorithm } from './certificate_attributes';
@@ -22,6 +22,7 @@ export interface CertificateTemplateFormProps {
   template: CertificateTemplateProps;
   onChange?: (template: CertificateTemplateProps) => void;
   isReadOnly?: boolean;
+  generalSectionExtra?: ReactNode;
 }
 
 const SIGNATURE_ALGORITHMS = new Map<string, Array<{ text: string; value: SignatureAlgorithm }>>([
@@ -74,7 +75,12 @@ const EXTENDED_KEY_USAGE = new Map([
   ['tlsWebServerAuthentication', { label: 'TLS Web server authentication', value: 'tlsWebServerAuthentication' }],
 ]);
 
-export function CertificateTemplateForm({ template, onChange, isReadOnly }: CertificateTemplateFormProps) {
+export function CertificateTemplateForm({
+  template,
+  onChange,
+  isReadOnly,
+  generalSectionExtra,
+}: CertificateTemplateFormProps) {
   const [name, setName] = useState<string>(template.name);
   const onNameChange = (e: ChangeEvent<HTMLInputElement>) => {
     setName(e.target.value);
@@ -187,6 +193,7 @@ export function CertificateTemplateForm({ template, onChange, isReadOnly }: Cert
             onChange={(e) => onAttributesChange({ signatureAlgorithm: e.target.value as SignatureAlgorithm })}
           />
         </EuiFormRow>
+        {generalSectionExtra}
       </EuiDescribedFormGroup>
       <EuiDescribedFormGroup
         title={<h3>Extensions</h3>}

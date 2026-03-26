@@ -13,10 +13,12 @@ import {
 } from '@elastic/eui';
 import { useCallback, useEffect, useState } from 'react';
 
-import type { UserScript, UserScriptType } from '../model';
+import { useUserTags } from '../hooks';
 import { getUserScript, USER_SCRIPT_TYPE_OPTIONS } from '../model';
+import type { UserScript, UserScriptType } from '../model';
 import type { PageToast } from '../pages/page';
 import { ScriptEditor } from '../pages/workspace/components/script_editor';
+import { TagsComboBox } from '../pages/workspace/components/tags_combo_box';
 
 const MAX_CONTENT_LENGTH = 50 * 1024;
 
@@ -26,7 +28,13 @@ export interface ScriptEditModalProps {
   duplicateFrom?: UserScript;
   duplicateSourceId?: string;
   duplicateSourceName?: string;
-  onSave: (name: string, scriptType: UserScriptType, content: string, editingId?: string) => Promise<void>;
+  onSave: (
+    name: string,
+    scriptType: UserScriptType,
+    content: string,
+    editingId?: string,
+    tagIds?: string[],
+  ) => Promise<void>;
   onClose: () => void;
   addToast?: (toast: PageToast) => void;
 }
@@ -50,6 +58,8 @@ export function ScriptEditModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(isEditing || isDuplicate);
+  const { allTags, setAllTags } = useUserTags();
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(duplicateFrom?.tags?.map((t) => t.id) ?? []);
 
   // Load script content when editing or duplicating
   useEffect(() => {
@@ -63,6 +73,7 @@ export function ScriptEditModal({
         const script = await getUserScript(scriptId);
         setScriptType(script.scriptType);
         setContent(script.content);
+        setSelectedTagIds(script.tags?.map((t) => t.id) ?? []);
       } catch {
         if (isEditing) {
           setError('Failed to load script content.');
@@ -91,7 +102,7 @@ export function ScriptEditModal({
     setError(null);
     try {
       const normalizedName = name.trim();
-      await onSave(normalizedName, scriptType, content, editingId);
+      await onSave(normalizedName, scriptType, content, editingId, selectedTagIds);
       onClose();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save script.';
@@ -99,7 +110,7 @@ export function ScriptEditModal({
     } finally {
       setSaving(false);
     }
-  }, [name, scriptType, content, editingId, onSave, onClose, addToast]);
+  }, [name, scriptType, content, editingId, selectedTagIds, onSave, onClose, addToast]);
 
   return (
     <EuiModal onClose={onClose} initialFocus="[name=scriptName]" style={{ width: 600, maxWidth: '90vw' }}>
@@ -133,6 +144,12 @@ export function ScriptEditModal({
             fullWidth
           />
         </EuiFormRow>
+        <TagsComboBox
+          allTags={allTags}
+          selectedTagIds={selectedTagIds}
+          onChange={setSelectedTagIds}
+          onTagCreated={(tag) => setAllTags((prev) => [...prev, tag])}
+        />
 
         <EuiFormRow
           label="Type"

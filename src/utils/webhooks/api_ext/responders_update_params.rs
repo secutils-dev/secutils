@@ -1,5 +1,6 @@
 use crate::utils::webhooks::{ResponderLocation, ResponderMethod, ResponderSettings};
 use serde::Deserialize;
+use uuid::Uuid;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
@@ -13,6 +14,17 @@ pub struct RespondersUpdateParams {
     pub enabled: Option<bool>,
     // Miscellaneous responder settings.
     pub settings: Option<ResponderSettings>,
+    /// Tag IDs to assign. When `Some` replaces all tags; when `None`, tags are unchanged.
+    pub tag_ids: Option<Vec<Uuid>>,
+}
+
+impl RespondersUpdateParams {
+    pub fn with_settings(settings: ResponderSettings) -> Self {
+        Self {
+            settings: Some(settings),
+            ..Default::default()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -24,6 +36,7 @@ mod tests {
             api_ext::RespondersUpdateParams,
         },
     };
+    use uuid::uuid;
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
@@ -44,7 +57,8 @@ mod tests {
         "body": "some-body",
         "headers": [["key", "value"], ["key2", "value2"]],
         "script": "return { body: `custom body` };"
-    }
+    },
+    "tagIds": ["00000000-0000-0000-0000-000000000001"]
 }
           "#
             )?,
@@ -67,7 +81,8 @@ mod tests {
                     ]),
                     script: Some("return { body: `custom body` };".to_string()),
                     secrets: SecretsAccess::None,
-                })
+                }),
+                tag_ids: Some(vec![uuid!("00000000-0000-0000-0000-000000000001")]),
             }
         );
 
@@ -111,7 +126,8 @@ mod tests {
                     ]),
                     script: Some("return { body: `custom body` };".to_string()),
                     secrets: SecretsAccess::None,
-                })
+                }),
+                tag_ids: None,
             }
         );
 
@@ -153,7 +169,8 @@ mod tests {
                     ]),
                     script: Some("return { body: `custom body` };".to_string()),
                     secrets: SecretsAccess::None,
-                })
+                }),
+                tag_ids: None,
             }
         );
 
@@ -187,7 +204,8 @@ mod tests {
                     ]),
                     script: Some("return { body: `custom body` };".to_string()),
                     secrets: SecretsAccess::None,
-                })
+                }),
+                tag_ids: None,
             }
         );
 
@@ -220,7 +238,8 @@ mod tests {
                     ]),
                     script: Some("return { body: `custom body` };".to_string()),
                     secrets: SecretsAccess::None,
-                })
+                }),
+                tag_ids: None,
             }
         );
 
@@ -246,7 +265,8 @@ mod tests {
                     headers: None,
                     script: None,
                     secrets: SecretsAccess::None,
-                })
+                }),
+                tag_ids: None,
             }
         );
 
@@ -257,7 +277,8 @@ mod tests {
                 location: None,
                 method: None,
                 enabled: None,
-                settings: None
+                settings: None,
+                tag_ids: None,
             }
         );
 

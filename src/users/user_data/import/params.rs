@@ -62,6 +62,8 @@ pub struct ApplyDeletionSelections {
 #[serde(rename_all = "camelCase")]
 pub struct ImportSelections {
     #[serde(default)]
+    pub tags: Vec<ImportEntitySelection>,
+    #[serde(default)]
     pub scripts: Vec<ImportEntitySelection>,
     #[serde(default)]
     pub secrets: Vec<ImportEntitySelection>,

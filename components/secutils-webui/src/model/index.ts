@@ -26,6 +26,8 @@ export type {
 export { getCopyName, formatBytes } from './strings';
 export type { UserSecret } from './user_secrets';
 export { getUserSecrets, createUserSecret, updateUserSecret, deleteUserSecret } from './user_secrets';
+export type { EntityTag, UserTag } from './user_tags';
+export { TAG_COLOR_SWATCHES, getUserTags, createUserTag, updateUserTag, deleteUserTag } from './user_tags';
 export type { UserScript, UserScriptType, UserScriptWithContent } from './user_scripts';
 export {
   getUserScripts,

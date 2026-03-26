@@ -9,6 +9,7 @@ export type ExportTrackableSelection =
 export interface ExportParams {
   include: {
     settings?: boolean;
+    tags?: ExportSelection;
     scripts?: ExportSelection;
     secrets?: ExportSelection;
     responders?: ExportTrackableSelection;
@@ -30,7 +31,7 @@ export interface ImportConflict {
   sourceId: string;
   name: string;
   existingId: string;
-  /** False when conflict is on location+method — only overwrite/skip are valid. Defaults to true if absent. */
+  /** False when conflict is on location+method - only overwrite/skip are valid. Defaults to true if absent. */
   renameAllowed?: boolean;
 }
 
@@ -65,6 +66,7 @@ export interface ImportPreview {
   version: number;
   summary: {
     settings: ImportSettingsSummary;
+    tags: ImportEntitySummary;
     scripts: ImportEntitySummary;
     secrets: ImportEntitySummary;
     responders: ImportEntitySummary;
@@ -100,6 +102,7 @@ export interface ImportParams {
   mode: 'merge' | 'apply';
   selections: {
     importSettings?: boolean;
+    tags: ImportEntitySelection[];
     scripts: ImportEntitySelection[];
     secrets: ImportEntitySelection[];
     responders: ImportEntitySelection[];
@@ -125,6 +128,7 @@ export interface ImportEntityResult {
 export interface ImportResult {
   results: {
     settings: ImportEntityResult;
+    tags: ImportEntityResult;
     scripts: ImportEntityResult;
     secrets: ImportEntityResult;
     responders: ImportEntityResult;
@@ -147,6 +151,10 @@ async function fetchEntities(path: string): Promise<NamedEntity[]> {
     throw new Error(`Failed to fetch ${path}`);
   }
   return response.json();
+}
+
+export function getTags(): Promise<NamedEntity[]> {
+  return fetchEntities('/api/user/tags');
 }
 
 export function getResponders(): Promise<NamedEntity[]> {

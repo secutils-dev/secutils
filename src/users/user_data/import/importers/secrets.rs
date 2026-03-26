@@ -2,12 +2,12 @@ use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
     users::{
-        User,
+        SecretCreateParams, User,
         secrets::{SecretsEncryptionMeta, decrypt_secret_from_export},
         user_data::{
             import::{
-                ConflictResolution, ImportEntityResult, ImportEntitySelection, resolve_name,
-                should_skip,
+                ConflictResolution, ImportEntityResult, ImportEntitySelection, remap_tag_ids,
+                resolve_name, should_skip,
             },
             shared::DataFileSecret,
         },
@@ -23,11 +23,13 @@ pub async fn import_secrets<DR: DnsResolver, ET: EmailTransport>(
     selections: &HashMap<Uuid, &ImportEntitySelection>,
     passphrase: Option<&str>,
     encryption_meta: Option<&SecretsEncryptionMeta>,
+    tag_id_map: &HashMap<Uuid, Uuid>,
 ) -> ImportEntityResult {
     let mut result = ImportEntityResult::default();
 
     // Pre-fetch existing secrets once for conflict detection.
-    let existing_secrets = api.secrets(user).list_secrets().await.unwrap_or_default();
+    let secrets_api = api.secrets(user);
+    let existing_secrets = secrets_api.list_secrets().await.unwrap_or_default();
     let mut used_names: HashSet<String> = existing_secrets.iter().map(|s| s.name.clone()).collect();
 
     for secret in secrets {
@@ -53,7 +55,15 @@ pub async fn import_secrets<DR: DnsResolver, ET: EmailTransport>(
             match resolution {
                 Some(ConflictResolution::Rename) => {
                     let new_name = resolve_name(&secret.name, selection, &used_names);
-                    match api.secrets(user).create_secret(&new_name, &value).await {
+                    let remapped_tags = remap_tag_ids(&secret.tags, tag_id_map);
+                    match secrets_api
+                        .create_secret(SecretCreateParams {
+                            name: new_name.clone(),
+                            value: value.clone(),
+                            tag_ids: remapped_tags,
+                        })
+                        .await
+                    {
                         Ok(_) => {
                             used_names.insert(new_name);
                             result.imported += 1;
@@ -71,9 +81,17 @@ pub async fn import_secrets<DR: DnsResolver, ET: EmailTransport>(
                     if let Some(e) = existing_secrets.iter().find(|s| s.name == secret.name) {
                         if secret.encrypted_value.is_some() {
                             // Only overwrite if we have a real value to import.
-                            let _ = api.secrets(user).delete_secret(e.id).await;
+                            let _ = secrets_api.delete_secret(e.id).await;
                             used_names.remove(&secret.name);
-                            match api.secrets(user).create_secret(&secret.name, &value).await {
+                            let remapped_tags = remap_tag_ids(&secret.tags, tag_id_map);
+                            match secrets_api
+                                .create_secret(SecretCreateParams {
+                                    name: secret.name.clone(),
+                                    value: value.clone(),
+                                    tag_ids: remapped_tags,
+                                })
+                                .await
+                            {
                                 Ok(_) => {
                                     used_names.insert(secret.name.clone());
                                     result.updated += 1;
@@ -100,7 +118,15 @@ pub async fn import_secrets<DR: DnsResolver, ET: EmailTransport>(
             continue;
         }
 
-        match api.secrets(user).create_secret(&secret.name, &value).await {
+        let remapped_tags = remap_tag_ids(&secret.tags, tag_id_map);
+        match secrets_api
+            .create_secret(SecretCreateParams {
+                name: secret.name.clone(),
+                value,
+                tag_ids: remapped_tags,
+            })
+            .await
+        {
             Ok(_) => {
                 used_names.insert(secret.name.clone());
                 result.imported += 1;
@@ -161,6 +187,7 @@ mod tests {
             id,
             name: name.to_string(),
             encrypted_value,
+            tags: vec![],
             created_at: datetime!(2020-01-01 00:00:00 UTC),
             updated_at: datetime!(2020-01-01 00:00:00 UTC),
         }
@@ -172,6 +199,7 @@ mod tests {
             exported_at: datetime!(2020-01-01 12:00:00 UTC),
             secrets_encryption: None,
             data: UserDataImportFileData {
+                tags: vec![],
                 scripts: vec![],
                 secrets,
                 responders: vec![],

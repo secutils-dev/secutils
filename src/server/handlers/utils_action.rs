@@ -941,6 +941,7 @@ mod tests {
                     key_name: "pk".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await?;

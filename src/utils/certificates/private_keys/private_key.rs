@@ -1,4 +1,4 @@
-use crate::utils::certificates::PrivateKeyAlgorithm;
+use crate::{users::EntityTag, utils::certificates::PrivateKeyAlgorithm};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -17,6 +17,9 @@ pub struct PrivateKey {
     pub pkcs8: Vec<u8>,
     /// Indicates whether the private key is encrypted.
     pub encrypted: bool,
+    /// Tags assigned to this private key.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<EntityTag>,
     /// Date and time when the private key was created.
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
@@ -41,6 +44,7 @@ mod tests {
                 alg: PrivateKeyAlgorithm::Rsa { key_size: PrivateKeySize::Size2048 },
                 pkcs8: vec![1, 2, 3],
                 encrypted: true,
+                tags: vec![],
                 // January 1, 2000 11:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 // January 1, 2000 11:00:10
@@ -100,6 +104,7 @@ mod tests {
                 },
                 pkcs8: vec![1, 2, 3],
                 encrypted: true,
+                tags: vec![],
                 // January 1, 2000 11:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 // January 1, 2000 11:00:00

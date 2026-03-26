@@ -3,13 +3,14 @@ mod raw_content_security_policy;
 use crate::{
     database::Database,
     error::Error as SecutilsError,
-    users::UserId,
+    users::{EntityTag, RawEntityTag, UserId, group_entity_tags},
     utils::web_security::{
         ContentSecurityPolicy, database_ext::raw_content_security_policy::RawContentSecurityPolicy,
     },
 };
 use anyhow::{anyhow, bail};
-use sqlx::{Pool, Postgres, error::ErrorKind as SqlxErrorKind, query, query_as};
+use sqlx::{Acquire, Pool, Postgres, error::ErrorKind as SqlxErrorKind, query, query_as};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// A database extension for the web security utility-related operations.
@@ -44,13 +45,14 @@ WHERE user_id = $1 AND id = $2
         .transpose()
     }
 
-    /// Inserts content security policy.
+    /// Inserts content security policy (and associated tags). Returns resolved tags.
     pub async fn insert_content_security_policy(
         &self,
         user_id: UserId,
         policy: &ContentSecurityPolicy,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Vec<EntityTag>> {
         let raw_policy = RawContentSecurityPolicy::try_from(policy)?;
+        let mut tx = self.pool.begin().await?;
         let result = query!(
             r#"
     INSERT INTO user_data_web_security_csp (user_id, id, name, directives, created_at, updated_at)
@@ -63,7 +65,7 @@ WHERE user_id = $1 AND id = $2
             raw_policy.created_at,
             raw_policy.updated_at
         )
-        .execute(self.pool)
+        .execute(&mut *tx)
         .await;
 
         if let Err(err) = result {
@@ -84,16 +86,31 @@ WHERE user_id = $1 AND id = $2
             });
         }
 
-        Ok(())
+        let tags = if policy.tags.is_empty() {
+            vec![]
+        } else {
+            Self::set_csp_tags(
+                &mut *tx,
+                policy.id,
+                &policy.tags.iter().map(|t| t.id).collect::<Vec<_>>(),
+            )
+            .await?
+        };
+
+        tx.commit().await?;
+        Ok(tags)
     }
 
-    /// Updates content security policy.
+    /// Updates content security policy (and optionally associated tags). Returns resolved tags
+    /// only if `tag_ids` is `Some`.
     pub async fn update_content_security_policy(
         &self,
         user_id: UserId,
         policy: &ContentSecurityPolicy,
-    ) -> anyhow::Result<()> {
+        tag_ids: Option<Vec<Uuid>>,
+    ) -> anyhow::Result<Option<Vec<EntityTag>>> {
         let raw_policy = RawContentSecurityPolicy::try_from(policy)?;
+        let mut tx = self.pool.begin().await?;
         let result = query!(
             r#"
     UPDATE user_data_web_security_csp
@@ -106,7 +123,7 @@ WHERE user_id = $1 AND id = $2
             raw_policy.directives,
             raw_policy.updated_at
         )
-        .execute(self.pool)
+        .execute(&mut *tx)
         .await;
 
         match result {
@@ -137,7 +154,14 @@ WHERE user_id = $1 AND id = $2
             }
         }
 
-        Ok(())
+        let updated_tags = if let Some(ref tag_ids) = tag_ids {
+            Some(Self::set_csp_tags(&mut *tx, policy.id, tag_ids).await?)
+        } else {
+            None
+        };
+
+        tx.commit().await?;
+        Ok(updated_tags)
     }
 
     /// Removes content security policy for the specified user with the specified ID.
@@ -213,6 +237,69 @@ WHERE user_id = $1 AND id = $2
 
         Ok(policies)
     }
+
+    /// Fetches tags for a batch of content security policies.
+    pub async fn get_csp_tags(
+        &self,
+        entity_ids: &[Uuid],
+    ) -> anyhow::Result<HashMap<Uuid, Vec<EntityTag>>> {
+        if entity_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let rows = query_as!(
+            RawEntityTag,
+            r#"
+SELECT jt.csp_id AS entity_id, t.id, t.name, t.color
+FROM user_data_web_security_csp_tags jt
+JOIN user_tags t ON jt.tag_id = t.id
+WHERE jt.csp_id = ANY($1)
+ORDER BY t.name ASC
+            "#,
+            entity_ids
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(group_entity_tags(rows))
+    }
+
+    async fn set_csp_tags<'a>(
+        executor: impl Acquire<'a, Database = Postgres>,
+        entity_id: Uuid,
+        tag_ids: &[Uuid],
+    ) -> anyhow::Result<Vec<EntityTag>> {
+        let mut conn = executor.acquire().await?;
+        query!(
+            "DELETE FROM user_data_web_security_csp_tags WHERE csp_id = $1",
+            entity_id
+        )
+        .execute(&mut *conn)
+        .await?;
+
+        if tag_ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        Ok(query_as!(
+            EntityTag,
+            r#"
+WITH inserted AS (
+    INSERT INTO user_data_web_security_csp_tags (csp_id, tag_id)
+    SELECT $1, unnest($2::uuid[])
+    RETURNING csp_id, tag_id
+)
+SELECT t.id, t.name, t.color
+FROM inserted i
+JOIN user_tags t ON i.tag_id = t.id
+ORDER BY t.name ASC
+            "#,
+            entity_id,
+            tag_ids
+        )
+        .fetch_all(&mut *conn)
+        .await?)
+    }
 }
 
 impl Database {
@@ -228,6 +315,7 @@ mod tests {
         database::Database,
         error::Error as SecutilsError,
         tests::{mock_user, mock_user_with_id},
+        users::EntityTag,
         utils::web_security::{
             ContentSecurityPolicy, ContentSecurityPolicyDirective,
             ContentSecurityPolicyTrustedTypesDirectiveValue,
@@ -266,6 +354,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "csp-name".to_string(),
                 directives: get_mock_directives()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
@@ -273,6 +362,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
                 name: "csp-name-2".to_string(),
                 directives: get_mock_directives()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
@@ -320,6 +410,7 @@ mod tests {
             id: uuid!("00000000-0000-0000-0000-000000000001"),
             name: "csp-name".to_string(),
             directives: get_mock_directives()?,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -357,6 +448,7 @@ mod tests {
                     id: uuid!("00000000-0000-0000-0000-000000000001"),
                     name: "csp-name".to_string(),
                     directives: get_mock_directives()?,
+                    tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
@@ -372,9 +464,11 @@ mod tests {
                     directives: vec![ContentSecurityPolicyDirective::ReportTo([
                         "https://secutils.dev".to_string(),
                     ])],
+                    tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(956720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720820)?,
                 },
+                None,
             )
             .await?;
 
@@ -391,6 +485,7 @@ mod tests {
                 directives: vec![ContentSecurityPolicyDirective::ReportTo([
                     "https://secutils.dev".to_string(),
                 ])],
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720820)?,
             }
@@ -411,6 +506,7 @@ mod tests {
             id: uuid!("00000000-0000-0000-0000-000000000001"),
             name: "csp-name-a".to_string(),
             directives: get_mock_directives()?,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -422,6 +518,7 @@ mod tests {
             id: uuid!("00000000-0000-0000-0000-000000000002"),
             name: "csp-name-b".to_string(),
             directives: get_mock_directives()?,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -437,9 +534,11 @@ mod tests {
                     id: uuid!("00000000-0000-0000-0000-000000000002"),
                     name: "csp-name-a".to_string(),
                     directives: get_mock_directives()?,
+                    tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
+                None,
             )
             .await
             .unwrap_err()
@@ -470,9 +569,11 @@ mod tests {
                     id: uuid!("00000000-0000-0000-0000-000000000002"),
                     name: "csp-name-a".to_string(),
                     directives: get_mock_directives()?,
+                    tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
+                None,
             )
             .await
             .unwrap_err()
@@ -498,6 +599,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "csp-name".to_string(),
                 directives: get_mock_directives()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
@@ -505,6 +607,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
                 name: "csp-name-2".to_string(),
                 directives: get_mock_directives()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
@@ -580,6 +683,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "csp-name".to_string(),
                 directives: get_mock_directives()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
@@ -587,6 +691,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
                 name: "csp-name-2".to_string(),
                 directives: get_mock_directives()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
@@ -636,6 +741,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "csp-name".to_string(),
                 directives: get_mock_directives()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
@@ -643,6 +749,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
                 name: "csp-name-2".to_string(),
                 directives: get_mock_directives()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
@@ -650,6 +757,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000003"),
                 name: "csp-name-3".to_string(),
                 directives: get_mock_directives()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946920800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946920810)?,
             },
@@ -690,6 +798,7 @@ mod tests {
             id: uuid!("00000000-0000-0000-0000-000000000001"),
             name: "csp-name".to_string(),
             directives: get_mock_directives()?,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -727,6 +836,7 @@ mod tests {
             id: uuid!("00000000-0000-0000-0000-000000000001"),
             name: "csp-name".to_string(),
             directives: get_mock_directives()?,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -742,6 +852,479 @@ mod tests {
             )
             .await?;
         assert!(result.is_empty());
+
+        Ok(())
+    }
+
+    // ── CSP tag tests ───────────────────────────────────────────────────
+
+    fn mock_csp(
+        id: uuid::Uuid,
+        name: &str,
+        tags: Vec<EntityTag>,
+    ) -> anyhow::Result<ContentSecurityPolicy> {
+        Ok(ContentSecurityPolicy {
+            id,
+            name: name.to_string(),
+            directives: get_mock_directives()?,
+            tags,
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
+        })
+    }
+
+    #[sqlx::test]
+    async fn can_set_and_get_csp_tags(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag_a = db.insert_user_tag(user.id, "alpha", "primary").await?;
+        let tag_b = db.insert_user_tag(user.id, "beta", "danger").await?;
+
+        let policy = mock_csp(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "csp-name",
+            vec![EntityTag::from(tag_a.id), EntityTag::from(tag_b.id)],
+        )?;
+
+        let web_security = db.web_security();
+        let tags = web_security
+            .insert_content_security_policy(user.id, &policy)
+            .await?;
+        assert_eq!(tags.len(), 2);
+        assert_eq!(
+            tags,
+            vec![
+                EntityTag {
+                    id: tag_a.id,
+                    name: "alpha".to_string(),
+                    color: "primary".to_string()
+                },
+                EntityTag {
+                    id: tag_b.id,
+                    name: "beta".to_string(),
+                    color: "danger".to_string()
+                },
+            ]
+        );
+
+        let tags_map = web_security.get_csp_tags(&[policy.id]).await?;
+        assert_eq!(tags_map[&policy.id], tags);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn update_csp_replaces_tags(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag_a = db.insert_user_tag(user.id, "alpha", "primary").await?;
+        let tag_b = db.insert_user_tag(user.id, "beta", "danger").await?;
+        let tag_c = db.insert_user_tag(user.id, "gamma", "success").await?;
+
+        let policy = mock_csp(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "csp-name",
+            vec![EntityTag::from(tag_a.id), EntityTag::from(tag_b.id)],
+        )?;
+
+        let web_security = db.web_security();
+        web_security
+            .insert_content_security_policy(user.id, &policy)
+            .await?;
+
+        let tags = web_security
+            .update_content_security_policy(user.id, &policy, Some(vec![tag_b.id, tag_c.id]))
+            .await?
+            .unwrap();
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].name, "beta");
+        assert_eq!(tags[1].name, "gamma");
+
+        let tags_map = web_security.get_csp_tags(&[policy.id]).await?;
+        let tag_names: Vec<&str> = tags_map[&policy.id]
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
+        assert_eq!(tag_names, vec!["beta", "gamma"]);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn update_csp_clears_all_tags(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag = db.insert_user_tag(user.id, "alpha", "primary").await?;
+
+        let policy = mock_csp(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "csp-name",
+            vec![EntityTag::from(tag.id)],
+        )?;
+
+        let web_security = db.web_security();
+        web_security
+            .insert_content_security_policy(user.id, &policy)
+            .await?;
+
+        let tags = web_security
+            .update_content_security_policy(user.id, &policy, Some(vec![]))
+            .await?
+            .unwrap();
+        assert!(tags.is_empty());
+
+        let tags_map = web_security.get_csp_tags(&[policy.id]).await?;
+        assert!(!tags_map.contains_key(&policy.id) || tags_map[&policy.id].is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_csp_with_nonexistent_tag_ids_fails(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let policy = mock_csp(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "csp-name",
+            vec![EntityTag::from(uuid!(
+                "00000000-0000-0000-0000-000000000099"
+            ))],
+        )?;
+
+        let web_security = db.web_security();
+        let result = web_security
+            .insert_content_security_policy(user.id, &policy)
+            .await;
+        assert!(result.is_err());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_csp_returns_tags_ordered_by_name(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag_z = db.insert_user_tag(user.id, "zebra", "primary").await?;
+        let tag_a = db.insert_user_tag(user.id, "alpha", "danger").await?;
+        let tag_m = db.insert_user_tag(user.id, "middle", "success").await?;
+
+        let policy = mock_csp(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "csp-name",
+            vec![
+                EntityTag::from(tag_z.id),
+                EntityTag::from(tag_a.id),
+                EntityTag::from(tag_m.id),
+            ],
+        )?;
+
+        let web_security = db.web_security();
+        let tags = web_security
+            .insert_content_security_policy(user.id, &policy)
+            .await?;
+        let names: Vec<&str> = tags.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, vec!["alpha", "middle", "zebra"]);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_csp_with_tags_is_atomic(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag_a = db.insert_user_tag(user.id, "alpha", "primary").await?;
+        let tag_b = db.insert_user_tag(user.id, "beta", "danger").await?;
+
+        let policy = mock_csp(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "csp-name",
+            vec![EntityTag::from(tag_a.id), EntityTag::from(tag_b.id)],
+        )?;
+
+        let web_security = db.web_security();
+        let tags = web_security
+            .insert_content_security_policy(user.id, &policy)
+            .await?;
+
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].name, "alpha");
+        assert_eq!(tags[1].name, "beta");
+
+        let fetched = web_security
+            .get_content_security_policy(user.id, policy.id)
+            .await?;
+        assert!(fetched.is_some());
+
+        let tags_map = web_security.get_csp_tags(&[policy.id]).await?;
+        assert_eq!(tags_map[&policy.id], tags);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_csp_with_tags_empty_tags(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let policy = mock_csp(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "csp-name",
+            vec![],
+        )?;
+
+        let web_security = db.web_security();
+        let tags = web_security
+            .insert_content_security_policy(user.id, &policy)
+            .await?;
+
+        assert!(tags.is_empty());
+
+        let fetched = web_security
+            .get_content_security_policy(user.id, policy.id)
+            .await?;
+        assert!(fetched.is_some());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn update_csp_with_tags_replaces_tags(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag_a = db.insert_user_tag(user.id, "alpha", "primary").await?;
+        let tag_b = db.insert_user_tag(user.id, "beta", "danger").await?;
+        let tag_c = db.insert_user_tag(user.id, "gamma", "success").await?;
+
+        let policy = mock_csp(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "csp-name",
+            vec![EntityTag::from(tag_a.id), EntityTag::from(tag_b.id)],
+        )?;
+
+        let web_security = db.web_security();
+        web_security
+            .insert_content_security_policy(user.id, &policy)
+            .await?;
+
+        let updated = mock_csp(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "updated-name",
+            vec![],
+        )?;
+        let tags = web_security
+            .update_content_security_policy(user.id, &updated, Some(vec![tag_b.id, tag_c.id]))
+            .await?
+            .unwrap();
+
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].name, "beta");
+        assert_eq!(tags[1].name, "gamma");
+
+        let fetched = web_security
+            .get_content_security_policy(user.id, policy.id)
+            .await?
+            .unwrap();
+        assert_eq!(fetched.name, "updated-name");
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn update_csp_with_tags_clears_tags(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag = db.insert_user_tag(user.id, "alpha", "primary").await?;
+
+        let policy = mock_csp(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "csp-name",
+            vec![EntityTag::from(tag.id)],
+        )?;
+
+        let web_security = db.web_security();
+        web_security
+            .insert_content_security_policy(user.id, &policy)
+            .await?;
+
+        let tags = web_security
+            .update_content_security_policy(user.id, &policy, Some(vec![]))
+            .await?
+            .unwrap();
+        assert!(tags.is_empty());
+
+        let tags_map = web_security.get_csp_tags(&[policy.id]).await?;
+        assert!(!tags_map.contains_key(&policy.id) || tags_map[&policy.id].is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_csp_with_tags_rolls_back_on_invalid_tags(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let policy = mock_csp(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "csp-name",
+            vec![EntityTag::from(uuid!(
+                "00000000-0000-0000-0000-000000000099"
+            ))],
+        )?;
+
+        let web_security = db.web_security();
+        let result = web_security
+            .insert_content_security_policy(user.id, &policy)
+            .await;
+        assert!(result.is_err());
+
+        let fetched = web_security
+            .get_content_security_policy(user.id, policy.id)
+            .await?;
+        assert!(fetched.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_csp_with_tags_handles_duplicate_tag_ids(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag = db.insert_user_tag(user.id, "alpha", "primary").await?;
+
+        let policy = mock_csp(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "csp-name",
+            vec![EntityTag::from(tag.id), EntityTag::from(tag.id)],
+        )?;
+
+        let web_security = db.web_security();
+        let result = web_security
+            .insert_content_security_policy(user.id, &policy)
+            .await;
+
+        match result {
+            Ok(tags) => {
+                assert_eq!(tags.len(), 1);
+                assert_eq!(tags[0].name, "alpha");
+            }
+            Err(_) => {
+                let fetched = web_security
+                    .get_content_security_policy(user.id, policy.id)
+                    .await?;
+                assert!(fetched.is_none());
+            }
+        }
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn update_csp_with_tags_rolls_back_on_invalid_tags(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user).await?;
+
+        let tag = db.insert_user_tag(user.id, "alpha", "primary").await?;
+
+        let policy = mock_csp(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "csp-name",
+            vec![EntityTag::from(tag.id)],
+        )?;
+
+        let web_security = db.web_security();
+        web_security
+            .insert_content_security_policy(user.id, &policy)
+            .await?;
+
+        let updated = mock_csp(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "updated-name",
+            vec![],
+        )?;
+        let result = web_security
+            .update_content_security_policy(
+                user.id,
+                &updated,
+                Some(vec![uuid!("00000000-0000-0000-0000-000000000099")]),
+            )
+            .await;
+        assert!(result.is_err());
+
+        let fetched = web_security
+            .get_content_security_policy(user.id, policy.id)
+            .await?
+            .unwrap();
+        assert_eq!(fetched.name, "csp-name");
+
+        let tags_map = web_security.get_csp_tags(&[policy.id]).await?;
+        assert_eq!(tags_map[&policy.id].len(), 1);
+        assert_eq!(tags_map[&policy.id][0].name, "alpha");
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_csp_with_tags_isolated_between_users(pool: PgPool) -> anyhow::Result<()> {
+        let user_a = mock_user()?;
+        let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
+        let db = Database::create(pool).await?;
+        db.insert_user(&user_a).await?;
+        db.insert_user(&user_b).await?;
+
+        let tag_a = db.insert_user_tag(user_a.id, "alpha", "primary").await?;
+        let tag_b = db.insert_user_tag(user_b.id, "beta", "danger").await?;
+
+        let policy_a = mock_csp(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "csp-a",
+            vec![EntityTag::from(tag_a.id)],
+        )?;
+        let policy_b = mock_csp(
+            uuid!("00000000-0000-0000-0000-000000000003"),
+            "csp-b",
+            vec![EntityTag::from(tag_b.id)],
+        )?;
+
+        let web_security = db.web_security();
+        let tags_a = web_security
+            .insert_content_security_policy(user_a.id, &policy_a)
+            .await?;
+        let tags_b = web_security
+            .insert_content_security_policy(user_b.id, &policy_b)
+            .await?;
+
+        assert_eq!(tags_a.len(), 1);
+        assert_eq!(tags_a[0].name, "alpha");
+        assert_eq!(tags_b.len(), 1);
+        assert_eq!(tags_b[0].name, "beta");
+
+        let map_a = web_security.get_csp_tags(&[policy_a.id]).await?;
+        let map_b = web_security.get_csp_tags(&[policy_b.id]).await?;
+        assert_eq!(map_a[&policy_a.id].len(), 1);
+        assert_eq!(map_b[&policy_b.id].len(), 1);
+        assert_eq!(map_a[&policy_a.id][0].name, "alpha");
+        assert_eq!(map_b[&policy_b.id][0].name, "beta");
 
         Ok(())
     }

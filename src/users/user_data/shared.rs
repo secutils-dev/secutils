@@ -1,4 +1,4 @@
-use crate::users::secrets::UserSecret;
+use crate::users::{EntityTag, secrets::UserSecret};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -19,6 +19,8 @@ pub struct DataFileSecret {
     /// Base64-encoded passphrase-encrypted value, or `None` if values are not included.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub encrypted_value: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<EntityTag>,
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::timestamp")]
@@ -32,6 +34,7 @@ impl DataFileSecret {
             id: secret.id,
             name: secret.name,
             encrypted_value: None,
+            tags: secret.tags,
             created_at: secret.created_at,
             updated_at: secret.updated_at,
         }
@@ -41,10 +44,10 @@ impl DataFileSecret {
 #[cfg(test)]
 mod tests {
     use super::DataFileSecret;
-    use crate::users::secrets::UserSecret;
+    use crate::users::{EntityTag, secrets::UserSecret};
     use insta::assert_json_snapshot;
     use time::macros::datetime;
-    use uuid::Uuid;
+    use uuid::{Uuid, uuid};
 
     #[test]
     fn export_secret_from_user_secret() {
@@ -53,6 +56,11 @@ mod tests {
             user_id: crate::users::UserId::new(),
             name: "MY_SECRET".to_string(),
             encrypted_value: Some(vec![1, 2, 3]),
+            tags: vec![EntityTag {
+                id: uuid!("00000000-0000-0000-0000-000000000001"),
+                name: "tag".to_string(),
+                color: "#color".to_string(),
+            }],
             created_at: datetime!(2020-01-01 00:00:00 UTC),
             updated_at: datetime!(2020-06-01 00:00:00 UTC),
         });
@@ -60,6 +68,13 @@ mod tests {
         {
           "id": "00000000-0000-0000-0000-000000000000",
           "name": "MY_SECRET",
+          "tags": [
+            {
+              "id": "00000000-0000-0000-0000-000000000001",
+              "name": "tag",
+              "color": "#color"
+            }
+          ],
           "createdAt": 1577836800,
           "updatedAt": 1590969600
         }
@@ -72,6 +87,7 @@ mod tests {
             id: Uuid::nil(),
             name: "MY_SECRET".to_string(),
             encrypted_value: Some("base64data".to_string()),
+            tags: vec![],
             created_at: datetime!(2020-01-01 00:00:00 UTC),
             updated_at: datetime!(2020-06-01 00:00:00 UTC),
         };

@@ -35,6 +35,7 @@ import {
   USER_SETTINGS_KEY_COMMON_UI_THEME,
 } from '../model';
 import { SecretsTab } from './secrets_tab';
+import { TagsTab } from './tags_tab';
 import { signupWithPasskey } from '../model/webauthn';
 import { getOryApi } from '../tools/ory';
 import { isWebAuthnSupported } from '../tools/webauthn';
@@ -178,7 +179,7 @@ export function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed }: Prop
     </EuiFormRow>
   ) : null;
 
-  const [selectedTab, setSelectedTab] = useState<'general' | 'security' | 'secrets' | 'scripts' | 'account'>(
+  const [selectedTab, setSelectedTab] = useState<'general' | 'security' | 'tags' | 'secrets' | 'scripts' | 'account'>(
     importUrl ? 'account' : 'general',
   );
   let selectedTabContent;
@@ -311,6 +312,8 @@ export function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed }: Prop
         {passkeySection}
       </EuiDescribedFormGroup>
     );
+  } else if (selectedTab === 'tags') {
+    selectedTabContent = <TagsTab addToast={addToast} />;
   } else if (selectedTab === 'secrets') {
     selectedTabContent = <SecretsTab addToast={addToast} />;
   } else if (selectedTab === 'scripts') {
@@ -502,6 +505,9 @@ export function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed }: Prop
           </EuiTab>
           <EuiTab onClick={() => setSelectedTab('security')} isSelected={selectedTab === 'security'}>
             Security
+          </EuiTab>
+          <EuiTab onClick={() => setSelectedTab('tags')} isSelected={selectedTab === 'tags'}>
+            Tags
           </EuiTab>
           <EuiTab onClick={() => setSelectedTab('secrets')} isSelected={selectedTab === 'secrets'}>
             Secrets

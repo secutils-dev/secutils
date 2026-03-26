@@ -124,6 +124,16 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
                             )
                             .route("/_import", web::post().to(handlers::user_data_import)),
                     )
+                    .route("/user/tags", web::get().to(handlers::user_tags_list))
+                    .route("/user/tags", web::post().to(handlers::user_tags_create))
+                    .route(
+                        "/user/tags/{tag_id}",
+                        web::put().to(handlers::user_tags_update),
+                    )
+                    .route(
+                        "/user/tags/{tag_id}",
+                        web::delete().to(handlers::user_tags_delete),
+                    )
                     .route("/user/secrets", web::get().to(handlers::user_secrets_list))
                     .route(
                         "/user/secrets",

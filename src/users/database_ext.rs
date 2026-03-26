@@ -98,7 +98,7 @@ WHERE u.handle = $1
     pub async fn insert_user<U: AsRef<User>>(&self, user: U) -> anyhow::Result<()> {
         let raw_user = RawUser::from(user.as_ref());
 
-        let tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await?;
 
         // Insert user.
         query!(
@@ -111,7 +111,7 @@ VALUES ( $1, $2, $3, $4 )
             &raw_user.handle,
             raw_user.created_at
         )
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
         // Insert user subscription.
@@ -127,7 +127,7 @@ VALUES ( $1, $2, $3, $4, $5, $6 )
             raw_user.subscription_trial_started_at,
             raw_user.subscription_trial_ends_at
         )
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
         Ok(tx.commit().await?)
@@ -137,7 +137,7 @@ VALUES ( $1, $2, $3, $4, $5, $6 )
     pub async fn upsert_user<U: AsRef<User>>(&self, user: U) -> anyhow::Result<()> {
         let raw_user = RawUser::from(user.as_ref());
 
-        let tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await?;
 
         // Update user
         query!(r#"
@@ -150,7 +150,7 @@ ON CONFLICT(id) DO UPDATE SET email=excluded.email, handle=excluded.handle, crea
             &raw_user.handle,
             raw_user.created_at
         )
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
 
         // Update user subscription.
@@ -167,7 +167,7 @@ ON CONFLICT(user_id) DO UPDATE SET tier=excluded.tier, started_at=excluded.start
             raw_user.subscription_trial_started_at,
             raw_user.subscription_trial_ends_at
         )
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
 
         Ok(tx.commit().await?)

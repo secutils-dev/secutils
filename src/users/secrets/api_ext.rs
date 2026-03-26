@@ -3,13 +3,32 @@ use crate::{
     error::Error,
     network::{DnsResolver, EmailTransport},
     users::{
-        User,
+        EntityTag, User,
         secrets::{SecretsAccess, SecretsEncryption, UserSecret},
     },
+    utils::webhooks::{ResponderSettings, RespondersUpdateParams},
 };
+use serde::Deserialize;
 use std::collections::HashMap;
+use time::OffsetDateTime;
 use tracing::error;
 use uuid::Uuid;
+
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretCreateParams {
+    pub name: String,
+    pub value: String,
+    #[serde(default)]
+    pub tag_ids: Vec<Uuid>,
+}
+
+#[derive(Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretUpdateParams {
+    pub value: String,
+    pub tag_ids: Option<Vec<Uuid>>,
+}
 
 /// Maximum length for a secret name.
 const MAX_SECRET_NAME_LENGTH: usize = 128;
@@ -28,19 +47,35 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
 
     /// Lists all secrets for the user (metadata only, no values).
     pub async fn list_secrets(&self) -> anyhow::Result<Vec<UserSecret>> {
-        self.api.db.get_user_secrets(self.user.id, false).await
+        let secrets_db = self.api.db.secrets();
+        let mut secrets = secrets_db.get_user_secrets(self.user.id, false).await?;
+        let ids: Vec<Uuid> = secrets.iter().map(|s| s.id).collect();
+        let mut tags_map = secrets_db.get_secret_tags(&ids).await?;
+        for secret in &mut secrets {
+            secret.tags = tags_map.remove(&secret.id).unwrap_or_default();
+        }
+        Ok(secrets)
     }
 
     /// Returns secrets with the specified IDs.
     pub async fn bulk_get_secrets(&self, ids: &[Uuid]) -> anyhow::Result<Vec<UserSecret>> {
-        self.api.db.bulk_get_user_secrets(self.user.id, ids).await
+        let secrets_db = self.api.db.secrets();
+        let mut secrets = secrets_db.bulk_get_user_secrets(self.user.id, ids).await?;
+        let mut tags_map = secrets_db
+            .get_secret_tags(&secrets.iter().map(|s| s.id).collect::<Vec<_>>())
+            .await?;
+        for secret in &mut secrets {
+            secret.tags = tags_map.remove(&secret.id).unwrap_or_default();
+        }
+        Ok(secrets)
     }
 
     /// Creates a new secret after validating name, value, and subscription limits.
-    pub async fn create_secret(&self, name: &str, value: &str) -> anyhow::Result<UserSecret> {
-        Self::validate_name(name)?;
-        Self::validate_value(value)?;
+    pub async fn create_secret(&self, params: SecretCreateParams) -> anyhow::Result<UserSecret> {
+        Self::validate_name(&params.name)?;
+        Self::validate_value(&params.value)?;
 
+        let secrets_db = self.api.db.secrets();
         let max_secrets = self
             .user
             .subscription
@@ -48,7 +83,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
             .config
             .secrets
             .max_secrets;
-        let count = self.api.db.count_user_secrets(self.user.id).await?;
+        let count = secrets_db.count_user_secrets(self.user.id).await?;
         if count as usize >= max_secrets {
             return Err(anyhow::Error::from(Error::client(format!(
                 "Maximum number of secrets ({max_secrets}) reached."
@@ -56,34 +91,71 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
         }
 
         let encryption = self.get_encryption()?;
-        let encrypted_value = encryption.encrypt(value.as_bytes())?;
-        let secret = self
-            .api
-            .db
-            .insert_user_secret(self.user.id, name, &encrypted_value)
-            .await?;
+        let encrypted_value = encryption.encrypt(params.value.as_bytes())?;
+
+        // Preserve timestamp only up to seconds.
+        let created_at =
+            OffsetDateTime::from_unix_timestamp(OffsetDateTime::now_utc().unix_timestamp())?;
+        let secret = UserSecret {
+            id: Uuid::now_v7(),
+            user_id: self.user.id,
+            name: params.name,
+            encrypted_value: Some(encrypted_value),
+            tags: params.tag_ids.into_iter().map(EntityTag::from).collect(),
+            created_at,
+            updated_at: created_at,
+        };
+
+        let tags = secrets_db.insert_user_secret(self.user.id, &secret).await?;
 
         self.sync_tracker_secrets().await;
-        Ok(secret)
+        Ok(UserSecret {
+            tags,
+            encrypted_value: None,
+            ..secret
+        })
     }
 
     /// Updates an existing secret's value.
-    pub async fn update_secret(&self, id: Uuid, value: &str) -> anyhow::Result<UserSecret> {
-        Self::validate_value(value)?;
+    pub async fn update_secret(
+        &self,
+        id: Uuid,
+        params: SecretUpdateParams,
+    ) -> anyhow::Result<UserSecret> {
+        Self::validate_value(&params.value)?;
 
-        let encryption = self.get_encryption()?;
-        let encrypted_value = encryption.encrypt(value.as_bytes())?;
-        let secret = self
-            .api
-            .db
-            .update_user_secret(self.user.id, id, &encrypted_value)
+        let secrets_db = self.api.db.secrets();
+        let existing_secret = secrets_db
+            .get_user_secrets(self.user.id, false)
             .await?
+            .into_iter()
+            .find(|s| s.id == id)
             .ok_or_else(|| {
                 anyhow::Error::from(Error::not_found(format!("Secret '{id}' not found.")))
             })?;
 
+        let encryption = self.get_encryption()?;
+        let encrypted_value = encryption.encrypt(params.value.as_bytes())?;
+
+        let secret = UserSecret {
+            encrypted_value: Some(encrypted_value),
+            // Preserve timestamp only up to seconds.
+            updated_at: OffsetDateTime::from_unix_timestamp(
+                OffsetDateTime::now_utc().unix_timestamp(),
+            )?,
+            ..existing_secret
+        };
+
+        let updated_tags = secrets_db
+            .update_user_secret(self.user.id, &secret, params.tag_ids)
+            .await?;
+
         self.sync_tracker_secrets().await;
-        Ok(secret)
+        Ok(UserSecret {
+            tags: updated_tags.unwrap_or(secret.tags),
+            encrypted_value: None,
+            ..secret
+        })
     }
 
     /// Deletes a secret by id and cleans up dangling references in responders and trackers.
@@ -91,6 +163,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
         let secret = self
             .api
             .db
+            .secrets()
             .remove_user_secret(self.user.id, id)
             .await?
             .ok_or_else(|| {
@@ -136,14 +209,20 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
 
     async fn cleanup_responder_secrets(&self, name: &str) -> anyhow::Result<()> {
         let webhooks_db = self.api.db.webhooks();
+        let webhooks = self.api.webhooks(self.user);
         let responders = webhooks_db.get_responders(self.user.id).await?;
-        for mut responder in responders {
+        for responder in responders {
             if let SecretsAccess::Selected { ref secrets } = responder.settings.secrets
                 && secrets.contains(&name.to_string())
             {
-                responder.settings.secrets = responder.settings.secrets.without_secret(name);
-                webhooks_db
-                    .update_responder(self.user.id, &responder)
+                let _ = webhooks
+                    .update_responder(
+                        responder.id,
+                        RespondersUpdateParams::with_settings(ResponderSettings {
+                            secrets: responder.settings.secrets.without_secret(name),
+                            ..responder.settings
+                        }),
+                    )
                     .await?;
             }
         }
@@ -153,25 +232,31 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
     async fn cleanup_tracker_secrets(&self, name: &str) -> anyhow::Result<()> {
         let web_scraping_db = self.api.db.web_scraping(self.user.id);
 
-        // Clean up page tracker secrets (local DB column).
+        // Clean up page tracker secrets (local DB column only, no Retrack round-trip).
         let trackers = web_scraping_db.get_page_trackers().await?;
-        for mut tracker in trackers {
+        for tracker in trackers {
             if let SecretsAccess::Selected { ref secrets } = tracker.secrets
                 && secrets.contains(&name.to_string())
             {
-                tracker.secrets = tracker.secrets.without_secret(name);
-                web_scraping_db.update_page_tracker(&tracker).await?;
+                let updated = crate::utils::web_scraping::PageTracker {
+                    secrets: tracker.secrets.without_secret(name),
+                    ..tracker
+                };
+                web_scraping_db.update_page_tracker(&updated, None).await?;
             }
         }
 
-        // Clean up API tracker secrets (local DB column).
+        // Clean up API tracker secrets (local DB column only, no Retrack round-trip).
         let api_trackers = web_scraping_db.get_api_trackers().await?;
-        for mut tracker in api_trackers {
+        for tracker in api_trackers {
             if let SecretsAccess::Selected { ref secrets } = tracker.secrets
                 && secrets.contains(&name.to_string())
             {
-                tracker.secrets = tracker.secrets.without_secret(name);
-                web_scraping_db.update_api_tracker(&tracker).await?;
+                let updated = crate::utils::web_scraping::ApiTracker {
+                    secrets: tracker.secrets.without_secret(name),
+                    ..tracker
+                };
+                web_scraping_db.update_api_tracker(&updated, None).await?;
             }
         }
 
@@ -199,7 +284,12 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
 
     pub async fn decrypt_all_secrets(&self) -> anyhow::Result<HashMap<String, String>> {
         let encryption = self.get_encryption()?;
-        let secrets = self.api.db.get_user_secrets(self.user.id, true).await?;
+        let secrets = self
+            .api
+            .db
+            .secrets()
+            .get_user_secrets(self.user.id, true)
+            .await?;
         let mut map = HashMap::with_capacity(secrets.len());
         for secret in secrets {
             if let Some(encrypted) = secret.encrypted_value {
@@ -283,7 +373,7 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 
 #[cfg(test)]
 mod tests {
-    use super::is_valid_secret_name;
+    use super::{SecretCreateParams, SecretUpdateParams, is_valid_secret_name};
     use crate::{
         retrack::tests::mock_retrack_tracker,
         tests::{mock_api_with_config, mock_config, mock_user},
@@ -342,23 +432,42 @@ mod tests {
 
         let secrets_api = api.secrets(&mock_user);
 
-        let err = secrets_api.create_secret("", "value").await.unwrap_err();
-        assert!(err.to_string().contains("Secret name must"));
-
         let err = secrets_api
-            .create_secret("_invalid", "value")
+            .create_secret(SecretCreateParams {
+                name: "".into(),
+                value: "value".into(),
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err();
         assert!(err.to_string().contains("Secret name must"));
 
         let err = secrets_api
-            .create_secret("123abc", "value")
+            .create_secret(SecretCreateParams {
+                name: "_invalid".into(),
+                value: "value".into(),
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err();
         assert!(err.to_string().contains("Secret name must"));
 
         let err = secrets_api
-            .create_secret(&"a".repeat(129), "value")
+            .create_secret(SecretCreateParams {
+                name: "123abc".into(),
+                value: "value".into(),
+                tag_ids: vec![],
+            })
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("Secret name must"));
+
+        let err = secrets_api
+            .create_secret(SecretCreateParams {
+                name: "a".repeat(129),
+                value: "value".into(),
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err();
         assert!(err.to_string().contains("Secret name must"));
@@ -377,13 +486,21 @@ mod tests {
         let secrets_api = api.secrets(&mock_user);
 
         let err = secrets_api
-            .create_secret("VALID_NAME", "")
+            .create_secret(SecretCreateParams {
+                name: "VALID_NAME".into(),
+                value: "".into(),
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err();
         assert!(err.to_string().contains("Secret value cannot be empty"));
 
         let err = secrets_api
-            .create_secret("VALID_NAME", &"x".repeat(10 * 1024 + 1))
+            .create_secret(SecretCreateParams {
+                name: "VALID_NAME".into(),
+                value: "x".repeat(10 * 1024 + 1),
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err();
         assert!(err.to_string().contains("Secret value must be at most"));
@@ -401,11 +518,27 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        secrets_api.create_secret("KEY_A", "val-a").await?;
-        secrets_api.create_secret("KEY_B", "val-b").await?;
+        secrets_api
+            .create_secret(SecretCreateParams {
+                name: "KEY_A".into(),
+                value: "val-a".into(),
+                tag_ids: vec![],
+            })
+            .await?;
+        secrets_api
+            .create_secret(SecretCreateParams {
+                name: "KEY_B".into(),
+                value: "val-b".into(),
+                tag_ids: vec![],
+            })
+            .await?;
 
         let err = secrets_api
-            .create_secret("KEY_C", "val-c")
+            .create_secret(SecretCreateParams {
+                name: "KEY_C".into(),
+                value: "val-c".into(),
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err();
         assert!(err.to_string().contains("Maximum number of secrets (2)"));
@@ -422,7 +555,13 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        let created = secrets_api.create_secret("MY_TOKEN", "secret-val").await?;
+        let created = secrets_api
+            .create_secret(SecretCreateParams {
+                name: "MY_TOKEN".into(),
+                value: "secret-val".into(),
+                tag_ids: vec![],
+            })
+            .await?;
         assert_eq!(created.name, "MY_TOKEN");
         assert!(created.encrypted_value.is_none());
 
@@ -443,9 +582,23 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        let created = secrets_api.create_secret("MY_KEY", "old-value").await?;
+        let created = secrets_api
+            .create_secret(SecretCreateParams {
+                name: "MY_KEY".into(),
+                value: "old-value".into(),
+                tag_ids: vec![],
+            })
+            .await?;
 
-        let updated = secrets_api.update_secret(created.id, "new-value").await?;
+        let updated = secrets_api
+            .update_secret(
+                created.id,
+                SecretUpdateParams {
+                    value: "new-value".into(),
+                    tag_ids: None,
+                },
+            )
+            .await?;
         assert_eq!(updated.name, "MY_KEY");
 
         let decrypted = secrets_api
@@ -466,7 +619,13 @@ mod tests {
 
         let err = api
             .secrets(&mock_user)
-            .update_secret(uuid::Uuid::now_v7(), "val")
+            .update_secret(
+                uuid::Uuid::now_v7(),
+                SecretUpdateParams {
+                    value: "val".into(),
+                    tag_ids: None,
+                },
+            )
             .await
             .unwrap_err();
         assert!(err.to_string().contains("not found"));
@@ -483,7 +642,13 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        let created = secrets_api.create_secret("TO_DELETE", "val").await?;
+        let created = secrets_api
+            .create_secret(SecretCreateParams {
+                name: "TO_DELETE".into(),
+                value: "val".into(),
+                tag_ids: vec![],
+            })
+            .await?;
         assert_eq!(secrets_api.list_secrets().await?.len(), 1);
 
         let deleted = secrets_api.delete_secret(created.id).await?;
@@ -520,8 +685,20 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        let secret_a = secrets_api.create_secret("KEY_A", "val-a").await?;
-        secrets_api.create_secret("KEY_B", "val-b").await?;
+        let secret_a = secrets_api
+            .create_secret(SecretCreateParams {
+                name: "KEY_A".into(),
+                value: "val-a".into(),
+                tag_ids: vec![],
+            })
+            .await?;
+        secrets_api
+            .create_secret(SecretCreateParams {
+                name: "KEY_B".into(),
+                value: "val-b".into(),
+                tag_ids: vec![],
+            })
+            .await?;
 
         let now = OffsetDateTime::from_unix_timestamp(946720800)?;
         let responder = Responder {
@@ -544,6 +721,7 @@ mod tests {
                     secrets: vec!["KEY_A".to_string(), "KEY_B".to_string()],
                 },
             },
+            tags: vec![],
             created_at: now,
             updated_at: now,
         };
@@ -577,7 +755,13 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        let only_key = secrets_api.create_secret("ONLY_KEY", "val").await?;
+        let only_key = secrets_api
+            .create_secret(SecretCreateParams {
+                name: "ONLY_KEY".into(),
+                value: "val".into(),
+                tag_ids: vec![],
+            })
+            .await?;
 
         let now = OffsetDateTime::from_unix_timestamp(946720800)?;
         let responder = Responder {
@@ -600,6 +784,7 @@ mod tests {
                     secrets: vec!["ONLY_KEY".to_string()],
                 },
             },
+            tags: vec![],
             created_at: now,
             updated_at: now,
         };
@@ -627,7 +812,13 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        let key_x = secrets_api.create_secret("KEY_X", "val").await?;
+        let key_x = secrets_api
+            .create_secret(SecretCreateParams {
+                name: "KEY_X".into(),
+                value: "val".into(),
+                tag_ids: vec![],
+            })
+            .await?;
 
         let now = OffsetDateTime::from_unix_timestamp(946720800)?;
         let responder = Responder {
@@ -648,6 +839,7 @@ mod tests {
                 script: None,
                 secrets: SecretsAccess::All,
             },
+            tags: vec![],
             created_at: now,
             updated_at: now,
         };
@@ -673,6 +865,7 @@ mod tests {
             user_id: uuid!("00000000-0000-0000-0000-000000000001").into(),
             retrack: RetrackTracker::from_reference(uuid!("00000000-0000-0000-0000-000000000010")),
             secrets,
+            tags: vec![],
             created_at: now,
             updated_at: now,
         }
@@ -687,8 +880,20 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        let tk_a = secrets_api.create_secret("TK_A", "val-a").await?;
-        secrets_api.create_secret("TK_B", "val-b").await?;
+        let tk_a = secrets_api
+            .create_secret(SecretCreateParams {
+                name: "TK_A".into(),
+                value: "val-a".into(),
+                tag_ids: vec![],
+            })
+            .await?;
+        secrets_api
+            .create_secret(SecretCreateParams {
+                name: "TK_B".into(),
+                value: "val-b".into(),
+                tag_ids: vec![],
+            })
+            .await?;
 
         let tracker = mock_page_tracker(SecretsAccess::Selected {
             secrets: vec!["TK_A".to_string(), "TK_B".to_string()],
@@ -727,7 +932,13 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        let lone_key = secrets_api.create_secret("LONE_KEY", "val").await?;
+        let lone_key = secrets_api
+            .create_secret(SecretCreateParams {
+                name: "LONE_KEY".into(),
+                value: "val".into(),
+                tag_ids: vec![],
+            })
+            .await?;
 
         let tracker = mock_page_tracker(SecretsAccess::Selected {
             secrets: vec!["LONE_KEY".to_string()],
@@ -760,7 +971,13 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        let tk_x = secrets_api.create_secret("TK_X", "val").await?;
+        let tk_x = secrets_api
+            .create_secret(SecretCreateParams {
+                name: "TK_X".into(),
+                value: "val".into(),
+                tag_ids: vec![],
+            })
+            .await?;
 
         let tracker = mock_page_tracker(SecretsAccess::All);
         api.db
@@ -789,9 +1006,27 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         let secrets_api = api.secrets(&mock_user);
-        secrets_api.create_secret("SEC_A", "val-a").await?;
-        secrets_api.create_secret("SEC_B", "val-b").await?;
-        secrets_api.create_secret("SEC_C", "val-c").await?;
+        secrets_api
+            .create_secret(SecretCreateParams {
+                name: "SEC_A".into(),
+                value: "val-a".into(),
+                tag_ids: vec![],
+            })
+            .await?;
+        secrets_api
+            .create_secret(SecretCreateParams {
+                name: "SEC_B".into(),
+                value: "val-b".into(),
+                tag_ids: vec![],
+            })
+            .await?;
+        secrets_api
+            .create_secret(SecretCreateParams {
+                name: "SEC_C".into(),
+                value: "val-c".into(),
+                tag_ids: vec![],
+            })
+            .await?;
 
         // None mode returns empty.
         let result = secrets_api
@@ -836,7 +1071,11 @@ mod tests {
 
         let err = api
             .secrets(&mock_user)
-            .create_secret("KEY", "val")
+            .create_secret(SecretCreateParams {
+                name: "KEY".into(),
+                value: "val".into(),
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err();
         assert!(
@@ -883,7 +1122,11 @@ mod tests {
         });
 
         api.secrets(&mock_user)
-            .create_secret("MY_KEY", "my-value")
+            .create_secret(SecretCreateParams {
+                name: "MY_KEY".into(),
+                value: "my-value".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
         retrack_get_mock.assert();
@@ -907,7 +1150,11 @@ mod tests {
         // Create secret first, before inserting the tracker so the initial sync is a no-op.
         let all_key = api
             .secrets(&mock_user)
-            .create_secret("ALL_KEY", "old-value")
+            .create_secret(SecretCreateParams {
+                name: "ALL_KEY".into(),
+                value: "old-value".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
         let tracker = mock_page_tracker(SecretsAccess::All);
@@ -934,7 +1181,13 @@ mod tests {
         });
 
         api.secrets(&mock_user)
-            .update_secret(all_key.id, "new-value")
+            .update_secret(
+                all_key.id,
+                SecretUpdateParams {
+                    value: "new-value".into(),
+                    tag_ids: None,
+                },
+            )
             .await?;
 
         retrack_get_mock.assert();
@@ -960,10 +1213,18 @@ mod tests {
         // Create two secrets first. The tracker only uses SEL_KEY.
         let sel_key = api
             .secrets(&mock_user)
-            .create_secret("SEL_KEY", "old-value")
+            .create_secret(SecretCreateParams {
+                name: "SEL_KEY".into(),
+                value: "old-value".into(),
+                tag_ids: vec![],
+            })
             .await?;
         api.secrets(&mock_user)
-            .create_secret("OTHER", "other-value")
+            .create_secret(SecretCreateParams {
+                name: "OTHER".into(),
+                value: "other-value".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
         let tracker = mock_page_tracker(SecretsAccess::Selected {
@@ -992,7 +1253,13 @@ mod tests {
         });
 
         api.secrets(&mock_user)
-            .update_secret(sel_key.id, "new-value")
+            .update_secret(
+                sel_key.id,
+                SecretUpdateParams {
+                    value: "new-value".into(),
+                    tag_ids: None,
+                },
+            )
             .await?;
 
         retrack_get_mock.assert();
@@ -1014,11 +1281,19 @@ mod tests {
         api.db.upsert_user(&mock_user).await?;
 
         api.secrets(&mock_user)
-            .create_secret("KEEP", "keep-val")
+            .create_secret(SecretCreateParams {
+                name: "KEEP".into(),
+                value: "keep-val".into(),
+                tag_ids: vec![],
+            })
             .await?;
         let del_secret = api
             .secrets(&mock_user)
-            .create_secret("DEL", "del-val")
+            .create_secret(SecretCreateParams {
+                name: "DEL".into(),
+                value: "del-val".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
         let tracker = mock_page_tracker(SecretsAccess::All);
@@ -1082,7 +1357,11 @@ mod tests {
         });
 
         api.secrets(&mock_user)
-            .create_secret("IGNORED", "val")
+            .create_secret(SecretCreateParams {
+                name: "IGNORED".into(),
+                value: "val".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
         // Retrack should never have been called.

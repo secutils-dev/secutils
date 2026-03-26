@@ -3,6 +3,7 @@ use crate::{
     utils::web_scraping::{ApiTrackerConfig, api_trackers::ApiTrackerTarget},
 };
 use serde::Deserialize;
+use uuid::Uuid;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -22,6 +23,9 @@ pub struct ApiTrackerCreateParams {
     /// Controls which user secrets are available to this tracker's scripts.
     #[serde(default)]
     pub secrets: SecretsAccess,
+    /// Tag IDs to assign to this API tracker.
+    #[serde(default)]
+    pub tag_ids: Vec<Uuid>,
 }
 
 const fn default_true() -> bool {
@@ -71,6 +75,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: SecretsAccess::None,
+                tag_ids: vec![],
             }
         );
 
@@ -136,6 +141,7 @@ mod tests {
                 },
                 notifications: true,
                 secrets: SecretsAccess::All,
+                tag_ids: vec![],
             }
         );
 

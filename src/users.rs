@@ -3,6 +3,7 @@ mod database_ext;
 mod scripts;
 mod secrets;
 mod settings;
+mod tags;
 mod user;
 mod user_data;
 mod user_id;
@@ -11,9 +12,10 @@ mod user_subscription;
 
 pub use self::{
     api_ext::errors::UserSignupError,
-    scripts::ScriptContext,
-    secrets::SecretsAccess,
+    scripts::{ScriptContext, ScriptCreateParams, ScriptUpdateParams},
+    secrets::{SecretCreateParams, SecretUpdateParams, SecretsAccess},
     settings::{UserSettings, UserSettingsSetter},
+    tags::{EntityTag, RawEntityTag, TagCreateParams, TagUpdateParams, UserTag, group_entity_tags},
     user::User,
     user_data::{
         UserDataExportParams, UserDataImportParams, UserDataImportPreviewParams, execute_import,

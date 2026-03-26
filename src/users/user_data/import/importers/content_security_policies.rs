@@ -4,14 +4,15 @@ use crate::{
     users::{
         User,
         user_data::import::{
-            ConflictResolution, ImportEntityResult, ImportEntitySelection, resolve_name,
-            should_skip,
+            ConflictResolution, ImportEntityResult, ImportEntitySelection, remap_tag_ids,
+            resolve_name, should_skip,
         },
     },
-    utils::web_security::ContentSecurityPolicy,
+    utils::web_security::{
+        ContentSecurityPoliciesCreateParams, ContentSecurityPolicy, ContentSecurityPolicyContent,
+    },
 };
 use std::collections::{HashMap, HashSet};
-use time::OffsetDateTime;
 use uuid::Uuid;
 
 pub async fn import_content_security_policies<DR: DnsResolver, ET: EmailTransport>(
@@ -19,12 +20,13 @@ pub async fn import_content_security_policies<DR: DnsResolver, ET: EmailTranspor
     user: &User,
     csps: &[ContentSecurityPolicy],
     selections: &HashMap<Uuid, &ImportEntitySelection>,
+    tag_id_map: &HashMap<Uuid, Uuid>,
 ) -> ImportEntityResult {
     let mut result = ImportEntityResult::default();
 
     // Pre-fetch existing CSPs once for overwritten resolution.
-    let existing_csps = api
-        .web_security()
+    let web_security_api = api.web_security();
+    let existing_csps = web_security_api
         .get_content_security_policies(user.id)
         .await
         .unwrap_or_default();
@@ -43,24 +45,21 @@ pub async fn import_content_security_policies<DR: DnsResolver, ET: EmailTranspor
         if selection.is_some_and(|s| s.conflict_resolution == Some(ConflictResolution::Overwrite))
             && let Some(e) = existing_csps.iter().find(|c| c.name == csp.name)
         {
-            let _ = api
-                .web_security()
+            let _ = web_security_api
                 .remove_content_security_policy(user.id, e.id)
                 .await;
             used_names.remove(&csp.name);
         }
 
-        let mut new_csp = csp.clone();
-        new_csp.id = Uuid::now_v7();
-        new_csp.name = resolved_name.clone();
-        let now = OffsetDateTime::now_utc();
-        new_csp.created_at = now;
-        new_csp.updated_at = now;
-
-        match api
-            .db
-            .web_security()
-            .insert_content_security_policy(user.id, &new_csp)
+        match web_security_api
+            .create_content_security_policy(
+                user.id,
+                ContentSecurityPoliciesCreateParams {
+                    name: resolved_name.clone(),
+                    content: ContentSecurityPolicyContent::Directives(csp.directives.clone()),
+                    tag_ids: remap_tag_ids(&csp.tags, tag_id_map),
+                },
+            )
             .await
         {
             Ok(_) => {
@@ -101,6 +100,7 @@ mod tests {
             directives: vec![ContentSecurityPolicyDirective::DefaultSrc(BTreeSet::from(
                 ["'self'".to_string()],
             ))],
+            tags: vec![],
             created_at: datetime!(2020-01-01 00:00:00 UTC),
             updated_at: datetime!(2020-01-01 00:00:00 UTC),
         }
@@ -112,6 +112,7 @@ mod tests {
             exported_at: datetime!(2020-01-01 12:00:00 UTC),
             secrets_encryption: None,
             data: UserDataImportFileData {
+                tags: vec![],
                 scripts: vec![],
                 secrets: vec![],
                 responders: vec![],

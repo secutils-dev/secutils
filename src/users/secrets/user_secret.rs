@@ -1,4 +1,4 @@
-use crate::users::UserId;
+use crate::users::{EntityTag, UserId};
 use serde::Serialize;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -18,6 +18,9 @@ pub struct UserSecret {
     /// The encrypted value, populated only for internal use (never serialized).
     #[serde(skip)]
     pub encrypted_value: Option<Vec<u8>>,
+    /// Tags assigned to this secret.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<EntityTag>,
     /// When the secret was first created.
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,

@@ -47,7 +47,7 @@ test.describe('User Scripts guide screenshots', () => {
     const modal = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add script' }) });
     await expect(modal).toBeVisible({ timeout: 15000 });
     await modal.getByPlaceholder('MY_SCRIPT').fill('EXTRACTOR_SCRIPT');
-    await modal.getByRole('combobox').selectOption('api_extractor');
+    await modal.getByLabel('Type').selectOption('api_extractor');
     // Wait for the Monaco editor to be ready
     await expect(modal.locator('.monaco-editor')).toBeVisible({ timeout: 15000 });
     await page.screenshot({ path: join(IMG_DIR, 'scripts_step2_form.png') });

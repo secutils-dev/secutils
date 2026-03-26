@@ -1,4 +1,4 @@
-use crate::utils::web_security::ContentSecurityPolicyDirective;
+use crate::{users::EntityTag, utils::web_security::ContentSecurityPolicyDirective};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -13,6 +13,9 @@ pub struct ContentSecurityPolicy {
     pub name: String,
     /// Content security policy directives.
     pub directives: Vec<ContentSecurityPolicyDirective>,
+    /// Tags assigned to this content security policy.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<EntityTag>,
     /// Date and time when the content security policy was created.
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
@@ -38,6 +41,7 @@ mod tests {
             directives: vec![
                 ContentSecurityPolicyDirective::ChildSrc(["'self'".to_string()].into_iter().collect())
             ],
+            tags: vec![],
             // January 1, 2000 11:00:00
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             // January 1, 2000 11:00:10
@@ -77,6 +81,7 @@ mod tests {
                         .into_iter()
                         .collect()
                 )],
+                tags: vec![],
                 // January 1, 2000 11:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 // January 1, 2000 11:00:10
@@ -93,6 +98,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "some-name".to_string(),
                 directives: vec![ContentSecurityPolicyDirective::Sandbox(BTreeSet::new())],
+                tags: vec![],
                 // January 1, 2000 11:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 // January 1, 2000 11:00:10

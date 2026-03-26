@@ -1,4 +1,4 @@
-use crate::utils::certificates::CertificateAttributes;
+use crate::{users::EntityTag, utils::certificates::CertificateAttributes};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -13,6 +13,9 @@ pub struct CertificateTemplate {
     pub name: String,
     /// Attributes of the certificate that the template defines.
     pub attributes: CertificateAttributes,
+    /// Tags assigned to this certificate template.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<EntityTag>,
     /// Date and time when the certificate template was created.
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
@@ -50,6 +53,7 @@ mod tests {
                 .set_common_name("CA Issuer")
                 .set_country("US")
                 .build(),
+                tags: vec![],
                 // January 1, 2000 11:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 // January 1, 2000 11:00:10
@@ -119,6 +123,7 @@ mod tests {
                 .set_common_name("CA Issuer")
                 .set_country("US")
                 .build(),
+                tags: vec![],
                 // January 1, 2000 11:00:00
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 // January 1, 2000 11:00:10

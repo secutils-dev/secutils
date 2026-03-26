@@ -7,14 +7,15 @@ use self::raw_private_key::RawPrivateKey;
 use crate::{
     database::Database,
     error::Error as SecutilsError,
-    users::UserId,
+    users::{EntityTag, RawEntityTag, UserId, group_entity_tags},
     utils::certificates::{
         CertificateTemplate, PrivateKey,
         database_ext::raw_certificate_template::RawCertificateTemplate,
     },
 };
 use anyhow::{anyhow, bail};
-use sqlx::{Pool, Postgres, error::ErrorKind as SqlxErrorKind, query, query_as};
+use sqlx::{Acquire, Pool, Postgres, error::ErrorKind as SqlxErrorKind, query, query_as};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// A database extension for the certificate utility-related operations.
@@ -49,13 +50,14 @@ WHERE user_id = $1 AND id = $2
         .transpose()
     }
 
-    /// Inserts private key.
+    /// Inserts private key (and associated tags). Returns resolved tags.
     pub async fn insert_private_key(
         &self,
         user_id: UserId,
         private_key: &PrivateKey,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Vec<EntityTag>> {
         let raw_private_key = RawPrivateKey::try_from(private_key)?;
+        let mut tx = self.pool.begin().await?;
         let result = query!(
             r#"
 INSERT INTO user_data_certificates_private_keys (user_id, id, name, alg, pkcs8, encrypted, created_at, updated_at)
@@ -70,7 +72,7 @@ VALUES ( $1, $2, $3, $4, $5, $6, $7, $8 )
             raw_private_key.created_at,
             raw_private_key.updated_at
         )
-            .execute(self.pool)
+            .execute(&mut *tx)
             .await;
 
         if let Err(err) = result {
@@ -91,16 +93,30 @@ VALUES ( $1, $2, $3, $4, $5, $6, $7, $8 )
             });
         }
 
-        Ok(())
+        let tags = if private_key.tags.is_empty() {
+            vec![]
+        } else {
+            Self::set_private_key_tags(
+                &mut *tx,
+                private_key.id,
+                &private_key.tags.iter().map(|t| t.id).collect::<Vec<_>>(),
+            )
+            .await?
+        };
+
+        tx.commit().await?;
+        Ok(tags)
     }
 
-    /// Updates private key (only `name` and `pkcs8` content can be updated due to password change).
+    /// Updates private key (and associated tags). Returns resolved tags.
     pub async fn update_private_key(
         &self,
         user_id: UserId,
         private_key: &PrivateKey,
-    ) -> anyhow::Result<()> {
+        tag_ids: Option<Vec<Uuid>>,
+    ) -> anyhow::Result<Option<Vec<EntityTag>>> {
         let raw_private_key = RawPrivateKey::try_from(private_key)?;
+        let mut tx = self.pool.begin().await?;
         let result = query!(
             r#"
 UPDATE user_data_certificates_private_keys
@@ -114,7 +130,7 @@ WHERE user_id = $1 AND id = $2
             raw_private_key.encrypted,
             raw_private_key.updated_at
         )
-        .execute(self.pool)
+        .execute(&mut *tx)
         .await;
 
         match result {
@@ -145,7 +161,14 @@ WHERE user_id = $1 AND id = $2
             }
         }
 
-        Ok(())
+        let updated_tags = if let Some(ref tag_ids) = tag_ids {
+            Some(Self::set_private_key_tags(&mut *tx, private_key.id, tag_ids).await?)
+        } else {
+            None
+        };
+
+        tx.commit().await?;
+        Ok(updated_tags)
     }
 
     /// Removes private key for the specified user with the specified ID.
@@ -293,13 +316,14 @@ WHERE user_id = $1 AND id = $2
         .transpose()
     }
 
-    /// Inserts certificate template.
+    /// Inserts certificate template (and associated tags). Returns resolved tags.
     pub async fn insert_certificate_template(
         &self,
         user_id: UserId,
         certificate_template: &CertificateTemplate,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Vec<EntityTag>> {
         let raw_certificate_template = RawCertificateTemplate::try_from(certificate_template)?;
+        let mut tx = self.pool.begin().await?;
         let result = query!(
             r#"
 INSERT INTO user_data_certificates_certificate_templates (user_id, id, name, attributes, created_at, updated_at)
@@ -312,7 +336,7 @@ VALUES ( $1, $2, $3, $4, $5, $6 )
             raw_certificate_template.created_at,
             raw_certificate_template.updated_at
         )
-            .execute(self.pool)
+            .execute(&mut *tx)
             .await;
 
         if let Err(err) = result {
@@ -333,16 +357,34 @@ VALUES ( $1, $2, $3, $4, $5, $6 )
             });
         }
 
-        Ok(())
+        let tags = if certificate_template.tags.is_empty() {
+            vec![]
+        } else {
+            Self::set_certificate_template_tags(
+                &mut *tx,
+                certificate_template.id,
+                &certificate_template
+                    .tags
+                    .iter()
+                    .map(|t| t.id)
+                    .collect::<Vec<_>>(),
+            )
+            .await?
+        };
+
+        tx.commit().await?;
+        Ok(tags)
     }
 
-    /// Updates certificate template.
+    /// Updates certificate template (and associated tags). Returns resolved tags.
     pub async fn update_certificate_template(
         &self,
         user_id: UserId,
         certificate_template: &CertificateTemplate,
-    ) -> anyhow::Result<()> {
+        tag_ids: Option<Vec<Uuid>>,
+    ) -> anyhow::Result<Option<Vec<EntityTag>>> {
         let raw_certificate_template = RawCertificateTemplate::try_from(certificate_template)?;
+        let mut tx = self.pool.begin().await?;
         let result = query!(
             r#"
 UPDATE user_data_certificates_certificate_templates
@@ -355,7 +397,7 @@ WHERE user_id = $1 AND id = $2
             raw_certificate_template.attributes,
             raw_certificate_template.updated_at
         )
-        .execute(self.pool)
+        .execute(&mut *tx)
         .await;
 
         match result {
@@ -386,7 +428,17 @@ WHERE user_id = $1 AND id = $2
             }
         }
 
-        Ok(())
+        let updated_tags = if let Some(ref tag_ids) = tag_ids {
+            Some(
+                Self::set_certificate_template_tags(&mut *tx, certificate_template.id, tag_ids)
+                    .await?,
+            )
+        } else {
+            None
+        };
+
+        tx.commit().await?;
+        Ok(updated_tags)
     }
 
     /// Removes certificate template for the specified user with the specified ID.
@@ -433,6 +485,132 @@ ORDER BY updated_at
         }
 
         Ok(certificate_templates)
+    }
+
+    /// Fetches tags for a batch of private keys.
+    pub async fn get_private_key_tags(
+        &self,
+        entity_ids: &[Uuid],
+    ) -> anyhow::Result<HashMap<Uuid, Vec<EntityTag>>> {
+        if entity_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let rows = query_as!(
+            RawEntityTag,
+            r#"
+SELECT jt.key_id AS entity_id, t.id, t.name, t.color
+FROM user_data_certificates_private_keys_tags jt
+JOIN user_tags t ON jt.tag_id = t.id
+WHERE jt.key_id = ANY($1)
+ORDER BY t.name ASC
+            "#,
+            entity_ids
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(group_entity_tags(rows))
+    }
+
+    async fn set_private_key_tags<'a>(
+        executor: impl Acquire<'a, Database = Postgres>,
+        entity_id: Uuid,
+        tag_ids: &[Uuid],
+    ) -> anyhow::Result<Vec<EntityTag>> {
+        let mut conn = executor.acquire().await?;
+        query!(
+            "DELETE FROM user_data_certificates_private_keys_tags WHERE key_id = $1",
+            entity_id
+        )
+        .execute(&mut *conn)
+        .await?;
+
+        if tag_ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        Ok(query_as!(
+            EntityTag,
+            r#"
+WITH inserted AS (
+    INSERT INTO user_data_certificates_private_keys_tags (key_id, tag_id)
+    SELECT $1, unnest($2::uuid[])
+    RETURNING key_id, tag_id
+)
+SELECT t.id, t.name, t.color
+FROM inserted i
+JOIN user_tags t ON i.tag_id = t.id
+ORDER BY t.name ASC
+            "#,
+            entity_id,
+            tag_ids
+        )
+        .fetch_all(&mut *conn)
+        .await?)
+    }
+
+    /// Fetches tags for a batch of certificate templates.
+    pub async fn get_certificate_template_tags(
+        &self,
+        entity_ids: &[Uuid],
+    ) -> anyhow::Result<HashMap<Uuid, Vec<EntityTag>>> {
+        if entity_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let rows = query_as!(
+            RawEntityTag,
+            r#"
+SELECT jt.template_id AS entity_id, t.id, t.name, t.color
+FROM user_data_certificates_certificate_templates_tags jt
+JOIN user_tags t ON jt.tag_id = t.id
+WHERE jt.template_id = ANY($1)
+ORDER BY t.name ASC
+            "#,
+            entity_ids
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(group_entity_tags(rows))
+    }
+
+    async fn set_certificate_template_tags<'a>(
+        executor: impl Acquire<'a, Database = Postgres>,
+        entity_id: Uuid,
+        tag_ids: &[Uuid],
+    ) -> anyhow::Result<Vec<EntityTag>> {
+        let mut conn = executor.acquire().await?;
+        query!(
+            "DELETE FROM user_data_certificates_certificate_templates_tags WHERE template_id = $1",
+            entity_id
+        )
+        .execute(&mut *conn)
+        .await?;
+
+        if tag_ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        Ok(query_as!(
+            EntityTag,
+            r#"
+WITH inserted AS (
+    INSERT INTO user_data_certificates_certificate_templates_tags (template_id, tag_id)
+    SELECT $1, unnest($2::uuid[])
+    RETURNING template_id, tag_id
+)
+SELECT t.id, t.name, t.color
+FROM inserted i
+JOIN user_tags t ON i.tag_id = t.id
+ORDER BY t.name ASC
+            "#,
+            entity_id,
+            tag_ids
+        )
+        .fetch_all(&mut *conn)
+        .await?)
     }
 }
 
@@ -494,6 +672,7 @@ mod tests {
                 },
                 pkcs8: vec![1, 2, 3],
                 encrypted: true,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
@@ -505,6 +684,7 @@ mod tests {
                 },
                 pkcs8: vec![4, 5, 6],
                 encrypted: false,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
@@ -556,6 +736,7 @@ mod tests {
             },
             pkcs8: vec![1, 2, 3],
             encrypted: true,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -596,6 +777,7 @@ mod tests {
                     },
                     pkcs8: vec![1, 2, 3],
                     encrypted: true,
+                    tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
@@ -613,9 +795,11 @@ mod tests {
                     },
                     pkcs8: vec![4, 5, 6],
                     encrypted: false,
+                    tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(956720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720820)?,
                 },
+                None,
             )
             .await?;
 
@@ -634,6 +818,7 @@ mod tests {
                 },
                 pkcs8: vec![4, 5, 6],
                 encrypted: false,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720820)?,
             }
@@ -658,6 +843,7 @@ mod tests {
             },
             pkcs8: vec![1, 2, 3],
             encrypted: true,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -673,6 +859,7 @@ mod tests {
             },
             pkcs8: vec![3, 4, 5],
             encrypted: true,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -692,9 +879,11 @@ mod tests {
                     },
                     pkcs8: vec![3, 4, 5],
                     encrypted: true,
+                    tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
+                None,
             )
             .await
             .unwrap_err()
@@ -729,9 +918,11 @@ mod tests {
                     },
                     pkcs8: vec![3, 4, 5],
                     encrypted: true,
+                    tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
+                None,
             )
             .await
             .unwrap_err()
@@ -761,6 +952,7 @@ mod tests {
                 },
                 pkcs8: vec![1, 2, 3],
                 encrypted: true,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
@@ -772,6 +964,7 @@ mod tests {
                 },
                 pkcs8: vec![4, 5, 6],
                 encrypted: false,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
@@ -848,6 +1041,7 @@ mod tests {
                 },
                 pkcs8: vec![1, 2, 3],
                 encrypted: true,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
@@ -859,6 +1053,7 @@ mod tests {
                 },
                 pkcs8: vec![4, 5, 6],
                 encrypted: false,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
@@ -895,6 +1090,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "ct-name".to_string(),
                 attributes: get_mock_certificate_attributes()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
@@ -902,6 +1098,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
                 name: "ct-name-2".to_string(),
                 attributes: get_mock_certificate_attributes()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
@@ -949,6 +1146,7 @@ mod tests {
             id: uuid!("00000000-0000-0000-0000-000000000001"),
             name: "ct-name".to_string(),
             attributes: get_mock_certificate_attributes()?,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -986,6 +1184,7 @@ mod tests {
                     id: uuid!("00000000-0000-0000-0000-000000000001"),
                     name: "ct-name".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
@@ -1016,9 +1215,11 @@ mod tests {
                             [ExtendedKeyUsage::EmailProtection].into_iter().collect(),
                         ),
                     },
+                    tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(956720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720820)?,
                 },
+                None,
             )
             .await?;
 
@@ -1050,6 +1251,7 @@ mod tests {
                         [ExtendedKeyUsage::EmailProtection].into_iter().collect()
                     ),
                 },
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720820)?,
             }
@@ -1070,6 +1272,7 @@ mod tests {
             id: uuid!("00000000-0000-0000-0000-000000000001"),
             name: "ct-name-a".to_string(),
             attributes: get_mock_certificate_attributes()?,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -1081,6 +1284,7 @@ mod tests {
             id: uuid!("00000000-0000-0000-0000-000000000002"),
             name: "ct-name-b".to_string(),
             attributes: get_mock_certificate_attributes()?,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -1096,9 +1300,11 @@ mod tests {
                     id: uuid!("00000000-0000-0000-0000-000000000002"),
                     name: "ct-name-a".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
+                None,
             )
             .await
             .unwrap_err()
@@ -1129,9 +1335,11 @@ mod tests {
                     id: uuid!("00000000-0000-0000-0000-000000000002"),
                     name: "ct-name-a".to_string(),
                     attributes: get_mock_certificate_attributes()?,
+                    tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
+                None,
             )
             .await
             .unwrap_err()
@@ -1156,6 +1364,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "ct-name".to_string(),
                 attributes: get_mock_certificate_attributes()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
@@ -1163,6 +1372,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
                 name: "ct-name-2".to_string(),
                 attributes: get_mock_certificate_attributes()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
@@ -1235,6 +1445,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "ct-name".to_string(),
                 attributes: get_mock_certificate_attributes()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
@@ -1242,6 +1453,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
                 name: "ct-name-2".to_string(),
                 attributes: get_mock_certificate_attributes()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
@@ -1289,6 +1501,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000001"),
                 name: "ct-name".to_string(),
                 attributes: get_mock_certificate_attributes()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
@@ -1296,6 +1509,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000002"),
                 name: "ct-name-2".to_string(),
                 attributes: get_mock_certificate_attributes()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
@@ -1303,6 +1517,7 @@ mod tests {
                 id: uuid!("00000000-0000-0000-0000-000000000003"),
                 name: "ct-name-3".to_string(),
                 attributes: get_mock_certificate_attributes()?,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946920800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946920810)?,
             },
@@ -1343,6 +1558,7 @@ mod tests {
             id: uuid!("00000000-0000-0000-0000-000000000001"),
             name: "ct-name".to_string(),
             attributes: get_mock_certificate_attributes()?,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -1378,6 +1594,7 @@ mod tests {
             id: uuid!("00000000-0000-0000-0000-000000000001"),
             name: "ct-name".to_string(),
             attributes: get_mock_certificate_attributes()?,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -1427,6 +1644,7 @@ mod tests {
                 },
                 pkcs8: vec![1, 2, 3],
                 encrypted: true,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
@@ -1438,6 +1656,7 @@ mod tests {
                 },
                 pkcs8: vec![4, 5, 6],
                 encrypted: false,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
@@ -1481,6 +1700,7 @@ mod tests {
                     },
                     pkcs8: vec![1, 2, 3],
                     encrypted: true,
+                    tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },
@@ -1528,6 +1748,7 @@ mod tests {
                 },
                 pkcs8: vec![1, 2, 3],
                 encrypted: true,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             },
@@ -1539,6 +1760,7 @@ mod tests {
                 },
                 pkcs8: vec![4, 5, 6],
                 encrypted: false,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946820800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946820810)?,
             },
@@ -1548,6 +1770,7 @@ mod tests {
                 alg: PrivateKeyAlgorithm::Ed25519,
                 pkcs8: vec![7, 8, 9],
                 encrypted: false,
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946920800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946920810)?,
             },
@@ -1595,6 +1818,7 @@ mod tests {
             },
             pkcs8: vec![1, 2, 3],
             encrypted: true,
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };
@@ -1639,6 +1863,7 @@ mod tests {
                     },
                     pkcs8: vec![1, 2, 3],
                     encrypted: true,
+                    tags: vec![],
                     created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                     updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
                 },

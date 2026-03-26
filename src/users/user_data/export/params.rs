@@ -43,6 +43,8 @@ pub enum ExportTrackableSelection {
 #[serde(rename_all = "camelCase")]
 pub struct UserDataExportInclude {
     #[serde(default)]
+    pub tags: Option<ExportSelection>,
+    #[serde(default)]
     pub scripts: Option<ExportSelection>,
     #[serde(default)]
     pub secrets: Option<ExportSelection>,
@@ -162,6 +164,7 @@ mod tests {
         let id2 = Uuid::now_v7();
         let params: UserDataExportParams = serde_json::from_value(json!({
             "include": {
+                "tags": {"type": "all"},
                 "scripts": {"type": "all"},
                 "secrets": {"type": "selected", "ids": [id1]},
                 "responders": {"type": "all", "includeHistory": true},
@@ -170,6 +173,7 @@ mod tests {
             "secretsPassphrase": "my-passphrase"
         }))
         .unwrap();
+        assert!(matches!(params.include.tags, Some(ExportSelection::All)));
         assert!(matches!(params.include.scripts, Some(ExportSelection::All)));
         assert!(matches!(
             params.include.secrets,
@@ -195,6 +199,7 @@ mod tests {
     #[test]
     fn deserialize_user_data_export_params_minimal() {
         let params: UserDataExportParams = serde_json::from_value(json!({"include": {}})).unwrap();
+        assert!(params.include.tags.is_none());
         assert!(params.include.scripts.is_none());
         assert!(params.include.secrets.is_none());
         assert!(params.include.responders.is_none());

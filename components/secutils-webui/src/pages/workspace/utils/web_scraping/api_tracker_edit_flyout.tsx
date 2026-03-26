@@ -30,19 +30,14 @@ import type { SchedulerJobConfig } from './page_tracker';
 import { PageTrackerJobSchedule } from './page_tracker_job_schedule';
 import { PageTrackerRetryStrategy } from './page_tracker_retry_strategy';
 import { TrackerDebugPanel } from './tracker_debug_panel';
-import { useFormChanges, useRangeTicks } from '../../../../hooks';
-import {
-  type AsyncData,
-  getApiRequestConfig,
-  getApiUrl,
-  getErrorMessage,
-  isClientError,
-  ResponseError,
-} from '../../../../model';
+import { useFormChanges, useRangeTicks, useUserTags } from '../../../../hooks';
+import type { AsyncData } from '../../../../model';
+import { getApiRequestConfig, getApiUrl, getErrorMessage, isClientError, ResponseError } from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
 import type { ImportAction, ScriptSnippet } from '../../components/script_editor';
 import { ScriptEditor } from '../../components/script_editor';
 import { ScriptImportSelector } from '../../components/script_import_selector';
+import { TagsComboBox } from '../../components/tags_combo_box';
 import { useWorkspaceContext } from '../../hooks';
 
 export interface Props {
@@ -300,6 +295,9 @@ export default function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
   const [availableSecrets, setAvailableSecrets] = useState<Array<{ label: string }>>([]);
   const [secretsLoaded, setSecretsLoaded] = useState(false);
 
+  const { allTags, setAllTags } = useUserTags();
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(tracker?.tags?.map((t) => t.id) ?? []);
+
   useEffect(() => {
     if (secretsMode !== 'selected' || secretsLoaded) {
       return;
@@ -399,6 +397,7 @@ export default function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
     notifications,
     secretsMode,
     selectedSecretNames,
+    selectedTagIds,
   });
   const hasChanges = isDuplicate || hasFormChanges;
 
@@ -455,6 +454,7 @@ export default function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
           : secretsMode === 'all'
             ? { type: 'all' as const }
             : { type: 'selected' as const, secrets: selectedSecretNames.map((s) => s.label) },
+      tagIds: selectedTagIds,
     };
 
     const requestInit = { ...getApiRequestConfig(), body: JSON.stringify(trackerToUpdate) };
@@ -513,6 +513,7 @@ export default function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
     notifications,
     secretsMode,
     selectedSecretNames,
+    selectedTagIds,
     tracker,
     updatingStatus,
     addToast,
@@ -599,6 +600,12 @@ export default function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
           <EuiFormRow label="Name" helpText="Arbitrary API tracker name." fullWidth>
             <EuiFieldText value={name} required type={'text'} onChange={onNameChange} />
           </EuiFormRow>
+          <TagsComboBox
+            allTags={allTags}
+            selectedTagIds={selectedTagIds}
+            onChange={setSelectedTagIds}
+            onTagCreated={(tag) => setAllTags((prev) => [...prev, tag])}
+          />
           <EuiFormRow label="Revisions" helpText="Tracker will persist only specified number of revisions">
             <EuiRange
               min={0}

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM user_data_secrets_tags WHERE secret_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d1d13dff03f6e2eaefe54089a7ef725c0aade6e855538efee085e8ebd4470ad1"
+}

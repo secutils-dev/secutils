@@ -1,4 +1,8 @@
-use crate::{error::Error, server::app_state::AppState, users::User};
+use crate::{
+    error::Error,
+    server::app_state::AppState,
+    users::{SecretCreateParams, SecretUpdateParams, User},
+};
 use actix_web::{HttpResponse, web};
 use serde::Deserialize;
 use uuid::Uuid;
@@ -6,19 +10,6 @@ use uuid::Uuid;
 #[derive(Deserialize)]
 pub struct SecretIdPath {
     pub secret_id: Uuid,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateSecretBody {
-    pub name: String,
-    pub value: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateSecretBody {
-    pub value: String,
 }
 
 /// GET /api/user/secrets
@@ -34,12 +25,12 @@ pub async fn user_secrets_list(
 pub async fn user_secrets_create(
     state: web::Data<AppState>,
     user: User,
-    body: web::Json<CreateSecretBody>,
+    body: web::Json<SecretCreateParams>,
 ) -> Result<HttpResponse, Error> {
     let secret = state
         .api
         .secrets(&user)
-        .create_secret(&body.name, &body.value)
+        .create_secret(body.into_inner())
         .await?;
     Ok(HttpResponse::Created().json(secret))
 }
@@ -49,12 +40,12 @@ pub async fn user_secrets_update(
     state: web::Data<AppState>,
     user: User,
     path: web::Path<SecretIdPath>,
-    body: web::Json<UpdateSecretBody>,
+    body: web::Json<SecretUpdateParams>,
 ) -> Result<HttpResponse, Error> {
     let secret = state
         .api
         .secrets(&user)
-        .update_secret(path.secret_id, &body.value)
+        .update_secret(path.secret_id, body.into_inner())
         .await?;
     Ok(HttpResponse::Ok().json(secret))
 }

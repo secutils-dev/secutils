@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM user_data_certificates_certificate_templates_tags WHERE template_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "22d893f76049254716a191aeafa0d4fa7d36670ec8e17227bb0284a00dfc6a70"
+}

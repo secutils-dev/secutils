@@ -6,6 +6,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react
 import { Navigate, useNavigate, useParams } from 'react-router';
 
 import { SiteSearchBar } from './components/site_search_bar';
+import { TagScopeSelector } from './components/tag_scope_selector';
 import { getUtilIcon, UTIL_HANDLES, UtilsComponents, UtilsShareComponents } from './utils';
 import { getWorkspaceUtilLink } from './utils/workspace_links';
 import { WorkspaceContext } from './workspace_context';
@@ -109,6 +110,7 @@ export function WorkspacePage() {
 
   const [titleActions, setTitleActions] = useState<ReactNode | null>(null);
   const [title, setTitle] = useState<string | null>(null);
+  const [globalScopeTagIds, setGlobalScopeTagIds] = useState<string[]>([]);
 
   const [selectedUtil, setSelectedUtil] = useState<Util | null>(null);
   const [navigationBar, setNavigationBar] = useState<{ breadcrumbs: EuiBreadcrumb[]; deepLink?: string }>({
@@ -240,13 +242,14 @@ export function WorkspacePage() {
   // Authenticated and unauthenticated users have different header actions.
   const headerActions = uiState.user
     ? [
+        <TagScopeSelector key="hdr-tags" selectedTagIds={globalScopeTagIds} onChange={setGlobalScopeTagIds} />,
         <EuiButtonIcon
           key="hdr-favs"
           iconType={showOnlyFavorites ? 'starFilled' : 'starEmpty'}
           css={css`
             margin-right: ${euiTheme.euiTheme.size.xxs};
           `}
-          iconSize="l"
+          iconSize="m"
           size="m"
           title={`Only show favorite utilities`}
           aria-label={`Only show favorite utilities`}
@@ -279,14 +282,16 @@ export function WorkspacePage() {
       }}
     >
       <Suspense fallback={<PageLoadingState />}>
-        <WorkspaceContext.Provider value={{ setTitleActions, setTitle }}>{content}</WorkspaceContext.Provider>
-        {isSettingsOpen ? (
-          <SettingsFlyout
-            onClose={hideSettings}
-            importUrl={pendingImportUrl}
-            onImportUrlConsumed={clearPendingImportUrl}
-          />
-        ) : null}
+        <WorkspaceContext.Provider value={{ setTitleActions, setTitle, globalScopeTagIds, setGlobalScopeTagIds }}>
+          {content}
+          {isSettingsOpen ? (
+            <SettingsFlyout
+              onClose={hideSettings}
+              importUrl={pendingImportUrl}
+              onImportUrlConsumed={clearPendingImportUrl}
+            />
+          ) : null}
+        </WorkspaceContext.Provider>
       </Suspense>
     </Page>
   );

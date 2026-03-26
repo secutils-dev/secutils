@@ -96,6 +96,7 @@ mod tests {
 
     fn empty_data() -> UserDataImportFileData {
         UserDataImportFileData {
+            tags: vec![],
             scripts: vec![],
             secrets: vec![],
             responders: vec![],
@@ -119,6 +120,7 @@ mod tests {
                 name: "my_script".to_string(),
                 script_type: "responder".to_string(),
                 content: "a".to_string(),
+                tags: vec![],
                 created_at: datetime!(2020-01-01 00:00:00 UTC),
                 updated_at: datetime!(2020-01-01 00:00:00 UTC),
             },
@@ -127,6 +129,7 @@ mod tests {
                 name: "my_script".to_string(),
                 script_type: "responder".to_string(),
                 content: "b".to_string(),
+                tags: vec![],
                 created_at: datetime!(2020-01-01 00:00:00 UTC),
                 updated_at: datetime!(2020-01-01 00:00:00 UTC),
             },
@@ -145,6 +148,7 @@ mod tests {
             name: "script_a".to_string(),
             script_type: "responder".to_string(),
             content: "a".to_string(),
+            tags: vec![],
             created_at: datetime!(2020-01-01 00:00:00 UTC),
             updated_at: datetime!(2020-01-01 00:00:00 UTC),
         }];

@@ -1,11 +1,15 @@
 use crate::utils::web_security::ContentSecurityPolicyContent;
 use serde::Deserialize;
+use uuid::Uuid;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ContentSecurityPoliciesCreateParams {
     pub name: String,
     pub content: ContentSecurityPolicyContent,
+    /// Tag IDs to assign to this content security policy.
+    #[serde(default)]
+    pub tag_ids: Vec<Uuid>,
 }
 
 #[cfg(test)]
@@ -36,7 +40,8 @@ mod tests {
                     url: Url::parse("http://localhost:1234/my-page?one=two")?,
                     source: ContentSecurityPolicySource::Meta,
                     follow_redirects: true,
-                }
+                },
+                tag_ids: vec![],
             }
         );
 

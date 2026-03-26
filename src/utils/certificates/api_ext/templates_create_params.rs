@@ -1,11 +1,15 @@
 use crate::utils::certificates::CertificateAttributes;
 use serde::Deserialize;
+use uuid::Uuid;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TemplatesCreateParams {
     pub template_name: String,
     pub attributes: CertificateAttributes,
+    /// Tag IDs to assign to this certificate template.
+    #[serde(default)]
+    pub tag_ids: Vec<Uuid>,
 }
 
 #[cfg(test)]
@@ -58,7 +62,8 @@ mod tests {
                             .into_iter()
                             .collect()
                     ),
-                }
+                },
+                tag_ids: vec![],
             }
         );
 

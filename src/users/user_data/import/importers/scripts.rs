@@ -3,9 +3,10 @@ use crate::{
     network::{DnsResolver, EmailTransport},
     users::{
         User,
+        scripts::ScriptCreateParams,
         user_data::import::{
             ConflictResolution, ImportEntityResult, ImportEntitySelection, ImportedScript,
-            resolve_name, should_skip,
+            remap_tag_ids, resolve_name, should_skip,
         },
     },
 };
@@ -17,15 +18,13 @@ pub async fn import_scripts<DR: DnsResolver, ET: EmailTransport>(
     user: &User,
     scripts: &[ImportedScript],
     selections: &HashMap<Uuid, &ImportEntitySelection>,
+    tag_id_map: &HashMap<Uuid, Uuid>,
 ) -> ImportEntityResult {
     let mut result = ImportEntityResult::default();
 
     // Pre-fetch existing scripts once for overwritten resolution.
-    let existing_scripts = api
-        .scripts(user)
-        .list_scripts(None)
-        .await
-        .unwrap_or_default();
+    let scripts_api = api.scripts(user);
+    let existing_scripts = scripts_api.list_scripts(None).await.unwrap_or_default();
     let mut used_names: HashSet<String> = existing_scripts.iter().map(|s| s.name.clone()).collect();
 
     for script in scripts {
@@ -41,13 +40,18 @@ pub async fn import_scripts<DR: DnsResolver, ET: EmailTransport>(
         if selection.is_some_and(|s| s.conflict_resolution == Some(ConflictResolution::Overwrite))
             && let Some(e) = existing_scripts.iter().find(|s| s.name == script.name)
         {
-            let _ = api.scripts(user).delete_script(e.id).await;
+            let _ = scripts_api.delete_script(e.id).await;
             used_names.remove(&script.name);
         }
 
-        match api
-            .scripts(user)
-            .create_script(&name, &script.script_type, &script.content)
+        let remapped_tags = remap_tag_ids(&script.tags, tag_id_map);
+        match scripts_api
+            .create_script(ScriptCreateParams {
+                name: name.clone(),
+                script_type: script.script_type.clone(),
+                content: script.content.clone(),
+                tag_ids: remapped_tags,
+            })
             .await
         {
             Ok(_) => {
@@ -76,7 +80,7 @@ mod tests {
     };
     use crate::{
         tests::{mock_api_with_config, mock_config, mock_user},
-        users::user_data::import::execute_import,
+        users::{scripts::ScriptCreateParams, user_data::import::execute_import},
     };
     use sqlx::PgPool;
     use time::macros::datetime;
@@ -88,6 +92,7 @@ mod tests {
             exported_at: datetime!(2020-01-01 12:00:00 UTC),
             secrets_encryption: None,
             data: UserDataImportFileData {
+                tags: vec![],
                 scripts,
                 secrets: vec![],
                 responders: vec![],
@@ -113,6 +118,7 @@ mod tests {
             name: "imported_script".to_string(),
             script_type: "responder".to_string(),
             content: "console.log('imported')".to_string(),
+            tags: vec![],
             created_at: datetime!(2020-01-01 00:00:00 UTC),
             updated_at: datetime!(2020-01-01 00:00:00 UTC),
         }]);
@@ -150,7 +156,12 @@ mod tests {
         api.db.upsert_user(&user).await?;
 
         api.scripts(&user)
-            .create_script("my_script", "responder", "original")
+            .create_script(ScriptCreateParams {
+                name: "my_script".into(),
+                script_type: "responder".into(),
+                content: "original".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
         let script_id = Uuid::now_v7();
@@ -159,6 +170,7 @@ mod tests {
             name: "my_script".to_string(),
             script_type: "responder".to_string(),
             content: "new content".to_string(),
+            tags: vec![],
             created_at: datetime!(2020-01-01 00:00:00 UTC),
             updated_at: datetime!(2020-01-01 00:00:00 UTC),
         }]);

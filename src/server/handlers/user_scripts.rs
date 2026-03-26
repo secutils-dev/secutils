@@ -1,7 +1,7 @@
 use crate::{
     error::Error,
     server::app_state::AppState,
-    users::{ScriptContext, User},
+    users::{ScriptContext, ScriptCreateParams, ScriptUpdateParams, User},
 };
 use actix_web::{HttpResponse, web};
 use serde::Deserialize;
@@ -15,20 +15,6 @@ pub struct ScriptIdPath {
 #[derive(Deserialize)]
 pub struct ListScriptsQuery {
     pub context: Option<ScriptContext>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateScriptBody {
-    pub name: String,
-    pub script_type: String,
-    pub content: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateScriptBody {
-    pub content: String,
 }
 
 /// GET /api/user/scripts
@@ -57,12 +43,12 @@ pub async fn user_scripts_get(
 pub async fn user_scripts_create(
     state: web::Data<AppState>,
     user: User,
-    body: web::Json<CreateScriptBody>,
+    body: web::Json<ScriptCreateParams>,
 ) -> Result<HttpResponse, Error> {
     let script = state
         .api
         .scripts(&user)
-        .create_script(&body.name, &body.script_type, &body.content)
+        .create_script(body.into_inner())
         .await?;
     Ok(HttpResponse::Created().json(script))
 }
@@ -72,12 +58,12 @@ pub async fn user_scripts_update(
     state: web::Data<AppState>,
     user: User,
     path: web::Path<ScriptIdPath>,
-    body: web::Json<UpdateScriptBody>,
+    body: web::Json<ScriptUpdateParams>,
 ) -> Result<HttpResponse, Error> {
     let script = state
         .api
         .scripts(&user)
-        .update_script(path.script_id, &body.content)
+        .update_script(path.script_id, body.into_inner())
         .await?;
     Ok(HttpResponse::Ok().json(script))
 }

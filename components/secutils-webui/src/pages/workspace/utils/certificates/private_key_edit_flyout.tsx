@@ -7,16 +7,11 @@ import { EncryptionModeSelector } from './encryption_mode_selector';
 import type { PrivateKey } from './private_key';
 import type { PrivateKeyAlgorithm, PrivateKeyCurveName, PrivateKeySize } from './private_key_alg';
 import { privateKeyCurveNameString } from './private_key_alg';
-import { useFormChanges } from '../../../../hooks';
-import {
-  type AsyncData,
-  getApiRequestConfig,
-  getApiUrl,
-  getErrorMessage,
-  isClientError,
-  ResponseError,
-} from '../../../../model';
+import { useFormChanges, useUserTags } from '../../../../hooks';
+import type { AsyncData } from '../../../../model';
+import { getApiRequestConfig, getApiUrl, getErrorMessage, isClientError, ResponseError } from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
+import { TagsComboBox } from '../../components/tags_combo_box';
 import { useWorkspaceContext } from '../../hooks';
 
 export interface PrivateKeyEditFlyoutProps {
@@ -64,6 +59,9 @@ export function PrivateKeyEditFlyout({ onClose, privateKey }: PrivateKeyEditFlyo
   const [passphrase, setPassphrase] = useState<string | null>('');
   const [currentPassphrase, setCurrentPassphrase] = useState<string>('');
 
+  const { allTags, setAllTags } = useUserTags();
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(privateKey?.tags?.map((t) => t.id) ?? []);
+
   const [updatingStatus, setUpdatingStatus] = useState<AsyncData<void>>();
 
   const canSave = () => {
@@ -87,7 +85,14 @@ export function PrivateKeyEditFlyout({ onClose, privateKey }: PrivateKeyEditFlyo
   };
 
   const isDuplicate = !!privateKey && !privateKey.id;
-  const hasFormChanges = useFormChanges({ name, keyAlgorithm, encryptionMode, passphrase, currentPassphrase });
+  const hasFormChanges = useFormChanges({
+    name,
+    keyAlgorithm,
+    encryptionMode,
+    passphrase,
+    currentPassphrase,
+    selectedTagIds,
+  });
   const hasChanges = isDuplicate || hasFormChanges;
 
   return (
@@ -114,6 +119,7 @@ export function PrivateKeyEditFlyout({ onClose, privateKey }: PrivateKeyEditFlyo
                   ...(!privateKey.encrypted || newPassphraseToSend !== currentPassphraseToSend
                     ? { passphrase: currentPassphraseToSend, newPassphrase: newPassphraseToSend }
                     : {}),
+                  tagIds: selectedTagIds,
                 }),
               }),
               `Successfully updated "${name}" private key`,
@@ -122,7 +128,12 @@ export function PrivateKeyEditFlyout({ onClose, privateKey }: PrivateKeyEditFlyo
           : [
               fetch(getApiUrl('/api/utils/certificates/private_keys'), {
                 ...getApiRequestConfig('POST'),
-                body: JSON.stringify({ keyName: name, alg: keyAlgorithm, passphrase: newPassphraseToSend }),
+                body: JSON.stringify({
+                  keyName: name,
+                  alg: keyAlgorithm,
+                  passphrase: newPassphraseToSend,
+                  tagIds: selectedTagIds,
+                }),
               }),
               `Successfully saved "${name}" private key`,
               `Unable to save "${name}" private key, please try again later`,
@@ -164,6 +175,12 @@ export function PrivateKeyEditFlyout({ onClose, privateKey }: PrivateKeyEditFlyo
           <EuiFormRow label="Name" helpText="Unique name of the private key.">
             <EuiFieldText value={name} required type={'text'} onChange={onNameChange} />
           </EuiFormRow>
+          <TagsComboBox
+            allTags={allTags}
+            selectedTagIds={selectedTagIds}
+            onChange={setSelectedTagIds}
+            onTagCreated={(tag) => setAllTags((prev) => [...prev, tag])}
+          />
           <EuiFormRow label="Key algorithm" helpText="Private key algorithm." isDisabled={!!privateKey?.id}>
             <EuiSelect
               options={[

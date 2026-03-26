@@ -6,6 +6,7 @@ mod secrets_access;
 mod user_secret;
 
 pub use self::{
+    api_ext::{SecretCreateParams, SecretUpdateParams},
     encryption::SecretsEncryption,
     export_encryption::{
         SECRET_ENCRYPTION_MIN_PASSPHRASE_LENGTH, SecretsEncryptionMeta, decrypt_secret_from_export,

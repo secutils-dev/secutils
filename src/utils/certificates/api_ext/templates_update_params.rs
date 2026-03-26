@@ -1,11 +1,14 @@
 use crate::utils::certificates::CertificateAttributes;
 use serde::Deserialize;
+use uuid::Uuid;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct TemplatesUpdateParams {
     pub template_name: Option<String>,
     pub attributes: Option<CertificateAttributes>,
+    /// Tag IDs to assign. When `Some`, replaces all tags; when `None`, tags are unchanged.
+    pub tag_ids: Option<Vec<Uuid>>,
 }
 
 #[cfg(test)]
@@ -60,7 +63,8 @@ mod tests {
                             .into_iter()
                             .collect()
                     ),
-                })
+                }),
+                tag_ids: None,
             }
         );
 
@@ -105,7 +109,8 @@ mod tests {
                             .into_iter()
                             .collect()
                     ),
-                })
+                }),
+                tag_ids: None,
             }
         );
 
@@ -119,7 +124,8 @@ mod tests {
             )?,
             TemplatesUpdateParams {
                 template_name: Some("ct".to_string()),
-                attributes: None
+                attributes: None,
+                tag_ids: None,
             }
         );
 

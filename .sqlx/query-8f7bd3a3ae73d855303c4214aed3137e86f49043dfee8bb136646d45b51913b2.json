@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM user_data_webhooks_responders_tags WHERE responder_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8f7bd3a3ae73d855303c4214aed3137e86f49043dfee8bb136646d45b51913b2"
+}

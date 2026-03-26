@@ -4,4 +4,5 @@ pub(super) mod private_keys;
 pub(super) mod responders;
 pub(super) mod scripts;
 pub(super) mod secrets;
+pub(super) mod tags;
 pub(super) mod trackers;

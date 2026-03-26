@@ -6,18 +6,17 @@ use crate::{
         user_data::{
             export::{ExportedResponder, ExportedResponderRequest},
             import::{
-                ConflictResolution, ImportEntityResult, ImportEntitySelection, resolve_name,
-                should_skip,
+                ConflictResolution, ImportEntityResult, ImportEntitySelection, remap_tag_ids,
+                resolve_name, should_skip,
             },
         },
     },
-    utils::webhooks::{ResponderMethod, ResponderRequest},
+    utils::webhooks::{ResponderMethod, ResponderRequest, RespondersCreateParams},
 };
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
 };
-use time::OffsetDateTime;
 use tracing::warn;
 use uuid::Uuid;
 
@@ -26,15 +25,13 @@ pub async fn import_responders<DR: DnsResolver, ET: EmailTransport>(
     user: &User,
     responders: &[ExportedResponder],
     selections: &HashMap<Uuid, &ImportEntitySelection>,
+    tag_id_map: &HashMap<Uuid, Uuid>,
 ) -> ImportEntityResult {
     let mut result = ImportEntityResult::default();
 
     // Pre-fetch existing responders once for overwrite resolution.
-    let existing_responders = api
-        .webhooks(user)
-        .get_responders()
-        .await
-        .unwrap_or_default();
+    let webhooks_api = api.webhooks(user);
+    let existing_responders = webhooks_api.get_responders().await.unwrap_or_default();
     let mut used_names: HashSet<_> = existing_responders.iter().map(|r| r.name.clone()).collect();
     let mut deleted_ids: HashSet<Uuid> = HashSet::new();
 
@@ -51,13 +48,13 @@ pub async fn import_responders<DR: DnsResolver, ET: EmailTransport>(
             selection.is_some_and(|s| s.conflict_resolution == Some(ConflictResolution::Overwrite));
 
         if is_overwrite {
-            // Delete existing responder with the same name.
+            // Delete an existing responder with the same name.
             if let Some(e) = existing_responders
                 .iter()
                 .find(|r| r.name == resp.name && !deleted_ids.contains(&r.id))
                 && deleted_ids.insert(e.id)
             {
-                let _ = api.webhooks(user).remove_responder(e.id).await;
+                let _ = webhooks_api.remove_responder(e.id).await;
                 used_names.remove(&e.name);
             }
 
@@ -71,33 +68,29 @@ pub async fn import_responders<DR: DnsResolver, ET: EmailTransport>(
                         || resp.method == ResponderMethod::Any)
             }) && deleted_ids.insert(e.id)
             {
-                let _ = api.webhooks(user).remove_responder(e.id).await;
+                let _ = webhooks_api.remove_responder(e.id).await;
                 used_names.remove(&e.name);
             }
         }
 
-        // Clone the responder and assign new ID and timestamps.
-        let mut new_responder = resp.clone();
-        let new_id = Uuid::now_v7();
-        new_responder.id = new_id;
-        new_responder.name = name.clone();
-        let now = OffsetDateTime::now_utc();
-        new_responder.created_at = now;
-        new_responder.updated_at = now;
-
-        match api
-            .db
-            .webhooks()
-            .insert_responder(user.id, &new_responder)
+        match webhooks_api
+            .create_responder(RespondersCreateParams {
+                name: name.clone(),
+                location: resp.location.clone(),
+                method: resp.method,
+                enabled: resp.enabled,
+                settings: resp.settings.clone(),
+                tag_ids: remap_tag_ids(&resp.tags, tag_id_map),
+            })
             .await
         {
-            Ok(_) => {
+            Ok(new_responder) => {
                 used_names.insert(name);
                 result.imported += 1;
 
                 // Import history if available.
                 if !exported.history.is_empty() {
-                    import_responder_history(api, user, new_id, &exported.history).await;
+                    import_responder_history(api, user, new_responder.id, &exported.history).await;
                 }
             }
             Err(err) => {
@@ -117,6 +110,7 @@ async fn import_responder_history<DR: DnsResolver, ET: EmailTransport>(
     new_responder_id: Uuid,
     history: &[ExportedResponderRequest],
 ) {
+    let webhooks_db = api.db.webhooks();
     for entry in history {
         // Parse headers from JSON object format: { "key": "value" } → Vec<(Cow, Cow)>.
         let headers = entry.headers.as_ref().and_then(|h| {
@@ -168,9 +162,7 @@ async fn import_responder_history<DR: DnsResolver, ET: EmailTransport>(
             response_body,
         };
 
-        if let Err(err) = api
-            .db
-            .webhooks()
+        if let Err(err) = webhooks_db
             .insert_responder_request(user.id, &request)
             .await
         {
@@ -231,6 +223,7 @@ mod tests {
                     script: None,
                     secrets: crate::users::SecretsAccess::None,
                 },
+                tags: vec![],
                 created_at: datetime!(2020-01-01 00:00:00 UTC),
                 updated_at: datetime!(2020-01-01 00:00:00 UTC),
             },
@@ -244,6 +237,7 @@ mod tests {
             exported_at: datetime!(2020-01-01 12:00:00 UTC),
             secrets_encryption: None,
             data: UserDataImportFileData {
+                tags: vec![],
                 scripts: vec![],
                 secrets: vec![],
                 responders,
@@ -320,6 +314,7 @@ mod tests {
                 script: None,
                 secrets: crate::users::SecretsAccess::None,
             },
+            tags: vec![],
             created_at: datetime!(2020-01-01 00:00:00 UTC),
             updated_at: datetime!(2020-01-01 00:00:00 UTC),
         };

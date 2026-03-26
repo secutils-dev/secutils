@@ -36,7 +36,7 @@ test.describe('User Scripts guide screenshots', () => {
 
     // Fill in the same name
     await modal.getByPlaceholder('MY_SCRIPT').fill('UNIQUE_SCRIPT');
-    await modal.getByRole('combobox').selectOption('responder');
+    await modal.getByLabel('Type').selectOption('responder');
     // Wait for Monaco editor and type some content to enable the Create button
     await expect(modal.locator('.monaco-editor')).toBeVisible({ timeout: 15000 });
     await modal.locator('.monaco-editor textarea').click({ force: true });

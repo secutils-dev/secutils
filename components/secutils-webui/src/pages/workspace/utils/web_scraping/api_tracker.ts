@@ -1,8 +1,10 @@
 import type { SchedulerJobConfig, SecretsAccess } from './page_tracker';
+import type { EntityTag } from '../../../../model';
 
 export interface ApiTracker {
   id: string;
   name: string;
+  tags?: EntityTag[];
   createdAt: number;
   updatedAt: number;
   secrets?: SecretsAccess;

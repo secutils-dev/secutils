@@ -1,5 +1,6 @@
 use crate::utils::certificates::PrivateKeyAlgorithm;
 use serde::Deserialize;
+use uuid::Uuid;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -7,6 +8,9 @@ pub struct PrivateKeysCreateParams {
     pub key_name: String,
     pub alg: PrivateKeyAlgorithm,
     pub passphrase: Option<String>,
+    /// Tag IDs to assign to this private key.
+    #[serde(default)]
+    pub tag_ids: Vec<Uuid>,
 }
 
 #[cfg(test)]
@@ -33,6 +37,7 @@ mod tests {
                     key_size: PrivateKeySize::Size1024
                 },
                 passphrase: Some("phrase".to_string()),
+                tag_ids: vec![],
             }
         );
 
@@ -51,6 +56,7 @@ mod tests {
                     key_size: PrivateKeySize::Size1024
                 },
                 passphrase: None,
+                tag_ids: vec![],
             }
         );
 

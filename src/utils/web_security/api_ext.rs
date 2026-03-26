@@ -15,7 +15,7 @@ use crate::{
     config::SECUTILS_USER_AGENT,
     error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
-    users::{SharedResource, UserId, UserShare},
+    users::{EntityTag, SharedResource, UserId, UserShare},
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
         web_security::{
@@ -60,11 +60,15 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
         &self,
         user_id: UserId,
     ) -> anyhow::Result<Vec<ContentSecurityPolicy>> {
-        self.api
-            .db
-            .web_security()
-            .get_content_security_policies(user_id)
-            .await
+        let web_security = self.api.db.web_security();
+        let mut policies = web_security.get_content_security_policies(user_id).await?;
+        let mut tags_map = web_security
+            .get_csp_tags(&policies.iter().map(|p| p.id).collect::<Vec<_>>())
+            .await?;
+        for policy in &mut policies {
+            policy.tags = tags_map.remove(&policy.id).unwrap_or_default();
+        }
+        Ok(policies)
     }
 
     /// Retrieves content security policies with the specified IDs.
@@ -219,19 +223,21 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
             id: Uuid::now_v7(),
             name: params.name,
             directives,
+            tags: params.tag_ids.into_iter().map(EntityTag::from).collect(),
             created_at,
             updated_at: created_at,
         };
 
         self.validate_content_security_policy(&policy).await?;
 
-        self.api
+        let tags = self
+            .api
             .db
             .web_security()
             .insert_content_security_policy(user_id, &policy)
             .await?;
 
-        Ok(policy)
+        Ok(ContentSecurityPolicy { tags, ..policy })
     }
 
     /// Updates content security policy.
@@ -241,16 +247,14 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
         id: Uuid,
         params: ContentSecurityPoliciesUpdateParams,
     ) -> anyhow::Result<ContentSecurityPolicy> {
-        if params.name.is_none() && params.directives.is_none() {
+        if params.name.is_none() && params.directives.is_none() && params.tag_ids.is_none() {
             bail!(SecutilsError::client(format!(
-                "Either new name, or directives should be provided ({id})."
+                "Either new name, directives, or tags should be provided ({id})."
             )));
         }
 
-        let Some(existing_policy) = self
-            .api
-            .db
-            .web_security()
+        let web_security = self.api.db.web_security();
+        let Some(existing_policy) = web_security
             .get_content_security_policy(user_id, id)
             .await?
         else {
@@ -262,6 +266,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
         let policy = ContentSecurityPolicy {
             name: params.name.unwrap_or(existing_policy.name),
             directives: params.directives.unwrap_or(existing_policy.directives),
+            tags: existing_policy.tags,
             // Preserve timestamp only up to seconds.
             updated_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
@@ -271,13 +276,15 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
 
         self.validate_content_security_policy(&policy).await?;
 
-        self.api
-            .db
-            .web_security()
-            .update_content_security_policy(user_id, &policy)
+        let updated_tags = web_security
+            .update_content_security_policy(user_id, &policy, params.tag_ids)
             .await?;
 
-        Ok(policy)
+        Ok(if let Some(tags) = updated_tags {
+            ContentSecurityPolicy { tags, ..policy }
+        } else {
+            policy
+        })
     }
 
     /// Serializes content security policy.
@@ -514,6 +521,7 @@ mod tests {
                 ContentSecurityPoliciesCreateParams {
                     name: "name_one".to_string(),
                     content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -548,7 +556,8 @@ mod tests {
         assert_debug_snapshot!(
             create_and_fail(api.create_content_security_policy(mock_user.id, ContentSecurityPoliciesCreateParams {
                 name: "".to_string(),
-                content: ContentSecurityPolicyContent::Directives(directives.clone())
+                content: ContentSecurityPolicyContent::Directives(directives.clone()),
+                tag_ids: vec![],
             }).await),
             @r###""Content security policy name cannot be empty.""###
         );
@@ -557,7 +566,8 @@ mod tests {
         assert_debug_snapshot!(
             create_and_fail(api.create_content_security_policy(mock_user.id, ContentSecurityPoliciesCreateParams {
                 name: "a".repeat(101),
-                content: ContentSecurityPolicyContent::Directives(directives.clone())
+                content: ContentSecurityPolicyContent::Directives(directives.clone()),
+                tag_ids: vec![],
             }).await),
             @r###""Content security policy name cannot be longer than 100 characters.""###
         );
@@ -566,7 +576,8 @@ mod tests {
         assert_debug_snapshot!(
             create_and_fail(api.create_content_security_policy(mock_user.id, ContentSecurityPoliciesCreateParams{
                 name: "name".to_string(),
-                content: ContentSecurityPolicyContent::Directives(vec![])
+                content: ContentSecurityPolicyContent::Directives(vec![]),
+                tag_ids: vec![],
             }).await),
             @r###""Content security policy should contain at least on valid directive.""###
         );
@@ -579,7 +590,8 @@ mod tests {
                     url: "ftp://secutils.dev".parse()?,
                     follow_redirects: true,
                     source: ContentSecurityPolicySource::EnforcingHeader,
-                }
+                },
+                tag_ids: vec![],
             }).await),
             @r###""Remote URL must be either `http` or `https` and have a valid public reachable domain name, but received ftp://secutils.dev/.""###
         );
@@ -602,7 +614,8 @@ mod tests {
                     url: "https://127.0.0.1".parse()?,
                     follow_redirects: true,
                     source: ContentSecurityPolicySource::EnforcingHeader,
-                }
+                },
+                tag_ids: vec![],
             }).await),
             @r###""Remote URL must be either `http` or `https` and have a valid public reachable domain name, but received https://127.0.0.1/.""###
         );
@@ -623,6 +636,7 @@ mod tests {
                 ContentSecurityPoliciesCreateParams {
                     name: "name_one".to_string(),
                     content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -635,6 +649,7 @@ mod tests {
                 ContentSecurityPoliciesUpdateParams {
                     name: Some("name_two".to_string()),
                     directives: None,
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -661,6 +676,7 @@ mod tests {
                         ["'none'".to_string()].into_iter().collect(),
                     )]),
                     name: None,
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -698,6 +714,7 @@ mod tests {
                 ContentSecurityPoliciesCreateParams {
                     name: "name_one".to_string(),
                     content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -714,6 +731,7 @@ mod tests {
                 ContentSecurityPoliciesUpdateParams {
                     name: None,
                     directives: None,
+                    tag_ids: None,
                 },
             )
             .await,
@@ -721,7 +739,7 @@ mod tests {
         assert_eq!(
             update_result.to_string(),
             format!(
-                "Either new name, or directives should be provided ({}).",
+                "Either new name, directives, or tags should be provided ({}).",
                 policy.id
             )
         );
@@ -734,6 +752,7 @@ mod tests {
                 ContentSecurityPoliciesUpdateParams {
                     name: Some("name".to_string()),
                     directives: None,
+                    tag_ids: None,
                 },
             )
             .await,
@@ -748,6 +767,7 @@ mod tests {
             update_and_fail(api.update_content_security_policy(mock_user.id, policy.id, ContentSecurityPoliciesUpdateParams {
                 name: Some("".to_string()),
                 directives: None,
+                tag_ids: None,
             }).await),
             @r###""Content security policy name cannot be empty.""###
         );
@@ -757,6 +777,7 @@ mod tests {
             update_and_fail(api.update_content_security_policy(mock_user.id, policy.id, ContentSecurityPoliciesUpdateParams {
                 name: Some("a".repeat(101)),
                 directives: None,
+                tag_ids: None,
             }).await),
             @r###""Content security policy name cannot be longer than 100 characters.""###
         );
@@ -766,6 +787,7 @@ mod tests {
             update_and_fail(api.update_content_security_policy(mock_user.id, policy.id, ContentSecurityPoliciesUpdateParams {
                 name: None,
                 directives: Some(vec![]),
+                tag_ids: None,
             }).await),
             @r###""Content security policy should contain at least on valid directive.""###
         );
@@ -789,6 +811,7 @@ mod tests {
                     content: ContentSecurityPolicyContent::Serialized(
                         "child-src 'self'".to_string(),
                     ),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -818,6 +841,7 @@ mod tests {
                     content: ContentSecurityPolicyContent::Serialized(
                         "script-src 'none'".to_string(),
                     ),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -878,6 +902,7 @@ mod tests {
                         follow_redirects: true,
                         source: ContentSecurityPolicySource::EnforcingHeader,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -940,6 +965,7 @@ mod tests {
                         follow_redirects: true,
                         source: ContentSecurityPolicySource::ReportOnlyHeader,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1012,6 +1038,7 @@ mod tests {
                         follow_redirects: true,
                         source: ContentSecurityPolicySource::Meta,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1082,6 +1109,7 @@ mod tests {
                         follow_redirects: true,
                         source: ContentSecurityPolicySource::EnforcingHeader,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1162,6 +1190,7 @@ mod tests {
                         follow_redirects: true,
                         source: ContentSecurityPolicySource::EnforcingHeader,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1196,6 +1225,7 @@ mod tests {
                         follow_redirects: true,
                         source: ContentSecurityPolicySource::Meta,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1274,6 +1304,7 @@ mod tests {
                         follow_redirects: true,
                         source: ContentSecurityPolicySource::EnforcingHeader,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1313,6 +1344,7 @@ mod tests {
                         follow_redirects: true,
                         source: ContentSecurityPolicySource::Meta,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1388,6 +1420,7 @@ mod tests {
                         follow_redirects: false,
                         source: ContentSecurityPolicySource::EnforcingHeader,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await
@@ -1464,6 +1497,7 @@ mod tests {
                         follow_redirects: false,
                         source: ContentSecurityPolicySource::EnforcingHeader,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await
@@ -1488,6 +1522,7 @@ mod tests {
                         follow_redirects: false,
                         source: ContentSecurityPolicySource::ReportOnlyHeader,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await
@@ -1514,6 +1549,7 @@ mod tests {
                         follow_redirects: false,
                         source: ContentSecurityPolicySource::Meta,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await
@@ -1588,6 +1624,7 @@ mod tests {
                         follow_redirects: true,
                         source: ContentSecurityPolicySource::EnforcingHeader,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await
@@ -1614,6 +1651,7 @@ mod tests {
                         follow_redirects: false,
                         source: ContentSecurityPolicySource::Meta,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await
@@ -1657,6 +1695,7 @@ mod tests {
                             ["'self'".to_string()].into_iter().collect(),
                         ),
                     ]),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1670,6 +1709,7 @@ mod tests {
                             ["'none'".to_string()].into_iter().collect(),
                         ),
                     ]),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1718,6 +1758,7 @@ mod tests {
                 ContentSecurityPoliciesCreateParams {
                     name: "name_one".to_string(),
                     content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1758,6 +1799,7 @@ mod tests {
                 ContentSecurityPoliciesCreateParams {
                     name: "name_one".to_string(),
                     content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1815,6 +1857,7 @@ mod tests {
                 ContentSecurityPoliciesCreateParams {
                     name: "name_one".to_string(),
                     content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1855,6 +1898,7 @@ mod tests {
                 ContentSecurityPoliciesCreateParams {
                     name: "name_one".to_string(),
                     content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                    tag_ids: vec![],
                 },
             )
             .await?;

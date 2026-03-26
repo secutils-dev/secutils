@@ -13,25 +13,37 @@ import {
 } from '@elastic/eui';
 import { useCallback, useState } from 'react';
 
+import { useUserTags } from '../hooks';
 import type { PageToast } from '../pages/page';
+import { TagsComboBox } from '../pages/workspace/components/tags_combo_box';
 
 const MAX_VALUE_LENGTH = 10 * 1024;
 
 export interface SecretEditModalProps {
   editingId?: string;
   editingName?: string;
-  onSave: (name: string, value: string, editingId?: string) => Promise<void>;
+  initialTagIds?: string[];
+  onSave: (name: string, value: string, editingId?: string, tagIds?: string[]) => Promise<void>;
   onClose: () => void;
   addToast?: (toast: PageToast) => void;
 }
 
 const NAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 
-export function SecretEditModal({ editingId, editingName, onSave, onClose, addToast }: SecretEditModalProps) {
+export function SecretEditModal({
+  editingId,
+  editingName,
+  initialTagIds,
+  onSave,
+  onClose,
+  addToast,
+}: SecretEditModalProps) {
   const isEditing = editingName !== undefined;
   const [name, setName] = useState(editingName ?? '');
   const [value, setValue] = useState('');
   const [saving, setSaving] = useState(false);
+  const { allTags, setAllTags } = useUserTags();
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>(initialTagIds ?? []);
 
   const nameValid = NAME_REGEX.test(name) && name.length <= 128;
   const valueTooLong = value.length > MAX_VALUE_LENGTH;
@@ -53,7 +65,7 @@ export function SecretEditModal({ editingId, editingName, onSave, onClose, addTo
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
-      await onSave(name, value, editingId);
+      await onSave(name, value, editingId, selectedTagIds);
       onClose();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save secret.';
@@ -61,7 +73,7 @@ export function SecretEditModal({ editingId, editingName, onSave, onClose, addTo
     } finally {
       setSaving(false);
     }
-  }, [name, value, editingId, onSave, onClose, addToast]);
+  }, [name, value, editingId, selectedTagIds, onSave, onClose, addToast]);
 
   return (
     <EuiModal onClose={onClose} initialFocus="[name=secretName]" style={{ width: 600, maxWidth: '90vw' }}>
@@ -93,6 +105,12 @@ export function SecretEditModal({ editingId, editingName, onSave, onClose, addTo
             fullWidth
           />
         </EuiFormRow>
+        <TagsComboBox
+          allTags={allTags}
+          selectedTagIds={selectedTagIds}
+          onChange={setSelectedTagIds}
+          onTagCreated={(tag) => setAllTags((prev) => [...prev, tag])}
+        />
         <EuiFormRow
           label="Value"
           isInvalid={valueTooLong}

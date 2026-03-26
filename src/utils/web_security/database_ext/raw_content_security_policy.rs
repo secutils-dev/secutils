@@ -35,6 +35,7 @@ impl TryFrom<RawContentSecurityPolicy> for ContentSecurityPolicy {
             name: raw.name,
             directives,
             created_at: raw.created_at,
+            tags: vec![],
             updated_at: raw.updated_at,
         })
     }
@@ -106,6 +107,7 @@ mod tests {
                             .collect()
                     )
                 ],
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             }
@@ -133,6 +135,7 @@ mod tests {
                             .collect()
                     )
                 ],
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             })?,

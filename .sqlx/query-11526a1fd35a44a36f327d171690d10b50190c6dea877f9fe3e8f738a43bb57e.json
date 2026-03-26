@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM user_data_certificates_private_keys_tags WHERE key_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "11526a1fd35a44a36f327d171690d10b50190c6dea877f9fe3e8f738a43bb57e"
+}

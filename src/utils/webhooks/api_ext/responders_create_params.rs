@@ -1,5 +1,6 @@
 use crate::utils::webhooks::{ResponderLocation, ResponderMethod, ResponderSettings};
 use serde::Deserialize;
+use uuid::Uuid;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -13,6 +14,9 @@ pub struct RespondersCreateParams {
     pub enabled: bool,
     // Miscellaneous responder settings.
     pub settings: ResponderSettings,
+    /// Tag IDs to assign to this responder.
+    #[serde(default)]
+    pub tag_ids: Vec<Uuid>,
 }
 
 #[cfg(test)]
@@ -24,6 +28,7 @@ mod tests {
             api_ext::RespondersCreateParams,
         },
     };
+    use uuid::uuid;
 
     #[test]
     fn deserialization() -> anyhow::Result<()> {
@@ -44,7 +49,8 @@ mod tests {
         "body": "some-body",
         "headers": [["key", "value"], ["key2", "value2"]],
         "script": "return { body: `custom body` };"
-    }
+    },
+    "tagIds": ["00000000-0000-0000-0000-000000000001"]
 }
           "#
             )?,
@@ -67,7 +73,8 @@ mod tests {
                     ]),
                     script: Some("return { body: `custom body` };".to_string()),
                     secrets: SecretsAccess::None,
-                }
+                },
+                tag_ids: vec![uuid!("00000000-0000-0000-0000-000000000001")],
             }
         );
 
@@ -105,7 +112,8 @@ mod tests {
                     headers: None,
                     script: None,
                     secrets: SecretsAccess::None,
-                }
+                },
+                tag_ids: vec![],
             }
         );
 

@@ -38,7 +38,7 @@ get_digest() {
     return 1
   fi
 
-  # Strip the sha256: prefix — we add it back when rewriting.
+  # Strip the sha256: prefix - we add it back when rewriting.
   digest="${digest#sha256:}"
   echo "$image $digest" >> "$CACHE_FILE"
   echo "$digest"
@@ -55,7 +55,7 @@ for dockerfile in "${DOCKERFILES[@]}"; do
       # Strip any existing @sha256:... from the image reference.
       stripped="$(echo "$line" | sed -E 's/@sha256:[0-9a-f]+//')"
 
-      # Extract the image:tag — it's the token after FROM (and optional --platform=...).
+      # Extract the image:tag - it's the token after FROM (and optional --platform=...).
       image_tag="$(echo "$stripped" | sed -E 's/^FROM[[:space:]]+(--platform=[^ ]+[[:space:]]+)?([^ ]+).*/\2/')"
 
       digest="$(get_digest "$image_tag")"

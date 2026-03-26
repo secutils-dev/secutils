@@ -1,4 +1,5 @@
 import { getApiRequestConfig, getApiUrl } from './urls';
+import type { EntityTag } from './user_tags';
 
 export type UserScriptType = 'responder' | 'api_configurator' | 'api_extractor' | 'page_extractor' | 'universal';
 
@@ -6,6 +7,7 @@ export interface UserScript {
   id: string;
   name: string;
   scriptType: UserScriptType;
+  tags?: EntityTag[];
   createdAt: number;
   updatedAt: number;
 }
@@ -31,10 +33,15 @@ export async function getUserScript(id: string): Promise<UserScriptWithContent> 
   return response.json();
 }
 
-export async function createUserScript(name: string, scriptType: UserScriptType, content: string): Promise<UserScript> {
+export async function createUserScript(
+  name: string,
+  scriptType: UserScriptType,
+  content: string,
+  tagIds?: string[],
+): Promise<UserScript> {
   const response = await fetch(getApiUrl('/api/user/scripts'), {
     ...getApiRequestConfig('POST'),
-    body: JSON.stringify({ name, scriptType, content }),
+    body: JSON.stringify({ name, scriptType, content, ...(tagIds !== undefined ? { tagIds } : {}) }),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -43,10 +50,10 @@ export async function createUserScript(name: string, scriptType: UserScriptType,
   return response.json();
 }
 
-export async function updateUserScript(id: string, content: string): Promise<UserScript> {
+export async function updateUserScript(id: string, content: string, tagIds?: string[]): Promise<UserScript> {
   const response = await fetch(getApiUrl(`/api/user/scripts/${encodeURIComponent(id)}`), {
     ...getApiRequestConfig('PUT'),
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, ...(tagIds !== undefined ? { tagIds } : {}) }),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);

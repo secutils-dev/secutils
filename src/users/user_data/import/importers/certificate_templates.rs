@@ -1,3 +1,4 @@
+use super::tags::remap_tag_ids;
 use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
@@ -8,10 +9,9 @@ use crate::{
             should_skip,
         },
     },
-    utils::certificates::CertificateTemplate,
+    utils::certificates::{CertificateTemplate, TemplatesCreateParams},
 };
 use std::collections::{HashMap, HashSet};
-use time::OffsetDateTime;
 use uuid::Uuid;
 
 pub async fn import_certificate_templates<DR: DnsResolver, ET: EmailTransport>(
@@ -19,12 +19,13 @@ pub async fn import_certificate_templates<DR: DnsResolver, ET: EmailTransport>(
     user: &User,
     templates: &[CertificateTemplate],
     selections: &HashMap<Uuid, &ImportEntitySelection>,
+    tag_id_map: &HashMap<Uuid, Uuid>,
 ) -> ImportEntityResult {
     let mut result = ImportEntityResult::default();
 
     // Pre-fetch existing templates once for overwritten resolution.
-    let existing_templates = api
-        .certificates()
+    let certificates_api = api.certificates();
+    let existing_templates = certificates_api
         .get_certificate_templates(user.id)
         .await
         .unwrap_or_default();
@@ -43,24 +44,21 @@ pub async fn import_certificate_templates<DR: DnsResolver, ET: EmailTransport>(
         if selection.is_some_and(|s| s.conflict_resolution == Some(ConflictResolution::Overwrite))
             && let Some(e) = existing_templates.iter().find(|t| t.name == template.name)
         {
-            let _ = api
-                .certificates()
+            let _ = certificates_api
                 .remove_certificate_template(user.id, e.id)
                 .await;
             used_names.remove(&template.name);
         }
 
-        let mut new_template = template.clone();
-        new_template.id = Uuid::now_v7();
-        new_template.name = resolved_name.clone();
-        let now = OffsetDateTime::now_utc();
-        new_template.created_at = now;
-        new_template.updated_at = now;
-
-        match api
-            .db
-            .certificates()
-            .insert_certificate_template(user.id, &new_template)
+        match certificates_api
+            .create_certificate_template(
+                user.id,
+                TemplatesCreateParams {
+                    template_name: resolved_name.clone(),
+                    attributes: template.attributes.clone(),
+                    tag_ids: remap_tag_ids(&template.tags, tag_id_map),
+                },
+            )
             .await
         {
             Ok(_) => {
@@ -118,6 +116,7 @@ mod tests {
                 key_usage: None,
                 extended_key_usage: None,
             },
+            tags: vec![],
             created_at: datetime!(2020-01-01 00:00:00 UTC),
             updated_at: datetime!(2020-01-01 00:00:00 UTC),
         }
@@ -129,6 +128,7 @@ mod tests {
             exported_at: datetime!(2020-01-01 12:00:00 UTC),
             secrets_encryption: None,
             data: UserDataImportFileData {
+                tags: vec![],
                 scripts: vec![],
                 secrets: vec![],
                 responders: vec![],

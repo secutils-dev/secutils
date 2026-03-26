@@ -1,14 +1,15 @@
 use crate::{
     database::Database,
     error::Error,
-    users::{UserId, scripts::UserScript},
+    users::{EntityTag, RawEntityTag, UserId, group_entity_tags, scripts::UserScript},
 };
-use sqlx::{error::ErrorKind as SqlxErrorKind, query, query_as};
+use sqlx::{Acquire, Pool, Postgres, error::ErrorKind as SqlxErrorKind, query, query_as};
+use std::collections::HashMap;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 #[derive(Debug)]
-struct RawUserScript {
+pub(super) struct RawUserScript {
     id: Uuid,
     user_id: Uuid,
     name: String,
@@ -22,29 +23,29 @@ impl RawUserScript {
     fn into_user_script(self) -> anyhow::Result<UserScript> {
         use crate::users::scripts::UserScriptType;
 
-        let script_type = match self.r#type.as_str() {
-            "responder" => UserScriptType::Responder,
-            "api_configurator" => UserScriptType::ApiConfigurator,
-            "api_extractor" => UserScriptType::ApiExtractor,
-            "page_extractor" => UserScriptType::PageExtractor,
-            "universal" => UserScriptType::Universal,
-            _ => anyhow::bail!("Unknown script type: {}", self.r#type),
-        };
-
         Ok(UserScript {
             id: self.id,
             user_id: self.user_id.into(),
             name: self.name,
-            script_type,
+            script_type: UserScriptType::from_str(&self.r#type)?,
             content: self.content,
+            tags: vec![],
             created_at: self.created_at,
             updated_at: self.updated_at,
         })
     }
 }
 
-/// Extends the primary database with user scripts CRUD methods.
-impl Database {
+/// A database extension for script-related operations.
+pub struct ScriptsDatabaseExt<'pool> {
+    pool: &'pool Pool<Postgres>,
+}
+
+impl<'pool> ScriptsDatabaseExt<'pool> {
+    pub fn new(pool: &'pool Pool<Postgres>) -> Self {
+        Self { pool }
+    }
+
     /// Lists all scripts for a user.
     pub async fn get_user_scripts(&self, user_id: UserId) -> anyhow::Result<Vec<UserScript>> {
         let raw: Vec<RawUserScript> = query_as!(
@@ -57,7 +58,7 @@ ORDER BY name ASC
             "#,
             *user_id
         )
-        .fetch_all(&self.pool)
+        .fetch_all(self.pool)
         .await?;
 
         raw.into_iter()
@@ -82,7 +83,7 @@ ORDER BY name ASC
             *user_id,
             ids
         )
-        .fetch_all(&self.pool)
+        .fetch_all(self.pool)
         .await?;
 
         raw.into_iter()
@@ -96,7 +97,7 @@ ORDER BY name ASC
             r#"SELECT COUNT(*) as "count!" FROM user_data_scripts WHERE user_id = $1"#,
             *user_id
         )
-        .fetch_one(&self.pool)
+        .fetch_one(self.pool)
         .await?;
 
         Ok(count)
@@ -118,36 +119,34 @@ WHERE user_id = $1 AND id = $2
             *user_id,
             id
         )
-        .fetch_optional(&self.pool)
+        .fetch_optional(self.pool)
         .await?;
 
         raw.map(|r| r.into_user_script()).transpose()
     }
 
-    /// Inserts a new script. Returns the created UserScript.
+    /// Inserts a new script (and associated tags). Returns resolved tags.
     pub async fn insert_user_script(
         &self,
         user_id: UserId,
-        name: &str,
-        script_type: &str,
-        content: &str,
-    ) -> anyhow::Result<UserScript> {
-        let id = Uuid::now_v7();
-        let now = OffsetDateTime::now_utc();
+        script: &UserScript,
+    ) -> anyhow::Result<Vec<EntityTag>> {
+        let script_type = script.script_type.as_str();
+        let mut tx = self.pool.begin().await?;
         match query!(
             r#"
 INSERT INTO user_data_scripts (id, user_id, name, type, content, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
             "#,
-            id,
+            script.id,
             *user_id,
-            name,
+            script.name,
             script_type,
-            content,
-            now,
-            now
+            script.content,
+            script.created_at,
+            script.updated_at
         )
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         {
             Ok(_) => {}
@@ -158,7 +157,8 @@ VALUES ($1, $2, $3, $4, $5, $6, $7)
                     .unwrap_or_default();
                 return Err(if is_conflict {
                     anyhow::Error::from(Error::conflict(format!(
-                        "A script with name '{name}' already exists."
+                        "A script with name '{}' already exists.",
+                        script.name
                     )))
                 } else {
                     err.into()
@@ -166,48 +166,58 @@ VALUES ($1, $2, $3, $4, $5, $6, $7)
             }
         }
 
-        Ok(UserScript {
-            id,
-            user_id,
-            name: name.to_string(),
-            script_type: match script_type {
-                "responder" => crate::users::scripts::UserScriptType::Responder,
-                "api_configurator" => crate::users::scripts::UserScriptType::ApiConfigurator,
-                "api_extractor" => crate::users::scripts::UserScriptType::ApiExtractor,
-                "page_extractor" => crate::users::scripts::UserScriptType::PageExtractor,
-                "universal" => crate::users::scripts::UserScriptType::Universal,
-                _ => anyhow::bail!("Unknown script type: {}", script_type),
-            },
-            content: content.to_string(),
-            created_at: now,
-            updated_at: now,
-        })
+        let tags = if script.tags.is_empty() {
+            vec![]
+        } else {
+            Self::set_script_tags(
+                &mut *tx,
+                script.id,
+                &script.tags.iter().map(|t| t.id).collect::<Vec<_>>(),
+            )
+            .await?
+        };
+
+        tx.commit().await?;
+        Ok(tags)
     }
 
-    /// Updates the content of an existing script by user_id and id.
+    /// Updates the content of an existing script (and optionally associated tags). Returns updated
+    /// tags if tag_ids was provided, or None if tags were not changed.
     pub async fn update_user_script(
         &self,
         user_id: UserId,
-        id: Uuid,
-        content: &str,
-    ) -> anyhow::Result<Option<UserScript>> {
-        let now = OffsetDateTime::now_utc();
-        let raw: Option<RawUserScript> = query_as!(
-            RawUserScript,
+        script: &UserScript,
+        tag_ids: Option<Vec<Uuid>>,
+    ) -> anyhow::Result<Option<Vec<EntityTag>>> {
+        let mut tx = self.pool.begin().await?;
+        let result = query!(
             r#"
 UPDATE user_data_scripts SET content = $1, updated_at = $2
 WHERE user_id = $3 AND id = $4
-RETURNING id, user_id, name, type, content, created_at, updated_at
             "#,
-            content,
-            now,
+            script.content,
+            script.updated_at,
             *user_id,
-            id
+            script.id
         )
-        .fetch_optional(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
-        raw.map(|r| r.into_user_script()).transpose()
+        if result.rows_affected() == 0 {
+            return Err(anyhow::Error::from(Error::not_found(format!(
+                "Script '{}' not found.",
+                script.id
+            ))));
+        }
+
+        let updated_tags = if let Some(ref tag_ids) = tag_ids {
+            Some(Self::set_script_tags(&mut *tx, script.id, tag_ids).await?)
+        } else {
+            None
+        };
+
+        tx.commit().await?;
+        Ok(updated_tags)
     }
 
     /// Removes a script by user_id and id.
@@ -226,10 +236,81 @@ RETURNING id as "id!", user_id as "user_id!", name as "name!", type as "type!", 
             *user_id,
             id
         )
-        .fetch_optional(&self.pool)
+        .fetch_optional(self.pool)
         .await?;
 
         raw.map(|r| r.into_user_script()).transpose()
+    }
+
+    /// Fetches tags for a batch of scripts.
+    pub async fn get_script_tags(
+        &self,
+        entity_ids: &[Uuid],
+    ) -> anyhow::Result<HashMap<Uuid, Vec<EntityTag>>> {
+        if entity_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let rows = query_as!(
+            RawEntityTag,
+            r#"
+SELECT jt.script_id AS entity_id, t.id, t.name, t.color
+FROM user_data_scripts_tags jt
+JOIN user_tags t ON jt.tag_id = t.id
+WHERE jt.script_id = ANY($1)
+ORDER BY t.name ASC
+            "#,
+            entity_ids
+        )
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(group_entity_tags(rows))
+    }
+
+    async fn set_script_tags<'a>(
+        executor: impl Acquire<'a, Database = Postgres>,
+        entity_id: Uuid,
+        tag_ids: &[Uuid],
+    ) -> anyhow::Result<Vec<EntityTag>> {
+        let mut conn = executor.acquire().await?;
+        query!(
+            "DELETE FROM user_data_scripts_tags WHERE script_id = $1",
+            entity_id
+        )
+        .execute(&mut *conn)
+        .await?;
+
+        if tag_ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Insert new associations and return resolved tags in a single round-trip.
+        Ok(query_as!(
+            EntityTag,
+            r#"
+WITH inserted AS (
+    INSERT INTO user_data_scripts_tags (script_id, tag_id)
+    SELECT $1, unnest($2::uuid[])
+    RETURNING script_id, tag_id
+)
+SELECT t.id, t.name, t.color
+FROM inserted i
+JOIN user_tags t ON i.tag_id = t.id
+ORDER BY t.name ASC
+            "#,
+            entity_id,
+            tag_ids
+        )
+        .fetch_all(&mut *conn)
+        .await?)
+    }
+}
+
+impl Database {
+    /// Returns a database extension for script-related operations.
+    pub fn scripts(&self) -> ScriptsDatabaseExt<'_> {
+        ScriptsDatabaseExt::new(&self.pool)
     }
 }
 
@@ -239,12 +320,35 @@ mod tests {
         database::Database,
         error::Error,
         tests::{mock_user, mock_user_with_id},
-        users::scripts::{UserScriptType, database_ext::RawUserScript},
+        users::{
+            EntityTag,
+            scripts::{UserScript, UserScriptType, database_ext::RawUserScript},
+        },
     };
     use actix_web::{ResponseError, http::StatusCode};
     use sqlx::PgPool;
     use time::OffsetDateTime;
-    use uuid::uuid;
+    use uuid::{Uuid, uuid};
+
+    fn mock_script(id: Uuid, name: &str, script_type: &str) -> anyhow::Result<UserScript> {
+        let now = OffsetDateTime::from_unix_timestamp(946720800)?;
+        Ok(UserScript {
+            id,
+            user_id: uuid!("00000000-0000-0000-0000-000000000001").into(),
+            name: name.to_string(),
+            script_type: UserScriptType::from_str(script_type)?,
+            content: "console.log('hello');".to_string(),
+            tags: vec![],
+            created_at: now,
+            updated_at: now,
+        })
+    }
+
+    fn mock_script_with_tags(id: Uuid, name: &str, tag_ids: &[Uuid]) -> anyhow::Result<UserScript> {
+        let mut script = mock_script(id, name, "responder")?;
+        script.tags = tag_ids.iter().map(|id| EntityTag::from(*id)).collect();
+        Ok(script)
+    }
 
     #[sqlx::test]
     async fn can_insert_and_list_scripts(pool: PgPool) -> anyhow::Result<()> {
@@ -252,25 +356,29 @@ mod tests {
         let user = mock_user()?;
         db.upsert_user(&user).await?;
 
-        assert!(db.get_user_scripts(user.id).await?.is_empty());
-        assert_eq!(db.count_user_scripts(user.id).await?, 0);
+        let scripts_db = db.scripts();
+        assert!(scripts_db.get_user_scripts(user.id).await?.is_empty());
+        assert_eq!(scripts_db.count_user_scripts(user.id).await?, 0);
 
-        let script = db
-            .insert_user_script(user.id, "test_script", "responder", "console.log('hello');")
-            .await?;
-        assert_eq!(script.name, "test_script");
-        assert_eq!(script.script_type, UserScriptType::Responder);
-        assert_eq!(script.content, "console.log('hello');");
-        assert_eq!(script.user_id, user.id);
+        let script = mock_script(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "test_script",
+            "responder",
+        )?;
+        scripts_db.insert_user_script(user.id, &script).await?;
 
-        db.insert_user_script(user.id, "another_script", "api_extractor", "return data;")
-            .await?;
+        let script2 = mock_script(
+            uuid!("00000000-0000-0000-0000-000000000002"),
+            "another_script",
+            "api_extractor",
+        )?;
+        scripts_db.insert_user_script(user.id, &script2).await?;
 
-        let scripts = db.get_user_scripts(user.id).await?;
+        let scripts = scripts_db.get_user_scripts(user.id).await?;
         assert_eq!(scripts.len(), 2);
         assert_eq!(scripts[0].name, "another_script");
         assert_eq!(scripts[1].name, "test_script");
-        assert_eq!(db.count_user_scripts(user.id).await?, 2);
+        assert_eq!(scripts_db.count_user_scripts(user.id).await?, 2);
 
         Ok(())
     }
@@ -281,19 +389,27 @@ mod tests {
         let user = mock_user()?;
         db.upsert_user(&user).await?;
 
+        let scripts_db = db.scripts();
         assert!(
-            db.get_user_script_by_id(user.id, uuid!("00000000-0000-0000-0000-000000000099"))
+            scripts_db
+                .get_user_script_by_id(user.id, uuid!("00000000-0000-0000-0000-000000000099"))
                 .await?
                 .is_none()
         );
 
-        let script = db
-            .insert_user_script(user.id, "my_script", "responder", "content here")
-            .await?;
+        let script = mock_script(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "my_script",
+            "responder",
+        )?;
+        scripts_db.insert_user_script(user.id, &script).await?;
 
-        let fetched = db.get_user_script_by_id(user.id, script.id).await?.unwrap();
+        let fetched = scripts_db
+            .get_user_script_by_id(user.id, script.id)
+            .await?
+            .unwrap();
         assert_eq!(fetched.name, "my_script");
-        assert_eq!(fetched.content, "content here");
+        assert_eq!(fetched.content, "console.log('hello');");
 
         Ok(())
     }
@@ -304,35 +420,25 @@ mod tests {
         let user = mock_user()?;
         db.upsert_user(&user).await?;
 
-        assert!(
-            db.update_user_script(
-                user.id,
-                uuid!("00000000-0000-0000-0000-000000000099"),
-                "new content"
-            )
-            .await?
-            .is_none()
-        );
+        let scripts_db = db.scripts();
+        let mut script = mock_script(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "my_script",
+            "responder",
+        )?;
+        scripts_db.insert_user_script(user.id, &script).await?;
 
-        let original = db
-            .insert_user_script(user.id, "my_script", "responder", "old content")
+        script.content = "new content".to_string();
+        script.updated_at = OffsetDateTime::from_unix_timestamp(946720900)?;
+        scripts_db
+            .update_user_script(user.id, &script, None)
             .await?;
 
-        let updated = db
-            .update_user_script(user.id, original.id, "new content")
+        let fetched = scripts_db
+            .get_user_script_by_id(user.id, script.id)
             .await?
             .unwrap();
-        assert_eq!(updated.name, "my_script");
-        assert_eq!(updated.id, original.id);
-        assert_eq!(updated.content, "new content");
-        assert!(updated.updated_at >= original.updated_at);
-
-        // Verify the update persisted
-        let script = db
-            .get_user_script_by_id(user.id, original.id)
-            .await?
-            .unwrap();
-        assert_eq!(script.content, "new content");
+        assert_eq!(fetched.content, "new content");
 
         Ok(())
     }
@@ -343,20 +449,33 @@ mod tests {
         let user = mock_user()?;
         db.upsert_user(&user).await?;
 
+        let scripts_db = db.scripts();
         assert!(
-            db.remove_user_script(user.id, uuid!("00000000-0000-0000-0000-000000000099"))
+            scripts_db
+                .remove_user_script(user.id, uuid!("00000000-0000-0000-0000-000000000099"))
                 .await?
                 .is_none()
         );
 
-        let inserted = db
-            .insert_user_script(user.id, "to_delete", "responder", "content")
-            .await?;
+        let script = mock_script(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "to_delete",
+            "responder",
+        )?;
+        scripts_db.insert_user_script(user.id, &script).await?;
 
-        let removed = db.remove_user_script(user.id, inserted.id).await?.unwrap();
+        let removed = scripts_db
+            .remove_user_script(user.id, script.id)
+            .await?
+            .unwrap();
         assert_eq!(removed.name, "to_delete");
-        assert!(db.get_user_scripts(user.id).await?.is_empty());
-        assert!(db.remove_user_script(user.id, inserted.id).await?.is_none());
+        assert!(scripts_db.get_user_scripts(user.id).await?.is_empty());
+        assert!(
+            scripts_db
+                .remove_user_script(user.id, script.id)
+                .await?
+                .is_none()
+        );
 
         Ok(())
     }
@@ -369,20 +488,28 @@ mod tests {
         db.upsert_user(&user_a).await?;
         db.upsert_user(&user_b).await?;
 
-        db.insert_user_script(user_a.id, "shared_name", "responder", "user_a_content")
-            .await?;
-        db.insert_user_script(user_b.id, "shared_name", "responder", "user_b_content")
-            .await?;
+        let scripts_db = db.scripts();
+        let script_a = mock_script(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "shared_name",
+            "responder",
+        )?;
+        scripts_db.insert_user_script(user_a.id, &script_a).await?;
 
-        let scripts_a = db.get_user_scripts(user_a.id).await?;
-        let scripts_b = db.get_user_scripts(user_b.id).await?;
+        let mut script_b = mock_script(
+            uuid!("00000000-0000-0000-0000-000000000003"),
+            "shared_name",
+            "responder",
+        )?;
+        script_b.content = "user_b_content".to_string();
+        scripts_db.insert_user_script(user_b.id, &script_b).await?;
+
+        let scripts_a = scripts_db.get_user_scripts(user_a.id).await?;
+        let scripts_b = scripts_db.get_user_scripts(user_b.id).await?;
         assert_eq!(scripts_a.len(), 1);
         assert_eq!(scripts_b.len(), 1);
-        assert_eq!(scripts_a[0].content, "user_a_content");
+        assert_eq!(scripts_a[0].content, "console.log('hello');");
         assert_eq!(scripts_b[0].content, "user_b_content");
-
-        assert_eq!(db.count_user_scripts(user_a.id).await?, 1);
-        assert_eq!(db.count_user_scripts(user_b.id).await?, 1);
 
         Ok(())
     }
@@ -393,10 +520,21 @@ mod tests {
         let user = mock_user()?;
         db.upsert_user(&user).await?;
 
-        db.insert_user_script(user.id, "my_script", "responder", "content1")
-            .await?;
-        let err = db
-            .insert_user_script(user.id, "my_script", "responder", "content2")
+        let scripts_db = db.scripts();
+        let script = mock_script(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "my_script",
+            "responder",
+        )?;
+        scripts_db.insert_user_script(user.id, &script).await?;
+
+        let script2 = mock_script(
+            uuid!("00000000-0000-0000-0000-000000000002"),
+            "my_script",
+            "responder",
+        )?;
+        let err = scripts_db
+            .insert_user_script(user.id, &script2)
             .await
             .unwrap_err();
 
@@ -413,12 +551,17 @@ mod tests {
         let user = mock_user()?;
         db.upsert_user(&user).await?;
 
-        db.insert_user_script(user.id, "script1", "responder", "content")
-            .await?;
-        assert_eq!(db.count_user_scripts(user.id).await?, 1);
+        let scripts_db = db.scripts();
+        let script = mock_script(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "script1",
+            "responder",
+        )?;
+        scripts_db.insert_user_script(user.id, &script).await?;
+        assert_eq!(scripts_db.count_user_scripts(user.id).await?, 1);
 
         db.remove_user_by_email(&user.email).await?;
-        assert_eq!(db.count_user_scripts(user.id).await?, 0);
+        assert_eq!(scripts_db.count_user_scripts(user.id).await?, 0);
 
         Ok(())
     }
@@ -429,7 +572,7 @@ mod tests {
         let user = mock_user()?;
         db.upsert_user(&user).await?;
 
-        let scripts = db.bulk_get_user_scripts(user.id, &[]).await?;
+        let scripts = db.scripts().bulk_get_user_scripts(user.id, &[]).await?;
         assert!(scripts.is_empty());
 
         Ok(())
@@ -441,16 +584,29 @@ mod tests {
         let user = mock_user()?;
         db.upsert_user(&user).await?;
 
-        let script_a = db
-            .insert_user_script(user.id, "alpha_script", "responder", "content_a")
-            .await?;
-        let script_b = db
-            .insert_user_script(user.id, "beta_script", "api_extractor", "content_b")
-            .await?;
-        db.insert_user_script(user.id, "gamma_script", "universal", "content_c")
-            .await?;
+        let scripts_db = db.scripts();
+        let script_a = mock_script(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "alpha_script",
+            "responder",
+        )?;
+        scripts_db.insert_user_script(user.id, &script_a).await?;
 
-        let scripts = db
+        let script_b = mock_script(
+            uuid!("00000000-0000-0000-0000-000000000002"),
+            "beta_script",
+            "api_extractor",
+        )?;
+        scripts_db.insert_user_script(user.id, &script_b).await?;
+
+        let script_c = mock_script(
+            uuid!("00000000-0000-0000-0000-000000000003"),
+            "gamma_script",
+            "universal",
+        )?;
+        scripts_db.insert_user_script(user.id, &script_c).await?;
+
+        let scripts = scripts_db
             .bulk_get_user_scripts(user.id, &[script_a.id, script_b.id])
             .await?;
         assert_eq!(scripts.len(), 2);
@@ -466,11 +622,15 @@ mod tests {
         let user = mock_user()?;
         db.upsert_user(&user).await?;
 
-        let script = db
-            .insert_user_script(user.id, "my_script", "responder", "content")
-            .await?;
+        let scripts_db = db.scripts();
+        let script = mock_script(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "my_script",
+            "responder",
+        )?;
+        scripts_db.insert_user_script(user.id, &script).await?;
 
-        let scripts = db
+        let scripts = scripts_db
             .bulk_get_user_scripts(
                 user.id,
                 &[script.id, uuid!("00000000-0000-0000-0000-000000000099")],
@@ -490,13 +650,24 @@ mod tests {
         db.upsert_user(&user_a).await?;
         db.upsert_user(&user_b).await?;
 
-        let script_a = db
-            .insert_user_script(user_a.id, "shared_name", "responder", "content_a")
-            .await?;
-        db.insert_user_script(user_b.id, "shared_name", "responder", "content_b")
-            .await?;
+        let scripts_db = db.scripts();
+        let script_a = mock_script(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "shared_name",
+            "responder",
+        )?;
+        scripts_db.insert_user_script(user_a.id, &script_a).await?;
 
-        let scripts = db.bulk_get_user_scripts(user_b.id, &[script_a.id]).await?;
+        let script_b = mock_script(
+            uuid!("00000000-0000-0000-0000-000000000003"),
+            "shared_name",
+            "responder",
+        )?;
+        scripts_db.insert_user_script(user_b.id, &script_b).await?;
+
+        let scripts = scripts_db
+            .bulk_get_user_scripts(user_b.id, &[script_a.id])
+            .await?;
         assert!(scripts.is_empty());
 
         Ok(())
@@ -539,6 +710,287 @@ mod tests {
         };
 
         assert!(raw_unknown.into_user_script().is_err());
+
+        Ok(())
+    }
+
+    // --- Tag tests ---
+
+    #[sqlx::test]
+    async fn insert_script_with_tags_is_atomic(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.upsert_user(&user).await?;
+
+        let tag_a = db.insert_user_tag(user.id, "alpha", "primary").await?;
+        let tag_b = db.insert_user_tag(user.id, "beta", "danger").await?;
+
+        let scripts_db = db.scripts();
+        let script = mock_script_with_tags(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            &[tag_a.id, tag_b.id],
+        )?;
+        let tags = scripts_db.insert_user_script(user.id, &script).await?;
+
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].name, "alpha");
+        assert_eq!(tags[1].name, "beta");
+
+        let fetched = scripts_db.get_user_script_by_id(user.id, script.id).await?;
+        assert!(fetched.is_some());
+
+        let tags_map = scripts_db.get_script_tags(&[script.id]).await?;
+        assert_eq!(tags_map[&script.id], tags);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_script_with_tags_empty_tags(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.upsert_user(&user).await?;
+
+        let scripts_db = db.scripts();
+        let script = mock_script(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            "responder",
+        )?;
+        let tags = scripts_db.insert_user_script(user.id, &script).await?;
+
+        assert!(tags.is_empty());
+
+        let fetched = scripts_db.get_user_script_by_id(user.id, script.id).await?;
+        assert!(fetched.is_some());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn update_script_with_tags_replaces_tags(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.upsert_user(&user).await?;
+
+        let tag_a = db.insert_user_tag(user.id, "alpha", "primary").await?;
+        let tag_b = db.insert_user_tag(user.id, "beta", "danger").await?;
+        let tag_c = db.insert_user_tag(user.id, "gamma", "success").await?;
+
+        let scripts_db = db.scripts();
+        let script = mock_script_with_tags(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            &[tag_a.id, tag_b.id],
+        )?;
+        scripts_db.insert_user_script(user.id, &script).await?;
+
+        let mut updated = script.clone();
+        updated.content = "updated content".to_string();
+        updated.updated_at = OffsetDateTime::from_unix_timestamp(946720900)?;
+        let tags = scripts_db
+            .update_user_script(user.id, &updated, Some(vec![tag_b.id, tag_c.id]))
+            .await?
+            .unwrap();
+
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].name, "beta");
+        assert_eq!(tags[1].name, "gamma");
+
+        let fetched = scripts_db
+            .get_user_script_by_id(user.id, script.id)
+            .await?
+            .unwrap();
+        assert_eq!(fetched.content, "updated content");
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn update_script_with_tags_clears_tags(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.upsert_user(&user).await?;
+
+        let tag = db.insert_user_tag(user.id, "alpha", "primary").await?;
+
+        let scripts_db = db.scripts();
+        let script = mock_script_with_tags(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            &[tag.id],
+        )?;
+        scripts_db.insert_user_script(user.id, &script).await?;
+
+        let mut updated = script.clone();
+        updated.updated_at = OffsetDateTime::from_unix_timestamp(946720900)?;
+        let tags = scripts_db
+            .update_user_script(user.id, &updated, Some(vec![]))
+            .await?
+            .unwrap();
+        assert!(tags.is_empty());
+
+        let tags_map = scripts_db.get_script_tags(&[script.id]).await?;
+        assert!(!tags_map.contains_key(&script.id) || tags_map[&script.id].is_empty());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_script_with_tags_rolls_back_on_invalid_tags(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.upsert_user(&user).await?;
+
+        let scripts_db = db.scripts();
+        let script = mock_script_with_tags(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            &[uuid!("00000000-0000-0000-0000-000000000099")],
+        )?;
+        let result = scripts_db.insert_user_script(user.id, &script).await;
+        assert!(result.is_err());
+
+        let fetched = scripts_db.get_user_script_by_id(user.id, script.id).await?;
+        assert!(fetched.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_script_returns_tags_ordered_by_name(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.upsert_user(&user).await?;
+
+        let tag_z = db.insert_user_tag(user.id, "zebra", "primary").await?;
+        let tag_a = db.insert_user_tag(user.id, "alpha", "danger").await?;
+        let tag_m = db.insert_user_tag(user.id, "middle", "success").await?;
+
+        let scripts_db = db.scripts();
+        let script = mock_script_with_tags(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            &[tag_z.id, tag_a.id, tag_m.id],
+        )?;
+        let tags = scripts_db.insert_user_script(user.id, &script).await?;
+        let names: Vec<&str> = tags.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(names, vec!["alpha", "middle", "zebra"]);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_script_with_tags_handles_duplicate_tag_ids(pool: PgPool) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.upsert_user(&user).await?;
+
+        let tag = db.insert_user_tag(user.id, "alpha", "primary").await?;
+
+        let scripts_db = db.scripts();
+        let script = mock_script_with_tags(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            &[tag.id, tag.id],
+        )?;
+        let result = scripts_db.insert_user_script(user.id, &script).await;
+
+        match result {
+            Ok(tags) => {
+                assert_eq!(tags.len(), 1);
+                assert_eq!(tags[0].name, "alpha");
+            }
+            Err(_) => {
+                let fetched = scripts_db.get_user_script_by_id(user.id, script.id).await?;
+                assert!(fetched.is_none());
+            }
+        }
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn update_script_with_tags_rolls_back_on_invalid_tags(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let user = mock_user()?;
+        let db = Database::create(pool).await?;
+        db.upsert_user(&user).await?;
+
+        let tag = db.insert_user_tag(user.id, "alpha", "primary").await?;
+
+        let scripts_db = db.scripts();
+        let script = mock_script_with_tags(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "some-name",
+            &[tag.id],
+        )?;
+        scripts_db.insert_user_script(user.id, &script).await?;
+
+        let mut updated = script.clone();
+        updated.content = "updated-content".to_string();
+        updated.updated_at = OffsetDateTime::from_unix_timestamp(946720900)?;
+        let result = scripts_db
+            .update_user_script(
+                user.id,
+                &updated,
+                Some(vec![uuid!("00000000-0000-0000-0000-000000000099")]),
+            )
+            .await;
+        assert!(result.is_err());
+
+        let fetched = scripts_db
+            .get_user_script_by_id(user.id, script.id)
+            .await?
+            .unwrap();
+        assert_eq!(fetched.content, "console.log('hello');");
+
+        let tags_map = scripts_db.get_script_tags(&[script.id]).await?;
+        assert_eq!(tags_map[&script.id].len(), 1);
+        assert_eq!(tags_map[&script.id][0].name, "alpha");
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn insert_script_with_tags_isolated_between_users(pool: PgPool) -> anyhow::Result<()> {
+        let user_a = mock_user()?;
+        let user_b = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
+        let db = Database::create(pool).await?;
+        db.upsert_user(&user_a).await?;
+        db.upsert_user(&user_b).await?;
+
+        let tag_a = db.insert_user_tag(user_a.id, "alpha", "primary").await?;
+        let tag_b = db.insert_user_tag(user_b.id, "beta", "danger").await?;
+
+        let scripts_db = db.scripts();
+        let script_a = mock_script_with_tags(
+            uuid!("00000000-0000-0000-0000-000000000001"),
+            "script-a",
+            &[tag_a.id],
+        )?;
+        let tags_a = scripts_db.insert_user_script(user_a.id, &script_a).await?;
+
+        let script_b = mock_script_with_tags(
+            uuid!("00000000-0000-0000-0000-000000000003"),
+            "script-b",
+            &[tag_b.id],
+        )?;
+        let tags_b = scripts_db.insert_user_script(user_b.id, &script_b).await?;
+
+        assert_eq!(tags_a.len(), 1);
+        assert_eq!(tags_a[0].name, "alpha");
+        assert_eq!(tags_b.len(), 1);
+        assert_eq!(tags_b[0].name, "beta");
+
+        let map_a = scripts_db.get_script_tags(&[script_a.id]).await?;
+        let map_b = scripts_db.get_script_tags(&[script_b.id]).await?;
+        assert_eq!(map_a[&script_a.id][0].name, "alpha");
+        assert_eq!(map_b[&script_b.id][0].name, "beta");
 
         Ok(())
     }

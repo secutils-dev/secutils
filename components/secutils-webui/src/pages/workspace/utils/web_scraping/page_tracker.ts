@@ -1,3 +1,5 @@
+import type { EntityTag } from '../../../../model/user_tags';
+
 export interface SecretsAccess {
   type: 'none' | 'all' | 'selected';
   secrets?: string[];
@@ -6,6 +8,7 @@ export interface SecretsAccess {
 export interface PageTracker {
   id: string;
   name: string;
+  tags?: EntityTag[];
   createdAt: number;
   updatedAt: number;
   secrets?: SecretsAccess;

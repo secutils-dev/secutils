@@ -22,15 +22,11 @@ import { ContentSecurityPolicyEditFlyout } from './content_security_policy_edit_
 import { ContentSecurityPolicyImportModal } from './content_security_policy_import_modal';
 import { ContentSecurityPolicyShareModal } from './content_security_policy_share_modal';
 import { PageErrorState, PageLoadingState } from '../../../../../components';
-import {
-  type AsyncData,
-  getApiRequestConfig,
-  getApiUrl,
-  getCopyName,
-  getErrorMessage,
-  ResponseError,
-} from '../../../../../model';
-import { ItemsTableFilter, useItemsTableFilter } from '../../../components/items_table_filter';
+import { useUserTags } from '../../../../../hooks';
+import type { AsyncData } from '../../../../../model';
+import { getApiRequestConfig, getApiUrl, getCopyName, getErrorMessage, ResponseError } from '../../../../../model';
+import { getTagsColumn } from '../../../components/entity_tags_column';
+import { ItemsTableFilter, TagsFilter, useItemsTableFilter } from '../../../components/items_table_filter';
 import { TimestampTableCell } from '../../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../../hooks';
 import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../../workspace_links';
@@ -45,6 +41,7 @@ export default function WebSecurityContentSecurityPolicies() {
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
 
   const [policies, setPolicies] = useState<AsyncData<ContentSecurityPolicy[]>>({ status: 'pending' });
+  const { allTags } = useUserTags();
 
   const createButton = useMemo(
     () => (
@@ -177,9 +174,11 @@ export default function WebSecurityContentSecurityPolicies() {
     (policy: ContentSecurityPolicy) => [policy.name, policy.id, getContentSecurityPolicyString(policy)],
     [],
   );
-  const { filteredItems, query, setQuery } = useItemsTableFilter({
+  const getItemTags = useCallback((policy: ContentSecurityPolicy) => policy.tags, []);
+  const { filteredItems, query, setQuery, selectedTagIds, setSelectedTagIds } = useItemsTableFilter({
     items: policies.status === 'succeeded' ? policies.data : [],
     getSearchFields,
+    getItemTags,
   });
 
   const [pagination, setPagination] = useState<Pagination>({
@@ -260,7 +259,9 @@ export default function WebSecurityContentSecurityPolicies() {
           onQueryChange={setQuery}
           onRefresh={loadPolicies}
           placeholder="Search by name, ID, or policy content..."
-        />
+        >
+          <TagsFilter tags={allTags} selectedTagIds={selectedTagIds} onSelectedTagIdsChange={setSelectedTagIds} />
+        </ItemsTableFilter>
         <EuiSpacer size="m" />
         <EuiInMemoryTable
           pagination={pagination}
@@ -302,6 +303,7 @@ export default function WebSecurityContentSecurityPolicies() {
               field: 'directives',
               render: (_, policy: ContentSecurityPolicy) => getContentSecurityPolicyString(policy),
             },
+            getTagsColumn(),
             {
               name: 'Last updated',
               field: 'updatedAt',

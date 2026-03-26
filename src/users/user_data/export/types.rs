@@ -1,8 +1,8 @@
 use crate::{
     retrack::RetrackTracker,
     users::{
-        SecretsAccess, UserSettings, scripts::UserScript, secrets::SecretsEncryptionMeta,
-        user_data::shared::DataFileSecret,
+        EntityTag, SecretsAccess, UserSettings, UserTag, scripts::UserScript,
+        secrets::SecretsEncryptionMeta, user_data::shared::DataFileSecret,
     },
     utils::{
         certificates::{CertificateTemplate, PrivateKey, PrivateKeyAlgorithm},
@@ -36,6 +36,8 @@ pub struct UserDataExport {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserDataExportData {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<UserTag>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub scripts: Vec<UserScript>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -144,6 +146,8 @@ pub struct ExportedPrivateKey {
     pub alg: PrivateKeyAlgorithm,
     pub pkcs8: String,
     pub encrypted: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<EntityTag>,
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::timestamp")]
@@ -158,6 +162,7 @@ impl From<PrivateKey> for ExportedPrivateKey {
             alg: key.alg,
             pkcs8: openssl::base64::encode_block(&key.pkcs8),
             encrypted: key.encrypted,
+            tags: key.tags,
             created_at: key.created_at,
             updated_at: key.updated_at,
         }
@@ -186,6 +191,8 @@ pub struct ExportedTracker {
     pub retrack: ExportedRetrackData,
     #[serde(default, skip_serializing_if = "SecretsAccess::is_none")]
     pub secrets: SecretsAccess,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<EntityTag>,
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::timestamp")]
@@ -194,63 +201,47 @@ pub struct ExportedTracker {
     pub history: Vec<TrackerDataRevision>,
 }
 
-/// Helper to convert a tracker with retrack data into an exported tracker.
-fn to_exported_tracker(
-    id: Uuid,
-    name: String,
-    retrack: &RetrackTracker,
-    secrets: SecretsAccess,
-    created_at: OffsetDateTime,
-    updated_at: OffsetDateTime,
-    history: Vec<TrackerDataRevision>,
-) -> Option<ExportedTracker> {
-    let value = match retrack {
-        RetrackTracker::Value(v) => v,
-        RetrackTracker::Reference { .. } => return None,
-    };
-    Some(ExportedTracker {
-        id,
-        name,
-        retrack: ExportedRetrackData {
-            enabled: value.enabled,
-            config: value.config.clone(),
-            target: value.target.clone(),
-            notifications: value.notifications,
-        },
-        secrets,
-        created_at,
-        updated_at,
-        history,
-    })
+fn retrack_to_exported(retrack: &RetrackTracker) -> Option<ExportedRetrackData> {
+    match retrack {
+        RetrackTracker::Value(v) => Some(ExportedRetrackData {
+            enabled: v.enabled,
+            config: v.config.clone(),
+            target: v.target.clone(),
+            notifications: v.notifications,
+        }),
+        RetrackTracker::Reference { .. } => None,
+    }
 }
 
 impl PageTracker {
     /// Converts this page tracker into an exported tracker with optional history.
     pub fn into_exported(self, history: Vec<TrackerDataRevision>) -> Option<ExportedTracker> {
-        to_exported_tracker(
-            self.id,
-            self.name,
-            &self.retrack,
-            self.secrets,
-            self.created_at,
-            self.updated_at,
+        Some(ExportedTracker {
+            id: self.id,
+            name: self.name,
+            retrack: retrack_to_exported(&self.retrack)?,
+            secrets: self.secrets,
+            tags: self.tags,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
             history,
-        )
+        })
     }
 }
 
 impl ApiTracker {
     /// Converts this API tracker into an exported tracker with optional history.
     pub fn into_exported(self, history: Vec<TrackerDataRevision>) -> Option<ExportedTracker> {
-        to_exported_tracker(
-            self.id,
-            self.name,
-            &self.retrack,
-            self.secrets,
-            self.created_at,
-            self.updated_at,
+        Some(ExportedTracker {
+            id: self.id,
+            name: self.name,
+            retrack: retrack_to_exported(&self.retrack)?,
+            secrets: self.secrets,
+            tags: self.tags,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
             history,
-        )
+        })
     }
 }
 
@@ -275,11 +266,13 @@ mod tests {
             exported_at: datetime!(2020-01-01 12:00:00 UTC),
             secrets_encryption: None,
             data: UserDataExportData {
+                tags: vec![],
                 scripts: vec![],
                 secrets: vec![DataFileSecret {
                     id: uuid::Uuid::nil(),
                     name: "TEST".to_string(),
                     encrypted_value: None,
+                    tags: vec![],
                     created_at: datetime!(2020-01-01 00:00:00 UTC),
                     updated_at: datetime!(2020-01-01 00:00:00 UTC),
                 }],
@@ -313,6 +306,7 @@ mod tests {
     #[test]
     fn export_data_empty_vectors_omitted() {
         let data = UserDataExportData {
+            tags: vec![],
             scripts: vec![],
             secrets: vec![],
             responders: vec![],
@@ -335,6 +329,7 @@ mod tests {
             exported_at: datetime!(2020-01-01 00:00:00 UTC),
             secrets_encryption: None,
             data: UserDataExportData {
+                tags: vec![],
                 scripts: vec![],
                 secrets: vec![],
                 responders: vec![],
@@ -358,6 +353,7 @@ mod tests {
             alg: PrivateKeyAlgorithm::Ed25519,
             pkcs8: openssl::base64::encode_block(&[1, 2, 3]),
             encrypted: false,
+            tags: vec![],
             created_at: datetime!(2020-01-01 00:00:00 UTC),
             updated_at: datetime!(2020-06-01 00:00:00 UTC),
         };
@@ -397,6 +393,7 @@ mod tests {
                     script: None,
                     secrets: crate::users::SecretsAccess::None,
                 },
+                tags: vec![],
                 created_at: datetime!(2020-01-01 00:00:00 UTC),
                 updated_at: datetime!(2020-06-01 00:00:00 UTC),
             },
@@ -469,6 +466,7 @@ mod tests {
             alg: PrivateKeyAlgorithm::Ed25519,
             pkcs8: vec![10, 20, 30, 40],
             encrypted: true,
+            tags: vec![],
             created_at: datetime!(2020-01-01 00:00:00 UTC),
             updated_at: datetime!(2020-06-01 00:00:00 UTC),
         });

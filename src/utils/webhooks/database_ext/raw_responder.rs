@@ -78,6 +78,7 @@ impl TryFrom<RawResponder> for Responder {
                 secrets: raw_settings.secrets.into(),
             },
             created_at: raw.created_at,
+            tags: vec![],
             updated_at: raw.updated_at,
         })
     }
@@ -142,6 +143,7 @@ mod tests {
                     script: None,
                     secrets: SecretsAccess::None,
                 },
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             })?,
@@ -195,6 +197,7 @@ mod tests {
                     script: None,
                     secrets: SecretsAccess::None,
                 },
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
             }
@@ -286,6 +289,7 @@ mod tests {
                     secrets: vec!["API_KEY".into(), "TOKEN".into()],
                 },
             },
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?,
         };

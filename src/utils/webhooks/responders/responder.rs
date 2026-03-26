@@ -1,4 +1,7 @@
-use crate::utils::webhooks::{ResponderLocation, ResponderMethod, ResponderSettings};
+use crate::{
+    users::EntityTag,
+    utils::webhooks::{ResponderLocation, ResponderMethod, ResponderSettings},
+};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -18,6 +21,9 @@ pub struct Responder {
     pub enabled: bool,
     /// Miscellaneous responder settings.
     pub settings: ResponderSettings,
+    /// Tags assigned to this responder.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<EntityTag>,
     /// Date and time when the web page tracker was created.
     #[serde(with = "time::serde::timestamp")]
     pub created_at: OffsetDateTime,
@@ -58,6 +64,7 @@ mod tests {
                 script: Some("return { body: `custom body` };".to_string()),
                 secrets: SecretsAccess::None,
             },
+            tags: vec![],
             created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
             updated_at: OffsetDateTime::from_unix_timestamp(946720810)?
         }, @r###"
@@ -139,6 +146,7 @@ mod tests {
                     script: Some("return { body: `custom body` };".to_string()),
                     secrets: SecretsAccess::None,
                 },
+                tags: vec![],
                 created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
                 updated_at: OffsetDateTime::from_unix_timestamp(946720810)?
             }

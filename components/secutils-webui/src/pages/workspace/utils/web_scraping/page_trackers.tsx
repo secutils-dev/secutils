@@ -26,6 +26,7 @@ import { TrackerName } from './tracker_name';
 import { TrackerRevisions } from './tracker_revisions';
 import { useTrackerHealth } from './use_tracker_health';
 import { PageErrorState, PageLoadingState } from '../../../../components';
+import { useUserTags } from '../../../../hooks';
 import {
   type AsyncData,
   getApiRequestConfig,
@@ -34,7 +35,8 @@ import {
   getErrorMessage,
   ResponseError,
 } from '../../../../model';
-import { ItemsTableFilter, useItemsTableFilter } from '../../components/items_table_filter';
+import { getTagsColumn } from '../../components/entity_tags_column';
+import { ItemsTableFilter, TagsFilter, useItemsTableFilter } from '../../components/items_table_filter';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
@@ -49,6 +51,7 @@ export default function PageTrackers() {
 
   const [trackerToRemove, setTrackerToRemove] = useState<PageTracker | null>(null);
   const [trackerToEdit, setTrackerToEdit] = useState<Partial<PageTracker> | null | undefined>(null);
+  const { allTags } = useUserTags();
 
   const createButton = useMemo(
     () => (
@@ -114,11 +117,13 @@ export default function PageTrackers() {
 
   // Filter configuration: search by name and ID
   const getSearchFields = useCallback((tracker: PageTracker) => [tracker.name, tracker.id], []);
+  const getItemTags = useCallback((tracker: PageTracker) => tracker.tags, []);
 
   // Use the filter hook with URL sync
-  const { filteredItems, query, setQuery } = useItemsTableFilter({
+  const { filteredItems, query, setQuery, selectedTagIds, setSelectedTagIds } = useItemsTableFilter({
     items: trackers.status === 'succeeded' ? trackers.data : [],
     getSearchFields,
+    getItemTags,
   });
 
   const { data: healthData, refetch: refetchHealth } = useTrackerHealth(
@@ -260,7 +265,9 @@ export default function PageTrackers() {
             refetchHealth();
           }}
           placeholder="Search by name or ID..."
-        />
+        >
+          <TagsFilter tags={allTags} selectedTagIds={selectedTagIds} onSelectedTagIdsChange={setSelectedTagIds} />
+        </ItemsTableFilter>
         <EuiSpacer size="m" />
         <EuiInMemoryTable
           pagination={pagination}
@@ -346,6 +353,7 @@ export default function PageTrackers() {
                 />
               ),
             },
+            getTagsColumn(),
             {
               name: <></>,
               render: () => <EuiSpacer size={'xxl'} />,

@@ -14,7 +14,8 @@ import type { EuiBasicTableColumn } from '@elastic/eui';
 import { unix } from 'moment/moment';
 import { useCallback, useEffect, useState } from 'react';
 
-import type { UserScript, UserScriptType } from '../model';
+import { ScriptEditModal } from './script_edit_modal';
+import { useUserTags } from '../hooks';
 import {
   createUserScript,
   deleteUserScript,
@@ -23,8 +24,10 @@ import {
   updateUserScript,
   USER_SCRIPT_TYPE_LABELS,
 } from '../model';
-import { ScriptEditModal } from './script_edit_modal';
+import type { UserScript, UserScriptType } from '../model';
 import type { PageToast } from '../pages/page';
+import { getTagsColumn } from '../pages/workspace/components/entity_tags_column';
+import { ItemsTableFilter, TagsFilter, useItemsTableFilter } from '../pages/workspace/components/items_table_filter';
 
 interface DeleteConfirmation {
   id: string;
@@ -56,6 +59,7 @@ export default function ScriptsTab({ addToast }: { addToast: (toast: PageToast) 
     visible: false,
   });
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmation | null>(null);
+  const { allTags } = useUserTags();
 
   const loadScripts = useCallback(async () => {
     setLoading(true);
@@ -73,12 +77,12 @@ export default function ScriptsTab({ addToast }: { addToast: (toast: PageToast) 
   }, [loadScripts]);
 
   const handleSave = useCallback(
-    async (name: string, scriptType: UserScriptType, content: string, editingId?: string) => {
+    async (name: string, scriptType: UserScriptType, content: string, editingId?: string, tagIds?: string[]) => {
       if (editingId !== undefined) {
-        await updateUserScript(editingId, content);
+        await updateUserScript(editingId, content, tagIds);
         addToast({ id: 'update-script', color: 'success', title: `Script "${name}" updated` });
       } else {
-        await createUserScript(name, scriptType, content);
+        await createUserScript(name, scriptType, content, tagIds);
         addToast({ id: 'create-script', color: 'success', title: `Script "${name}" created` });
       }
       await loadScripts();
@@ -115,6 +119,17 @@ export default function ScriptsTab({ addToast }: { addToast: (toast: PageToast) 
     [loadScripts, addToast],
   );
 
+  const getSearchFields = useCallback(
+    (script: UserScript) => [script.name, script.id, USER_SCRIPT_TYPE_LABELS[script.scriptType]],
+    [],
+  );
+  const getItemTags = useCallback((script: UserScript) => script.tags, []);
+  const { filteredItems, query, setQuery, selectedTagIds, setSelectedTagIds } = useItemsTableFilter({
+    items: scripts,
+    getSearchFields,
+    getItemTags,
+  });
+
   const columns: Array<EuiBasicTableColumn<UserScript>> = [
     {
       field: 'name',
@@ -132,6 +147,7 @@ export default function ScriptsTab({ addToast }: { addToast: (toast: PageToast) 
       sortable: true,
       render: (type: UserScriptType) => <EuiBadge color={TYPE_COLOR[type]}>{USER_SCRIPT_TYPE_LABELS[type]}</EuiBadge>,
     },
+    getTagsColumn(),
     {
       field: 'updatedAt',
       name: 'Last updated',
@@ -186,11 +202,14 @@ export default function ScriptsTab({ addToast }: { addToast: (toast: PageToast) 
         </EuiFlexItem>
       </EuiFlexGroup>
       <EuiSpacer size="m" />
+      <ItemsTableFilter query={query} onQueryChange={setQuery} onRefresh={loadScripts} placeholder="Search scripts…">
+        <TagsFilter tags={allTags} selectedTagIds={selectedTagIds} onSelectedTagIdsChange={setSelectedTagIds} />
+      </ItemsTableFilter>
+      <EuiSpacer size="m" />
       <EuiInMemoryTable
-        items={scripts}
+        items={filteredItems}
         columns={columns}
         loading={loading}
-        search={{ box: { incremental: true, placeholder: 'Search scripts…' } }}
         sorting={{ sort: { field: 'updatedAt', direction: 'desc' } }}
         pagination={{ pageSize: 10, showPerPageOptions: true }}
         noItemsMessage={

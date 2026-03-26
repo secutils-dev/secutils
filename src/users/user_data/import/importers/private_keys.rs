@@ -2,12 +2,12 @@ use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
     users::{
-        User,
+        EntityTag, User,
         user_data::{
             export::ExportedPrivateKey,
             import::{
-                ConflictResolution, ImportEntityResult, ImportEntitySelection, resolve_name,
-                should_skip,
+                ConflictResolution, ImportEntityResult, ImportEntitySelection, remap_tag_ids,
+                resolve_name, should_skip,
             },
         },
     },
@@ -22,12 +22,13 @@ pub async fn import_private_keys<DR: DnsResolver, ET: EmailTransport>(
     user: &User,
     keys: &[ExportedPrivateKey],
     selections: &HashMap<Uuid, &ImportEntitySelection>,
+    tag_id_map: &HashMap<Uuid, Uuid>,
 ) -> ImportEntityResult {
     let mut result = ImportEntityResult::default();
 
     // Pre-fetch existing keys once for overwritten resolution.
-    let existing_keys = api
-        .certificates()
+    let certificates_api = api.certificates();
+    let existing_keys = certificates_api
         .get_private_keys(user.id)
         .await
         .unwrap_or_default();
@@ -46,7 +47,7 @@ pub async fn import_private_keys<DR: DnsResolver, ET: EmailTransport>(
         if selection.is_some_and(|s| s.conflict_resolution == Some(ConflictResolution::Overwrite))
             && let Some(e) = existing_keys.iter().find(|k| k.name == key.name)
         {
-            let _ = api.certificates().remove_private_key(user.id, e.id).await;
+            let _ = certificates_api.remove_private_key(user.id, e.id).await;
             used_names.remove(&key.name);
         }
 
@@ -71,6 +72,10 @@ pub async fn import_private_keys<DR: DnsResolver, ET: EmailTransport>(
             pkcs8,
             encrypted: key.encrypted,
             created_at: now,
+            tags: remap_tag_ids(&key.tags, tag_id_map)
+                .into_iter()
+                .map(EntityTag::from)
+                .collect(),
             updated_at: now,
         };
 
@@ -124,6 +129,7 @@ mod tests {
             exported_at: datetime!(2020-01-01 12:00:00 UTC),
             secrets_encryption: None,
             data: UserDataImportFileData {
+                tags: vec![],
                 scripts: vec![],
                 secrets: vec![],
                 responders: vec![],
@@ -151,6 +157,7 @@ mod tests {
             alg: PrivateKeyAlgorithm::Ed25519,
             pkcs8: pkcs8_b64,
             encrypted: false,
+            tags: vec![],
             created_at: datetime!(2020-01-01 00:00:00 UTC),
             updated_at: datetime!(2020-01-01 00:00:00 UTC),
         }]);

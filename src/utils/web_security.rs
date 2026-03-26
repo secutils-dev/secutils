@@ -3,7 +3,7 @@ mod csp;
 mod database_ext;
 
 pub use self::{
-    api_ext::ContentSecurityPolicyContent,
+    api_ext::{ContentSecurityPoliciesCreateParams, ContentSecurityPolicyContent},
     csp::{
         ContentSecurityPolicy, ContentSecurityPolicyDirective,
         ContentSecurityPolicyRequireTrustedTypesForDirectiveValue,
@@ -183,6 +183,7 @@ pub mod tests {
                 ContentSecurityPoliciesCreateParams {
                     name: "csp".to_string(),
                     content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -192,6 +193,7 @@ pub mod tests {
                 ContentSecurityPoliciesCreateParams {
                     name: "csp-2".to_string(),
                     content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -227,6 +229,7 @@ pub mod tests {
                 ContentSecurityPoliciesCreateParams {
                     name: "csp".to_string(),
                     content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -345,6 +348,7 @@ pub mod tests {
                 ContentSecurityPoliciesCreateParams {
                     name: "csp".to_string(),
                     content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -387,6 +391,7 @@ pub mod tests {
                 ContentSecurityPoliciesCreateParams {
                     name: "csp".to_string(),
                     content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -427,6 +432,7 @@ pub mod tests {
                 ContentSecurityPoliciesCreateParams {
                     name: "csp".to_string(),
                     content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -469,6 +475,7 @@ pub mod tests {
                 ContentSecurityPoliciesCreateParams {
                     name: "csp".to_string(),
                     content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                    tag_ids: vec![],
                 },
             )
             .await?;

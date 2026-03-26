@@ -74,6 +74,7 @@ pub async fn generate_export<DR: DnsResolver, ET: EmailTransport>(
                         id: secret.id,
                         name: secret.name,
                         encrypted_value,
+                        tags: secret.tags,
                         created_at: secret.created_at,
                         updated_at: secret.updated_at,
                     });
@@ -267,11 +268,20 @@ pub async fn generate_export<DR: DnsResolver, ET: EmailTransport>(
         None
     };
 
+    // Export user tag definitions.
+    let tags_api = api.tags(user);
+    let tags = match &include.tags {
+        None => vec![],
+        Some(ExportSelection::All) => tags_api.list_tags().await?,
+        Some(ExportSelection::Selected { ids }) => tags_api.bulk_get_tags(ids).await?,
+    };
+
     Ok(UserDataExport {
         version: EXPORT_VERSION,
         exported_at: OffsetDateTime::now_utc(),
         secrets_encryption,
         data: UserDataExportData {
+            tags,
             scripts,
             secrets,
             responders,
@@ -295,7 +305,7 @@ mod tests {
             MockResolver, RETRACK_RESOURCE_TAG, RETRACK_USER_TAG, mock_api_with_config,
             mock_api_with_network_and_config, mock_config, mock_retrack_api_tracker, mock_user,
         },
-        users::SecretsAccess,
+        users::{SecretCreateParams, SecretsAccess, scripts::ScriptCreateParams},
         utils::{
             certificates::{
                 CertificateAttributes, PrivateKeyAlgorithm, PrivateKeySize, SignatureAlgorithm,
@@ -326,6 +336,7 @@ mod tests {
 
     fn empty_include() -> UserDataExportInclude {
         UserDataExportInclude {
+            tags: None,
             scripts: None,
             secrets: None,
             responders: None,
@@ -371,7 +382,12 @@ mod tests {
 
         let script = api
             .scripts(&user)
-            .create_script("my_script", "responder", "console.log('hi')")
+            .create_script(ScriptCreateParams {
+                name: "my_script".into(),
+                script_type: "responder".into(),
+                content: "console.log('hi')".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
         let params = UserDataExportParams {
@@ -403,7 +419,11 @@ mod tests {
 
         let secret = api
             .secrets(&user)
-            .create_secret("MY_KEY", "secret-value")
+            .create_secret(SecretCreateParams {
+                name: "MY_KEY".into(),
+                value: "secret-value".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
         let params = UserDataExportParams {
@@ -502,6 +522,7 @@ mod tests {
                     key_name: "test-key".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -543,6 +564,7 @@ mod tests {
                     key_name: "key-1".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -555,6 +577,7 @@ mod tests {
                         key_size: PrivateKeySize::Size2048,
                     },
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -588,10 +611,20 @@ mod tests {
         api.db.upsert_user(&user).await?;
 
         api.scripts(&user)
-            .create_script("script_a", "responder", "a()")
+            .create_script(ScriptCreateParams {
+                name: "script_a".into(),
+                script_type: "responder".into(),
+                content: "a()".into(),
+                tag_ids: vec![],
+            })
             .await?;
         api.scripts(&user)
-            .create_script("script_b", "responder", "b()")
+            .create_script(ScriptCreateParams {
+                name: "script_b".into(),
+                script_type: "responder".into(),
+                content: "b()".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
         let params = UserDataExportParams {
@@ -617,8 +650,20 @@ mod tests {
         let user = mock_user()?;
         api.db.upsert_user(&user).await?;
 
-        api.secrets(&user).create_secret("KEY_A", "value-a").await?;
-        api.secrets(&user).create_secret("KEY_B", "value-b").await?;
+        api.secrets(&user)
+            .create_secret(SecretCreateParams {
+                name: "KEY_A".into(),
+                value: "value-a".into(),
+                tag_ids: vec![],
+            })
+            .await?;
+        api.secrets(&user)
+            .create_secret(SecretCreateParams {
+                name: "KEY_B".into(),
+                value: "value-b".into(),
+                tag_ids: vec![],
+            })
+            .await?;
 
         let params = UserDataExportParams {
             secrets_passphrase: None,
@@ -649,7 +694,11 @@ mod tests {
         api.db.upsert_user(&user).await?;
 
         api.secrets(&user)
-            .create_secret("MY_KEY", "secret-value")
+            .create_secret(SecretCreateParams {
+                name: "MY_KEY".into(),
+                value: "secret-value".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
         let params = UserDataExportParams {
@@ -681,7 +730,11 @@ mod tests {
         api.db.upsert_user(&user).await?;
 
         api.secrets(&user)
-            .create_secret("MY_KEY", "secret-value")
+            .create_secret(SecretCreateParams {
+                name: "MY_KEY".into(),
+                value: "secret-value".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
         let params = UserDataExportParams {
@@ -713,8 +766,21 @@ mod tests {
         let user = mock_user()?;
         api.db.upsert_user(&user).await?;
 
-        let secret_a = api.secrets(&user).create_secret("KEY_A", "value-a").await?;
-        api.secrets(&user).create_secret("KEY_B", "value-b").await?;
+        let secret_a = api
+            .secrets(&user)
+            .create_secret(SecretCreateParams {
+                name: "KEY_A".into(),
+                value: "value-a".into(),
+                tag_ids: vec![],
+            })
+            .await?;
+        api.secrets(&user)
+            .create_secret(SecretCreateParams {
+                name: "KEY_B".into(),
+                value: "value-b".into(),
+                tag_ids: vec![],
+            })
+            .await?;
 
         // Export only KEY_A.
         let params = UserDataExportParams {
@@ -742,10 +808,20 @@ mod tests {
 
         let script_a = api
             .scripts(&user)
-            .create_script("script_a", "responder", "a()")
+            .create_script(ScriptCreateParams {
+                name: "script_a".into(),
+                script_type: "responder".into(),
+                content: "a()".into(),
+                tag_ids: vec![],
+            })
             .await?;
         api.scripts(&user)
-            .create_script("script_b", "responder", "b()")
+            .create_script(ScriptCreateParams {
+                name: "script_b".into(),
+                script_type: "responder".into(),
+                content: "b()".into(),
+                tag_ids: vec![],
+            })
             .await?;
 
         // Export only script_a.
@@ -793,6 +869,7 @@ mod tests {
                         key_usage: None,
                         extended_key_usage: None,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -840,6 +917,7 @@ mod tests {
                         key_usage: None,
                         extended_key_usage: None,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -864,6 +942,7 @@ mod tests {
                         key_usage: None,
                         extended_key_usage: None,
                     },
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -900,6 +979,7 @@ mod tests {
                     content: ContentSecurityPolicyContent::Directives(vec![
                         ContentSecurityPolicyDirective::UpgradeInsecureRequests,
                     ]),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -934,6 +1014,7 @@ mod tests {
                     content: ContentSecurityPolicyContent::Directives(vec![
                         ContentSecurityPolicyDirective::UpgradeInsecureRequests,
                     ]),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -945,6 +1026,7 @@ mod tests {
                     content: ContentSecurityPolicyContent::Directives(vec![
                         ContentSecurityPolicyDirective::UpgradeInsecureRequests,
                     ]),
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -990,6 +1072,7 @@ mod tests {
                     script: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1036,6 +1119,7 @@ mod tests {
                     script: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
         api.webhooks(&user)
@@ -1056,6 +1140,7 @@ mod tests {
                     script: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1103,6 +1188,7 @@ mod tests {
                     script: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1151,7 +1237,12 @@ mod tests {
 
         let script = api
             .scripts(&user)
-            .create_script("export-script", "responder", "test()")
+            .create_script(ScriptCreateParams {
+                name: "export-script".into(),
+                script_type: "responder".into(),
+                content: "test()".into(),
+                tag_ids: vec![],
+            })
             .await?;
         let key = api
             .certificates()
@@ -1161,6 +1252,7 @@ mod tests {
                     key_name: "export-key".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1207,6 +1299,7 @@ mod tests {
                     key_name: "key-a".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1217,6 +1310,7 @@ mod tests {
                     key_name: "key-b".to_string(),
                     alg: PrivateKeyAlgorithm::Ed25519,
                     passphrase: None,
+                    tag_ids: vec![],
                 },
             )
             .await?;
@@ -1250,6 +1344,7 @@ mod tests {
         let params = UserDataExportParams {
             secrets_passphrase: None,
             include: UserDataExportInclude {
+                tags: Some(ExportSelection::Selected { ids: vec![fake_id] }),
                 scripts: Some(ExportSelection::Selected { ids: vec![fake_id] }),
                 secrets: Some(ExportSelection::Selected { ids: vec![fake_id] }),
                 certificate_templates: Some(ExportSelection::Selected { ids: vec![fake_id] }),
@@ -1350,6 +1445,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_mock.assert();
@@ -1469,6 +1565,7 @@ mod tests {
                 },
                 notifications: false,
                 secrets: Default::default(),
+                tag_ids: vec![],
             })
             .await?;
         retrack_create_mock.assert();

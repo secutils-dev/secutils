@@ -23,15 +23,11 @@ import { privateKeyAlgString } from './private_key_alg';
 import { PrivateKeyEditFlyout } from './private_key_edit_flyout';
 import { PrivateKeyExportModal } from './private_key_export_modal';
 import { PageErrorState, PageLoadingState } from '../../../../components';
-import {
-  type AsyncData,
-  getApiRequestConfig,
-  getApiUrl,
-  getCopyName,
-  getErrorMessage,
-  ResponseError,
-} from '../../../../model';
-import { ItemsTableFilter, useItemsTableFilter } from '../../components/items_table_filter';
+import { useUserTags } from '../../../../hooks';
+import type { AsyncData } from '../../../../model';
+import { getApiRequestConfig, getApiUrl, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
+import { getTagsColumn } from '../../components/entity_tags_column';
+import { ItemsTableFilter, TagsFilter, useItemsTableFilter } from '../../components/items_table_filter';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
@@ -44,6 +40,7 @@ export default function CertificatesPrivateKeys() {
   const [privateKeyToRemove, setPrivateKeyToRemove] = useState<PrivateKey | null>(null);
   const [privateKeyToExport, setPrivateKeyToExport] = useState<PrivateKey | null>(null);
   const [privateKeyToEdit, setPrivateKeyToEdit] = useState<Partial<PrivateKey> | null | undefined>(null);
+  const { allTags } = useUserTags();
 
   const createButton = useMemo(
     () => (
@@ -140,9 +137,11 @@ export default function CertificatesPrivateKeys() {
 
   // Filter configuration: search by name and ID
   const getSearchFields = useCallback((privateKey: PrivateKey) => [privateKey.name, privateKey.id], []);
-  const { filteredItems, query, setQuery } = useItemsTableFilter({
+  const getItemTags = useCallback((privateKey: PrivateKey) => privateKey.tags, []);
+  const { filteredItems, query, setQuery, selectedTagIds, setSelectedTagIds } = useItemsTableFilter({
     items: privateKeys.status === 'succeeded' ? privateKeys.data : [],
     getSearchFields,
+    getItemTags,
   });
 
   const [pagination, setPagination] = useState<Pagination>({
@@ -252,7 +251,9 @@ export default function CertificatesPrivateKeys() {
           onQueryChange={setQuery}
           onRefresh={loadPrivateKeys}
           placeholder="Search by name or ID..."
-        />
+        >
+          <TagsFilter tags={allTags} selectedTagIds={selectedTagIds} onSelectedTagIdsChange={setSelectedTagIds} />
+        </ItemsTableFilter>
         <EuiSpacer size="m" />
         <EuiInMemoryTable
           pagination={pagination}
@@ -316,6 +317,7 @@ export default function CertificatesPrivateKeys() {
                 </EuiText>
               ),
             },
+            getTagsColumn(),
             {
               name: 'Last updated',
               field: 'updatedAt',

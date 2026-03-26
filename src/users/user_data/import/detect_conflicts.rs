@@ -145,6 +145,7 @@ mod tests {
                 script: None,
                 secrets: crate::users::SecretsAccess::None,
             },
+            tags: vec![],
             created_at: datetime!(2020-01-01 00:00:00 UTC),
             updated_at: datetime!(2020-01-01 00:00:00 UTC),
         }

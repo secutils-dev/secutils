@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nWITH inserted AS (\n    INSERT INTO user_data_certificates_certificate_templates_tags (template_id, tag_id)\n    SELECT $1, unnest($2::uuid[])\n    RETURNING template_id, tag_id\n)\nSELECT t.id, t.name, t.color\nFROM inserted i\nJOIN user_tags t ON i.tag_id = t.id\nORDER BY t.name ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "color",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "UuidArray"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "90de7110a3a1648de91ff008c75bf9fcac97e4eb8d46e14cdaa50dedcd5d1581"
+}

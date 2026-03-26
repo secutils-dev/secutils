@@ -12,7 +12,7 @@ use crate::{
     error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
     security::USER_HANDLE_LENGTH_BYTES,
-    users::User,
+    users::{EntityTag, User},
     utils::{
         utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
         webhooks::{
@@ -39,7 +39,20 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
 
     /// Retrieves all responders that belong to the specified user.
     pub async fn get_responders(&self) -> anyhow::Result<Vec<Responder>> {
-        self.api.db.webhooks().get_responders(self.user.id).await
+        let webhooks = self.api.db.webhooks();
+        let mut responders = webhooks.get_responders(self.user.id).await?;
+        let mut tags_map = webhooks
+            .get_responder_tags(
+                &responders
+                    .iter()
+                    .map(|responder| responder.id)
+                    .collect::<Vec<_>>(),
+            )
+            .await?;
+        for responder in &mut responders {
+            responder.tags = tags_map.remove(&responder.id).unwrap_or_default();
+        }
+        Ok(responders)
     }
 
     /// Retrieves stats for all responders that belong to the specified user.
@@ -53,7 +66,14 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
 
     /// Returns responder by its ID.
     pub async fn get_responder(&self, id: Uuid) -> anyhow::Result<Option<Responder>> {
-        self.api.db.webhooks().get_responder(self.user.id, id).await
+        let webhooks = self.api.db.webhooks();
+        let mut responder = webhooks.get_responder(self.user.id, id).await?;
+        if let Some(ref mut responder) = responder {
+            responder.tags = (webhooks.get_responder_tags(&[responder.id]).await?)
+                .remove(&responder.id)
+                .unwrap_or_default();
+        }
+        Ok(responder)
     }
 
     /// Returns responder for specified subdomain prefix, path and method, if any.
@@ -94,19 +114,21 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
             method: params.method,
             enabled: params.enabled,
             settings: params.settings,
+            tags: params.tag_ids.into_iter().map(EntityTag::from).collect(),
             created_at,
             updated_at: created_at,
         };
 
         self.validate_responder(&responder)?;
 
-        self.api
+        let tags = self
+            .api
             .db
             .webhooks()
             .insert_responder(self.user.id, &responder)
             .await?;
 
-        Ok(responder)
+        Ok(Responder { tags, ..responder })
     }
 
     /// Updates responder.
@@ -120,9 +142,10 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
             && params.method.is_none()
             && params.enabled.is_none()
             && params.settings.is_none()
+            && params.tag_ids.is_none()
         {
             bail!(SecutilsError::client(format!(
-                "Either new name, path, method, enabled or settings should be provided ({id})."
+                "Either new name, path, method, enabled, settings, or tags should be provided ({id})."
             )));
         }
 
@@ -138,6 +161,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
             method: params.method.unwrap_or(existing_responder.method),
             enabled: params.enabled.unwrap_or(existing_responder.enabled),
             settings: params.settings.unwrap_or(existing_responder.settings),
+            tags: existing_responder.tags,
             // Preserve timestamp only up to seconds.
             updated_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
@@ -147,13 +171,20 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
 
         self.validate_responder(&responder)?;
 
-        self.api
-            .db
-            .webhooks()
-            .update_responder(self.user.id, &responder)
-            .await?;
-
-        Ok(responder)
+        let webhooks_db = self.api.db.webhooks();
+        Ok(
+            if let Some(updated_tags) = webhooks_db
+                .update_responder(self.user.id, &responder, params.tag_ids)
+                .await?
+            {
+                Responder {
+                    tags: updated_tags,
+                    ..responder
+                }
+            } else {
+                responder
+            },
+        )
     }
 
     /// Removes responder by its ID.
@@ -249,11 +280,23 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
 
     /// Returns responders with the specified IDs.
     pub async fn bulk_get_responders(&self, ids: &[Uuid]) -> anyhow::Result<Vec<Responder>> {
-        self.api
+        let mut responders = self
+            .api
             .db
             .webhooks()
             .bulk_get_responders(self.user.id, ids)
-            .await
+            .await?;
+        let entity_ids: Vec<Uuid> = responders.iter().map(|r| r.id).collect();
+        let mut tags_map = self
+            .api
+            .db
+            .webhooks()
+            .get_responder_tags(&entity_ids)
+            .await?;
+        for responder in &mut responders {
+            responder.tags = tags_map.remove(&responder.id).unwrap_or_default();
+        }
+        Ok(responders)
     }
 
     /// Returns all requests for the specified responders as a map keyed by responder ID.
@@ -478,6 +521,7 @@ mod tests {
                     script: Some("return { body: `custom body` };".to_string()),
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -520,7 +564,8 @@ mod tests {
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
-                settings: settings.clone()
+                settings: settings.clone(),
+                tag_ids: vec![],
             }).await),
             @r###""Responder name cannot be empty.""###
         );
@@ -536,7 +581,8 @@ mod tests {
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
-                settings: settings.clone()
+                settings: settings.clone(),
+                tag_ids: vec![],
             }).await),
             @r###""Responder name cannot be longer than 100 characters.""###
         );
@@ -552,7 +598,8 @@ mod tests {
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
-                settings: settings.clone()
+                settings: settings.clone(),
+                tag_ids: vec![],
             }).await),
             @r###""Responder location paths must begin with '/' and should not end with '/'.""###
         );
@@ -568,7 +615,8 @@ mod tests {
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
-                settings: settings.clone()
+                settings: settings.clone(),
+                tag_ids: vec![],
             }).await),
             @r###""Responder location path cannot be longer than 100 characters.""###
         );
@@ -584,7 +632,8 @@ mod tests {
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
-                settings: settings.clone()
+                settings: settings.clone(),
+                tag_ids: vec![],
             }).await),
             @r###""Responder location paths must begin with '/' and should not end with '/'.""###
         );
@@ -600,7 +649,8 @@ mod tests {
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
-                settings: settings.clone()
+                settings: settings.clone(),
+                tag_ids: vec![],
             }).await),
             @r###""Responder location paths must begin with '/' and should not end with '/'.""###
         );
@@ -616,7 +666,8 @@ mod tests {
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
-                settings: settings.clone()
+                settings: settings.clone(),
+                tag_ids: vec![],
             }).await),
             @r###""Responder subdomain prefix ('') is not valid.""###
         );
@@ -632,7 +683,8 @@ mod tests {
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
-                settings: settings.clone()
+                settings: settings.clone(),
+                tag_ids: vec![],
             }).await),
             @r###""Responder subdomain prefix ('sub.sub') is not valid.""###
         );
@@ -648,7 +700,8 @@ mod tests {
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
-                settings: settings.clone()
+                settings: settings.clone(),
+                tag_ids: vec![],
             }).await),
             @r###""Responder subdomain prefix ('сабдомейн') is not valid.""###
         );
@@ -664,7 +717,8 @@ mod tests {
                 },
                 method: ResponderMethod::Get,
                 enabled: true,
-                settings: settings.clone()
+                settings: settings.clone(),
+                tag_ids: vec![],
             }).await),
             @r###""Responder subdomain prefix ('sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss') is not valid.""###
         );
@@ -683,7 +737,8 @@ mod tests {
                 settings: ResponderSettings {
                     status_code: 99,
                     ..settings.clone()
-                }
+                },
+                tag_ids: vec![],
             }).await),
             @r###""Responder status code should have a value between 100 and 999, but received 99.""###
         );
@@ -702,7 +757,8 @@ mod tests {
                 settings: ResponderSettings {
                     status_code: 1000,
                     ..settings.clone()
-                }
+                },
+                tag_ids: vec![],
             }).await),
             @r###""Responder status code should have a value between 100 and 999, but received 1000.""###
         );
@@ -721,7 +777,8 @@ mod tests {
                 settings: ResponderSettings {
                    requests_to_track: 101,
                     ..settings.clone()
-                }
+                },
+                tag_ids: vec![],
             }).await),
             @r###""Responder can track only up to 30 requests, but received 101.""###
         );
@@ -740,7 +797,8 @@ mod tests {
                 settings: ResponderSettings {
                    script: Some("".to_string()),
                     ..settings.clone()
-                }
+                },
+                tag_ids: vec![],
             }).await),
             @r###""Responder script cannot be empty.""###
         );
@@ -773,6 +831,7 @@ mod tests {
                     script: None,
                     secrets: SecretsAccess::None,
                 },
+                tag_ids: vec![],
             })
             .await?;
 
@@ -786,6 +845,7 @@ mod tests {
                     method: None,
                     enabled: Some(false),
                     settings: None,
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -810,6 +870,7 @@ mod tests {
                     method: None,
                     enabled: None,
                     settings: None,
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -839,6 +900,7 @@ mod tests {
                     method: None,
                     enabled: None,
                     settings: None,
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -873,6 +935,7 @@ mod tests {
                     method: None,
                     enabled: None,
                     settings: None,
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -903,6 +966,7 @@ mod tests {
                     method: Some(ResponderMethod::Post),
                     enabled: None,
                     settings: None,
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -941,6 +1005,7 @@ mod tests {
                         script: Some("return { body: `custom body` };".to_string()),
                         secrets: SecretsAccess::None,
                     }),
+                    tag_ids: None,
                 },
             )
             .await?;
@@ -999,6 +1064,7 @@ mod tests {
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: settings.clone(),
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1017,6 +1083,7 @@ mod tests {
                         method: None,
                         enabled: None,
                         settings: None,
+                        tag_ids: None,
                     },
                 )
                 .await,
@@ -1024,7 +1091,7 @@ mod tests {
         assert_eq!(
             update_result.to_string(),
             format!(
-                "Either new name, path, method, enabled or settings should be provided ({}).",
+                "Either new name, path, method, enabled, settings, or tags should be provided ({}).",
                 responder.id
             )
         );
@@ -1040,6 +1107,7 @@ mod tests {
                         method: None,
                         enabled: None,
                         settings: None,
+                        tag_ids: None,
                     },
                 )
                 .await,
@@ -1056,7 +1124,8 @@ mod tests {
                 location: None,
                 method: None,
                 enabled: None,
-                settings: None
+                settings: None,
+                tag_ids: None,
             }).await),
             @r###""Responder name cannot be empty.""###
         );
@@ -1068,7 +1137,8 @@ mod tests {
                 location: None,
                 method: None,
                 enabled: None,
-                settings: None
+                settings: None,
+                tag_ids: None,
             }).await),
             @r###""Responder name cannot be longer than 100 characters.""###
         );
@@ -1084,7 +1154,8 @@ mod tests {
                 }),
                 method: None,
                 enabled: None,
-                settings: None
+                settings: None,
+                tag_ids: None,
             }).await),
             @r###""Responder location paths must begin with '/' and should not end with '/'.""###
         );
@@ -1100,7 +1171,8 @@ mod tests {
                 }),
                 method: None,
                 enabled: None,
-                settings: None
+                settings: None,
+                tag_ids: None,
             }).await),
             @r###""Responder location path cannot be longer than 100 characters.""###
         );
@@ -1116,7 +1188,8 @@ mod tests {
                 }),
                 method: None,
                 enabled: None,
-                settings: None
+                settings: None,
+                tag_ids: None,
             }).await),
             @r###""Responder location paths must begin with '/' and should not end with '/'.""###
         );
@@ -1132,7 +1205,8 @@ mod tests {
                 }),
                 method: None,
                 enabled: None,
-                settings: None
+                settings: None,
+                tag_ids: None,
             }).await),
             @r###""Responder location paths must begin with '/' and should not end with '/'.""###
         );
@@ -1148,7 +1222,8 @@ mod tests {
                 }),
                 method: None,
                 enabled: None,
-                settings: None
+                settings: None,
+                tag_ids: None,
             }).await),
             @r###""Responder subdomain prefix ('') is not valid.""###
         );
@@ -1164,7 +1239,8 @@ mod tests {
                 }),
                 method: None,
                 enabled: None,
-                settings: None
+                settings: None,
+                tag_ids: None,
             }).await),
             @r###""Responder subdomain prefix ('sub.sub') is not valid.""###
         );
@@ -1180,7 +1256,8 @@ mod tests {
                 }),
                 method: None,
                 enabled: None,
-                settings: None
+                settings: None,
+                tag_ids: None,
             }).await),
             @r###""Responder subdomain prefix ('сабдомейн') is not valid.""###
         );
@@ -1196,7 +1273,8 @@ mod tests {
                 }),
                 method: None,
                 enabled: None,
-                settings: None
+                settings: None,
+                tag_ids: None,
             }).await),
             @r###""Responder subdomain prefix ('sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss') is not valid.""###
         );
@@ -1211,7 +1289,8 @@ mod tests {
                 settings: Some(ResponderSettings {
                     status_code: 99,
                     ..settings.clone()
-                })
+                }),
+                tag_ids: None,
             }).await),
             @r###""Responder status code should have a value between 100 and 999, but received 99.""###
         );
@@ -1226,7 +1305,8 @@ mod tests {
                 settings: Some(ResponderSettings {
                     status_code: 1000,
                     ..settings.clone()
-                })
+                }),
+                tag_ids: None,
             }).await),
             @r###""Responder status code should have a value between 100 and 999, but received 1000.""###
         );
@@ -1241,7 +1321,8 @@ mod tests {
                 settings: Some(ResponderSettings {
                     requests_to_track: 101,
                     ..settings.clone()
-                })
+                }),
+                tag_ids: None,
             }).await),
             @r###""Responder can track only up to 30 requests, but received 101.""###
         );
@@ -1256,7 +1337,8 @@ mod tests {
                 settings: Some(ResponderSettings {
                     script: Some("".to_string()),
                     ..settings.clone()
-                })
+                }),
+                tag_ids: None,
             }).await),
             @r###""Responder script cannot be empty.""###
         );
@@ -1292,6 +1374,7 @@ mod tests {
                     method: ResponderMethod::Any,
                     enabled: true,
                     settings: settings.clone(),
+                    tag_ids: vec![],
                 })
                 .await?,
             webhooks
@@ -1305,6 +1388,7 @@ mod tests {
                     method: ResponderMethod::Post,
                     enabled: true,
                     settings: settings.clone(),
+                    tag_ids: vec![],
                 })
                 .await?,
         ];
@@ -1373,6 +1457,7 @@ mod tests {
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: settings.clone(),
+                tag_ids: vec![],
             })
             .await?;
         let responder_two = webhooks
@@ -1386,6 +1471,7 @@ mod tests {
                 method: ResponderMethod::Get,
                 enabled: true,
                 settings: settings.clone(),
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1434,6 +1520,7 @@ mod tests {
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: settings.clone(),
+                tag_ids: vec![],
             })
             .await?;
         assert_eq!(
@@ -1451,6 +1538,7 @@ mod tests {
                 method: ResponderMethod::Any,
                 enabled: false,
                 settings: settings.clone(),
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1490,6 +1578,7 @@ mod tests {
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: settings.clone(),
+                tag_ids: vec![],
             })
             .await?;
         let responder_two = webhooks
@@ -1503,6 +1592,7 @@ mod tests {
                 method: ResponderMethod::Any,
                 enabled: false,
                 settings: settings.clone(),
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1573,6 +1663,7 @@ mod tests {
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: settings.clone(),
+                tag_ids: vec![],
             })
             .await?;
         let responder_two = webhooks
@@ -1586,6 +1677,7 @@ mod tests {
                 method: ResponderMethod::Any,
                 enabled: false,
                 settings: settings.clone(),
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1655,6 +1747,7 @@ mod tests {
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: settings.clone(),
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1723,6 +1816,7 @@ mod tests {
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: settings.clone(),
+                tag_ids: vec![],
             })
             .await?;
         let responder_two = webhooks
@@ -1736,6 +1830,7 @@ mod tests {
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: settings.clone(),
+                tag_ids: vec![],
             })
             .await?;
 
@@ -1821,6 +1916,7 @@ mod tests {
                 method: ResponderMethod::Any,
                 enabled: true,
                 settings: settings.clone(),
+                tag_ids: vec![],
             })
             .await?;
         let responder_two = webhooks
@@ -1834,6 +1930,7 @@ mod tests {
                 method: ResponderMethod::Any,
                 enabled: false,
                 settings: settings.clone(),
+                tag_ids: vec![],
             })
             .await?;
 
