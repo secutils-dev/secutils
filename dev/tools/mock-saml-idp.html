@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mock SAML IdP | Secutils.dev</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.9.0/jsrsasign-all-min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
+  <style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root, [data-theme="dark"] {
+    --bg: #141519; --surface: #1d1e24; --surface-hover: #2c2d33;
+    --border: #343741; --text: #dfe5ef; --text-muted: #98a2b3;
+    --primary: #fed047; --primary-hover: #fdc615;
+    --primary-text: #642340;
+    --primary-glow: rgba(254,208,71,0.10);
+    --accent: #642340;
+    --badge-bg: #2B394F; --badge-text: #98A8C3;
+    --input-bg: #16171c; --input-border: #343741;
+    --card-bg: rgba(29,30,36,0.7);
+    --info-bg: rgba(43,57,79,0.3); --info-border: rgba(43,57,79,0.6); --info-text: #98A8C3;
+    --tab-active-bg: var(--primary); --tab-active-text: var(--primary-text);
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --mono: 'Roboto Mono', 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+[data-theme="light"] {
+    --bg: #f5f7fa; --surface: #ffffff; --surface-hover: #f1f3f5;
+    --border: #d3dae6; --text: #343741; --text-muted: #69707d;
+    --primary: #fed047; --primary-hover: #fdc615;
+    --primary-text: #642340;
+    --primary-glow: rgba(254,208,71,0.15);
+    --accent: #642340;
+    --badge-bg: #E3E8F2; --badge-text: #505F79;
+    --input-bg: #ffffff; --input-border: #d3dae6;
+    --card-bg: #ffffff;
+    --info-bg: rgba(227,232,242,0.5); --info-border: #d3dae6; --info-text: #505F79;
+    --tab-active-bg: var(--primary); --tab-active-text: var(--primary-text);
+}
+body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; transition: background .25s, color .25s; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 48px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; transition: background .25s, border-color .25s; }
+.logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.logo-svg { flex-shrink: 0; }
+.logo-svg .logo-text-fill { fill: var(--text); }
+.logo-badge { display: inline-flex; align-items: center; padding: 4px 16px; border-radius: 4px; border: none; background: var(--badge-bg); color: var(--badge-text); font-size: 12px; font-weight: 450; line-height: 16px; white-space: nowrap; }
+.header-right { display: flex; align-items: center; gap: 8px; }
+.theme-toggle { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .2s; }
+.theme-toggle:hover { background: var(--surface-hover); color: var(--text); }
+.theme-toggle svg { width: 16px; height: 16px; fill: currentColor; }
+.theme-toggle .icon-sun { display: none; }
+.theme-toggle .icon-moon { display: block; }
+[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+main { flex: 1; padding: 32px 16px; display: flex; justify-content: center; }
+.card { width: 100%; max-width: 640px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.15); }
+.tabs { display: flex; border-bottom: 1px solid var(--border); }
+.tab { flex: 1; padding: 12px 16px; font: 500 13px/1 var(--font); border: none; cursor: pointer; transition: all .15s; background: transparent; color: var(--text-muted); }
+.tab:hover { color: var(--text); background: var(--surface-hover); }
+.tab.active { background: var(--tab-active-bg); color: var(--tab-active-text); font-weight: 600; }
+.card-body { padding: 24px; }
+
+.form-group { margin-bottom: 16px; }
+.form-label { display: block; font-size: 13px; font-weight: 500; color: var(--text-muted); margin-bottom: 6px; }
+.form-input { width: 100%; padding: 8px 12px; font: 14px/1.5 var(--font); background: var(--input-bg); color: var(--text); border: 1px solid var(--input-border); border-radius: 6px; outline: none; transition: border-color .15s; }
+.form-input:focus { border-color: var(--primary); }
+.form-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+select.form-input { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2398a2b3' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 32px; cursor: pointer; }
+
+.btn { padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 500 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { background: var(--surface-hover); border-color: var(--text-muted); }
+.btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); font-weight: 600; }
+.btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+.btn-primary.btn-full { width: 100%; justify-content: center; padding: 12px; font-size: 14px; }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+
+.role-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; min-height: 28px; }
+.role-tag { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: var(--badge-bg); border-radius: 4px; font-size: 13px; color: var(--badge-text); }
+.role-tag button { display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: none; background: transparent; color: var(--text-muted); cursor: pointer; transition: all .15s; padding: 0; }
+.role-tag button:hover { background: var(--surface-hover); color: var(--text); }
+.flex-row { display: flex; gap: 8px; }
+.flex-1 { flex: 1; }
+.hidden { display: none !important; }
+.mt-2 { margin-top: 8px; }
+.mt-6 { margin-top: 24px; }
+
+.info-banner { padding: 10px 14px; background: var(--info-bg); border: 1px solid var(--info-border); border-radius: 6px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--info-text); }
+.info-banner svg { flex-shrink: 0; }
+.info-banner code { background: var(--input-bg); padding: 1px 5px; border-radius: 3px; font-family: var(--mono); font-size: 12px; }
+.info-banner strong { font-weight: 600; }
+
+.status-box { font-family: var(--mono); font-size: 12px; line-height: 1.6; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 6px; padding: 14px; min-height: 100px; max-height: 300px; overflow-y: auto; color: #66bb6a; }
+.status-box .text-error { color: #ef5350; }
+.status-box .text-success { color: #66bb6a; }
+.status-box .text-info { color: var(--text-muted); }
+
+footer.su-footer { text-align: center; padding: 16px; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+@media (max-width: 640px) {
+    header { padding: 0 12px; }
+    .logo-svg { height: 20px; }
+    .logo-badge { font-size: 11px; padding: 2px 7px; }
+    main { padding: 16px; }
+    .card-body { padding: 16px; }
+}
+  </style>
+</head>
+<body>
+  <header>
+    <a class="logo" href="https://secutils.dev" target="_blank" rel="noopener">
+      <svg class="logo-svg" height="24" role="img" viewBox="0 0 98 16" xmlns="http://www.w3.org/2000/svg">
+        <path d="m3 0h10c1.662 0 3 1.338 3 3v10c0 1.662-1.338 3-3 3h-10c-1.662 0-3-1.338-3-3v-10c0-1.662 1.338-3 3-3z" fill="#fed047"/>
+        <path aria-label="SU" d="m11.285 12q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667t1.216-0.26667 1.216 0.26667q0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50133-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832t0.46933 1.4613q0 0.69334-0.30933 1.2053-0.30933 0.50133-0.864 0.77867-0.55467 0.27733-1.312 0.27733z" fill="#642340"/>
+        <path class="logo-text-fill" aria-label="SECUTILS.DEV" d="m93.158 12.117-1.9733-7.7867h1.1733l1.2587 5.184q0.11733 0.46933 0.20267 0.91734 0.08533 0.448 0.128 0.69334 0.04267-0.24533 0.128-0.69334 0.096-0.45867 0.21333-0.928l1.2053-5.1733h1.184l-1.984 7.7867zm-7.8294 0v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-6.5174 0v-7.7867h2.176q0.768 0 1.3333 0.29867 0.56534 0.288 0.87467 0.832 0.32 0.53334 0.32 1.248v3.008q0 0.736-0.32 1.2693-0.30933 0.53334-0.87467 0.832-0.56534 0.29867-1.3333 0.29867zm1.152-1.0347h1.024q0.62934 0 1.0027-0.36267 0.37333-0.36267 0.37333-1.0027v-3.008q0-0.61867-0.37333-0.98134-0.37334-0.37333-1.0027-0.37333h-1.024zm-5.2374 1.1413q-0.416 0-0.68267-0.24533-0.256-0.256-0.256-0.672 0-0.416 0.256-0.672 0.26667-0.26667 0.68267-0.26667 0.416 0 0.672 0.26667 0.26667 0.256 0.26667 0.672 0 0.416-0.26667 0.672-0.256 0.24533-0.672 0.24533zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733zm-8.288-0.10667v-7.7867h1.152v6.7414h3.4027v1.0453zm-6.6987 0v-1.0453h1.568v-5.696h-1.568v-1.0453h4.32v1.0453h-1.5787v5.696h1.5787v1.0453zm-4.8214 0v-6.7414h-2.08v-1.0453h5.3227v1.0453h-2.0907v6.7414zm-5.824 0.10667q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.3147 0q-1.0987 0-1.7493-0.608-0.64-0.61867-0.64-1.664v-3.456q0-1.056 0.64-1.664 0.65067-0.608 1.7493-0.608 1.088 0 1.728 0.61867 0.65067 0.608 0.65067 1.6533h-1.152q0-0.608-0.33067-0.928-0.32-0.32-0.896-0.32-0.58667 0-0.91734 0.32-0.32 0.32-0.32 0.928v3.456q0 0.608 0.32 0.928 0.33067 0.32 0.91734 0.32 0.576 0 0.896-0.32 0.33067-0.32 0.33067-0.928h1.152q0 1.0453-0.65067 1.664-0.64 0.608-1.728 0.608zm-8.6827-0.10667v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-4.1707 0.10667q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667-0.23467-0.32-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34134-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733z"/>
+      </svg>
+      <span class="logo-badge">Mock SAML IdP</span>
+    </a>
+    <div class="header-right">
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+        <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8.5 15h-1v-2h1v2Zm-3.674-3.107-1.414 1.414-.707-.707 1.414-1.415.707.708Zm8.479.707-.707.707-1.414-1.414.707-.708 1.414 1.415Z"/><path fill-rule="evenodd" d="M8 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 1a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" clip-rule="evenodd"/><path d="M3.005 8.505h-2v-1h2v1Zm12 0h-2v-1h2v1ZM4.82 4.114l-.708.707-1.414-1.414.707-.707L4.82 4.114Zm8.492-.707-1.414 1.414-.708-.707L12.605 2.7l.707.707ZM8.5 3h-1V1h1v2Z"/></svg>
+        <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4.05 12.95A6.982 6.982 0 0 1 2 8c0-1.79.684-3.583 2.05-4.95A6.982 6.982 0 0 1 9 1a1 1 0 0 1 .708 1.707 4.982 4.982 0 0 0-1.465 3.536 4.98 4.98 0 0 0 1.465 3.535 4.98 4.98 0 0 0 3.535 1.465 1 1 0 0 1 .707 1.707A6.981 6.981 0 0 1 9 15a6.983 6.983 0 0 1-4.95-2.05Zm.708-.707A5.983 5.983 0 0 0 9 14c1.535 0 3.07-.586 4.242-1.757a5.98 5.98 0 0 1-4.018-1.545L9 10.485a5.982 5.982 0 0 1-1.758-4.242A5.986 5.986 0 0 1 9 2a5.983 5.983 0 0 0-4.243 1.757A5.98 5.98 0 0 0 3 8l.006.288a5.978 5.978 0 0 0 1.75 3.955Z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <div class="card">
+      <div class="tabs">
+        <button class="tab active" id="simpleModeBtn" onclick="setMode('simple')">Simple Mode</button>
+        <button class="tab" id="advancedModeBtn" onclick="setMode('advanced')">Advanced Mode</button>
+      </div>
+      <div class="card-body">
+        <form id="samlForm" onsubmit="handleProcess(event)">
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" id="username" value="test_user" required class="form-input">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Full Name</label>
+            <input type="text" id="fullname" value="Test User" class="form-input">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" id="email" value="test_user@elastic.co" class="form-input">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Roles</label>
+            <div id="selectedRoles" class="role-tags"></div>
+            <select id="roleSelect" onchange="handleRoleSelect()" class="form-input">
+              <option value="">Select a role...</option>
+              <option value="viewer">viewer</option>
+              <option value="editor">editor</option>
+              <option value="admin">admin</option>
+              <option value="superuser">superuser</option>
+              <option value="kibana_admin">kibana_admin</option>
+              <option value="__custom__">+ Add custom role...</option>
+            </select>
+            <div id="customRoleInput" class="hidden mt-2">
+              <div class="flex-row">
+                <input type="text" id="customRoleName" placeholder="Enter custom role name" class="form-input flex-1"
+                  onkeydown="if(event.key === 'Enter') { event.preventDefault(); addCustomRole(); }">
+                <button type="button" onclick="addCustomRole()" class="btn btn-primary btn-sm">Add</button>
+                <button type="button" onclick="hideCustomRoleInput()" class="btn btn-sm">Cancel</button>
+              </div>
+            </div>
+          </div>
+          <div id="destinationSection" class="form-group hidden">
+            <label class="form-label">Destination URL</label>
+            <input type="text" id="destination" value="http://localhost:5601" class="form-input">
+            <p class="form-hint">The Kibana host. Path will be auto-set to /api/security/saml/callback</p>
+          </div>
+          <div class="mt-6">
+            <button type="submit" id="submitBtn" class="btn btn-primary btn-full">Sign &amp; Login</button>
+          </div>
+        </form>
+        <div id="statusSection" class="hidden mt-6">
+          <label class="form-label">Debug Output</label>
+          <div id="statusBox" class="status-box">Ready. Waiting for input...</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="su-footer">
+    <p>Generate signed SAML responses for testing Elasticsearch/Kibana SSO.</p>
+  </footer>
+
+  <form id="realPostForm" method="POST">
+    <input type="hidden" name="SAMLResponse" id="hiddenSAMLResponse">
+  </form>
+
+<script>
+// Theme toggle
+(function() {
+    var toggle = document.getElementById('themeToggle');
+    var root = document.documentElement;
+    function setThemeUI(t) {
+        root.setAttribute('data-theme', t);
+        try { localStorage.setItem('su-tool-theme', t); } catch(e) {}
+    }
+    toggle.addEventListener('click', function() {
+        setThemeUI(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    });
+    try {
+        var saved = localStorage.getItem('su-tool-theme');
+        if (saved) setThemeUI(saved);
+        else if (window.matchMedia('(prefers-color-scheme: light)').matches) setThemeUI('light');
+    } catch(e) {}
+})();
+
+// ==========================================
+// 1. CONFIGURATION
+// ==========================================
+const PUBLIC_CERT = `-----BEGIN CERTIFICATE-----
+MIIDYjCCAkqgAwIBAgIUZ2p8K7GMXGk6xwCS9S91BUl1JnAwDQYJKoZIhvcNAQEL
+BQAwNDEyMDAGA1UEAxMpRWxhc3RpYyBDZXJ0aWZpY2F0ZSBUb29sIEF1dG9nZW5l
+cmF0ZWQgQ0EwIBcNMjMwOTIzMTUyMDE0WhgPMjA3MzA5MTAxNTIwMTRaMBExDzAN
+BgNVBAMTBmtpYmFuYTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMOU
+r52dbZ5dY0BoP2p7CEnOpG+qHTNrOAqZO/OJfniPMtpGmwAMl3WZDca6u2XkV2KE
+qQyevQ2ADk6G3o8S2RU8mO/+UweuCDF7LHuSdxEGTpucidZErmVhEGUOFosL5UeB
+AtIDWxvWwgK+W9Yzt5IEN2HzNCZ6h0dOSk2r9EjVMG5yF4Q6kuqOYxBT7jxoaOtO
+OCrgBRummtUga4T13WZ/ZIyyHpXj2+JD4YEmrDyoTa7NLaphv0hnVhHXYoYBI/c6
+2SwwAoBlmtDmlinwSACQ3o/8eLWk0tqkIP14rc3oFh3m7D2c3c2m2HXuyoSDMfGW
+beG2IE1Q3idcGmeG3qsCAwEAAaOBjDCBiTAdBgNVHQ4EFgQUMOUM7w5jmIozDvnq
+RpM779m5GigwHwYDVR0jBBgwFoAUMEwqwI5b0MYpNxwaHJ9Tw1Lp3p4wPAYDVR0R
+BDUwM4IUaG9zdC5kb2NrZXIuaW50ZXJuYWyCCWxvY2FsaG9zdIIEZXMwM4IEZXMw
+MoIEZXMwMTAJBgNVHRMEAjAAMA0GCSqGSIb3DQEBCwUAA4IBAQCxqvQYXSKqgpdl
+SP4gXgwipAnYsoW9qkgWQODTvSBEzUdOWme0d3j7i2l6Ur/nVSv5YjkqAv1hf/yJ
+Hrk9h+j29ZO/aQ/KDh5i/gTEUnPw3Bxbw47dfn23tjMWO7NCU1fr5HNztRsa/gQr
+e9s07g25u/gTfTi9Fyu0lcRe3bXOLS/mFVcuC5oxuS65R9OlbIsiORkZ2EfwuNUf
+wAAYOGPIjM2VlQCvBitefsd/SzRKHdxSPy6KSjkO6MGEGo87fr7B7Nx1qp1DVrK7
+q9XeP1Cuygjg9WTcnsvWvNw8CssyuFM6X/3tGjpPasXwLvNUoG2AairK2AYTWhvS
+foE31cFg
+-----END CERTIFICATE-----`;
+const PRIVATE_KEY = `-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEAw5SvnZ1tnl1jQGg/ansISc6kb6odM2s4Cpk784l+eI8y2kab
+AAyXdZkNxrq7ZeRXYoSpDJ69DYAOTobejxLZFTyY7/5TB64IMXsse5J3EQZOm5yJ
+1kSuZWEQZQ4WiwvlR4EC0gNbG9bCAr5b1jO3kgQ3YfM0JnqHR05KTav0SNUwbnIX
+hDqS6o5jEFPuPGho6044KuAFG6aa1SBrhPXdZn9kjLIelePb4kPhgSasPKhNrs0t
+qmG/SGdWEddihgEj9zrZLDACgGWa0OaWKfBIAJDej/x4taTS2qQg/XitzegWHebs
+PZzdzabYde7KhIMx8ZZt4bYgTVDeJ1waZ4beqwIDAQABAoIBABaXTBm2n3zVaKt9
+3yVbhL+RwOitC6Zu0hBXVtdwoE0orUUNNsYwriYFQdQcqZzBXV6h2Cz/APNYQU7M
+wVRhZvXPBBNkmw6eCZA9nAvCBULQKbBLypgXYtWO+qfRksUI4Lj7q+m6PYHfspVC
+i7UYUDHrjsIfp3xyVsHjxy1lmVf4JFAANNHAQeYPR6l5bw/t5yA6qQ9vBtVRz9da
+nCE2mQHAODXHMXdiIss4YA3a3uIuN54ud0/cWP/Pn2eM2MHsQYEKFISd7rZ81wlE
++9DmENkL3L9iK0Zx4xUTGGS8R8oM5jimUaa4PQLwoD6IolY0C33Ri6d4IK23AtOH
+/+687lECgYEA0oJ2CPNCmbB4Sy7ry3PYZhxZk8qaS5dmYrmB+Z5wNu/mpC2/6M72
+Vkol3BG+5yPgAB4SW09TeRh7VczGu+8juZW1q/Hi1MinhwCfGOvWlIFD9+G4d/gF
+5EgWaDwCkimUo218Wry88hCzWuUKyd4HS3PODE0v39Jt1eLSQFGbqEcCgYEA7dha
+UBs/I0kPvrYmlDrEH0dJRyvaG5ODv2gqvPtURNqFNMWAZ7146ZTDe2IvZ5bRTikc
+B+lwlkMb+yhPvoGX1o3EkOYUhdUcgzSU9nL+ynSoWeOqprJ9Q/al4rIEh8ebvbZI
+RF0qvBU6Q8Qg6aA/pcTVHU0+fFe6GDYarWvarH0CgYEAoxYphfOYVGMwPucCDKQa
+Mbmi+GnNMeUAkFmxxYam3xjq8aTz+dRlaiKVxDIHWSElCFJD3HPPcpCx9J3qFW1G
+mx/OGIEUP8+YYnHr0C3eFz0yQBeih2cigWIL4gMj5sLKAfbvkYiJRWwE19V8jzox
+IpZ8OnGONnPbXgoU43mWAz8CgYEA3qvrAYxAtBw2rWmC/Mt3yYDHzeX0MFUOxygS
+uxLhdgTPKPSunnD4vlYUHXNyxhygn/hE0fNvAH6bt6up3MUfDjNzj+SX2iQGqZ+U
+xpYqjAhjhKRso9v/Ap3r+CyJqUTrPdVmGvrOg3+sKL15wr/QVrXMf75NfcPz6a7d
+kvaip1ECgYA/T6EllMlRBM7hMnhZlgt3Ccu/e6VcVzQxqp0EewHzw+N17LdoaWaB
+0bw9AqTwLeEhf4s4vidB7pO8YGNkCOKkQ3gqA/pF21VtF4xBRP6iYFa9rEGrHsRU
+as68JJ6Lk+gn0aJ0RJNRaOa8xeoA/YWYNfnCfiAHj82UzP5TT4L/BQ==
+-----END RSA PRIVATE KEY-----`;
+const ISSUER = "urn:mock-idp";
+const SAML_CALLBACK_PATH = "/api/security/saml/callback";
+
+// ==========================================
+// 2. UI STATE MANAGEMENT
+// ==========================================
+let currentMode = 'simple';
+let selectedRoles = ['viewer'];
+
+function setMode(mode) {
+    currentMode = mode;
+    var simpleBtn = document.getElementById('simpleModeBtn');
+    var advancedBtn = document.getElementById('advancedModeBtn');
+    var destinationSection = document.getElementById('destinationSection');
+    var statusSection = document.getElementById('statusSection');
+    if (mode === 'simple') {
+        simpleBtn.className = 'tab active';
+        advancedBtn.className = 'tab';
+        destinationSection.classList.add('hidden');
+        statusSection.classList.add('hidden');
+    } else {
+        advancedBtn.className = 'tab active';
+        simpleBtn.className = 'tab';
+        destinationSection.classList.remove('hidden');
+        statusSection.classList.remove('hidden');
+    }
+}
+
+// ==========================================
+// 3. ROLE MANAGEMENT
+// ==========================================
+function renderRoles() {
+    var container = document.getElementById('selectedRoles');
+    container.innerHTML = '';
+    selectedRoles.forEach(function(role) {
+        var tag = document.createElement('span');
+        tag.className = 'role-tag';
+        tag.innerHTML = escapeHtml(role) +
+            ' <button type="button" onclick="removeRole(\'' + escapeHtml(role) + '\')" title="Remove role">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>' +
+            '</button>';
+        container.appendChild(tag);
+    });
+}
+
+function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function handleRoleSelect() {
+    var select = document.getElementById('roleSelect');
+    var value = select.value;
+    if (value === '__custom__') {
+        document.getElementById('customRoleInput').classList.remove('hidden');
+        document.getElementById('customRoleName').focus();
+    } else if (value && !selectedRoles.includes(value)) {
+        selectedRoles.push(value);
+        renderRoles();
+    }
+    select.value = '';
+}
+
+function addCustomRole() {
+    var input = document.getElementById('customRoleName');
+    var roleName = input.value.trim();
+    if (roleName && !selectedRoles.includes(roleName)) {
+        selectedRoles.push(roleName);
+        renderRoles();
+    }
+    input.value = '';
+    hideCustomRoleInput();
+}
+
+function hideCustomRoleInput() {
+    document.getElementById('customRoleInput').classList.add('hidden');
+    document.getElementById('customRoleName').value = '';
+}
+
+function removeRole(role) {
+    selectedRoles = selectedRoles.filter(function(r) { return r !== role; });
+    renderRoles();
+}
+
+// ==========================================
+// 4. DESTINATION URL HANDLING
+// ==========================================
+function normalizeDestination(input) {
+    try {
+        var urlStr = input.trim();
+        if (!urlStr.startsWith('http://') && !urlStr.startsWith('https://')) {
+            urlStr = 'http://' + urlStr;
+        }
+        var url = new URL(urlStr);
+        return url.origin + SAML_CALLBACK_PATH;
+    } catch (e) {
+        return input.replace(/\/+$/, '') + SAML_CALLBACK_PATH;
+    }
+}
+
+// ==========================================
+// 5. EXCLUSIVE XML CANONICALIZATION (exc-c14n)
+// ==========================================
+function exclusiveC14n(xmlString, inclusiveNamespaces) {
+    if (!inclusiveNamespaces) inclusiveNamespaces = [];
+    var parser = new DOMParser();
+    var doc = parser.parseFromString(xmlString, 'application/xml');
+    if (doc.documentElement.nodeName === 'parsererror') {
+        throw new Error('XML parsing error: ' + doc.documentElement.textContent);
+    }
+    return canonicalizeNode(doc.documentElement, {}, inclusiveNamespaces);
+}
+
+function canonicalizeNode(node, renderedNs, inclusiveNsPrefixes) {
+    if (node.nodeType === Node.TEXT_NODE) return escapeText(node.textContent);
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+    var visiblyUtilized = new Set();
+    var localNsDecls = {};
+    var elemPrefix = node.prefix || '';
+    var elemNs = node.namespaceURI || '';
+    if (elemNs) visiblyUtilized.add(elemPrefix);
+    var regularAttrs = [];
+    for (var i = 0; i < node.attributes.length; i++) {
+        var attr = node.attributes[i];
+        if (attr.name === 'xmlns') { localNsDecls[''] = attr.value; }
+        else if (attr.name.startsWith('xmlns:')) { localNsDecls[attr.name.substring(6)] = attr.value; }
+        else { regularAttrs.push(attr); if (attr.prefix) visiblyUtilized.add(attr.prefix); }
+    }
+    for (var j = 0; j < inclusiveNsPrefixes.length; j++) visiblyUtilized.add(inclusiveNsPrefixes[j]);
+    var nsToRender = [];
+    visiblyUtilized.forEach(function(prefix) {
+        var nsUri;
+        if (prefix in localNsDecls) nsUri = localNsDecls[prefix];
+        else if (prefix === elemPrefix && elemNs) nsUri = elemNs;
+        else { nsUri = node.lookupNamespaceURI(prefix); if (!nsUri) nsUri = ''; }
+        if (renderedNs[prefix] !== nsUri) nsToRender.push({ prefix: prefix, uri: nsUri });
+    });
+    nsToRender.sort(function(a, b) { if (a.prefix === '') return -1; if (b.prefix === '') return 1; return a.prefix.localeCompare(b.prefix); });
+    regularAttrs.sort(function(a, b) {
+        var aHasNs = !!a.namespaceURI, bHasNs = !!b.namespaceURI;
+        if (!aHasNs && !bHasNs) return a.localName.localeCompare(b.localName);
+        if (!aHasNs) return -1; if (!bHasNs) return 1;
+        if (a.namespaceURI !== b.namespaceURI) return a.namespaceURI.localeCompare(b.namespaceURI);
+        return a.localName.localeCompare(b.localName);
+    });
+    var result = '<';
+    if (elemPrefix) result += elemPrefix + ':';
+    result += node.localName;
+    for (var k = 0; k < nsToRender.length; k++) {
+        if (nsToRender[k].prefix === '') result += ' xmlns="' + escapeAttr(nsToRender[k].uri) + '"';
+        else result += ' xmlns:' + nsToRender[k].prefix + '="' + escapeAttr(nsToRender[k].uri) + '"';
+    }
+    for (var l = 0; l < regularAttrs.length; l++) result += ' ' + regularAttrs[l].name + '="' + escapeAttr(regularAttrs[l].value) + '"';
+    result += '>';
+    var childRenderedNs = Object.assign({}, renderedNs);
+    for (var m = 0; m < nsToRender.length; m++) childRenderedNs[nsToRender[m].prefix] = nsToRender[m].uri;
+    for (var n = 0; n < node.childNodes.length; n++) result += canonicalizeNode(node.childNodes[n], childRenderedNs, inclusiveNsPrefixes);
+    result += '</';
+    if (elemPrefix) result += elemPrefix + ':';
+    result += node.localName + '>';
+    return result;
+}
+
+function escapeText(text) { return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\r/g, '&#xD;'); }
+function escapeAttr(text) { return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;').replace(/\t/g, '&#x9;').replace(/\n/g, '&#xA;').replace(/\r/g, '&#xD;'); }
+
+// ==========================================
+// 6. HELPER FUNCTIONS
+// ==========================================
+function log(msg, type) {
+    if (!type) type = 'info';
+    if (currentMode !== 'advanced') return;
+    var box = document.getElementById('statusBox');
+    var cls = 'text-info';
+    if (type === 'error') cls = 'text-error';
+    if (type === 'success') cls = 'text-success';
+    box.innerHTML += '<div class="' + cls + '">&gt; ' + msg + '</div>';
+    box.scrollTop = box.scrollHeight;
+}
+
+function generateID() {
+    return "_" + Array.from(window.crypto.getRandomValues(new Uint8Array(20)))
+        .map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+}
+
+function sha256Base64(str) {
+    var md = new KJUR.crypto.MessageDigest({alg: "sha256"});
+    md.updateString(str);
+    return hextob64(md.digest());
+}
+
+// ==========================================
+// 7. SAML REQUEST PARSING (SP-INITIATED FLOW)
+// ==========================================
+var samlRequestId = null;
+
+function parseSAMLRequestFromUrl() {
+    var urlParams = new URLSearchParams(window.location.search);
+    var samlRequest = urlParams.get('SAMLRequest');
+    if (!samlRequest) return null;
+    try {
+        log('Parsing SAMLRequest from URL...');
+        var binaryString = atob(samlRequest);
+        var bytes = new Uint8Array(binaryString.length);
+        for (var i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+        var inflated = pako.inflateRaw(bytes);
+        var xmlString = new TextDecoder('utf-8').decode(inflated);
+        log('   SAMLRequest decoded successfully');
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(xmlString, 'application/xml');
+        if (doc.documentElement.nodeName === 'parsererror') throw new Error('Failed to parse SAMLRequest XML');
+        var id = doc.documentElement.getAttribute('ID');
+        if (!id) throw new Error('No ID attribute found in SAMLRequest');
+        log('   Extracted Request ID: ' + id, 'success');
+        return id;
+    } catch (err) {
+        log('Failed to parse SAMLRequest: ' + err.message, 'error');
+        return null;
+    }
+}
+
+// ==========================================
+// 8. MAIN LOGIC
+// ==========================================
+async function handleProcess(e) {
+    e.preventDefault();
+    if (currentMode === 'advanced') document.getElementById('statusBox').innerHTML = 'Initializing...<br>';
+    var username = document.getElementById('username').value;
+    var fullname = document.getElementById('fullname').value;
+    var email = document.getElementById('email').value;
+    var roles = selectedRoles.length > 0 ? selectedRoles : ['viewer'];
+    var rawDestination = document.getElementById('destination').value || 'http://localhost:5601';
+    var destination = normalizeDestination(rawDestination);
+    document.getElementById('realPostForm').action = destination;
+    var now = new Date();
+    var issueInstant = now.toISOString();
+    var notOnOrAfter = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+    var assertionID = generateID();
+    var responseID = generateID();
+    var sessionIndex = Math.floor(Math.random() * 10000000000000000).toString();
+    var nameID = generateID();
+    try {
+        log("1. Building SAML Assertion...");
+        if (samlRequestId) log('   SP-Initiated flow: InResponseTo="' + samlRequestId + '"');
+        else log("   IdP-Initiated flow: No InResponseTo attribute");
+        var roleAttributeValues = roles.map(function(role) { return '<saml:AttributeValue>' + role + '</saml:AttributeValue>'; }).join('');
+        var inResponseToAttr = samlRequestId ? ' InResponseTo="' + samlRequestId + '"' : '';
+        var assertionXml =
+            '<saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" Version="2.0" ID="' + assertionID + '" IssueInstant="' + issueInstant + '">' +
+            '<saml:Issuer>' + ISSUER + '</saml:Issuer>' +
+            '<saml:Subject>' +
+            '<saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:transient">' + nameID + '</saml:NameID>' +
+            '<saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">' +
+            '<saml:SubjectConfirmationData NotOnOrAfter="' + notOnOrAfter + '" Recipient="' + destination + '"' + inResponseToAttr + '/>' +
+            '</saml:SubjectConfirmation>' +
+            '</saml:Subject>' +
+            '<saml:AuthnStatement AuthnInstant="' + issueInstant + '" SessionIndex="' + sessionIndex + '">' +
+            '<saml:AuthnContext>' +
+            '<saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:unspecified</saml:AuthnContextClassRef>' +
+            '</saml:AuthnContext>' +
+            '</saml:AuthnStatement>' +
+            '<saml:AttributeStatement>' +
+            '<saml:Attribute FriendlyName="principal" Name="http://saml.elastic-cloud.com/attributes/principal" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">' +
+            '<saml:AttributeValue>' + username + '</saml:AttributeValue>' +
+            '</saml:Attribute>' +
+            '<saml:Attribute FriendlyName="roles" Name="http://saml.elastic-cloud.com/attributes/roles" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">' +
+            roleAttributeValues +
+            '</saml:Attribute>' +
+            '<saml:Attribute FriendlyName="email" Name="http://saml.elastic-cloud.com/attributes/email" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">' +
+            '<saml:AttributeValue>' + email + '</saml:AttributeValue>' +
+            '</saml:Attribute>' +
+            '<saml:Attribute FriendlyName="name" Name="http://saml.elastic-cloud.com/attributes/name" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">' +
+            '<saml:AttributeValue>' + fullname + '</saml:AttributeValue>' +
+            '</saml:Attribute>' +
+            '</saml:AttributeStatement>' +
+            '</saml:Assertion>';
+        log("2. Canonicalizing Assertion (exc-c14n)...");
+        var canonicalizedAssertion = exclusiveC14n(assertionXml);
+        log("3. Computing SHA-256 digest...");
+        var digestBase64 = sha256Base64(canonicalizedAssertion);
+        log("   Digest: " + digestBase64.substring(0, 20) + "...");
+        log("4. Building SignedInfo...");
+        var signedInfoXml =
+            '<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">' +
+            '<CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>' +
+            '<SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>' +
+            '<Reference URI="#' + assertionID + '">' +
+            '<Transforms>' +
+            '<Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>' +
+            '<Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>' +
+            '</Transforms>' +
+            '<DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>' +
+            '<DigestValue>' + digestBase64 + '</DigestValue>' +
+            '</Reference>' +
+            '</SignedInfo>';
+        log("5. Canonicalizing SignedInfo...");
+        var canonicalizedSignedInfo = exclusiveC14n(signedInfoXml);
+        log("6. Signing with RSA-SHA256...");
+        var rsaKey = KEYUTIL.getKey(PRIVATE_KEY);
+        var sig = new KJUR.crypto.Signature({alg: "SHA256withRSA"});
+        sig.init(rsaKey);
+        sig.updateString(canonicalizedSignedInfo);
+        var signatureHex = sig.sign();
+        var signatureBase64 = hextob64(signatureHex);
+        log("   Signature: " + signatureBase64.substring(0, 20) + "...");
+        log("7. Verifying signature...");
+        var verifySig = new KJUR.crypto.Signature({alg: "SHA256withRSA"});
+        var pubKey = KEYUTIL.getKey(PUBLIC_CERT);
+        verifySig.init(pubKey);
+        verifySig.updateString(canonicalizedSignedInfo);
+        var isValid = verifySig.verify(signatureHex);
+        if (isValid) { log("   Signature verified successfully!", "success"); }
+        else { log("   Signature verification FAILED!", "error"); return; }
+        log("8. Assembling signed assertion...");
+        var signatureBlock =
+            '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">' +
+            '<SignedInfo>' +
+            '<CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>' +
+            '<SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>' +
+            '<Reference URI="#' + assertionID + '">' +
+            '<Transforms>' +
+            '<Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>' +
+            '<Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>' +
+            '</Transforms>' +
+            '<DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>' +
+            '<DigestValue>' + digestBase64 + '</DigestValue>' +
+            '</Reference>' +
+            '</SignedInfo>' +
+            '<SignatureValue>' + signatureBase64 + '</SignatureValue>' +
+            '</Signature>';
+        var signedAssertionXml = assertionXml.replace(
+            '<saml:Issuer>' + ISSUER + '</saml:Issuer>',
+            '<saml:Issuer>' + ISSUER + '</saml:Issuer>' + signatureBlock
+        );
+        log("9. Building SAML Response...");
+        var responseXml =
+            '<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" ID="' + responseID + '"' + inResponseToAttr + ' Version="2.0" IssueInstant="' + issueInstant + '" Destination="' + destination + '">' +
+            '<saml:Issuer xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion">' + ISSUER + '</saml:Issuer>' +
+            '<samlp:Status>' +
+            '<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>' +
+            '</samlp:Status>' +
+            signedAssertionXml +
+            '</samlp:Response>';
+        log("10. Encoding and submitting...");
+        var base64Response = btoa(unescape(encodeURIComponent(responseXml)));
+        log("Submitting to: " + destination, "success");
+        document.getElementById('hiddenSAMLResponse').value = base64Response;
+        document.getElementById('realPostForm').submit();
+    } catch (err) {
+        log("ERROR: " + err.message, "error");
+        console.error(err);
+    }
+}
+
+// ==========================================
+// 9. INITIALIZATION
+// ==========================================
+document.addEventListener('DOMContentLoaded', function() {
+    renderRoles();
+    samlRequestId = parseSAMLRequestFromUrl();
+    if (samlRequestId) updateSAMLRequestUI();
+});
+
+function updateSAMLRequestUI() {
+    var form = document.getElementById('samlForm');
+    var banner = document.createElement('div');
+    banner.id = 'spInitiatedBanner';
+    banner.className = 'info-banner';
+    banner.innerHTML =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>' +
+        '<span><strong>SP-Initiated Flow:</strong> Request ID <code>' + escapeHtml(samlRequestId) + '</code> will be included in response</span>';
+    form.insertBefore(banner, form.firstChild);
+}
+</script>
+</body>
+</html>

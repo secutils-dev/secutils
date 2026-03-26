@@ -11,36 +11,36 @@ All tools in `dev/tools/` are standalone single-HTML-file apps (embedded CSS + J
 ## Brand Colors (from Elastic EUI theme-borealis)
 
 ### Dark theme (`:root, [data-theme="dark"]`)
-| Variable          | Value     | Source                                                                |
-|-------------------|-----------|-----------------------------------------------------------------------|
-| `--bg`            | `#141519` | EUI dark background                                                   |
-| `--surface`       | `#1d1e24` | EUI dark header/card surface                                          |
-| `--surface-hover` | `#2c2d33` | EUI dark hover                                                        |
-| `--border`        | `#343741` | EUI dark border                                                       |
-| `--text`          | `#dfe5ef` | EUI dark text                                                         |
-| `--text-muted`    | `#98a2b3` | EUI dark subdued text                                                 |
-| `--primary`       | `#fed047` | Secutils yellow                                                       |
-| `--primary-hover` | `#fdc615` | Secutils yellow hover                                                 |
-| `--primary-text`  | `#642340` | Secutils maroon (text on yellow bg)                                   |
-| `--accent`        | `#642340` | Secutils maroon                                                       |
-| `--badge-bg`      | `#2B394F` | EUI breadcrumb bg (dark) - `colors.backgroundLightText` = blueGrey120 |
-| `--badge-text`    | `#98A8C3` | EUI breadcrumb text (dark) - `colors.textSubdued` = blueGrey55        |
+| Variable | Value | Source |
+|---|---|---|
+| `--bg` | `#141519` | EUI dark background |
+| `--surface` | `#1d1e24` | EUI dark header/card surface |
+| `--surface-hover` | `#2c2d33` | EUI dark hover |
+| `--border` | `#343741` | EUI dark border |
+| `--text` | `#dfe5ef` | EUI dark text |
+| `--text-muted` | `#98a2b3` | EUI dark subdued text |
+| `--primary` | `#fed047` | Secutils yellow |
+| `--primary-hover` | `#fdc615` | Secutils yellow hover |
+| `--primary-text` | `#642340` | Secutils maroon (text on yellow bg) |
+| `--accent` | `#642340` | Secutils maroon |
+| `--badge-bg` | `#2B394F` | EUI breadcrumb bg (dark) - `colors.backgroundLightText` = blueGrey120 |
+| `--badge-text` | `#98A8C3` | EUI breadcrumb text (dark) - `colors.textSubdued` = blueGrey55 |
 
 ### Light theme (`[data-theme="light"]`)
-| Variable          | Value     | Source                                                                |
-|-------------------|-----------|-----------------------------------------------------------------------|
-| `--bg`            | `#f5f7fa` | EUI light background                                                  |
-| `--surface`       | `#ffffff` | White                                                                 |
-| `--surface-hover` | `#f1f3f5` | EUI light hover                                                       |
-| `--border`        | `#d3dae6` | EUI light border                                                      |
-| `--text`          | `#343741` | EUI light text                                                        |
-| `--text-muted`    | `#69707d` | EUI light subdued text                                                |
-| `--primary`       | `#fed047` | Secutils yellow                                                       |
-| `--primary-hover` | `#fdc615` | Secutils yellow hover                                                 |
-| `--primary-text`  | `#642340` | Secutils maroon                                                       |
-| `--accent`        | `#642340` | Secutils maroon                                                       |
-| `--badge-bg`      | `#E3E8F2` | EUI breadcrumb bg (light) - `colors.backgroundLightText` = blueGrey20 |
-| `--badge-text`    | `#505F79` | EUI breadcrumb text (light) - `colors.textSubdued`                    |
+| Variable | Value | Source |
+|---|---|---|
+| `--bg` | `#f5f7fa` | EUI light background |
+| `--surface` | `#ffffff` | White |
+| `--surface-hover` | `#f1f3f5` | EUI light hover |
+| `--border` | `#d3dae6` | EUI light border |
+| `--text` | `#343741` | EUI light text |
+| `--text-muted` | `#69707d` | EUI light subdued text |
+| `--primary` | `#fed047` | Secutils yellow |
+| `--primary-hover` | `#fdc615` | Secutils yellow hover |
+| `--primary-text` | `#642340` | Secutils maroon |
+| `--accent` | `#642340` | Secutils maroon |
+| `--badge-bg` | `#E3E8F2` | EUI breadcrumb bg (light) - `colors.backgroundLightText` = blueGrey20 |
+| `--badge-text` | `#505F79` | EUI breadcrumb text (light) - `colors.textSubdued` |
 
 ## Typography
 
@@ -156,28 +156,53 @@ Styled as an EUI application breadcrumb:
 .btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
 ```
 
-## Generated Output Files (if the tool produces downloadable HTML)
+## Footer
 
-When the tool generates downloadable HTML files:
+There are two different footer patterns depending on whether the page has the Secutils header or not:
 
-1. **Include a "Powered by Secutils.dev" watermark footer** - subtle, non-distracting, links to `https://secutils.dev`:
-   ```html
-   <footer class="su-watermark">
-     <a href="https://secutils.dev" target="_blank" rel="noopener">
-       <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-         <!-- SU initials logo (small) -->
-       </svg>
-       <span>Powered by <strong>Secutils.dev</strong></span>
-     </a>
-   </footer>
-   ```
-   Watermark CSS: `text-align: center; padding: 32px 24px; opacity: 0.6; font-size: 12px; border-top: 1px solid var(--border);`
+### Tool app pages (have the Secutils logo header)
 
-2. **Include dark/light mode toggle** with the same EUI SVG icons (sun/moon)
+Since branding is already in the header, the footer should contain a **short description of the tool** - not a "Powered by" watermark. Use `<p>` text, no logo repetition.
 
-3. **Use Inter + Roboto Mono fonts** (loaded from Google Fonts CDN)
+```html
+<footer class="su-footer">
+    <p>A single-file tool description goes here.</p>
+</footer>
+```
 
-4. **Use Secutils brand accent colors** (`#fed047` yellow, `#642340` maroon) for links, progress bar, blockquote borders, etc.
+```css
+.su-footer {
+    text-align: center;
+    padding: 16px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+```
+
+### Generated/exported output files (no Secutils header - e.g. downloaded HTML from Markdown → HTML tool)
+
+Since there is no header with branding, include a **"Powered by Secutils.dev" watermark footer** - subtle, non-distracting, links to `https://secutils.dev`:
+
+```html
+<footer class="su-watermark">
+  <a href="https://secutils.dev" target="_blank" rel="noopener">
+    <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+      <!-- SU initials logo (small) -->
+    </svg>
+    <span>Powered by <strong>Secutils.dev</strong></span>
+  </a>
+</footer>
+```
+Watermark CSS: `text-align: center; padding: 32px 24px; opacity: 0.6; font-size: 12px; border-top: 1px solid var(--border);`
+
+### Common rules for generated output files
+
+1. **Include dark/light mode toggle** with the same EUI SVG icons (sun/moon)
+
+2. **Use Inter + Roboto Mono fonts** (loaded from Google Fonts CDN)
+
+3. **Use Secutils brand accent colors** (`#fed047` yellow, `#642340` maroon) for links, progress bar, blockquote borders, etc.
 
 ## Responsive (mobile)
 
