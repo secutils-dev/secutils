@@ -385,16 +385,24 @@ function printTable(report: Report, previous: Report | null, config: Config): vo
   console.log('');
 }
 
+function sizesEqual(a: Report, b: Report): boolean {
+  return (
+    JSON.stringify(a.bundles) === JSON.stringify(b.bundles) &&
+    JSON.stringify(a.categories) === JSON.stringify(b.categories) &&
+    a.otherChunkCount === b.otherChunkCount
+  );
+}
+
 // ── Entry point ──────────────────────────────────────────
 
 const config = loadConfig();
 const report = buildReport(config);
 const history = loadHistory();
 
-// Idempotency: skip if latest entry has the same commit SHA.
+// Idempotency: skip if bundle sizes haven't changed since the last recording.
 const latest = history.at(-1);
-if (latest && latest.commitSha === report.commitSha) {
-  console.log(`Bundle sizes already recorded for ${report.commitSha.slice(0, 7)}, skipping.`);
+if (latest && sizesEqual(report, latest)) {
+  console.log('Bundle sizes unchanged since last recording, skipping.');
   printTable(report, history.at(-2) ?? null, config);
   process.exit(0);
 }
