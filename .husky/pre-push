@@ -2,6 +2,12 @@
 
 set -eu
 
+if ! make webui-test
+then
+    echo "There are some WebUI test issues."
+    exit 1
+fi
+
 if ! cargo sqlx prepare --check
 then
     echo "Database schema snapshot should be updated."
@@ -24,7 +30,7 @@ fi
 
 if ! cargo test
 then
-    echo "There are some test issues."
+    echo "There are some API test issues."
     exit 1
 fi
 
