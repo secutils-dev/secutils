@@ -1120,7 +1120,7 @@ test.describe('API tracker guide screenshots', () => {
     const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add API tracker' }) });
     await expect(flyout).toBeVisible();
 
-    await flyout.getByLabel('Name').fill('Application State Monitor');
+    await flyout.getByLabel('Name').fill('App Monitor');
     await flyout.getByLabel('URL').fill(API_URL);
 
     // Scroll to "Change tracking" and configure schedule + notifications.
@@ -1156,9 +1156,7 @@ test.describe('API tracker guide screenshots', () => {
     await dismissAllToasts(page);
 
     // Step 3: Show the tracker in the grid.
-    const trackerRow = page
-      .getByRole('row')
-      .filter({ has: page.getByRole('cell', { name: 'Application State Monitor' }) });
+    const trackerRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'App Monitor' }) });
     await expect(trackerRow).toBeVisible({ timeout: 15000 });
 
     // Verify URL is saved by re-opening the Edit flyout.

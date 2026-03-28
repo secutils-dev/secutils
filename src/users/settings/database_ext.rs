@@ -127,7 +127,7 @@ mod tests {
         let updated_settings = UserSettings(
             [
                 ("common.uiTheme".to_string(), json!("light")),
-                ("common.showOnlyFavorites".to_string(), json!(true)),
+                ("common.sidebarCollapsed".to_string(), json!(true)),
             ]
             .into_iter()
             .collect(),

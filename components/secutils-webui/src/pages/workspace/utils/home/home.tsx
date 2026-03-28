@@ -358,7 +358,7 @@ export default function Home() {
                   <EuiSpacer size="s" />
                   <EuiFlexGroup direction="column" gutterSize="xs">
                     {summary.recentItems.map((item, i) => {
-                      const recentItemIcon = getUtilIcon(item.utilHandle, 'search') ?? 'document';
+                      const recentItemIcon = getUtilIcon(item.utilHandle, 'title') ?? 'document';
                       return (
                         <EuiFlexItem key={i}>
                           <EuiFlexGroup gutterSize="s" alignItems="center" responsive={false}>

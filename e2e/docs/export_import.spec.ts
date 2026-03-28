@@ -35,10 +35,13 @@ test.describe('Export/Import guide screenshots', () => {
     await highlightOn(exportButton);
     await page.screenshot({ path: join(IMG_DIR, 'export_import_step1_account_tab.png') });
 
-    // Step 2: Open the export modal.
+    // Step 2: Open the export modal and wait for its content to fully load.
     await exportButton.click();
     const exportModal = page.locator('.euiModal').filter({ has: page.getByText('Export data') });
     await expect(exportModal).toBeVisible({ timeout: 15000 });
+    await expect(exportModal.getByText('Settings')).toBeVisible({ timeout: 15000 });
+    await expect(exportModal.getByText('Scripts')).toBeVisible({ timeout: 15000 });
+    await expect(exportModal.getByText('Secrets')).toBeVisible({ timeout: 15000 });
     await page.screenshot({ path: join(IMG_DIR, 'export_import_step2_export_modal.png') });
 
     // Close the export modal.

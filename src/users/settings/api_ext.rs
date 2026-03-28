@@ -120,7 +120,10 @@ mod tests {
         let setter = UserSettingsSetter(
             [
                 ("common.uiTheme".to_string(), Some(json!("dark"))),
-                ("common.showOnlyFavorites".to_string(), Some(json!(true))),
+                (
+                    "common.globalScopeTagIds".to_string(),
+                    Some(json!(["tag-1"])),
+                ),
             ]
             .into_iter()
             .collect(),
@@ -128,15 +131,15 @@ mod tests {
         let result = settings_api.set_settings(setter).await?.unwrap();
         assert_eq!(result.0.get("common.uiTheme").unwrap(), &json!("dark"));
         assert_eq!(
-            result.0.get("common.showOnlyFavorites").unwrap(),
-            &json!(true)
+            result.0.get("common.globalScopeTagIds").unwrap(),
+            &json!(["tag-1"])
         );
 
         // Merge: update one, remove one, add one.
         let setter = UserSettingsSetter(
             [
                 ("common.uiTheme".to_string(), Some(json!("light"))),
-                ("common.showOnlyFavorites".to_string(), None),
+                ("common.globalScopeTagIds".to_string(), None),
                 ("common.sidebarCollapsed".to_string(), Some(json!(true))),
             ]
             .into_iter()
@@ -144,7 +147,7 @@ mod tests {
         );
         let result = settings_api.set_settings(setter).await?.unwrap();
         assert_eq!(result.0.get("common.uiTheme").unwrap(), &json!("light"));
-        assert!(!result.0.contains_key("common.showOnlyFavorites"));
+        assert!(!result.0.contains_key("common.globalScopeTagIds"));
         assert_eq!(
             result.0.get("common.sidebarCollapsed").unwrap(),
             &json!(true)
@@ -208,7 +211,10 @@ mod tests {
         let setter = UserSettingsSetter(
             [
                 ("common.uiTheme".to_string(), Some(json!("dark"))),
-                ("common.showOnlyFavorites".to_string(), Some(json!(true))),
+                (
+                    "common.globalScopeTagIds".to_string(),
+                    Some(json!(["tag-1"])),
+                ),
             ]
             .into_iter()
             .collect(),

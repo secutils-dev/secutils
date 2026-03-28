@@ -72,7 +72,18 @@ function pctChange(current: number, previous: number) {
 }
 
 function formatPct(pct: number) {
-  return `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`;
+  return `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`;
+}
+
+function formatChange(current: number, previous: number): string {
+  const pct = pctChange(current, previous);
+  const diff = current - previous;
+  if (diff === 0) {
+    return formatPct(pct);
+  }
+
+  const sign = diff > 0 ? '+' : '-';
+  return `${formatPct(pct)} (${sign}${formatBytes(Math.abs(diff))})`;
 }
 
 /** Simple glob match supporting only `*` wildcard segments. */
@@ -278,12 +289,12 @@ function appendReport(report: Report): void {
 
 function printTable(report: Report, previous: Report | null, config: Config): void {
   const shaShort = report.commitSha.slice(0, 7);
-  const line = '─'.repeat(72);
+  const line = '─'.repeat(94);
 
   console.log('');
   console.log(`Bundle Size Report - ${shaShort} (${report.commitMessage})`);
   console.log(line);
-  console.log('Bundle'.padEnd(28) + 'Raw'.padStart(11) + 'Brotli'.padStart(11) + 'Change'.padStart(11) + '  Status');
+  console.log('Bundle'.padEnd(36) + 'Raw'.padStart(11) + 'Brotli'.padStart(11) + 'Change'.padStart(22) + '  Status');
   console.log(line);
 
   const warnings: string[] = [];
@@ -292,22 +303,24 @@ function printTable(report: Report, previous: Report | null, config: Config): vo
   for (const [name, sizes] of Object.entries(report.bundles)) {
     const prevSizes = previous?.bundles?.[name];
     const change = prevSizes ? pctChange(sizes.brotli, prevSizes.brotli) : null;
-    const changeStr = change !== null ? formatPct(change) : 'new';
+    const changeStr = prevSizes ? formatChange(sizes.brotli, prevSizes.brotli) : 'new';
 
     let status = '';
     if (change !== null && Math.abs(change) > config.thresholds.individual) {
       if (change > 0) {
         status = '⚠ WARN';
-        warnings.push(`"${name}" increased by ${formatPct(change)} (threshold: ${config.thresholds.individual}%)`);
+        warnings.push(
+          `"${name}" increased by ${prevSizes ? formatChange(sizes.brotli, prevSizes.brotli) : formatPct(change)} (threshold: ${config.thresholds.individual}%)`,
+        );
       }
     }
 
     const displayName = name === 'other' ? `other (${report.otherChunkCount} chunks)` : name;
     console.log(
-      displayName.padEnd(28) +
+      displayName.padEnd(36) +
         formatBytes(sizes.raw).padStart(11) +
         formatBytes(sizes.brotli).padStart(11) +
-        changeStr.padStart(11) +
+        changeStr.padStart(22) +
         (status ? `  ${status}` : ''),
     );
   }
@@ -322,23 +335,23 @@ function printTable(report: Report, previous: Report | null, config: Config): vo
     }
     const prevSizes = previous?.categories?.[cat];
     const change = prevSizes ? pctChange(sizes.brotli, prevSizes.brotli) : null;
-    const changeStr = change !== null ? formatPct(change) : 'new';
+    const changeStr = prevSizes ? formatChange(sizes.brotli, prevSizes.brotli) : 'new';
 
     let status = '';
     if (change !== null && Math.abs(change) > config.thresholds.category) {
       if (change > 0) {
         status = '⚠ WARN';
         warnings.push(
-          `Category "${cat}" increased by ${formatPct(change)} (threshold: ${config.thresholds.category}%)`,
+          `Category "${cat}" increased by ${prevSizes ? formatChange(sizes.brotli, prevSizes.brotli) : formatPct(change)} (threshold: ${config.thresholds.category}%)`,
         );
       }
     }
 
     console.log(
-      cat.padEnd(28) +
+      cat.padEnd(36) +
         formatBytes(sizes.raw).padStart(11) +
         formatBytes(sizes.brotli).padStart(11) +
-        changeStr.padStart(11) +
+        changeStr.padStart(22) +
         (status ? `  ${status}` : ''),
     );
   }
@@ -350,21 +363,23 @@ function printTable(report: Report, previous: Report | null, config: Config): vo
     const sizes = report.categories['total'];
     const prevSizes = previous?.categories?.['total'];
     const change = prevSizes ? pctChange(sizes.brotli, prevSizes.brotli) : null;
-    const changeStr = change !== null ? formatPct(change) : 'new';
+    const changeStr = prevSizes ? formatChange(sizes.brotli, prevSizes.brotli) : 'new';
 
     let status = change !== null && change > config.thresholds.total ? '⚠ WARN' : '✓';
     if (change !== null && change > config.thresholds.total) {
-      warnings.push(`Total increased by ${formatPct(change)} (threshold: ${config.thresholds.total}%)`);
+      warnings.push(
+        `Total increased by ${prevSizes ? formatChange(sizes.brotli, prevSizes.brotli) : formatPct(change)} (threshold: ${config.thresholds.total}%)`,
+      );
     }
     if (change === null) {
       status = '';
     }
 
     console.log(
-      'TOTAL'.padEnd(28) +
+      'TOTAL'.padEnd(36) +
         formatBytes(sizes.raw).padStart(11) +
         formatBytes(sizes.brotli).padStart(11) +
-        changeStr.padStart(11) +
+        changeStr.padStart(22) +
         `  ${status}`,
     );
   }

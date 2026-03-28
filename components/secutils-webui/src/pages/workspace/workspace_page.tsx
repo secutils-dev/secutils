@@ -1,5 +1,5 @@
 import type { EuiBreadcrumb, EuiSideNavItemType } from '@elastic/eui';
-import { EuiButtonIcon, EuiFlexGroup, EuiFlexItem, EuiIcon, EuiSideNav, EuiSpacer, useEuiTheme } from '@elastic/eui';
+import { EuiFlexGroup, EuiFlexItem, EuiIcon, EuiSideNav, EuiSpacer } from '@elastic/eui';
 import { css } from '@emotion/react';
 import type { MouseEvent, ReactNode } from 'react';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
@@ -14,34 +14,14 @@ import { SettingsFlyout } from '../../app_container';
 import { PageLoadingState } from '../../components';
 import { useAppContext, usePageHeaderActions, usePageMeta } from '../../hooks';
 import type { Util } from '../../model';
-import {
-  USER_SETTINGS_KEY_COMMON_FAVORITES,
-  USER_SETTINGS_KEY_COMMON_GLOBAL_SCOPE_TAG_IDS,
-  USER_SETTINGS_KEY_COMMON_SHOW_ONLY_FAVORITES,
-} from '../../model';
+import { USER_SETTINGS_KEY_COMMON_GLOBAL_SCOPE_TAG_IDS } from '../../model';
 import { Page } from '../page';
 
 const DEFAULT_COMPONENT = lazy(() => import('../../components/page_under_construction_state'));
 
-function showDisplayUtil(util: Util, favorites: Set<string>) {
-  // Home utility is always enabled.
-  if (util.handle === UTIL_HANDLES.home || favorites.has(util.handle)) {
-    return true;
-  }
-
-  for (const childUtil of util.utils ?? []) {
-    if (showDisplayUtil(childUtil, favorites)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 export function WorkspacePage() {
   usePageMeta('Workspace');
 
-  const euiTheme = useEuiTheme();
   const navigate = useNavigate();
 
   const { actions, isSettingsOpen, hideSettings, pendingImportUrl, clearPendingImportUrl } = usePageHeaderActions();
@@ -51,13 +31,6 @@ export function WorkspacePage() {
     util?: string;
     deepLink?: string;
   }>();
-
-  const [favorites, showOnlyFavorites] = useMemo(() => {
-    return [
-      new Set<string>((settings?.[USER_SETTINGS_KEY_COMMON_FAVORITES] as string[] | undefined) ?? []),
-      settings?.[USER_SETTINGS_KEY_COMMON_SHOW_ONLY_FAVORITES] === true,
-    ];
-  }, [settings]);
 
   const globalScopeTagIds = useMemo(
     () => (settings?.[USER_SETTINGS_KEY_COMMON_GLOBAL_SCOPE_TAG_IDS] as string[] | undefined) ?? [],
@@ -138,10 +111,7 @@ export function WorkspacePage() {
       utilsMap.set(util.handle, util);
       const utilUrl = getWorkspaceUtilLink(util.handle);
       const utilIcon = selectedUtil ? getUtilIcon(util.handle, 'navigation') : undefined;
-      const childUtils =
-        showOnlyFavorites && util.utils
-          ? util.utils.filter((nestedUtil) => showDisplayUtil(nestedUtil, favorites))
-          : (util.utils ?? []);
+      const childUtils = util.utils ?? [];
       const childItems = childUtils.length > 0 ? childUtils.map((nestedUtil) => createItem(nestedUtil)) : undefined;
 
       return {
@@ -154,13 +124,8 @@ export function WorkspacePage() {
       };
     };
 
-    return [
-      (showOnlyFavorites ? uiState.utils.filter((util) => showDisplayUtil(util, favorites)) : uiState.utils).map(
-        createItem,
-      ),
-      utilsMap,
-    ];
-  }, [uiState, selectedUtil, deepLinkFromParam, favorites, showOnlyFavorites]);
+    return [uiState.utils.map(createItem), utilsMap];
+  }, [uiState, selectedUtil, deepLinkFromParam]);
 
   useEffect(() => {
     const newSelectedUtil =
@@ -190,58 +155,24 @@ export function WorkspacePage() {
     }
 
     // Check if utility has a UI component defined.
-    const UtilComponent =
+    const ResolvedComponent =
       (uiState.userShare ? UtilsShareComponents.get(selectedUtil.handle) : null) ||
       UtilsComponents.get(selectedUtil.handle) ||
       DEFAULT_COMPONENT;
-    return <UtilComponent />;
+    // eslint-disable-next-line react-hooks/static-components -- Component is resolved from a static map, not dynamically created.
+    return <ResolvedComponent />;
   }, [selectedUtil, utilsMap, utilIdFromParam, uiState]);
 
-  const onChangeShowOnlyFavorites = (showOnlyFavoritesValue: boolean) => {
-    setSettings({ [USER_SETTINGS_KEY_COMMON_SHOW_ONLY_FAVORITES]: showOnlyFavoritesValue || null });
-
-    // If user is in favorites-only mode and removes currently active utility from favorite, navigate to the home util.
-    if (showOnlyFavoritesValue && selectedUtil && !favorites.has(selectedUtil.handle)) {
-      navigate('/ws');
-    }
-  };
-
-  const onToggleFavorite = (utilId: string) => {
-    if (favorites.has(utilId)) {
-      favorites.delete(utilId);
-    } else {
-      favorites.add(utilId);
-    }
-    setSettings({ [USER_SETTINGS_KEY_COMMON_FAVORITES]: Array.from(favorites) });
-
-    // If user is in favorites-only mode and removes currently active utility from favorite, navigate to the home util.
-    if (showOnlyFavorites && !favorites.has(utilId)) {
-      navigate('/ws');
-    }
-  };
-
-  const utilIcon = selectedUtil
-    ? getUtilIcon(selectedUtil.handle, uiState.userShare ? 'share' : 'navigation')
-    : undefined;
-  const titleIcon = selectedUtil ? (
-    utilIcon ? (
-      <EuiIcon
-        css={css`
-          margin: 4px;
-          padding: 3px;
-        `}
-        type={utilIcon}
-        size={'xl'}
-      />
-    ) : (
-      <EuiButtonIcon
-        iconType={favorites.has(selectedUtil.handle) ? 'starFilled' : 'starEmpty'}
-        iconSize="xl"
-        size="m"
-        aria-label={`Add ${selectedUtil.name} to favorites`}
-        onClick={() => onToggleFavorite(selectedUtil?.handle)}
-      />
-    )
+  const utilIcon = selectedUtil ? getUtilIcon(selectedUtil.handle, 'title') : undefined;
+  const titleIcon = utilIcon ? (
+    <EuiIcon
+      css={css`
+        margin: 4px;
+        padding: 3px;
+      `}
+      type={utilIcon}
+      size={'xl'}
+    />
   ) : null;
 
   // Sidebar is only available to authenticated users.
@@ -257,18 +188,6 @@ export function WorkspacePage() {
   const headerActions = uiState.user
     ? [
         <TagScopeSelector key="hdr-tags" selectedTagIds={globalScopeTagIds} onChange={onGlobalScopeTagIdsChange} />,
-        <EuiButtonIcon
-          key="hdr-favs"
-          iconType={showOnlyFavorites ? 'starFilled' : 'starEmpty'}
-          css={css`
-            margin-right: ${euiTheme.euiTheme.size.xxs};
-          `}
-          iconSize="m"
-          size="m"
-          title={`Only show favorite utilities`}
-          aria-label={`Only show favorite utilities`}
-          onClick={() => onChangeShowOnlyFavorites(!showOnlyFavorites)}
-        />,
         ...actions,
       ]
     : actions;

@@ -35,30 +35,29 @@ export const UtilsShareComponents = new Map<string, LazyExoticComponent<Componen
   [UTIL_HANDLES.webSecurityCspPolicies, lazy(() => import('./web_security/csp/web_security_csp_shared_policy'))],
 ]);
 
-export function getUtilIcon(utilHandle: string, purpose: 'navigation' | 'search' | 'share') {
+export function getUtilIcon(utilHandle: string, purpose: 'navigation' | 'title') {
   switch (utilHandle) {
     case UTIL_HANDLES.home:
       return 'home';
     case UTIL_HANDLES.webhooks:
       return 'node';
     case UTIL_HANDLES.webhooksResponders:
-      return purpose === 'search' || purpose === 'share' ? 'node' : undefined;
+      return purpose === 'title' ? 'node' : undefined;
     case UTIL_HANDLES.certificates:
       return 'securityApp';
     case UTIL_HANDLES.certificatesCertificateTemplates:
     case UTIL_HANDLES.certificatesPrivateKeys:
-      return purpose === 'search' || purpose === 'share' ? 'securityApp' : undefined;
+      return purpose === 'title' ? 'securityApp' : undefined;
     case UTIL_HANDLES.webSecurity:
       return 'globe';
     case UTIL_HANDLES.webSecurityCsp:
     case UTIL_HANDLES.webSecurityCspPolicies:
-      return purpose === 'search' || purpose === 'share' ? 'globe' : undefined;
+      return purpose === 'title' ? 'globe' : undefined;
     case UTIL_HANDLES.webScraping:
       return 'cut';
     case UTIL_HANDLES.webScrapingPage:
-      return purpose === 'search' || purpose === 'share' ? 'cut' : undefined;
     case UTIL_HANDLES.webScrapingApi:
-      return purpose === 'search' || purpose === 'share' ? 'cut' : undefined;
+      return purpose === 'title' ? 'cut' : undefined;
     default:
       return;
   }

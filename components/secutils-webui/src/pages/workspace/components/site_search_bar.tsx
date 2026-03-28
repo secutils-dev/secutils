@@ -53,7 +53,7 @@ export function SiteSearchBar() {
             data: searchItems.map((serializedSearchItem) => {
               const searchItem = deserializeSearchItem(serializedSearchItem);
               const icon =
-                searchItem.category === 'Utils' ? getUtilIcon(searchItem.meta?.handle ?? '', 'search') : undefined;
+                searchItem.category === 'Utils' ? getUtilIcon(searchItem.meta?.handle ?? '', 'title') : undefined;
               return {
                 label: searchItem.label,
                 icon: icon ? { type: icon } : undefined,
