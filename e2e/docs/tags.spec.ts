@@ -93,8 +93,10 @@ test.describe('Tags guide screenshots', () => {
     const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add responder' }) });
     await expect(flyout).toBeVisible({ timeout: 15000 });
 
-    // Fill in the name.
+    // Fill in the name and a fixed path (default is random).
     await flyout.getByLabel('Name').fill('My API Responder');
+    const pathInput = flyout.getByRole('textbox', { name: 'Path' });
+    await pathInput.fill('/my-api');
 
     // Select tags - EuiComboBox keeps dropdown open in multi-select mode.
     await flyout.getByPlaceholder('Select tags').click();
@@ -144,10 +146,11 @@ test.describe('Tags guide screenshots', () => {
 
     await fixEntityTimestamps(page, '**/api/utils/webhooks/responders');
 
-    // Navigate to responders.
+    // Navigate to responders and sort by Name for a deterministic order.
     await goto(page, '/ws/webhooks__responders');
     await expect(page.getByText('Prod API')).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('Staging Mock')).toBeVisible({ timeout: 15000 });
+    await page.getByRole('button', { name: /Name/ }).click();
     await page.screenshot({ path: join(IMG_DIR, 'tags_step5_unfiltered.png') });
 
     // Step 6: Use page-level tag filter.

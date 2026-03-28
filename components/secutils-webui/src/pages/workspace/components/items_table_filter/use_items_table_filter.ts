@@ -10,6 +10,7 @@ export const FILTER_PARAM_TAGS = 'tags';
 
 export interface UseItemsTableFilterOptions<T> {
   items: T[];
+  allTags?: EntityTag[];
   getSearchFields: (item: T) => string[];
   getItemTags?: (item: T) => EntityTag[] | undefined;
 }
@@ -20,10 +21,15 @@ export interface UseItemsTableFilterResult<T> {
   setQuery: (query: string) => void;
   selectedTagIds: string[];
   setSelectedTagIds: (tagIds: string[]) => void;
+  totalItems: number;
+  hasActiveFilters: boolean;
+  hasPageFilters: boolean;
+  clearPageFilters: () => void;
 }
 
 export function useItemsTableFilter<T>({
   items,
+  allTags,
   getSearchFields,
   getItemTags,
 }: UseItemsTableFilterOptions<T>): UseItemsTableFilterResult<T> {
@@ -34,11 +40,30 @@ export function useItemsTableFilter<T>({
     [workspaceContext?.globalScopeTagIds],
   );
 
+  // Build name↔ID lookup maps for URL-friendly tag params.
+  const { nameToId, idToName } = useMemo(() => {
+    const n2i = new Map<string, string>();
+    const i2n = new Map<string, string>();
+    for (const tag of allTags ?? []) {
+      n2i.set(tag.name, tag.id);
+      i2n.set(tag.id, tag.name);
+    }
+    return { nameToId: n2i, idToName: i2n };
+  }, [allTags]);
+
   const query = searchParams.get(FILTER_PARAM_QUERY) ?? '';
+  // URL stores tag names for readability; resolve to IDs for filtering.
   const selectedTagIds = useMemo(() => {
     const raw = searchParams.get(FILTER_PARAM_TAGS);
-    return raw ? raw.split(',').filter(Boolean) : [];
-  }, [searchParams]);
+    if (!raw) {
+      return [];
+    }
+    return raw
+      .split(',')
+      .filter(Boolean)
+      .map((name) => nameToId.get(name))
+      .filter((id): id is string => id != null);
+  }, [searchParams, nameToId]);
 
   const setQuery = useCallback(
     (newQuery: string) => {
@@ -63,8 +88,10 @@ export function useItemsTableFilter<T>({
       setSearchParams(
         (prev) => {
           const newParams = new URLSearchParams(prev);
-          if (tagIds.length > 0) {
-            newParams.set(FILTER_PARAM_TAGS, tagIds.join(','));
+          // Write tag names to URL for readability.
+          const names = tagIds.map((id) => idToName.get(id)).filter((n): n is string => n != null);
+          if (names.length > 0) {
+            newParams.set(FILTER_PARAM_TAGS, names.join(','));
           } else {
             newParams.delete(FILTER_PARAM_TAGS);
           }
@@ -73,7 +100,7 @@ export function useItemsTableFilter<T>({
         { replace: true },
       );
     },
-    [setSearchParams],
+    [setSearchParams, idToName],
   );
 
   const filteredItems = useMemo(() => {
@@ -109,11 +136,30 @@ export function useItemsTableFilter<T>({
     return result;
   }, [items, query, selectedTagIds, globalScopeTagIds, getSearchFields, getItemTags]);
 
+  const hasPageFilters = query.length > 0 || selectedTagIds.length > 0;
+  const hasActiveFilters = hasPageFilters || globalScopeTagIds.length > 0;
+
+  const clearPageFilters = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const newParams = new URLSearchParams(prev);
+        newParams.delete(FILTER_PARAM_QUERY);
+        newParams.delete(FILTER_PARAM_TAGS);
+        return newParams;
+      },
+      { replace: true },
+    );
+  }, [setSearchParams]);
+
   return {
     filteredItems,
     query,
     setQuery,
     selectedTagIds,
     setSelectedTagIds,
+    totalItems: items.length,
+    hasActiveFilters,
+    hasPageFilters,
+    clearPageFilters,
   };
 }

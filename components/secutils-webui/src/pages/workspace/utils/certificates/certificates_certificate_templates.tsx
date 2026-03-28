@@ -30,7 +30,12 @@ import { useUserTags } from '../../../../hooks';
 import type { AsyncData } from '../../../../model';
 import { getApiRequestConfig, getApiUrl, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
 import { getTagsColumn } from '../../components/entity_tags_column';
-import { ItemsTableFilter, TagsFilter, useItemsTableFilter } from '../../components/items_table_filter';
+import {
+  FilteredEmptyState,
+  ItemsTableFilter,
+  TagsFilter,
+  useItemsTableFilter,
+} from '../../components/items_table_filter';
 import { useWorkspaceContext } from '../../hooks';
 import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
 
@@ -168,8 +173,18 @@ export default function CertificatesCertificateTemplates() {
   );
   const getItemTags = useCallback((template: CertificateTemplate) => template.tags, []);
 
-  const { filteredItems, query, setQuery, selectedTagIds, setSelectedTagIds } = useItemsTableFilter({
+  const {
+    filteredItems,
+    query,
+    setQuery,
+    selectedTagIds,
+    setSelectedTagIds,
+    totalItems,
+    hasPageFilters,
+    clearPageFilters,
+  } = useItemsTableFilter({
     items: templates.status === 'succeeded' ? templates.data : [],
+    allTags,
     getSearchFields,
     getItemTags,
   });
@@ -290,6 +305,13 @@ export default function CertificatesCertificateTemplates() {
         <EuiInMemoryTable
           pagination={pagination}
           allowNeutralSort={false}
+          noItemsMessage={
+            <FilteredEmptyState
+              totalItems={totalItems}
+              hasPageFilters={hasPageFilters}
+              onClearFilters={clearPageFilters}
+            />
+          }
           sorting={sorting}
           onTableChange={onTableChange}
           items={filteredItems}

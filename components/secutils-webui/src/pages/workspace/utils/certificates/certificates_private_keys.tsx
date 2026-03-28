@@ -27,7 +27,12 @@ import { useUserTags } from '../../../../hooks';
 import type { AsyncData } from '../../../../model';
 import { getApiRequestConfig, getApiUrl, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
 import { getTagsColumn } from '../../components/entity_tags_column';
-import { ItemsTableFilter, TagsFilter, useItemsTableFilter } from '../../components/items_table_filter';
+import {
+  FilteredEmptyState,
+  ItemsTableFilter,
+  TagsFilter,
+  useItemsTableFilter,
+} from '../../components/items_table_filter';
 import { TimestampTableCell } from '../../components/timestamp_table_cell';
 import { useWorkspaceContext } from '../../hooks';
 import { getWorkspaceEntityAbsoluteLink, getWorkspaceEntityLink } from '../workspace_links';
@@ -138,8 +143,18 @@ export default function CertificatesPrivateKeys() {
   // Filter configuration: search by name and ID
   const getSearchFields = useCallback((privateKey: PrivateKey) => [privateKey.name, privateKey.id], []);
   const getItemTags = useCallback((privateKey: PrivateKey) => privateKey.tags, []);
-  const { filteredItems, query, setQuery, selectedTagIds, setSelectedTagIds } = useItemsTableFilter({
+  const {
+    filteredItems,
+    query,
+    setQuery,
+    selectedTagIds,
+    setSelectedTagIds,
+    totalItems,
+    hasPageFilters,
+    clearPageFilters,
+  } = useItemsTableFilter({
     items: privateKeys.status === 'succeeded' ? privateKeys.data : [],
+    allTags,
     getSearchFields,
     getItemTags,
   });
@@ -258,6 +273,13 @@ export default function CertificatesPrivateKeys() {
         <EuiInMemoryTable
           pagination={pagination}
           allowNeutralSort={false}
+          noItemsMessage={
+            <FilteredEmptyState
+              totalItems={totalItems}
+              hasPageFilters={hasPageFilters}
+              onClearFilters={clearPageFilters}
+            />
+          }
           sorting={sorting}
           onTableChange={onTableChange}
           items={filteredItems}

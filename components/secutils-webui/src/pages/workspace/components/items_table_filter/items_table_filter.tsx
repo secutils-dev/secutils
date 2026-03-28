@@ -1,6 +1,6 @@
 import { EuiButton, EuiFieldSearch, EuiFlexGroup, EuiFlexItem } from '@elastic/eui';
 import type { ChangeEvent, ReactNode } from 'react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface ItemsTableFilterProps {
   query: string;
@@ -22,6 +22,13 @@ export function ItemsTableFilter({
   const [localQuery, setLocalQuery] = useState(query);
   const debounceRef = useRef<number | null>(null);
 
+  // Sync local state when the query prop is cleared externally (e.g., "Clear filters").
+  useEffect(() => {
+    if (query !== localQuery && !debounceRef.current) {
+      setLocalQuery(query);
+    }
+  }, [query]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleQueryChange = useCallback(
     (e: ChangeEvent<HTMLInputElement>) => {
       const newQuery = e.target.value;
@@ -33,6 +40,7 @@ export function ItemsTableFilter({
 
       debounceRef.current = window.setTimeout(() => {
         onQueryChange(newQuery);
+        debounceRef.current = null;
       }, SEARCH_DEBOUNCE_MS);
     },
     [onQueryChange],

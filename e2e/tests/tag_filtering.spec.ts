@@ -199,6 +199,177 @@ test.describe('Tag filtering', () => {
     await expect(page.getByText('R-only-gamma')).not.toBeVisible();
   });
 
+  test('page filters use readable URL params and clear filters works across all pages', async ({ page }) => {
+    // Create entities for every utility type tagged with "alpha" and "beta".
+    await page.request.post('/api/utils/webhooks/responders', {
+      data: {
+        name: 'Resp-alpha',
+        location: { pathType: '=', path: '/resp-a' },
+        method: 'ANY',
+        enabled: true,
+        settings: { requestsToTrack: 10, statusCode: 200 },
+        tagIds: [tagIds['alpha']],
+      },
+    });
+    await page.request.post('/api/utils/webhooks/responders', {
+      data: {
+        name: 'Resp-beta',
+        location: { pathType: '=', path: '/resp-b' },
+        method: 'ANY',
+        enabled: true,
+        settings: { requestsToTrack: 10, statusCode: 200 },
+        tagIds: [tagIds['beta']],
+      },
+    });
+
+    await page.request.post('/api/utils/web_scraping/page', {
+      data: {
+        name: 'PT-alpha',
+        config: { revisions: 3 },
+        target: { extractor: 'export async function execute() { return "<p>test</p>"; }' },
+        tagIds: [tagIds['alpha']],
+      },
+    });
+    await page.request.post('/api/utils/web_scraping/page', {
+      data: {
+        name: 'PT-beta',
+        config: { revisions: 3 },
+        target: { extractor: 'export async function execute() { return "<p>test</p>"; }' },
+        tagIds: [tagIds['beta']],
+      },
+    });
+
+    await page.request.post('/api/utils/web_scraping/api', {
+      data: {
+        name: 'AT-alpha',
+        config: { revisions: 3 },
+        target: {
+          url: 'https://example.com',
+          extractor:
+            '(() => { const r = context.responses ?? []; return { body: Deno.core.encode(JSON.stringify(r)) }; })();',
+        },
+        secrets: { type: 'all' },
+        tagIds: [tagIds['alpha']],
+      },
+    });
+    await page.request.post('/api/utils/web_scraping/api', {
+      data: {
+        name: 'AT-beta',
+        config: { revisions: 3 },
+        target: {
+          url: 'https://example.com',
+          extractor:
+            '(() => { const r = context.responses ?? []; return { body: Deno.core.encode(JSON.stringify(r)) }; })();',
+        },
+        secrets: { type: 'all' },
+        tagIds: [tagIds['beta']],
+      },
+    });
+
+    await page.request.post('/api/utils/certificates/private_keys', {
+      data: { keyName: 'PK-alpha', alg: { keyType: 'ed25519' }, tagIds: [tagIds['alpha']] },
+    });
+    await page.request.post('/api/utils/certificates/private_keys', {
+      data: { keyName: 'PK-beta', alg: { keyType: 'ed25519' }, tagIds: [tagIds['beta']] },
+    });
+
+    const now = Math.floor(Date.now() / 1000);
+    await page.request.post('/api/utils/certificates/templates', {
+      data: {
+        templateName: 'CT-alpha',
+        attributes: {
+          commonName: 'test.example.com',
+          keyAlgorithm: { keyType: 'ed25519' },
+          signatureAlgorithm: 'ed25519',
+          notValidBefore: now,
+          notValidAfter: now + 86400 * 365,
+          isCa: false,
+        },
+        tagIds: [tagIds['alpha']],
+      },
+    });
+    await page.request.post('/api/utils/certificates/templates', {
+      data: {
+        templateName: 'CT-beta',
+        attributes: {
+          commonName: 'test.example.com',
+          keyAlgorithm: { keyType: 'ed25519' },
+          signatureAlgorithm: 'ed25519',
+          notValidBefore: now,
+          notValidAfter: now + 86400 * 365,
+          isCa: false,
+        },
+        tagIds: [tagIds['beta']],
+      },
+    });
+
+    await page.request.post('/api/utils/web_security/csp', {
+      data: {
+        name: 'CSP-alpha',
+        content: { type: 'directives', value: [{ name: 'default-src', value: ["'self'"] }] },
+        tagIds: [tagIds['alpha']],
+      },
+    });
+    await page.request.post('/api/utils/web_security/csp', {
+      data: {
+        name: 'CSP-beta',
+        content: { type: 'directives', value: [{ name: 'default-src', value: ["'self'"] }] },
+        tagIds: [tagIds['beta']],
+      },
+    });
+
+    // Helper: verify page-level tag filter and search query for a given workspace page.
+    async function verifyPageFilters(url: string, alphaName: string, betaName: string) {
+      await goto(page, url);
+      await expect(page.getByText(alphaName)).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText(betaName)).toBeVisible();
+
+      // 1. Select "alpha" in page-level tag filter.
+      const tagFilter = page.getByRole('button', { name: /Tags/ });
+      await tagFilter.click();
+      await page.getByRole('option', { name: 'alpha' }).click();
+      await page.keyboard.press('Escape');
+      await expect(page.getByText(alphaName)).toBeVisible();
+      await expect(page.getByText(betaName)).not.toBeVisible();
+
+      // Verify URL contains tag name (not UUID).
+      expect(page.url()).toContain('tags=alpha');
+      expect(page.url()).not.toContain(tagIds['alpha']);
+
+      // 2. Type a search query.
+      const searchInput = page.getByRole('searchbox', { name: 'Search' });
+      await searchInput.fill(alphaName);
+      await page.waitForTimeout(200); // debounce
+      expect(page.url()).toContain(`q=${encodeURIComponent(alphaName)}`);
+
+      // 3. Apply both filters — then click "Clear filters" from filtered empty state.
+      // First make the search hide everything by searching for a non-existent term.
+      await searchInput.fill('zzz-no-match');
+      await page.waitForTimeout(200);
+      expect(page.url()).toContain('q=zzz-no-match');
+      expect(page.url()).toContain('tags=alpha');
+
+      // The "No matching items" empty state should appear with "Clear filters" button.
+      const clearButton = page.getByRole('button', { name: 'Clear filters' });
+      await expect(clearButton).toBeVisible({ timeout: 5000 });
+      await clearButton.click();
+
+      // After clearing, URL should have no q or tags params.
+      await expect(page.getByText(alphaName)).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText(betaName)).toBeVisible();
+      expect(page.url()).not.toContain('q=');
+      expect(page.url()).not.toContain('tags=');
+    }
+
+    // Verify on all workspace utility pages.
+    await verifyPageFilters('/ws/webhooks__responders', 'Resp-alpha', 'Resp-beta');
+    await verifyPageFilters('/ws/web_scraping__page', 'PT-alpha', 'PT-beta');
+    await verifyPageFilters('/ws/web_scraping__api', 'AT-alpha', 'AT-beta');
+    await verifyPageFilters('/ws/certificates__private_keys', 'PK-alpha', 'PK-beta');
+    await verifyPageFilters('/ws/certificates__certificate_templates', 'CT-alpha', 'CT-beta');
+    await verifyPageFilters('/ws/web_security__csp__policies', 'CSP-alpha', 'CSP-beta');
+  });
+
   test('global filter applies to all workspace utility pages', async ({ page }) => {
     // Create one entity per utility type, all tagged with "alpha".
     // Create one entity per type tagged with "gamma" (should be filtered out).

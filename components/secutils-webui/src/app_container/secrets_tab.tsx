@@ -19,7 +19,12 @@ import { createUserSecret, deleteUserSecret, getUserSecrets, updateUserSecret } 
 import type { UserSecret } from '../model';
 import type { PageToast } from '../pages/page';
 import { getTagsColumn } from '../pages/workspace/components/entity_tags_column';
-import { ItemsTableFilter, TagsFilter, useItemsTableFilter } from '../pages/workspace/components/items_table_filter';
+import {
+  FilteredEmptyState,
+  ItemsTableFilter,
+  TagsFilter,
+  useItemsTableFilter,
+} from '../pages/workspace/components/items_table_filter';
 
 interface DeleteConfirmation {
   id: string;
@@ -82,8 +87,18 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
 
   const getSearchFields = useCallback((secret: UserSecret) => [secret.name, secret.id], []);
   const getItemTags = useCallback((secret: UserSecret) => secret.tags, []);
-  const { filteredItems, query, setQuery, selectedTagIds, setSelectedTagIds } = useItemsTableFilter({
+  const {
+    filteredItems,
+    query,
+    setQuery,
+    selectedTagIds,
+    setSelectedTagIds,
+    totalItems,
+    hasPageFilters,
+    clearPageFilters,
+  } = useItemsTableFilter({
     items: secrets,
+    allTags,
     getSearchFields,
     getItemTags,
   });
@@ -161,11 +176,19 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
         sorting={{ sort: { field: 'updatedAt', direction: 'desc' } }}
         pagination={{ pageSize: 10, showPerPageOptions: true }}
         noItemsMessage={
-          <EuiEmptyPrompt
-            icon={<EuiIcon type="lock" size="xl" />}
-            title={<h3>No secrets yet</h3>}
-            body="Add secrets to use in your responder scripts, tracker scripts, and responder templates."
-          />
+          totalItems > 0 ? (
+            <FilteredEmptyState
+              totalItems={totalItems}
+              hasPageFilters={hasPageFilters}
+              onClearFilters={clearPageFilters}
+            />
+          ) : (
+            <EuiEmptyPrompt
+              icon={<EuiIcon type="lock" size="xl" />}
+              title={<h3>No secrets yet</h3>}
+              body="Add secrets to use in your responder scripts, tracker scripts, and responder templates."
+            />
+          )
         }
       />
       {editModal.visible ? (

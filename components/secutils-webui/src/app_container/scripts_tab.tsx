@@ -27,7 +27,12 @@ import {
 import type { UserScript, UserScriptType } from '../model';
 import type { PageToast } from '../pages/page';
 import { getTagsColumn } from '../pages/workspace/components/entity_tags_column';
-import { ItemsTableFilter, TagsFilter, useItemsTableFilter } from '../pages/workspace/components/items_table_filter';
+import {
+  FilteredEmptyState,
+  ItemsTableFilter,
+  TagsFilter,
+  useItemsTableFilter,
+} from '../pages/workspace/components/items_table_filter';
 
 interface DeleteConfirmation {
   id: string;
@@ -124,8 +129,18 @@ export default function ScriptsTab({ addToast }: { addToast: (toast: PageToast) 
     [],
   );
   const getItemTags = useCallback((script: UserScript) => script.tags, []);
-  const { filteredItems, query, setQuery, selectedTagIds, setSelectedTagIds } = useItemsTableFilter({
+  const {
+    filteredItems,
+    query,
+    setQuery,
+    selectedTagIds,
+    setSelectedTagIds,
+    totalItems,
+    hasPageFilters,
+    clearPageFilters,
+  } = useItemsTableFilter({
     items: scripts,
+    allTags,
     getSearchFields,
     getItemTags,
   });
@@ -213,11 +228,19 @@ export default function ScriptsTab({ addToast }: { addToast: (toast: PageToast) 
         sorting={{ sort: { field: 'updatedAt', direction: 'desc' } }}
         pagination={{ pageSize: 10, showPerPageOptions: true }}
         noItemsMessage={
-          <EuiEmptyPrompt
-            icon={<EuiIcon type="code" size="xl" />}
-            title={<h3>No scripts yet</h3>}
-            body="Add reusable scripts to use in your responders and trackers."
-          />
+          totalItems > 0 ? (
+            <FilteredEmptyState
+              totalItems={totalItems}
+              hasPageFilters={hasPageFilters}
+              onClearFilters={clearPageFilters}
+            />
+          ) : (
+            <EuiEmptyPrompt
+              icon={<EuiIcon type="code" size="xl" />}
+              title={<h3>No scripts yet</h3>}
+              body="Add reusable scripts to use in your responders and trackers."
+            />
+          )
         }
       />
       {editModal.visible ? (
