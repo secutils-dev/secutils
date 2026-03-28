@@ -156,6 +156,49 @@ test.describe('Tag filtering', () => {
     await expect(page.getByText('R-only-alpha')).not.toBeVisible();
   });
 
+  test('global scope selection persists across page refresh', async ({ page }) => {
+    // Create responders with different tag combinations.
+    for (const [name, path, tags] of [
+      ['R-alpha-beta', '/r-ab', [tagIds['alpha'], tagIds['beta']]],
+      ['R-only-alpha', '/r-a', [tagIds['alpha']]],
+      ['R-only-gamma', '/r-g', [tagIds['gamma']]],
+    ] as const) {
+      const res = await page.request.post('/api/utils/webhooks/responders', {
+        data: {
+          name,
+          location: { pathType: '=', path },
+          method: 'ANY',
+          enabled: true,
+          settings: { requestsToTrack: 10, statusCode: 200 },
+          tagIds: tags,
+        },
+      });
+      expect(res.ok()).toBeTruthy();
+    }
+
+    await goto(page, '/ws/webhooks__responders');
+    await expect(page.getByText('R-alpha-beta')).toBeVisible({ timeout: 15000 });
+
+    // Select "alpha" in global scope.
+    const scopeButton = page.getByRole('button', { name: 'Filter all lists by tags' });
+    await scopeButton.click();
+    await page.getByRole('option', { name: 'alpha' }).click();
+    await page.keyboard.press('Escape');
+
+    // Verify filter is active before refresh.
+    await expect(page.getByText('R-alpha-beta')).toBeVisible();
+    await expect(page.getByText('R-only-alpha')).toBeVisible();
+    await expect(page.getByText('R-only-gamma')).not.toBeVisible();
+
+    // Hard refresh the page.
+    await goto(page, '/ws/webhooks__responders');
+
+    // After refresh, the filter should still be active.
+    await expect(page.getByText('R-alpha-beta')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('R-only-alpha')).toBeVisible();
+    await expect(page.getByText('R-only-gamma')).not.toBeVisible();
+  });
+
   test('global filter applies to all workspace utility pages', async ({ page }) => {
     // Create one entity per utility type, all tagged with "alpha".
     // Create one entity per type tagged with "gamma" (should be filtered out).

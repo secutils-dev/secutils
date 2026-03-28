@@ -695,6 +695,7 @@ test.describe('Data Export and Import', () => {
         settings: {
           'common.uiTheme': 'dark',
           'common.showOnlyFavorites': true,
+          'common.globalScopeTagIds': [UUID_TAG_1, UUID_TAG_2],
         },
         apiTrackers: [
           {
@@ -792,13 +793,6 @@ test.describe('Data Export and Import', () => {
     expect(importResult.results.pageTrackers.imported).toBe(1);
     expect(importResult.results.apiTrackers.imported).toBe(1);
 
-    // ── Step 7-settings: Validate imported settings ────────────────────
-    const settingsRes = await page.request.get('/api/user/settings');
-    expect(settingsRes.ok()).toBeTruthy();
-    const importedSettings = await settingsRes.json();
-    expect(importedSettings['common.uiTheme']).toBe('dark');
-    expect(importedSettings['common.showOnlyFavorites']).toBe(true);
-
     // ── Step 7-tags: Validate imported tags ────────────────────────────
     const tagsRes = await page.request.get('/api/user/tags');
     expect(tagsRes.ok()).toBeTruthy();
@@ -809,6 +803,21 @@ test.describe('Data Export and Import', () => {
     expect(importedTag1.color).toBe('#54B399');
     expect(importedTag2).toBeDefined();
     expect(importedTag2.color).toBe('#6092C0');
+
+    // ── Step 7-settings: Validate imported settings ────────────────────
+    const settingsRes = await page.request.get('/api/user/settings');
+    expect(settingsRes.ok()).toBeTruthy();
+    const importedSettings = await settingsRes.json();
+    expect(importedSettings['common.uiTheme']).toBe('dark');
+    expect(importedSettings['common.showOnlyFavorites']).toBe(true);
+    // globalScopeTagIds should contain the remapped (new) tag IDs, not the original UUIDs.
+    const importedScopeTagIds = importedSettings['common.globalScopeTagIds'] as string[];
+    expect(importedScopeTagIds).toHaveLength(2);
+    expect(importedScopeTagIds).toContain(importedTag1.id);
+    expect(importedScopeTagIds).toContain(importedTag2.id);
+    // The original UUIDs from the file should NOT be present.
+    expect(importedScopeTagIds).not.toContain(UUID_TAG_1);
+    expect(importedScopeTagIds).not.toContain(UUID_TAG_2);
 
     // ── Step 7a: Validate script ───────────────────────────────────────
     const scriptsRes = await page.request.get('/api/user/scripts');

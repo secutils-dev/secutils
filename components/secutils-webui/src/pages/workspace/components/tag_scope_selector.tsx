@@ -39,11 +39,16 @@ export function TagScopeSelector({ selectedTagIds, onChange }: TagScopeSelectorP
     [onChange],
   );
 
+  // Count only IDs that match existing tags - stale IDs (e.g., after import
+  // with remapped tags) should not inflate the badge.
+  const numActive = useMemo(() => {
+    const knownIds = new Set(allTags.map((tag) => tag.id));
+    return selectedTagIds.filter((id) => knownIds.has(id)).length;
+  }, [allTags, selectedTagIds]);
+
   if (allTags.length === 0) {
     return null;
   }
-
-  const numActive = selectedTagIds.length;
 
   return (
     <EuiPopover

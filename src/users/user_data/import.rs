@@ -24,7 +24,7 @@ use super::shared::DATA_FILE_VERSION;
 use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
-    users::User,
+    users::{User, UserSettings},
     utils::webhooks::Responder,
 };
 use detect_conflicts::{detect_conflicts, detect_responder_conflicts};
@@ -44,6 +44,7 @@ use results::{
     ApplyDeleteItem, ApplyDeleteSummary, ImportEntitySummary, ImportPreviewSummary,
     ImportResultsSummary, ImportSettingsSummary, UserDataImportPreview, UserDataImportResult,
 };
+use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -370,6 +371,37 @@ fn entity_preview(
     (summary, deletions)
 }
 
+/// Remaps tag IDs stored in the `common.globalScopeTagIds` setting to new IDs
+/// based on the tag import mapping. IDs not found in the map are dropped.
+fn remap_settings_tag_ids(
+    settings: &UserSettings,
+    tag_id_map: &HashMap<Uuid, Uuid>,
+) -> UserSettings {
+    const GLOBAL_SCOPE_KEY: &str = "common.globalScopeTagIds";
+
+    let Some(JsonValue::Array(old_ids)) = settings.0.get(GLOBAL_SCOPE_KEY) else {
+        return settings.clone();
+    };
+
+    let new_ids: Vec<_> = old_ids
+        .iter()
+        .filter_map(|v| {
+            let old_uuid = v.as_str()?.parse::<Uuid>().ok()?;
+            let new_uuid = tag_id_map.get(&old_uuid)?;
+            Some(JsonValue::String(new_uuid.to_string()))
+        })
+        .collect();
+
+    let mut inner = settings.0.clone();
+    if new_ids.is_empty() {
+        inner.remove(GLOBAL_SCOPE_KEY);
+    } else {
+        inner.insert(GLOBAL_SCOPE_KEY.to_string(), JsonValue::Array(new_ids));
+    }
+
+    UserSettings(inner)
+}
+
 /// Executes the import with the specified selections and conflict resolution.
 pub async fn execute_import<DR: DnsResolver, ET: EmailTransport>(
     api: &Api<DR, ET>,
@@ -499,11 +531,12 @@ pub async fn execute_import<DR: DnsResolver, ET: EmailTransport>(
     )
     .await;
 
-    // 10. Import settings.
+    // 10. Import settings (remap globalScopeTagIds to new tag IDs).
     let mut settings_result = ImportEntityResult::default();
     if params.selections.import_settings {
         if let Some(ref settings) = file.data.settings {
-            match api.settings(user).replace_settings(settings).await {
+            let settings = remap_settings_tag_ids(settings, &tag_id_map);
+            match api.settings(user).replace_settings(&settings).await {
                 Ok(_) => settings_result.imported = 1,
                 Err(err) => {
                     settings_result.failed = 1;
@@ -843,5 +876,81 @@ mod tests {
         assert!(scripts.is_empty());
 
         Ok(())
+    }
+
+    #[test]
+    fn remap_settings_tag_ids_remaps_and_drops_unmapped() {
+        let old_a = Uuid::now_v7();
+        let old_b = Uuid::now_v7();
+        let old_c = Uuid::now_v7();
+        let new_a = Uuid::now_v7();
+        let new_b = Uuid::now_v7();
+
+        let mut tag_id_map = HashMap::new();
+        tag_id_map.insert(old_a, new_a);
+        tag_id_map.insert(old_b, new_b);
+        // old_c is NOT in the map (simulates a skipped tag).
+
+        let settings = UserSettings(
+            [
+                (
+                    "common.globalScopeTagIds".to_string(),
+                    serde_json::json!([old_a.to_string(), old_b.to_string(), old_c.to_string()]),
+                ),
+                ("common.uiTheme".to_string(), serde_json::json!("dark")),
+            ]
+            .into_iter()
+            .collect(),
+        );
+
+        let result = remap_settings_tag_ids(&settings, &tag_id_map);
+
+        // globalScopeTagIds should have only the two mapped IDs.
+        let tag_ids = result.0.get("common.globalScopeTagIds").unwrap();
+        let tag_ids_arr = tag_ids.as_array().unwrap();
+        assert_eq!(tag_ids_arr.len(), 2);
+        assert_eq!(tag_ids_arr[0].as_str().unwrap(), new_a.to_string());
+        assert_eq!(tag_ids_arr[1].as_str().unwrap(), new_b.to_string());
+
+        // Other settings should be preserved.
+        assert_eq!(
+            result.0.get("common.uiTheme").unwrap().as_str().unwrap(),
+            "dark"
+        );
+    }
+
+    #[test]
+    fn remap_settings_tag_ids_removes_key_when_all_unmapped() {
+        let old_a = Uuid::now_v7();
+        let tag_id_map = HashMap::new(); // No mappings.
+
+        let settings = UserSettings(
+            [(
+                "common.globalScopeTagIds".to_string(),
+                serde_json::json!([old_a.to_string()]),
+            )]
+            .into_iter()
+            .collect(),
+        );
+
+        let result = remap_settings_tag_ids(&settings, &tag_id_map);
+        assert!(!result.0.contains_key("common.globalScopeTagIds"));
+    }
+
+    #[test]
+    fn remap_settings_tag_ids_noop_without_key() {
+        let tag_id_map = HashMap::new();
+        let settings = UserSettings(
+            [("common.uiTheme".to_string(), serde_json::json!("light"))]
+                .into_iter()
+                .collect(),
+        );
+
+        let result = remap_settings_tag_ids(&settings, &tag_id_map);
+        assert_eq!(
+            result.0.get("common.uiTheme").unwrap().as_str().unwrap(),
+            "light"
+        );
+        assert!(!result.0.contains_key("common.globalScopeTagIds"));
     }
 }

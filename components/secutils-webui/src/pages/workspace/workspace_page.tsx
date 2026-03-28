@@ -14,7 +14,11 @@ import { SettingsFlyout } from '../../app_container';
 import { PageLoadingState } from '../../components';
 import { useAppContext, usePageHeaderActions, usePageMeta } from '../../hooks';
 import type { Util } from '../../model';
-import { USER_SETTINGS_KEY_COMMON_FAVORITES, USER_SETTINGS_KEY_COMMON_SHOW_ONLY_FAVORITES } from '../../model';
+import {
+  USER_SETTINGS_KEY_COMMON_FAVORITES,
+  USER_SETTINGS_KEY_COMMON_GLOBAL_SCOPE_TAG_IDS,
+  USER_SETTINGS_KEY_COMMON_SHOW_ONLY_FAVORITES,
+} from '../../model';
 import { Page } from '../page';
 
 const DEFAULT_COMPONENT = lazy(() => import('../../components/page_under_construction_state'));
@@ -54,6 +58,17 @@ export function WorkspacePage() {
       settings?.[USER_SETTINGS_KEY_COMMON_SHOW_ONLY_FAVORITES] === true,
     ];
   }, [settings]);
+
+  const globalScopeTagIds = useMemo(
+    () => (settings?.[USER_SETTINGS_KEY_COMMON_GLOBAL_SCOPE_TAG_IDS] as string[] | undefined) ?? [],
+    [settings],
+  );
+  const onGlobalScopeTagIdsChange = useCallback(
+    (tagIds: string[]) => {
+      setSettings({ [USER_SETTINGS_KEY_COMMON_GLOBAL_SCOPE_TAG_IDS]: tagIds.length > 0 ? tagIds : null });
+    },
+    [setSettings],
+  );
 
   const getBreadcrumbs = useCallback(
     (util: Util, utilsMap: Map<string, Util>, deepLink?: string) => {
@@ -110,7 +125,6 @@ export function WorkspacePage() {
 
   const [titleActions, setTitleActions] = useState<ReactNode | null>(null);
   const [title, setTitle] = useState<string | null>(null);
-  const [globalScopeTagIds, setGlobalScopeTagIds] = useState<string[]>([]);
 
   const [selectedUtil, setSelectedUtil] = useState<Util | null>(null);
   const [navigationBar, setNavigationBar] = useState<{ breadcrumbs: EuiBreadcrumb[]; deepLink?: string }>({
@@ -242,7 +256,7 @@ export function WorkspacePage() {
   // Authenticated and unauthenticated users have different header actions.
   const headerActions = uiState.user
     ? [
-        <TagScopeSelector key="hdr-tags" selectedTagIds={globalScopeTagIds} onChange={setGlobalScopeTagIds} />,
+        <TagScopeSelector key="hdr-tags" selectedTagIds={globalScopeTagIds} onChange={onGlobalScopeTagIdsChange} />,
         <EuiButtonIcon
           key="hdr-favs"
           iconType={showOnlyFavorites ? 'starFilled' : 'starEmpty'}
@@ -282,7 +296,9 @@ export function WorkspacePage() {
       }}
     >
       <Suspense fallback={<PageLoadingState />}>
-        <WorkspaceContext.Provider value={{ setTitleActions, setTitle, globalScopeTagIds, setGlobalScopeTagIds }}>
+        <WorkspaceContext.Provider
+          value={{ setTitleActions, setTitle, globalScopeTagIds, setGlobalScopeTagIds: onGlobalScopeTagIdsChange }}
+        >
           {content}
           {isSettingsOpen ? (
             <SettingsFlyout

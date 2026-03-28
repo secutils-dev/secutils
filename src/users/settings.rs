@@ -9,7 +9,7 @@ struct KnownUserSettingDescriptor {
     setting_value_validator: fn(&serde_json::Value) -> bool,
 }
 
-const KNOWN_USER_SETTINGS: [KnownUserSettingDescriptor; 6] = [
+const KNOWN_USER_SETTINGS: [KnownUserSettingDescriptor; 7] = [
     KnownUserSettingDescriptor {
         setting_key: "common.showOnlyFavorites",
         setting_value_validator: |value| value.is_boolean(),
@@ -41,6 +41,22 @@ const KNOWN_USER_SETTINGS: [KnownUserSettingDescriptor; 6] = [
                 .as_str()
                 .map(|value| value == "light" || value == "dark")
                 .unwrap_or_default()
+        },
+    },
+    KnownUserSettingDescriptor {
+        setting_key: "common.globalScopeTagIds",
+        setting_value_validator: |value| {
+            for tag_id in value.as_array().iter().flat_map(|value| value.iter()) {
+                let is_valid_string = tag_id
+                    .as_str()
+                    .map(|tag_id| !tag_id.is_empty())
+                    .unwrap_or_default();
+                if !is_valid_string {
+                    return false;
+                }
+            }
+
+            value.is_array()
         },
     },
     KnownUserSettingDescriptor {
@@ -180,6 +196,70 @@ mod tests {
             )]
             .into_iter()
             .collect(),
+        );
+        assert!(!user_settings.is_valid());
+    }
+
+    #[test]
+    fn should_properly_validate_common_global_scope_tag_ids() {
+        let user_settings = UserSettingsSetter(
+            [("common.globalScopeTagIds".to_string(), None)]
+                .into_iter()
+                .collect(),
+        );
+        assert!(user_settings.is_valid());
+
+        let user_settings = UserSettingsSetter(
+            [(
+                "common.globalScopeTagIds".to_string(),
+                Some(json!(["tag-id-1", "tag-id-2"])),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        assert!(user_settings.is_valid());
+
+        let user_settings = UserSettingsSetter(
+            [("common.globalScopeTagIds".to_string(), Some(json!([])))]
+                .into_iter()
+                .collect(),
+        );
+        assert!(user_settings.is_valid());
+
+        let user_settings = UserSettingsSetter(
+            [(
+                "common.globalScopeTagIds".to_string(),
+                Some(json!(["tag-id-1", ""])),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        assert!(!user_settings.is_valid());
+
+        let user_settings = UserSettingsSetter(
+            [(
+                "common.globalScopeTagIds".to_string(),
+                Some(json!(["tag-id-1", 2])),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        assert!(!user_settings.is_valid());
+
+        let user_settings = UserSettingsSetter(
+            [(
+                "common.globalScopeTagIds".to_string(),
+                Some(json!({ "one": "two" })),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        assert!(!user_settings.is_valid());
+
+        let user_settings = UserSettingsSetter(
+            [("common.globalScopeTagIds".to_string(), Some(json!(true)))]
+                .into_iter()
+                .collect(),
         );
         assert!(!user_settings.is_valid());
     }
