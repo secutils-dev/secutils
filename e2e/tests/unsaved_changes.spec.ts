@@ -366,9 +366,7 @@ test.describe('Unsaved changes confirmation', () => {
       await expect(row).toBeVisible({ timeout: 15000 });
 
       await row.getByRole('button', { name: 'Edit' }).click();
-      const flyout = page
-        .getByRole('dialog')
-        .filter({ has: page.getByRole('heading', { name: 'Edit private key' }) });
+      const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit private key' }) });
       await expect(flyout).toBeVisible();
 
       const saveButton = flyout.getByRole('button', { name: 'Save' });
@@ -392,9 +390,7 @@ test.describe('Unsaved changes confirmation', () => {
       await expect(row).toBeVisible({ timeout: 15000 });
 
       await row.getByRole('button', { name: 'Edit' }).click();
-      const flyout = page
-        .getByRole('dialog')
-        .filter({ has: page.getByRole('heading', { name: 'Edit private key' }) });
+      const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit private key' }) });
       await expect(flyout).toBeVisible();
 
       const saveButton = flyout.getByRole('button', { name: 'Save' });
@@ -669,9 +665,7 @@ test.describe('Unsaved changes confirmation', () => {
       await expect(row).toBeVisible({ timeout: 15000 });
 
       await row.getByRole('button', { name: 'Edit' }).click();
-      const flyout = page
-        .getByRole('dialog')
-        .filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
+      const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
       await expect(flyout).toBeVisible();
 
       const saveButton = flyout.getByRole('button', { name: 'Save' });
@@ -699,9 +693,7 @@ test.describe('Unsaved changes confirmation', () => {
       await expect(row).toBeVisible({ timeout: 15000 });
 
       await row.getByRole('button', { name: 'Edit' }).click();
-      const flyout = page
-        .getByRole('dialog')
-        .filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
+      const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
       await expect(flyout).toBeVisible();
 
       const saveButton = flyout.getByRole('button', { name: 'Save' });

@@ -3,7 +3,11 @@ services:
     image: ci-retrack
   retrack_web_scraper:
     image: ci-retrack-web-scraper
+  retrack_web_scraper_camoufox:
+    image: ci-retrack-web-scraper-camoufox
   secutils_api:
     image: ci-secutils-api
+  secutils_docs:
+    image: ci-secutils-docs
   secutils_webui:
     image: ci-secutils-webui
