@@ -194,7 +194,7 @@ jobs:
           name: docker-images.tar.zst
 
       - name: Load Docker images
-        run: zstd -d docker-images.tar.zst | docker load
+        run: zstd -dc docker-images.tar.zst | docker load
 
       - name: Cache Playwright browsers
         uses: actions/cache@v5
