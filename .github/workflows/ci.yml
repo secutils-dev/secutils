@@ -176,7 +176,7 @@ jobs:
   ci-e2e:
     name: E2E Tests (Linux)
     runs-on: ubuntu-latest
-    needs: [ci-api, ci-webui, ci-docker]
+    needs: [ci-api, ci-webui, ci-docs, ci-docker]
     steps:
       - uses: actions/checkout@v6
         with:
