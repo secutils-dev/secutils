@@ -1441,9 +1441,6 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             .into_iter()
             .filter(|t| !t.secrets.is_none())
             .collect();
-        if trackers_with_secrets.is_empty() {
-            return Ok(());
-        }
 
         let retrack = self.api.retrack();
         for tracker in trackers_with_secrets {

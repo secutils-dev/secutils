@@ -18,7 +18,7 @@ import { useUserTags } from '../hooks';
 import { createUserSecret, deleteUserSecret, getUserSecrets, updateUserSecret } from '../model';
 import type { UserSecret } from '../model';
 import type { PageToast } from '../pages/page';
-import { getTagsColumn } from '../pages/workspace/components/entity_tags_column';
+import { EntityName } from '../pages/workspace/components/entity_name';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
@@ -108,13 +108,8 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
       field: 'name',
       name: 'Name',
       sortable: true,
-      render: (name: string) => (
-        <EuiText size="s">
-          <strong>{name}</strong>
-        </EuiText>
-      ),
+      render: (_: string, secret: UserSecret) => <EntityName name={secret.name} tags={secret.tags} />,
     },
-    getTagsColumn(),
     {
       field: 'updatedAt',
       name: 'Last updated',

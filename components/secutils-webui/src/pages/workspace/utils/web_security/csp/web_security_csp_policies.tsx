@@ -8,7 +8,6 @@ import {
   EuiFlexItem,
   EuiIcon,
   EuiInMemoryTable,
-  EuiLink,
   EuiSpacer,
   EuiToolTip,
 } from '@elastic/eui';
@@ -25,7 +24,7 @@ import { PageErrorState, PageLoadingState } from '../../../../../components';
 import { useUserTags } from '../../../../../hooks';
 import type { AsyncData } from '../../../../../model';
 import { getApiRequestConfig, getApiUrl, getCopyName, getErrorMessage, ResponseError } from '../../../../../model';
-import { getTagsColumn } from '../../../components/entity_tags_column';
+import { EntityName } from '../../../components/entity_name';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
@@ -305,13 +304,11 @@ export default function WebSecurityContentSecurityPolicies() {
               field: 'name',
               sortable: true,
               render: (_, item: ContentSecurityPolicy) => (
-                <EuiLink
+                <EntityName
+                  name={item.name}
                   href={getWorkspaceEntityLink(UTIL_HANDLES.webSecurityCspPolicies, item.id)}
-                  color="text"
-                  style={{ whiteSpace: 'nowrap' }}
-                >
-                  {item.name}
-                </EuiLink>
+                  tags={item.tags}
+                />
               ),
             },
             {
@@ -325,7 +322,6 @@ export default function WebSecurityContentSecurityPolicies() {
               field: 'directives',
               render: (_, policy: ContentSecurityPolicy) => getContentSecurityPolicyString(policy),
             },
-            getTagsColumn(),
             {
               name: 'Last updated',
               field: 'updatedAt',

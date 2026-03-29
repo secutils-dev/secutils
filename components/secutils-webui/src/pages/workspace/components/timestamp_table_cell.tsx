@@ -1,4 +1,4 @@
-import { EuiText, EuiToolTip } from '@elastic/eui';
+import { EuiText, EuiToolTip, useEuiTheme } from '@elastic/eui';
 import { now, unix } from 'moment/moment';
 
 /**
@@ -13,20 +13,28 @@ const MAX_DIFF_FOR_RELATIVE_TIMESTAMP_DAYS = -3;
 const RECENT_HIGHLIGHT_THRESHOLD_MINUTES = -60;
 
 export interface Props {
-  timestamp: number;
+  timestamp?: number | null;
+  disabled?: boolean;
   color?: string;
   highlightRecent?: boolean;
 }
 
-export function TimestampTableCell({ timestamp, color, highlightRecent }: Props) {
+export function TimestampTableCell({ timestamp, disabled, color, highlightRecent }: Props) {
+  const { euiTheme } = useEuiTheme();
+
+  if (timestamp == null) {
+    return (
+      <EuiText size="s" color={disabled ? euiTheme.colors.textDisabled : undefined}>
+        —
+      </EuiText>
+    );
+  }
+
   const unixTimestamp = unix(timestamp);
   const isRecent = highlightRecent && unixTimestamp.diff(now(), 'minutes') >= RECENT_HIGHLIGHT_THRESHOLD_MINUTES;
 
   // Detect if the text should be highlighted, unless fixed color is provided.
-  let textColor = color;
-  if (isRecent && !textColor) {
-    textColor = 'danger';
-  }
+  const textColor = disabled ? euiTheme.colors.textDisabled : isRecent && !color ? 'danger' : color;
 
   const formattedTimestamp =
     isRecent || unixTimestamp.diff(now(), 'days') > MAX_DIFF_FOR_RELATIVE_TIMESTAMP_DAYS

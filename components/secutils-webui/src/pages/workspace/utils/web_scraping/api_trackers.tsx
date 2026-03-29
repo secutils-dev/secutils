@@ -9,6 +9,7 @@ import {
   EuiFlexItem,
   EuiIcon,
   EuiInMemoryTable,
+  EuiLink,
   EuiScreenReaderOnly,
   EuiSpacer,
   EuiText,
@@ -30,7 +31,6 @@ import { PageErrorState, PageLoadingState } from '../../../../components';
 import { useUserTags } from '../../../../hooks';
 import type { AsyncData } from '../../../../model';
 import { getApiRequestConfig, getApiUrl, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
-import { getTagsColumn } from '../../components/entity_tags_column';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
@@ -294,7 +294,7 @@ export default function ApiTrackers() {
           items={filteredItems}
           itemId={(item) => item.id}
           itemIdToExpandedRowMap={itemIdToExpandedRowMap}
-          tableLayout={'fixed'}
+          tableLayout={'auto'}
           columns={[
             {
               name: (
@@ -319,31 +319,37 @@ export default function ApiTrackers() {
                 </EuiToolTip>
               ),
               field: 'id',
-              width: '150px',
               render: (_: string, tracker: ApiTracker) => (
-                <TrackerHealthDots logs={healthData.status === 'succeeded' ? healthData.data[tracker.id] : undefined} />
+                <TrackerHealthDots
+                  logs={healthData.status === 'succeeded' ? healthData.data[tracker.id] : undefined}
+                  disabled={tracker.retrack.enabled === false}
+                />
               ),
             },
             {
               name: 'URL',
               field: 'retrack.target.url',
               sortable: (tracker) => tracker.retrack.target?.url ?? '',
-              truncateText: true,
-              render: (_, tracker: ApiTracker) => (
-                <EuiText
-                  size="s"
-                  color={tracker.retrack.enabled === false ? disabledColor : undefined}
-                  title={tracker.retrack.target?.url}
-                  style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                >
-                  {tracker.retrack.target?.url ?? '-'}
-                </EuiText>
-              ),
+              render: (_, tracker: ApiTracker) => {
+                const url = tracker.retrack.target?.url;
+                return url ? (
+                  tracker.retrack.enabled !== false ? (
+                    <EuiLink href={url} target="_blank" style={{ minWidth: '200px', display: 'inline-block' }}>
+                      {url}
+                    </EuiLink>
+                  ) : (
+                    <EuiText size="s" color={disabledColor} style={{ minWidth: '200px' }}>
+                      {url}
+                    </EuiText>
+                  )
+                ) : (
+                  '—'
+                );
+              },
             },
             {
               name: 'Method',
               field: 'retrack.target.method',
-              width: '100px',
               sortable: (tracker) => tracker.retrack.target?.method ?? 'GET',
               render: (_, tracker: ApiTracker) => (
                 <EuiText color={tracker.retrack.enabled === false ? disabledColor : undefined}>
@@ -354,47 +360,33 @@ export default function ApiTrackers() {
             {
               name: 'Next run',
               field: 'retrack.scheduledAt',
-              width: '130px',
               sortable: (tracker) => tracker.retrack.scheduledAt ?? null,
-              render: (_, tracker: ApiTracker) =>
-                tracker.retrack.scheduledAt != null ? (
-                  <TimestampTableCell
-                    timestamp={tracker.retrack.scheduledAt}
-                    color={tracker.retrack.enabled === false ? disabledColor : undefined}
-                  />
-                ) : (
-                  '—'
-                ),
+              render: (_, tracker: ApiTracker) => (
+                <TimestampTableCell
+                  timestamp={tracker.retrack.scheduledAt}
+                  disabled={tracker.retrack.enabled === false}
+                />
+              ),
             },
             {
               name: 'Last ran',
               field: 'retrack.lastRanAt',
-              width: '130px',
               sortable: (tracker) => tracker.retrack.lastRanAt ?? null,
-              render: (_, tracker: ApiTracker) =>
-                tracker.retrack.lastRanAt != null ? (
-                  <TimestampTableCell
-                    timestamp={tracker.retrack.lastRanAt}
-                    color={tracker.retrack.enabled === false ? disabledColor : undefined}
-                  />
-                ) : (
-                  '—'
-                ),
+              render: (_, tracker: ApiTracker) => (
+                <TimestampTableCell
+                  timestamp={tracker.retrack.lastRanAt}
+                  disabled={tracker.retrack.enabled === false}
+                />
+              ),
             },
             {
               name: 'Last updated',
               field: 'updatedAt',
-              width: '160px',
-              mobileOptions: { width: 'unset' },
               sortable: (tracker) => tracker.updatedAt,
               render: (_, tracker: ApiTracker) => (
-                <TimestampTableCell
-                  timestamp={tracker.updatedAt}
-                  color={tracker.retrack.enabled === false ? disabledColor : undefined}
-                />
+                <TimestampTableCell timestamp={tracker.updatedAt} disabled={tracker.retrack.enabled === false} />
               ),
             },
-            getTagsColumn(),
             {
               name: <></>,
               render: () => <EuiSpacer size={'xxl'} />,

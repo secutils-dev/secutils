@@ -29,7 +29,7 @@ import { PageErrorState, PageLoadingState } from '../../../../components';
 import { useUserTags } from '../../../../hooks';
 import type { AsyncData } from '../../../../model';
 import { getApiRequestConfig, getApiUrl, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
-import { getTagsColumn } from '../../components/entity_tags_column';
+import { EntityName } from '../../components/entity_name';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
@@ -329,13 +329,11 @@ export default function CertificatesCertificateTemplates() {
               field: 'name',
               sortable: true,
               render: (_, template) => (
-                <EuiLink
+                <EntityName
+                  name={template.name}
                   href={getWorkspaceEntityLink(UTIL_HANDLES.certificatesCertificateTemplates, template.id)}
-                  color="text"
-                  style={{ whiteSpace: 'nowrap' }}
-                >
-                  {template.name}
-                </EuiLink>
+                  tags={template.tags}
+                />
               ),
             },
             {
@@ -380,7 +378,6 @@ export default function CertificatesCertificateTemplates() {
               mobileOptions: { only: true },
               render: (_, template) => signatureAlgorithmString(template.attributes),
             },
-            getTagsColumn(),
             {
               name: 'Actions',
               field: 'headers',

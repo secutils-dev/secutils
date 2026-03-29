@@ -26,7 +26,7 @@ import { PageErrorState, PageLoadingState } from '../../../../components';
 import { useUserTags } from '../../../../hooks';
 import type { AsyncData } from '../../../../model';
 import { getApiRequestConfig, getApiUrl, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
-import { getTagsColumn } from '../../components/entity_tags_column';
+import { EntityName } from '../../components/entity_name';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
@@ -297,13 +297,11 @@ export default function CertificatesPrivateKeys() {
               field: 'name',
               sortable: true,
               render: (_, privateKey: PrivateKey) => (
-                <EuiLink
+                <EntityName
+                  name={privateKey.name}
                   href={getWorkspaceEntityLink(UTIL_HANDLES.certificatesPrivateKeys, privateKey.id)}
-                  color="text"
-                  style={{ whiteSpace: 'nowrap' }}
-                >
-                  {privateKey.name}
-                </EuiLink>
+                  tags={privateKey.tags}
+                />
               ),
             },
             {
@@ -339,7 +337,6 @@ export default function CertificatesPrivateKeys() {
                 </EuiText>
               ),
             },
-            getTagsColumn(),
             {
               name: 'Last updated',
               field: 'updatedAt',

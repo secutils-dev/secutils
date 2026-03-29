@@ -12,7 +12,6 @@ import {
   EuiScreenReaderOnly,
   EuiSpacer,
   EuiToolTip,
-  useEuiTheme,
 } from '@elastic/eui';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -35,7 +34,6 @@ import {
   getErrorMessage,
   ResponseError,
 } from '../../../../model';
-import { getTagsColumn } from '../../components/entity_tags_column';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
@@ -50,7 +48,6 @@ const PageTrackerEditFlyout = lazy(() => import('./page_tracker_edit_flyout'));
 
 export default function PageTrackers() {
   const { uiState, setTitleActions } = useWorkspaceContext();
-  const theme = useEuiTheme();
 
   const [trackers, setTrackers] = useState<AsyncData<PageTracker[]>>({ status: 'pending' });
 
@@ -299,7 +296,7 @@ export default function PageTrackers() {
           items={filteredItems}
           itemId={(item) => item.id}
           itemIdToExpandedRowMap={itemIdToExpandedRowMap}
-          tableLayout={'fixed'}
+          tableLayout={'auto'}
           columns={[
             {
               name: (
@@ -327,55 +324,43 @@ export default function PageTrackers() {
                 </EuiToolTip>
               ),
               field: 'id',
-              width: '150px',
               render: (_: string, tracker: PageTracker) => (
-                <TrackerHealthDots logs={healthData.status === 'succeeded' ? healthData.data[tracker.id] : undefined} />
+                <TrackerHealthDots
+                  logs={healthData.status === 'succeeded' ? healthData.data[tracker.id] : undefined}
+                  disabled={tracker.retrack.enabled === false}
+                />
               ),
             },
             {
               name: 'Next run',
               field: 'retrack.scheduledAt',
-              width: '130px',
               sortable: (tracker) => tracker.retrack.scheduledAt ?? null,
-              render: (_, tracker: PageTracker) =>
-                tracker.retrack.scheduledAt != null ? (
-                  <TimestampTableCell
-                    timestamp={tracker.retrack.scheduledAt}
-                    color={tracker.retrack.enabled === false ? theme.euiTheme.colors.textDisabled : undefined}
-                  />
-                ) : (
-                  '—'
-                ),
+              render: (_, tracker: PageTracker) => (
+                <TimestampTableCell
+                  timestamp={tracker.retrack.scheduledAt}
+                  disabled={tracker.retrack.enabled === false}
+                />
+              ),
             },
             {
               name: 'Last ran',
               field: 'retrack.lastRanAt',
-              width: '130px',
               sortable: (tracker) => tracker.retrack.lastRanAt ?? null,
-              render: (_, tracker: PageTracker) =>
-                tracker.retrack.lastRanAt != null ? (
-                  <TimestampTableCell
-                    timestamp={tracker.retrack.lastRanAt}
-                    color={tracker.retrack.enabled === false ? theme.euiTheme.colors.textDisabled : undefined}
-                  />
-                ) : (
-                  '—'
-                ),
+              render: (_, tracker: PageTracker) => (
+                <TimestampTableCell
+                  timestamp={tracker.retrack.lastRanAt}
+                  disabled={tracker.retrack.enabled === false}
+                />
+              ),
             },
             {
               name: 'Last updated',
               field: 'updatedAt',
-              width: '160px',
-              mobileOptions: { width: 'unset' },
               sortable: (tracker) => tracker.updatedAt,
               render: (_, tracker: PageTracker) => (
-                <TimestampTableCell
-                  timestamp={tracker.updatedAt}
-                  color={tracker.retrack.enabled === false ? theme.euiTheme.colors.textDisabled : undefined}
-                />
+                <TimestampTableCell timestamp={tracker.updatedAt} disabled={tracker.retrack.enabled === false} />
               ),
             },
-            getTagsColumn(),
             {
               name: <></>,
               render: () => <EuiSpacer size={'xxl'} />,

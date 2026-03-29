@@ -106,7 +106,7 @@ export function ContentSecurityPolicyEditFlyout({ onClose, policy }: ContentSecu
             });
           });
       }}
-      canSave={policyToSave.name.length > 0 && policyToSave.directives?.size > 0}
+      canSave={policyToSave.name.length > 0 && policyToSave.directives?.size > 0 && (hasFormChanges || isDuplicate)}
       saveInProgress={updatingStatus?.status === 'pending'}
     >
       <ContentSecurityPolicyForm

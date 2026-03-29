@@ -14,7 +14,7 @@ const pulse = keyframes`
   50% { opacity: 0.28; }
 `;
 
-export function TrackerHealthDots({ logs }: { logs: TrackerExecutionLog[] | undefined }) {
+export function TrackerHealthDots({ logs, disabled }: { logs: TrackerExecutionLog[] | undefined; disabled?: boolean }) {
   const { euiTheme } = useEuiTheme();
 
   const sortedLogs = useMemo(() => {
@@ -31,6 +31,7 @@ export function TrackerHealthDots({ logs }: { logs: TrackerExecutionLog[] | unde
     min-height: 32px;
     min-width: 80px;
     justify-content: center;
+    opacity: ${disabled ? 0.5 : 1};
   `;
 
   const dotsRowStyle = css`

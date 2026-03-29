@@ -186,6 +186,54 @@ test.describe('Unsaved changes confirmation', () => {
     });
   });
 
+  test.describe('CSP policy flyout - save button state', () => {
+    test('edit - save button is disabled when no changes were made', async ({ page }) => {
+      const res = await page.request.post('/api/utils/web_security/csp', {
+        data: {
+          name: 'existing-policy',
+          content: { type: 'directives', value: [{ name: 'default-src', value: ["'self'"] }] },
+        },
+      });
+      expect(res.ok()).toBeTruthy();
+
+      await page.goto('/ws/web_security__csp__policies');
+      const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'existing-policy' }) });
+      await expect(row).toBeVisible({ timeout: 15000 });
+
+      await row.getByRole('button', { name: 'Edit' }).click();
+      const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit policy' }) });
+      await expect(flyout).toBeVisible();
+
+      const saveButton = flyout.getByRole('button', { name: 'Save' });
+      await expect(saveButton).toBeDisabled();
+    });
+
+    test('edit - save button is enabled after changing name', async ({ page }) => {
+      const res = await page.request.post('/api/utils/web_security/csp', {
+        data: {
+          name: 'existing-policy',
+          content: { type: 'directives', value: [{ name: 'default-src', value: ["'self'"] }] },
+        },
+      });
+      expect(res.ok()).toBeTruthy();
+
+      await page.goto('/ws/web_security__csp__policies');
+      const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'existing-policy' }) });
+      await expect(row).toBeVisible({ timeout: 15000 });
+
+      await row.getByRole('button', { name: 'Edit' }).click();
+      const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Edit policy' }) });
+      await expect(flyout).toBeVisible();
+
+      const saveButton = flyout.getByRole('button', { name: 'Save' });
+      await expect(saveButton).toBeDisabled();
+
+      const nameInput = flyout.getByLabel('Name');
+      await nameInput.fill('modified-policy');
+      await expect(saveButton).toBeEnabled();
+    });
+  });
+
   test.describe('Private key flyout', () => {
     test('create - closes without confirmation when no changes were made', async ({ page }) => {
       await page.goto('/ws/certificates__private_keys');
@@ -303,6 +351,63 @@ test.describe('Unsaved changes confirmation', () => {
 
       await confirmModal.getByRole('button', { name: 'Discard' }).click();
       await expect(flyout).not.toBeVisible({ timeout: 10000 });
+    });
+  });
+
+  test.describe('Private key flyout - save button state', () => {
+    test('edit - save button is disabled when no changes were made', async ({ page }) => {
+      const res = await page.request.post('/api/utils/certificates/private_keys', {
+        data: { keyName: 'existing-key', alg: { keyType: 'ed25519' } },
+      });
+      expect(res.ok()).toBeTruthy();
+
+      await page.goto('/ws/certificates__private_keys');
+      const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'existing-key' }) });
+      await expect(row).toBeVisible({ timeout: 15000 });
+
+      await row.getByRole('button', { name: 'Edit' }).click();
+      const flyout = page
+        .getByRole('dialog')
+        .filter({ has: page.getByRole('heading', { name: 'Edit private key' }) });
+      await expect(flyout).toBeVisible();
+
+      const saveButton = flyout.getByRole('button', { name: 'Save' });
+      await expect(saveButton).toBeDisabled();
+    });
+
+    test('edit - save button is enabled after changing tags', async ({ page }) => {
+      const res = await page.request.post('/api/utils/certificates/private_keys', {
+        data: { keyName: 'existing-key', alg: { keyType: 'ed25519' } },
+      });
+      expect(res.ok()).toBeTruthy();
+
+      // Create a tag to use.
+      const tagRes = await page.request.post('/api/user/tags', {
+        data: { name: 'test-tag', color: '#ff0000' },
+      });
+      expect(tagRes.ok()).toBeTruthy();
+
+      await page.goto('/ws/certificates__private_keys');
+      const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'existing-key' }) });
+      await expect(row).toBeVisible({ timeout: 15000 });
+
+      await row.getByRole('button', { name: 'Edit' }).click();
+      const flyout = page
+        .getByRole('dialog')
+        .filter({ has: page.getByRole('heading', { name: 'Edit private key' }) });
+      await expect(flyout).toBeVisible();
+
+      const saveButton = flyout.getByRole('button', { name: 'Save' });
+      await expect(saveButton).toBeDisabled();
+
+      // Select a tag to trigger change detection.
+      const tagsCombo = flyout.getByRole('combobox', { name: 'Tags' });
+      await tagsCombo.click();
+      const tagOption = page.getByRole('option', { name: 'test-tag' });
+      await expect(tagOption).toBeVisible({ timeout: 5000 });
+      await tagOption.click();
+
+      await expect(saveButton).toBeEnabled();
     });
   });
 
@@ -469,6 +574,142 @@ test.describe('Unsaved changes confirmation', () => {
 
       await confirmModal.getByRole('button', { name: 'Discard' }).click();
       await expect(flyout).not.toBeVisible({ timeout: 10000 });
+    });
+  });
+
+  test.describe('Certificate template flyout - save button state', () => {
+    test('edit - save button is disabled when no changes were made', async ({ page }) => {
+      const now = Math.floor(Date.now() / 1000);
+      const res = await page.request.post('/api/utils/certificates/templates', {
+        data: {
+          templateName: 'existing-template',
+          attributes: {
+            commonName: 'Test CN',
+            country: 'US',
+            keyAlgorithm: { keyType: 'ed25519' },
+            signatureAlgorithm: 'ed25519',
+            notValidBefore: now,
+            notValidAfter: now + 86400 * 365,
+            isCa: true,
+          },
+        },
+      });
+      expect(res.ok()).toBeTruthy();
+
+      await page.goto('/ws/certificates__certificate_templates');
+      const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'existing-template' }) });
+      await expect(row).toBeVisible({ timeout: 15000 });
+
+      await row.getByRole('button', { name: 'Edit' }).click();
+      const flyout = page
+        .getByRole('dialog')
+        .filter({ has: page.getByRole('heading', { name: 'Edit certificate template' }) });
+      await expect(flyout).toBeVisible();
+
+      const saveButton = flyout.getByRole('button', { name: 'Save' });
+      await expect(saveButton).toBeDisabled();
+    });
+
+    test('edit - save button is enabled after changing name', async ({ page }) => {
+      const now = Math.floor(Date.now() / 1000);
+      const res = await page.request.post('/api/utils/certificates/templates', {
+        data: {
+          templateName: 'existing-template',
+          attributes: {
+            commonName: 'Test CN',
+            country: 'US',
+            keyAlgorithm: { keyType: 'ed25519' },
+            signatureAlgorithm: 'ed25519',
+            notValidBefore: now,
+            notValidAfter: now + 86400 * 365,
+            isCa: true,
+          },
+        },
+      });
+      expect(res.ok()).toBeTruthy();
+
+      await page.goto('/ws/certificates__certificate_templates');
+      const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'existing-template' }) });
+      await expect(row).toBeVisible({ timeout: 15000 });
+
+      await row.getByRole('button', { name: 'Edit' }).click();
+      const flyout = page
+        .getByRole('dialog')
+        .filter({ has: page.getByRole('heading', { name: 'Edit certificate template' }) });
+      await expect(flyout).toBeVisible();
+
+      const saveButton = flyout.getByRole('button', { name: 'Save' });
+      await expect(saveButton).toBeDisabled();
+
+      const nameInput = flyout.getByRole('textbox', { name: 'Name', exact: true });
+      await nameInput.fill('modified-template');
+      await expect(saveButton).toBeEnabled();
+    });
+  });
+
+  test.describe('Responder flyout - save button state', () => {
+    test('edit - save button is disabled when no changes were made', async ({ page }) => {
+      const res = await page.request.post('/api/utils/webhooks/responders', {
+        data: {
+          name: 'existing-responder',
+          location: { pathType: '=', path: '/test' },
+          method: 'ANY',
+          enabled: true,
+          settings: {
+            requestsToTrack: 5,
+            statusCode: 200,
+            headers: [['Content-Type', 'text/html; charset=utf-8']],
+          },
+        },
+      });
+      expect(res.ok()).toBeTruthy();
+
+      await page.goto('/ws/webhooks__responders');
+      const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'existing-responder' }) });
+      await expect(row).toBeVisible({ timeout: 15000 });
+
+      await row.getByRole('button', { name: 'Edit' }).click();
+      const flyout = page
+        .getByRole('dialog')
+        .filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
+      await expect(flyout).toBeVisible();
+
+      const saveButton = flyout.getByRole('button', { name: 'Save' });
+      await expect(saveButton).toBeDisabled();
+    });
+
+    test('edit - save button is enabled after changing name', async ({ page }) => {
+      const res = await page.request.post('/api/utils/webhooks/responders', {
+        data: {
+          name: 'existing-responder',
+          location: { pathType: '=', path: '/test' },
+          method: 'ANY',
+          enabled: true,
+          settings: {
+            requestsToTrack: 5,
+            statusCode: 200,
+            headers: [['Content-Type', 'text/html; charset=utf-8']],
+          },
+        },
+      });
+      expect(res.ok()).toBeTruthy();
+
+      await page.goto('/ws/webhooks__responders');
+      const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'existing-responder' }) });
+      await expect(row).toBeVisible({ timeout: 15000 });
+
+      await row.getByRole('button', { name: 'Edit' }).click();
+      const flyout = page
+        .getByRole('dialog')
+        .filter({ has: page.getByRole('heading', { name: 'Edit responder' }) });
+      await expect(flyout).toBeVisible();
+
+      const saveButton = flyout.getByRole('button', { name: 'Save' });
+      await expect(saveButton).toBeDisabled();
+
+      const nameInput = flyout.getByLabel('Name');
+      await nameInput.fill('modified-responder');
+      await expect(saveButton).toBeEnabled();
     });
   });
 

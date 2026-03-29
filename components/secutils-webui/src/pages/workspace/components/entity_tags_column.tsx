@@ -3,7 +3,7 @@ import { EuiBadge, EuiFlexGroup, EuiFlexItem } from '@elastic/eui';
 
 import type { EntityTag } from '../../../model';
 
-export function getTagsColumn<T extends object>(): EuiBasicTableColumn<T> {
+export function getTagsColumn<T extends object>(width: string = '150px'): EuiBasicTableColumn<T> {
   return {
     field: 'tags',
     name: 'Tags',
@@ -16,6 +16,7 @@ export function getTagsColumn<T extends object>(): EuiBasicTableColumn<T> {
         ))}
       </EuiFlexGroup>
     ),
+    width,
     sortable: false,
     truncateText: false,
   };

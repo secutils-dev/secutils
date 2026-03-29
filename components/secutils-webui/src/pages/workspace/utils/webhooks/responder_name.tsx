@@ -1,12 +1,9 @@
-import { EuiIcon, EuiLink, useEuiTheme } from '@elastic/eui';
+import { EuiIcon } from '@elastic/eui';
 
 import type { Responder } from './responder';
+import { EntityName } from '../../components/entity_name';
 
 export function ResponderName({ responder, href }: { responder: Responder; href: string }) {
-  const theme = useEuiTheme();
-  const disabledColor = theme.euiTheme.colors.textDisabled;
-  const textColor = theme.euiTheme.colors.text;
-
   const icons = [];
   if (responder.settings.script) {
     icons.push(<EuiIcon key="script" type={'function'} size="s" title={'Responder generates responses dynamically'} />);
@@ -16,13 +13,6 @@ export function ResponderName({ responder, href }: { responder: Responder; href:
   }
 
   return (
-    <span style={{ whiteSpace: 'nowrap' }}>
-      <EuiLink href={href} style={{ color: responder.enabled ? textColor : disabledColor }}>
-        {responder.name}
-      </EuiLink>
-      {icons.length > 0 ? (
-        <span style={{ display: 'inline-flex', gap: 4, marginLeft: 4, verticalAlign: 'middle' }}>{icons}</span>
-      ) : null}
-    </span>
+    <EntityName name={responder.name} href={href} disabled={!responder.enabled} icons={icons} tags={responder.tags} />
   );
 }

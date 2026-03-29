@@ -114,7 +114,7 @@ export function CertificateTemplateEditFlyout({ onClose, template }: Certificate
             });
           });
       }}
-      canSave={templateToSave.name.length > 0}
+      canSave={templateToSave.name.length > 0 && (hasFormChanges || isDuplicate)}
       saveInProgress={updatingStatus?.status === 'pending'}
     >
       <CertificateTemplateForm

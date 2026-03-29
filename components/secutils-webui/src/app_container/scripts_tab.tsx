@@ -26,7 +26,7 @@ import {
 } from '../model';
 import type { UserScript, UserScriptType } from '../model';
 import type { PageToast } from '../pages/page';
-import { getTagsColumn } from '../pages/workspace/components/entity_tags_column';
+import { EntityName } from '../pages/workspace/components/entity_name';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
@@ -150,11 +150,7 @@ export default function ScriptsTab({ addToast }: { addToast: (toast: PageToast) 
       field: 'name',
       name: 'Name',
       sortable: true,
-      render: (name: string) => (
-        <EuiText size="s">
-          <strong>{name}</strong>
-        </EuiText>
-      ),
+      render: (_: string, script: UserScript) => <EntityName name={script.name} tags={script.tags} />,
     },
     {
       field: 'scriptType',
@@ -162,7 +158,6 @@ export default function ScriptsTab({ addToast }: { addToast: (toast: PageToast) 
       sortable: true,
       render: (type: UserScriptType) => <EuiBadge color={TYPE_COLOR[type]}>{USER_SCRIPT_TYPE_LABELS[type]}</EuiBadge>,
     },
-    getTagsColumn(),
     {
       field: 'updatedAt',
       name: 'Last updated',

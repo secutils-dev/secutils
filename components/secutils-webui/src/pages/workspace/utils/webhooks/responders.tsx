@@ -28,7 +28,6 @@ import { PageErrorState, PageLoadingState } from '../../../../components';
 import { useUserTags } from '../../../../hooks';
 import type { AsyncData } from '../../../../model';
 import { getApiRequestConfig, getApiUrl, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
-import { getTagsColumn } from '../../components/entity_tags_column';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
@@ -336,11 +335,11 @@ export default function Responders() {
               render: (_, responder: Responder) => {
                 const url = getResponderUrl(responder);
                 return responder.enabled && url ? (
-                  <EuiLink href={url} target="_blank">
+                  <EuiLink href={url} target="_blank" style={{ minWidth: '200px', display: 'inline-block' }}>
                     {url}
                   </EuiLink>
                 ) : url ? (
-                  <EuiText size={'s'} color={theme.euiTheme.colors.textDisabled}>
+                  <EuiText size={'s'} color={theme.euiTheme.colors.textDisabled} style={{ minWidth: '200px' }}>
                     {url}
                   </EuiText>
                 ) : (
@@ -365,20 +364,13 @@ export default function Responders() {
               width: '160px',
               mobileOptions: { width: 'unset' },
               sortable: (responder) => responders.data.stats.get(responder.id)?.lastRequestedAt ?? 0,
-              render: (_, responder: Responder) => {
-                const stats = responders.data.stats.get(responder.id);
-                return stats?.lastRequestedAt ? (
-                  <TimestampTableCell
-                    timestamp={stats.lastRequestedAt}
-                    highlightRecent
-                    color={responder.enabled ? undefined : theme.euiTheme.colors.textDisabled}
-                  />
-                ) : (
-                  <EuiText size={'s'} color={responder.enabled ? undefined : theme.euiTheme.colors.textDisabled}>
-                    <b>-</b>
-                  </EuiText>
-                );
-              },
+              render: (_, responder: Responder) => (
+                <TimestampTableCell
+                  timestamp={responders.data.stats.get(responder.id)?.lastRequestedAt}
+                  highlightRecent
+                  disabled={!responder.enabled}
+                />
+              ),
             },
             {
               name: 'Last updated',
@@ -387,13 +379,9 @@ export default function Responders() {
               mobileOptions: { width: 'unset' },
               sortable: (responder) => responder.updatedAt,
               render: (_, responder: Responder) => (
-                <TimestampTableCell
-                  timestamp={responder.updatedAt}
-                  color={responder.enabled ? undefined : theme.euiTheme.colors.textDisabled}
-                />
+                <TimestampTableCell timestamp={responder.updatedAt} disabled={!responder.enabled} />
               ),
             },
-            getTagsColumn(),
             {
               name: 'Actions',
               field: 'headers',

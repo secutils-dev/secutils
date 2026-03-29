@@ -871,6 +871,61 @@ mod tests {
         }
     }
 
+    fn mock_api_tracker_entity(secrets: SecretsAccess) -> crate::utils::web_scraping::ApiTracker {
+        use crate::{retrack::RetrackTracker, utils::web_scraping::ApiTracker};
+        let now = OffsetDateTime::from_unix_timestamp(946720800).unwrap();
+        ApiTracker {
+            id: uuid!("00000000-0000-0000-0000-000000000002"),
+            name: "api-tracker".to_string(),
+            user_id: uuid!("00000000-0000-0000-0000-000000000001").into(),
+            retrack: RetrackTracker::from_reference(uuid!("00000000-0000-0000-0000-000000000020")),
+            secrets,
+            tags: vec![],
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn mock_retrack_api_tracker() -> anyhow::Result<retrack_types::trackers::Tracker> {
+        use retrack_types::{
+            scheduler::{SchedulerJobConfig, SchedulerJobRetryStrategy},
+            trackers::{ApiTarget, TargetRequest, Tracker, TrackerConfig, TrackerTarget},
+        };
+        use std::time::Duration;
+
+        Ok(Tracker {
+            id: uuid!("00000000-0000-0000-0000-000000000020"),
+            name: "api-tracker".to_string(),
+            enabled: true,
+            target: TrackerTarget::Api(ApiTarget {
+                requests: vec![TargetRequest::new(Url::parse(
+                    "https://api.example.com/data",
+                )?)],
+                configurator: None,
+                extractor: None,
+                params: None,
+            }),
+            job_id: None,
+            config: TrackerConfig {
+                revisions: 3,
+                timeout: None,
+                job: Some(SchedulerJobConfig {
+                    schedule: "@hourly".to_string(),
+                    retry_strategy: Some(SchedulerJobRetryStrategy::Constant {
+                        interval: Duration::from_secs(120),
+                        max_attempts: 5,
+                    }),
+                }),
+            },
+            tags: vec![],
+            actions: vec![],
+            created_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            updated_at: OffsetDateTime::from_unix_timestamp(946720800)?,
+            scheduled_at: None,
+            last_ran_at: None,
+        })
+    }
+
     #[sqlx::test]
     async fn delete_secret_cleans_up_tracker_selected_list(pool: PgPool) -> anyhow::Result<()> {
         let mut config = mock_config()?;
@@ -1255,6 +1310,72 @@ mod tests {
         api.secrets(&mock_user)
             .update_secret(
                 sel_key.id,
+                SecretUpdateParams {
+                    value: "new-value".into(),
+                    tag_ids: None,
+                },
+            )
+            .await?;
+
+        retrack_get_mock.assert();
+        retrack_update_mock.assert();
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn update_secret_syncs_to_api_tracker_with_all_secrets(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let mut config = mock_config()?;
+        config.security.secrets_encryption_key = Some(TEST_ENCRYPTION_KEY.to_string());
+
+        let retrack_server = MockServer::start();
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
+
+        let api = mock_api_with_config(pool, config).await?;
+        let mock_user = mock_user()?;
+        api.db.upsert_user(&mock_user).await?;
+
+        // Create secret first, before inserting the tracker so the initial sync is a no-op.
+        let all_key = api
+            .secrets(&mock_user)
+            .create_secret(SecretCreateParams {
+                name: "ALL_KEY".into(),
+                value: "old-value".into(),
+                tag_ids: vec![],
+            })
+            .await?;
+
+        // Only an API tracker (no page trackers) – this specifically tests that
+        // sync_secrets_to_trackers does not skip API trackers when the page tracker
+        // list is empty.
+        let tracker = mock_api_tracker_entity(SecretsAccess::All);
+        api.db
+            .web_scraping(mock_user.id)
+            .insert_api_tracker(&tracker)
+            .await?;
+
+        let retrack_tracker = mock_retrack_api_tracker()?;
+        let retrack_get_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/api/trackers/{}", retrack_tracker.id));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+        let retrack_update_mock = retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::PUT)
+                .path(format!("/api/trackers/{}", retrack_tracker.id))
+                .body_includes(r#""secrets":{"ALL_KEY":"new-value"}"#);
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body_obj(&retrack_tracker);
+        });
+
+        api.secrets(&mock_user)
+            .update_secret(
+                all_key.id,
                 SecretUpdateParams {
                     value: "new-value".into(),
                     tag_ids: None,

@@ -64,26 +64,6 @@ export function PrivateKeyEditFlyout({ onClose, privateKey }: PrivateKeyEditFlyo
 
   const [updatingStatus, setUpdatingStatus] = useState<AsyncData<void>>();
 
-  const canSave = () => {
-    if (name.trim().length === 0) {
-      return false;
-    }
-
-    // If it's a new key, just make sure passphrase is either not needed or set correctly.
-    if (!privateKey?.id) {
-      return encryptionMode === 'none' || passphrase !== null;
-    }
-
-    // If encryption was disabled, update is only possible if the key is still encrypted or name has changed.
-    const nameChanged = privateKey.name !== name;
-    if (encryptionMode === 'none') {
-      return nameChanged || privateKey.encrypted;
-    }
-
-    // Otherwise, allow saving only if the name or encryption has changed.
-    return passphrase !== null && (nameChanged || !privateKey.encrypted || currentPassphrase !== passphrase);
-  };
-
   const isDuplicate = !!privateKey && !privateKey.id;
   const hasFormChanges = useFormChanges({
     name,
@@ -94,6 +74,29 @@ export function PrivateKeyEditFlyout({ onClose, privateKey }: PrivateKeyEditFlyo
     selectedTagIds,
   });
   const hasChanges = isDuplicate || hasFormChanges;
+
+  const canSave = () => {
+    if (name.trim().length === 0) {
+      return false;
+    }
+
+    // If it's a new key, just make sure passphrase is either not needed or set correctly.
+    if (!privateKey?.id) {
+      return encryptionMode === 'none' || passphrase !== null;
+    }
+
+    // If encryption was disabled, update is only possible if the key is still encrypted, name has changed, or form has changed (e.g. tags).
+    const nameChanged = privateKey.name !== name;
+    if (encryptionMode === 'none') {
+      return nameChanged || privateKey.encrypted || hasFormChanges;
+    }
+
+    // Otherwise, allow saving only if the name, encryption, or form (e.g. tags) has changed.
+    return (
+      passphrase !== null &&
+      (nameChanged || !privateKey.encrypted || currentPassphrase !== passphrase || hasFormChanges)
+    );
+  };
 
   return (
     <EditorFlyout

@@ -470,7 +470,8 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
         isPathValid &&
         (!subdomainPrefix || isSubdomainPrefixValid(subdomainPrefix)) &&
         requestsToTrack >= 0 &&
-        requestsToTrack <= (uiState.subscription?.features?.webhooks.responderRequests ?? 100)
+        requestsToTrack <= (uiState.subscription?.features?.webhooks.responderRequests ?? 100) &&
+        (hasFormChanges || isDuplicate)
       }
       saveInProgress={updatingStatus?.status === 'pending'}
     >
