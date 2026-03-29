@@ -1,23 +1,33 @@
 use crate::{
     error::Error,
     server::app_state::AppState,
-    users::{ScriptContext, ScriptCreateParams, ScriptUpdateParams, User},
+    users::{ScriptContext, ScriptCreateParams, ScriptUpdateParams, User, UserScript},
 };
-use actix_web::{HttpResponse, web};
+use actix_web::{HttpResponse, delete, get, post, put, web};
 use serde::Deserialize;
+use utoipa::IntoParams;
 use uuid::Uuid;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct ScriptIdPath {
     pub script_id: Uuid,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct ListScriptsQuery {
+    /// Optional context to filter scripts by compatibility.
     pub context: Option<ScriptContext>,
 }
 
-/// GET /api/user/scripts
+/// Lists all scripts for the authenticated user, optionally filtered by context.
+#[utoipa::path(
+    tags = ["scripts"],
+    params(ListScriptsQuery),
+    responses(
+        (status = 200, description = "List of user scripts.", body = [UserScript])
+    )
+)]
+#[get("/api/user/scripts")]
 pub async fn user_scripts_list(
     state: web::Data<AppState>,
     user: User,
@@ -27,7 +37,16 @@ pub async fn user_scripts_list(
     Ok(HttpResponse::Ok().json(scripts))
 }
 
-/// GET /api/user/scripts/{script_id}
+/// Gets a single script by ID, including its content.
+#[utoipa::path(
+    tags = ["scripts"],
+    params(ScriptIdPath),
+    responses(
+        (status = 200, description = "Script with the specified ID.", body = UserScript),
+        (status = NOT_FOUND, description = "Script not found.")
+    )
+)]
+#[get("/api/user/scripts/{script_id}")]
 pub async fn user_scripts_get(
     state: web::Data<AppState>,
     user: User,
@@ -39,7 +58,16 @@ pub async fn user_scripts_get(
     }
 }
 
-/// POST /api/user/scripts
+/// Creates a new script.
+#[utoipa::path(
+    tags = ["scripts"],
+    request_body = ScriptCreateParams,
+    responses(
+        (status = 201, description = "Script was successfully created.", body = UserScript),
+        (status = BAD_REQUEST, description = "Invalid script parameters.")
+    )
+)]
+#[post("/api/user/scripts")]
 pub async fn user_scripts_create(
     state: web::Data<AppState>,
     user: User,
@@ -53,7 +81,17 @@ pub async fn user_scripts_create(
     Ok(HttpResponse::Created().json(script))
 }
 
-/// PUT /api/user/scripts/{script_id}
+/// Updates an existing script's content.
+#[utoipa::path(
+    tags = ["scripts"],
+    params(ScriptIdPath),
+    request_body = ScriptUpdateParams,
+    responses(
+        (status = 200, description = "Script was successfully updated.", body = UserScript),
+        (status = NOT_FOUND, description = "Script not found.")
+    )
+)]
+#[put("/api/user/scripts/{script_id}")]
 pub async fn user_scripts_update(
     state: web::Data<AppState>,
     user: User,
@@ -68,7 +106,16 @@ pub async fn user_scripts_update(
     Ok(HttpResponse::Ok().json(script))
 }
 
-/// DELETE /api/user/scripts/{script_id}
+/// Deletes a script by ID.
+#[utoipa::path(
+    tags = ["scripts"],
+    params(ScriptIdPath),
+    responses(
+        (status = 204, description = "Script was successfully deleted."),
+        (status = NOT_FOUND, description = "Script not found.")
+    )
+)]
+#[delete("/api/user/scripts/{script_id}")]
 pub async fn user_scripts_delete(
     state: web::Data<AppState>,
     user: User,

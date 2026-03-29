@@ -12,8 +12,8 @@ mod user_subscription;
 
 pub use self::{
     api_ext::errors::UserSignupError,
-    scripts::{ScriptContext, ScriptCreateParams, ScriptUpdateParams},
-    secrets::{SecretCreateParams, SecretUpdateParams, SecretsAccess},
+    scripts::{ScriptContext, ScriptCreateParams, ScriptUpdateParams, UserScript, UserScriptType},
+    secrets::{SecretCreateParams, SecretUpdateParams, SecretsAccess, UserSecret},
     settings::{UserSettings, UserSettingsSetter},
     tags::{EntityTag, RawEntityTag, TagCreateParams, TagUpdateParams, UserTag, group_entity_tags},
     user::User,

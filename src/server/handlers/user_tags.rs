@@ -1,24 +1,41 @@
 use crate::{
     error::Error,
     server::app_state::AppState,
-    users::{TagCreateParams, TagUpdateParams, User},
+    users::{TagCreateParams, TagUpdateParams, User, UserTag},
 };
-use actix_web::{HttpResponse, web};
+use actix_web::{HttpResponse, delete, get, post, put, web};
 use serde::Deserialize;
+use utoipa::IntoParams;
 use uuid::Uuid;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct TagIdPath {
     pub tag_id: Uuid,
 }
 
-/// GET /api/user/tags
+/// Lists all tags for the authenticated user.
+#[utoipa::path(
+    tags = ["tags"],
+    responses(
+        (status = 200, description = "List of user tags.", body = [UserTag])
+    )
+)]
+#[get("/api/user/tags")]
 pub async fn user_tags_list(state: web::Data<AppState>, user: User) -> Result<HttpResponse, Error> {
     let tags = state.api.tags(&user).list_tags().await?;
     Ok(HttpResponse::Ok().json(tags))
 }
 
-/// POST /api/user/tags
+/// Creates a new tag.
+#[utoipa::path(
+    tags = ["tags"],
+    request_body = TagCreateParams,
+    responses(
+        (status = 201, description = "Tag was successfully created.", body = UserTag),
+        (status = BAD_REQUEST, description = "Invalid tag parameters.")
+    )
+)]
+#[post("/api/user/tags")]
 pub async fn user_tags_create(
     state: web::Data<AppState>,
     user: User,
@@ -28,7 +45,17 @@ pub async fn user_tags_create(
     Ok(HttpResponse::Created().json(tag))
 }
 
-/// PUT /api/user/tags/{tag_id}
+/// Updates an existing tag's name and/or color.
+#[utoipa::path(
+    tags = ["tags"],
+    params(TagIdPath),
+    request_body = TagUpdateParams,
+    responses(
+        (status = 200, description = "Tag was successfully updated.", body = UserTag),
+        (status = NOT_FOUND, description = "Tag not found.")
+    )
+)]
+#[put("/api/user/tags/{tag_id}")]
 pub async fn user_tags_update(
     state: web::Data<AppState>,
     user: User,
@@ -43,7 +70,16 @@ pub async fn user_tags_update(
     Ok(HttpResponse::Ok().json(tag))
 }
 
-/// DELETE /api/user/tags/{tag_id}
+/// Deletes a tag by ID.
+#[utoipa::path(
+    tags = ["tags"],
+    params(TagIdPath),
+    responses(
+        (status = 204, description = "Tag was successfully deleted."),
+        (status = NOT_FOUND, description = "Tag not found.")
+    )
+)]
+#[delete("/api/user/tags/{tag_id}")]
 pub async fn user_tags_delete(
     state: web::Data<AppState>,
     user: User,

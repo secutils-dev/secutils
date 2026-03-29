@@ -12,10 +12,12 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use time::OffsetDateTime;
 use tracing::error;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"name": "GITHUB_TOKEN", "value": "ghp_xxxxxxxxxxxx", "tagIds": []}))]
 pub struct SecretCreateParams {
     pub name: String,
     pub value: String,
@@ -23,8 +25,9 @@ pub struct SecretCreateParams {
     pub tag_ids: Vec<Uuid>,
 }
 
-#[derive(Deserialize, Debug, Clone, Default)]
+#[derive(Deserialize, Debug, Clone, Default, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"value": "ghp_yyyyyyyyyyyy"}))]
 pub struct SecretUpdateParams {
     pub value: String,
     pub tag_ids: Option<Vec<Uuid>>,
@@ -373,7 +376,9 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 
 #[cfg(test)]
 mod tests {
-    use super::{SecretCreateParams, SecretUpdateParams, is_valid_secret_name};
+    use super::{
+        MAX_SECRET_VALUE_LENGTH, SecretCreateParams, SecretUpdateParams, is_valid_secret_name,
+    };
     use crate::{
         retrack::tests::mock_retrack_tracker,
         tests::{mock_api_with_config, mock_config, mock_user},
@@ -386,6 +391,34 @@ mod tests {
     use sqlx::PgPool;
     use time::OffsetDateTime;
     use url::Url;
+    use utoipa::PartialSchema;
+
+    fn schema_example<T: PartialSchema>() -> serde_json::Value {
+        match T::schema() {
+            utoipa::openapi::RefOr::T(schema) => match schema {
+                utoipa::openapi::Schema::Object(obj) => obj.example.expect("schema has no example"),
+                _ => panic!("expected Object schema"),
+            },
+            utoipa::openapi::RefOr::Ref(_) => panic!("expected inline schema, got Ref"),
+        }
+    }
+
+    #[test]
+    fn secret_create_params_example_is_valid() {
+        let example: SecretCreateParams =
+            serde_json::from_value(schema_example::<SecretCreateParams>()).unwrap();
+        assert!(is_valid_secret_name(&example.name));
+        assert!(!example.value.is_empty());
+        assert!(example.value.len() <= MAX_SECRET_VALUE_LENGTH);
+    }
+
+    #[test]
+    fn secret_update_params_example_is_valid() {
+        let example: SecretUpdateParams =
+            serde_json::from_value(schema_example::<SecretUpdateParams>()).unwrap();
+        assert!(!example.value.is_empty());
+        assert!(example.value.len() <= MAX_SECRET_VALUE_LENGTH);
+    }
     use uuid::uuid;
 
     const TEST_ENCRYPTION_KEY: &str =

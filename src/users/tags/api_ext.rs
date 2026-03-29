@@ -14,10 +14,12 @@ use crate::{
     },
 };
 use serde::Deserialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"name": "production", "color": "primary"}))]
 pub struct TagCreateParams {
     pub name: String,
     #[serde(default = "default_tag_color")]
@@ -28,8 +30,9 @@ fn default_tag_color() -> String {
     "default".to_string()
 }
 
-#[derive(Deserialize, Debug, Clone, Default)]
+#[derive(Deserialize, Debug, Clone, Default, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"name": "staging", "color": "#54B399"}))]
 pub struct TagUpdateParams {
     pub name: Option<String>,
     pub color: Option<String>,
@@ -134,8 +137,42 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 #[cfg(test)]
 mod tests {
     use super::{TagCreateParams, TagUpdateParams};
-    use crate::tests::{mock_api, mock_user};
+    use crate::{
+        tests::{mock_api, mock_user},
+        users::tags::user_tag::{is_valid_tag_color, is_valid_tag_name},
+    };
     use sqlx::PgPool;
+    use utoipa::PartialSchema;
+
+    fn schema_example<T: PartialSchema>() -> serde_json::Value {
+        match T::schema() {
+            utoipa::openapi::RefOr::T(schema) => match schema {
+                utoipa::openapi::Schema::Object(obj) => obj.example.expect("schema has no example"),
+                _ => panic!("expected Object schema"),
+            },
+            utoipa::openapi::RefOr::Ref(_) => panic!("expected inline schema, got Ref"),
+        }
+    }
+
+    #[test]
+    fn tag_create_params_example_is_valid() {
+        let example: TagCreateParams =
+            serde_json::from_value(schema_example::<TagCreateParams>()).unwrap();
+        assert!(is_valid_tag_name(&example.name));
+        assert!(is_valid_tag_color(&example.color));
+    }
+
+    #[test]
+    fn tag_update_params_example_is_valid() {
+        let example: TagUpdateParams =
+            serde_json::from_value(schema_example::<TagUpdateParams>()).unwrap();
+        if let Some(ref name) = example.name {
+            assert!(is_valid_tag_name(name));
+        }
+        if let Some(ref color) = example.color {
+            assert!(is_valid_tag_color(color));
+        }
+    }
 
     #[sqlx::test]
     async fn list_tags_returns_empty_for_new_user(pool: PgPool) -> anyhow::Result<()> {

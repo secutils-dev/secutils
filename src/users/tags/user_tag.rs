@@ -2,6 +2,7 @@ use crate::users::UserId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Named badge color values for tags (EUI palette names, kept for backward compatibility).
@@ -20,7 +21,7 @@ pub const MAX_TAGS_PER_USER: usize = 100;
 pub const MAX_TAGS_PER_ENTITY: usize = 10;
 
 /// A user-managed tag with a name and display color.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UserTag {
     pub id: Uuid,
@@ -29,8 +30,10 @@ pub struct UserTag {
     pub name: String,
     pub color: String,
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub updated_at: OffsetDateTime,
 }
 
@@ -63,7 +66,7 @@ pub fn is_valid_tag_name(name: &str) -> bool {
 
 /// Slim tag representation embedded in entity API responses and entity-level
 /// export data. Contains only the fields the UI needs to render a tag badge.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EntityTag {
     pub id: Uuid,

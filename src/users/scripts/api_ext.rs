@@ -9,10 +9,12 @@ use crate::{
 };
 use serde::Deserialize;
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"name": "my-extractor", "scriptType": "api_extractor", "content": "export default async function() { return document.title; }", "tagIds": []}))]
 pub struct ScriptCreateParams {
     pub name: String,
     pub script_type: String,
@@ -21,8 +23,9 @@ pub struct ScriptCreateParams {
     pub tag_ids: Vec<Uuid>,
 }
 
-#[derive(Deserialize, Debug, Clone, Default)]
+#[derive(Deserialize, Debug, Clone, Default, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"content": "export default async function() { return document.body.innerText; }"}))]
 pub struct ScriptUpdateParams {
     pub content: String,
     pub tag_ids: Option<Vec<Uuid>>,
@@ -236,11 +239,52 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 
 #[cfg(test)]
 mod tests {
+    use super::{MAX_SCRIPT_CONTENT_LENGTH, MAX_SCRIPT_NAME_LENGTH};
     use crate::{
         tests::{mock_api_with_config, mock_config, mock_user},
         users::scripts::{ScriptCreateParams, ScriptUpdateParams, UserScriptType},
     };
     use sqlx::PgPool;
+    use utoipa::PartialSchema;
+
+    fn schema_example<T: PartialSchema>() -> serde_json::Value {
+        match T::schema() {
+            utoipa::openapi::RefOr::T(schema) => match schema {
+                utoipa::openapi::Schema::Object(obj) => obj.example.expect("schema has no example"),
+                _ => panic!("expected Object schema"),
+            },
+            utoipa::openapi::RefOr::Ref(_) => panic!("expected inline schema, got Ref"),
+        }
+    }
+
+    #[test]
+    fn script_create_params_example_is_valid() {
+        let example: ScriptCreateParams =
+            serde_json::from_value(schema_example::<ScriptCreateParams>()).unwrap();
+        assert!(!example.name.trim().is_empty());
+        assert!(example.name.len() <= MAX_SCRIPT_NAME_LENGTH);
+        assert!(!example.content.is_empty());
+        assert!(example.content.len() <= MAX_SCRIPT_CONTENT_LENGTH);
+        // Validate script_type is one of the known types.
+        assert!(
+            [
+                "responder",
+                "api_configurator",
+                "api_extractor",
+                "page_extractor",
+                "universal"
+            ]
+            .contains(&example.script_type.as_str())
+        );
+    }
+
+    #[test]
+    fn script_update_params_example_is_valid() {
+        let example: ScriptUpdateParams =
+            serde_json::from_value(schema_example::<ScriptUpdateParams>()).unwrap();
+        assert!(!example.content.is_empty());
+        assert!(example.content.len() <= MAX_SCRIPT_CONTENT_LENGTH);
+    }
 
     #[sqlx::test]
     async fn list_scripts_filters_by_context(pool: PgPool) -> anyhow::Result<()> {

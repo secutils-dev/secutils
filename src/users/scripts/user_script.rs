@@ -2,10 +2,11 @@ use crate::users::UserId;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Represents the type of user script, determining where it can be used.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum UserScriptType {
     /// Script for webhook responders (Deno runtime).
@@ -77,7 +78,7 @@ impl UserScriptType {
 }
 
 /// Represents the context where a script can be used.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ScriptContext {
     /// Webhook responder script context.
@@ -89,7 +90,7 @@ pub enum ScriptContext {
 }
 
 /// Represents a user-defined script for reuse across responders and trackers.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UserScript {
     /// Unique identifier for the script.
@@ -108,9 +109,11 @@ pub struct UserScript {
     pub tags: Vec<crate::users::EntityTag>,
     /// When the script was first created.
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub created_at: OffsetDateTime,
     /// When the script content was last updated.
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub updated_at: OffsetDateTime,
 }
 

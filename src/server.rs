@@ -25,11 +25,14 @@ use actix_cors::Cors;
 use actix_web::{App, HttpResponse, HttpServer, Result, middleware, web};
 use anyhow::Context;
 pub use app_state::AppState;
+use handlers::SecutilsOpenApi;
 use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use tracing::info;
 use tracing_actix_web::TracingLogger;
+use utoipa::OpenApi;
+use utoipa_rapidoc::RapiDoc;
 
 #[tokio::main]
 pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
@@ -91,6 +94,23 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
             .wrap(middleware::Compat::new(middleware::Compress::default()))
             .wrap(middleware::NormalizePath::trim())
             .app_data(state.clone())
+            .service(RapiDoc::with_openapi(
+                "/api-docs/openapi.json",
+                SecutilsOpenApi::openapi(),
+            ))
+            .service(handlers::user_tags::user_tags_list)
+            .service(handlers::user_tags::user_tags_create)
+            .service(handlers::user_tags::user_tags_update)
+            .service(handlers::user_tags::user_tags_delete)
+            .service(handlers::user_secrets::user_secrets_list)
+            .service(handlers::user_secrets::user_secrets_create)
+            .service(handlers::user_secrets::user_secrets_update)
+            .service(handlers::user_secrets::user_secrets_delete)
+            .service(handlers::user_scripts::user_scripts_list)
+            .service(handlers::user_scripts::user_scripts_get)
+            .service(handlers::user_scripts::user_scripts_create)
+            .service(handlers::user_scripts::user_scripts_update)
+            .service(handlers::user_scripts::user_scripts_delete)
             .service(
                 web::scope("/api")
                     .route("/status", web::get().to(handlers::status_get))
@@ -123,46 +143,6 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
                                 web::post().to(handlers::user_data_import_preview),
                             )
                             .route("/_import", web::post().to(handlers::user_data_import)),
-                    )
-                    .route("/user/tags", web::get().to(handlers::user_tags_list))
-                    .route("/user/tags", web::post().to(handlers::user_tags_create))
-                    .route(
-                        "/user/tags/{tag_id}",
-                        web::put().to(handlers::user_tags_update),
-                    )
-                    .route(
-                        "/user/tags/{tag_id}",
-                        web::delete().to(handlers::user_tags_delete),
-                    )
-                    .route("/user/secrets", web::get().to(handlers::user_secrets_list))
-                    .route(
-                        "/user/secrets",
-                        web::post().to(handlers::user_secrets_create),
-                    )
-                    .route(
-                        "/user/secrets/{secret_id}",
-                        web::put().to(handlers::user_secrets_update),
-                    )
-                    .route(
-                        "/user/secrets/{secret_id}",
-                        web::delete().to(handlers::user_secrets_delete),
-                    )
-                    .route("/user/scripts", web::get().to(handlers::user_scripts_list))
-                    .route(
-                        "/user/scripts",
-                        web::post().to(handlers::user_scripts_create),
-                    )
-                    .route(
-                        "/user/scripts/{script_id}",
-                        web::get().to(handlers::user_scripts_get),
-                    )
-                    .route(
-                        "/user/scripts/{script_id}",
-                        web::put().to(handlers::user_scripts_update),
-                    )
-                    .route(
-                        "/user/scripts/{script_id}",
-                        web::delete().to(handlers::user_scripts_delete),
                     )
                     .route(
                         "/user/subscription",

@@ -1,18 +1,26 @@
 use crate::{
     error::Error,
     server::app_state::AppState,
-    users::{SecretCreateParams, SecretUpdateParams, User},
+    users::{SecretCreateParams, SecretUpdateParams, User, UserSecret},
 };
-use actix_web::{HttpResponse, web};
+use actix_web::{HttpResponse, delete, get, post, put, web};
 use serde::Deserialize;
+use utoipa::IntoParams;
 use uuid::Uuid;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 pub struct SecretIdPath {
     pub secret_id: Uuid,
 }
 
-/// GET /api/user/secrets
+/// Lists all secrets for the authenticated user (metadata only, no values).
+#[utoipa::path(
+    tags = ["secrets"],
+    responses(
+        (status = 200, description = "List of user secrets.", body = [UserSecret])
+    )
+)]
+#[get("/api/user/secrets")]
 pub async fn user_secrets_list(
     state: web::Data<AppState>,
     user: User,
@@ -21,7 +29,16 @@ pub async fn user_secrets_list(
     Ok(HttpResponse::Ok().json(secrets))
 }
 
-/// POST /api/user/secrets
+/// Creates a new secret.
+#[utoipa::path(
+    tags = ["secrets"],
+    request_body = SecretCreateParams,
+    responses(
+        (status = 201, description = "Secret was successfully created.", body = UserSecret),
+        (status = BAD_REQUEST, description = "Invalid secret parameters.")
+    )
+)]
+#[post("/api/user/secrets")]
 pub async fn user_secrets_create(
     state: web::Data<AppState>,
     user: User,
@@ -35,7 +52,17 @@ pub async fn user_secrets_create(
     Ok(HttpResponse::Created().json(secret))
 }
 
-/// PUT /api/user/secrets/{secret_id}
+/// Updates an existing secret's value.
+#[utoipa::path(
+    tags = ["secrets"],
+    params(SecretIdPath),
+    request_body = SecretUpdateParams,
+    responses(
+        (status = 200, description = "Secret was successfully updated.", body = UserSecret),
+        (status = NOT_FOUND, description = "Secret not found.")
+    )
+)]
+#[put("/api/user/secrets/{secret_id}")]
 pub async fn user_secrets_update(
     state: web::Data<AppState>,
     user: User,
@@ -50,7 +77,16 @@ pub async fn user_secrets_update(
     Ok(HttpResponse::Ok().json(secret))
 }
 
-/// DELETE /api/user/secrets/{secret_id}
+/// Deletes a secret by ID.
+#[utoipa::path(
+    tags = ["secrets"],
+    params(SecretIdPath),
+    responses(
+        (status = 204, description = "Secret was successfully deleted."),
+        (status = NOT_FOUND, description = "Secret not found.")
+    )
+)]
+#[delete("/api/user/secrets/{secret_id}")]
 pub async fn user_secrets_delete(
     state: web::Data<AppState>,
     user: User,
