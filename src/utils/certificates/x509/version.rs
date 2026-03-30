@@ -9,6 +9,18 @@ pub enum Version {
     Three = 3,
 }
 
+impl utoipa::PartialSchema for Version {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        utoipa::openapi::ObjectBuilder::new()
+            .schema_type(utoipa::openapi::schema::Type::Integer)
+            .description(Some("X.509 certificate version (1, 2, or 3)."))
+            .enum_values(Some([1u8, 2, 3]))
+            .into()
+    }
+}
+
+impl utoipa::ToSchema for Version {}
+
 impl Version {
     /// Value of the X.509 certificate version according to https://www.ietf.org/rfc/rfc5280.html#section-4.1.2.1.
     pub const fn value(&self) -> i32 {

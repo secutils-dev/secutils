@@ -4,9 +4,10 @@ use crate::utils::certificates::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 
 /// Describes certificate attributes.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CertificateAttributes {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -24,8 +25,10 @@ pub struct CertificateAttributes {
     pub key_algorithm: PrivateKeyAlgorithm,
     pub signature_algorithm: SignatureAlgorithm,
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub not_valid_before: OffsetDateTime,
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub not_valid_after: OffsetDateTime,
     #[serde(default = "Version::latest")]
     pub version: Version,

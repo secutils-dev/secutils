@@ -497,7 +497,7 @@ test.describe('Certificate templates guide screenshots', () => {
     ].join('\n');
 
     // Intercept the peer_certificates API call to return our fixed PEM.
-    await page.route('**/api/utils/certificates/templates/peer_certificates', async (route) => {
+    await page.route('**/api/certificates/_fetch', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

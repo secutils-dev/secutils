@@ -3,10 +3,11 @@ use std::{
     fmt::{Display, Formatter},
     str::FromStr,
 };
+use utoipa::ToSchema;
 
 /// Defines named elliptic curves used with Elliptic Curve Digital Signature Algorithm (ECDSA).
 /// See https://www.rfc-editor.org/rfc/rfc8422.html#appendix-A.
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum PrivateKeyEllipticCurve {
     /// Elliptic curve prime256v1 (ANSI X9.62) / secp256r1 (SECG) / NIST P-256 (NIST).

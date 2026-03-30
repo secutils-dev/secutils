@@ -4,6 +4,7 @@ mod user_share_id;
 use crate::users::UserId;
 use serde::Serialize;
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 
 pub use self::{
     shared_resource::{ClientSharedResource, SharedResource},
@@ -22,12 +23,14 @@ pub struct UserShare {
 /// A special version of UserShare that can be safely serialized for the client side since not
 /// all Serde attributes we need can be serialized with postcard (main serialization format). It
 /// also excludes the user ID since it shouldn't be exposed to the client side.
-#[derive(Serialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Debug, Eq, PartialEq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientUserShare {
+    #[schema(value_type = Uuid)]
     pub id: UserShareId,
     pub resource: ClientSharedResource,
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub created_at: OffsetDateTime,
 }
 

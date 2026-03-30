@@ -5,7 +5,6 @@ use std::{
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum UtilsResource {
-    CertificatesTemplates,
     CertificatesPrivateKeys,
     WebhooksResponders,
     WebScrapingPage,
@@ -22,7 +21,6 @@ impl From<UtilsResource> for (&str, &str) {
 impl From<&UtilsResource> for (&str, &str) {
     fn from(value: &UtilsResource) -> Self {
         match value {
-            UtilsResource::CertificatesTemplates => ("certificates", "templates"),
             UtilsResource::CertificatesPrivateKeys => ("certificates", "private_keys"),
             UtilsResource::WebhooksResponders => ("webhooks", "responders"),
             UtilsResource::WebScrapingPage => ("web_scraping", "page"),
@@ -37,7 +35,6 @@ impl TryFrom<(&str, &str)> for UtilsResource {
 
     fn try_from((area, resource): (&str, &str)) -> Result<Self, Self::Error> {
         match (area, resource) {
-            ("certificates", "templates") => Ok(UtilsResource::CertificatesTemplates),
             ("certificates", "private_keys") => Ok(UtilsResource::CertificatesPrivateKeys),
             ("webhooks", "responders") => Ok(UtilsResource::WebhooksResponders),
             ("web_scraping", "page") => Ok(UtilsResource::WebScrapingPage),
@@ -75,10 +72,7 @@ mod tests {
 
     #[test]
     fn properly_parses_resource() {
-        assert_eq!(
-            UtilsResource::try_from(("certificates", "templates")),
-            Ok(UtilsResource::CertificatesTemplates)
-        );
+        assert!(UtilsResource::try_from(("certificates", "templates")).is_err());
         assert_eq!(
             UtilsResource::try_from(("certificates", "private_keys")),
             Ok(UtilsResource::CertificatesPrivateKeys)
@@ -112,10 +106,6 @@ mod tests {
     #[test]
     fn correctly_converts_into_resource_tuple() {
         type ResourceTuple = (&'static str, &'static str);
-        assert_eq!(
-            ResourceTuple::from(UtilsResource::CertificatesTemplates),
-            ("certificates", "templates")
-        );
         assert_eq!(
             ResourceTuple::from(UtilsResource::CertificatesPrivateKeys),
             ("certificates", "private_keys")

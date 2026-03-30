@@ -91,13 +91,6 @@ mod tests {
         assert!(
             UtilsAction::Execute {
                 resource_id: Some(uuid!("00000000-0000-0000-0000-000000000001")),
-                operation: UtilsResourceOperation::CertificatesTemplateGenerate,
-            }
-            .requires_params()
-        );
-        assert!(
-            UtilsAction::Execute {
-                resource_id: Some(uuid!("00000000-0000-0000-0000-000000000001")),
                 operation: UtilsResourceOperation::WebScrapingPageGetHistory,
             }
             .requires_params()

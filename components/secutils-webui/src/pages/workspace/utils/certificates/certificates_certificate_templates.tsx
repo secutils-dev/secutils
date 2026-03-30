@@ -96,7 +96,7 @@ export default function CertificatesCertificateTemplates() {
   );
 
   const loadCertificateTemplates = useCallback(() => {
-    fetch(getApiUrl('/api/utils/certificates/templates'), getApiRequestConfig())
+    fetch(getApiUrl('/api/certificates/templates'), getApiRequestConfig())
       .then(async (res) => {
         if (!res.ok) {
           throw await ResponseError.fromResponse(res);
@@ -145,7 +145,7 @@ export default function CertificatesCertificateTemplates() {
       onConfirm={() => {
         setTemplateToRemove(null);
         fetch(
-          getApiUrl(`/api/utils/certificates/templates/${encodeURIComponent(templateToRemove.id)}`),
+          getApiUrl(`/api/certificates/templates/${encodeURIComponent(templateToRemove.id)}`),
           getApiRequestConfig('DELETE'),
         )
           .then(async (res) => {

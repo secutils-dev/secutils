@@ -1,9 +1,11 @@
 use crate::utils::certificates::CertificateAttributes;
 use serde::Deserialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"templateName": "My CA", "attributes": {"keyAlgorithm": {"keyType": "ed25519"}, "signatureAlgorithm": "ed25519", "notValidBefore": 946720800, "notValidAfter": 1893456000, "version": 3, "isCa": true}}))]
 pub struct TemplatesCreateParams {
     pub template_name: String,
     pub attributes: CertificateAttributes,

@@ -318,13 +318,18 @@ export async function fixResponderRequestFields(page: Page) {
  */
 export async function fixCertificateTemplateValidityDates(page: Page) {
   const FIXED_NOT_VALID_BEFORE = 1735689600; // Jan 1, 2025 00:00:00 UTC
-  await page.route('**/api/utils/certificates/templates**', async (route) => {
+  await page.route('**/api/certificates/templates**', async (route) => {
     const response = await route.fetch();
-    if (!response.ok()) {
+    if (!response.ok() || response.status() === 204) {
       await route.fulfill({ response });
       return;
     }
-    const json = await response.json();
+    const body = await response.text();
+    if (!body) {
+      await route.fulfill({ response });
+      return;
+    }
+    const json = JSON.parse(body);
     const isArray = Array.isArray(json);
     const templates = isArray ? json : [json];
     for (const tpl of templates) {

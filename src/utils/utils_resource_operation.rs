@@ -5,8 +5,6 @@ use actix_web::http::Method;
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum UtilsResourceOperation {
-    CertificatesTemplateGenerate,
-    CertificatesTemplatePeerCertificates,
     CertificatesPrivateKeyExport,
     WebhooksRespondersGetHistory,
     WebhooksRespondersClearHistory,
@@ -32,9 +30,7 @@ impl UtilsResourceOperation {
     pub fn requires_params(&self) -> bool {
         matches!(
             self,
-            Self::CertificatesTemplateGenerate
-                | Self::CertificatesTemplatePeerCertificates
-                | Self::CertificatesPrivateKeyExport
+            Self::CertificatesPrivateKeyExport
                 | Self::WebScrapingPageGetHistory
                 | Self::WebScrapingPageDebugRequest
                 | Self::WebScrapingApiGetHistory
@@ -55,16 +51,6 @@ impl TryFrom<(&UtilsResource, &str, &Method)> for UtilsResourceOperation {
             // Private keys custom actions.
             UtilsResource::CertificatesPrivateKeys if operation == "export" => {
                 Ok(UtilsResourceOperation::CertificatesPrivateKeyExport)
-            }
-
-            // Certificate templates custom actions.
-            UtilsResource::CertificatesTemplates if operation == "generate" => {
-                Ok(UtilsResourceOperation::CertificatesTemplateGenerate)
-            }
-            UtilsResource::CertificatesTemplates
-                if operation == "peer_certificates" && *method == Method::POST =>
-            {
-                Ok(UtilsResourceOperation::CertificatesTemplatePeerCertificates)
             }
 
             // Webhooks custom actions.
@@ -143,9 +129,6 @@ mod tests {
     fn properly_checks_if_action_requires_params() {
         assert!(UtilsResourceOperation::CertificatesPrivateKeyExport.requires_params());
 
-        assert!(UtilsResourceOperation::CertificatesTemplateGenerate.requires_params());
-        assert!(UtilsResourceOperation::CertificatesTemplatePeerCertificates.requires_params());
-
         assert!(!UtilsResourceOperation::WebhooksRespondersGetHistory.requires_params());
         assert!(!UtilsResourceOperation::WebhooksRespondersClearHistory.requires_params());
         assert!(!UtilsResourceOperation::WebhooksRespondersGetStats.requires_params());
@@ -180,56 +163,6 @@ mod tests {
             )),
             Ok(UtilsResourceOperation::CertificatesPrivateKeyExport)
         );
-        assert!(
-            UtilsResourceOperation::try_from((
-                &UtilsResource::CertificatesTemplates,
-                "export",
-                &Method::POST
-            ))
-            .is_err()
-        );
-
-        assert_eq!(
-            UtilsResourceOperation::try_from((
-                &UtilsResource::CertificatesTemplates,
-                "generate",
-                &Method::POST
-            )),
-            Ok(UtilsResourceOperation::CertificatesTemplateGenerate)
-        );
-        assert_eq!(
-            UtilsResourceOperation::try_from((
-                &UtilsResource::CertificatesTemplates,
-                "peer_certificates",
-                &Method::POST
-            )),
-            Ok(UtilsResourceOperation::CertificatesTemplatePeerCertificates)
-        );
-        assert!(
-            UtilsResourceOperation::try_from((
-                &UtilsResource::CertificatesTemplates,
-                "peer_certificates",
-                &Method::GET
-            ))
-            .is_err()
-        );
-        assert!(
-            UtilsResourceOperation::try_from((
-                &UtilsResource::CertificatesPrivateKeys,
-                "peer_certificates",
-                &Method::POST
-            ))
-            .is_err()
-        );
-        assert!(
-            UtilsResourceOperation::try_from((
-                &UtilsResource::CertificatesPrivateKeys,
-                "generate",
-                &Method::POST
-            ))
-            .is_err()
-        );
-
         assert!(
             UtilsResourceOperation::try_from((
                 &UtilsResource::CertificatesPrivateKeys,

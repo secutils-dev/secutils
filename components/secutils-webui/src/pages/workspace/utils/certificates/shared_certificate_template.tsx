@@ -29,7 +29,7 @@ export default function SharedCertificateTemplate() {
     }
 
     fetch(
-      getApiUrl(`/api/utils/certificates/templates/${encodeURIComponent(uiState.userShare.resource.templateId)}`),
+      getApiUrl(`/api/certificates/templates/${encodeURIComponent(uiState.userShare.resource.templateId)}`),
       getApiRequestConfig(),
     )
       .then(async (res) => {

@@ -162,7 +162,7 @@ export function getResponders(): Promise<NamedEntity[]> {
 }
 
 export function getCertificateTemplates(): Promise<NamedEntity[]> {
-  return fetchEntities('/api/utils/certificates/templates');
+  return fetchEntities('/api/certificates/templates');
 }
 
 export function getPrivateKeys(): Promise<NamedEntity[]> {

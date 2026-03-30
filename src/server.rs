@@ -155,6 +155,16 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
             .service(handlers::scheduler_parse_schedule::scheduler_parse_schedule)
             // Messages
             .service(handlers::send_message::send_message)
+            // Certificate templates
+            .service(handlers::certificate_templates::certificate_templates_list)
+            .service(handlers::certificate_templates::certificate_templates_get)
+            .service(handlers::certificate_templates::certificate_templates_create)
+            .service(handlers::certificate_templates::certificate_templates_update)
+            .service(handlers::certificate_templates::certificate_templates_delete)
+            .service(handlers::certificate_templates::certificate_templates_generate)
+            .service(handlers::certificate_templates::certificate_templates_share)
+            .service(handlers::certificate_templates::certificate_templates_unshare)
+            .service(handlers::certificate_templates::certificates_fetch)
             // Remaining routes that still use .route() (webhooks, utils, UI)
             .service(
                 web::scope("/api")

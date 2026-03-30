@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Describes a resource that can be shared with other users.
@@ -22,7 +23,7 @@ impl SharedResource {
 
 /// A special version of SharedResource that can be safely serialized for the client side since not
 /// all Serde attributes we need can be serialized with postcard (main serialization format).
-#[derive(Serialize, Debug, PartialEq, Eq)]
+#[derive(Serialize, Debug, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "type")]
 pub enum ClientSharedResource {

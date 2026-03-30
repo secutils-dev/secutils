@@ -274,7 +274,7 @@ test.describe('Tag filtering', () => {
     });
 
     const now = Math.floor(Date.now() / 1000);
-    await page.request.post('/api/utils/certificates/templates', {
+    await page.request.post('/api/certificates/templates', {
       data: {
         templateName: 'CT-alpha',
         attributes: {
@@ -288,7 +288,7 @@ test.describe('Tag filtering', () => {
         tagIds: [tagIds['alpha']],
       },
     });
-    await page.request.post('/api/utils/certificates/templates', {
+    await page.request.post('/api/certificates/templates', {
       data: {
         templateName: 'CT-beta',
         attributes: {
@@ -442,7 +442,7 @@ test.describe('Tag filtering', () => {
       ['CT-gamma', [tagIds['gamma']]],
     ] as const) {
       const now = Math.floor(Date.now() / 1000);
-      const ctRes = await page.request.post('/api/utils/certificates/templates', {
+      const ctRes = await page.request.post('/api/certificates/templates', {
         data: {
           templateName: name,
           attributes: {

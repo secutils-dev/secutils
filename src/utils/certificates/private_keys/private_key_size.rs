@@ -3,9 +3,10 @@ use std::{
     fmt::{Display, Formatter},
     str::FromStr,
 };
+use utoipa::ToSchema;
 
 /// The key size defines a number of bits in a key used by a cryptographic algorithm.
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, Hash, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum PrivateKeySize {
     #[serde(rename = "1024")]

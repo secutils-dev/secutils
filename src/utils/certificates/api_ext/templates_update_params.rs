@@ -1,9 +1,11 @@
 use crate::utils::certificates::CertificateAttributes;
 use serde::Deserialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"templateName": "Renamed CA"}))]
 pub struct TemplatesUpdateParams {
     pub template_name: Option<String>,
     pub attributes: Option<CertificateAttributes>,

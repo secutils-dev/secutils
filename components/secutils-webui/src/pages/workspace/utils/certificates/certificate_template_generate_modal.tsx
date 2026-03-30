@@ -101,7 +101,7 @@ export function CertificateTemplateGenerateModal({ template, onClose }: Certific
 
             setGeneratingStatus({ status: 'pending' });
 
-            fetch(getApiUrl(`/api/utils/certificates/templates/${encodeURIComponent(template.id)}/generate`), {
+            fetch(getApiUrl(`/api/certificates/templates/${encodeURIComponent(template.id)}/_generate`), {
               ...getApiRequestConfig('POST'),
               body: JSON.stringify({ format, passphrase: passphrase || null }),
             })

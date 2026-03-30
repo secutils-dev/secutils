@@ -157,7 +157,7 @@ export function CertificateTemplateImportModal({ onClose }: CertificateTemplateI
     setFetchStatus({ status: 'pending' });
 
     try {
-      const response = await fetch(getApiUrl('/api/utils/certificates/templates/peer_certificates'), {
+      const response = await fetch(getApiUrl('/api/certificates/_fetch'), {
         ...getApiRequestConfig('POST'),
         body: JSON.stringify({ url: urlValue }),
       });
@@ -207,7 +207,7 @@ export function CertificateTemplateImportModal({ onClose }: CertificateTemplateI
       }
 
       try {
-        const response = await fetch(getApiUrl('/api/utils/certificates/templates'), {
+        const response = await fetch(getApiUrl('/api/certificates/templates'), {
           ...getApiRequestConfig('POST'),
           body: JSON.stringify({ templateName: selection.name.trim(), attributes }),
         });

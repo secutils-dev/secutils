@@ -63,7 +63,7 @@ export function CertificateTemplateEditFlyout({ onClose, template }: Certificate
 
         const [requestPromise, successMessage, errorMessage] = template?.id
           ? [
-              fetch(getApiUrl(`/api/utils/certificates/templates/${template.id}`), {
+              fetch(getApiUrl(`/api/certificates/templates/${template.id}`), {
                 ...getApiRequestConfig('PUT'),
                 body: JSON.stringify({
                   templateName: templateToSave.name !== template?.name ? templateToSave.name : null,
@@ -75,7 +75,7 @@ export function CertificateTemplateEditFlyout({ onClose, template }: Certificate
               `Unable to update "${templateToSave.name}" certificate template, please try again later`,
             ]
           : [
-              fetch(getApiUrl('/api/utils/certificates/templates'), {
+              fetch(getApiUrl('/api/certificates/templates'), {
                 ...getApiRequestConfig('POST'),
                 body: JSON.stringify({
                   templateName: templateToSave.name,

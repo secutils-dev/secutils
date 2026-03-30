@@ -50,9 +50,7 @@ export function CertificateTemplateShareModal({ template, onClose }: Certificate
       setUserShare({ status: 'pending' });
 
       fetch(
-        getApiUrl(
-          `/api/utils/certificates/templates/${encodeURIComponent(template.id)}/${share ? 'share' : 'unshare'}`,
-        ),
+        getApiUrl(`/api/certificates/templates/${encodeURIComponent(template.id)}/${share ? '_share' : '_unshare'}`),
         getApiRequestConfig('POST'),
       )
         .then(async (res) => {
@@ -77,7 +75,7 @@ export function CertificateTemplateShareModal({ template, onClose }: Certificate
       return;
     }
 
-    fetch(getApiUrl(`/api/utils/certificates/templates/${encodeURIComponent(template.id)}`), getApiRequestConfig())
+    fetch(getApiUrl(`/api/certificates/templates/${encodeURIComponent(template.id)}`), getApiRequestConfig())
       .then(async (res) => {
         if (!res.ok) {
           throw await ResponseError.fromResponse(res);

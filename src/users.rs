@@ -22,7 +22,7 @@ pub use self::{
         generate_export, generate_import_preview,
     },
     user_id::UserId,
-    user_share::{ClientUserShare, SharedResource, UserShare, UserShareId},
+    user_share::{ClientSharedResource, ClientUserShare, SharedResource, UserShare, UserShareId},
     user_subscription::{
         ClientSubscriptionFeatures, SubscriptionFeatures, SubscriptionTier, UserSubscription,
     },

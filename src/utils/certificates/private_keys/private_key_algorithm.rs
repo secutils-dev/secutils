@@ -4,8 +4,9 @@ use std::{
     fmt::{Display, Formatter},
     str::FromStr,
 };
+use utoipa::ToSchema;
 
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "keyType")]
 pub enum PrivateKeyAlgorithm {

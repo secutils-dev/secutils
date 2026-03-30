@@ -451,7 +451,7 @@ test.describe('Unsaved changes confirmation', () => {
 
     test('edit - closes without confirmation when no changes were made', async ({ page }) => {
       const now = Math.floor(Date.now() / 1000);
-      const res = await page.request.post('/api/utils/certificates/templates', {
+      const res = await page.request.post('/api/certificates/templates', {
         data: {
           templateName: 'existing-template',
           attributes: {
@@ -483,7 +483,7 @@ test.describe('Unsaved changes confirmation', () => {
 
     test('edit - shows confirmation when closing with unsaved changes', async ({ page }) => {
       const now = Math.floor(Date.now() / 1000);
-      const res = await page.request.post('/api/utils/certificates/templates', {
+      const res = await page.request.post('/api/certificates/templates', {
         data: {
           templateName: 'existing-template',
           attributes: {
@@ -526,7 +526,7 @@ test.describe('Unsaved changes confirmation', () => {
 
     test('duplicate - shows confirmation when closing', async ({ page }) => {
       const now = Math.floor(Date.now() / 1000);
-      const res = await page.request.post('/api/utils/certificates/templates', {
+      const res = await page.request.post('/api/certificates/templates', {
         data: {
           templateName: 'existing-template',
           attributes: {
@@ -576,7 +576,7 @@ test.describe('Unsaved changes confirmation', () => {
   test.describe('Certificate template flyout - save button state', () => {
     test('edit - save button is disabled when no changes were made', async ({ page }) => {
       const now = Math.floor(Date.now() / 1000);
-      const res = await page.request.post('/api/utils/certificates/templates', {
+      const res = await page.request.post('/api/certificates/templates', {
         data: {
           templateName: 'existing-template',
           attributes: {
@@ -608,7 +608,7 @@ test.describe('Unsaved changes confirmation', () => {
 
     test('edit - save button is enabled after changing name', async ({ page }) => {
       const now = Math.floor(Date.now() / 1000);
-      const res = await page.request.post('/api/utils/certificates/templates', {
+      const res = await page.request.post('/api/certificates/templates', {
         data: {
           templateName: 'existing-template',
           attributes: {

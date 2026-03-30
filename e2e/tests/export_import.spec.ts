@@ -849,7 +849,7 @@ test.describe('Data Export and Import', () => {
     );
 
     // ── Step 7d: Validate certificate template ─────────────────────────
-    const templatesRes = await page.request.get('/api/utils/certificates/templates');
+    const templatesRes = await page.request.get('/api/certificates/templates');
     const templates = await templatesRes.json();
     const importedTemplate = templates.find((t: { name: string }) => t.name === 'import-test-cert-template');
     expect(importedTemplate).toBeDefined();

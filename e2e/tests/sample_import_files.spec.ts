@@ -101,7 +101,7 @@ test.describe('Sample import files', () => {
       const entityApiPaths: Record<string, string> = {
         scripts: '/api/user/scripts',
         responders: '/api/utils/webhooks/responders',
-        certificateTemplates: '/api/utils/certificates/templates',
+        certificateTemplates: '/api/certificates/templates',
         privateKeys: '/api/utils/certificates/private_keys',
         contentSecurityPolicies: '/api/utils/web_security/csp',
         pageTrackers: '/api/utils/web_scraping/page',

@@ -145,7 +145,7 @@ pub async fn utils_action(
     let user_id = user.id;
     let params = body_params.map(|body| UtilsActionParams::json(body.into_inner()));
     let action_result = match resource {
-        UtilsResource::CertificatesTemplates | UtilsResource::CertificatesPrivateKeys => {
+        UtilsResource::CertificatesPrivateKeys => {
             certificates_handle_action(user, &state.api, action, resource, params).await
         }
         UtilsResource::WebhooksResponders => {
@@ -235,14 +235,14 @@ mod tests {
             ),
             Some(UtilsResource::CertificatesPrivateKeys)
         );
-        assert_eq!(
+        assert!(
             extract_resource(
                 &TestRequest::with_uri("https://secutils.dev/api/utils")
                     .param("area", "certificates")
                     .param("resource", "templates")
                     .to_http_request(),
-            ),
-            Some(UtilsResource::CertificatesTemplates)
+            )
+            .is_none()
         );
         assert_eq!(
             extract_resource(
@@ -278,7 +278,6 @@ mod tests {
         let resource_id = uuid!("00000000-0000-0000-0000-000000000000");
         for resource in [
             UtilsResource::CertificatesPrivateKeys,
-            UtilsResource::CertificatesTemplates,
             UtilsResource::WebhooksResponders,
             UtilsResource::WebScrapingPage,
             UtilsResource::WebScrapingApi,
@@ -312,7 +311,6 @@ mod tests {
         let resource_id = uuid!("00000000-0000-0000-0000-000000000000");
         for resource in [
             UtilsResource::CertificatesPrivateKeys,
-            UtilsResource::CertificatesTemplates,
             UtilsResource::WebhooksResponders,
             UtilsResource::WebScrapingPage,
             UtilsResource::WebScrapingApi,
@@ -395,41 +393,6 @@ mod tests {
                 Some(UtilsAction::Unshare { resource_id })
             );
         }
-    }
-
-    #[test]
-    fn can_extract_certificates_templates_actions() {
-        let resource = UtilsResource::CertificatesTemplates;
-        let resource_id = uuid!("00000000-0000-0000-0000-000000000000");
-
-        assert_eq!(
-            extract_action(
-                &TestRequest::with_uri("https://secutils.dev/api/utils")
-                    .method(Method::POST)
-                    .param("resource_id", resource_id.to_string())
-                    .param("resource_operation", "generate")
-                    .to_http_request(),
-                &resource,
-            ),
-            Some(UtilsAction::Execute {
-                resource_id: Some(resource_id),
-                operation: UtilsResourceOperation::CertificatesTemplateGenerate
-            })
-        );
-
-        assert_eq!(
-            extract_action(
-                &TestRequest::with_uri("https://secutils.dev/api/utils")
-                    .method(Method::POST)
-                    .param("resource_id", "peer_certificates")
-                    .to_http_request(),
-                &resource,
-            ),
-            Some(UtilsAction::Execute {
-                resource_id: None,
-                operation: UtilsResourceOperation::CertificatesTemplatePeerCertificates
-            })
-        );
     }
 
     #[test]
@@ -627,7 +590,7 @@ mod tests {
     #[sqlx::test]
     async fn can_extract_user(pool: PgPool) -> anyhow::Result<()> {
         let resource_id = uuid!("00000000-0000-0000-0000-000000000001");
-        let resource = UtilsResource::CertificatesTemplates;
+        let resource = UtilsResource::WebSecurityContentSecurityPolicies;
         let action = UtilsAction::Get { resource_id };
 
         let api = mock_api(pool).await?;
@@ -655,8 +618,8 @@ mod tests {
             Some(UserShare {
                 id: UserShareId::new(),
                 user_id: user.id,
-                resource: SharedResource::CertificateTemplate {
-                    template_id: resource_id,
+                resource: SharedResource::ContentSecurityPolicy {
+                    policy_id: resource_id,
                 },
                 created_at: OffsetDateTime::now_utc(),
             }),
@@ -675,8 +638,8 @@ mod tests {
             Some(UserShare {
                 id: UserShareId::new(),
                 user_id: another_user.id,
-                resource: SharedResource::CertificateTemplate {
-                    template_id: resource_id,
+                resource: SharedResource::ContentSecurityPolicy {
+                    policy_id: resource_id,
                 },
                 created_at: OffsetDateTime::now_utc(),
             }),
@@ -693,8 +656,8 @@ mod tests {
             Some(UserShare {
                 id: UserShareId::new(),
                 user_id: another_user.id,
-                resource: SharedResource::CertificateTemplate {
-                    template_id: resource_id,
+                resource: SharedResource::ContentSecurityPolicy {
+                    policy_id: resource_id,
                 },
                 created_at: OffsetDateTime::now_utc(),
             }),
@@ -713,8 +676,8 @@ mod tests {
             Some(UserShare {
                 id: UserShareId::new(),
                 user_id: another_user.id,
-                resource: SharedResource::CertificateTemplate {
-                    template_id: resource_id,
+                resource: SharedResource::ContentSecurityPolicy {
+                    policy_id: resource_id,
                 },
                 created_at: OffsetDateTime::now_utc(),
             }),
@@ -731,8 +694,8 @@ mod tests {
             Some(UserShare {
                 id: UserShareId::new(),
                 user_id: another_user.id,
-                resource: SharedResource::CertificateTemplate {
-                    template_id: resource_id,
+                resource: SharedResource::ContentSecurityPolicy {
+                    policy_id: resource_id,
                 },
                 created_at: OffsetDateTime::now_utc(),
             }),

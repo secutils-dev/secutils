@@ -12,7 +12,7 @@ pub use self::{
     private_keys_update_params::PrivateKeysUpdateParams,
     templates_create_params::TemplatesCreateParams,
     templates_generate_params::TemplatesGenerateParams,
-    templates_peer_certificates_params::TemplatesPeerCertificatesParams,
+    templates_peer_certificates_params::TemplatesFetchCertificatesParams,
     templates_update_params::TemplatesUpdateParams,
 };
 use crate::{

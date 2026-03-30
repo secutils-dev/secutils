@@ -1,3 +1,4 @@
+pub mod certificate_templates;
 mod home_summary_get;
 pub mod scheduler_parse_schedule;
 pub mod search;
@@ -80,6 +81,16 @@ use utoipa::OpenApi;
         scheduler_parse_schedule::scheduler_parse_schedule,
         // Messages
         send_message::send_message,
+        // Certificate templates
+        certificate_templates::certificate_templates_list,
+        certificate_templates::certificate_templates_get,
+        certificate_templates::certificate_templates_create,
+        certificate_templates::certificate_templates_update,
+        certificate_templates::certificate_templates_delete,
+        certificate_templates::certificate_templates_generate,
+        certificate_templates::certificate_templates_share,
+        certificate_templates::certificate_templates_unshare,
+        certificate_templates::certificates_fetch,
     ),
     components(schemas(
         // Tags
@@ -110,6 +121,25 @@ use utoipa::OpenApi;
         crate::security::kratos::Identity,
         crate::security::kratos::IdentityTraits,
         crate::security::kratos::IdentityVerifiableAddress,
+        // Certificate templates
+        crate::utils::certificates::CertificateTemplate,
+        crate::utils::certificates::CertificateAttributes,
+        crate::utils::certificates::TemplatesCreateParams,
+        crate::utils::certificates::TemplatesUpdateParams,
+        crate::utils::certificates::TemplatesGenerateParams,
+        crate::utils::certificates::TemplatesFetchCertificatesParams,
+        crate::utils::certificates::ExportFormat,
+        crate::utils::certificates::PrivateKeyAlgorithm,
+        crate::utils::certificates::PrivateKeySize,
+        crate::utils::certificates::PrivateKeyEllipticCurve,
+        crate::utils::certificates::SignatureAlgorithm,
+        crate::utils::certificates::KeyUsage,
+        crate::utils::certificates::ExtendedKeyUsage,
+        crate::utils::certificates::Version,
+        certificate_templates::CertificateTemplateGetResponse,
+        // Shared resources
+        crate::users::ClientUserShare,
+        crate::users::ClientSharedResource,
         // Handler-local types
         status_set::SetStatusAPIParams,
         search::SearchParams,
@@ -158,6 +188,12 @@ mod tests {
         path_keys.sort();
         assert_json_snapshot!(path_keys, @r###"
         [
+          "/api/certificates/_fetch",
+          "/api/certificates/templates",
+          "/api/certificates/templates/{template_id}",
+          "/api/certificates/templates/{template_id}/_generate",
+          "/api/certificates/templates/{template_id}/_share",
+          "/api/certificates/templates/{template_id}/_unshare",
           "/api/scheduler/parse_schedule",
           "/api/search",
           "/api/send_message",
@@ -192,11 +228,18 @@ mod tests {
         assert_json_snapshot!(schema_keys, @r###"
         [
           "ApplyDeletionSelections",
+          "CertificateAttributes",
+          "CertificateTemplate",
+          "CertificateTemplateGetResponse",
+          "ClientSharedResource",
+          "ClientUserShare",
           "ConflictResolution",
           "EmailParams",
           "EntityTag",
+          "ExportFormat",
           "ExportSelection",
           "ExportTrackableSelection",
+          "ExtendedKeyUsage",
           "Identity",
           "IdentityTraits",
           "IdentityVerifiableAddress",
@@ -204,6 +247,10 @@ mod tests {
           "ImportEntitySelection",
           "ImportMode",
           "ImportSelections",
+          "KeyUsage",
+          "PrivateKeyAlgorithm",
+          "PrivateKeyEllipticCurve",
+          "PrivateKeySize",
           "RemoveParams",
           "SchedulerParseScheduleParams",
           "SchedulerParseScheduleResult",
@@ -215,12 +262,17 @@ mod tests {
           "SecretUpdateParams",
           "SendMessageParams",
           "SetStatusAPIParams",
+          "SignatureAlgorithm",
           "SignupParams",
           "Status",
           "StatusLevel",
           "SubscriptionTier",
           "TagCreateParams",
           "TagUpdateParams",
+          "TemplatesCreateParams",
+          "TemplatesFetchCertificatesParams",
+          "TemplatesGenerateParams",
+          "TemplatesUpdateParams",
           "UpdateSubscriptionParams",
           "UserDataExportInclude",
           "UserDataExportParams",
@@ -232,7 +284,8 @@ mod tests {
           "UserSettings",
           "UserSettingsSetter",
           "UserSubscription",
-          "UserTag"
+          "UserTag",
+          "Version"
         ]
         "###);
     }
@@ -441,6 +494,134 @@ mod tests {
               }
             }
           }
+        }
+        "###);
+    }
+
+    #[test]
+    fn openapi_spec_certificate_templates_crud_operations() {
+        let spec = spec();
+        let path = &spec["paths"]["/api/certificates/templates"];
+        assert_json_snapshot!(path, @r###"
+        {
+          "get": {
+            "tags": [
+              "certificates"
+            ],
+            "summary": "Lists all certificate templates for the authenticated user.",
+            "operationId": "certificate_templates_list",
+            "responses": {
+              "200": {
+                "description": "List of certificate templates.",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CertificateTemplate"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "post": {
+            "tags": [
+              "certificates"
+            ],
+            "summary": "Creates a new certificate template.",
+            "operationId": "certificate_templates_create",
+            "requestBody": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TemplatesCreateParams"
+                  }
+                }
+              },
+              "required": true
+            },
+            "responses": {
+              "201": {
+                "description": "Template was successfully created.",
+                "content": {
+                  "application/json": {
+                    "schema": {
+                      "$ref": "#/components/schemas/CertificateTemplate"
+                    }
+                  }
+                }
+              },
+              "400": {
+                "description": "Invalid template parameters."
+              }
+            }
+          }
+        }
+        "###);
+    }
+
+    #[test]
+    fn openapi_spec_certificate_templates_action_operations() {
+        let spec = spec();
+
+        // _generate
+        let generate =
+            &spec["paths"]["/api/certificates/templates/{template_id}/_generate"]["post"];
+        assert_eq!(generate["operationId"], "certificate_templates_generate");
+        assert_eq!(
+            generate["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/TemplatesGenerateParams"
+        );
+
+        // _share
+        let share = &spec["paths"]["/api/certificates/templates/{template_id}/_share"]["post"];
+        assert_eq!(share["operationId"], "certificate_templates_share");
+
+        // _unshare
+        let unshare = &spec["paths"]["/api/certificates/templates/{template_id}/_unshare"]["post"];
+        assert_eq!(unshare["operationId"], "certificate_templates_unshare");
+
+        // _fetch
+        let fetch = &spec["paths"]["/api/certificates/_fetch"]["post"];
+        assert_eq!(fetch["operationId"], "certificates_fetch");
+        assert_eq!(
+            fetch["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/TemplatesFetchCertificatesParams"
+        );
+    }
+
+    #[test]
+    fn openapi_spec_certificate_template_schema() {
+        let spec = spec();
+        let schema = &spec["components"]["schemas"]["CertificateTemplate"];
+        let props = schema["properties"].as_object().unwrap();
+        assert!(props.contains_key("id"));
+        assert!(props.contains_key("name"));
+        assert!(props.contains_key("attributes"));
+        assert!(props.contains_key("createdAt"));
+        assert!(props.contains_key("updatedAt"));
+        // Timestamps should be integers
+        assert_eq!(props["createdAt"]["type"], "integer");
+        assert_eq!(props["updatedAt"]["type"], "integer");
+    }
+
+    #[test]
+    fn openapi_spec_certificate_create_params_has_example() {
+        let spec = spec();
+        let example = &spec["components"]["schemas"]["TemplatesCreateParams"]["example"];
+        assert!(example["templateName"].is_string());
+        assert!(example["attributes"]["keyAlgorithm"].is_object());
+        assert!(example["attributes"]["isCa"].is_boolean());
+    }
+
+    #[test]
+    fn openapi_spec_fetch_certificates_params_has_example() {
+        let spec = spec();
+        assert_json_snapshot!(spec["components"]["schemas"]["TemplatesFetchCertificatesParams"]["example"], @r###"
+        {
+          "url": "https://example.com"
         }
         "###);
     }

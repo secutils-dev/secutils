@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Defines a format to use for the generated certificate(s) and keys.
-#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ExportFormat {
     /// The PEM format is the most common format that Certificate Authorities issue certificates in.

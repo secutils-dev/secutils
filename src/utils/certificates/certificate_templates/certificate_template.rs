@@ -1,10 +1,11 @@
 use crate::{users::EntityTag, utils::certificates::CertificateAttributes};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Describes stored certificate template.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CertificateTemplate {
     /// Unique certificate template id (UUIDv7).
@@ -18,9 +19,11 @@ pub struct CertificateTemplate {
     pub tags: Vec<EntityTag>,
     /// Date and time when the certificate template was created.
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub created_at: OffsetDateTime,
     /// Date and time when the certificate template was last updated.
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub updated_at: OffsetDateTime,
 }
 
