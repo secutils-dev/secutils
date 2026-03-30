@@ -3,18 +3,30 @@ use crate::{
     server::{app_state::AppState, http_errors::generic_internal_server_error},
     users::{SubscriptionTier, User, UserId, UserSignupError, UserSubscription},
 };
-use actix_web::{HttpResponse, Responder, web};
+use actix_web::{HttpResponse, Responder, post, web};
 use serde::Deserialize;
 use serde_json::json;
 use std::ops::Add;
 use tracing::{error, info};
+use utoipa::ToSchema;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
+#[schema(example = json!({"identity": {"id": "00000000-0000-0000-0000-000000000001", "traits": {"email": "user@example.com"}, "verifiable_addresses": [{"value": "user@example.com", "verified": false}], "created_at": "2025-01-01T00:00:00Z"}}))]
 pub struct SignupParams {
+    /// The Kratos identity for the new user.
     pub identity: Identity,
 }
 
-/// Signups user with the provided identity.
+/// Signs up a new user with the provided identity (operator-only).
+#[utoipa::path(
+    tags = ["users"],
+    request_body = SignupParams,
+    responses(
+        (status = 200, description = "User was successfully signed up."),
+        (status = BAD_REQUEST, description = "Email already registered.")
+    )
+)]
+#[post("/api/users/signup")]
 pub async fn security_users_signup(
     state: web::Data<AppState>,
     operator: Operator,
@@ -96,5 +108,18 @@ pub async fn security_users_signup(
                 None => generic_internal_server_error(),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SignupParams;
+    use crate::tests::schema_example;
+
+    #[test]
+    fn signup_params_example_is_valid() {
+        let example: SignupParams =
+            serde_json::from_value(schema_example::<SignupParams>()).unwrap();
+        assert!(!example.identity.traits.email.is_empty());
     }
 }

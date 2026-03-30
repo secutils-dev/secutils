@@ -1,7 +1,8 @@
 use serde_derive::Deserialize;
+use utoipa::ToSchema;
 
 /// The address (email or SMS) that can be verified by the user.
-#[derive(Debug, PartialEq, Deserialize)]
+#[derive(Debug, PartialEq, Deserialize, ToSchema)]
 pub struct IdentityVerifiableAddress {
     /// The address value.
     pub value: String,

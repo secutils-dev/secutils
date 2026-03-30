@@ -3,9 +3,21 @@ use crate::{
     server::{AppState, http_errors::generic_internal_server_error},
     users::UserId,
 };
-use actix_web::{Error, HttpResponse, Responder, web};
+use actix_web::{Error, HttpResponse, Responder, get, web};
 use tracing::error;
 
+/// Retrieves a user by ID (operator-only).
+#[utoipa::path(
+    tags = ["users"],
+    params(
+        ("user_id" = Uuid, Path, description = "The user ID."),
+    ),
+    responses(
+        (status = 200, description = "The requested user."),
+        (status = 404, description = "User not found.")
+    )
+)]
+#[get("/api/users/{user_id}")]
 pub async fn security_users_get(
     state: web::Data<AppState>,
     operator: Operator,

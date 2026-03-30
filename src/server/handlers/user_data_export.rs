@@ -3,10 +3,19 @@ use crate::{
     server::app_state::AppState,
     users::{User, UserDataExportParams, generate_export},
 };
-use actix_web::{HttpResponse, web};
+use actix_web::{HttpResponse, post, web};
 use time::OffsetDateTime;
 
-/// POST /api/user/data/_export
+/// Exports user data as a downloadable JSON file.
+#[utoipa::path(
+    path = "/api/user/data/_export",
+    tags = ["user-data"],
+    request_body = UserDataExportParams,
+    responses(
+        (status = 200, description = "User data export.")
+    )
+)]
+#[post("/_export")]
 pub async fn user_data_export(
     state: web::Data<AppState>,
     user: User,

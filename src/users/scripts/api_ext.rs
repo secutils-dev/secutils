@@ -241,21 +241,10 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 mod tests {
     use super::{MAX_SCRIPT_CONTENT_LENGTH, MAX_SCRIPT_NAME_LENGTH};
     use crate::{
-        tests::{mock_api_with_config, mock_config, mock_user},
+        tests::{mock_api_with_config, mock_config, mock_user, schema_example},
         users::scripts::{ScriptCreateParams, ScriptUpdateParams, UserScriptType},
     };
     use sqlx::PgPool;
-    use utoipa::PartialSchema;
-
-    fn schema_example<T: PartialSchema>() -> serde_json::Value {
-        match T::schema() {
-            utoipa::openapi::RefOr::T(schema) => match schema {
-                utoipa::openapi::Schema::Object(obj) => obj.example.expect("schema has no example"),
-                _ => panic!("expected Object schema"),
-            },
-            utoipa::openapi::RefOr::Ref(_) => panic!("expected inline schema, got Ref"),
-        }
-    }
 
     #[test]
     fn script_create_params_example_is_valid() {

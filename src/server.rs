@@ -94,60 +94,70 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
             .wrap(middleware::Compat::new(middleware::Compress::default()))
             .wrap(middleware::NormalizePath::trim())
             .app_data(state.clone())
+            // OpenAPI documentation
             .service(RapiDoc::with_openapi(
                 "/api-docs/openapi.json",
                 SecutilsOpenApi::openapi(),
             ))
+            // Tags
             .service(handlers::user_tags::user_tags_list)
             .service(handlers::user_tags::user_tags_create)
             .service(handlers::user_tags::user_tags_update)
             .service(handlers::user_tags::user_tags_delete)
+            // Secrets
             .service(handlers::user_secrets::user_secrets_list)
             .service(handlers::user_secrets::user_secrets_create)
             .service(handlers::user_secrets::user_secrets_update)
             .service(handlers::user_secrets::user_secrets_delete)
+            // Scripts
             .service(handlers::user_scripts::user_scripts_list)
             .service(handlers::user_scripts::user_scripts_get)
             .service(handlers::user_scripts::user_scripts_create)
             .service(handlers::user_scripts::user_scripts_update)
             .service(handlers::user_scripts::user_scripts_delete)
+            // Settings
+            .service(handlers::user_settings_get::user_settings_get)
+            .service(handlers::user_settings_set::user_settings_set)
+            // User data (scoped for custom JSON payload size limit)
+            .service(
+                web::scope("/api/user/data")
+                    .app_data(
+                        web::JsonConfig::default()
+                            .limit(max_import_file_size)
+                            .error_handler(|err, _req| {
+                                let error_message = err.to_string();
+                                actix_web::error::InternalError::from_response(
+                                    err,
+                                    HttpResponse::BadRequest()
+                                        .json(json!({ "message": error_message })),
+                                )
+                                .into()
+                            }),
+                    )
+                    .service(handlers::user_data_export::user_data_export)
+                    .service(handlers::user_data_import::user_data_import_preview)
+                    .service(handlers::user_data_import::user_data_import),
+            )
+            // Status
+            .service(handlers::status_get::status_get)
+            .service(handlers::status_set::status_set)
+            // Search
+            .service(handlers::search::search)
+            // Users
+            .service(handlers::security_users_get_self::security_users_get_self)
+            .service(handlers::security_users_get_by_email::security_users_get_by_email)
+            .service(handlers::security_users_get::security_users_get)
+            .service(handlers::security_users_signup::security_users_signup)
+            .service(handlers::security_users_email::security_users_email)
+            .service(handlers::security_users_remove::security_users_remove)
+            .service(handlers::security_subscription_update::security_subscription_update)
+            // Scheduler
+            .service(handlers::scheduler_parse_schedule::scheduler_parse_schedule)
+            // Messages
+            .service(handlers::send_message::send_message)
+            // Remaining routes that still use .route() (webhooks, utils, UI)
             .service(
                 web::scope("/api")
-                    .route("/status", web::get().to(handlers::status_get))
-                    .route("/status", web::post().to(handlers::status_set))
-                    .route("/search", web::post().to(handlers::search))
-                    .route("/send_message", web::post().to(handlers::send_message))
-                    .route(
-                        "/user/settings",
-                        web::post().to(handlers::user_settings_set),
-                    )
-                    .route("/user/settings", web::get().to(handlers::user_settings_get))
-                    .service(
-                        web::scope("/user/data")
-                            .app_data(
-                                web::JsonConfig::default()
-                                    .limit(max_import_file_size)
-                                    .error_handler(|err, _req| {
-                                        let error_message = err.to_string();
-                                        actix_web::error::InternalError::from_response(
-                                            err,
-                                            HttpResponse::BadRequest()
-                                                .json(json!({ "message": error_message })),
-                                        )
-                                        .into()
-                                    }),
-                            )
-                            .route("/_export", web::post().to(handlers::user_data_export))
-                            .route(
-                                "/_import_preview",
-                                web::post().to(handlers::user_data_import_preview),
-                            )
-                            .route("/_import", web::post().to(handlers::user_data_import)),
-                    )
-                    .route(
-                        "/user/subscription",
-                        web::post().to(handlers::security_subscription_update),
-                    )
                     .service(
                         web::scope("/webhooks")
                             .route("/retrack", web::post().to(handlers::webhooks_retrack))
@@ -164,22 +174,6 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
                                     .route("", web::route().to(handlers::webhooks_responders)),
                             ),
                     )
-                    .route(
-                        "/users",
-                        web::get().to(handlers::security_users_get_by_email),
-                    )
-                    .service(
-                        web::scope("/users")
-                            .route("/signup", web::post().to(handlers::security_users_signup))
-                            .route("/email", web::post().to(handlers::security_users_email))
-                            .route("/remove", web::post().to(handlers::security_users_remove))
-                            .route("/self", web::get().to(handlers::security_users_get_self))
-                            .route("/{user_id}", web::get().to(handlers::security_users_get)),
-                    )
-                    .service(web::scope("/scheduler").route(
-                        "/parse_schedule",
-                        web::post().to(handlers::scheduler_parse_schedule),
-                    ))
                     .service(
                         web::scope("/utils")
                             .service(

@@ -3,6 +3,7 @@ mod database_ext;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use utoipa::ToSchema;
 
 struct KnownUserSettingDescriptor {
     setting_key: &'static str,
@@ -49,10 +50,14 @@ const KNOWN_USER_SETTINGS: [KnownUserSettingDescriptor; 5] = [
     },
 ];
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
+/// User preferences stored as key-value pairs.
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, ToSchema)]
+#[schema(example = json!({"common.uiTheme": "dark", "common.sidebarCollapsed": false}))]
 pub struct UserSettings(pub BTreeMap<String, serde_json::Value>);
 
-#[derive(Deserialize, Debug, Eq, PartialEq, Clone)]
+/// Partial update of user settings. Keys map to new values, or null to delete the setting.
+#[derive(Deserialize, Debug, Eq, PartialEq, Clone, ToSchema)]
+#[schema(example = json!({"common.uiTheme": "dark"}))]
 pub struct UserSettingsSetter(pub BTreeMap<String, Option<serde_json::Value>>);
 impl UserSettingsSetter {
     pub fn is_valid(&self) -> bool {
@@ -93,9 +98,27 @@ impl UserSettingsSetter {
 
 #[cfg(test)]
 mod tests {
-    use crate::users::UserSettingsSetter;
+    use crate::{
+        tests::schema_example,
+        users::{UserSettings, UserSettingsSetter},
+    };
     use serde_json::json;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn user_settings_example_is_valid() {
+        let example: UserSettings =
+            serde_json::from_value(schema_example::<UserSettings>()).unwrap();
+        assert!(!example.0.is_empty());
+    }
+
+    #[test]
+    fn user_settings_setter_example_is_valid() {
+        let example: UserSettingsSetter =
+            serde_json::from_value(schema_example::<UserSettingsSetter>()).unwrap();
+        assert!(!example.0.is_empty());
+        assert!(example.is_valid());
+    }
 
     #[test]
     fn should_properly_validate_common_ui_theme() {

@@ -2,6 +2,7 @@ use crate::config::Config;
 use serde::{Deserialize, Serialize};
 use serde_with::{TimestampSeconds, serde_as};
 use time::{Duration, OffsetDateTime};
+use utoipa::ToSchema;
 
 mod client_subscription_features;
 mod subscription_features;
@@ -14,20 +15,24 @@ pub use self::{
 
 /// The subscription status of a user.
 #[serde_as]
-#[derive(Deserialize, Serialize, Debug, Copy, Clone, PartialOrd, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Copy, Clone, PartialOrd, PartialEq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UserSubscription {
     pub tier: SubscriptionTier,
     #[serde_as(as = "TimestampSeconds<i64>")]
+    #[schema(value_type = i64)]
     pub started_at: OffsetDateTime,
     #[serde_as(as = "Option<TimestampSeconds<i64>>")]
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<i64>)]
     pub ends_at: Option<OffsetDateTime>,
     #[serde_as(as = "Option<TimestampSeconds<i64>>")]
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<i64>)]
     pub trial_started_at: Option<OffsetDateTime>,
     #[serde_as(as = "Option<TimestampSeconds<i64>>")]
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<i64>)]
     pub trial_ends_at: Option<OffsetDateTime>,
 }
 

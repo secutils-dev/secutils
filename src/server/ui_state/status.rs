@@ -1,9 +1,13 @@
 use crate::server::StatusLevel;
 use serde::Serialize;
+use utoipa::ToSchema;
 
-#[derive(Clone, Serialize)]
+/// Server status information.
+#[derive(Clone, Serialize, ToSchema)]
 pub struct Status {
+    /// The server version string.
     pub version: String,
+    /// Current availability level.
     pub level: StatusLevel,
 }
 

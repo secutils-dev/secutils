@@ -138,21 +138,10 @@ impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
 mod tests {
     use super::{TagCreateParams, TagUpdateParams};
     use crate::{
-        tests::{mock_api, mock_user},
+        tests::{mock_api, mock_user, schema_example},
         users::tags::user_tag::{is_valid_tag_color, is_valid_tag_name},
     };
     use sqlx::PgPool;
-    use utoipa::PartialSchema;
-
-    fn schema_example<T: PartialSchema>() -> serde_json::Value {
-        match T::schema() {
-            utoipa::openapi::RefOr::T(schema) => match schema {
-                utoipa::openapi::Schema::Object(obj) => obj.example.expect("schema has no example"),
-                _ => panic!("expected Object schema"),
-            },
-            utoipa::openapi::RefOr::Ref(_) => panic!("expected inline schema, got Ref"),
-        }
-    }
 
     #[test]
     fn tag_create_params_example_is_valid() {

@@ -1,10 +1,11 @@
 use crate::security::kratos::{IdentityTraits, IdentityVerifiableAddress};
 use serde_derive::Deserialize;
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Kratos Identity struct, see https://www.ory.sh/kratos/docs/reference/api#models-identity
-#[derive(Debug, PartialEq, Deserialize)]
+#[derive(Debug, PartialEq, Deserialize, ToSchema)]
 pub struct Identity {
     /// Identity's unique identifier.
     pub id: Uuid,
@@ -14,6 +15,7 @@ pub struct Identity {
     pub verifiable_addresses: Vec<IdentityVerifiableAddress>,
     /// When the identity was created.
     #[serde(with = "time::serde::rfc3339")]
+    #[schema(value_type = String)]
     pub created_at: OffsetDateTime,
 }
 

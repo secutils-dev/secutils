@@ -5,17 +5,31 @@ use crate::{
     server::app_state::AppState,
     users::User,
 };
-use actix_web::{HttpResponse, web};
+use actix_web::{HttpResponse, post, web};
 use serde::Deserialize;
 use time::OffsetDateTime;
 use tracing::{error, info};
+use utoipa::ToSchema;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
+#[schema(example = json!({"message": "I'd like to request a feature.", "email": "user@example.com"}))]
 pub struct SendMessageParams {
+    /// The message text.
     pub message: String,
+    /// Optional sender email address.
     pub email: Option<String>,
 }
 
+/// Sends a contact message via email.
+#[utoipa::path(
+    tags = ["messages"],
+    request_body = SendMessageParams,
+    responses(
+        (status = 204, description = "Message was successfully sent."),
+        (status = 403, description = "SMTP is not configured.")
+    )
+)]
+#[post("/api/send_message")]
 pub async fn send_message(
     state: web::Data<AppState>,
     body_params: web::Json<SendMessageParams>,
@@ -65,4 +79,17 @@ pub async fn send_message(
         "Successfully sent message."
     );
     Ok(HttpResponse::NoContent().finish())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SendMessageParams;
+    use crate::tests::schema_example;
+
+    #[test]
+    fn send_message_params_example_is_valid() {
+        let example: SendMessageParams =
+            serde_json::from_value(schema_example::<SendMessageParams>()).unwrap();
+        assert!(!example.message.is_empty());
+    }
 }

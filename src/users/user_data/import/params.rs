@@ -1,9 +1,10 @@
 use super::file::UserDataImportFile;
 use serde::Deserialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Import mode.
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ImportMode {
     Merge,
@@ -11,17 +12,25 @@ pub enum ImportMode {
 }
 
 /// Parameters for the preview request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"data": {"version": 1, "exportedAt": 1700000000, "data": {}}, "mode": "merge"}))]
 pub struct UserDataImportPreviewParams {
+    // TODO: Replace with proper schema once utility types (certificates, webhooks, CSP, trackers)
+    // are instrumented with ToSchema in a follow-up.
+    #[schema(value_type = Object)]
     pub data: UserDataImportFile,
     pub mode: ImportMode,
 }
 
 /// Parameters for the import execution request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"data": {"version": 1, "exportedAt": 1700000000, "data": {}}, "mode": "merge", "selections": {}}))]
 pub struct UserDataImportParams {
+    // TODO: Replace with proper schema once utility types (certificates, webhooks, CSP, trackers)
+    // are instrumented with ToSchema in a follow-up.
+    #[schema(value_type = Object)]
     pub data: UserDataImportFile,
     pub mode: ImportMode,
     #[serde(default)]
@@ -36,7 +45,7 @@ pub struct UserDataImportParams {
 }
 
 /// Specifies which entities to delete in Apply mode (user-confirmed deletions).
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ApplyDeletionSelections {
     #[serde(default)]
@@ -58,7 +67,7 @@ pub struct ApplyDeletionSelections {
 }
 
 /// Per-entity selections and conflict resolution.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportSelections {
     #[serde(default)]
@@ -83,7 +92,7 @@ pub struct ImportSelections {
     pub import_settings: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportEntitySelection {
     pub source_id: Uuid,
@@ -92,17 +101,37 @@ pub struct ImportEntitySelection {
     pub conflict_resolution: Option<ConflictResolution>,
 }
 
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ImportAction {
     Import,
     Skip,
 }
 
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ConflictResolution {
     Rename,
     Overwrite,
     Skip,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{UserDataImportParams, UserDataImportPreviewParams};
+    use crate::tests::schema_example;
+
+    #[test]
+    fn import_preview_params_example_is_valid() {
+        // Verifies the example deserializes through the actual type.
+        let _: UserDataImportPreviewParams =
+            serde_json::from_value(schema_example::<UserDataImportPreviewParams>()).unwrap();
+    }
+
+    #[test]
+    fn import_params_example_is_valid() {
+        // Verifies the example deserializes through the actual type.
+        let _: UserDataImportParams =
+            serde_json::from_value(schema_example::<UserDataImportParams>()).unwrap();
+    }
 }

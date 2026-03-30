@@ -6,9 +6,18 @@ use crate::{
         generate_import_preview,
     },
 };
-use actix_web::{HttpResponse, web};
+use actix_web::{HttpResponse, post, web};
 
-/// POST /api/user/data/_import_preview
+/// Previews what would be imported from the provided data.
+#[utoipa::path(
+    path = "/api/user/data/_import_preview",
+    tags = ["user-data"],
+    request_body = UserDataImportPreviewParams,
+    responses(
+        (status = 200, description = "Import preview result.")
+    )
+)]
+#[post("/_import_preview")]
 pub async fn user_data_import_preview(
     state: web::Data<AppState>,
     user: User,
@@ -18,7 +27,16 @@ pub async fn user_data_import_preview(
         .json(generate_import_preview(&state.api, &user, &body.into_inner()).await?))
 }
 
-/// POST /api/user/data/_import
+/// Executes the data import.
+#[utoipa::path(
+    path = "/api/user/data/_import",
+    tags = ["user-data"],
+    request_body = UserDataImportParams,
+    responses(
+        (status = 200, description = "Import result.")
+    )
+)]
+#[post("/_import")]
 pub async fn user_data_import(
     state: web::Data<AppState>,
     user: User,

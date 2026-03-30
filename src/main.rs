@@ -86,6 +86,19 @@ mod tests {
     use tantivy::Index;
     use time::OffsetDateTime;
     use url::Url;
+    use utoipa::PartialSchema;
+
+    /// Extracts the example JSON value from a utoipa `ToSchema` type's generated schema.
+    /// Panics if the schema is not an Object or has no example.
+    pub fn schema_example<T: PartialSchema>() -> serde_json::Value {
+        match T::schema() {
+            utoipa::openapi::RefOr::T(schema) => match schema {
+                utoipa::openapi::Schema::Object(obj) => obj.example.expect("schema has no example"),
+                _ => panic!("expected Object schema"),
+            },
+            utoipa::openapi::RefOr::Ref(_) => panic!("expected inline schema, got Ref"),
+        }
+    }
 
     use crate::{
         config::SubscriptionConfig,

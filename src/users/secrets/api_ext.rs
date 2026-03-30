@@ -381,7 +381,7 @@ mod tests {
     };
     use crate::{
         retrack::tests::mock_retrack_tracker,
-        tests::{mock_api_with_config, mock_config, mock_user},
+        tests::{mock_api_with_config, mock_config, mock_user, schema_example},
         users::SecretsAccess,
         utils::webhooks::{
             Responder, ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,
@@ -391,17 +391,6 @@ mod tests {
     use sqlx::PgPool;
     use time::OffsetDateTime;
     use url::Url;
-    use utoipa::PartialSchema;
-
-    fn schema_example<T: PartialSchema>() -> serde_json::Value {
-        match T::schema() {
-            utoipa::openapi::RefOr::T(schema) => match schema {
-                utoipa::openapi::Schema::Object(obj) => obj.example.expect("schema has no example"),
-                _ => panic!("expected Object schema"),
-            },
-            utoipa::openapi::RefOr::Ref(_) => panic!("expected inline schema, got Ref"),
-        }
-    }
 
     #[test]
     fn secret_create_params_example_is_valid() {

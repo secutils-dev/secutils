@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Represents the user subscription tier.
-#[derive(Deserialize, Serialize, Debug, Copy, Clone, PartialOrd, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Copy, Clone, PartialOrd, PartialEq, ToSchema)]
 #[serde(rename_all = "lowercase")]
 #[repr(u8)]
 pub enum SubscriptionTier {

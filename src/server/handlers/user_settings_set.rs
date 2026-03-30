@@ -1,10 +1,19 @@
 use crate::{
     server::{app_state::AppState, http_errors::generic_internal_server_error},
-    users::{User, UserSettingsSetter},
+    users::{User, UserSettings, UserSettingsSetter},
 };
-use actix_web::{HttpResponse, Responder, web};
+use actix_web::{HttpResponse, Responder, post, web};
 use tracing::error;
 
+/// Updates user settings. Keys map to new values, or null to remove a setting.
+#[utoipa::path(
+    tags = ["settings"],
+    request_body = UserSettingsSetter,
+    responses(
+        (status = 200, description = "Updated user settings.", body = UserSettings)
+    )
+)]
+#[post("/api/user/settings")]
 pub async fn user_settings_set(
     state: web::Data<AppState>,
     body_params: web::Json<UserSettingsSetter>,

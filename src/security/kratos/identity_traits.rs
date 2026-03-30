@@ -1,8 +1,9 @@
 use serde_derive::Deserialize;
+use utoipa::ToSchema;
 
 /// Traits represent an identity's traits. The identity is able to create, modify, and delete traits
 /// in a self-service manner. The input will always be validated against the JSON Schema.
-#[derive(Debug, PartialEq, Deserialize)]
+#[derive(Debug, PartialEq, Deserialize, ToSchema)]
 pub struct IdentityTraits {
     /// Main user email address.
     pub email: String,

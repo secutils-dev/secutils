@@ -2,7 +2,7 @@ use crate::{
     error::Error as SecutilsError, scheduler::CronExt, server::AppState, users::User,
     utils::web_scraping::expand_schedule_preset,
 };
-use actix_web::{HttpResponse, web};
+use actix_web::{HttpResponse, post, web};
 use anyhow::anyhow;
 use croner::{Cron, Direction};
 use serde_derive::{Deserialize, Serialize};
@@ -10,30 +10,51 @@ use serde_with::{DurationMilliSeconds, TimestampSeconds, serde_as};
 use std::time::Duration;
 use time::OffsetDateTime;
 use tracing::error;
+use utoipa::ToSchema;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
+#[schema(example = json!({"schedule": "0 0 * * * *"}))]
 pub struct SchedulerParseScheduleParams {
+    /// A cron expression to parse (6 or 7 fields with seconds).
     pub schedule: String,
 }
 
 #[serde_as]
-#[derive(Deserialize, Serialize, Debug, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, PartialEq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SchedulerParseScheduleResult {
-    /// The minimum interval between two consequent scheduled tracker checks.
+    /// The minimum interval between two consequent scheduled tracker checks (milliseconds).
     #[serde_as(as = "DurationMilliSeconds<u64>")]
+    #[schema(value_type = u64)]
     pub min_interval: Duration,
-    /// The next 5 occurrences of the provided schedule.
+    /// The next 5 occurrences of the provided schedule (unix timestamps).
     #[serde_as(as = "Vec<TimestampSeconds<i64>>")]
+    #[schema(value_type = Vec<i64>)]
     pub next_occurrences: Vec<OffsetDateTime>,
 }
 
-/// Parses the provided schedule and returns the minimum interval between occurrences and the next
-/// 5 occurrences.
+/// Parses a cron schedule and returns the minimum interval and next occurrences.
+#[utoipa::path(
+    tags = ["scheduler"],
+    request_body = SchedulerParseScheduleParams,
+    responses(
+        (status = 200, description = "Parsed schedule information.", body = SchedulerParseScheduleResult),
+        (status = BAD_REQUEST, description = "Invalid schedule or interval too small.")
+    )
+)]
+#[post("/api/scheduler/parse_schedule")]
 pub async fn scheduler_parse_schedule(
     state: web::Data<AppState>,
     user: User,
     body_params: web::Json<SchedulerParseScheduleParams>,
+) -> Result<HttpResponse, SecutilsError> {
+    scheduler_parse_schedule_inner(&state, &user, &body_params)
+}
+
+pub(crate) fn scheduler_parse_schedule_inner(
+    state: &web::Data<AppState>,
+    user: &User,
+    body_params: &SchedulerParseScheduleParams,
 ) -> Result<HttpResponse, SecutilsError> {
     // Expand preset aliases to anchored cron expressions so the preview matches actual scheduling.
     let effective_schedule = expand_schedule_preset(&body_params.schedule);
@@ -76,20 +97,24 @@ pub async fn scheduler_parse_schedule(
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        server::handlers::{
-            scheduler_parse_schedule,
-            scheduler_parse_schedule::{
-                SchedulerParseScheduleParams, SchedulerParseScheduleResult,
-            },
-        },
-        tests::{mock_app_state, mock_app_state_with_config, mock_config, mock_user},
+    use super::{
+        SchedulerParseScheduleParams, SchedulerParseScheduleResult, scheduler_parse_schedule_inner,
+    };
+    use crate::tests::{
+        mock_app_state, mock_app_state_with_config, mock_config, mock_user, schema_example,
     };
     use actix_web::{body::MessageBody, web};
     use bytes::Bytes;
     use sqlx::PgPool;
     use std::time::Duration;
     use time::OffsetDateTime;
+
+    #[test]
+    fn scheduler_parse_schedule_params_example_is_valid() {
+        let example: SchedulerParseScheduleParams =
+            serde_json::from_value(schema_example::<SchedulerParseScheduleParams>()).unwrap();
+        assert!(!example.schedule.is_empty());
+    }
 
     #[sqlx::test]
     async fn fails_if_schedule_is_invalid(pool: PgPool) -> anyhow::Result<()> {
@@ -98,14 +123,13 @@ mod tests {
         let user = mock_user()?;
         app_state.api.db.upsert_user(&user).await?;
 
-        let response = scheduler_parse_schedule(
-            web::Data::new(app_state),
-            user,
-            web::Json(SchedulerParseScheduleParams {
+        let response = scheduler_parse_schedule_inner(
+            &web::Data::new(app_state),
+            &user,
+            &SchedulerParseScheduleParams {
                 schedule: "0 * * * *".to_string(),
-            }),
-        )
-        .await?;
+            },
+        )?;
         assert_eq!(response.status(), 400);
         assert_eq!(
             response.into_body().try_into_bytes().unwrap(),
@@ -133,14 +157,13 @@ mod tests {
         let user = mock_user()?;
         app_state.api.db.upsert_user(&user).await?;
 
-        let response = scheduler_parse_schedule(
-            web::Data::new(app_state),
-            user,
-            web::Json(SchedulerParseScheduleParams {
+        let response = scheduler_parse_schedule_inner(
+            &web::Data::new(app_state),
+            &user,
+            &SchedulerParseScheduleParams {
                 schedule: "0 * * * * *".to_string(),
-            }),
-        )
-        .await?;
+            },
+        )?;
         assert_eq!(response.status(), 400);
         assert_eq!(
             response.into_body().try_into_bytes().unwrap(),
@@ -159,14 +182,13 @@ mod tests {
         let user = mock_user()?;
         app_state.api.db.upsert_user(&user).await?;
 
-        let response = scheduler_parse_schedule(
-            web::Data::new(app_state),
-            user,
-            web::Json(SchedulerParseScheduleParams {
+        let response = scheduler_parse_schedule_inner(
+            &web::Data::new(app_state),
+            &user,
+            &SchedulerParseScheduleParams {
                 schedule: "0 1 2 3 4 Sat".to_string(),
-            }),
-        )
-        .await?;
+            },
+        )?;
         assert_eq!(response.status(), 200);
 
         let body = response.into_body().try_into_bytes().unwrap();

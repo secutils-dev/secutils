@@ -3,7 +3,7 @@ use crate::{
     notifications::{NotificationContent, NotificationContentTemplate, NotificationDestination},
     server::AppState,
 };
-use actix_web::{HttpResponse, web};
+use actix_web::{HttpResponse, post, web};
 use serde_derive::Deserialize;
 use std::{collections::HashMap, str::FromStr};
 
@@ -14,18 +14,30 @@ use crate::security::{
 use time::OffsetDateTime;
 use tracing::{error, info};
 use url::Url;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Kratos email request, see https://github.com/ory/kratos/blob/master/courier/stub/request.config.mailer.jsonnet
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, ToSchema)]
+#[schema(example = json!({"recipient": "user@example.com", "template_type": "recovery_code", "recovery_code": "123456"}))]
 pub struct EmailParams {
     recipient: String,
     template_type: String,
     identity: Option<Identity>,
+    #[schema(value_type = Option<String>)]
     verification_url: Option<Url>,
     recovery_code: Option<String>,
 }
 
+/// Handles Kratos email webhook (operator-only).
+#[utoipa::path(
+    tags = ["users"],
+    request_body = EmailParams,
+    responses(
+        (status = 204, description = "Email notification scheduled.")
+    )
+)]
+#[post("/api/users/email")]
 pub async fn security_users_email(
     state: web::Data<AppState>,
     operator: Operator,
@@ -128,5 +140,18 @@ fn parse_email_params(email: &EmailParams) -> anyhow::Result<NotificationContent
                 },
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EmailParams;
+    use crate::tests::schema_example;
+
+    #[test]
+    fn email_params_example_is_valid() {
+        let example: EmailParams = serde_json::from_value(schema_example::<EmailParams>()).unwrap();
+        assert!(!example.recipient.is_empty());
+        assert!(!example.template_type.is_empty());
     }
 }

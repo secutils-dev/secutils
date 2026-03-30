@@ -1,9 +1,11 @@
 use serde::Deserialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Parameters for the export request, specifying which entities to include.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"include": {"tags": {"type": "all"}, "secrets": {"type": "all"}}}))]
 pub struct UserDataExportParams {
     pub include: UserDataExportInclude,
     /// Optional passphrase for encrypting secret values in the export.
@@ -14,7 +16,7 @@ pub struct UserDataExportParams {
 }
 
 /// Selects which entities to export: all or specific IDs.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ExportSelection {
     All,
@@ -22,7 +24,7 @@ pub enum ExportSelection {
 }
 
 /// Selects which trackable entities (responders/trackers) to export, with optional history.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ExportTrackableSelection {
     #[serde(rename_all = "camelCase")]
@@ -39,7 +41,7 @@ pub enum ExportTrackableSelection {
 }
 
 /// Specifies which entity types and individual items to include in the export.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UserDataExportInclude {
     #[serde(default)]
@@ -67,8 +69,20 @@ pub struct UserDataExportInclude {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::schema_example;
     use serde_json::json;
     use uuid::Uuid;
+
+    #[test]
+    fn export_params_example_is_valid() {
+        let example: UserDataExportParams =
+            serde_json::from_value(schema_example::<UserDataExportParams>()).unwrap();
+        assert!(matches!(example.include.tags, Some(ExportSelection::All)));
+        assert!(matches!(
+            example.include.secrets,
+            Some(ExportSelection::All)
+        ));
+    }
 
     #[test]
     fn deserialize_export_selection_all() {

@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialOrd, PartialEq)]
+/// Server availability level.
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialOrd, PartialEq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum StatusLevel {
     Available,
