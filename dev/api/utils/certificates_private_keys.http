@@ -1,15 +1,15 @@
 ### List private keys.
-GET {{host}}/api/utils/certificates/private_keys
+GET {{host}}/api/certificates/private_keys
 Authorization: {{api-credentials}}
 Accept: application/json
 
 ### Get private key by ID
-GET {{host}}/api/utils/certificates/private_keys/018b7720-7d12-7cd1-9fde-81a4b109199f
+GET {{host}}/api/certificates/private_keys/018b7720-7d12-7cd1-9fde-81a4b109199f
 Authorization: {{api-credentials}}
 Accept: application/json
 
 ### Create private key (RSA, without passphrase).
-POST {{host}}/api/utils/certificates/private_keys
+POST {{host}}/api/certificates/private_keys
 Authorization: {{api-credentials}}
 Accept: application/json
 Content-Type: application/json
@@ -20,7 +20,7 @@ Content-Type: application/json
 }
 
 ### Update private key.
-PUT {{host}}/api/utils/certificates/private_keys/018b77c3-a901-7272-a5d3-41ca17d163c9
+PUT {{host}}/api/certificates/private_keys/018b77c3-a901-7272-a5d3-41ca17d163c9
 Authorization: {{api-credentials}}
 Accept: application/json
 Content-Type: application/json
@@ -31,11 +31,11 @@ Content-Type: application/json
 }
 
 ### Delete private key.
-DELETE {{host}}/api/utils/certificates/private_keys/018b7720-7d12-7cd1-9fde-81a4b109199f
+DELETE {{host}}/api/certificates/private_keys/018b7720-7d12-7cd1-9fde-81a4b109199f
 Authorization: {{api-credentials}}
 
 ### Export private key.
-POST {{host}}/api/utils/certificates/private_keys/018b77c3-a901-7272-a5d3-41ca17d163c9/export
+POST {{host}}/api/certificates/private_keys/018b77c3-a901-7272-a5d3-41ca17d163c9/_export
 Authorization: {{api-credentials}}
 Accept: application/json
 Content-Type: application/json

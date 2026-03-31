@@ -5,7 +5,6 @@ use actix_web::http::Method;
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum UtilsResourceOperation {
-    CertificatesPrivateKeyExport,
     WebhooksRespondersGetHistory,
     WebhooksRespondersClearHistory,
     WebhooksRespondersGetStats,
@@ -30,8 +29,7 @@ impl UtilsResourceOperation {
     pub fn requires_params(&self) -> bool {
         matches!(
             self,
-            Self::CertificatesPrivateKeyExport
-                | Self::WebScrapingPageGetHistory
+            Self::WebScrapingPageGetHistory
                 | Self::WebScrapingPageDebugRequest
                 | Self::WebScrapingApiGetHistory
                 | Self::WebScrapingApiTestRequest
@@ -48,11 +46,6 @@ impl TryFrom<(&UtilsResource, &str, &Method)> for UtilsResourceOperation {
         (resource, operation, method): (&UtilsResource, &str, &Method),
     ) -> Result<Self, Self::Error> {
         match resource {
-            // Private keys custom actions.
-            UtilsResource::CertificatesPrivateKeys if operation == "export" => {
-                Ok(UtilsResourceOperation::CertificatesPrivateKeyExport)
-            }
-
             // Webhooks custom actions.
             UtilsResource::WebhooksResponders if operation == "history" => {
                 Ok(UtilsResourceOperation::WebhooksRespondersGetHistory)
@@ -127,8 +120,6 @@ mod tests {
 
     #[test]
     fn properly_checks_if_action_requires_params() {
-        assert!(UtilsResourceOperation::CertificatesPrivateKeyExport.requires_params());
-
         assert!(!UtilsResourceOperation::WebhooksRespondersGetHistory.requires_params());
         assert!(!UtilsResourceOperation::WebhooksRespondersClearHistory.requires_params());
         assert!(!UtilsResourceOperation::WebhooksRespondersGetStats.requires_params());
@@ -155,32 +146,6 @@ mod tests {
 
     #[test]
     fn properly_parses_resource_action_operation() {
-        assert_eq!(
-            UtilsResourceOperation::try_from((
-                &UtilsResource::CertificatesPrivateKeys,
-                "export",
-                &Method::POST
-            )),
-            Ok(UtilsResourceOperation::CertificatesPrivateKeyExport)
-        );
-        assert!(
-            UtilsResourceOperation::try_from((
-                &UtilsResource::CertificatesPrivateKeys,
-                "share",
-                &Method::POST
-            ))
-            .is_err()
-        );
-
-        assert!(
-            UtilsResourceOperation::try_from((
-                &UtilsResource::CertificatesPrivateKeys,
-                "unshare",
-                &Method::POST
-            ))
-            .is_err()
-        );
-
         assert_eq!(
             UtilsResourceOperation::try_from((
                 &UtilsResource::WebhooksResponders,
@@ -332,15 +297,6 @@ mod tests {
                 &UtilsResource::WebScrapingApi,
                 "debug",
                 &Method::GET
-            ))
-            .is_err()
-        );
-
-        assert!(
-            UtilsResourceOperation::try_from((
-                &UtilsResource::CertificatesPrivateKeys,
-                "history",
-                &Method::POST
             ))
             .is_err()
         );

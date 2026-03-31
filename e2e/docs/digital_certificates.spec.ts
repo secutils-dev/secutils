@@ -22,7 +22,7 @@ const CERT_TEMPLATES_IMG_DIR = join(DOCS_IMG_DIR, 'digital_certificates/certific
 test.describe('Private keys guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
     await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
-    await fixEntityTimestamps(page, '**/api/utils/certificates/private_keys');
+    await fixEntityTimestamps(page, '**/api/certificates/private_keys');
   });
 
   test('Generate an RSA private key', async ({ page }) => {

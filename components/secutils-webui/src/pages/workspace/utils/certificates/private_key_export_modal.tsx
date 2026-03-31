@@ -108,7 +108,7 @@ export function PrivateKeyExportModal({ privateKey, onClose }: PrivateKeyExportM
 
             setExportStatus({ status: 'pending' });
 
-            fetch(getApiUrl(`/api/utils/certificates/private_keys/${encodeURIComponent(privateKey.id)}/export`), {
+            fetch(getApiUrl(`/api/certificates/private_keys/${encodeURIComponent(privateKey.id)}/_export`), {
               ...getApiRequestConfig('POST'),
               body: JSON.stringify({
                 format,

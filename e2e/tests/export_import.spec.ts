@@ -474,7 +474,7 @@ test.describe('Data Export and Import', () => {
     });
     expect(secretCreateRes.ok()).toBeTruthy();
 
-    const pkCreateRes = await page.request.post('/api/utils/certificates/private_keys', {
+    const pkCreateRes = await page.request.post('/api/certificates/private_keys', {
       data: { keyName: 'temp-pk-for-export', alg: { keyType: 'ed25519' }, passphrase: PK_PASSPHRASE },
     });
     expect(pkCreateRes.ok()).toBeTruthy();
@@ -502,7 +502,7 @@ test.describe('Data Export and Import', () => {
     // Delete the originals so the import starts fresh.
     const exportedSecretId = helperExport.data.secrets[0].id;
     await page.request.delete(`/api/user/secrets/${encodeURIComponent(exportedSecretId)}`);
-    await page.request.delete(`/api/utils/certificates/private_keys/${encodeURIComponent(tempKey.id)}`);
+    await page.request.delete(`/api/certificates/private_keys/${encodeURIComponent(tempKey.id)}`);
 
     // ── Step 3: Get a user handle for webhook URLs ───────────────────────
     const stateRes = await page.request.get('/api/ui/state');
@@ -863,7 +863,7 @@ test.describe('Data Export and Import', () => {
     expect(importedTemplate.attributes.extendedKeyUsage).toEqual(['tlsWebServerAuthentication']);
 
     // ── Step 7e: Validate private key + passphrase export ──────────────
-    const keysRes = await page.request.get('/api/utils/certificates/private_keys');
+    const keysRes = await page.request.get('/api/certificates/private_keys');
     const keys = await keysRes.json();
     const importedKey = keys.find((k: { name: string }) => k.name === 'import-test-private-key');
     expect(importedKey).toBeDefined();
@@ -872,7 +872,7 @@ test.describe('Data Export and Import', () => {
 
     // Export with the original passphrase to prove it's correct.
     const keyExportRes = await page.request.post(
-      `/api/utils/certificates/private_keys/${encodeURIComponent(importedKey.id)}/export`,
+      `/api/certificates/private_keys/${encodeURIComponent(importedKey.id)}/_export`,
       { data: { format: 'pkcs8', passphrase: PK_PASSPHRASE } },
     );
     expect(keyExportRes.ok()).toBeTruthy();

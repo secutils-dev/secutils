@@ -166,7 +166,7 @@ export function getCertificateTemplates(): Promise<NamedEntity[]> {
 }
 
 export function getPrivateKeys(): Promise<NamedEntity[]> {
-  return fetchEntities('/api/utils/certificates/private_keys');
+  return fetchEntities('/api/certificates/private_keys');
 }
 
 export function getContentSecurityPolicies(): Promise<NamedEntity[]> {

@@ -6,8 +6,8 @@ use crate::{
     users::{User, UserShare},
     utils::{
         UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
-        certificates::certificates_handle_action, web_scraping::web_scraping_handle_action,
-        web_security::web_security_handle_action, webhooks::webhooks_handle_action,
+        web_scraping::web_scraping_handle_action, web_security::web_security_handle_action,
+        webhooks::webhooks_handle_action,
     },
 };
 use actix_web::{HttpRequest, HttpResponse, http::Method, web};
@@ -145,9 +145,6 @@ pub async fn utils_action(
     let user_id = user.id;
     let params = body_params.map(|body| UtilsActionParams::json(body.into_inner()));
     let action_result = match resource {
-        UtilsResource::CertificatesPrivateKeys => {
-            certificates_handle_action(user, &state.api, action, resource, params).await
-        }
         UtilsResource::WebhooksResponders => {
             webhooks_handle_action(user, &state.api, action, resource, params).await
         }
@@ -189,10 +186,7 @@ mod tests {
     use crate::{
         tests::{mock_api, mock_app_state, mock_user, mock_user_with_id},
         users::{SharedResource, UserShare, UserShareId},
-        utils::{
-            UtilsAction, UtilsResource, UtilsResourceOperation,
-            certificates::{PrivateKeyAlgorithm, tests::PrivateKeysCreateParams},
-        },
+        utils::{UtilsAction, UtilsResource, UtilsResourceOperation},
     };
     use actix_web::{body::MessageBody, http::Method, test::TestRequest, web};
     use insta::assert_debug_snapshot;
@@ -226,14 +220,14 @@ mod tests {
             assert!(extract_resource(&request.to_http_request()).is_none());
         }
 
-        assert_eq!(
+        assert!(
             extract_resource(
                 &TestRequest::with_uri("https://secutils.dev/api/utils")
                     .param("area", "certificates")
                     .param("resource", "private_keys")
                     .to_http_request(),
-            ),
-            Some(UtilsResource::CertificatesPrivateKeys)
+            )
+            .is_none()
         );
         assert!(
             extract_resource(
@@ -277,7 +271,6 @@ mod tests {
     fn ignores_invalid_actions() {
         let resource_id = uuid!("00000000-0000-0000-0000-000000000000");
         for resource in [
-            UtilsResource::CertificatesPrivateKeys,
             UtilsResource::WebhooksResponders,
             UtilsResource::WebScrapingPage,
             UtilsResource::WebScrapingApi,
@@ -310,7 +303,6 @@ mod tests {
     fn can_extract_common_actions() {
         let resource_id = uuid!("00000000-0000-0000-0000-000000000000");
         for resource in [
-            UtilsResource::CertificatesPrivateKeys,
             UtilsResource::WebhooksResponders,
             UtilsResource::WebScrapingPage,
             UtilsResource::WebScrapingApi,
@@ -393,27 +385,6 @@ mod tests {
                 Some(UtilsAction::Unshare { resource_id })
             );
         }
-    }
-
-    #[test]
-    fn can_extract_certificates_private_keys_action() {
-        let resource = UtilsResource::CertificatesPrivateKeys;
-        let resource_id = uuid!("00000000-0000-0000-0000-000000000000");
-
-        assert_eq!(
-            extract_action(
-                &TestRequest::with_uri("https://secutils.dev/api/utils")
-                    .method(Method::POST)
-                    .param("resource_id", resource_id.to_string())
-                    .param("resource_operation", "export")
-                    .to_http_request(),
-                &resource,
-            ),
-            Some(UtilsAction::Execute {
-                resource_id: Some(resource_id),
-                operation: UtilsResourceOperation::CertificatesPrivateKeyExport
-            })
-        );
     }
 
     #[test]
@@ -748,8 +719,8 @@ mod tests {
 
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")
             .method(Method::DELETE)
-            .param("area", "certificates")
-            .param("resource", "private_keys")
+            .param("area", "webhooks")
+            .param("resource", "responders")
             .to_http_request();
         assert_debug_snapshot!(
             utils_action(web::Data::new(app_state), Some(user), None, request, None).await,
@@ -779,8 +750,8 @@ mod tests {
 
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")
             .method(Method::POST)
-            .param("area", "certificates")
-            .param("resource", "private_keys")
+            .param("area", "webhooks")
+            .param("resource", "responders")
             .to_http_request();
         assert_debug_snapshot!(
             utils_action(web::Data::new(app_state), Some(user), None, request, None).await,
@@ -807,8 +778,8 @@ mod tests {
 
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")
             .method(Method::GET)
-            .param("area", "certificates")
-            .param("resource", "private_keys")
+            .param("area", "webhooks")
+            .param("resource", "responders")
             .to_http_request();
         assert_debug_snapshot!(
             utils_action(web::Data::new(app_state), None, None, request, None).await,
@@ -831,8 +802,8 @@ mod tests {
 
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")
             .method(Method::POST)
-            .param("area", "certificates")
-            .param("resource", "private_keys")
+            .param("area", "webhooks")
+            .param("resource", "responders")
             .to_http_request();
         let body = web::Json(json!({}));
         assert_debug_snapshot!(
@@ -841,7 +812,7 @@ mod tests {
         Err(
             Error {
                 context: "Invalid action parameters.",
-                source: Error("missing field `keyName`", line: 0, column: 0),
+                source: Error("missing field `name`", line: 0, column: 0),
             },
         )
         "###
@@ -859,10 +830,16 @@ mod tests {
 
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")
             .method(Method::POST)
-            .param("area", "certificates")
-            .param("resource", "private_keys")
+            .param("area", "webhooks")
+            .param("resource", "responders")
             .to_http_request();
-        let body = web::Json(json!({ "keyName": "pk", "alg": { "keyType": "ed25519" } }));
+        let body = web::Json(json!({
+            "name": "res",
+            "location": { "path": "/", "pathType": "=" },
+            "method": "GET",
+            "enabled": true,
+            "settings": { "statusCode": 200 }
+        }));
         let response = utils_action(
             web::Data::new(app_state),
             Some(user),
@@ -896,26 +873,37 @@ mod tests {
         let user = mock_user()?;
         app_state.api.db.upsert_user(&user).await?;
 
-        let certificates = app_state.api.certificates();
-        let private_key = certificates
-            .create_private_key(
-                user.id,
-                PrivateKeysCreateParams {
-                    key_name: "pk".to_string(),
-                    alg: PrivateKeyAlgorithm::Ed25519,
-                    passphrase: None,
-                    tag_ids: vec![],
+        let responder = app_state
+            .api
+            .webhooks(&user)
+            .create_responder(crate::utils::webhooks::RespondersCreateParams {
+                name: "res".to_string(),
+                location: crate::utils::webhooks::ResponderLocation {
+                    path_type: crate::utils::webhooks::ResponderPathType::Exact,
+                    path: "/".to_string(),
+                    subdomain_prefix: None,
                 },
-            )
+                method: crate::utils::webhooks::ResponderMethod::Get,
+                enabled: true,
+                settings: crate::utils::webhooks::ResponderSettings {
+                    requests_to_track: 0,
+                    status_code: 200,
+                    body: None,
+                    headers: None,
+                    script: None,
+                    secrets: Default::default(),
+                },
+                tag_ids: vec![],
+            })
             .await?;
 
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")
             .method(Method::PUT)
-            .param("area", "certificates")
-            .param("resource", "private_keys")
-            .param("resource_id", private_key.id.to_string())
+            .param("area", "webhooks")
+            .param("resource", "responders")
+            .param("resource_id", responder.id.to_string())
             .to_http_request();
-        let body = web::Json(json!({ "keyName": "pk-new" }));
+        let body = web::Json(json!({ "name": "res-new", "enabled": false }));
         assert_debug_snapshot!(
             utils_action(
                 web::Data::new(app_state),
@@ -952,8 +940,8 @@ mod tests {
         let non_existent_id = uuid!("00000000-0000-0000-0000-000000000001");
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")
             .method(Method::GET)
-            .param("area", "certificates")
-            .param("resource", "private_keys")
+            .param("area", "web_security")
+            .param("resource", "csp")
             .param("resource_id", non_existent_id.to_string())
             .to_http_request();
         assert_debug_snapshot!(

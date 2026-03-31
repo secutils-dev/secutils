@@ -1,5 +1,6 @@
 pub mod certificate_templates;
 mod home_summary_get;
+pub mod private_keys;
 pub mod scheduler_parse_schedule;
 pub mod search;
 pub mod security_subscription_update;
@@ -91,6 +92,13 @@ use utoipa::OpenApi;
         certificate_templates::certificate_templates_share,
         certificate_templates::certificate_templates_unshare,
         certificate_templates::certificates_fetch,
+        // Private keys
+        private_keys::private_keys_list,
+        private_keys::private_keys_get,
+        private_keys::private_keys_create,
+        private_keys::private_keys_update,
+        private_keys::private_keys_delete,
+        private_keys::private_keys_export,
     ),
     components(schemas(
         // Tags
@@ -137,6 +145,11 @@ use utoipa::OpenApi;
         crate::utils::certificates::ExtendedKeyUsage,
         crate::utils::certificates::Version,
         certificate_templates::CertificateTemplateGetResponse,
+        // Private keys
+        crate::utils::certificates::PrivateKey,
+        crate::utils::certificates::PrivateKeysCreateParams,
+        crate::utils::certificates::PrivateKeysUpdateParams,
+        crate::utils::certificates::PrivateKeysExportParams,
         // Shared resources
         crate::users::ClientUserShare,
         crate::users::ClientSharedResource,
@@ -189,6 +202,9 @@ mod tests {
         assert_json_snapshot!(path_keys, @r###"
         [
           "/api/certificates/_fetch",
+          "/api/certificates/private_keys",
+          "/api/certificates/private_keys/{key_id}",
+          "/api/certificates/private_keys/{key_id}/_export",
           "/api/certificates/templates",
           "/api/certificates/templates/{template_id}",
           "/api/certificates/templates/{template_id}/_generate",
@@ -248,9 +264,13 @@ mod tests {
           "ImportMode",
           "ImportSelections",
           "KeyUsage",
+          "PrivateKey",
           "PrivateKeyAlgorithm",
           "PrivateKeyEllipticCurve",
           "PrivateKeySize",
+          "PrivateKeysCreateParams",
+          "PrivateKeysExportParams",
+          "PrivateKeysUpdateParams",
           "RemoveParams",
           "SchedulerParseScheduleParams",
           "SchedulerParseScheduleResult",
@@ -622,6 +642,74 @@ mod tests {
         assert_json_snapshot!(spec["components"]["schemas"]["TemplatesFetchCertificatesParams"]["example"], @r###"
         {
           "url": "https://example.com"
+        }
+        "###);
+    }
+
+    #[test]
+    fn openapi_spec_private_keys_crud_operations() {
+        let spec = spec();
+        let path = &spec["paths"]["/api/certificates/private_keys"];
+
+        // GET (list)
+        assert_eq!(path["get"]["operationId"], "private_keys_list");
+        assert_eq!(path["get"]["tags"][0], "certificates");
+
+        // POST (create)
+        assert_eq!(path["post"]["operationId"], "private_keys_create");
+        assert_eq!(
+            path["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/PrivateKeysCreateParams"
+        );
+    }
+
+    #[test]
+    fn openapi_spec_private_keys_export_operation() {
+        let spec = spec();
+        let export = &spec["paths"]["/api/certificates/private_keys/{key_id}/_export"]["post"];
+        assert_eq!(export["operationId"], "private_keys_export");
+        assert_eq!(
+            export["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/PrivateKeysExportParams"
+        );
+    }
+
+    #[test]
+    fn openapi_spec_private_key_schema() {
+        let spec = spec();
+        let schema = &spec["components"]["schemas"]["PrivateKey"];
+        let props = schema["properties"].as_object().unwrap();
+        assert!(props.contains_key("id"));
+        assert!(props.contains_key("name"));
+        assert!(props.contains_key("alg"));
+        assert!(props.contains_key("pkcs8"));
+        assert!(props.contains_key("encrypted"));
+        assert!(props.contains_key("createdAt"));
+        assert!(props.contains_key("updatedAt"));
+        assert_eq!(props["createdAt"]["type"], "integer");
+        assert_eq!(props["updatedAt"]["type"], "integer");
+    }
+
+    #[test]
+    fn openapi_spec_private_keys_create_params_has_example() {
+        let spec = spec();
+        assert_json_snapshot!(spec["components"]["schemas"]["PrivateKeysCreateParams"]["example"], @r###"
+        {
+          "keyName": "my-key",
+          "alg": {
+            "keyType": "ed25519"
+          },
+          "tagIds": []
+        }
+        "###);
+    }
+
+    #[test]
+    fn openapi_spec_private_keys_export_params_has_example() {
+        let spec = spec();
+        assert_json_snapshot!(spec["components"]["schemas"]["PrivateKeysExportParams"]["example"], @r###"
+        {
+          "format": "pem"
         }
         "###);
     }

@@ -1,9 +1,11 @@
 use crate::utils::certificates::PrivateKeyAlgorithm;
 use serde::Deserialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"keyName": "my-key", "alg": {"keyType": "ed25519"}, "tagIds": []}))]
 pub struct PrivateKeysCreateParams {
     pub key_name: String,
     pub alg: PrivateKeyAlgorithm,

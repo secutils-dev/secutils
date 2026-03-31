@@ -71,7 +71,7 @@ mod tests {
             },
             UtilsAction::Execute {
                 resource_id: Some(uuid!("00000000-0000-0000-0000-000000000002")),
-                operation: UtilsResourceOperation::CertificatesPrivateKeyExport,
+                operation: UtilsResourceOperation::WebhooksRespondersGetHistory,
             },
         ];
         for action in unauthorized_actions {

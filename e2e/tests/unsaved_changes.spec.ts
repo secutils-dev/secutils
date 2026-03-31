@@ -275,7 +275,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('edit - closes without confirmation when no changes were made', async ({ page }) => {
-      const res = await page.request.post('/api/utils/certificates/private_keys', {
+      const res = await page.request.post('/api/certificates/private_keys', {
         data: { keyName: 'existing-key', alg: { keyType: 'ed25519' } },
       });
       expect(res.ok()).toBeTruthy();
@@ -293,7 +293,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('edit - shows confirmation when closing with unsaved changes', async ({ page }) => {
-      const res = await page.request.post('/api/utils/certificates/private_keys', {
+      const res = await page.request.post('/api/certificates/private_keys', {
         data: { keyName: 'existing-key', alg: { keyType: 'ed25519' } },
       });
       expect(res.ok()).toBeTruthy();
@@ -322,7 +322,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('duplicate - shows confirmation when closing', async ({ page }) => {
-      const res = await page.request.post('/api/utils/certificates/private_keys', {
+      const res = await page.request.post('/api/certificates/private_keys', {
         data: { keyName: 'existing-key', alg: { keyType: 'ed25519' } },
       });
       expect(res.ok()).toBeTruthy();
@@ -356,7 +356,7 @@ test.describe('Unsaved changes confirmation', () => {
 
   test.describe('Private key flyout - save button state', () => {
     test('edit - save button is disabled when no changes were made', async ({ page }) => {
-      const res = await page.request.post('/api/utils/certificates/private_keys', {
+      const res = await page.request.post('/api/certificates/private_keys', {
         data: { keyName: 'existing-key', alg: { keyType: 'ed25519' } },
       });
       expect(res.ok()).toBeTruthy();
@@ -374,7 +374,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('edit - save button is enabled after changing tags', async ({ page }) => {
-      const res = await page.request.post('/api/utils/certificates/private_keys', {
+      const res = await page.request.post('/api/certificates/private_keys', {
         data: { keyName: 'existing-key', alg: { keyType: 'ed25519' } },
       });
       expect(res.ok()).toBeTruthy();

@@ -165,6 +165,13 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
             .service(handlers::certificate_templates::certificate_templates_share)
             .service(handlers::certificate_templates::certificate_templates_unshare)
             .service(handlers::certificate_templates::certificates_fetch)
+            // Private keys
+            .service(handlers::private_keys::private_keys_list)
+            .service(handlers::private_keys::private_keys_get)
+            .service(handlers::private_keys::private_keys_create)
+            .service(handlers::private_keys::private_keys_update)
+            .service(handlers::private_keys::private_keys_delete)
+            .service(handlers::private_keys::private_keys_export)
             // Remaining routes that still use .route() (webhooks, utils, UI)
             .service(
                 web::scope("/api")

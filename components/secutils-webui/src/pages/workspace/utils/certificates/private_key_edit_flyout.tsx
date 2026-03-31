@@ -115,7 +115,7 @@ export function PrivateKeyEditFlyout({ onClose, privateKey }: PrivateKeyEditFlyo
         const currentPassphraseToSend = privateKey?.encrypted ? currentPassphrase : null;
         const [requestPromise, successMessage, errorMessage] = privateKey?.id
           ? [
-              fetch(getApiUrl(`/api/utils/certificates/private_keys/${privateKey.id}`), {
+              fetch(getApiUrl(`/api/certificates/private_keys/${privateKey.id}`), {
                 ...getApiRequestConfig('PUT'),
                 body: JSON.stringify({
                   keyName: privateKey.name !== name ? name.trim() : null,
@@ -129,7 +129,7 @@ export function PrivateKeyEditFlyout({ onClose, privateKey }: PrivateKeyEditFlyo
               `Unable to update "${name}" private key, please try again later`,
             ]
           : [
-              fetch(getApiUrl('/api/utils/certificates/private_keys'), {
+              fetch(getApiUrl('/api/certificates/private_keys'), {
                 ...getApiRequestConfig('POST'),
                 body: JSON.stringify({
                   keyName: name,

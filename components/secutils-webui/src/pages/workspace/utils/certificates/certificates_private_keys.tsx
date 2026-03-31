@@ -73,7 +73,7 @@ export default function CertificatesPrivateKeys() {
   );
 
   const loadPrivateKeys = useCallback(() => {
-    fetch(getApiUrl('/api/utils/certificates/private_keys'), getApiRequestConfig())
+    fetch(getApiUrl('/api/certificates/private_keys'), getApiRequestConfig())
       .then(async (res) => {
         if (!res.ok) {
           throw await ResponseError.fromResponse(res);
@@ -119,7 +119,7 @@ export default function CertificatesPrivateKeys() {
         setPrivateKeyToRemove(null);
 
         fetch(
-          getApiUrl(`/api/utils/certificates/private_keys/${encodeURIComponent(privateKeyToRemove?.id)}`),
+          getApiUrl(`/api/certificates/private_keys/${encodeURIComponent(privateKeyToRemove?.id)}`),
           getApiRequestConfig('DELETE'),
         )
           .then(async (res) => {

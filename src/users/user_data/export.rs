@@ -308,9 +308,8 @@ mod tests {
         users::{SecretCreateParams, SecretsAccess, scripts::ScriptCreateParams},
         utils::{
             certificates::{
-                CertificateAttributes, PrivateKeyAlgorithm, PrivateKeySize, SignatureAlgorithm,
-                Version,
-                tests::{PrivateKeysCreateParams, TemplatesCreateParams},
+                CertificateAttributes, PrivateKeyAlgorithm, PrivateKeySize,
+                PrivateKeysCreateParams, SignatureAlgorithm, TemplatesCreateParams, Version,
             },
             web_scraping::{
                 ApiTrackerConfig, ApiTrackerCreateParams, ApiTrackerTarget, PageTrackerConfig,

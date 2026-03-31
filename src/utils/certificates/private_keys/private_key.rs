@@ -1,10 +1,11 @@
 use crate::{users::EntityTag, utils::certificates::PrivateKeyAlgorithm};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Describes stored private key.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PrivateKey {
     /// Unique private key id (UUIDv7).
@@ -22,9 +23,11 @@ pub struct PrivateKey {
     pub tags: Vec<EntityTag>,
     /// Date and time when the private key was created.
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub created_at: OffsetDateTime,
     /// Date and time when the private key was last updated.
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub updated_at: OffsetDateTime,
 }
 

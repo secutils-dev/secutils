@@ -1,8 +1,10 @@
 use crate::utils::certificates::ExportFormat;
 use serde::Deserialize;
+use utoipa::ToSchema;
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"format": "pem"}))]
 pub struct PrivateKeysExportParams {
     pub format: ExportFormat,
     pub passphrase: Option<String>,

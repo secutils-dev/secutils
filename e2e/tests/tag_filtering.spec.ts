@@ -266,10 +266,10 @@ test.describe('Tag filtering', () => {
       },
     });
 
-    await page.request.post('/api/utils/certificates/private_keys', {
+    await page.request.post('/api/certificates/private_keys', {
       data: { keyName: 'PK-alpha', alg: { keyType: 'ed25519' }, tagIds: [tagIds['alpha']] },
     });
-    await page.request.post('/api/utils/certificates/private_keys', {
+    await page.request.post('/api/certificates/private_keys', {
       data: { keyName: 'PK-beta', alg: { keyType: 'ed25519' }, tagIds: [tagIds['beta']] },
     });
 
@@ -431,7 +431,7 @@ test.describe('Tag filtering', () => {
       ['PK-alpha', [tagIds['alpha']]],
       ['PK-gamma', [tagIds['gamma']]],
     ] as const) {
-      await page.request.post('/api/utils/certificates/private_keys', {
+      await page.request.post('/api/certificates/private_keys', {
         data: { keyName: name, alg: { keyType: 'ed25519' }, tagIds: tags },
       });
     }

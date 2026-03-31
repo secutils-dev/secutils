@@ -1,8 +1,10 @@
 use serde::Deserialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"keyName": "renamed-key"}))]
 pub struct PrivateKeysUpdateParams {
     pub key_name: Option<String>,
     pub new_passphrase: Option<String>,
