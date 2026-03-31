@@ -34,7 +34,7 @@ export default function WebSecuritySharedContentSecurityPolicy() {
     }
 
     fetch(
-      getApiUrl(`/api/utils/web_security/csp/${encodeURIComponent(uiState.userShare.resource.policyId)}`),
+      getApiUrl(`/api/web_security/csp/${encodeURIComponent(uiState.userShare.resource.policyId)}`),
       getApiRequestConfig(),
     )
       .then(async (res) => {

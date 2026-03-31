@@ -316,8 +316,8 @@ mod tests {
                 PageTrackerCreateParams, PageTrackerTarget,
             },
             web_security::{
-                ContentSecurityPolicyContent, ContentSecurityPolicyDirective,
-                tests::ContentSecurityPoliciesCreateParams,
+                ContentSecurityPoliciesCreateParams, ContentSecurityPolicyContent,
+                ContentSecurityPolicyDirective,
             },
             webhooks::{
                 ResponderLocation, ResponderMethod, ResponderPathType, ResponderSettings,

@@ -25,7 +25,7 @@ function getByRoleAndLabel(parent: Locator, role: 'combobox' | 'textbox', label:
 test.describe('CSP guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
     await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
-    await fixEntityTimestamps(page, '**/api/utils/web_security/csp');
+    await fixEntityTimestamps(page, '**/api/web_security/csp');
     await fixEntityTimestamps(page, '**/api/utils/webhooks/responders');
   });
 
@@ -88,7 +88,7 @@ test.describe('CSP guide screenshots', () => {
 
   test('import policy from URL', async ({ page }) => {
     // Replace nonce values and pin timestamps in API responses so screenshots are stable.
-    await page.route('**/api/utils/web_security/csp', async (route) => {
+    await page.route('**/api/web_security/csp', async (route) => {
       if (route.request().method() === 'GET') {
         const response = await route.fetch();
         let body = await response.text();

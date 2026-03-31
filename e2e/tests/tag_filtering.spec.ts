@@ -303,14 +303,14 @@ test.describe('Tag filtering', () => {
       },
     });
 
-    await page.request.post('/api/utils/web_security/csp', {
+    await page.request.post('/api/web_security/csp', {
       data: {
         name: 'CSP-alpha',
         content: { type: 'directives', value: [{ name: 'default-src', value: ["'self'"] }] },
         tagIds: [tagIds['alpha']],
       },
     });
-    await page.request.post('/api/utils/web_security/csp', {
+    await page.request.post('/api/web_security/csp', {
       data: {
         name: 'CSP-beta',
         content: { type: 'directives', value: [{ name: 'default-src', value: ["'self'"] }] },
@@ -464,7 +464,7 @@ test.describe('Tag filtering', () => {
       ['CSP-alpha', [tagIds['alpha']]],
       ['CSP-gamma', [tagIds['gamma']]],
     ] as const) {
-      await page.request.post('/api/utils/web_security/csp', {
+      await page.request.post('/api/web_security/csp', {
         data: {
           name,
           content: { type: 'directives', value: [{ name: 'default-src', value: ["'self'"] }] },

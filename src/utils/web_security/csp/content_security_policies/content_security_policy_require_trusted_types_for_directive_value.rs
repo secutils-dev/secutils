@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// See https://www.w3.org/TR/trusted-types.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, ToSchema)]
 pub enum ContentSecurityPolicyRequireTrustedTypesForDirectiveValue {
     #[serde(rename = "'script'")]
     Script,

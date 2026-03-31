@@ -41,7 +41,7 @@ export function ContentSecurityPolicyCopyModal({ policy, onClose }: ContentSecur
 
       const sourceToUse = currentSource ?? source;
       fetch(
-        getApiUrl(`/api/utils/web_security/csp/${encodeURIComponent(policy.id)}/serialize`),
+        getApiUrl(`/api/web_security/csp/${encodeURIComponent(policy.id)}/_serialize`),
 
         { ...getApiRequestConfig('POST'), body: JSON.stringify({ source: sourceToUse }) },
       )

@@ -50,7 +50,7 @@ export function ContentSecurityPolicyShareModal({ policy, onClose }: ContentSecu
       setUserShare({ status: 'pending' });
 
       fetch(
-        getApiUrl(`/api/utils/web_security/csp/${encodeURIComponent(policy.id)}/${share ? 'share' : 'unshare'}`),
+        getApiUrl(`/api/web_security/csp/${encodeURIComponent(policy.id)}/${share ? '_share' : '_unshare'}`),
         getApiRequestConfig('POST'),
       )
         .then(async (res) => {
@@ -58,8 +58,8 @@ export function ContentSecurityPolicyShareModal({ policy, onClose }: ContentSecu
             throw await ResponseError.fromResponse(res);
           }
 
-          const shareResult = (await res.json()) as UserShare | null;
-          setUserShare({ status: 'succeeded', data: share ? (shareResult ?? null) : null });
+          const data: UserShare | null = share ? ((await res.json()) as UserShare) : null;
+          setUserShare({ status: 'succeeded', data });
         })
         .catch((err: Error) => {
           setUserShare({ status: 'failed', error: getErrorMessage(err) });
@@ -73,7 +73,7 @@ export function ContentSecurityPolicyShareModal({ policy, onClose }: ContentSecu
       return;
     }
 
-    fetch(getApiUrl(`/api/utils/web_security/csp/${encodeURIComponent(policy.id)}`), getApiRequestConfig())
+    fetch(getApiUrl(`/api/web_security/csp/${encodeURIComponent(policy.id)}`), getApiRequestConfig())
       .then(async (res) => {
         if (!res.ok) {
           throw await ResponseError.fromResponse(res);

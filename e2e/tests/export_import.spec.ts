@@ -836,7 +836,7 @@ test.describe('Data Export and Import', () => {
     expect(secrets.find((s: { name: string }) => s.name === SECRET_NAME)).toBeDefined();
 
     // ── Step 7c: Validate CSP ──────────────────────────────────────────
-    const cspRes = await page.request.get('/api/utils/web_security/csp');
+    const cspRes = await page.request.get('/api/web_security/csp');
     const csps = await cspRes.json();
     const importedCsp = csps.find((c: { name: string }) => c.name === 'import-test-csp');
     expect(importedCsp).toBeDefined();
@@ -1057,7 +1057,7 @@ test.describe('Data Export and Import', () => {
     const script = await scriptRes.json();
     expect(script.tags).toHaveLength(2);
 
-    const cspRes = await page.request.post('/api/utils/web_security/csp', {
+    const cspRes = await page.request.post('/api/web_security/csp', {
       data: {
         name: 'tagged_csp',
         content: { type: 'directives', value: [{ name: 'default-src', value: ["'self'"] }] },
@@ -1092,7 +1092,7 @@ test.describe('Data Export and Import', () => {
 
     // ── Step 4: Delete originals ───────────────────────────────────────
     await page.request.delete(`/api/user/scripts/${encodeURIComponent(script.id)}`);
-    await page.request.delete(`/api/utils/web_security/csp/${encodeURIComponent(csp.id)}`);
+    await page.request.delete(`/api/web_security/csp/${encodeURIComponent(csp.id)}`);
     await page.request.delete(`/api/user/tags/${encodeURIComponent(tag1.id)}`);
     await page.request.delete(`/api/user/tags/${encodeURIComponent(tag2.id)}`);
 
@@ -1134,7 +1134,7 @@ test.describe('Data Export and Import', () => {
     expect(restoredScript).toBeDefined();
     expect(restoredScript.tags).toHaveLength(2);
 
-    const restoredCsps = await (await page.request.get('/api/utils/web_security/csp')).json();
+    const restoredCsps = await (await page.request.get('/api/web_security/csp')).json();
     const restoredCsp = restoredCsps.find((c: { name: string }) => c.name === 'tagged_csp');
     expect(restoredCsp).toBeDefined();
     // Note: CSP list/bulk API does not populate tags (known limitation).

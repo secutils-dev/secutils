@@ -1,33 +1,16 @@
 use crate::{
     users::{SharedResource, UserShare},
-    utils::{UtilsAction, UtilsResource, UtilsResourceOperation},
+    utils::{UtilsAction, UtilsResource},
 };
 
 impl UserShare {
     /// Checks if the user share is authorized to perform the specified action.
-    pub fn is_action_authorized(&self, action: &UtilsAction, resource: &UtilsResource) -> bool {
+    pub fn is_action_authorized(&self, _action: &UtilsAction, _resource: &UtilsResource) -> bool {
         match &self.resource {
             // Certificate template shares are handled by dedicated /api/certificates/ routes.
             SharedResource::CertificateTemplate { .. } => false,
-            SharedResource::ContentSecurityPolicy { policy_id } => {
-                match (resource, action) {
-                    // Any user can access content security policy and serialize it.
-                    (
-                        UtilsResource::WebSecurityContentSecurityPolicies,
-                        UtilsAction::Get { resource_id },
-                    ) => policy_id == resource_id,
-                    (
-                        UtilsResource::WebSecurityContentSecurityPolicies,
-                        UtilsAction::Execute {
-                            resource_id: Some(resource_id),
-                            operation,
-                        },
-                    ) => policy_id == resource_id
-                        && operation
-                            == &UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize,
-                    _ => false,
-                }
-            }
+            // CSP shares are handled by dedicated /api/web_security/csp/ routes.
+            SharedResource::ContentSecurityPolicy { .. } => false,
         }
     }
 }
@@ -36,13 +19,13 @@ impl UserShare {
 mod tests {
     use crate::{
         users::{SharedResource, UserId, UserShare},
-        utils::{UtilsAction, UtilsResource, UtilsResourceOperation},
+        utils::{UtilsAction, UtilsResource},
     };
     use time::OffsetDateTime;
     use uuid::uuid;
 
     #[test]
-    fn properly_checks_action_authorization_for_shared_csp() {
+    fn shared_csp_is_not_authorized_via_generic_dispatcher() {
         let policy_id = uuid!("00000000-0000-0000-0000-000000000001");
         let user_share = UserShare {
             id: Default::default(),
@@ -51,54 +34,32 @@ mod tests {
             created_at: OffsetDateTime::now_utc(),
         };
 
-        let unauthorized_actions = vec![
-            UtilsAction::List,
-            UtilsAction::Get {
-                resource_id: uuid!("00000000-0000-0000-0000-000000000002"),
-            },
-            UtilsAction::Create,
-            UtilsAction::Update {
+        // CSP shares are handled by dedicated routes, not the generic dispatcher.
+        assert!(
+            !user_share
+                .is_action_authorized(&UtilsAction::List, &UtilsResource::WebhooksResponders)
+        );
+        assert!(!user_share.is_action_authorized(
+            &UtilsAction::Get {
                 resource_id: policy_id,
             },
-            UtilsAction::Delete {
-                resource_id: policy_id,
-            },
-            UtilsAction::Share {
-                resource_id: policy_id,
-            },
-            UtilsAction::Unshare {
-                resource_id: policy_id,
-            },
-            UtilsAction::Execute {
-                resource_id: Some(uuid!("00000000-0000-0000-0000-000000000002")),
-                operation: UtilsResourceOperation::WebhooksRespondersGetHistory,
-            },
-        ];
-        for action in unauthorized_actions {
-            assert!(
-                !user_share.is_action_authorized(
-                    &action,
-                    &UtilsResource::WebSecurityContentSecurityPolicies
-                )
-            );
-        }
+            &UtilsResource::WebhooksResponders
+        ));
+    }
 
-        let authorized_actions = vec![
-            UtilsAction::Get {
-                resource_id: policy_id,
-            },
-            UtilsAction::Execute {
-                resource_id: Some(policy_id),
-                operation: UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize,
-            },
-        ];
-        for action in authorized_actions {
-            assert!(
-                user_share.is_action_authorized(
-                    &action,
-                    &UtilsResource::WebSecurityContentSecurityPolicies
-                )
-            );
-        }
+    #[test]
+    fn shared_certificate_template_is_not_authorized_via_generic_dispatcher() {
+        let template_id = uuid!("00000000-0000-0000-0000-000000000001");
+        let user_share = UserShare {
+            id: Default::default(),
+            user_id: UserId::new(),
+            resource: SharedResource::certificate_template(template_id),
+            created_at: OffsetDateTime::now_utc(),
+        };
+
+        assert!(
+            !user_share
+                .is_action_authorized(&UtilsAction::List, &UtilsResource::WebhooksResponders)
+        );
     }
 }

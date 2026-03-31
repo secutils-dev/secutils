@@ -1,9 +1,11 @@
 use crate::utils::web_security::ContentSecurityPolicyDirective;
 use serde::Deserialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"name": "renamed-csp"}))]
 pub struct ContentSecurityPoliciesUpdateParams {
     pub name: Option<String>,
     pub directives: Option<Vec<ContentSecurityPolicyDirective>>,

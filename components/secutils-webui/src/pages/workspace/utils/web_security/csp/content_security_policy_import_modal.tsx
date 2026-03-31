@@ -161,7 +161,7 @@ export function ContentSecurityPolicyImportModal({ onClose }: ContentSecurityPol
 
             setImportStatus({ status: 'pending' });
 
-            fetch(getApiUrl('/api/utils/web_security/csp'), {
+            fetch(getApiUrl('/api/web_security/csp'), {
               ...getApiRequestConfig('POST'),
               body: JSON.stringify({
                 name,

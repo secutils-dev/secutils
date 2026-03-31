@@ -97,7 +97,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('edit - closes without confirmation when no changes were made', async ({ page }) => {
-      const res = await page.request.post('/api/utils/web_security/csp', {
+      const res = await page.request.post('/api/web_security/csp', {
         data: {
           name: 'existing-policy',
           content: { type: 'directives', value: [{ name: 'default-src', value: ["'self'"] }] },
@@ -118,7 +118,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('edit - shows confirmation when closing with unsaved changes', async ({ page }) => {
-      const res = await page.request.post('/api/utils/web_security/csp', {
+      const res = await page.request.post('/api/web_security/csp', {
         data: {
           name: 'existing-policy',
           content: { type: 'directives', value: [{ name: 'default-src', value: ["'self'"] }] },
@@ -150,7 +150,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('duplicate - shows confirmation when closing', async ({ page }) => {
-      const res = await page.request.post('/api/utils/web_security/csp', {
+      const res = await page.request.post('/api/web_security/csp', {
         data: {
           name: 'existing-policy',
           content: { type: 'directives', value: [{ name: 'default-src', value: ["'self'"] }] },
@@ -188,7 +188,7 @@ test.describe('Unsaved changes confirmation', () => {
 
   test.describe('CSP policy flyout - save button state', () => {
     test('edit - save button is disabled when no changes were made', async ({ page }) => {
-      const res = await page.request.post('/api/utils/web_security/csp', {
+      const res = await page.request.post('/api/web_security/csp', {
         data: {
           name: 'existing-policy',
           content: { type: 'directives', value: [{ name: 'default-src', value: ["'self'"] }] },
@@ -209,7 +209,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('edit - save button is enabled after changing name', async ({ page }) => {
-      const res = await page.request.post('/api/utils/web_security/csp', {
+      const res = await page.request.post('/api/web_security/csp', {
         data: {
           name: 'existing-policy',
           content: { type: 'directives', value: [{ name: 'default-src', value: ["'self'"] }] },

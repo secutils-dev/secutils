@@ -1,7 +1,8 @@
+use super::resolve_shared_user;
 use crate::{
     error::Error,
     server::app_state::AppState,
-    users::{ClientUserShare, SharedResource, User},
+    users::{ClientUserShare, SharedResource, User, UserShare},
     utils::certificates::{
         CertificateTemplate, TemplatesCreateParams, TemplatesFetchCertificatesParams,
         TemplatesGenerateParams, TemplatesUpdateParams,
@@ -47,6 +48,10 @@ pub async fn certificate_templates_list(
 }
 
 /// Gets a certificate template by ID, including its share status.
+///
+/// Supports shared access: when an `X-User-Share-ID` header is present and points to
+/// a share for this template, the request is served on behalf of the share owner — even
+/// if the caller is unauthenticated.
 #[utoipa::path(
     tags = ["certificates"],
     params(TemplateIdPath),
@@ -58,9 +63,18 @@ pub async fn certificate_templates_list(
 #[get("/api/certificates/templates/{template_id}")]
 pub async fn certificate_templates_get(
     state: web::Data<AppState>,
-    user: User,
+    user: Option<User>,
+    user_share: Option<UserShare>,
     path: web::Path<TemplateIdPath>,
 ) -> Result<HttpResponse, Error> {
+    let user = resolve_shared_user(
+        &state,
+        user,
+        user_share,
+        &SharedResource::certificate_template(path.template_id),
+    )
+    .await?;
+
     let certificates = state.api.certificates();
     let Some(template) = certificates
         .get_certificate_template(user.id, path.template_id)
@@ -157,6 +171,8 @@ pub async fn certificate_templates_delete(
 }
 
 /// Generates a self-signed certificate from the template.
+///
+/// Supports shared access (see `certificate_templates_get`).
 #[utoipa::path(
     tags = ["certificates"],
     params(TemplateIdPath),
@@ -169,10 +185,19 @@ pub async fn certificate_templates_delete(
 #[post("/api/certificates/templates/{template_id}/_generate")]
 pub async fn certificate_templates_generate(
     state: web::Data<AppState>,
-    user: User,
+    user: Option<User>,
+    user_share: Option<UserShare>,
     path: web::Path<TemplateIdPath>,
     body: web::Json<TemplatesGenerateParams>,
 ) -> Result<HttpResponse, Error> {
+    let user = resolve_shared_user(
+        &state,
+        user,
+        user_share,
+        &SharedResource::certificate_template(path.template_id),
+    )
+    .await?;
+
     let data = state
         .api
         .certificates()

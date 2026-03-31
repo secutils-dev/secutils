@@ -1,4 +1,5 @@
 pub mod certificate_templates;
+pub mod content_security_policies;
 mod home_summary_get;
 pub mod private_keys;
 pub mod scheduler_parse_schedule;
@@ -30,7 +31,41 @@ pub use self::{
     webhooks_responders::webhooks_responders, webhooks_retrack::webhooks_retrack,
 };
 
+use crate::{
+    error::Error,
+    server::app_state::AppState,
+    users::{SharedResource, User, UserShare},
+};
+use actix_web::web;
 use utoipa::OpenApi;
+
+/// Resolves the effective user for a shared-resource-aware handler.
+///
+/// If a `UserShare` is present and its resource matches the expected shared resource, the share
+/// owner is resolved from the database. If only a directly authenticated `User` is present, that
+/// user is returned. Returns `Error::access_forbidden()` when neither is available.
+pub(crate) async fn resolve_shared_user(
+    state: &web::Data<AppState>,
+    user: Option<User>,
+    user_share: Option<UserShare>,
+    expected_resource: &SharedResource,
+) -> Result<User, Error> {
+    match (user, user_share) {
+        // Authenticated user without a share header — use directly.
+        (Some(user), None) => Ok(user),
+        // Authenticated user whose share belongs to themselves — use directly.
+        (Some(user), Some(ref share)) if user.id == share.user_id => Ok(user),
+        // Share present (anonymous or different user) — verify resource and resolve owner.
+        (_, Some(share)) if &share.resource == expected_resource => state
+            .api
+            .users()
+            .get(share.user_id)
+            .await?
+            .ok_or_else(Error::access_forbidden),
+        // No valid credentials.
+        _ => Err(Error::access_forbidden()),
+    }
+}
 
 #[derive(OpenApi)]
 #[openapi(
@@ -99,6 +134,15 @@ use utoipa::OpenApi;
         private_keys::private_keys_update,
         private_keys::private_keys_delete,
         private_keys::private_keys_export,
+        // Content security policies
+        content_security_policies::csp_list,
+        content_security_policies::csp_get,
+        content_security_policies::csp_create,
+        content_security_policies::csp_update,
+        content_security_policies::csp_delete,
+        content_security_policies::csp_serialize,
+        content_security_policies::csp_share,
+        content_security_policies::csp_unshare,
     ),
     components(schemas(
         // Tags
@@ -150,6 +194,19 @@ use utoipa::OpenApi;
         crate::utils::certificates::PrivateKeysCreateParams,
         crate::utils::certificates::PrivateKeysUpdateParams,
         crate::utils::certificates::PrivateKeysExportParams,
+        // Content security policies
+        crate::utils::web_security::ContentSecurityPolicy,
+        crate::utils::web_security::ContentSecurityPolicyDirective,
+        crate::utils::web_security::ContentSecurityPolicySource,
+        crate::utils::web_security::ContentSecurityPolicySandboxDirectiveValue,
+        crate::utils::web_security::ContentSecurityPolicyWebrtcDirectiveValue,
+        crate::utils::web_security::ContentSecurityPolicyTrustedTypesDirectiveValue,
+        crate::utils::web_security::ContentSecurityPolicyRequireTrustedTypesForDirectiveValue,
+        crate::utils::web_security::ContentSecurityPolicyContent,
+        crate::utils::web_security::ContentSecurityPoliciesCreateParams,
+        crate::utils::web_security::ContentSecurityPoliciesUpdateParams,
+        crate::utils::web_security::ContentSecurityPoliciesSerializeParams,
+        content_security_policies::ContentSecurityPolicyGetResponse,
         // Shared resources
         crate::users::ClientUserShare,
         crate::users::ClientSharedResource,
@@ -230,7 +287,12 @@ mod tests {
           "/api/users/remove",
           "/api/users/self",
           "/api/users/signup",
-          "/api/users/{user_id}"
+          "/api/users/{user_id}",
+          "/api/web_security/csp",
+          "/api/web_security/csp/{policy_id}",
+          "/api/web_security/csp/{policy_id}/_serialize",
+          "/api/web_security/csp/{policy_id}/_share",
+          "/api/web_security/csp/{policy_id}/_unshare"
         ]
         "###);
     }
@@ -250,6 +312,18 @@ mod tests {
           "ClientSharedResource",
           "ClientUserShare",
           "ConflictResolution",
+          "ContentSecurityPoliciesCreateParams",
+          "ContentSecurityPoliciesSerializeParams",
+          "ContentSecurityPoliciesUpdateParams",
+          "ContentSecurityPolicy",
+          "ContentSecurityPolicyContent",
+          "ContentSecurityPolicyDirective",
+          "ContentSecurityPolicyGetResponse",
+          "ContentSecurityPolicyRequireTrustedTypesForDirectiveValue",
+          "ContentSecurityPolicySandboxDirectiveValue",
+          "ContentSecurityPolicySource",
+          "ContentSecurityPolicyTrustedTypesDirectiveValue",
+          "ContentSecurityPolicyWebrtcDirectiveValue",
           "EmailParams",
           "EntityTag",
           "ExportFormat",
@@ -710,6 +784,83 @@ mod tests {
         assert_json_snapshot!(spec["components"]["schemas"]["PrivateKeysExportParams"]["example"], @r###"
         {
           "format": "pem"
+        }
+        "###);
+    }
+
+    #[test]
+    fn openapi_spec_csp_crud_operations() {
+        let spec = spec();
+        let path = &spec["paths"]["/api/web_security/csp"];
+
+        // GET (list)
+        assert_eq!(path["get"]["operationId"], "csp_list");
+        assert_eq!(path["get"]["tags"][0], "web_security");
+
+        // POST (create)
+        assert_eq!(path["post"]["operationId"], "csp_create");
+        assert_eq!(
+            path["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ContentSecurityPoliciesCreateParams"
+        );
+    }
+
+    #[test]
+    fn openapi_spec_csp_action_operations() {
+        let spec = spec();
+
+        // _serialize
+        let serialize = &spec["paths"]["/api/web_security/csp/{policy_id}/_serialize"]["post"];
+        assert_eq!(serialize["operationId"], "csp_serialize");
+        assert_eq!(
+            serialize["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ContentSecurityPoliciesSerializeParams"
+        );
+
+        // _share
+        let share = &spec["paths"]["/api/web_security/csp/{policy_id}/_share"]["post"];
+        assert_eq!(share["operationId"], "csp_share");
+
+        // _unshare
+        let unshare = &spec["paths"]["/api/web_security/csp/{policy_id}/_unshare"]["post"];
+        assert_eq!(unshare["operationId"], "csp_unshare");
+    }
+
+    #[test]
+    fn openapi_spec_csp_schema() {
+        let spec = spec();
+        let schema = &spec["components"]["schemas"]["ContentSecurityPolicy"];
+        let props = schema["properties"].as_object().unwrap();
+        assert!(props.contains_key("id"));
+        assert!(props.contains_key("name"));
+        assert!(props.contains_key("directives"));
+        assert!(props.contains_key("createdAt"));
+        assert!(props.contains_key("updatedAt"));
+        assert_eq!(props["createdAt"]["type"], "integer");
+        assert_eq!(props["updatedAt"]["type"], "integer");
+    }
+
+    #[test]
+    fn openapi_spec_csp_create_params_has_example() {
+        let spec = spec();
+        assert_json_snapshot!(spec["components"]["schemas"]["ContentSecurityPoliciesCreateParams"]["example"], @r###"
+        {
+          "name": "my-csp",
+          "content": {
+            "type": "serialized",
+            "value": "default-src 'self'"
+          },
+          "tagIds": []
+        }
+        "###);
+    }
+
+    #[test]
+    fn openapi_spec_csp_serialize_params_has_example() {
+        let spec = spec();
+        assert_json_snapshot!(spec["components"]["schemas"]["ContentSecurityPoliciesSerializeParams"]["example"], @r###"
+        {
+          "source": "enforcingHeader"
         }
         "###);
     }

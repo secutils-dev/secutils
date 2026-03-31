@@ -172,6 +172,15 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
             .service(handlers::private_keys::private_keys_update)
             .service(handlers::private_keys::private_keys_delete)
             .service(handlers::private_keys::private_keys_export)
+            // Content security policies
+            .service(handlers::content_security_policies::csp_list)
+            .service(handlers::content_security_policies::csp_get)
+            .service(handlers::content_security_policies::csp_create)
+            .service(handlers::content_security_policies::csp_update)
+            .service(handlers::content_security_policies::csp_delete)
+            .service(handlers::content_security_policies::csp_serialize)
+            .service(handlers::content_security_policies::csp_share)
+            .service(handlers::content_security_policies::csp_unshare)
             // Remaining routes that still use .route() (webhooks, utils, UI)
             .service(
                 web::scope("/api")

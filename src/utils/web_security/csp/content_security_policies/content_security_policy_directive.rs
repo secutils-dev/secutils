@@ -7,8 +7,9 @@ use anyhow::anyhow;
 use content_security_policy::Directive;
 use serde::{Deserialize, Deserializer, Serialize, de};
 use std::collections::BTreeSet;
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "kebab-case", tag = "name", content = "value")]
 pub enum ContentSecurityPolicyDirective {
     // 15 fetch directives

@@ -51,7 +51,7 @@ export function ContentSecurityPolicyEditFlyout({ onClose, policy }: ContentSecu
 
         const [requestPromise, successMessage, errorMessage] = policy?.id
           ? [
-              fetch(getApiUrl(`/api/utils/web_security/csp/${policy.id}`), {
+              fetch(getApiUrl(`/api/web_security/csp/${policy.id}`), {
                 ...getApiRequestConfig('PUT'),
                 body: JSON.stringify({
                   name: policyToSave.name !== policy?.name ? policyToSave.name : null,
@@ -63,7 +63,7 @@ export function ContentSecurityPolicyEditFlyout({ onClose, policy }: ContentSecu
               `Unable to update "${policyToSave.name}" policy, please try again later`,
             ]
           : [
-              fetch(getApiUrl('/api/utils/web_security/csp'), {
+              fetch(getApiUrl('/api/web_security/csp'), {
                 ...getApiRequestConfig('POST'),
                 body: JSON.stringify({
                   name: policyToSave.name,

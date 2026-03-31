@@ -170,7 +170,7 @@ export function getPrivateKeys(): Promise<NamedEntity[]> {
 }
 
 export function getContentSecurityPolicies(): Promise<NamedEntity[]> {
-  return fetchEntities('/api/utils/web_security/csp');
+  return fetchEntities('/api/web_security/csp');
 }
 
 export function getPageTrackers(): Promise<NamedEntity[]> {

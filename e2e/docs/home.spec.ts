@@ -46,7 +46,7 @@ test.describe('Home page screenshots', () => {
     }
 
     // CSP: create one policy.
-    const cspRes = await page.request.post('/api/utils/web_security/csp', {
+    const cspRes = await page.request.post('/api/web_security/csp', {
       data: {
         name: 'secutils.dev',
         content: { type: 'directives', value: [{ name: 'default-src', value: ["'self'"] }] },

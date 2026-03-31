@@ -21,7 +21,6 @@ pub enum UtilsResourceOperation {
     WebScrapingApiGetLogsSummary,
     WebScrapingApiTestRequest,
     WebScrapingApiDebugRequest,
-    WebSecurityContentSecurityPolicySerialize,
 }
 
 impl UtilsResourceOperation {
@@ -34,7 +33,6 @@ impl UtilsResourceOperation {
                 | Self::WebScrapingApiGetHistory
                 | Self::WebScrapingApiTestRequest
                 | Self::WebScrapingApiDebugRequest
-                | Self::WebSecurityContentSecurityPolicySerialize
         )
     }
 }
@@ -102,11 +100,6 @@ impl TryFrom<(&UtilsResource, &str, &Method)> for UtilsResourceOperation {
                 Ok(UtilsResourceOperation::WebScrapingApiDebugRequest)
             }
 
-            // Web security custom actions.
-            UtilsResource::WebSecurityContentSecurityPolicies if operation == "serialize" => {
-                Ok(UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize)
-            }
-
             _ => Err(()),
         }
     }
@@ -138,10 +131,6 @@ mod tests {
         assert!(!UtilsResourceOperation::WebScrapingApiGetLogsSummary.requires_params());
         assert!(UtilsResourceOperation::WebScrapingApiTestRequest.requires_params());
         assert!(UtilsResourceOperation::WebScrapingApiDebugRequest.requires_params());
-
-        assert!(
-            UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize.requires_params()
-        );
     }
 
     #[test]
@@ -297,23 +286,6 @@ mod tests {
                 &UtilsResource::WebScrapingApi,
                 "debug",
                 &Method::GET
-            ))
-            .is_err()
-        );
-
-        assert_eq!(
-            UtilsResourceOperation::try_from((
-                &UtilsResource::WebSecurityContentSecurityPolicies,
-                "serialize",
-                &Method::POST
-            )),
-            Ok(UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize)
-        );
-        assert!(
-            UtilsResourceOperation::try_from((
-                &UtilsResource::WebSecurityContentSecurityPolicies,
-                "generate",
-                &Method::POST
             ))
             .is_err()
         );

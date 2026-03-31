@@ -6,8 +6,7 @@ use crate::{
     users::{User, UserShare},
     utils::{
         UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
-        web_scraping::web_scraping_handle_action, web_security::web_security_handle_action,
-        webhooks::webhooks_handle_action,
+        web_scraping::web_scraping_handle_action, webhooks::webhooks_handle_action,
     },
 };
 use actix_web::{HttpRequest, HttpResponse, http::Method, web};
@@ -151,9 +150,6 @@ pub async fn utils_action(
         UtilsResource::WebScrapingPage | UtilsResource::WebScrapingApi => {
             web_scraping_handle_action(user, &state.api, action, resource, params).await
         }
-        UtilsResource::WebSecurityContentSecurityPolicies => {
-            web_security_handle_action(user, &state.api, action, resource, params).await
-        }
     };
 
     match action_result {
@@ -265,6 +261,15 @@ mod tests {
             ),
             Some(UtilsResource::WebScrapingApi)
         );
+        assert!(
+            extract_resource(
+                &TestRequest::with_uri("https://secutils.dev/api/utils")
+                    .param("area", "web_security")
+                    .param("resource", "csp")
+                    .to_http_request(),
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -274,7 +279,6 @@ mod tests {
             UtilsResource::WebhooksResponders,
             UtilsResource::WebScrapingPage,
             UtilsResource::WebScrapingApi,
-            UtilsResource::WebSecurityContentSecurityPolicies,
         ] {
             assert!(
                 extract_action(
@@ -306,7 +310,6 @@ mod tests {
             UtilsResource::WebhooksResponders,
             UtilsResource::WebScrapingPage,
             UtilsResource::WebScrapingApi,
-            UtilsResource::WebSecurityContentSecurityPolicies,
         ] {
             assert_eq!(
                 extract_action(
@@ -537,31 +540,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn can_extract_web_security_content_security_policies_actions() {
-        let resource = UtilsResource::WebSecurityContentSecurityPolicies;
-        let resource_id = uuid!("00000000-0000-0000-0000-000000000000");
-
-        assert_eq!(
-            extract_action(
-                &TestRequest::with_uri("https://secutils.dev/api/utils")
-                    .method(Method::POST)
-                    .param("resource_id", resource_id.to_string())
-                    .param("resource_operation", "serialize")
-                    .to_http_request(),
-                &resource,
-            ),
-            Some(UtilsAction::Execute {
-                resource_id: Some(resource_id),
-                operation: UtilsResourceOperation::WebSecurityContentSecurityPolicySerialize
-            })
-        );
-    }
-
     #[sqlx::test]
     async fn can_extract_user(pool: PgPool) -> anyhow::Result<()> {
         let resource_id = uuid!("00000000-0000-0000-0000-000000000001");
-        let resource = UtilsResource::WebSecurityContentSecurityPolicies;
+        let resource = UtilsResource::WebhooksResponders;
         let action = UtilsAction::Get { resource_id };
 
         let api = mock_api(pool).await?;
@@ -600,7 +582,8 @@ mod tests {
         .await?;
         assert_eq!(extracted_user.unwrap().id, user.id);
 
-        // Both current user and user share that doesn't belong to that user were provided.
+        // Both current user and user share that doesn't belong to that user were provided -
+        // CSP shares authorize Get actions for any user.
         let another_user = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
         api.db.upsert_user(&another_user).await?;
         let extracted_user = extract_user(
@@ -618,9 +601,11 @@ mod tests {
             &resource,
         )
         .await?;
-        assert_eq!(extracted_user.unwrap().id, another_user.id);
+        // CSP shares no longer handled by the generic dispatcher — share resource doesn't
+        // match webhooks, so the user is not authorized.
+        assert!(extracted_user.is_none());
 
-        // Anonymous user.
+        // Anonymous user with non-matching share resource.
         let extracted_user = extract_user(
             &api,
             None,
@@ -636,9 +621,9 @@ mod tests {
             &resource,
         )
         .await?;
-        assert_eq!(extracted_user.unwrap().id, another_user.id);
+        assert!(extracted_user.is_none());
 
-        // Current user isn't authorized.
+        // Current user isn't authorized (Create action on shared resource).
         let another_user = mock_user_with_id(uuid!("00000000-0000-0000-0000-000000000002"))?;
         api.db.upsert_user(&another_user).await?;
         let extracted_user = extract_user(
@@ -919,46 +904,6 @@ mod tests {
                 error: None,
                 res: 
                 Response HTTP/1.1 204 No Content
-                  headers:
-                  body: Sized(0)
-                ,
-            },
-        )
-        "###
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn can_return_not_found(pool: PgPool) -> anyhow::Result<()> {
-        let app_state = mock_app_state(pool).await?;
-
-        let user = mock_user()?;
-        app_state.api.db.upsert_user(&user).await?;
-
-        let non_existent_id = uuid!("00000000-0000-0000-0000-000000000001");
-        let request = TestRequest::with_uri("https://secutils.dev/api/utils")
-            .method(Method::GET)
-            .param("area", "web_security")
-            .param("resource", "csp")
-            .param("resource_id", non_existent_id.to_string())
-            .to_http_request();
-        assert_debug_snapshot!(
-            utils_action(
-                web::Data::new(app_state),
-                Some(user),
-                None,
-                request,
-                None,
-            )
-            .await,
-            @r###"
-        Ok(
-            HttpResponse {
-                error: None,
-                res: 
-                Response HTTP/1.1 404 Not Found
                   headers:
                   body: Sized(0)
                 ,

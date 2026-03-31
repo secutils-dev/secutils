@@ -1,8 +1,10 @@
 use crate::utils::web_security::ContentSecurityPolicySource;
 use serde::Deserialize;
+use utoipa::ToSchema;
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"source": "enforcingHeader"}))]
 pub struct ContentSecurityPoliciesSerializeParams {
     pub source: ContentSecurityPolicySource,
 }

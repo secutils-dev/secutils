@@ -86,7 +86,7 @@ export default function WebSecurityContentSecurityPolicies() {
   );
 
   const loadPolicies = useCallback(() => {
-    fetch(getApiUrl('/api/utils/web_security/csp'), getApiRequestConfig())
+    fetch(getApiUrl('/api/web_security/csp'), getApiRequestConfig())
       .then(async (res) => {
         if (!res.ok) {
           throw await ResponseError.fromResponse(res);
@@ -153,7 +153,7 @@ export default function WebSecurityContentSecurityPolicies() {
         setPolicyToRemove(null);
 
         fetch(
-          getApiUrl(`/api/utils/web_security/csp/${encodeURIComponent(policyToRemove.id)}`),
+          getApiUrl(`/api/web_security/csp/${encodeURIComponent(policyToRemove.id)}`),
           getApiRequestConfig('DELETE'),
         )
           .then(async (res) => {

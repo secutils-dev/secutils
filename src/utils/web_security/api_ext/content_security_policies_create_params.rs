@@ -1,9 +1,11 @@
 use crate::utils::web_security::ContentSecurityPolicyContent;
 use serde::Deserialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"name": "my-csp", "content": {"type": "serialized", "value": "default-src 'self'"}, "tagIds": []}))]
 pub struct ContentSecurityPoliciesCreateParams {
     pub name: String,
     pub content: ContentSecurityPolicyContent,

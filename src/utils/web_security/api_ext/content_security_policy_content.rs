@@ -1,8 +1,9 @@
 use crate::utils::web_security::{ContentSecurityPolicyDirective, ContentSecurityPolicySource};
 use serde::{Deserialize, Serialize};
 use url::Url;
+use utoipa::ToSchema;
 
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "type", content = "value")]
 pub enum ContentSecurityPolicyContent {

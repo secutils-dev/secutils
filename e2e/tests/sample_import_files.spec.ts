@@ -103,7 +103,7 @@ test.describe('Sample import files', () => {
         responders: '/api/utils/webhooks/responders',
         certificateTemplates: '/api/certificates/templates',
         privateKeys: '/api/certificates/private_keys',
-        contentSecurityPolicies: '/api/utils/web_security/csp',
+        contentSecurityPolicies: '/api/web_security/csp',
         pageTrackers: '/api/utils/web_scraping/page',
         apiTrackers: '/api/utils/web_scraping/api',
       };

@@ -1,7 +1,8 @@
 use serde::{Deserialize, Deserializer, Serialize, de};
+use utoipa::ToSchema;
 
 /// See https://www.w3.org/TR/trusted-types.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToSchema)]
 pub enum ContentSecurityPolicyTrustedTypesDirectiveValue {
     #[serde(rename = "'allow-duplicates'")]
     AllowDuplicates,

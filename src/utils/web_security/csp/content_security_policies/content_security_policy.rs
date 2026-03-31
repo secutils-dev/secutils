@@ -1,10 +1,11 @@
 use crate::{users::EntityTag, utils::web_security::ContentSecurityPolicyDirective};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Represents content security policy (CSP) with the arbitrary name.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ContentSecurityPolicy {
     /// Unique content security policy id (UUIDv7).
@@ -18,9 +19,11 @@ pub struct ContentSecurityPolicy {
     pub tags: Vec<EntityTag>,
     /// Date and time when the content security policy was created.
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub created_at: OffsetDateTime,
     /// Date and time when the content security policy was last updated.
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub updated_at: OffsetDateTime,
 }
 
