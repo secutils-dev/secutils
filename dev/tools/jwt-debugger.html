@@ -231,6 +231,10 @@ main { flex: 1; padding: 24px 16px 48px; max-width: 1200px; margin: 0 auto; widt
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+/* Splitter */
+.splitter { cursor: col-resize; background: transparent; position: relative; z-index: 1; }
+.splitter::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: var(--border); transition: width .15s, background .15s; transform: translateX(-50%); }
+.splitter:hover::after, .splitter.active::after { width: 3px; background: var(--primary); border-radius: 2px; }
 /* Responsive */
 @media (max-width: 640px) {
     header { padding: 0 12px; }
@@ -274,7 +278,7 @@ main { flex: 1; padding: 24px 16px 48px; max-width: 1200px; margin: 0 auto; widt
             </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+        <div class="split-grid" style="display: grid; grid-template-columns: 1fr 12px 1fr; gap: 0;">
             <!-- Encoded Panel -->
             <div style="display: flex; flex-direction: column;">
                 <h2 style="font-size: 1rem; font-weight: 600; margin-bottom: 8px;">Encoded</h2>
@@ -288,6 +292,8 @@ main { flex: 1; padding: 24px 16px 48px; max-width: 1200px; margin: 0 auto; widt
                     </div>
                 </div>
             </div>
+
+            <div class="splitter" id="splitter"></div>
 
             <!-- Decoded Panel -->
             <div style="display: flex; flex-direction: column; gap: 16px;">
@@ -546,12 +552,45 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     initialize();
+
+    // Resizable splitter
+    (function() {
+        var splitter = document.getElementById('splitter');
+        var grid = splitter.parentElement;
+        var dragging = false;
+
+        splitter.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            dragging = true;
+            splitter.classList.add('active');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!dragging) return;
+            var rect = grid.getBoundingClientRect();
+            var offset = e.clientX - rect.left;
+            var pct = (offset / rect.width) * 100;
+            pct = Math.max(15, Math.min(85, pct));
+            grid.style.gridTemplateColumns = pct + '% 12px ' + (100 - pct) + '%';
+        });
+
+        document.addEventListener('mouseup', function() {
+            if (!dragging) return;
+            dragging = false;
+            splitter.classList.remove('active');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        });
+    })();
 });
 </script>
 <!-- Responsive grid override for mobile -->
 <style>
 @media (max-width: 1023px) {
-    main > div:last-child { grid-template-columns: 1fr !important; }
+    main > .split-grid { grid-template-columns: 1fr !important; }
+    main > .split-grid .splitter { display: none; }
 }
 </style>
 </body>

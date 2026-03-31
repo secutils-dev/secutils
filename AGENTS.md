@@ -715,6 +715,33 @@ E2E tests intercept API calls. Search for the old URL pattern across `e2e/tests/
 API test files live in `dev/api/`. Update or create a `.http` file for the new endpoints
 (e.g. `dev/api/utils/certificates_private_keys.http`).
 
+### 10. Update API documentation
+
+When introducing a **new API group** (i.e. a new `tags` value in the `#[openapi]` macro):
+
+1. **OpenAPI tag description** — add an entry to the `tags(...)` list in the `#[openapi]`
+   macro in `src/server/handlers.rs`:
+
+   ```rust
+   tags(
+       // ... existing tags ...
+       (name = "new_feature", description = "Short description of the API group."),
+   )
+   ```
+
+2. **Docs API reference page** — add a row to the "Available API groups" table in
+   `components/secutils-docs/docs/project/api.md`:
+
+   ```markdown
+   | `new_feature` | `/api/new_feature/...` | Short description |
+   ```
+
+3. **Rebuild docs** — run `npm run build` in `components/secutils-docs/` and verify the new
+   entry appears in both the rendered page and `build/llms.txt` (used by LLM crawlers).
+
+When modifying an **existing** API group (renaming routes, changing base paths), update the
+same two locations to keep them in sync.
+
 ### Verification checklist
 
 After all changes, run:
@@ -735,13 +762,14 @@ All three must pass cleanly before the change is considered complete.
 ### Quick reference: file locations
 
 ```
-src/server/handlers.rs                   # OpenAPI macro (paths + schemas), snapshot tests
-src/server/handlers/{feature}.rs         # Handler functions, path params, sync-guard tests
-src/server.rs                            # .service() registration
-src/utils/{feature}/.../model.rs         # Response model with ToSchema
-src/utils/{feature}/api_ext/*_params.rs  # Request body types with ToSchema + example
-src/main.rs                              # schema_example::<T>() test helper
-components/secutils-webui/src/           # Web UI API calls
-e2e/tests/                               # E2E tests
-dev/api/                                 # .http dev files
+src/server/handlers.rs                           # OpenAPI macro (paths + schemas + tags), snapshot tests
+src/server/handlers/{feature}.rs                 # Handler functions, path params, sync-guard tests
+src/server.rs                                    # .service() registration
+src/utils/{feature}/.../model.rs                 # Response model with ToSchema
+src/utils/{feature}/api_ext/*_params.rs          # Request body types with ToSchema + example
+src/main.rs                                      # schema_example::<T>() test helper
+components/secutils-webui/src/                   # Web UI API calls
+components/secutils-docs/docs/project/api.md     # API reference page (linked from llms.txt)
+e2e/tests/                                       # E2E tests
+dev/api/                                         # .http dev files
 ```

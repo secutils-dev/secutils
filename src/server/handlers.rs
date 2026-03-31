@@ -72,10 +72,31 @@ pub(crate) async fn resolve_shared_user(
 #[openapi(
     info(
         title = "Secutils",
+        description = "An open-source, versatile, yet simple security toolbox for engineers and researchers.",
+        contact(name = "Aleh Zasypkin", email = "dev@secutils.dev"),
         license(
             name = "AGPL-3.0",
             url = "https://github.com/secutils-dev/secutils/blob/main/LICENSE"
         )
+    ),
+    external_docs(
+        url = "https://secutils.dev/docs",
+        description = "Secutils.dev documentation"
+    ),
+    tags(
+        (name = "webhooks", description = "Create HTTP responders that capture and replay incoming requests."),
+        (name = "certificates", description = "Generate X.509 certificate templates and manage private keys."),
+        (name = "web_security", description = "Build, parse, and serialize Content Security Policy headers."),
+        (name = "tags", description = "Organize resources with colored tags."),
+        (name = "secrets", description = "Store encrypted secrets for use in responder and tracker scripts."),
+        (name = "scripts", description = "Manage reusable JavaScript scripts for responders and trackers."),
+        (name = "settings", description = "Read and update user preferences."),
+        (name = "data", description = "Export and import user data."),
+        (name = "status", description = "Application status and health."),
+        (name = "users", description = "User registration, lookup, and subscription management."),
+        (name = "scheduler", description = "Schedule parsing utilities."),
+        (name = "search", description = "Full-text search across user resources."),
+        (name = "messages", description = "Send messages and notifications.")
     ),
     paths(
         // Tags
@@ -971,5 +992,58 @@ mod tests {
           "name": "renamed-responder"
         }
         "###);
+    }
+
+    #[test]
+    fn openapi_spec_has_external_docs() {
+        let spec = spec();
+        assert_eq!(
+            spec["externalDocs"]["url"],
+            "https://secutils.dev/docs"
+        );
+        assert_eq!(
+            spec["externalDocs"]["description"],
+            "Secutils.dev documentation"
+        );
+    }
+
+    #[test]
+    fn openapi_spec_has_tag_descriptions() {
+        let spec = spec();
+        let tags = spec["tags"].as_array().unwrap();
+        let tag_map: std::collections::HashMap<&str, &str> = tags
+            .iter()
+            .map(|t| {
+                (
+                    t["name"].as_str().unwrap(),
+                    t["description"].as_str().unwrap(),
+                )
+            })
+            .collect();
+
+        assert_eq!(
+            tag_map["webhooks"],
+            "Create HTTP responders that capture and replay incoming requests."
+        );
+        assert_eq!(
+            tag_map["certificates"],
+            "Generate X.509 certificate templates and manage private keys."
+        );
+        assert_eq!(
+            tag_map["web_security"],
+            "Build, parse, and serialize Content Security Policy headers."
+        );
+        assert_eq!(
+            tag_map["tags"],
+            "Organize resources with colored tags."
+        );
+        assert_eq!(
+            tag_map["secrets"],
+            "Store encrypted secrets for use in responder and tracker scripts."
+        );
+        assert_eq!(
+            tag_map["scripts"],
+            "Manage reusable JavaScript scripts for responders and trackers."
+        );
     }
 }
