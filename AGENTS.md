@@ -481,3 +481,267 @@ Key rules for MDX:
   (e.g. `` \`...\` ``, `\${...}`).
 - Do **not** nest JSX components like `<CodeBlock>` inside markdown numbered lists - the
   MDX parser cannot handle it. Use `<Steps>` or bold-text step numbers instead.
+
+---
+
+## Adding a new HTTP route
+
+### Overview
+
+Every public HTTP endpoint follows a layered pattern: an **actix handler** annotated with
+**utoipa** OpenAPI metadata, backed by **typed request/response models** with `ToSchema`
+derives, registered in the **server** and the **OpenAPI spec**, and covered by **sync-guard
+tests** that keep schema examples honest.
+
+This section walks through every file that must be touched.
+
+### 1. Create or update the response model
+
+Models live in their feature directory (e.g. `src/utils/certificates/private_keys/private_key.rs`).
+Add `ToSchema` to the derive list and annotate any fields that use custom serde serializers:
+
+```rust
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PrivateKey {
+    pub id: Uuid,
+    pub name: String,
+    // OffsetDateTime serialises as a unix timestamp via `time::serde::timestamp`,
+    // but utoipa cannot infer that — override with `value_type`.
+    #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
+    pub created_at: OffsetDateTime,
+}
+```
+
+Key rules:
+- `#[schema(value_type = i64)]` is required on every `OffsetDateTime` field serialized with
+  `time::serde::timestamp`. Without it the OpenAPI schema emits an object instead of an integer.
+- `#[serde(rename_all = "camelCase")]` is the project-wide convention for JSON field names.
+- Fields hidden from the API (internal-only) use `#[serde(skip)]` or
+  `#[serde(skip_serializing_if = "...")]`.
+- If a handler returns a wrapper around multiple types, create a dedicated response struct
+  in the handler file (see `CertificateTemplateGetResponse` in `certificate_templates.rs`).
+
+### 2. Create request body params types (if needed)
+
+Params types live in `src/utils/{feature}/api_ext/{name}_{verb}_params.rs`. Each file
+defines one struct:
+
+```rust
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "camelCase")]
+#[schema(example = json!({"keyName": "my-key", "alg": {"keyType": "ed25519"}, "tagIds": []}))]
+pub struct PrivateKeysCreateParams {
+    pub key_name: String,
+    pub alg: PrivateKeyAlgorithm,
+    pub passphrase: Option<String>,
+    #[serde(default)]
+    pub tag_ids: Vec<Uuid>,
+}
+```
+
+Key rules:
+- **Every params type must have a `#[schema(example = json!(...))]` attribute.** The example
+  must be realistic (non-empty names, valid enum variants) and must actually deserialize into
+  the struct - this is enforced by sync-guard tests (see step 6).
+- Re-export the type from the feature's `{feature}.rs` so it's importable as
+  `crate::utils::{feature}::ParamsType`.
+
+### 3. Create the handler file
+
+Handlers live in `src/server/handlers/{feature}.rs`. A handler file contains:
+
+#### Path parameter struct (if the route has path variables)
+
+```rust
+#[derive(serde::Deserialize, IntoParams)]
+pub struct KeyIdPath {
+    pub key_id: Uuid,
+}
+```
+
+#### Handler functions
+
+Each function is annotated with both a utoipa doc macro and an actix HTTP-method macro:
+
+```rust
+/// Returns a list of all private keys for the authenticated user.
+#[utoipa::path(
+    tags = ["certificates"],
+    responses(
+        (status = 200, description = "Successfully retrieved private keys.", body = [PrivateKey])
+    )
+)]
+#[get("/api/certificates/private_keys")]
+pub async fn private_keys_list(
+    state: web::Data<AppState>,
+    user: User,
+) -> Result<HttpResponse, Error> {
+    let keys = state.api.certificates().get_private_keys(user.id).await?;
+    Ok(HttpResponse::Ok().json(keys))
+}
+```
+
+Conventions:
+- **Tags** group endpoints in the generated docs (e.g. `"certificates"`, `"webhooks"`).
+- **Route paths** use `/api/{feature}/{resource}` with `{param}` placeholders.
+- **Action endpoints** (non-CRUD operations) use a `_` prefix: `/{id}/_export`, `/_generate`.
+- **HTTP method macros** (`#[get]`, `#[post]`, `#[put]`, `#[delete]`) take the full route
+  path — there are no scopes/prefixes.
+- **Extractors** appear as function parameters: `web::Data<AppState>`, `User` (custom auth
+  extractor), `web::Path<ParamStruct>`, `web::Json<BodyType>`.
+- **Response codes**: `Ok` for reads/updates, `Created` for creates, `NoContent` for deletes.
+- **`params(StructName)`** in the utoipa macro is required when the route has path variables.
+- **`request_body = Type`** is required when the handler accepts a JSON body.
+
+#### Sync-guard tests
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests::schema_example;
+
+    #[test]
+    fn private_keys_create_params_example_is_valid() {
+        let example: PrivateKeysCreateParams =
+            serde_json::from_value(schema_example::<PrivateKeysCreateParams>()).unwrap();
+        assert!(!example.key_name.is_empty());
+    }
+}
+```
+
+- Write one test per params type that has a `#[schema(example = ...)]`.
+- `schema_example::<T>()` (defined in `src/main.rs`) extracts the example JSON from the
+  utoipa-generated schema and returns a `serde_json::Value`.
+- The test deserializes it into the real type - if the example drifts out of sync with the
+  struct definition, the test fails at compile time or at runtime.
+- Add at least one semantic assertion (e.g., name is non-empty) to keep examples realistic.
+
+### 4. Declare the handler module (`src/server/handlers.rs`)
+
+Add the module declaration:
+
+```rust
+pub mod private_keys;
+```
+
+Then register all handler paths and schema types in the `#[openapi(...)]` macro:
+
+```rust
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        // ... existing paths ...
+        private_keys::private_keys_list,
+        private_keys::private_keys_get,
+        private_keys::private_keys_create,
+        private_keys::private_keys_update,
+        private_keys::private_keys_delete,
+        private_keys::private_keys_export,
+    ),
+    components(schemas(
+        // ... existing schemas ...
+        PrivateKey,
+        PrivateKeysCreateParams,
+        PrivateKeysUpdateParams,
+        PrivateKeysExportParams,
+    ))
+)]
+pub struct SecutilsOpenApi;
+```
+
+**Both lists must be updated.** If a handler references a type in `request_body` or `body`
+that is not listed in `components(schemas(...))`, it will silently generate an unresolved
+`$ref` in the OpenAPI spec.
+
+### 5. Register handlers in the server (`src/server.rs`)
+
+Add a `.service()` call for each handler function:
+
+```rust
+.service(handlers::private_keys::private_keys_list)
+.service(handlers::private_keys::private_keys_get)
+.service(handlers::private_keys::private_keys_create)
+.service(handlers::private_keys::private_keys_update)
+.service(handlers::private_keys::private_keys_delete)
+.service(handlers::private_keys::private_keys_export)
+```
+
+Group them by feature, following the order of existing registrations.
+
+### 6. Update OpenAPI snapshot tests (`src/server/handlers.rs`)
+
+The file contains inline `insta::assert_json_snapshot!` tests that pin the OpenAPI output.
+After adding new routes, at minimum these snapshots need updating:
+
+- **`openapi_spec_has_all_paths`** - add the new route paths (sorted alphabetically).
+- **`openapi_spec_has_all_schemas`** - add the new schema names (sorted alphabetically).
+
+Optionally add dedicated snapshot tests for the new endpoints:
+
+```rust
+#[test]
+fn openapi_spec_private_keys_crud_operations() {
+    let spec = spec();
+    let path = &spec["paths"]["/api/certificates/private_keys"];
+    assert_json_snapshot!(path, @r###"..."###);
+}
+```
+
+Run `cargo test` and use `cargo insta review` to accept snapshot updates.
+
+### 7. Update the Web UI
+
+API endpoint URLs are defined in the UI layer (TypeScript/React). When migrating from the
+generic dispatcher or adding new routes:
+
+- Search for the old URL pattern (e.g. `/api/utils/certificates/private_keys`) across
+  `components/secutils-webui/src/` and update to the new pattern.
+- Action endpoints change from `/{id}/action` to `/{id}/_action` (underscore prefix).
+
+### 8. Update E2E tests
+
+E2E tests intercept API calls. Search for the old URL pattern across `e2e/tests/` and
+`e2e/docs/` and update:
+
+- `page.route()` interceptors
+- `page.request.post/get/put/delete()` calls
+- URL assertions
+
+### 9. Update the HTTP dev file
+
+API test files live in `dev/api/`. Update or create a `.http` file for the new endpoints
+(e.g. `dev/api/utils/certificates_private_keys.http`).
+
+### Verification checklist
+
+After all changes, run:
+
+```bash
+# All Rust tests (includes sync-guard tests and snapshot tests)
+cargo test
+
+# Lint check
+cargo clippy
+
+# Web UI build (catches broken imports / URL references)
+npm run build --prefix components/secutils-webui
+```
+
+All three must pass cleanly before the change is considered complete.
+
+### Quick reference: file locations
+
+```
+src/server/handlers.rs                   # OpenAPI macro (paths + schemas), snapshot tests
+src/server/handlers/{feature}.rs         # Handler functions, path params, sync-guard tests
+src/server.rs                            # .service() registration
+src/utils/{feature}/.../model.rs         # Response model with ToSchema
+src/utils/{feature}/api_ext/*_params.rs  # Request body types with ToSchema + example
+src/main.rs                              # schema_example::<T>() test helper
+components/secutils-webui/src/           # Web UI API calls
+e2e/tests/                               # E2E tests
+dev/api/                                 # .http dev files
+```
