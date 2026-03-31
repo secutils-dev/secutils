@@ -33,7 +33,7 @@ test.describe('Home page screenshots', () => {
       ['API Mock', '/api-mock'],
       ['Honeypot', '/honeypot'],
     ]) {
-      const res = await page.request.post('/api/utils/webhooks/responders', {
+      const res = await page.request.post('/api/webhooks/responders', {
         data: {
           name,
           location: { pathType: '=', path },

@@ -52,7 +52,7 @@ test.describe('Web scraping guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
     await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
     await fixEntityTimestamps(page, '**/api/utils/web_scraping/page');
-    await fixEntityTimestamps(page, '**/api/utils/webhooks/responders');
+    await fixEntityTimestamps(page, '**/api/webhooks/responders');
   });
 
   test('Create a page tracker', async ({ page }) => {
@@ -467,7 +467,7 @@ test.describe('Web scraping guide screenshots', () => {
 
     // Helper to create a responder via API (Monaco editor cannot be reliably filled via Playwright).
     async function createResponderViaApi(name: string, path: string, body: string, contentType: string) {
-      const response = await page.request.post('/api/utils/webhooks/responders', {
+      const response = await page.request.post('/api/webhooks/responders', {
         data: {
           name,
           location: { pathType: '=', path },
@@ -531,7 +531,7 @@ test.describe('Web scraping guide screenshots', () => {
 
     // Sort responders by name so the grid order is deterministic across runs.
     // Pinned timestamps make the default creation-time sort non-deterministic.
-    await page.route('**/api/utils/webhooks/responders', async (route) => {
+    await page.route('**/api/webhooks/responders', async (route) => {
       if (route.request().method() !== 'GET') {
         await route.fallback();
         return;

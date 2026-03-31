@@ -878,7 +878,7 @@ test.describe('Data Export and Import', () => {
     expect(keyExportRes.ok()).toBeTruthy();
 
     // ── Step 7f: Validate responder config ─────────────────────────────
-    const respondersRes = await page.request.get('/api/utils/webhooks/responders');
+    const respondersRes = await page.request.get('/api/webhooks/responders');
     const responders = await respondersRes.json();
     const importedResponder = responders.find((r: { name: string }) => r.name === 'import-test-responder');
     expect(importedResponder).toBeDefined();
@@ -903,7 +903,7 @@ test.describe('Data Export and Import', () => {
 
     // Validate that the no-history responder has empty history.
     const noHistoryRes = await page.request.get(
-      `/api/utils/webhooks/responders/${encodeURIComponent(importedResponderNoHistory.id)}/history`,
+      `/api/webhooks/responders/${encodeURIComponent(importedResponderNoHistory.id)}/_history`,
     );
     expect(noHistoryRes.ok()).toBeTruthy();
     const noHistory = await noHistoryRes.json();
@@ -911,7 +911,7 @@ test.describe('Data Export and Import', () => {
 
     // ── Step 7g: Validate imported responder history ────────────────────
     const historyRes = await page.request.get(
-      `/api/utils/webhooks/responders/${encodeURIComponent(importedResponder.id)}/history`,
+      `/api/webhooks/responders/${encodeURIComponent(importedResponder.id)}/_history`,
     );
     expect(historyRes.ok()).toBeTruthy();
     const history = await historyRes.json();
@@ -932,7 +932,7 @@ test.describe('Data Export and Import', () => {
 
     // Re-fetch history: should now have 2 entries.
     const historyAfterRes = await page.request.get(
-      `/api/utils/webhooks/responders/${encodeURIComponent(importedResponder.id)}/history`,
+      `/api/webhooks/responders/${encodeURIComponent(importedResponder.id)}/_history`,
     );
     const historyAfter = await historyAfterRes.json();
     expect(historyAfter).toHaveLength(2);
@@ -1214,7 +1214,7 @@ test.describe('Data Export and Import', () => {
     expect(scriptRes.ok()).toBeTruthy();
 
     // Responder that will conflict by location+method only (different name).
-    const responderRes = await page.request.post('/api/utils/webhooks/responders', {
+    const responderRes = await page.request.post('/api/webhooks/responders', {
       data: {
         name: 'existing-resp',
         location: { pathType: '=', path: '/conflict-path' },
@@ -1227,7 +1227,7 @@ test.describe('Data Export and Import', () => {
 
     // Responder that will conflict by BOTH name AND location+method (the typical
     // "import from your own account" scenario).
-    const responderBothRes = await page.request.post('/api/utils/webhooks/responders', {
+    const responderBothRes = await page.request.post('/api/webhooks/responders', {
       data: {
         name: 'same-name-resp',
         location: { pathType: '=', path: '/both-conflict' },

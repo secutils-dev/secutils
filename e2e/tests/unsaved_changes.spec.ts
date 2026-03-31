@@ -645,7 +645,7 @@ test.describe('Unsaved changes confirmation', () => {
 
   test.describe('Responder flyout - save button state', () => {
     test('edit - save button is disabled when no changes were made', async ({ page }) => {
-      const res = await page.request.post('/api/utils/webhooks/responders', {
+      const res = await page.request.post('/api/webhooks/responders', {
         data: {
           name: 'existing-responder',
           location: { pathType: '=', path: '/test' },
@@ -673,7 +673,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('edit - save button is enabled after changing name', async ({ page }) => {
-      const res = await page.request.post('/api/utils/webhooks/responders', {
+      const res = await page.request.post('/api/webhooks/responders', {
         data: {
           name: 'existing-responder',
           location: { pathType: '=', path: '/test' },
@@ -744,7 +744,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('edit - closes without confirmation when no changes were made', async ({ page }) => {
-      const res = await page.request.post('/api/utils/webhooks/responders', {
+      const res = await page.request.post('/api/webhooks/responders', {
         data: {
           name: 'existing-responder',
           location: { pathType: '=', path: '/test' },
@@ -772,7 +772,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('edit - shows confirmation when closing with unsaved changes', async ({ page }) => {
-      const res = await page.request.post('/api/utils/webhooks/responders', {
+      const res = await page.request.post('/api/webhooks/responders', {
         data: {
           name: 'existing-responder',
           location: { pathType: '=', path: '/test' },
@@ -811,7 +811,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('duplicate - shows confirmation when closing', async ({ page }) => {
-      const res = await page.request.post('/api/utils/webhooks/responders', {
+      const res = await page.request.post('/api/webhooks/responders', {
         data: {
           name: 'existing-responder',
           location: { pathType: '=', path: '/test' },

@@ -6,7 +6,7 @@ use crate::{
     users::{User, UserShare},
     utils::{
         UtilsAction, UtilsActionParams, UtilsResource, UtilsResourceOperation,
-        web_scraping::web_scraping_handle_action, webhooks::webhooks_handle_action,
+        web_scraping::web_scraping_handle_action,
     },
 };
 use actix_web::{HttpRequest, HttpResponse, http::Method, web};
@@ -144,9 +144,6 @@ pub async fn utils_action(
     let user_id = user.id;
     let params = body_params.map(|body| UtilsActionParams::json(body.into_inner()));
     let action_result = match resource {
-        UtilsResource::WebhooksResponders => {
-            webhooks_handle_action(user, &state.api, action, resource, params).await
-        }
         UtilsResource::WebScrapingPage | UtilsResource::WebScrapingApi => {
             web_scraping_handle_action(user, &state.api, action, resource, params).await
         }
@@ -184,7 +181,7 @@ mod tests {
         users::{SharedResource, UserShare, UserShareId},
         utils::{UtilsAction, UtilsResource, UtilsResourceOperation},
     };
-    use actix_web::{body::MessageBody, http::Method, test::TestRequest, web};
+    use actix_web::{http::Method, test::TestRequest, web};
     use insta::assert_debug_snapshot;
     use serde_json::json;
     use sqlx::PgPool;
@@ -234,14 +231,14 @@ mod tests {
             )
             .is_none()
         );
-        assert_eq!(
+        assert!(
             extract_resource(
                 &TestRequest::with_uri("https://secutils.dev/api/utils")
                     .param("area", "webhooks")
                     .param("resource", "responders")
                     .to_http_request(),
-            ),
-            Some(UtilsResource::WebhooksResponders)
+            )
+            .is_none()
         );
         assert_eq!(
             extract_resource(
@@ -276,7 +273,6 @@ mod tests {
     fn ignores_invalid_actions() {
         let resource_id = uuid!("00000000-0000-0000-0000-000000000000");
         for resource in [
-            UtilsResource::WebhooksResponders,
             UtilsResource::WebScrapingPage,
             UtilsResource::WebScrapingApi,
         ] {
@@ -307,7 +303,6 @@ mod tests {
     fn can_extract_common_actions() {
         let resource_id = uuid!("00000000-0000-0000-0000-000000000000");
         for resource in [
-            UtilsResource::WebhooksResponders,
             UtilsResource::WebScrapingPage,
             UtilsResource::WebScrapingApi,
         ] {
@@ -388,56 +383,6 @@ mod tests {
                 Some(UtilsAction::Unshare { resource_id })
             );
         }
-    }
-
-    #[test]
-    fn can_extract_webhooks_responders_action() {
-        let resource = UtilsResource::WebhooksResponders;
-        let resource_id = uuid!("00000000-0000-0000-0000-000000000000");
-
-        assert_eq!(
-            extract_action(
-                &TestRequest::with_uri("https://secutils.dev/api/utils")
-                    .method(Method::POST)
-                    .param("resource_id", resource_id.to_string())
-                    .param("resource_operation", "history")
-                    .to_http_request(),
-                &resource,
-            ),
-            Some(UtilsAction::Execute {
-                resource_id: Some(resource_id),
-                operation: UtilsResourceOperation::WebhooksRespondersGetHistory
-            })
-        );
-
-        assert_eq!(
-            extract_action(
-                &TestRequest::with_uri("https://secutils.dev/api/utils")
-                    .method(Method::POST)
-                    .param("resource_id", resource_id.to_string())
-                    .param("resource_operation", "clear")
-                    .to_http_request(),
-                &resource,
-            ),
-            Some(UtilsAction::Execute {
-                resource_id: Some(resource_id),
-                operation: UtilsResourceOperation::WebhooksRespondersClearHistory
-            })
-        );
-
-        assert_eq!(
-            extract_action(
-                &TestRequest::with_uri("https://secutils.dev/api/utils")
-                    .method(Method::GET)
-                    .param("resource_id", "stats")
-                    .to_http_request(),
-                &resource,
-            ),
-            Some(UtilsAction::Execute {
-                resource_id: None,
-                operation: UtilsResourceOperation::WebhooksRespondersGetStats
-            })
-        );
     }
 
     #[test]
@@ -543,7 +488,7 @@ mod tests {
     #[sqlx::test]
     async fn can_extract_user(pool: PgPool) -> anyhow::Result<()> {
         let resource_id = uuid!("00000000-0000-0000-0000-000000000001");
-        let resource = UtilsResource::WebhooksResponders;
+        let resource = UtilsResource::WebScrapingPage;
         let action = UtilsAction::Get { resource_id };
 
         let api = mock_api(pool).await?;
@@ -704,8 +649,8 @@ mod tests {
 
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")
             .method(Method::DELETE)
-            .param("area", "webhooks")
-            .param("resource", "responders")
+            .param("area", "web_scraping")
+            .param("resource", "page")
             .to_http_request();
         assert_debug_snapshot!(
             utils_action(web::Data::new(app_state), Some(user), None, request, None).await,
@@ -735,8 +680,8 @@ mod tests {
 
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")
             .method(Method::POST)
-            .param("area", "webhooks")
-            .param("resource", "responders")
+            .param("area", "web_scraping")
+            .param("resource", "page")
             .to_http_request();
         assert_debug_snapshot!(
             utils_action(web::Data::new(app_state), Some(user), None, request, None).await,
@@ -763,8 +708,8 @@ mod tests {
 
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")
             .method(Method::GET)
-            .param("area", "webhooks")
-            .param("resource", "responders")
+            .param("area", "web_scraping")
+            .param("resource", "page")
             .to_http_request();
         assert_debug_snapshot!(
             utils_action(web::Data::new(app_state), None, None, request, None).await,
@@ -787,8 +732,8 @@ mod tests {
 
         let request = TestRequest::with_uri("https://secutils.dev/api/utils")
             .method(Method::POST)
-            .param("area", "webhooks")
-            .param("resource", "responders")
+            .param("area", "web_scraping")
+            .param("resource", "page")
             .to_http_request();
         let body = web::Json(json!({}));
         assert_debug_snapshot!(
@@ -798,115 +743,6 @@ mod tests {
             Error {
                 context: "Invalid action parameters.",
                 source: Error("missing field `name`", line: 0, column: 0),
-            },
-        )
-        "###
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn can_return_json_value(pool: PgPool) -> anyhow::Result<()> {
-        let app_state = mock_app_state(pool).await?;
-
-        let user = mock_user()?;
-        app_state.api.db.upsert_user(&user).await?;
-
-        let request = TestRequest::with_uri("https://secutils.dev/api/utils")
-            .method(Method::POST)
-            .param("area", "webhooks")
-            .param("resource", "responders")
-            .to_http_request();
-        let body = web::Json(json!({
-            "name": "res",
-            "location": { "path": "/", "pathType": "=" },
-            "method": "GET",
-            "enabled": true,
-            "settings": { "statusCode": 200 }
-        }));
-        let response = utils_action(
-            web::Data::new(app_state),
-            Some(user),
-            None,
-            request,
-            Some(body),
-        )
-        .await?;
-        assert_eq!(response.status(), 200);
-        assert_debug_snapshot!(response.headers(), @r###"
-        HeaderMap {
-            inner: {
-                "content-type": Value {
-                    inner: [
-                        "application/json",
-                    ],
-                },
-            },
-        }
-        "###);
-
-        assert!(!response.into_body().try_into_bytes().unwrap().is_empty());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn can_return_no_value(pool: PgPool) -> anyhow::Result<()> {
-        let app_state = mock_app_state(pool).await?;
-
-        let user = mock_user()?;
-        app_state.api.db.upsert_user(&user).await?;
-
-        let responder = app_state
-            .api
-            .webhooks(&user)
-            .create_responder(crate::utils::webhooks::RespondersCreateParams {
-                name: "res".to_string(),
-                location: crate::utils::webhooks::ResponderLocation {
-                    path_type: crate::utils::webhooks::ResponderPathType::Exact,
-                    path: "/".to_string(),
-                    subdomain_prefix: None,
-                },
-                method: crate::utils::webhooks::ResponderMethod::Get,
-                enabled: true,
-                settings: crate::utils::webhooks::ResponderSettings {
-                    requests_to_track: 0,
-                    status_code: 200,
-                    body: None,
-                    headers: None,
-                    script: None,
-                    secrets: Default::default(),
-                },
-                tag_ids: vec![],
-            })
-            .await?;
-
-        let request = TestRequest::with_uri("https://secutils.dev/api/utils")
-            .method(Method::PUT)
-            .param("area", "webhooks")
-            .param("resource", "responders")
-            .param("resource_id", responder.id.to_string())
-            .to_http_request();
-        let body = web::Json(json!({ "name": "res-new", "enabled": false }));
-        assert_debug_snapshot!(
-            utils_action(
-                web::Data::new(app_state),
-                Some(user),
-                None,
-                request,
-                Some(body),
-            )
-            .await,
-            @r###"
-        Ok(
-            HttpResponse {
-                error: None,
-                res: 
-                Response HTTP/1.1 204 No Content
-                  headers:
-                  body: Sized(0)
-                ,
             },
         )
         "###

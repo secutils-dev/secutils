@@ -172,6 +172,14 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
             .service(handlers::private_keys::private_keys_update)
             .service(handlers::private_keys::private_keys_delete)
             .service(handlers::private_keys::private_keys_export)
+            // Webhooks responders
+            .service(handlers::responders::responders_list)
+            .service(handlers::responders::responders_create)
+            .service(handlers::responders::responders_update)
+            .service(handlers::responders::responders_delete)
+            .service(handlers::responders::responders_get_history)
+            .service(handlers::responders::responders_clear_history)
+            .service(handlers::responders::responders_get_stats)
             // Content security policies
             .service(handlers::content_security_policies::csp_list)
             .service(handlers::content_security_policies::csp_get)

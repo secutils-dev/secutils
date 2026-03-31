@@ -5,9 +5,6 @@ use actix_web::http::Method;
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum UtilsResourceOperation {
-    WebhooksRespondersGetHistory,
-    WebhooksRespondersClearHistory,
-    WebhooksRespondersGetStats,
     WebScrapingPageGetHistory,
     WebScrapingPageClearHistory,
     WebScrapingPageGetLogs,
@@ -44,17 +41,6 @@ impl TryFrom<(&UtilsResource, &str, &Method)> for UtilsResourceOperation {
         (resource, operation, method): (&UtilsResource, &str, &Method),
     ) -> Result<Self, Self::Error> {
         match resource {
-            // Webhooks custom actions.
-            UtilsResource::WebhooksResponders if operation == "history" => {
-                Ok(UtilsResourceOperation::WebhooksRespondersGetHistory)
-            }
-            UtilsResource::WebhooksResponders if operation == "clear" => {
-                Ok(UtilsResourceOperation::WebhooksRespondersClearHistory)
-            }
-            UtilsResource::WebhooksResponders if operation == "stats" && method == Method::GET => {
-                Ok(UtilsResourceOperation::WebhooksRespondersGetStats)
-            }
-
             // Web scraping custom actions.
             UtilsResource::WebScrapingPage if operation == "history" => {
                 Ok(UtilsResourceOperation::WebScrapingPageGetHistory)
@@ -113,10 +99,6 @@ mod tests {
 
     #[test]
     fn properly_checks_if_action_requires_params() {
-        assert!(!UtilsResourceOperation::WebhooksRespondersGetHistory.requires_params());
-        assert!(!UtilsResourceOperation::WebhooksRespondersClearHistory.requires_params());
-        assert!(!UtilsResourceOperation::WebhooksRespondersGetStats.requires_params());
-
         assert!(UtilsResourceOperation::WebScrapingPageGetHistory.requires_params());
         assert!(!UtilsResourceOperation::WebScrapingPageClearHistory.requires_params());
         assert!(!UtilsResourceOperation::WebScrapingPageGetLogs.requires_params());
@@ -135,31 +117,6 @@ mod tests {
 
     #[test]
     fn properly_parses_resource_action_operation() {
-        assert_eq!(
-            UtilsResourceOperation::try_from((
-                &UtilsResource::WebhooksResponders,
-                "history",
-                &Method::POST
-            )),
-            Ok(UtilsResourceOperation::WebhooksRespondersGetHistory)
-        );
-        assert_eq!(
-            UtilsResourceOperation::try_from((
-                &UtilsResource::WebhooksResponders,
-                "clear",
-                &Method::POST
-            )),
-            Ok(UtilsResourceOperation::WebhooksRespondersClearHistory)
-        );
-        assert_eq!(
-            UtilsResourceOperation::try_from((
-                &UtilsResource::WebhooksResponders,
-                "stats",
-                &Method::GET
-            )),
-            Ok(UtilsResourceOperation::WebhooksRespondersGetStats)
-        );
-
         assert_eq!(
             UtilsResourceOperation::try_from((
                 &UtilsResource::WebScrapingPage,

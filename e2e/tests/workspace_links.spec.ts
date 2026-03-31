@@ -41,7 +41,7 @@ test.describe('Workspace links', () => {
     const primaryName = 'linkable-responder-primary';
     const secondaryName = 'linkable-responder-secondary';
 
-    const createPrimaryResponderResponse = await page.request.post('/api/utils/webhooks/responders', {
+    const createPrimaryResponderResponse = await page.request.post('/api/webhooks/responders', {
       data: {
         name: primaryName,
         location: { pathType: '=', path: '/linkable-primary' },
@@ -52,7 +52,7 @@ test.describe('Workspace links', () => {
     });
     expect(createPrimaryResponderResponse.ok()).toBeTruthy();
 
-    const createSecondaryResponderResponse = await page.request.post('/api/utils/webhooks/responders', {
+    const createSecondaryResponderResponse = await page.request.post('/api/webhooks/responders', {
       data: {
         name: secondaryName,
         location: { pathType: '=', path: '/linkable-secondary' },
@@ -63,7 +63,7 @@ test.describe('Workspace links', () => {
     });
     expect(createSecondaryResponderResponse.ok()).toBeTruthy();
 
-    const respondersResponse = await page.request.get('/api/utils/webhooks/responders');
+    const respondersResponse = await page.request.get('/api/webhooks/responders');
     expect(respondersResponse.ok()).toBeTruthy();
     const responders = (await respondersResponse.json()) as { id: string; name: string }[];
     const primaryResponder = responders.find((responder) => responder.name === primaryName);

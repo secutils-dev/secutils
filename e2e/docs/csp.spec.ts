@@ -26,7 +26,7 @@ test.describe('CSP guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
     await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
     await fixEntityTimestamps(page, '**/api/web_security/csp');
-    await fixEntityTimestamps(page, '**/api/utils/webhooks/responders');
+    await fixEntityTimestamps(page, '**/api/webhooks/responders');
   });
 
   test('create a content security policy', async ({ page }) => {
@@ -194,7 +194,7 @@ test.describe('CSP guide screenshots', () => {
       '</body>',
       '</html>',
     ].join('\n');
-    const createResponse = await page.request.post('/api/utils/webhooks/responders', {
+    const createResponse = await page.request.post('/api/webhooks/responders', {
       data: {
         name: 'CSP Test',
         location: { pathType: '=', path: '/csp-test' },
@@ -329,10 +329,10 @@ test.describe('CSP guide screenshots', () => {
       '</html>',
     ].join('\n');
 
-    const respondersResponse = await page.request.get('/api/utils/webhooks/responders');
+    const respondersResponse = await page.request.get('/api/webhooks/responders');
     const responders = await respondersResponse.json();
     const cspTestResponder = responders.find((r: { name: string }) => r.name === 'CSP Test');
-    const updateResponse = await page.request.put(`/api/utils/webhooks/responders/${cspTestResponder.id}`, {
+    const updateResponse = await page.request.put(`/api/webhooks/responders/${cspTestResponder.id}`, {
       data: {
         settings: {
           requestsToTrack: 10,
@@ -479,7 +479,7 @@ test.describe('CSP guide screenshots', () => {
       '</body>',
       '</html>',
     ].join('\n');
-    const createEvalResponse = await page.request.post('/api/utils/webhooks/responders', {
+    const createEvalResponse = await page.request.post('/api/webhooks/responders', {
       data: {
         name: 'CSP Eval Test',
         location: { pathType: '=', path: '/csp-eval-test' },

@@ -3,9 +3,10 @@ use std::{
     fmt::{Display, Formatter},
     str::FromStr,
 };
+use utoipa::ToSchema;
 
 /// Describe the responder path type.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 pub enum ResponderPathType {
     /// Responder path is matched only if it is exactly the same as the request path.
     #[serde(rename = "=")]

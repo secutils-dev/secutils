@@ -3,9 +3,8 @@ use crate::{
     error::Error as SecutilsError,
     js_runtime::{JsRuntime, JsRuntimeConfig, ProxyState, wrap_script_with_body_conversion},
     server::app_state::AppState,
-    utils::{
-        UtilsResource,
-        webhooks::{ResponderScriptContext, ResponderScriptResult, RespondersRequestCreateParams},
+    utils::webhooks::{
+        ResponderScriptContext, ResponderScriptResult, RespondersRequestCreateParams,
     },
 };
 use actix_web::{
@@ -178,8 +177,8 @@ pub async fn webhooks_responders(
         }
     };
 
+    let (resource, resource_group) = ("webhooks", "responders");
     if !responder.enabled {
-        let (resource, resource_group) = UtilsResource::WebhooksResponders.into();
         error!(
             user.id = %user.id,
             util.resource = resource,
@@ -195,7 +194,6 @@ pub async fn webhooks_responders(
     // Extract logging context before consuming responder to enrich logs.
     let responder_id = responder.id;
     let responder_name = responder.name;
-    let (resource, resource_group) = UtilsResource::WebhooksResponders.into();
 
     // Configure subscription limits.
     let subscription_config = user

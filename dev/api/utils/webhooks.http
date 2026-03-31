@@ -11,17 +11,17 @@ X-Forwarded-Host: su.{{host}}
 X-Replaced-Path: /a
 
 ### Clear responder requests history.
-POST {{host}}/api/utils/webhooks/responders/018cb666-e66c-755c-8d1e-7ff6cacb8641/clear
+POST {{host}}/api/webhooks/responders/018cb666-e66c-755c-8d1e-7ff6cacb8641/_clear
 Authorization: {{api-credentials}}
 Accept: application/json
 
 ### Get all responders.
-GET {{host}}/api/utils/webhooks/responders
+GET {{host}}/api/webhooks/responders
 Cookie: {{cookie-credentials}}
 Accept: application/json
 
 ### Get all responders stats.
-GET {{host}}/api/utils/webhooks/responders/stats
+GET {{host}}/api/webhooks/responders/_stats
 Cookie: {{cookie-credentials}}
 Accept: application/json
 

@@ -1,9 +1,11 @@
 use crate::utils::webhooks::{ResponderLocation, ResponderMethod, ResponderSettings};
 use serde::Deserialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Default, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"name": "renamed-responder"}))]
 pub struct RespondersUpdateParams {
     pub name: Option<String>,
     /// Location of the responder.

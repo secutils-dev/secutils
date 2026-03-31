@@ -5,7 +5,6 @@ use std::{
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum UtilsResource {
-    WebhooksResponders,
     WebScrapingPage,
     WebScrapingApi,
 }
@@ -19,7 +18,6 @@ impl From<UtilsResource> for (&str, &str) {
 impl From<&UtilsResource> for (&str, &str) {
     fn from(value: &UtilsResource) -> Self {
         match value {
-            UtilsResource::WebhooksResponders => ("webhooks", "responders"),
             UtilsResource::WebScrapingPage => ("web_scraping", "page"),
             UtilsResource::WebScrapingApi => ("web_scraping", "api"),
         }
@@ -31,7 +29,6 @@ impl TryFrom<(&str, &str)> for UtilsResource {
 
     fn try_from((area, resource): (&str, &str)) -> Result<Self, Self::Error> {
         match (area, resource) {
-            ("webhooks", "responders") => Ok(UtilsResource::WebhooksResponders),
             ("web_scraping", "page") => Ok(UtilsResource::WebScrapingPage),
             ("web_scraping", "api") => Ok(UtilsResource::WebScrapingApi),
             _ => Err(()),
@@ -68,10 +65,7 @@ mod tests {
     fn properly_parses_resource() {
         assert!(UtilsResource::try_from(("certificates", "templates")).is_err());
         assert!(UtilsResource::try_from(("certificates", "private_keys")).is_err());
-        assert_eq!(
-            UtilsResource::try_from(("webhooks", "responders")),
-            Ok(UtilsResource::WebhooksResponders)
-        );
+        assert!(UtilsResource::try_from(("webhooks", "responders")).is_err());
         assert_eq!(
             UtilsResource::try_from(("web_scraping", "page")),
             Ok(UtilsResource::WebScrapingPage)
@@ -93,10 +87,6 @@ mod tests {
     #[test]
     fn correctly_converts_into_resource_tuple() {
         type ResourceTuple = (&'static str, &'static str);
-        assert_eq!(
-            ResourceTuple::from(UtilsResource::WebhooksResponders),
-            ("webhooks", "responders")
-        );
         assert_eq!(
             ResourceTuple::from(UtilsResource::WebScrapingPage),
             ("web_scraping", "page")

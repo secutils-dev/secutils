@@ -100,7 +100,7 @@ test.describe('Sample import files', () => {
       // 6. Clean up imported entities.
       const entityApiPaths: Record<string, string> = {
         scripts: '/api/user/scripts',
-        responders: '/api/utils/webhooks/responders',
+        responders: '/api/webhooks/responders',
         certificateTemplates: '/api/certificates/templates',
         privateKeys: '/api/certificates/private_keys',
         contentSecurityPolicies: '/api/web_security/csp',

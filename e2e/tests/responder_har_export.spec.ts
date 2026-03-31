@@ -12,7 +12,7 @@ test.describe('Responder HAR Export', () => {
     const state = await stateResponse.json();
     const userHandle = state.user.handle;
 
-    const createResponse = await page.request.post('/api/utils/webhooks/responders', {
+    const createResponse = await page.request.post('/api/webhooks/responders', {
       data: {
         name: 'har-test',
         location: { pathType: '=', path: '/har-test', subdomainPrefix: null },

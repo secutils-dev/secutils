@@ -81,7 +81,7 @@ test.describe('Tags guide screenshots', () => {
       await page.request.post('/api/user/tags', { data: { name, color } });
     }
 
-    await fixEntityTimestamps(page, '**/api/utils/webhooks/responders');
+    await fixEntityTimestamps(page, '**/api/webhooks/responders');
 
     // Navigate to responders.
     await goto(page, '/ws/webhooks__responders');
@@ -131,7 +131,7 @@ test.describe('Tags guide screenshots', () => {
       ['Prod Webhook', '/prod-hook', [tagIds['production']]],
       ['Staging Mock', '/staging-mock', [tagIds['staging']]],
     ] as const) {
-      const res = await page.request.post('/api/utils/webhooks/responders', {
+      const res = await page.request.post('/api/webhooks/responders', {
         data: {
           name,
           location: { pathType: '=', path },
@@ -144,7 +144,7 @@ test.describe('Tags guide screenshots', () => {
       expect(res.ok()).toBeTruthy();
     }
 
-    await fixEntityTimestamps(page, '**/api/utils/webhooks/responders');
+    await fixEntityTimestamps(page, '**/api/webhooks/responders');
 
     // Navigate to responders and sort by Name for a deterministic order.
     await goto(page, '/ws/webhooks__responders');

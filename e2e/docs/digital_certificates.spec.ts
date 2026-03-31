@@ -138,7 +138,7 @@ test.describe('Certificate templates guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
     await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
     await fixCertificateTemplateValidityDates(page);
-    await fixEntityTimestamps(page, '**/api/utils/webhooks/responders');
+    await fixEntityTimestamps(page, '**/api/webhooks/responders');
   });
 
   test('Generate a key pair for a HTTPS server', async ({ page }) => {
@@ -332,7 +332,7 @@ test.describe('Certificate templates guide screenshots', () => {
       '</body>',
       '</html>',
     ].join('\n');
-    const createResponderResponse = await page.request.post('/api/utils/webhooks/responders', {
+    const createResponderResponse = await page.request.post('/api/webhooks/responders', {
       data: {
         name: 'Subtle Crypto',
         location: { pathType: '=', path: '/subtle-crypto' },

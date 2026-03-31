@@ -371,7 +371,7 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
 
     const [requestPromise, successMessage, errorMessage] = !newResponder
       ? [
-          fetch(getApiUrl(`/api/utils/webhooks/responders/${responder.id}`), {
+          fetch(getApiUrl(`/api/webhooks/responders/${responder.id}`), {
             ...getApiRequestConfig('PUT'),
             body: JSON.stringify(responderToUpdate),
           }),
@@ -379,7 +379,7 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
           `Unable to update "${name}" responder, please try again later`,
         ]
       : [
-          fetch(getApiUrl('/api/utils/webhooks/responders'), {
+          fetch(getApiUrl('/api/webhooks/responders'), {
             ...getApiRequestConfig('POST'),
             body: JSON.stringify(responderToUpdate),
           }),

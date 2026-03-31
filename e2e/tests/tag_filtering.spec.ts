@@ -29,7 +29,7 @@ test.describe('Tag filtering', () => {
       ['R-only-alpha', '/r-a', [tagIds['alpha']]],
       ['R-only-gamma', '/r-g', [tagIds['gamma']]],
     ] as const) {
-      const res = await page.request.post('/api/utils/webhooks/responders', {
+      const res = await page.request.post('/api/webhooks/responders', {
         data: {
           name,
           location: { pathType: '=', path },
@@ -82,7 +82,7 @@ test.describe('Tag filtering', () => {
       ['R-only-beta', '/r-b', [tagIds['beta']]],
       ['R-only-gamma', '/r-g', [tagIds['gamma']]],
     ] as const) {
-      const res = await page.request.post('/api/utils/webhooks/responders', {
+      const res = await page.request.post('/api/webhooks/responders', {
         data: {
           name,
           location: { pathType: '=', path },
@@ -118,7 +118,7 @@ test.describe('Tag filtering', () => {
       ['R-only-alpha', '/r-a', [tagIds['alpha']]],
       ['R-only-gamma', '/r-g', [tagIds['gamma']]],
     ] as const) {
-      const res = await page.request.post('/api/utils/webhooks/responders', {
+      const res = await page.request.post('/api/webhooks/responders', {
         data: {
           name,
           location: { pathType: '=', path },
@@ -163,7 +163,7 @@ test.describe('Tag filtering', () => {
       ['R-only-alpha', '/r-a', [tagIds['alpha']]],
       ['R-only-gamma', '/r-g', [tagIds['gamma']]],
     ] as const) {
-      const res = await page.request.post('/api/utils/webhooks/responders', {
+      const res = await page.request.post('/api/webhooks/responders', {
         data: {
           name,
           location: { pathType: '=', path },
@@ -201,7 +201,7 @@ test.describe('Tag filtering', () => {
 
   test('page filters use readable URL params and clear filters works across all pages', async ({ page }) => {
     // Create entities for every utility type tagged with "alpha" and "beta".
-    await page.request.post('/api/utils/webhooks/responders', {
+    await page.request.post('/api/webhooks/responders', {
       data: {
         name: 'Resp-alpha',
         location: { pathType: '=', path: '/resp-a' },
@@ -211,7 +211,7 @@ test.describe('Tag filtering', () => {
         tagIds: [tagIds['alpha']],
       },
     });
-    await page.request.post('/api/utils/webhooks/responders', {
+    await page.request.post('/api/webhooks/responders', {
       data: {
         name: 'Resp-beta',
         location: { pathType: '=', path: '/resp-b' },
@@ -379,7 +379,7 @@ test.describe('Tag filtering', () => {
       ['Resp-alpha', '/resp-a', [tagIds['alpha']]],
       ['Resp-gamma', '/resp-g', [tagIds['gamma']]],
     ] as const) {
-      await page.request.post('/api/utils/webhooks/responders', {
+      await page.request.post('/api/webhooks/responders', {
         data: {
           name,
           location: { pathType: '=', path },

@@ -1,9 +1,11 @@
 use crate::utils::webhooks::{ResponderLocation, ResponderMethod, ResponderSettings};
 use serde::Deserialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"name": "my-responder", "location": {"pathType": "=", "path": "/my-hook"}, "method": "ANY", "enabled": true, "settings": {"requestsToTrack": 10, "statusCode": 200}, "tagIds": []}))]
 pub struct RespondersCreateParams {
     pub name: String,
     /// Location of the responder.

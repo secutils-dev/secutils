@@ -4,9 +4,10 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Responder {
     /// Unique responder id (UUIDv7).
@@ -24,11 +25,13 @@ pub struct Responder {
     /// Tags assigned to this responder.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<EntityTag>,
-    /// Date and time when the web page tracker was created.
+    /// Date and time when the responder was created.
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub created_at: OffsetDateTime,
-    /// Date and time when the web page tracker was last updated.
+    /// Date and time when the responder was last updated.
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub updated_at: OffsetDateTime,
 }
 

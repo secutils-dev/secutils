@@ -122,7 +122,7 @@ test.describe('Home page', () => {
       await expect(page.getByText('using 0 of 4 tools')).toBeVisible({ timeout: 15000 });
 
       // Create a responder via API.
-      const createResponse = await page.request.post('/api/utils/webhooks/responders', {
+      const createResponse = await page.request.post('/api/webhooks/responders', {
         data: {
           name: 'Home Page Test',
           location: { pathType: '=', path: '/home-test' },

@@ -2,6 +2,7 @@ pub mod certificate_templates;
 pub mod content_security_policies;
 mod home_summary_get;
 pub mod private_keys;
+pub mod responders;
 pub mod scheduler_parse_schedule;
 pub mod search;
 pub mod security_subscription_update;
@@ -143,6 +144,14 @@ pub(crate) async fn resolve_shared_user(
         content_security_policies::csp_serialize,
         content_security_policies::csp_share,
         content_security_policies::csp_unshare,
+        // Webhooks responders
+        responders::responders_list,
+        responders::responders_create,
+        responders::responders_update,
+        responders::responders_delete,
+        responders::responders_get_history,
+        responders::responders_clear_history,
+        responders::responders_get_stats,
     ),
     components(schemas(
         // Tags
@@ -207,6 +216,16 @@ pub(crate) async fn resolve_shared_user(
         crate::utils::web_security::ContentSecurityPoliciesUpdateParams,
         crate::utils::web_security::ContentSecurityPoliciesSerializeParams,
         content_security_policies::ContentSecurityPolicyGetResponse,
+        // Webhooks responders
+        crate::utils::webhooks::Responder,
+        crate::utils::webhooks::ResponderLocation,
+        crate::utils::webhooks::ResponderMethod,
+        crate::utils::webhooks::ResponderPathType,
+        crate::utils::webhooks::ResponderSettings,
+        crate::utils::webhooks::ResponderStats,
+        crate::utils::webhooks::RespondersCreateParams,
+        crate::utils::webhooks::RespondersUpdateParams,
+        crate::users::SecretsAccess,
         // Shared resources
         crate::users::ClientUserShare,
         crate::users::ClientSharedResource,
@@ -292,7 +311,12 @@ mod tests {
           "/api/web_security/csp/{policy_id}",
           "/api/web_security/csp/{policy_id}/_serialize",
           "/api/web_security/csp/{policy_id}/_share",
-          "/api/web_security/csp/{policy_id}/_unshare"
+          "/api/web_security/csp/{policy_id}/_unshare",
+          "/api/webhooks/responders",
+          "/api/webhooks/responders/_stats",
+          "/api/webhooks/responders/{responder_id}",
+          "/api/webhooks/responders/{responder_id}/_clear",
+          "/api/webhooks/responders/{responder_id}/_history"
         ]
         "###);
     }
@@ -346,6 +370,14 @@ mod tests {
           "PrivateKeysExportParams",
           "PrivateKeysUpdateParams",
           "RemoveParams",
+          "Responder",
+          "ResponderLocation",
+          "ResponderMethod",
+          "ResponderPathType",
+          "ResponderSettings",
+          "ResponderStats",
+          "RespondersCreateParams",
+          "RespondersUpdateParams",
           "SchedulerParseScheduleParams",
           "SchedulerParseScheduleResult",
           "ScriptContext",
@@ -354,6 +386,7 @@ mod tests {
           "SearchParams",
           "SecretCreateParams",
           "SecretUpdateParams",
+          "SecretsAccess",
           "SendMessageParams",
           "SetStatusAPIParams",
           "SignatureAlgorithm",
@@ -861,6 +894,81 @@ mod tests {
         assert_json_snapshot!(spec["components"]["schemas"]["ContentSecurityPoliciesSerializeParams"]["example"], @r###"
         {
           "source": "enforcingHeader"
+        }
+        "###);
+    }
+
+    #[test]
+    fn openapi_spec_responders_crud_operations() {
+        let spec = spec();
+        let path = &spec["paths"]["/api/webhooks/responders"];
+
+        // GET (list)
+        assert_eq!(path["get"]["operationId"], "responders_list");
+        assert_eq!(path["get"]["tags"][0], "webhooks");
+
+        // POST (create)
+        assert_eq!(path["post"]["operationId"], "responders_create");
+        assert_eq!(
+            path["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/RespondersCreateParams"
+        );
+    }
+
+    #[test]
+    fn openapi_spec_responders_action_operations() {
+        let spec = spec();
+
+        // _history
+        let history = &spec["paths"]["/api/webhooks/responders/{responder_id}/_history"]["get"];
+        assert_eq!(history["operationId"], "responders_get_history");
+
+        // _clear
+        let clear = &spec["paths"]["/api/webhooks/responders/{responder_id}/_clear"]["post"];
+        assert_eq!(clear["operationId"], "responders_clear_history");
+
+        // _stats
+        let stats = &spec["paths"]["/api/webhooks/responders/_stats"]["get"];
+        assert_eq!(stats["operationId"], "responders_get_stats");
+    }
+
+    #[test]
+    fn openapi_spec_responder_schema() {
+        let spec = spec();
+        let schema = &spec["components"]["schemas"]["Responder"];
+        let props = schema["properties"].as_object().unwrap();
+        assert!(props.contains_key("id"));
+        assert!(props.contains_key("name"));
+        assert!(props.contains_key("location"));
+        assert!(props.contains_key("method"));
+        assert!(props.contains_key("enabled"));
+        assert!(props.contains_key("settings"));
+        assert!(props.contains_key("createdAt"));
+        assert_eq!(props["createdAt"]["type"], "integer");
+    }
+
+    #[test]
+    fn openapi_spec_responders_create_params_has_example() {
+        let spec = spec();
+        let example = &spec["components"]["schemas"]["RespondersCreateParams"]["example"];
+        assert_eq!(example["name"], "my-responder");
+        assert_eq!(example["method"], "ANY");
+        assert_eq!(example["enabled"], true);
+        assert_eq!(example["location"]["pathType"], "=");
+        assert_eq!(example["location"]["path"], "/my-hook");
+        assert!(
+            example["settings"]["requestsToTrack"].is_number()
+                || example["settings"]["requestsToTrack"].is_object()
+        );
+        assert!(example["tagIds"].is_array());
+    }
+
+    #[test]
+    fn openapi_spec_responders_update_params_has_example() {
+        let spec = spec();
+        assert_json_snapshot!(spec["components"]["schemas"]["RespondersUpdateParams"]["example"], @r###"
+        {
+          "name": "renamed-responder"
         }
         "###);
     }

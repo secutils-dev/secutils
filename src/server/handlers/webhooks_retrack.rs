@@ -234,21 +234,6 @@ pub async fn webhooks_retrack(
                 diff,
             })
         }
-        _ => {
-            error!(
-                user.id = %user.id,
-                util.resource = resource,
-                util.resource_group = resource_group,
-                util.resource_id = %resource_id,
-                retrack.id = %retrack_tracker.id,
-                retrack.name = retrack_tracker.name,
-                retrack.tags = ?retrack_tracker.tags,
-                "Webhook is not supported for this resource."
-            );
-            return Ok(HttpResponse::BadRequest().body(format!(
-                "Webhook is not supported for the resource: {util_resource}"
-            )));
-        }
     };
 
     let notification_schedule_result = state
@@ -298,8 +283,8 @@ mod tests {
             web_scraping::tests::{MockApiTrackerBuilder, MockPageTrackerBuilder},
         },
     };
-    use actix_web::{body::MessageBody, web};
-    use bytes::Bytes;
+    use actix_web::web;
+
     use futures::StreamExt;
     use httpmock::MockServer;
     use insta::assert_debug_snapshot;
@@ -653,10 +638,7 @@ mod tests {
         let mut retrack_tracker = mock_retrack_tracker()?;
         retrack_tracker.tags = prepare_tags(&[
             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-            format!(
-                "{RETRACK_RESOURCE_TAG}:{}",
-                UtilsResource::WebhooksResponders
-            ),
+            format!("{RETRACK_RESOURCE_TAG}:{}", "webhooks__responders"),
             format!(
                 "{RETRACK_RESOURCE_ID_TAG}:{}",
                 uuid!("00000000-0000-0000-0000-000000000001")
@@ -688,16 +670,12 @@ mod tests {
         HttpResponse {
             error: None,
             res: 
-            Response HTTP/1.1 400 Bad Request
+            Response HTTP/1.1 404 Not Found
               headers:
-              body: Sized(63)
+              body: Sized(0)
             ,
         }
         "###);
-        assert_eq!(
-            response.into_body().try_into_bytes().unwrap(),
-            Bytes::from_static(b"Webhook is not supported for the resource: webhooks__responders")
-        );
 
         let notifications = app_state
             .api

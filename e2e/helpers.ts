@@ -297,7 +297,7 @@ export async function fixEntityTimestamps(page: Page, urlPattern: string) {
  * `clientAddress` fields with fixed values so screenshots are stable.
  */
 export async function fixResponderRequestFields(page: Page) {
-  await page.route('**/api/utils/webhooks/responders/*/history', async (route) => {
+  await page.route('**/api/webhooks/responders/*/_history', async (route) => {
     const response = await route.fetch();
     if (!response.ok()) {
       await route.fulfill({ response });

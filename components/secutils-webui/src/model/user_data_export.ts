@@ -158,7 +158,7 @@ export function getTags(): Promise<NamedEntity[]> {
 }
 
 export function getResponders(): Promise<NamedEntity[]> {
-  return fetchEntities('/api/utils/webhooks/responders');
+  return fetchEntities('/api/webhooks/responders');
 }
 
 export function getCertificateTemplates(): Promise<NamedEntity[]> {

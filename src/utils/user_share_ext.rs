@@ -36,14 +36,13 @@ mod tests {
 
         // CSP shares are handled by dedicated routes, not the generic dispatcher.
         assert!(
-            !user_share
-                .is_action_authorized(&UtilsAction::List, &UtilsResource::WebhooksResponders)
+            !user_share.is_action_authorized(&UtilsAction::List, &UtilsResource::WebScrapingPage)
         );
         assert!(!user_share.is_action_authorized(
             &UtilsAction::Get {
                 resource_id: policy_id,
             },
-            &UtilsResource::WebhooksResponders
+            &UtilsResource::WebScrapingPage
         ));
     }
 
@@ -58,8 +57,7 @@ mod tests {
         };
 
         assert!(
-            !user_share
-                .is_action_authorized(&UtilsAction::List, &UtilsResource::WebhooksResponders)
+            !user_share.is_action_authorized(&UtilsAction::List, &UtilsResource::WebScrapingPage)
         );
     }
 }

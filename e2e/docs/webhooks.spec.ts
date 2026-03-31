@@ -18,7 +18,7 @@ const IMG_DIR = join(DOCS_IMG_DIR, 'webhooks');
 test.describe('Webhooks guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
     await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
-    await fixEntityTimestamps(page, '**/api/utils/webhooks/responders');
+    await fixEntityTimestamps(page, '**/api/webhooks/responders');
   });
 
   test('Return a static HTML page', async ({ page }) => {
@@ -39,7 +39,7 @@ test.describe('Webhooks guide screenshots', () => {
       '<body>Hello World</body>',
       '</html>',
     ].join('\n');
-    const createResponse = await page.request.post('/api/utils/webhooks/responders', {
+    const createResponse = await page.request.post('/api/webhooks/responders', {
       data: {
         name: 'HTML Responder',
         location: { pathType: '=', path: '/html-responder' },
@@ -97,7 +97,7 @@ test.describe('Webhooks guide screenshots', () => {
 
     // Create the responder via API (Monaco editor cannot be reliably filled via Playwright).
     const jsonBody = ['{\n', '  "message": "Hello World"\n', '}'].join('');
-    const createResponse = await page.request.post('/api/utils/webhooks/responders', {
+    const createResponse = await page.request.post('/api/webhooks/responders', {
       data: {
         name: 'JSON Responder',
         location: { pathType: '=', path: '/json-responder' },
@@ -157,7 +157,7 @@ test.describe('Webhooks guide screenshots', () => {
       '<body>Hello World</body>',
       '</html>',
     ].join('\n');
-    const createResponse = await page.request.post('/api/utils/webhooks/responders', {
+    const createResponse = await page.request.post('/api/webhooks/responders', {
       data: {
         name: 'Notion Honeypot',
         location: { pathType: '=', path: '/notion-honeypot' },
@@ -229,7 +229,7 @@ test.describe('Webhooks guide screenshots', () => {
     await page.screenshot({ path: join(IMG_DIR, 'dynamic_step1_empty.png') });
 
     // Create the responder via API (Monaco editor cannot be reliably filled via Playwright).
-    const createResponse = await page.request.post('/api/utils/webhooks/responders', {
+    const createResponse = await page.request.post('/api/webhooks/responders', {
       data: {
         name: 'Dynamic',
         location: { pathType: '=', path: '/dynamic' },

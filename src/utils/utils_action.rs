@@ -91,7 +91,7 @@ mod tests {
         assert!(
             !UtilsAction::Execute {
                 resource_id: None,
-                operation: UtilsResourceOperation::WebhooksRespondersGetStats,
+                operation: UtilsResourceOperation::WebScrapingPageClearHistory,
             }
             .requires_params()
         );

@@ -615,7 +615,6 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                 .into_iter()
                 .map(|t| (t.retrack.id(), t.id))
                 .collect(),
-            _ => bail!(SecutilsError::client("Invalid resource type.")),
         };
         if id_pairs.is_empty() {
             return Ok(HashMap::new());
@@ -656,7 +655,6 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                 .get_api_tracker(tracker_id)
                 .await?
                 .map(|t| t.retrack.id()),
-            _ => bail!(SecutilsError::client("Invalid resource type.")),
         };
         retrack_id.ok_or_else(|| {
             SecutilsError::client(format!("Tracker ('{tracker_id}') is not found.")).into()

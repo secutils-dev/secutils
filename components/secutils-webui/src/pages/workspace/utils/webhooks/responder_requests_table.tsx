@@ -92,10 +92,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
         setRequests({ status: 'pending' });
       }
 
-      fetch(
-        getApiUrl(`/api/utils/webhooks/responders/${encodeURIComponent(responder.id)}/history`),
-        getApiRequestConfig('POST'),
-      )
+      fetch(getApiUrl(`/api/webhooks/responders/${encodeURIComponent(responder.id)}/_history`), getApiRequestConfig())
         .then(async (res) => {
           if (!res.ok) {
             throw await ResponseError.fromResponse(res);
@@ -362,7 +359,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
         setClearHistoryStatus((currentStatus) => ({ ...currentStatus, isInProgress: true }));
 
         fetch(
-          getApiUrl(`/api/utils/webhooks/responders/${encodeURIComponent(responder.id)}/clear`),
+          getApiUrl(`/api/webhooks/responders/${encodeURIComponent(responder.id)}/_clear`),
           getApiRequestConfig('POST'),
         )
           .then(async (res) => {

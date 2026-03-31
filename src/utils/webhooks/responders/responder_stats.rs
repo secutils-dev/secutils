@@ -1,11 +1,12 @@
 use serde::Serialize;
 use serde_with::{TimestampSeconds, serde_as};
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Represents a responder stat.
 #[serde_as]
-#[derive(Debug, Copy, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Serialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ResponderStats {
     /// Unique responder ID that the stat belongs to (UUIDv7).
@@ -15,6 +16,7 @@ pub struct ResponderStats {
     /// The timestamp when the responder was last requested.
     #[serde_as(as = "Option<TimestampSeconds<i64>>")]
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<i64>)]
     pub last_requested_at: Option<OffsetDateTime>,
 }
 

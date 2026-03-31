@@ -4,8 +4,9 @@ use std::{
     fmt::{Debug, Display, Formatter},
     str::FromStr,
 };
+use utoipa::ToSchema;
 
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ResponderLocation {
     /// Responder location path type.

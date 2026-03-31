@@ -78,8 +78,8 @@ export default function Responders() {
 
   const loadResponders = useCallback(() => {
     Promise.all([
-      fetch(getApiUrl('/api/utils/webhooks/responders'), getApiRequestConfig()),
-      fetch(getApiUrl('/api/utils/webhooks/responders/stats'), getApiRequestConfig()),
+      fetch(getApiUrl('/api/webhooks/responders'), getApiRequestConfig()),
+      fetch(getApiUrl('/api/webhooks/responders/_stats'), getApiRequestConfig()),
     ])
       .then(async ([respondersRes, respondersStatsRes]) => {
         if (!respondersRes.ok) {
@@ -176,7 +176,7 @@ export default function Responders() {
         setResponderToRemove(null);
 
         fetch(
-          getApiUrl(`/api/utils/webhooks/responders/${encodeURIComponent(responderToRemove?.id)}`),
+          getApiUrl(`/api/webhooks/responders/${encodeURIComponent(responderToRemove?.id)}`),
           getApiRequestConfig('DELETE'),
         )
           .then(async (res) => {

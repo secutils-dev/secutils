@@ -285,7 +285,7 @@ test.describe('Secrets access in responder edit flyout', () => {
     });
     expect(secretRes.ok()).toBeTruthy();
 
-    const createRes = await page.request.post('/api/utils/webhooks/responders', {
+    const createRes = await page.request.post('/api/webhooks/responders', {
       data: {
         name: 'secrets-responder',
         location: { pathType: '=', path: '/secrets-test' },
@@ -333,7 +333,7 @@ test.describe('Secrets access in responder edit flyout', () => {
     await dismissAllToasts(page);
 
     // Verify via API that secrets were persisted.
-    const listRes = await page.request.get('/api/utils/webhooks/responders');
+    const listRes = await page.request.get('/api/webhooks/responders');
     expect(listRes.ok()).toBeTruthy();
     const responders = await listRes.json();
     const responder = responders.find((r: { name: string }) => r.name === 'secrets-responder');
@@ -345,7 +345,7 @@ test.describe('Secrets access in responder edit flyout', () => {
     await ensureUserAndLogin(request, page, { email: SECRETS_NONE_EMAIL, password: 'e2e_secutils_pass' });
 
     // Create a responder with "All" secrets via API.
-    const createRes = await page.request.post('/api/utils/webhooks/responders', {
+    const createRes = await page.request.post('/api/webhooks/responders', {
       data: {
         name: 'secrets-responder',
         location: { pathType: '=', path: '/secrets-none-test' },
@@ -380,7 +380,7 @@ test.describe('Secrets access in responder edit flyout', () => {
     await dismissAllToasts(page);
 
     // Verify via API that secrets mode is now "none".
-    const listRes = await page.request.get('/api/utils/webhooks/responders');
+    const listRes = await page.request.get('/api/webhooks/responders');
     expect(listRes.ok()).toBeTruthy();
     const responders = await listRes.json();
     const responder = responders.find((r: { name: string }) => r.name === 'secrets-responder');
