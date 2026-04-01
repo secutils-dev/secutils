@@ -1,6 +1,7 @@
 use crate::users::{EntityTag, secrets::UserSecret};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// The current data file format version. Both export and import use this constant.
@@ -11,7 +12,7 @@ pub const DATA_FILE_VERSION: u32 = 1;
 /// Both the export writer and the import reader use this struct so the shape is defined once.
 /// `encrypted_value` is omitted from serialized output when absent but accepted as missing during
 /// deserialization (treated as `None`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DataFileSecret {
     pub id: Uuid,
@@ -22,8 +23,10 @@ pub struct DataFileSecret {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<EntityTag>,
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub updated_at: OffsetDateTime,
 }
 

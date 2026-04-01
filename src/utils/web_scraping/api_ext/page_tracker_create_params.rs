@@ -3,10 +3,12 @@ use crate::{
     utils::web_scraping::{PageTrackerConfig, page_trackers::PageTrackerTarget},
 };
 use serde::Deserialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"name": "my-page-tracker", "config": {"revisions": 3}, "target": {"extractor": "export async function execute(p) { return await p.content(); }"}, "tagIds": []}))]
 pub struct PageTrackerCreateParams {
     /// Arbitrary name of the page tracker.
     pub name: String,

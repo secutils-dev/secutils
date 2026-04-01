@@ -1,14 +1,18 @@
 use crate::utils::web_scraping::api_trackers::ApiTrackerTarget;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use utoipa::ToSchema;
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({
+    "target": { "url": "https://api.example.com/data" }
+}))]
 pub struct ApiTrackerTestParams {
     pub target: ApiTrackerTarget,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiTrackerTestResult {
     pub status: u16,

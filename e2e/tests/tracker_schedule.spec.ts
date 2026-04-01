@@ -8,7 +8,7 @@ test.describe.serial('Page tracker schedule presets', () => {
   });
 
   test('hourly schedule stores correct anchored cron', async ({ page }) => {
-    const createRes = await page.request.post('/api/utils/web_scraping/page', {
+    const createRes = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'Hourly Schedule Test',
         config: { revisions: 3 },
@@ -39,7 +39,7 @@ test.describe.serial('Page tracker schedule presets', () => {
     await dismissAllToasts(page);
     await expect(flyout).not.toBeVisible({ timeout: 10000 });
 
-    const listRes = await page.request.get('/api/utils/web_scraping/page');
+    const listRes = await page.request.get('/api/web_scraping/page_trackers');
     expect(listRes.ok()).toBeTruthy();
     const trackers = await listRes.json();
     const tracker = trackers.find((t: { name: string }) => t.name === 'Hourly Schedule Test');
@@ -62,7 +62,7 @@ test.describe.serial('Page tracker schedule presets', () => {
   });
 
   test('daily schedule stores correct anchored cron', async ({ page }) => {
-    const createRes = await page.request.post('/api/utils/web_scraping/page', {
+    const createRes = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'Daily Schedule Test',
         config: { revisions: 3 },
@@ -94,7 +94,7 @@ test.describe.serial('Page tracker schedule presets', () => {
     await dismissAllToasts(page);
     await expect(flyout).not.toBeVisible({ timeout: 10000 });
 
-    const listRes = await page.request.get('/api/utils/web_scraping/page');
+    const listRes = await page.request.get('/api/web_scraping/page_trackers');
     expect(listRes.ok()).toBeTruthy();
     const trackers = await listRes.json();
     const tracker = trackers.find((t: { name: string }) => t.name === 'Daily Schedule Test');
@@ -117,7 +117,7 @@ test.describe.serial('Page tracker schedule presets', () => {
   });
 
   test('weekly schedule stores correct anchored cron', async ({ page }) => {
-    const createRes = await page.request.post('/api/utils/web_scraping/page', {
+    const createRes = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'Weekly Schedule Test',
         config: { revisions: 3 },
@@ -150,7 +150,7 @@ test.describe.serial('Page tracker schedule presets', () => {
     await dismissAllToasts(page);
     await expect(flyout).not.toBeVisible({ timeout: 10000 });
 
-    const listRes = await page.request.get('/api/utils/web_scraping/page');
+    const listRes = await page.request.get('/api/web_scraping/page_trackers');
     expect(listRes.ok()).toBeTruthy();
     const trackers = await listRes.json();
     const tracker = trackers.find((t: { name: string }) => t.name === 'Weekly Schedule Test');
@@ -174,7 +174,7 @@ test.describe.serial('Page tracker schedule presets', () => {
   });
 
   test('monthly schedule stores correct anchored cron', async ({ page }) => {
-    const createRes = await page.request.post('/api/utils/web_scraping/page', {
+    const createRes = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'Monthly Schedule Test',
         config: { revisions: 3 },
@@ -207,7 +207,7 @@ test.describe.serial('Page tracker schedule presets', () => {
     await dismissAllToasts(page);
     await expect(flyout).not.toBeVisible({ timeout: 10000 });
 
-    const listRes = await page.request.get('/api/utils/web_scraping/page');
+    const listRes = await page.request.get('/api/web_scraping/page_trackers');
     expect(listRes.ok()).toBeTruthy();
     const trackers = await listRes.json();
     const tracker = trackers.find((t: { name: string }) => t.name === 'Monthly Schedule Test');
@@ -237,7 +237,7 @@ test.describe.serial('API tracker schedule presets', () => {
   });
 
   test('weekly schedule stores correct anchored cron for API tracker', async ({ page }) => {
-    const createRes = await page.request.post('/api/utils/web_scraping/api', {
+    const createRes = await page.request.post('/api/web_scraping/api_trackers', {
       data: {
         name: 'Weekly API Schedule Test',
         config: { revisions: 3 },
@@ -270,7 +270,7 @@ test.describe.serial('API tracker schedule presets', () => {
     await dismissAllToasts(page);
     await expect(flyout).not.toBeVisible({ timeout: 10000 });
 
-    const listRes = await page.request.get('/api/utils/web_scraping/api');
+    const listRes = await page.request.get('/api/web_scraping/api_trackers');
     expect(listRes.ok()).toBeTruthy();
     const trackers = await listRes.json();
     const tracker = trackers.find((t: { name: string }) => t.name === 'Weekly API Schedule Test');

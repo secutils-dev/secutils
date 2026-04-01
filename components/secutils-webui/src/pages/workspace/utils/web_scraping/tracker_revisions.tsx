@@ -79,7 +79,7 @@ export function TrackerRevisions({ kind, tracker, onHealthRefreshNeeded, childre
           : { status: 'pending', state: currentRevisions.state },
       );
 
-      const historyUrl = getApiUrl(`/api/utils/web_scraping/${kind}/${encodeURIComponent(tracker.id)}/history`);
+      const historyUrl = getApiUrl(`/api/web_scraping/${kind}_trackers/${encodeURIComponent(tracker.id)}/_history`);
       fetch(historyUrl, {
         ...getApiRequestConfig('POST'),
         body: JSON.stringify({ refresh }),
@@ -157,7 +157,7 @@ export function TrackerRevisions({ kind, tracker, onHealthRefreshNeeded, childre
         setClearHistoryStatus((currentStatus) => ({ ...currentStatus, isInProgress: true }));
 
         fetch(
-          getApiUrl(`/api/utils/web_scraping/${kind}/${encodeURIComponent(tracker.id)}/clear`),
+          getApiUrl(`/api/web_scraping/${kind}_trackers/${encodeURIComponent(tracker.id)}/_clear`),
           getApiRequestConfig('POST'),
         )
           .then(async (res) => {
@@ -210,7 +210,7 @@ export function TrackerRevisions({ kind, tracker, onHealthRefreshNeeded, childre
         setClearLogsStatus((s) => ({ ...s, isInProgress: true }));
 
         fetch(
-          getApiUrl(`/api/utils/web_scraping/${kind}/${encodeURIComponent(tracker.id)}/clear_logs`),
+          getApiUrl(`/api/web_scraping/${kind}_trackers/${encodeURIComponent(tracker.id)}/_clear_logs`),
           getApiRequestConfig('POST'),
         )
           .then(async (res) => {

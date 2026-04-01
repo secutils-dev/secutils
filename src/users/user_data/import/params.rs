@@ -16,9 +16,6 @@ pub enum ImportMode {
 #[serde(rename_all = "camelCase")]
 #[schema(example = json!({"data": {"version": 1, "exportedAt": 1700000000, "data": {}}, "mode": "merge"}))]
 pub struct UserDataImportPreviewParams {
-    // TODO: Replace with proper schema once utility types (certificates, webhooks, CSP, trackers)
-    // are instrumented with ToSchema in a follow-up.
-    #[schema(value_type = Object)]
     pub data: UserDataImportFile,
     pub mode: ImportMode,
 }
@@ -28,9 +25,6 @@ pub struct UserDataImportPreviewParams {
 #[serde(rename_all = "camelCase")]
 #[schema(example = json!({"data": {"version": 1, "exportedAt": 1700000000, "data": {}}, "mode": "merge", "selections": {}}))]
 pub struct UserDataImportParams {
-    // TODO: Replace with proper schema once utility types (certificates, webhooks, CSP, trackers)
-    // are instrumented with ToSchema in a follow-up.
-    #[schema(value_type = Object)]
     pub data: UserDataImportFile,
     pub mode: ImportMode,
     #[serde(default)]

@@ -8,7 +8,7 @@ test.describe.serial('Page tracker enable/disable', () => {
   });
 
   test('disabling a page tracker persists and shows disabled state', async ({ page }) => {
-    const createRes = await page.request.post('/api/utils/web_scraping/page', {
+    const createRes = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'Toggle Page Tracker',
         config: { revisions: 3 },
@@ -52,7 +52,7 @@ test.describe.serial('Page tracker enable/disable', () => {
   });
 
   test('re-enabling a disabled page tracker persists and removes disabled state', async ({ page }) => {
-    const createRes = await page.request.post('/api/utils/web_scraping/page', {
+    const createRes = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'Re-enable Page Tracker',
         enabled: false,
@@ -95,7 +95,7 @@ test.describe.serial('API tracker enable/disable', () => {
   });
 
   test('disabling an API tracker persists and shows disabled state', async ({ page }) => {
-    const createRes = await page.request.post('/api/utils/web_scraping/api', {
+    const createRes = await page.request.post('/api/web_scraping/api_trackers', {
       data: {
         name: 'Toggle API Tracker',
         config: { revisions: 3 },
@@ -141,7 +141,7 @@ test.describe.serial('API tracker enable/disable', () => {
   });
 
   test('re-enabling a disabled API tracker persists and removes disabled state', async ({ page }) => {
-    const createRes = await page.request.post('/api/utils/web_scraping/api', {
+    const createRes = await page.request.post('/api/web_scraping/api_trackers', {
       data: {
         name: 'Re-enable API Tracker',
         enabled: false,

@@ -25,7 +25,7 @@ use crate::{
             CertificateTemplate, ExportFormat, ExtendedKeyUsage, KeyUsage, PrivateKey,
             PrivateKeyAlgorithm, SignatureAlgorithm,
         },
-        utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
+        constants::MAX_ENTITY_NAME_LENGTH,
     },
 };
 use anyhow::{anyhow, bail};
@@ -908,9 +908,9 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
             return Err(SecutilsError::client("Private key name cannot be empty."));
         }
 
-        if name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
+        if name.len() > MAX_ENTITY_NAME_LENGTH {
             return Err(SecutilsError::client(format!(
-                "Private key name cannot be longer than {MAX_UTILS_ENTITY_NAME_LENGTH} characters."
+                "Private key name cannot be longer than {MAX_ENTITY_NAME_LENGTH} characters."
             )));
         }
 
@@ -924,9 +924,9 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> CertificatesApiExt<'a, DR, ET> {
             ));
         }
 
-        if name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
+        if name.len() > MAX_ENTITY_NAME_LENGTH {
             return Err(SecutilsError::client(format!(
-                "Certificate template name cannot be longer than {MAX_UTILS_ENTITY_NAME_LENGTH} characters."
+                "Certificate template name cannot be longer than {MAX_ENTITY_NAME_LENGTH} characters."
             )));
         }
 

@@ -355,7 +355,7 @@ export default function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
           : { type: 'none' as const };
 
     return {
-      url: getApiUrl('/api/utils/web_scraping/api/debug'),
+      url: getApiUrl('/api/web_scraping/api_trackers/_debug'),
       body: JSON.stringify({ target, secrets }),
     };
   }, [
@@ -460,12 +460,12 @@ export default function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
     const requestInit = { ...getApiRequestConfig(), body: JSON.stringify(trackerToUpdate) };
     const [requestPromise, successMessage, errorMessage] = tracker?.id
       ? [
-          fetch(getApiUrl(`/api/utils/web_scraping/api/${tracker.id}`), { ...requestInit, method: 'PUT' }),
+          fetch(getApiUrl(`/api/web_scraping/api_trackers/${tracker.id}`), { ...requestInit, method: 'PUT' }),
           `Successfully updated "${name}" API tracker`,
           `Unable to update "${name}" API tracker, please try again later`,
         ]
       : [
-          fetch(getApiUrl('/api/utils/web_scraping/api'), { ...requestInit, method: 'POST' }),
+          fetch(getApiUrl('/api/web_scraping/api_trackers'), { ...requestInit, method: 'POST' }),
           `Successfully saved "${name}" API tracker`,
           `Unable to save "${name}" API tracker, please try again later`,
         ];

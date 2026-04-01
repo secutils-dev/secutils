@@ -895,7 +895,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('edit - closes without confirmation when no changes were made', async ({ page }) => {
-      const res = await page.request.post('/api/utils/web_scraping/page', {
+      const res = await page.request.post('/api/web_scraping/page_trackers', {
         data: {
           name: 'existing-tracker',
           config: { revisions: 3 },
@@ -917,7 +917,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('edit - shows confirmation when closing with unsaved changes', async ({ page }) => {
-      const res = await page.request.post('/api/utils/web_scraping/page', {
+      const res = await page.request.post('/api/web_scraping/page_trackers', {
         data: {
           name: 'existing-tracker',
           config: { revisions: 3 },
@@ -950,7 +950,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('duplicate - shows confirmation when closing', async ({ page }) => {
-      const res = await page.request.post('/api/utils/web_scraping/page', {
+      const res = await page.request.post('/api/web_scraping/page_trackers', {
         data: {
           name: 'existing-tracker',
           config: { revisions: 3 },

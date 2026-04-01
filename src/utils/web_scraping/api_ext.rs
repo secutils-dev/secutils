@@ -1,5 +1,6 @@
 mod api_tracker_create_params;
 mod api_tracker_debug_params;
+mod api_tracker_get_history_params;
 mod api_tracker_test_params;
 mod api_tracker_update_params;
 mod page_tracker_create_params;
@@ -10,6 +11,7 @@ mod page_tracker_update_params;
 pub use self::{
     api_tracker_create_params::ApiTrackerCreateParams,
     api_tracker_debug_params::ApiTrackerDebugParams,
+    api_tracker_get_history_params::ApiTrackerGetHistoryParams,
     api_tracker_test_params::{ApiTrackerTestParams, ApiTrackerTestResult},
     api_tracker_update_params::ApiTrackerUpdateParams,
     page_tracker_create_params::PageTrackerCreateParams,
@@ -31,10 +33,10 @@ use crate::{
     scheduler::CronExt,
     users::{EntityTag, SecretsAccess, User},
     utils::{
-        UtilsResource,
-        utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
+        constants::MAX_ENTITY_NAME_LENGTH,
         web_scraping::{
-            ApiTracker, ApiTrackerTarget, PageTracker, PageTrackerTarget, expand_job_config,
+            ApiTracker, ApiTrackerTarget, PageTracker, PageTrackerTarget, TrackerKind,
+            expand_job_config,
         },
     },
 };
@@ -100,10 +102,10 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         // Fetch trackers from the database and Retrack.
         let web_scraping = self.api.db.web_scraping(self.user.id);
         let retrack = self.api.retrack();
-        let utils_resource = UtilsResource::WebScrapingPage;
+        let tracker_kind = TrackerKind::Page;
         let tags = [
             format!("{RETRACK_USER_TAG}:{}", self.user.id),
-            format!("{RETRACK_RESOURCE_TAG}:{utils_resource}"),
+            format!("{RETRACK_RESOURCE_TAG}:{tracker_kind}"),
         ];
         let (mut trackers, retrack_trackers) = tokio::try_join!(
             web_scraping.get_page_trackers(),
@@ -111,7 +113,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         )?;
 
         // Enhance trackers with Retrack data.
-        let (resource, resource_group) = utils_resource.into();
+        let (resource, resource_group) = tracker_kind.into();
         let mut retrack_trackers_map = retrack_trackers
             .into_iter()
             .map(|tracker| (tracker.id, tracker))
@@ -174,7 +176,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             .map(|t| (t.id, t))
             .collect::<HashMap<_, _>>();
 
-        let (resource, resource_group) = UtilsResource::WebScrapingPage.into();
+        let (resource, resource_group) = TrackerKind::Page.into();
         for tracker in trackers.iter_mut() {
             if let Some(retrack_tracker) = retrack_trackers_map.remove(&tracker.retrack.id()) {
                 tracker.retrack = RetrackTracker::from_value(retrack_tracker);
@@ -210,7 +212,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             {
                 tracker.retrack = RetrackTracker::from_value(retrack_tracker);
             } else {
-                let (resource, resource_group) = UtilsResource::WebScrapingPage.into();
+                let (resource, resource_group) = TrackerKind::Page.into();
                 error!(
                     user.id = %self.user.id,
                     util.resource_id = %tracker.id,
@@ -247,7 +249,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         // 2. Create a new Retrack tracker.
         let id = Uuid::now_v7();
         let retrack = self.api.retrack();
-        let utils_resource = UtilsResource::WebScrapingPage;
+        let tracker_kind = TrackerKind::Page;
         let accept_invalid_certificates = params.target.accept_invalid_certificates;
         let retrack_tracker = retrack
             .create_tracker(&TrackerCreateParams {
@@ -268,7 +270,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                 tags: prepare_tags(&[
                     format!("{RETRACK_USER_TAG}:{}", self.user.id),
                     format!("{RETRACK_NOTIFICATIONS_TAG}:{}", params.notifications),
-                    format!("{RETRACK_RESOURCE_TAG}:{utils_resource}"),
+                    format!("{RETRACK_RESOURCE_TAG}:{tracker_kind}"),
                     format!("{RETRACK_RESOURCE_ID_TAG}:{id}"),
                     format!("{RETRACK_RESOURCE_NAME_TAG}:{}", params.name),
                 ]),
@@ -298,7 +300,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             Err(err) => {
                 // If the tracker creation failed, remove it from Retrack.
                 if let Err(err) = retrack.remove_tracker(tracker.retrack.id()).await {
-                    let (resource, resource_group) = utils_resource.into();
+                    let (resource, resource_group) = tracker_kind.into();
                     error!(
                         util.resource = resource,
                         util.resource_group = resource_group,
@@ -322,8 +324,8 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         id: Uuid,
         params: PageTrackerUpdateParams,
     ) -> anyhow::Result<PageTracker> {
-        let utils_resource = UtilsResource::WebScrapingPage;
-        let (resource, resource_group) = utils_resource.into();
+        let tracker_kind = TrackerKind::Page;
+        let (resource, resource_group) = tracker_kind.into();
         let web_scraping = self.api.db.web_scraping(self.user.id);
         let Some(existing_tracker) = web_scraping.get_page_tracker(id).await? else {
             error!(
@@ -403,7 +405,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                     tags: Some(prepare_tags(&[
                         format!("{RETRACK_USER_TAG}:{}", self.user.id),
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", params.notifications),
-                        format!("{RETRACK_RESOURCE_TAG}:{utils_resource}"),
+                        format!("{RETRACK_RESOURCE_TAG}:{tracker_kind}"),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{id}"),
                         format!(
                             "{RETRACK_RESOURCE_NAME_TAG}:{}",
@@ -448,7 +450,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
     /// Removes existing page tracker and all history.
     pub async fn remove_page_tracker(&self, id: Uuid) -> anyhow::Result<()> {
         let web_scraping = self.api.db.web_scraping(self.user.id);
-        let (resource, resource_group) = UtilsResource::WebScrapingPage.into();
+        let (resource, resource_group) = TrackerKind::Page.into();
 
         // 1. Retrieve the existing tracker from the database.
         let Some(tracker) = web_scraping.get_page_tracker(id).await? else {
@@ -488,7 +490,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         &self,
         tracker_id: Uuid,
     ) -> anyhow::Result<Option<TrackerDataRevision>> {
-        let (resource, resource_group) = UtilsResource::WebScrapingPage.into();
+        let (resource, resource_group) = TrackerKind::Page.into();
         let Some(tracker) = self.get_page_tracker(tracker_id).await? else {
             error!(
                 user.id = %self.user.id,
@@ -574,9 +576,11 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
     pub async fn get_tracker_logs(
         &self,
         tracker_id: Uuid,
-        resource: UtilsResource,
+        tracker_kind: TrackerKind,
     ) -> anyhow::Result<Vec<TrackerExecutionLog>> {
-        let retrack_id = self.get_tracker_retrack_id(tracker_id, resource).await?;
+        let retrack_id = self
+            .get_tracker_retrack_id(tracker_id, tracker_kind)
+            .await?;
         self.api
             .retrack()
             .list_tracker_execution_logs(retrack_id)
@@ -587,9 +591,11 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
     pub async fn clear_tracker_logs(
         &self,
         tracker_id: Uuid,
-        resource: UtilsResource,
+        tracker_kind: TrackerKind,
     ) -> anyhow::Result<()> {
-        let retrack_id = self.get_tracker_retrack_id(tracker_id, resource).await?;
+        let retrack_id = self
+            .get_tracker_retrack_id(tracker_id, tracker_kind)
+            .await?;
         self.api
             .retrack()
             .clear_tracker_execution_logs(retrack_id)
@@ -600,16 +606,16 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
     /// of the given type (page or API), keyed by Secutils resource ID.
     pub async fn get_tracker_logs_summary(
         &self,
-        resource: UtilsResource,
+        tracker_kind: TrackerKind,
     ) -> anyhow::Result<HashMap<Uuid, Vec<TrackerExecutionLog>>> {
-        let id_pairs: Vec<(Uuid, Uuid)> = match resource {
-            UtilsResource::WebScrapingPage => self
+        let id_pairs: Vec<(Uuid, Uuid)> = match tracker_kind {
+            TrackerKind::Page => self
                 .get_page_trackers()
                 .await?
                 .into_iter()
                 .map(|t| (t.retrack.id(), t.id))
                 .collect(),
-            UtilsResource::WebScrapingApi => self
+            TrackerKind::Api => self
                 .get_api_trackers()
                 .await?
                 .into_iter()
@@ -644,14 +650,14 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
     async fn get_tracker_retrack_id(
         &self,
         tracker_id: Uuid,
-        resource: UtilsResource,
+        tracker_kind: TrackerKind,
     ) -> anyhow::Result<Uuid> {
-        let retrack_id = match resource {
-            UtilsResource::WebScrapingPage => self
+        let retrack_id = match tracker_kind {
+            TrackerKind::Page => self
                 .get_page_tracker(tracker_id)
                 .await?
                 .map(|t| t.retrack.id()),
-            UtilsResource::WebScrapingApi => self
+            TrackerKind::Api => self
                 .get_api_tracker(tracker_id)
                 .await?
                 .map(|t| t.retrack.id()),
@@ -668,9 +674,9 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             ));
         }
 
-        if name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
+        if name.len() > MAX_ENTITY_NAME_LENGTH {
             bail!(SecutilsError::client(format!(
-                "Tracker name cannot be longer than {MAX_UTILS_ENTITY_NAME_LENGTH} characters.",
+                "Tracker name cannot be longer than {MAX_ENTITY_NAME_LENGTH} characters.",
             )));
         }
 
@@ -781,17 +787,17 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
     pub async fn get_api_trackers(&self) -> anyhow::Result<Vec<ApiTracker>> {
         let web_scraping = self.api.db.web_scraping(self.user.id);
         let retrack = self.api.retrack();
-        let utils_resource = UtilsResource::WebScrapingApi;
+        let tracker_kind = TrackerKind::Api;
         let tags = [
             format!("{RETRACK_USER_TAG}:{}", self.user.id),
-            format!("{RETRACK_RESOURCE_TAG}:{utils_resource}"),
+            format!("{RETRACK_RESOURCE_TAG}:{tracker_kind}"),
         ];
         let (mut trackers, retrack_trackers) = tokio::try_join!(
             web_scraping.get_api_trackers(),
             retrack.list_trackers(&tags)
         )?;
 
-        let (resource, resource_group) = utils_resource.into();
+        let (resource, resource_group) = tracker_kind.into();
         let mut retrack_trackers_map = retrack_trackers
             .into_iter()
             .map(|tracker| (tracker.id, tracker))
@@ -856,7 +862,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             .map(|t| (t.id, t))
             .collect::<HashMap<_, _>>();
 
-        let (resource, resource_group) = UtilsResource::WebScrapingApi.into();
+        let (resource, resource_group) = TrackerKind::Api.into();
         for tracker in trackers.iter_mut() {
             if let Some(retrack_tracker) = retrack_trackers_map.remove(&tracker.retrack.id()) {
                 tracker.retrack = RetrackTracker::from_value(retrack_tracker);
@@ -892,7 +898,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             {
                 tracker.retrack = RetrackTracker::from_value(retrack_tracker);
             } else {
-                let (resource, resource_group) = UtilsResource::WebScrapingApi.into();
+                let (resource, resource_group) = TrackerKind::Api.into();
                 error!(
                     user.id = %self.user.id,
                     util.resource_id = %tracker.id,
@@ -965,7 +971,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
 
         let id = Uuid::now_v7();
         let retrack = self.api.retrack();
-        let utils_resource = UtilsResource::WebScrapingApi;
+        let tracker_kind = TrackerKind::Api;
 
         let api_params = self.resolve_secrets_params(&params.secrets).await;
 
@@ -984,7 +990,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                 tags: prepare_tags(&[
                     format!("{RETRACK_USER_TAG}:{}", self.user.id),
                     format!("{RETRACK_NOTIFICATIONS_TAG}:{}", params.notifications),
-                    format!("{RETRACK_RESOURCE_TAG}:{utils_resource}"),
+                    format!("{RETRACK_RESOURCE_TAG}:{tracker_kind}"),
                     format!("{RETRACK_RESOURCE_ID_TAG}:{id}"),
                     format!("{RETRACK_RESOURCE_NAME_TAG}:{}", params.name),
                 ]),
@@ -1011,7 +1017,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
             Ok(tags) => tags,
             Err(err) => {
                 if let Err(err) = retrack.remove_tracker(tracker.retrack.id()).await {
-                    let (resource, resource_group) = utils_resource.into();
+                    let (resource, resource_group) = tracker_kind.into();
                     error!(
                         util.resource = resource,
                         util.resource_group = resource_group,
@@ -1035,8 +1041,8 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         id: Uuid,
         params: ApiTrackerUpdateParams,
     ) -> anyhow::Result<ApiTracker> {
-        let utils_resource = UtilsResource::WebScrapingApi;
-        let (resource, resource_group) = utils_resource.into();
+        let tracker_kind = TrackerKind::Api;
+        let (resource, resource_group) = tracker_kind.into();
         let web_scraping = self.api.db.web_scraping(self.user.id);
         let Some(existing_tracker) = web_scraping.get_api_tracker(id).await? else {
             error!(
@@ -1112,7 +1118,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
                     tags: Some(prepare_tags(&[
                         format!("{RETRACK_USER_TAG}:{}", self.user.id),
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", params.notifications),
-                        format!("{RETRACK_RESOURCE_TAG}:{utils_resource}"),
+                        format!("{RETRACK_RESOURCE_TAG}:{tracker_kind}"),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{id}"),
                         format!(
                             "{RETRACK_RESOURCE_NAME_TAG}:{}",
@@ -1152,7 +1158,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
     /// Removes existing API tracker and all history.
     pub async fn remove_api_tracker(&self, id: Uuid) -> anyhow::Result<()> {
         let web_scraping = self.api.db.web_scraping(self.user.id);
-        let (resource, resource_group) = UtilsResource::WebScrapingApi.into();
+        let (resource, resource_group) = TrackerKind::Api.into();
 
         let Some(tracker) = web_scraping.get_api_tracker(id).await? else {
             error!(
@@ -1190,7 +1196,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
         &self,
         tracker_id: Uuid,
     ) -> anyhow::Result<Option<TrackerDataRevision>> {
-        let (resource, resource_group) = UtilsResource::WebScrapingApi.into();
+        let (resource, resource_group) = TrackerKind::Api.into();
         let Some(tracker) = self.get_api_tracker(tracker_id).await? else {
             error!(
                 user.id = %self.user.id,
@@ -1239,7 +1245,7 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebScrapingApiExt<'a, 'u, DR, 
     pub async fn get_api_tracker_history(
         &self,
         tracker_id: Uuid,
-        params: PageTrackerGetHistoryParams,
+        params: ApiTrackerGetHistoryParams,
     ) -> anyhow::Result<Vec<TrackerDataRevision>> {
         if params.refresh {
             self.create_api_tracker_revision(tracker_id).await?;
@@ -1533,12 +1539,9 @@ mod tests {
         },
         tests::{mock_api, mock_api_with_config, mock_config, mock_retrack_api_tracker, mock_user},
         users::SecretsAccess,
-        utils::{
-            UtilsResource,
-            web_scraping::{
-                ApiTracker, ApiTrackerConfig, ApiTrackerTarget, PageTracker, PageTrackerConfig,
-                PageTrackerTarget, api_ext::PageTrackerCreateParams,
-            },
+        utils::web_scraping::{
+            ApiTracker, ApiTrackerConfig, ApiTrackerTarget, PageTracker, PageTrackerConfig,
+            PageTrackerTarget, TrackerKind, api_ext::PageTrackerCreateParams,
         },
     };
     use actix_web::ResponseError;
@@ -1597,7 +1600,7 @@ mod tests {
                         tags: prepare_tags(&[
                             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                             format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
-                            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage)
+                            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page)
                         ]),
                         actions: vec![],
                     })
@@ -1701,7 +1704,7 @@ mod tests {
                         tags: prepare_tags(&[
                             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                             format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
-                            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage)
+                            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page)
                         ]),
                         actions: vec![],
                     })
@@ -1770,7 +1773,7 @@ mod tests {
                         tags: prepare_tags(&[
                             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                             format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
-                            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage)
+                            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page)
                         ]),
                         actions: vec![],
                     })
@@ -2123,7 +2126,7 @@ mod tests {
                         tags: prepare_tags(&[
                             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                             format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
-                            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage)
+                            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page)
                         ]),
                         actions: vec![],
                     })
@@ -2173,7 +2176,7 @@ mod tests {
                     tags: Some(prepare_tags(&[
                         format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
-                        format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                        format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
                         format!("{RETRACK_RESOURCE_NAME_TAG}:name_two"),
                     ])),
@@ -2234,7 +2237,7 @@ mod tests {
                     tags: Some(prepare_tags(&[
                         format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
-                        format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                        format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
                         format!("{RETRACK_RESOURCE_NAME_TAG}:name_two"),
                     ])),
@@ -2312,7 +2315,7 @@ mod tests {
                     tags: Some(prepare_tags(&[
                         format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
-                        format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                        format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
                         format!("{RETRACK_RESOURCE_NAME_TAG}:name_two"),
                     ])),
@@ -2391,7 +2394,7 @@ mod tests {
                     tags: Some(prepare_tags(&[
                         format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
-                        format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                        format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
                         format!("{RETRACK_RESOURCE_NAME_TAG}:name_two"),
                     ])),
@@ -2465,7 +2468,7 @@ mod tests {
                     tags: Some(prepare_tags(&[
                         format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
-                        format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                        format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
                         format!("{RETRACK_RESOURCE_NAME_TAG}:name_two"),
                     ])),
@@ -2525,7 +2528,7 @@ mod tests {
             tags: prepare_tags(&[
                 format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                 format!("{RETRACK_NOTIFICATIONS_TAG}:{}", true),
-                format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page),
                 format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
                 format!("{RETRACK_RESOURCE_NAME_TAG}:{}", expected_tracker.name),
             ]),
@@ -2538,7 +2541,7 @@ mod tests {
                     tags: Some(prepare_tags(&[
                         format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", true),
-                        format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                        format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
                         format!("{RETRACK_RESOURCE_NAME_TAG}:name_two"),
                     ])),
@@ -2627,7 +2630,7 @@ mod tests {
                         tags: prepare_tags(&[
                             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                             format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
-                            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage)
+                            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page)
                         ]),
                         actions: vec![],
                     })
@@ -2986,7 +2989,7 @@ mod tests {
         let mut retrack_list_api_mock = retrack_server.mock(|when, then| {
             let tags = prepare_tags(&[
                 format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-                format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page),
             ])
             .into_iter()
             .collect::<Vec<_>>();
@@ -3021,7 +3024,7 @@ mod tests {
         let mut retrack_list_api_mock = retrack_server.mock(|when, then| {
             let tags = prepare_tags(&[
                 format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-                format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page),
             ])
             .into_iter()
             .collect::<Vec<_>>();
@@ -3061,7 +3064,7 @@ mod tests {
         let retrack_list_api_mock = retrack_server.mock(|when, then| {
             let tags = prepare_tags(&[
                 format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-                format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page),
             ])
             .into_iter()
             .collect::<Vec<_>>();
@@ -3219,7 +3222,7 @@ mod tests {
         let retrack_list_api_mock = retrack_server.mock(|when, then| {
             let tags = prepare_tags(&[
                 format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-                format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+                format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page),
             ])
             .into_iter()
             .collect::<Vec<_>>();
@@ -3623,7 +3626,7 @@ mod tests {
                         tags: prepare_tags(&[
                             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                             format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
-                            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingApi),
+                            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Api),
                         ]),
                         actions: vec![],
                     })
@@ -4081,7 +4084,7 @@ mod tests {
                         tags: prepare_tags(&[
                             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                             format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
-                            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingApi),
+                            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Api),
                         ]),
                         actions: vec![],
                     })
@@ -4135,7 +4138,7 @@ mod tests {
                     tags: Some(prepare_tags(&[
                         format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
-                        format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingApi),
+                        format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Api),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
                         format!("{RETRACK_RESOURCE_NAME_TAG}:name_two"),
                     ])),
@@ -4195,7 +4198,7 @@ mod tests {
                     tags: Some(prepare_tags(&[
                         format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
-                        format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingApi),
+                        format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Api),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
                         format!("{RETRACK_RESOURCE_NAME_TAG}:name_two"),
                     ])),
@@ -4272,7 +4275,7 @@ mod tests {
                     tags: Some(prepare_tags(&[
                         format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
-                        format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingApi),
+                        format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Api),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
                         format!("{RETRACK_RESOURCE_NAME_TAG}:name_two"),
                     ])),
@@ -4358,7 +4361,7 @@ mod tests {
                     tags: Some(prepare_tags(&[
                         format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                         format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
-                        format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingApi),
+                        format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Api),
                         format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
                         format!("{RETRACK_RESOURCE_NAME_TAG}:name_two"),
                     ])),
@@ -4466,7 +4469,7 @@ mod tests {
                         tags: prepare_tags(&[
                             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
                             format!("{RETRACK_NOTIFICATIONS_TAG}:{}", false),
-                            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingApi),
+                            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Api),
                         ]),
                         actions: vec![],
                     })
@@ -4885,7 +4888,7 @@ mod tests {
         let mut retrack_list_api_mock = retrack_server.mock(|when, then| {
             let tags = prepare_tags(&[
                 format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-                format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingApi),
+                format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Api),
             ])
             .into_iter()
             .collect::<Vec<_>>();
@@ -4920,7 +4923,7 @@ mod tests {
         let mut retrack_list_api_mock = retrack_server.mock(|when, then| {
             let tags = prepare_tags(&[
                 format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-                format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingApi),
+                format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Api),
             ])
             .into_iter()
             .collect::<Vec<_>>();
@@ -4960,7 +4963,7 @@ mod tests {
         let retrack_list_api_mock = retrack_server.mock(|when, then| {
             let tags = prepare_tags(&[
                 format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-                format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingApi),
+                format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Api),
             ])
             .into_iter()
             .collect::<Vec<_>>();
@@ -5134,7 +5137,7 @@ mod tests {
         let retrack_list_api_mock = retrack_server.mock(|when, then| {
             let tags = prepare_tags(&[
                 format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-                format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingApi),
+                format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Api),
             ])
             .into_iter()
             .collect::<Vec<_>>();

@@ -1,6 +1,8 @@
+pub mod api_trackers;
 pub mod certificate_templates;
 pub mod content_security_policies;
 mod home_summary_get;
+pub mod page_trackers;
 pub mod private_keys;
 pub mod responders;
 pub mod scheduler_parse_schedule;
@@ -23,12 +25,11 @@ pub mod user_secrets;
 pub mod user_settings_get;
 pub mod user_settings_set;
 pub mod user_tags;
-mod utils_action;
 mod webhooks_responders;
 mod webhooks_retrack;
 
 pub use self::{
-    home_summary_get::home_summary_get, ui_state_get::ui_state_get, utils_action::utils_action,
+    home_summary_get::home_summary_get, ui_state_get::ui_state_get,
     webhooks_responders::webhooks_responders, webhooks_retrack::webhooks_retrack,
 };
 
@@ -96,7 +97,8 @@ pub(crate) async fn resolve_shared_user(
         (name = "users", description = "User registration, lookup, and subscription management."),
         (name = "scheduler", description = "Schedule parsing utilities."),
         (name = "search", description = "Full-text search across user resources."),
-        (name = "messages", description = "Send messages and notifications.")
+        (name = "messages", description = "Send messages and notifications."),
+        (name = "web_scraping", description = "Track changes to web pages and API endpoints.")
     ),
     paths(
         // Tags
@@ -173,6 +175,29 @@ pub(crate) async fn resolve_shared_user(
         responders::responders_get_history,
         responders::responders_clear_history,
         responders::responders_get_stats,
+        // Page trackers
+        page_trackers::page_trackers_list,
+        page_trackers::page_trackers_create,
+        page_trackers::page_trackers_update,
+        page_trackers::page_trackers_delete,
+        page_trackers::page_trackers_get_history,
+        page_trackers::page_trackers_clear_history,
+        page_trackers::page_trackers_get_logs,
+        page_trackers::page_trackers_clear_logs,
+        page_trackers::page_trackers_get_logs_summary,
+        page_trackers::page_trackers_debug,
+        // API trackers
+        api_trackers::api_trackers_list,
+        api_trackers::api_trackers_create,
+        api_trackers::api_trackers_update,
+        api_trackers::api_trackers_delete,
+        api_trackers::api_trackers_get_history,
+        api_trackers::api_trackers_clear_history,
+        api_trackers::api_trackers_get_logs,
+        api_trackers::api_trackers_clear_logs,
+        api_trackers::api_trackers_get_logs_summary,
+        api_trackers::api_trackers_test,
+        api_trackers::api_trackers_debug,
     ),
     components(schemas(
         // Tags
@@ -247,6 +272,24 @@ pub(crate) async fn resolve_shared_user(
         crate::utils::webhooks::RespondersCreateParams,
         crate::utils::webhooks::RespondersUpdateParams,
         crate::users::SecretsAccess,
+        // Page trackers
+        crate::utils::web_scraping::PageTracker,
+        crate::utils::web_scraping::PageTrackerConfig,
+        crate::utils::web_scraping::PageTrackerTarget,
+        crate::utils::web_scraping::PageTrackerCreateParams,
+        crate::utils::web_scraping::PageTrackerUpdateParams,
+        crate::utils::web_scraping::PageTrackerDebugParams,
+        crate::utils::web_scraping::PageTrackerGetHistoryParams,
+        // API trackers
+        crate::utils::web_scraping::ApiTracker,
+        crate::utils::web_scraping::ApiTrackerConfig,
+        crate::utils::web_scraping::ApiTrackerTarget,
+        crate::utils::web_scraping::ApiTrackerCreateParams,
+        crate::utils::web_scraping::ApiTrackerUpdateParams,
+        crate::utils::web_scraping::ApiTrackerDebugParams,
+        crate::utils::web_scraping::ApiTrackerGetHistoryParams,
+        crate::utils::web_scraping::ApiTrackerTestParams,
+        crate::utils::web_scraping::ApiTrackerTestResult,
         // Shared resources
         crate::users::ClientUserShare,
         crate::users::ClientSharedResource,
@@ -328,6 +371,23 @@ mod tests {
           "/api/users/self",
           "/api/users/signup",
           "/api/users/{user_id}",
+          "/api/web_scraping/api_trackers",
+          "/api/web_scraping/api_trackers/_debug",
+          "/api/web_scraping/api_trackers/_logs_summary",
+          "/api/web_scraping/api_trackers/_test",
+          "/api/web_scraping/api_trackers/{tracker_id}",
+          "/api/web_scraping/api_trackers/{tracker_id}/_clear",
+          "/api/web_scraping/api_trackers/{tracker_id}/_clear_logs",
+          "/api/web_scraping/api_trackers/{tracker_id}/_history",
+          "/api/web_scraping/api_trackers/{tracker_id}/_logs",
+          "/api/web_scraping/page_trackers",
+          "/api/web_scraping/page_trackers/_debug",
+          "/api/web_scraping/page_trackers/_logs_summary",
+          "/api/web_scraping/page_trackers/{tracker_id}",
+          "/api/web_scraping/page_trackers/{tracker_id}/_clear",
+          "/api/web_scraping/page_trackers/{tracker_id}/_clear_logs",
+          "/api/web_scraping/page_trackers/{tracker_id}/_history",
+          "/api/web_scraping/page_trackers/{tracker_id}/_logs",
           "/api/web_security/csp",
           "/api/web_security/csp/{policy_id}",
           "/api/web_security/csp/{policy_id}/_serialize",
@@ -350,6 +410,16 @@ mod tests {
         schema_keys.sort();
         assert_json_snapshot!(schema_keys, @r###"
         [
+          "ApiTarget",
+          "ApiTracker",
+          "ApiTrackerConfig",
+          "ApiTrackerCreateParams",
+          "ApiTrackerDebugParams",
+          "ApiTrackerGetHistoryParams",
+          "ApiTrackerTarget",
+          "ApiTrackerTestParams",
+          "ApiTrackerTestResult",
+          "ApiTrackerUpdateParams",
           "ApplyDeletionSelections",
           "CertificateAttributes",
           "CertificateTemplate",
@@ -369,12 +439,19 @@ mod tests {
           "ContentSecurityPolicySource",
           "ContentSecurityPolicyTrustedTypesDirectiveValue",
           "ContentSecurityPolicyWebrtcDirectiveValue",
+          "DataFileSecret",
           "EmailParams",
           "EntityTag",
           "ExportFormat",
           "ExportSelection",
           "ExportTrackableSelection",
+          "ExportedPrivateKey",
+          "ExportedResponder",
+          "ExportedResponderRequest",
+          "ExportedRetrackData",
+          "ExportedTracker",
           "ExtendedKeyUsage",
+          "ExtractorEngine",
           "Identity",
           "IdentityTraits",
           "IdentityVerifiableAddress",
@@ -382,7 +459,17 @@ mod tests {
           "ImportEntitySelection",
           "ImportMode",
           "ImportSelections",
+          "ImportedScript",
+          "KdfParams",
           "KeyUsage",
+          "PageTarget",
+          "PageTracker",
+          "PageTrackerConfig",
+          "PageTrackerCreateParams",
+          "PageTrackerDebugParams",
+          "PageTrackerGetHistoryParams",
+          "PageTrackerTarget",
+          "PageTrackerUpdateParams",
           "PrivateKey",
           "PrivateKeyAlgorithm",
           "PrivateKeyEllipticCurve",
@@ -399,6 +486,10 @@ mod tests {
           "ResponderStats",
           "RespondersCreateParams",
           "RespondersUpdateParams",
+          "RetrackTracker",
+          "RetrackTrackerValue",
+          "SchedulerJobConfig",
+          "SchedulerJobRetryStrategy",
           "SchedulerParseScheduleParams",
           "SchedulerParseScheduleResult",
           "ScriptContext",
@@ -408,6 +499,7 @@ mod tests {
           "SecretCreateParams",
           "SecretUpdateParams",
           "SecretsAccess",
+          "SecretsEncryptionMeta",
           "SendMessageParams",
           "SetStatusAPIParams",
           "SignatureAlgorithm",
@@ -417,13 +509,20 @@ mod tests {
           "SubscriptionTier",
           "TagCreateParams",
           "TagUpdateParams",
+          "TargetRequest",
           "TemplatesCreateParams",
           "TemplatesFetchCertificatesParams",
           "TemplatesGenerateParams",
           "TemplatesUpdateParams",
+          "TrackerConfig",
+          "TrackerDataRevision",
+          "TrackerDataValue_Value",
+          "TrackerTarget",
           "UpdateSubscriptionParams",
           "UserDataExportInclude",
           "UserDataExportParams",
+          "UserDataImportFile",
+          "UserDataImportFileData",
           "UserDataImportParams",
           "UserDataImportPreviewParams",
           "UserScript",
@@ -997,10 +1096,7 @@ mod tests {
     #[test]
     fn openapi_spec_has_external_docs() {
         let spec = spec();
-        assert_eq!(
-            spec["externalDocs"]["url"],
-            "https://secutils.dev/docs"
-        );
+        assert_eq!(spec["externalDocs"]["url"], "https://secutils.dev/docs");
         assert_eq!(
             spec["externalDocs"]["description"],
             "Secutils.dev documentation"
@@ -1033,10 +1129,7 @@ mod tests {
             tag_map["web_security"],
             "Build, parse, and serialize Content Security Policy headers."
         );
-        assert_eq!(
-            tag_map["tags"],
-            "Organize resources with colored tags."
-        );
+        assert_eq!(tag_map["tags"], "Organize resources with colored tags.");
         assert_eq!(
             tag_map["secrets"],
             "Store encrypted secrets for use in responder and tracker scripts."

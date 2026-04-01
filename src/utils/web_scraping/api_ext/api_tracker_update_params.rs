@@ -3,11 +3,13 @@ use crate::{
     utils::web_scraping::{ApiTrackerConfig, api_trackers::ApiTrackerTarget},
 };
 use serde::Deserialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Deserialize, Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Default, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[schema(example = json!({"name": "renamed-tracker"}))]
 pub struct ApiTrackerUpdateParams {
     /// Arbitrary name of the API tracker.
     pub name: Option<String>,

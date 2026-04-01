@@ -19,7 +19,7 @@ export function useTrackerHealth(kind: 'page' | 'api', trackerIds: string[] | un
       return;
     }
 
-    fetch(getApiUrl(`/api/utils/web_scraping/${kind}/logs_summary`), getApiRequestConfig())
+    fetch(getApiUrl(`/api/web_scraping/${kind}_trackers/_logs_summary`), getApiRequestConfig())
       .then(async (res) => {
         if (!res.ok) {
           throw await ResponseError.fromResponse(res);

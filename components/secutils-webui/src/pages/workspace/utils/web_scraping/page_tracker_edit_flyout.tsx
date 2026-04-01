@@ -235,7 +235,7 @@ export default function PageTrackerEditFlyout({ onClose, tracker }: Props) {
           : { type: 'none' as const };
 
     return {
-      url: getApiUrl('/api/utils/web_scraping/page/debug'),
+      url: getApiUrl('/api/web_scraping/page_trackers/_debug'),
       body: JSON.stringify({
         target: {
           extractor: extractorScript,
@@ -298,12 +298,12 @@ export default function PageTrackerEditFlyout({ onClose, tracker }: Props) {
     const requestInit = { ...getApiRequestConfig(), body: JSON.stringify(trackerToUpdate) };
     const [requestPromise, successMessage, errorMessage] = tracker?.id
       ? [
-          fetch(getApiUrl(`/api/utils/web_scraping/page/${tracker.id}`), { ...requestInit, method: 'PUT' }),
+          fetch(getApiUrl(`/api/web_scraping/page_trackers/${tracker.id}`), { ...requestInit, method: 'PUT' }),
           `Successfully updated "${name}" page tracker`,
           `Unable to update "${name}" page tracker, please try again later`,
         ]
       : [
-          fetch(getApiUrl('/api/utils/web_scraping/page'), { ...requestInit, method: 'POST' }),
+          fetch(getApiUrl('/api/web_scraping/page_trackers'), { ...requestInit, method: 'POST' }),
           `Successfully saved "${name}" page tracker`,
           `Unable to save "${name}" page tracker, please try again later`,
         ];

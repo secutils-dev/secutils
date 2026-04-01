@@ -3,11 +3,13 @@ use crate::{
     utils::web_scraping::{PageTrackerConfig, page_trackers::PageTrackerTarget},
 };
 use serde::Deserialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Deserialize, Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Default, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
+#[schema(example = json!({"name": "renamed-tracker"}))]
 pub struct PageTrackerUpdateParams {
     /// Arbitrary name of the page tracker.
     pub name: Option<String>,

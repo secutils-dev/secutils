@@ -25,20 +25,16 @@ use crate::{
     api::Api,
     network::{DnsResolver, EmailTransport},
     users::{User, UserSettings},
-    utils::webhooks::Responder,
+    utils::{web_scraping::TrackerKind, webhooks::Responder},
 };
 use detect_conflicts::{detect_conflicts, detect_responder_conflicts};
 use detect_deletions::detect_deletions;
 use detect_duplicates::detect_intra_file_duplicates;
 use importers::{
     certificate_templates::import_certificate_templates,
-    content_security_policies::import_content_security_policies,
-    private_keys::import_private_keys,
-    responders::import_responders,
-    scripts::import_scripts,
-    secrets::import_secrets,
-    tags::import_tags,
-    trackers::{TrackerKind, import_trackers},
+    content_security_policies::import_content_security_policies, private_keys::import_private_keys,
+    responders::import_responders, scripts::import_scripts, secrets::import_secrets,
+    tags::import_tags, trackers::import_trackers,
 };
 use results::{
     ApplyDeleteItem, ApplyDeleteSummary, ImportEntitySummary, ImportPreviewSummary,

@@ -41,7 +41,7 @@ test.describe('Tracker execution logs', () => {
   });
 
   test('clearing logs refreshes the logs grid to show empty state', async ({ page }) => {
-    const createRes = await page.request.post('/api/utils/web_scraping/page', {
+    const createRes = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'Clear Logs Test',
         config: { revisions: 3 },
@@ -55,7 +55,7 @@ test.describe('Tracker execution logs', () => {
 
     // Return mock logs on first request, empty on subsequent (after clear).
     let cleared = false;
-    await page.route('**/api/utils/web_scraping/*/*/logs', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/*/_logs', async (route) => {
       if (route.request().method() !== 'GET') {
         await route.fallback();
         return;
@@ -64,19 +64,19 @@ test.describe('Tracker execution logs', () => {
     });
 
     // Mock the clear_logs endpoint to succeed.
-    await page.route('**/api/utils/web_scraping/*/*/clear_logs', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/*/_clear_logs', async (route) => {
       cleared = true;
       await route.fulfill({ status: 200, body: '' });
     });
 
     // Mock a revision so the control panel shows.
-    await page.route('**/api/utils/web_scraping/*/*/history', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/*/_history', async (route) => {
       await route.fulfill({
         json: [{ id: '00000000-0000-0000-0000-000000000099', data: { original: 'ok' }, createdAt: FIXED_TS }],
       });
     });
 
-    await page.route('**/api/utils/web_scraping/*/logs_summary', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/_logs_summary', async (route) => {
       await route.fulfill({ json: {} });
     });
 
@@ -109,7 +109,7 @@ test.describe('Tracker execution logs', () => {
   });
 
   test('logs view is accessible when first revision fetch fails', async ({ page }) => {
-    const createRes = await page.request.post('/api/utils/web_scraping/page', {
+    const createRes = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'Failed Revision Test',
         config: { revisions: 3 },
@@ -122,11 +122,11 @@ test.describe('Tracker execution logs', () => {
     const mockLogs = mockExecutionLogs(tracker.id);
 
     // Make the history endpoint fail.
-    await page.route('**/api/utils/web_scraping/*/*/history', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/*/_history', async (route) => {
       await route.fulfill({ status: 500, json: { message: 'Internal server error' } });
     });
 
-    await page.route('**/api/utils/web_scraping/*/*/logs', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/*/_logs', async (route) => {
       if (route.request().method() !== 'GET') {
         await route.fallback();
         return;
@@ -134,7 +134,7 @@ test.describe('Tracker execution logs', () => {
       await route.fulfill({ json: mockLogs });
     });
 
-    await page.route('**/api/utils/web_scraping/*/logs_summary', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/_logs_summary', async (route) => {
       await route.fulfill({ json: {} });
     });
 

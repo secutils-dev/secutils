@@ -79,7 +79,7 @@ export default function ApiTrackers() {
   );
 
   const loadTrackers = useCallback(() => {
-    fetch(getApiUrl('/api/utils/web_scraping/api'), getApiRequestConfig())
+    fetch(getApiUrl('/api/web_scraping/api_trackers'), getApiRequestConfig())
       .then(async (res) => {
         if (!res.ok) {
           throw await ResponseError.fromResponse(res);
@@ -149,7 +149,7 @@ export default function ApiTrackers() {
         setTrackerToRemove(null);
 
         fetch(
-          getApiUrl(`/api/utils/web_scraping/api/${encodeURIComponent(trackerToRemove?.id)}`),
+          getApiUrl(`/api/web_scraping/api_trackers/${encodeURIComponent(trackerToRemove?.id)}`),
           getApiRequestConfig('DELETE'),
         )
           .then(async (res) => {

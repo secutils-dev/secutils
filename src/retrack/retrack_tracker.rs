@@ -2,9 +2,10 @@ use crate::retrack::tags::{RETRACK_NOTIFICATIONS_TAG, get_tag_value};
 use retrack_types::trackers::{Tracker, TrackerConfig, TrackerTarget};
 use serde::{Serialize, Serializer};
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, ToSchema)]
 #[serde(untagged, rename_all = "camelCase")]
 pub enum RetrackTracker {
     Reference { id: Uuid },
@@ -40,7 +41,7 @@ impl RetrackTracker {
     }
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RetrackTrackerValue {
     pub id: Uuid,
@@ -54,6 +55,7 @@ pub struct RetrackTrackerValue {
         with = "time::serde::timestamp::option",
         skip_serializing_if = "Option::is_none"
     )]
+    #[schema(value_type = Option<i64>)]
     pub scheduled_at: Option<OffsetDateTime>,
     /// Date and time when the tracker last ran on schedule (derived from the scheduler).
     #[serde(
@@ -61,6 +63,7 @@ pub struct RetrackTrackerValue {
         with = "time::serde::timestamp::option",
         skip_serializing_if = "Option::is_none"
     )]
+    #[schema(value_type = Option<i64>)]
     pub last_ran_at: Option<OffsetDateTime>,
     pub notifications: bool,
 }

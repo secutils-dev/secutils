@@ -4,9 +4,10 @@ use crate::{
 };
 use serde::Serialize;
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiTracker {
     /// Unique tracker id (UUIDv7).
@@ -26,9 +27,11 @@ pub struct ApiTracker {
     pub tags: Vec<EntityTag>,
     /// Date and time when the tracker was created.
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub created_at: OffsetDateTime,
     /// Date and time when the tracker was last updated.
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub updated_at: OffsetDateTime,
 }
 

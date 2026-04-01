@@ -222,7 +222,7 @@ test.describe('Tag filtering', () => {
       },
     });
 
-    await page.request.post('/api/utils/web_scraping/page', {
+    await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'PT-alpha',
         config: { revisions: 3 },
@@ -230,7 +230,7 @@ test.describe('Tag filtering', () => {
         tagIds: [tagIds['alpha']],
       },
     });
-    await page.request.post('/api/utils/web_scraping/page', {
+    await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'PT-beta',
         config: { revisions: 3 },
@@ -239,7 +239,7 @@ test.describe('Tag filtering', () => {
       },
     });
 
-    await page.request.post('/api/utils/web_scraping/api', {
+    await page.request.post('/api/web_scraping/api_trackers', {
       data: {
         name: 'AT-alpha',
         config: { revisions: 3 },
@@ -252,7 +252,7 @@ test.describe('Tag filtering', () => {
         tagIds: [tagIds['alpha']],
       },
     });
-    await page.request.post('/api/utils/web_scraping/api', {
+    await page.request.post('/api/web_scraping/api_trackers', {
       data: {
         name: 'AT-beta',
         config: { revisions: 3 },
@@ -396,7 +396,7 @@ test.describe('Tag filtering', () => {
       ['PT-alpha', [tagIds['alpha']]],
       ['PT-gamma', [tagIds['gamma']]],
     ] as const) {
-      await page.request.post('/api/utils/web_scraping/page', {
+      await page.request.post('/api/web_scraping/page_trackers', {
         data: {
           name,
           config: { revisions: 3 },
@@ -411,7 +411,7 @@ test.describe('Tag filtering', () => {
       ['AT-alpha', [tagIds['alpha']]],
       ['AT-gamma', [tagIds['gamma']]],
     ] as const) {
-      await page.request.post('/api/utils/web_scraping/api', {
+      await page.request.post('/api/web_scraping/api_trackers', {
         data: {
           name,
           config: { revisions: 3 },

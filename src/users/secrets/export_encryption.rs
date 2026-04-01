@@ -2,6 +2,7 @@ use anyhow::bail;
 use argon2::Argon2;
 use openssl::symm::{Cipher, Crypter, Mode};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// AES-256-GCM nonce size in bytes.
 const NONCE_SIZE: usize = 12;
@@ -18,7 +19,7 @@ const ARGON2_T_COST: u32 = 2;
 const ARGON2_P_COST: u32 = 1;
 
 /// Metadata stored alongside encrypted secrets in the export file.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SecretsEncryptionMeta {
     pub alg: String,
@@ -27,7 +28,7 @@ pub struct SecretsEncryptionMeta {
     pub salt: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct KdfParams {
     pub m: u32,
     pub t: u32,

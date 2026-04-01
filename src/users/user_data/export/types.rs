@@ -15,6 +15,7 @@ use retrack_types::trackers::{TrackerConfig, TrackerDataRevision, TrackerTarget}
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// The current export format version.
@@ -59,7 +60,7 @@ pub struct UserDataExportData {
 }
 
 /// An exported responder with optional history.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportedResponder {
     #[serde(flatten)]
@@ -69,7 +70,7 @@ pub struct ExportedResponder {
 }
 
 /// An exported responder request (history entry).
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportedResponderRequest {
     pub id: Uuid,
@@ -78,17 +79,20 @@ pub struct ExportedResponderRequest {
     pub client_address: Option<String>,
     pub method: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<Object>)]
     pub headers: Option<JsonValue>,
     pub url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub created_at: OffsetDateTime,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_status_code: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<Object>)]
     pub response_headers: Option<JsonValue>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_body: Option<String>,
@@ -138,7 +142,7 @@ impl<'a> From<ResponderRequest<'a>> for ExportedResponderRequest {
 }
 
 /// An exported private key with PKCS#8 data as base64.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportedPrivateKey {
     pub id: Uuid,
@@ -149,8 +153,10 @@ pub struct ExportedPrivateKey {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<EntityTag>,
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub updated_at: OffsetDateTime,
 }
 
@@ -173,7 +179,7 @@ impl From<PrivateKey> for ExportedPrivateKey {
 ///
 /// Unlike `RetrackTrackerValue`, this uses the standard `TrackerTarget` serialization
 /// (internally tagged with `type`) so the format roundtrips cleanly for import.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportedRetrackData {
     pub enabled: bool,
@@ -183,7 +189,7 @@ pub struct ExportedRetrackData {
 }
 
 /// An exported tracker (page or API) with optional revision history.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportedTracker {
     pub id: Uuid,
@@ -194,8 +200,10 @@ pub struct ExportedTracker {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<EntityTag>,
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub created_at: OffsetDateTime,
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub updated_at: OffsetDateTime,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub history: Vec<TrackerDataRevision>,

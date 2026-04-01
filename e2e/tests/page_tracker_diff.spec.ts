@@ -30,7 +30,7 @@ test.describe.serial('Page Tracker Diff View', () => {
   });
 
   test('renders Monaco DiffEditor in diff mode with changed content', async ({ page }) => {
-    const createResponse = await page.request.post('/api/utils/web_scraping/page', {
+    const createResponse = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'Diff Test Tracker',
         config: { revisions: 3 },
@@ -39,7 +39,7 @@ test.describe.serial('Page Tracker Diff View', () => {
     });
     expect(createResponse.ok()).toBeTruthy();
 
-    await page.route('**/api/utils/web_scraping/page/*/history', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/*/_history', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -87,7 +87,7 @@ test.describe.serial('Page Tracker Diff View', () => {
       },
     ];
 
-    const createResponse = await page.request.post('/api/utils/web_scraping/page', {
+    const createResponse = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'No Changes Tracker',
         config: { revisions: 3 },
@@ -96,7 +96,7 @@ test.describe.serial('Page Tracker Diff View', () => {
     });
     expect(createResponse.ok()).toBeTruthy();
 
-    await page.route('**/api/utils/web_scraping/page/*/history', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/*/_history', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -122,7 +122,7 @@ test.describe.serial('Page Tracker Diff View', () => {
   });
 
   test('switches between side-by-side and inline layout', async ({ page }) => {
-    const createResponse = await page.request.post('/api/utils/web_scraping/page', {
+    const createResponse = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'Layout Toggle Tracker',
         config: { revisions: 3 },
@@ -131,7 +131,7 @@ test.describe.serial('Page Tracker Diff View', () => {
     });
     expect(createResponse.ok()).toBeTruthy();
 
-    await page.route('**/api/utils/web_scraping/page/*/history', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/*/_history', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',

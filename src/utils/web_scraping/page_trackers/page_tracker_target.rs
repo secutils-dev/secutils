@@ -1,7 +1,8 @@
 use retrack_types::trackers::ExtractorEngine;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PageTrackerTarget {
     /// A custom script (Playwright scenario) to extract data from the page.

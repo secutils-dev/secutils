@@ -38,7 +38,7 @@ test.describe.serial('API Tracker Extractor with Secrets', () => {
     expect(secretRes.ok()).toBeTruthy();
 
     // 2. Create an API tracker with a custom extractor and "All secrets" access.
-    const createRes = await page.request.post('/api/utils/web_scraping/api', {
+    const createRes = await page.request.post('/api/web_scraping/api_trackers', {
       data: {
         name: 'Extractor E2E',
         config: { revisions: 3 },

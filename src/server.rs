@@ -21,7 +21,6 @@ use crate::{
     search::{SearchIndex, populate_search_index},
     templates::create_templates,
 };
-use actix_cors::Cors;
 use actix_web::{App, HttpResponse, HttpServer, Result, middleware, web};
 use anyhow::Context;
 pub use app_state::AppState;
@@ -95,10 +94,10 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
             .wrap(middleware::NormalizePath::trim())
             .app_data(state.clone())
             // OpenAPI documentation
-            .service(RapiDoc::with_openapi(
-                "/api-docs/openapi.json",
-                SecutilsOpenApi::openapi(),
-            ))
+            .service(
+                RapiDoc::with_openapi("/api-docs/openapi.json", SecutilsOpenApi::openapi())
+                    .path("/api-docs"),
+            )
             // Tags
             .service(handlers::user_tags::user_tags_list)
             .service(handlers::user_tags::user_tags_create)
@@ -189,7 +188,30 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
             .service(handlers::content_security_policies::csp_serialize)
             .service(handlers::content_security_policies::csp_share)
             .service(handlers::content_security_policies::csp_unshare)
-            // Remaining routes that still use .route() (webhooks, utils, UI)
+            // Page trackers
+            .service(handlers::page_trackers::page_trackers_list)
+            .service(handlers::page_trackers::page_trackers_create)
+            .service(handlers::page_trackers::page_trackers_update)
+            .service(handlers::page_trackers::page_trackers_delete)
+            .service(handlers::page_trackers::page_trackers_get_history)
+            .service(handlers::page_trackers::page_trackers_clear_history)
+            .service(handlers::page_trackers::page_trackers_get_logs)
+            .service(handlers::page_trackers::page_trackers_clear_logs)
+            .service(handlers::page_trackers::page_trackers_get_logs_summary)
+            .service(handlers::page_trackers::page_trackers_debug)
+            // API trackers
+            .service(handlers::api_trackers::api_trackers_list)
+            .service(handlers::api_trackers::api_trackers_create)
+            .service(handlers::api_trackers::api_trackers_update)
+            .service(handlers::api_trackers::api_trackers_delete)
+            .service(handlers::api_trackers::api_trackers_get_history)
+            .service(handlers::api_trackers::api_trackers_clear_history)
+            .service(handlers::api_trackers::api_trackers_get_logs)
+            .service(handlers::api_trackers::api_trackers_clear_logs)
+            .service(handlers::api_trackers::api_trackers_get_logs_summary)
+            .service(handlers::api_trackers::api_trackers_test)
+            .service(handlers::api_trackers::api_trackers_debug)
+            // Remaining routes that still use .route() (webhooks, UI)
             .service(
                 web::scope("/api")
                     .service(
@@ -207,18 +229,6 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
                                     )
                                     .route("", web::route().to(handlers::webhooks_responders)),
                             ),
-                    )
-                    .service(
-                        web::scope("/utils")
-                            .service(
-                                web::resource([
-                                    "/{area}/{resource}",
-                                    "/{area}/{resource}/{resource_id}",
-                                    "/{area}/{resource}/{resource_id}/{resource_operation}",
-                                ])
-                                .to(handlers::utils_action),
-                            )
-                            .wrap(Cors::permissive()),
                     )
                     .service(
                         web::scope("/ui")

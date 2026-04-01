@@ -1,20 +1,23 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use url::Url;
+use utoipa::ToSchema;
 
 /// Flattened single-request API tracker target. Converted to/from Retrack's
 /// `TrackerTarget::Api(ApiTarget { requests: [TargetRequest], ... })` internally.
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiTrackerTarget {
     /// URL of the API endpoint.
+    #[schema(value_type = String)]
     pub url: Url,
     /// HTTP method (defaults to GET).
     pub method: Option<String>,
     /// Optional request headers.
     pub headers: Option<HashMap<String, String>>,
     /// Optional request body (JSON).
+    #[schema(value_type = Object)]
     pub body: Option<JsonValue>,
     /// Expected media type of the response (defaults to application/json).
     pub media_type: Option<String>,

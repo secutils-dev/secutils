@@ -313,7 +313,7 @@ mod tests {
             },
             web_scraping::{
                 ApiTrackerConfig, ApiTrackerCreateParams, ApiTrackerTarget, PageTrackerConfig,
-                PageTrackerCreateParams, PageTrackerTarget,
+                PageTrackerCreateParams, PageTrackerTarget, TrackerKind,
             },
             web_security::{
                 ContentSecurityPoliciesCreateParams, ContentSecurityPolicyContent,
@@ -1452,10 +1452,7 @@ mod tests {
         // Mock GET /api/trackers for the `All` export path.
         let tags = prepare_tags(&[
             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-            format!(
-                "{RETRACK_RESOURCE_TAG}:{}",
-                crate::utils::UtilsResource::WebScrapingPage
-            ),
+            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page),
         ])
         .into_iter()
         .collect::<Vec<_>>();
@@ -1572,10 +1569,7 @@ mod tests {
         // Mock GET /api/trackers for the `All` export path.
         let tags = prepare_tags(&[
             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-            format!(
-                "{RETRACK_RESOURCE_TAG}:{}",
-                crate::utils::UtilsResource::WebScrapingApi
-            ),
+            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Api),
         ])
         .into_iter()
         .collect::<Vec<_>>();

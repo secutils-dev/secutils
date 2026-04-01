@@ -14,7 +14,7 @@ use crate::{
     security::USER_HANDLE_LENGTH_BYTES,
     users::{EntityTag, User},
     utils::{
-        utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
+        constants::MAX_ENTITY_NAME_LENGTH,
         webhooks::{
             Responder, ResponderMethod, ResponderPathType, ResponderRequest, ResponderStats,
         },
@@ -332,15 +332,15 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
             bail!(SecutilsError::client("Responder name cannot be empty.",));
         }
 
-        if responder.name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
+        if responder.name.len() > MAX_ENTITY_NAME_LENGTH {
             bail!(SecutilsError::client(format!(
-                "Responder name cannot be longer than {MAX_UTILS_ENTITY_NAME_LENGTH} characters."
+                "Responder name cannot be longer than {MAX_ENTITY_NAME_LENGTH} characters."
             )));
         }
 
-        if responder.location.path.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
+        if responder.location.path.len() > MAX_ENTITY_NAME_LENGTH {
             bail!(SecutilsError::client(format!(
-                "Responder location path cannot be longer than {MAX_UTILS_ENTITY_NAME_LENGTH} characters."
+                "Responder location path cannot be longer than {MAX_ENTITY_NAME_LENGTH} characters."
             )));
         }
 

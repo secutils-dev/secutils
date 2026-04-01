@@ -14,7 +14,7 @@ use crate::{
     },
     utils::web_scraping::{
         ApiTrackerConfig, ApiTrackerCreateParams, ApiTrackerTarget, PageTrackerConfig,
-        PageTrackerCreateParams, PageTrackerTarget,
+        PageTrackerCreateParams, PageTrackerTarget, TrackerKind,
     },
 };
 use retrack_types::trackers::{
@@ -23,12 +23,6 @@ use retrack_types::trackers::{
 use std::collections::{HashMap, HashSet};
 use tracing::warn;
 use uuid::Uuid;
-
-#[derive(Clone, Copy)]
-pub enum TrackerKind {
-    Page,
-    Api,
-}
 
 pub async fn import_trackers<DR: DnsResolver, ET: EmailTransport>(
     api: &Api<DR, ET>,

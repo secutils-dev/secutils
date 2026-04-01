@@ -1,8 +1,13 @@
 use crate::{users::SecretsAccess, utils::web_scraping::api_trackers::ApiTrackerTarget};
 use serde::Deserialize;
+use utoipa::ToSchema;
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({
+    "target": { "url": "https://api.example.com/data" },
+    "secrets": { "type": "none" }
+}))]
 pub struct ApiTrackerDebugParams {
     pub target: ApiTrackerTarget,
     pub secrets: SecretsAccess,

@@ -8,7 +8,7 @@ use crate::{
     security::Operator,
     server::AppState,
     users::UserId,
-    utils::UtilsResource,
+    utils::web_scraping::TrackerKind,
 };
 use actix_web::{HttpResponse, web};
 use retrack_types::trackers::{WebhookActionPayload, WebhookActionPayloadResult};
@@ -86,7 +86,7 @@ pub async fn webhooks_retrack(
 
     // 4. Retrieve resource that uses this tracker.
     let Some(Ok(util_resource)) = get_tag_value(&retrack_tracker.tags, RETRACK_RESOURCE_TAG)
-        .map(|tag| UtilsResource::from_str(&tag))
+        .map(|tag| TrackerKind::from_str(&tag))
     else {
         error!(
             user.id = %user.id,
@@ -135,7 +135,7 @@ pub async fn webhooks_retrack(
     }
 
     let notification = match util_resource {
-        UtilsResource::WebScrapingPage => {
+        TrackerKind::Page => {
             // 6. Retrieve page tracker by resource ID.
             let Some(tracker) = state
                 .api
@@ -185,7 +185,7 @@ pub async fn webhooks_retrack(
                 diff,
             })
         }
-        UtilsResource::WebScrapingApi => {
+        TrackerKind::Api => {
             let Some(tracker) = state
                 .api
                 .web_scraping(&user)
@@ -278,9 +278,9 @@ mod tests {
         },
         security::Operator,
         tests::{mock_app_state_with_config, mock_config, mock_user},
-        utils::{
-            UtilsResource,
-            web_scraping::tests::{MockApiTrackerBuilder, MockPageTrackerBuilder},
+        utils::web_scraping::{
+            TrackerKind,
+            tests::{MockApiTrackerBuilder, MockPageTrackerBuilder},
         },
     };
     use actix_web::web;
@@ -518,7 +518,7 @@ mod tests {
         let mut retrack_tracker = mock_retrack_tracker()?;
         retrack_tracker.tags = prepare_tags(&[
             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page),
         ]);
         let retrack_get_api_mock = retrack_server.mock(|when, then| {
             when.method(httpmock::Method::GET)
@@ -575,7 +575,7 @@ mod tests {
         let mut retrack_tracker = mock_retrack_tracker()?;
         retrack_tracker.tags = prepare_tags(&[
             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page),
             format!(
                 "{RETRACK_RESOURCE_ID_TAG}:{}",
                 uuid!("00000000-0000-0000-0000-000000000001")
@@ -701,7 +701,7 @@ mod tests {
         let mut retrack_tracker = mock_retrack_tracker()?;
         retrack_tracker.tags = prepare_tags(&[
             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page),
             format!(
                 "{RETRACK_RESOURCE_ID_TAG}:{}",
                 uuid!("00000000-0000-0000-0000-000000000001")
@@ -770,7 +770,7 @@ mod tests {
         .build();
         retrack_tracker.tags = prepare_tags(&[
             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page),
             format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
             format!("{RETRACK_RESOURCE_NAME_TAG}:{}", tracker.name),
             format!("{RETRACK_NOTIFICATIONS_TAG}:true"),
@@ -874,7 +874,7 @@ mod tests {
         .build();
         retrack_tracker.tags = prepare_tags(&[
             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingPage),
+            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Page),
             format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
             format!("{RETRACK_RESOURCE_NAME_TAG}:{}", tracker.name),
             format!("{RETRACK_NOTIFICATIONS_TAG}:true"),
@@ -965,7 +965,7 @@ mod tests {
         let mut retrack_tracker = mock_retrack_tracker()?;
         retrack_tracker.tags = prepare_tags(&[
             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingApi),
+            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Api),
             format!(
                 "{RETRACK_RESOURCE_ID_TAG}:{}",
                 uuid!("00000000-0000-0000-0000-000000000001")
@@ -1034,7 +1034,7 @@ mod tests {
         .build();
         retrack_tracker.tags = prepare_tags(&[
             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingApi),
+            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Api),
             format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
             format!("{RETRACK_RESOURCE_NAME_TAG}:{}", tracker.name),
             format!("{RETRACK_NOTIFICATIONS_TAG}:true"),
@@ -1138,7 +1138,7 @@ mod tests {
         .build();
         retrack_tracker.tags = prepare_tags(&[
             format!("{RETRACK_USER_TAG}:{}", mock_user.id),
-            format!("{RETRACK_RESOURCE_TAG}:{}", UtilsResource::WebScrapingApi),
+            format!("{RETRACK_RESOURCE_TAG}:{}", TrackerKind::Api),
             format!("{RETRACK_RESOURCE_ID_TAG}:{}", tracker.id),
             format!("{RETRACK_RESOURCE_NAME_TAG}:{}", tracker.name),
             format!("{RETRACK_NOTIFICATIONS_TAG}:true"),

@@ -15,16 +15,17 @@ Secutils.dev exposes a REST API for managing all resources programmatically. The
 
 ## Available API groups
 
-| Tag            | Base path                                                       | Description                                                      |
-|----------------|-----------------------------------------------------------------|------------------------------------------------------------------|
-| `webhooks`     | `/api/webhooks/responders`                                      | Create HTTP responders that capture and replay incoming requests |
-| `certificates` | `/api/certificates/templates`, `/api/certificates/private_keys` | Generate X.509 certificate templates and manage private keys     |
-| `web_security` | `/api/web_security/csp`                                         | Build, parse, and serialize Content Security Policy headers      |
-| `tags`         | `/api/user/tags`                                                | Organize resources with colored tags                             |
-| `secrets`      | `/api/user/secrets`                                             | Store encrypted secrets for use in scripts                       |
-| `scripts`      | `/api/user/scripts`                                             | Manage reusable JavaScript scripts for responders and trackers   |
-| `settings`     | `/api/user/settings`                                            | Read and update user preferences                                 |
-| `data`         | `/api/user/data`                                                | Export and import user data                                      |
+| Tag            | Base path                                                           | Description                                                      |
+|----------------|---------------------------------------------------------------------|------------------------------------------------------------------|
+| `webhooks`     | `/api/webhooks/responders`                                          | Create HTTP responders that capture and replay incoming requests |
+| `certificates` | `/api/certificates/templates`, `/api/certificates/private_keys`     | Generate X.509 certificate templates and manage private keys     |
+| `web_scraping` | `/api/web_scraping/page_trackers`, `/api/web_scraping/api_trackers` | Track changes to web pages and API endpoints                     |
+| `web_security` | `/api/web_security/csp`                                             | Build, parse, and serialize Content Security Policy headers      |
+| `tags`         | `/api/user/tags`                                                    | Organize resources with colored tags                             |
+| `secrets`      | `/api/user/secrets`                                                 | Store encrypted secrets for use in scripts                       |
+| `scripts`      | `/api/user/scripts`                                                 | Manage reusable JavaScript scripts for responders and trackers   |
+| `settings`     | `/api/user/settings`                                                | Read and update user preferences                                 |
+| `data`         | `/api/user/data`                                                    | Export and import user data                                      |
 
 ## Authentication
 

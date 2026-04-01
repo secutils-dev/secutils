@@ -51,7 +51,7 @@ function mockResourceRevision(rows: Array<Record<string, unknown>>, id = '000000
 test.describe('Web scraping guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
     await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
-    await fixEntityTimestamps(page, '**/api/utils/web_scraping/page');
+    await fixEntityTimestamps(page, '**/api/web_scraping/page_trackers');
     await fixEntityTimestamps(page, '**/api/webhooks/responders');
   });
 
@@ -77,7 +77,7 @@ test.describe('Web scraping guide screenshots', () => {
     await page.screenshot({ path: join(IMG_DIR, 'create_step1_empty.png') });
 
     // Create the tracker via API (Monaco editor cannot be reliably filled via Playwright).
-    const createResponse = await page.request.post('/api/utils/web_scraping/page', {
+    const createResponse = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'Hacker News Top Post',
         config: { revisions: 3 },
@@ -116,7 +116,7 @@ test.describe('Web scraping guide screenshots', () => {
     // Step 5: Click Update to fetch content, replacing the dynamic link and timestamp with fixed values.
     const FIXED_CONTENT = '[All-in-one security toolbox for engineers and researchers](https://secutils.dev)';
     const FIXED_REVISION_TIMESTAMP = 1735689600; // Jan 1, 2025 00:00:00 UTC
-    await page.route('**/api/utils/web_scraping/page/*/history', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/*/_history', async (route) => {
       const mockRevision = [
         {
           id: '00000000-0000-7000-8000-000000000001',
@@ -183,7 +183,7 @@ test.describe('Web scraping guide screenshots', () => {
 
     // Create the tracker via API with hourly schedule and notifications.
     // Use a fixed anchored cron (minute 0) so the anchor controls are deterministic.
-    const createResponse = await page.request.post('/api/utils/web_scraping/page', {
+    const createResponse = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'World Clock',
         config: { revisions: 3, job: { schedule: '0 0 * * * *' } },
@@ -256,7 +256,7 @@ test.describe('Web scraping guide screenshots', () => {
     await page.screenshot({ path: join(IMG_DIR, 'resources_step1_empty.png') });
 
     // Create the tracker via API.
-    const createResponse = await page.request.post('/api/utils/web_scraping/page', {
+    const createResponse = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'Hacker News (resources)',
         config: { revisions: 3 },
@@ -340,7 +340,7 @@ test.describe('Web scraping guide screenshots', () => {
     await page.screenshot({ path: join(IMG_DIR, 'filter_step1_empty.png') });
 
     // Create the tracker via API.
-    const createResponse = await page.request.post('/api/utils/web_scraping/page', {
+    const createResponse = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'GitHub',
         config: { revisions: 3 },
@@ -376,7 +376,7 @@ test.describe('Web scraping guide screenshots', () => {
     // Step 4: Click Update with mocked response. Unlike HN which has stable resources,
     // GitHub rebuilds asset bundles with new hash-based filenames on every deploy, making
     // real fetches produce different screenshots each time.
-    await page.route('**/api/utils/web_scraping/page/*/history', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/*/_history', async (route) => {
       const body = route.request().postDataJSON();
       if (!body?.refresh) {
         return route.continue();
@@ -572,7 +572,7 @@ test.describe('Web scraping guide screenshots', () => {
     await page.screenshot({ path: join(IMG_DIR, 'detect_resources_step8_trackers_empty.png') });
 
     // Create page tracker via API.
-    const createTrackerRes = await page.request.post('/api/utils/web_scraping/page', {
+    const createTrackerRes = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'Demo',
         config: { revisions: 3 },
@@ -620,7 +620,7 @@ test.describe('Web scraping guide screenshots', () => {
     ];
 
     let updateCount = 0;
-    await page.route('**/api/utils/web_scraping/page/*/history', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/*/_history', async (route) => {
       const body = route.request().postDataJSON();
       if (!body?.refresh) {
         return route.continue();
@@ -665,7 +665,7 @@ test.describe('Web scraping guide screenshots', () => {
     });
 
     // Create a tracker with a custom cron schedule via API.
-    const createResponse = await page.request.post('/api/utils/web_scraping/page', {
+    const createResponse = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'Custom Schedule Demo',
         config: { revisions: 3, job: { schedule: '0 11 15 8 10 ?' } },
@@ -749,7 +749,7 @@ test.describe('Web scraping guide screenshots', () => {
       },
     };
 
-    await page.route('**/api/utils/web_scraping/page/debug', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/_debug', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -824,7 +824,7 @@ test.describe('Web scraping guide screenshots', () => {
       },
     };
 
-    await page.route('**/api/utils/web_scraping/page/debug', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/_debug', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -866,7 +866,7 @@ test.describe('Web scraping guide screenshots', () => {
 
   test('View page tracker execution logs', async ({ page }) => {
     // Create a tracker so the table renders.
-    const createResponse = await page.request.post('/api/utils/web_scraping/page', {
+    const createResponse = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'Logs Demo',
         config: { revisions: 3 },
@@ -928,11 +928,11 @@ test.describe('Web scraping guide screenshots', () => {
 
     // Mock a revision so the control panel (with the Logs button) is visible.
     const mockRevision = { id: '00000000-0000-0000-0000-000000000099', data: { original: 'ok' }, createdAt: FIXED_TS };
-    await page.route('**/api/utils/web_scraping/*/*/history', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/*/_history', async (route) => {
       await route.fulfill({ json: [mockRevision] });
     });
 
-    await page.route('**/api/utils/web_scraping/*/*/logs', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/*/_logs', async (route) => {
       if (route.request().method() !== 'GET') {
         await route.fallback();
         return;
@@ -940,7 +940,7 @@ test.describe('Web scraping guide screenshots', () => {
       await route.fulfill({ json: mockLogs });
     });
 
-    await page.route('**/api/utils/web_scraping/*/logs_summary', async (route) => {
+    await page.route('**/api/web_scraping/page_trackers/_logs_summary', async (route) => {
       await route.fulfill({ json: { [tracker.id]: mockLogs.slice(0, 5) } });
     });
 
@@ -962,7 +962,7 @@ test.describe('Web scraping guide screenshots', () => {
 test.describe('API tracker guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
     await ensureUserAndLogin(request, page, { email: EMAIL, password: PASSWORD });
-    await fixEntityTimestamps(page, '**/api/utils/web_scraping/api');
+    await fixEntityTimestamps(page, '**/api/web_scraping/api_trackers');
   });
 
   test('Create an API tracker', async ({ page }) => {
@@ -1018,7 +1018,7 @@ test.describe('API tracker guide screenshots', () => {
     // Step 5: Click Update and show the result with a fixed response.
     const FIXED_RESPONSE = JSON.stringify({ status: 'active', version: '1.0.0', mode: 'standard' }, null, 2);
     const FIXED_REVISION_TIMESTAMP = 1735689600;
-    await page.route('**/api/utils/web_scraping/api/*/history', async (route) => {
+    await page.route('**/api/web_scraping/api_trackers/*/_history', async (route) => {
       const response = await route.fetch();
       const json = await response.json();
       if (!Array.isArray(json)) {
@@ -1234,7 +1234,7 @@ test.describe('API tracker guide screenshots', () => {
       },
     };
 
-    await page.route('**/api/utils/web_scraping/api/debug', async (route) => {
+    await page.route('**/api/web_scraping/api_trackers/_debug', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -1445,7 +1445,7 @@ test.describe('API tracker guide screenshots', () => {
 
     // Read back the tracker ID.
     const trackerId = await page.request
-      .get('/api/utils/web_scraping/api')
+      .get('/api/web_scraping/api_trackers')
       .then((r) => r.json())
       .then((trackers: Array<{ id: string; name: string }>) => trackers.find((t) => t.name === 'API Logs Demo')?.id);
 
@@ -1490,11 +1490,11 @@ test.describe('API tracker guide screenshots', () => {
       data: { original: '{"status":"ok"}' },
       createdAt: FIXED_TS,
     };
-    await page.route('**/api/utils/web_scraping/*/*/history', async (route) => {
+    await page.route('**/api/web_scraping/api_trackers/*/_history', async (route) => {
       await route.fulfill({ json: [mockRevision] });
     });
 
-    await page.route('**/api/utils/web_scraping/*/*/logs', async (route) => {
+    await page.route('**/api/web_scraping/api_trackers/*/_logs', async (route) => {
       if (route.request().method() !== 'GET') {
         await route.fallback();
         return;
@@ -1502,7 +1502,7 @@ test.describe('API tracker guide screenshots', () => {
       await route.fulfill({ json: mockLogs });
     });
 
-    await page.route('**/api/utils/web_scraping/*/logs_summary', async (route) => {
+    await page.route('**/api/web_scraping/api_trackers/_logs_summary', async (route) => {
       await route.fulfill({ json: { [trackerId!]: mockLogs.slice(0, 5) } });
     });
 

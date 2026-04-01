@@ -1,7 +1,8 @@
 use retrack_types::scheduler::SchedulerJobConfig;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiTrackerConfig {
     /// A number of revisions of the API response to track.

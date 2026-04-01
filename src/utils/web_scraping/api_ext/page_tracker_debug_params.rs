@@ -1,8 +1,15 @@
 use crate::{users::SecretsAccess, utils::web_scraping::page_trackers::PageTrackerTarget};
 use serde::Deserialize;
+use utoipa::ToSchema;
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({
+    "target": {
+        "extractor": "export async function execute(p) { return await p.content(); }"
+    },
+    "secrets": { "type": "none" }
+}))]
 pub struct PageTrackerDebugParams {
     pub target: PageTrackerTarget,
     pub secrets: SecretsAccess,

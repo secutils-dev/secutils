@@ -3,10 +3,12 @@ use crate::{
     utils::web_scraping::{ApiTrackerConfig, api_trackers::ApiTrackerTarget},
 };
 use serde::Deserialize;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "camelCase")]
+#[schema(example = json!({"name": "my-api-tracker", "config": {"revisions": 3}, "target": {"url": "https://api.example.com/data"}, "tagIds": []}))]
 pub struct ApiTrackerCreateParams {
     /// Arbitrary name of the API tracker.
     pub name: String,

@@ -80,7 +80,7 @@ test.describe('Script editor full-screen mode', () => {
   });
 
   test('content persists across full-screen round-trip', async ({ page }) => {
-    const createResponse = await page.request.post('/api/utils/web_scraping/page', {
+    const createResponse = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'FullScreen Test Tracker',
         config: { revisions: 3 },
@@ -124,7 +124,7 @@ test.describe('Script editor full-screen mode', () => {
   test('API tracker Data extractor can go fullscreen', async ({ page }) => {
     const extractorScript =
       '(() => { const r = context.responses ?? []; return { body: Deno.core.encode(JSON.stringify(r)) }; })();';
-    const createResponse = await page.request.post('/api/utils/web_scraping/api', {
+    const createResponse = await page.request.post('/api/web_scraping/api_trackers', {
       data: {
         name: 'FullScreen API Tracker',
         config: { revisions: 3 },

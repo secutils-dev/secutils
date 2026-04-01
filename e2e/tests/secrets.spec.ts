@@ -109,7 +109,7 @@ test.describe('Secrets access in tracker edit flyout', () => {
 
   test('changing secrets mode to "All" enables Save and persists', async ({ page }) => {
     // Create a tracker via API (no secrets).
-    const createRes = await page.request.post('/api/utils/web_scraping/page', {
+    const createRes = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'secrets-tracker',
         config: { revisions: 3 },
@@ -146,7 +146,7 @@ test.describe('Secrets access in tracker edit flyout', () => {
     await dismissAllToasts(page);
 
     // Verify via API that secrets were persisted.
-    const listRes = await page.request.get('/api/utils/web_scraping/page');
+    const listRes = await page.request.get('/api/web_scraping/page_trackers');
     expect(listRes.ok()).toBeTruthy();
     const trackers = await listRes.json();
     const tracker = trackers.find((t: { name: string }) => t.name === 'secrets-tracker');
@@ -156,7 +156,7 @@ test.describe('Secrets access in tracker edit flyout', () => {
 
   test('changing secrets mode from "All" back to "None" persists correctly', async ({ page }) => {
     // Create a tracker with "All" secrets via API.
-    const createRes = await page.request.post('/api/utils/web_scraping/page', {
+    const createRes = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'secrets-tracker',
         config: { revisions: 3 },
@@ -190,7 +190,7 @@ test.describe('Secrets access in tracker edit flyout', () => {
     await dismissAllToasts(page);
 
     // Verify via API that secrets mode is now "none" (omitted from JSON when none).
-    const listRes = await page.request.get('/api/utils/web_scraping/page');
+    const listRes = await page.request.get('/api/web_scraping/page_trackers');
     expect(listRes.ok()).toBeTruthy();
     const trackers = await listRes.json();
     const tracker = trackers.find((t: { name: string }) => t.name === 'secrets-tracker');
@@ -216,7 +216,7 @@ test.describe('Secrets access in tracker edit flyout', () => {
     });
     expect(secretRes.ok()).toBeTruthy();
 
-    const createRes = await page.request.post('/api/utils/web_scraping/page', {
+    const createRes = await page.request.post('/api/web_scraping/page_trackers', {
       data: {
         name: 'selected-secrets-tracker',
         config: { revisions: 3 },
@@ -263,7 +263,7 @@ test.describe('Secrets access in tracker edit flyout', () => {
     await dismissAllToasts(page);
 
     // Verify via API.
-    const listRes = await page.request.get('/api/utils/web_scraping/page');
+    const listRes = await page.request.get('/api/web_scraping/page_trackers');
     expect(listRes.ok()).toBeTruthy();
     const trackers = await listRes.json();
     const tracker = trackers.find((t: { name: string }) => t.name === 'selected-secrets-tracker');

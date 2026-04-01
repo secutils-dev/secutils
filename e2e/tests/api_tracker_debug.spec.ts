@@ -190,7 +190,7 @@ function getDebugModal(page: Page) {
 }
 
 function mockDebugEndpoint(page: Page, result: DebugResult) {
-  return page.route('**/api/utils/web_scraping/api/debug', async (route) => {
+  return page.route('**/api/web_scraping/api_trackers/_debug', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -226,7 +226,7 @@ test.describe('API Tracker Debug Panel', () => {
     });
 
     test('shows error on network failure', async ({ page }) => {
-      await page.route('**/api/utils/web_scraping/api/debug', async (route) => {
+      await page.route('**/api/web_scraping/api_trackers/_debug', async (route) => {
         await route.fulfill({
           status: 500,
           contentType: 'application/json',
@@ -628,7 +628,7 @@ test.describe('API Tracker Debug Panel', () => {
 
     test('sends secrets in the debug request body', async ({ page }) => {
       let capturedSecrets: unknown = null;
-      await page.route('**/api/utils/web_scraping/api/debug', async (route) => {
+      await page.route('**/api/web_scraping/api_trackers/_debug', async (route) => {
         const postData = route.request().postDataJSON();
         capturedSecrets = postData?.secrets;
         await route.fulfill({
@@ -655,7 +655,7 @@ test.describe('API Tracker Debug Panel', () => {
 
     test('sends secrets none when no secrets configured', async ({ page }) => {
       let capturedSecrets: unknown = null;
-      await page.route('**/api/utils/web_scraping/api/debug', async (route) => {
+      await page.route('**/api/web_scraping/api_trackers/_debug', async (route) => {
         const postData = route.request().postDataJSON();
         capturedSecrets = postData?.secrets;
         await route.fulfill({

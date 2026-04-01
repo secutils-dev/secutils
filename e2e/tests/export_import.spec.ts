@@ -946,13 +946,13 @@ test.describe('Data Export and Import', () => {
     expect(newestEntry.responseStatusCode).toBe(200);
 
     // ── Step 7i: Validate page tracker config + imported revision ───────
-    const pageTrackersRes = await page.request.get('/api/utils/web_scraping/page');
+    const pageTrackersRes = await page.request.get('/api/web_scraping/page_trackers');
     const pageTrackers = await pageTrackersRes.json();
     const importedPageTracker = pageTrackers.find((t: { name: string }) => t.name === 'import-test-page-tracker');
     expect(importedPageTracker).toBeDefined();
     expect(importedPageTracker.secrets).toEqual({ type: 'all' });
 
-    const pageHistoryUrl = `/api/utils/web_scraping/page/${encodeURIComponent(importedPageTracker.id)}/history`;
+    const pageHistoryUrl = `/api/web_scraping/page_trackers/${encodeURIComponent(importedPageTracker.id)}/_history`;
     const pageHistoryRes = await page.request.post(pageHistoryUrl, {
       data: { refresh: false },
     });
@@ -982,13 +982,13 @@ test.describe('Data Export and Import', () => {
     expect(newPageRevision).toBeDefined();
 
     // ── Step 7k: Validate API tracker config + imported revisions ───────
-    const apiTrackersRes = await page.request.get('/api/utils/web_scraping/api');
+    const apiTrackersRes = await page.request.get('/api/web_scraping/api_trackers');
     const apiTrackers = await apiTrackersRes.json();
     const importedApiTracker = apiTrackers.find((t: { name: string }) => t.name === 'import-test-api-tracker');
     expect(importedApiTracker).toBeDefined();
     expect(importedApiTracker.secrets).toEqual({ type: 'all' });
 
-    const apiHistoryUrl = `/api/utils/web_scraping/api/${encodeURIComponent(importedApiTracker.id)}/history`;
+    const apiHistoryUrl = `/api/web_scraping/api_trackers/${encodeURIComponent(importedApiTracker.id)}/_history`;
     const apiHistoryRes = await page.request.post(apiHistoryUrl, {
       data: { refresh: false },
     });

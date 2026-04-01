@@ -104,8 +104,8 @@ test.describe('Sample import files', () => {
         certificateTemplates: '/api/certificates/templates',
         privateKeys: '/api/certificates/private_keys',
         contentSecurityPolicies: '/api/web_security/csp',
-        pageTrackers: '/api/utils/web_scraping/page',
-        apiTrackers: '/api/utils/web_scraping/api',
+        pageTrackers: '/api/web_scraping/page_trackers',
+        apiTrackers: '/api/web_scraping/api_trackers',
       };
 
       for (const [entityType, apiPath] of Object.entries(entityApiPaths)) {

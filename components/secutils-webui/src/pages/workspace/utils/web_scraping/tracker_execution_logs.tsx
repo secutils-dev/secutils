@@ -98,7 +98,10 @@ export function TrackerExecutionLogs({ kind, tracker }: TrackerExecutionLogsProp
 
   const loadLogs = useCallback(() => {
     setLogs({ status: 'pending' });
-    fetch(getApiUrl(`/api/utils/web_scraping/${kind}/${encodeURIComponent(tracker.id)}/logs`), getApiRequestConfig())
+    fetch(
+      getApiUrl(`/api/web_scraping/${kind}_trackers/${encodeURIComponent(tracker.id)}/_logs`),
+      getApiRequestConfig(),
+    )
       .then(async (res) => {
         if (!res.ok) {
           throw await ResponseError.fromResponse(res);

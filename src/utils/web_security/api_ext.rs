@@ -17,7 +17,7 @@ use crate::{
     network::{DnsResolver, EmailTransport},
     users::{EntityTag, SharedResource, UserId, UserShare},
     utils::{
-        utils_action_validation::MAX_UTILS_ENTITY_NAME_LENGTH,
+        constants::MAX_ENTITY_NAME_LENGTH,
         web_security::{
             ContentSecurityPolicy, ContentSecurityPolicyDirective, ContentSecurityPolicySource,
             api_ext::csp_meta_parser::CspMetaParser,
@@ -404,9 +404,9 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
             ));
         }
 
-        if policy.name.len() > MAX_UTILS_ENTITY_NAME_LENGTH {
+        if policy.name.len() > MAX_ENTITY_NAME_LENGTH {
             bail!(SecutilsError::client(format!(
-                "Content security policy name cannot be longer than {MAX_UTILS_ENTITY_NAME_LENGTH} characters."
+                "Content security policy name cannot be longer than {MAX_ENTITY_NAME_LENGTH} characters."
             )));
         }
 

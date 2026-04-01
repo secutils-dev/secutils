@@ -351,7 +351,7 @@ export async function fixCertificateTemplateValidityDates(page: Page) {
  * the optional `fallback` array is returned instead.
  */
 export async function fixTrackerResourceRevisions(page: Page, fallback?: object[]) {
-  await page.route('**/api/utils/web_scraping/page/*/history', async (route) => {
+  await page.route('**/api/web_scraping/page_trackers/*/_history', async (route) => {
     const response = await route.fetch();
     if (!response.ok()) {
       if (fallback) {
@@ -417,7 +417,7 @@ export async function fixTrackerExecutionLogs(page: Page) {
   const FIXED_FINISHED_AT = FIXED_ENTITY_TIMESTAMP + 3;
   const FIXED_PHASE_DURATION = 500;
 
-  await page.route('**/api/utils/web_scraping/*/*/logs', async (route) => {
+  await page.route('**/api/web_scraping/*_trackers/*/_logs', async (route) => {
     if (route.request().method() !== 'GET') {
       await route.fallback();
       return;
@@ -453,7 +453,7 @@ export async function fixTrackerHealthDots(page: Page) {
   const FIXED_STARTED_AT = FIXED_ENTITY_TIMESTAMP;
   const FIXED_FINISHED_AT = FIXED_ENTITY_TIMESTAMP + 2;
 
-  await page.route('**/api/utils/web_scraping/*/logs_summary', async (route) => {
+  await page.route('**/api/web_scraping/*_trackers/_logs_summary', async (route) => {
     const response = await route.fetch();
     if (!response.ok()) {
       await route.fulfill({ response });

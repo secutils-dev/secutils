@@ -11,15 +11,17 @@ use crate::{
 };
 use serde::Deserialize;
 use time::OffsetDateTime;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// The expected import file structure.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UserDataImportFile {
     pub version: u32,
     #[allow(dead_code)]
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub exported_at: OffsetDateTime,
     /// Encryption metadata for secret values (present when values are included).
     #[serde(default)]
@@ -28,7 +30,7 @@ pub struct UserDataImportFile {
 }
 
 /// Data section of the import file.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UserDataImportFileData {
     #[serde(default)]
@@ -53,7 +55,7 @@ pub struct UserDataImportFileData {
     pub settings: Option<UserSettings>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportedScript {
     pub id: Uuid,
@@ -64,8 +66,10 @@ pub struct ImportedScript {
     pub tags: Vec<EntityTag>,
     #[allow(dead_code)]
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub created_at: OffsetDateTime,
     #[allow(dead_code)]
     #[serde(with = "time::serde::timestamp")]
+    #[schema(value_type = i64)]
     pub updated_at: OffsetDateTime,
 }

@@ -174,11 +174,11 @@ export function getContentSecurityPolicies(): Promise<NamedEntity[]> {
 }
 
 export function getPageTrackers(): Promise<NamedEntity[]> {
-  return fetchEntities('/api/utils/web_scraping/page');
+  return fetchEntities('/api/web_scraping/page_trackers');
 }
 
 export function getApiTrackers(): Promise<NamedEntity[]> {
-  return fetchEntities('/api/utils/web_scraping/api');
+  return fetchEntities('/api/web_scraping/api_trackers');
 }
 
 export async function exportUserData(params: ExportParams): Promise<Blob> {
