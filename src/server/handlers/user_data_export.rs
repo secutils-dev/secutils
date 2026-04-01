@@ -12,7 +12,8 @@ use time::OffsetDateTime;
     tags = ["user-data"],
     request_body = UserDataExportParams,
     responses(
-        (status = 200, description = "User data export.")
+        (status = 200, description = "User data export."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/_export")]

@@ -34,7 +34,9 @@ pub struct EmailParams {
     tags = ["users"],
     request_body = EmailParams,
     responses(
-        (status = 204, description = "Email notification scheduled.")
+        (status = 204, description = "Email notification scheduled."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials."),
+        (status = FORBIDDEN, description = "Caller is not an operator.")
     )
 )]
 #[post("/api/users/email")]

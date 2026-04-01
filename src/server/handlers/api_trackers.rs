@@ -20,7 +20,8 @@ pub struct TrackerIdPath {
 #[utoipa::path(
     tags = ["web_scraping"],
     responses(
-        (status = 200, description = "List of API trackers.", body = [ApiTracker])
+        (status = 200, description = "List of API trackers.", body = [ApiTracker]),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/web_scraping/api_trackers")]
@@ -38,7 +39,8 @@ pub async fn api_trackers_list(
     request_body = ApiTrackerCreateParams,
     responses(
         (status = 201, description = "API tracker was successfully created.", body = ApiTracker),
-        (status = BAD_REQUEST, description = "Invalid API tracker parameters.")
+        (status = BAD_REQUEST, description = "Invalid API tracker parameters."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/web_scraping/api_trackers")]
@@ -62,7 +64,8 @@ pub async fn api_trackers_create(
     request_body = ApiTrackerUpdateParams,
     responses(
         (status = 204, description = "API tracker was successfully updated."),
-        (status = NOT_FOUND, description = "API tracker not found.")
+        (status = NOT_FOUND, description = "API tracker not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[put("/api/web_scraping/api_trackers/{tracker_id}")]
@@ -86,7 +89,8 @@ pub async fn api_trackers_update(
     params(TrackerIdPath),
     responses(
         (status = 204, description = "API tracker was successfully deleted."),
-        (status = NOT_FOUND, description = "API tracker not found.")
+        (status = NOT_FOUND, description = "API tracker not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[delete("/api/web_scraping/api_trackers/{tracker_id}")]
@@ -110,7 +114,8 @@ pub async fn api_trackers_delete(
     request_body = ApiTrackerGetHistoryParams,
     responses(
         (status = 200, description = "List of API tracker revisions."),
-        (status = NOT_FOUND, description = "API tracker not found.")
+        (status = NOT_FOUND, description = "API tracker not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/web_scraping/api_trackers/{tracker_id}/_history")]
@@ -134,7 +139,8 @@ pub async fn api_trackers_get_history(
     params(TrackerIdPath),
     responses(
         (status = 204, description = "History was successfully cleared."),
-        (status = NOT_FOUND, description = "API tracker not found.")
+        (status = NOT_FOUND, description = "API tracker not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/web_scraping/api_trackers/{tracker_id}/_clear")]
@@ -157,7 +163,8 @@ pub async fn api_trackers_clear_history(
     params(TrackerIdPath),
     responses(
         (status = 200, description = "List of tracker execution logs."),
-        (status = NOT_FOUND, description = "API tracker not found.")
+        (status = NOT_FOUND, description = "API tracker not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/web_scraping/api_trackers/{tracker_id}/_logs")]
@@ -180,7 +187,8 @@ pub async fn api_trackers_get_logs(
     params(TrackerIdPath),
     responses(
         (status = 204, description = "Logs were successfully cleared."),
-        (status = NOT_FOUND, description = "API tracker not found.")
+        (status = NOT_FOUND, description = "API tracker not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/web_scraping/api_trackers/{tracker_id}/_clear_logs")]
@@ -201,7 +209,8 @@ pub async fn api_trackers_clear_logs(
 #[utoipa::path(
     tags = ["web_scraping"],
     responses(
-        (status = 200, description = "Logs summary keyed by tracker ID.")
+        (status = 200, description = "Logs summary keyed by tracker ID."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/web_scraping/api_trackers/_logs_summary")]
@@ -223,7 +232,8 @@ pub async fn api_trackers_get_logs_summary(
     request_body = ApiTrackerTestParams,
     responses(
         (status = 200, description = "Test request result.", body = ApiTrackerTestResult),
-        (status = BAD_REQUEST, description = "Invalid test parameters.")
+        (status = BAD_REQUEST, description = "Invalid test parameters."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/web_scraping/api_trackers/_test")]
@@ -246,7 +256,8 @@ pub async fn api_trackers_test(
     request_body = ApiTrackerDebugParams,
     responses(
         (status = 200, description = "Debug result."),
-        (status = BAD_REQUEST, description = "Invalid debug parameters.")
+        (status = BAD_REQUEST, description = "Invalid debug parameters."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/web_scraping/api_trackers/_debug")]

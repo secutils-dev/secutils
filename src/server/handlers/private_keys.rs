@@ -19,7 +19,8 @@ pub struct KeyIdPath {
 #[utoipa::path(
     tags = ["certificates"],
     responses(
-        (status = 200, description = "List of private keys.", body = [PrivateKey])
+        (status = 200, description = "List of private keys.", body = [PrivateKey]),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/certificates/private_keys")]
@@ -37,7 +38,8 @@ pub async fn private_keys_list(
     params(KeyIdPath),
     responses(
         (status = 200, description = "Private key.", body = PrivateKey),
-        (status = 404, description = "Private key not found.")
+        (status = NOT_FOUND, description = "Private key not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/certificates/private_keys/{key_id}")]
@@ -64,7 +66,8 @@ pub async fn private_keys_get(
     request_body = PrivateKeysCreateParams,
     responses(
         (status = 201, description = "Private key was successfully created.", body = PrivateKey),
-        (status = BAD_REQUEST, description = "Invalid private key parameters.")
+        (status = BAD_REQUEST, description = "Invalid private key parameters."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/certificates/private_keys")]
@@ -88,7 +91,8 @@ pub async fn private_keys_create(
     request_body = PrivateKeysUpdateParams,
     responses(
         (status = 204, description = "Private key was successfully updated."),
-        (status = NOT_FOUND, description = "Private key not found.")
+        (status = NOT_FOUND, description = "Private key not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[put("/api/certificates/private_keys/{key_id}")]
@@ -112,7 +116,8 @@ pub async fn private_keys_update(
     params(KeyIdPath),
     responses(
         (status = 204, description = "Private key was successfully deleted."),
-        (status = NOT_FOUND, description = "Private key not found.")
+        (status = NOT_FOUND, description = "Private key not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[delete("/api/certificates/private_keys/{key_id}")]
@@ -136,7 +141,8 @@ pub async fn private_keys_delete(
     request_body = PrivateKeysExportParams,
     responses(
         (status = 200, description = "Exported private key data."),
-        (status = NOT_FOUND, description = "Private key not found.")
+        (status = NOT_FOUND, description = "Private key not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/certificates/private_keys/{key_id}/_export")]

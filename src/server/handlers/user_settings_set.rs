@@ -10,7 +10,8 @@ use tracing::error;
     tags = ["settings"],
     request_body = UserSettingsSetter,
     responses(
-        (status = 200, description = "Updated user settings.", body = UserSettings)
+        (status = 200, description = "Updated user settings.", body = UserSettings),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/user/settings")]

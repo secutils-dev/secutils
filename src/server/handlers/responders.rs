@@ -17,7 +17,8 @@ pub struct ResponderIdPath {
 #[utoipa::path(
     tags = ["webhooks"],
     responses(
-        (status = 200, description = "List of responders.", body = [Responder])
+        (status = 200, description = "List of responders.", body = [Responder]),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/webhooks/responders")]
@@ -35,7 +36,8 @@ pub async fn responders_list(
     request_body = RespondersCreateParams,
     responses(
         (status = 201, description = "Responder was successfully created.", body = Responder),
-        (status = BAD_REQUEST, description = "Invalid responder parameters.")
+        (status = BAD_REQUEST, description = "Invalid responder parameters."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/webhooks/responders")]
@@ -59,7 +61,8 @@ pub async fn responders_create(
     request_body = RespondersUpdateParams,
     responses(
         (status = 204, description = "Responder was successfully updated."),
-        (status = NOT_FOUND, description = "Responder not found.")
+        (status = NOT_FOUND, description = "Responder not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[put("/api/webhooks/responders/{responder_id}")]
@@ -83,7 +86,8 @@ pub async fn responders_update(
     params(ResponderIdPath),
     responses(
         (status = 204, description = "Responder was successfully deleted."),
-        (status = NOT_FOUND, description = "Responder not found.")
+        (status = NOT_FOUND, description = "Responder not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[delete("/api/webhooks/responders/{responder_id}")]
@@ -106,7 +110,8 @@ pub async fn responders_delete(
     params(ResponderIdPath),
     responses(
         (status = 200, description = "List of captured requests."),
-        (status = NOT_FOUND, description = "Responder not found.")
+        (status = NOT_FOUND, description = "Responder not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/webhooks/responders/{responder_id}/_history")]
@@ -129,7 +134,8 @@ pub async fn responders_get_history(
     params(ResponderIdPath),
     responses(
         (status = 204, description = "History was successfully cleared."),
-        (status = NOT_FOUND, description = "Responder not found.")
+        (status = NOT_FOUND, description = "Responder not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/webhooks/responders/{responder_id}/_clear")]
@@ -150,7 +156,8 @@ pub async fn responders_clear_history(
 #[utoipa::path(
     tags = ["webhooks"],
     responses(
-        (status = 200, description = "List of responder stats.", body = [ResponderStats])
+        (status = 200, description = "List of responder stats.", body = [ResponderStats]),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/webhooks/responders/_stats")]

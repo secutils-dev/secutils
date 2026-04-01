@@ -20,6 +20,8 @@ pub struct SetStatusAPIParams {
     request_body = SetStatusAPIParams,
     responses(
         (status = 204, description = "Status was successfully updated."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials."),
+        (status = FORBIDDEN, description = "Caller is not an operator."),
         (status = 500, description = "Failed to update status.")
     )
 )]

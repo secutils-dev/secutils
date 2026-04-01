@@ -23,7 +23,9 @@ pub struct SignupParams {
     request_body = SignupParams,
     responses(
         (status = 200, description = "User was successfully signed up."),
-        (status = BAD_REQUEST, description = "Email already registered.")
+        (status = BAD_REQUEST, description = "Email already registered."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials."),
+        (status = FORBIDDEN, description = "Caller is not an operator.")
     )
 )]
 #[post("/api/users/signup")]

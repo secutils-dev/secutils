@@ -41,6 +41,28 @@ use crate::{
 use actix_web::web;
 use utoipa::OpenApi;
 
+struct SecurityAddon;
+
+impl utoipa::Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            components.add_security_scheme(
+                "bearerAuth",
+                utoipa::openapi::security::SecurityScheme::Http(
+                    utoipa::openapi::security::HttpBuilder::new()
+                        .scheme(utoipa::openapi::security::HttpAuthScheme::Bearer)
+                        .bearer_format("JWT")
+                        .description(Some(
+                            "JWT token obtained from the authentication service. \
+                             Pass as `Authorization: Bearer <token>`.",
+                        ))
+                        .build(),
+                ),
+            );
+        }
+    }
+}
+
 /// Resolves the effective user for a shared-resource-aware handler.
 ///
 /// If a `UserShare` is present and its resource matches the expected shared resource, the share
@@ -198,6 +220,10 @@ pub(crate) async fn resolve_shared_user(
         api_trackers::api_trackers_get_logs_summary,
         api_trackers::api_trackers_test,
         api_trackers::api_trackers_debug,
+    ),
+    modifiers(&SecurityAddon),
+    security(
+        ("bearerAuth" = [])
     ),
     components(schemas(
         // Tags
@@ -562,6 +588,9 @@ mod tests {
                     }
                   }
                 }
+              },
+              "401": {
+                "description": "Missing or invalid authentication credentials."
               }
             }
           },
@@ -594,6 +623,9 @@ mod tests {
               },
               "400": {
                 "description": "Invalid tag parameters."
+              },
+              "401": {
+                "description": "Missing or invalid authentication credentials."
               }
             }
           }
@@ -714,7 +746,10 @@ mod tests {
                   }
                 }
               }
-            }
+            },
+            "security": [
+              {}
+            ]
           },
           "post": {
             "tags": [
@@ -735,6 +770,12 @@ mod tests {
             "responses": {
               "204": {
                 "description": "Status was successfully updated."
+              },
+              "401": {
+                "description": "Missing or invalid authentication credentials."
+              },
+              "403": {
+                "description": "Caller is not an operator."
               },
               "500": {
                 "description": "Failed to update status."
@@ -770,6 +811,9 @@ mod tests {
                     }
                   }
                 }
+              },
+              "401": {
+                "description": "Missing or invalid authentication credentials."
               }
             }
           },
@@ -802,6 +846,9 @@ mod tests {
               },
               "400": {
                 "description": "Invalid template parameters."
+              },
+              "401": {
+                "description": "Missing or invalid authentication credentials."
               }
             }
           }
@@ -1090,6 +1137,58 @@ mod tests {
         {
           "name": "renamed-responder"
         }
+        "###);
+    }
+
+    #[test]
+    fn openapi_spec_has_security_schemes() {
+        let spec = spec();
+        assert_json_snapshot!(spec["components"]["securitySchemes"], @r###"
+        {
+          "bearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "JWT token obtained from the authentication service. Pass as `Authorization: Bearer <token>`."
+          }
+        }
+        "###);
+    }
+
+    #[test]
+    fn openapi_spec_has_global_security() {
+        let spec = spec();
+        assert_json_snapshot!(spec["security"], @r###"
+        [
+          {
+            "bearerAuth": []
+          }
+        ]
+        "###);
+    }
+
+    #[test]
+    fn openapi_spec_anonymous_endpoint_overrides_security() {
+        let spec = spec();
+        let status_get = &spec["paths"]["/api/status"]["get"];
+        assert_json_snapshot!(status_get["security"], @r###"
+        [
+          {}
+        ]
+        "###);
+    }
+
+    #[test]
+    fn openapi_spec_optional_auth_endpoint_has_both_options() {
+        let spec = spec();
+        let template_get = &spec["paths"]["/api/certificates/templates/{template_id}"]["get"];
+        assert_json_snapshot!(template_get["security"], @r###"
+        [
+          {},
+          {
+            "bearerAuth": []
+          }
+        ]
         "###);
     }
 

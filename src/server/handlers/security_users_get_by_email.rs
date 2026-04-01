@@ -19,7 +19,9 @@ pub struct GetByEmailQuery {
     params(GetByEmailQuery),
     responses(
         (status = 200, description = "The requested user."),
-        (status = 404, description = "User not found.")
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials."),
+        (status = FORBIDDEN, description = "Caller is not an operator."),
+        (status = NOT_FOUND, description = "User not found.")
     )
 )]
 #[get("/api/users")]

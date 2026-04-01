@@ -9,7 +9,8 @@ use tracing::error;
 #[utoipa::path(
     tags = ["settings"],
     responses(
-        (status = 200, description = "User settings.", body = UserSettings)
+        (status = 200, description = "User settings.", body = UserSettings),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/user/settings")]

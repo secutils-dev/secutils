@@ -17,7 +17,8 @@ pub struct TagIdPath {
 #[utoipa::path(
     tags = ["tags"],
     responses(
-        (status = 200, description = "List of user tags.", body = [UserTag])
+        (status = 200, description = "List of user tags.", body = [UserTag]),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/user/tags")]
@@ -32,7 +33,8 @@ pub async fn user_tags_list(state: web::Data<AppState>, user: User) -> Result<Ht
     request_body = TagCreateParams,
     responses(
         (status = 201, description = "Tag was successfully created.", body = UserTag),
-        (status = BAD_REQUEST, description = "Invalid tag parameters.")
+        (status = BAD_REQUEST, description = "Invalid tag parameters."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/user/tags")]
@@ -52,7 +54,8 @@ pub async fn user_tags_create(
     request_body = TagUpdateParams,
     responses(
         (status = 200, description = "Tag was successfully updated.", body = UserTag),
-        (status = NOT_FOUND, description = "Tag not found.")
+        (status = NOT_FOUND, description = "Tag not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[put("/api/user/tags/{tag_id}")]
@@ -76,7 +79,8 @@ pub async fn user_tags_update(
     params(TagIdPath),
     responses(
         (status = 204, description = "Tag was successfully deleted."),
-        (status = NOT_FOUND, description = "Tag not found.")
+        (status = NOT_FOUND, description = "Tag not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[delete("/api/user/tags/{tag_id}")]

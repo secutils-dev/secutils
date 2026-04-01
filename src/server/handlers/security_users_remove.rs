@@ -21,7 +21,9 @@ pub struct RemoveParams {
     request_body = RemoveParams,
     responses(
         (status = 204, description = "User was successfully removed."),
-        (status = BAD_REQUEST, description = "Email cannot be empty.")
+        (status = BAD_REQUEST, description = "Email cannot be empty."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials."),
+        (status = FORBIDDEN, description = "Caller is not an operator.")
     )
 )]
 #[post("/api/users/remove")]

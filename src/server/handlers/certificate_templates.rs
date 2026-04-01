@@ -31,7 +31,8 @@ pub struct CertificateTemplateGetResponse {
 #[utoipa::path(
     tags = ["certificates"],
     responses(
-        (status = 200, description = "List of certificate templates.", body = [CertificateTemplate])
+        (status = 200, description = "List of certificate templates.", body = [CertificateTemplate]),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/certificates/templates")]
@@ -55,6 +56,7 @@ pub async fn certificate_templates_list(
 #[utoipa::path(
     tags = ["certificates"],
     params(TemplateIdPath),
+    security((), ("bearerAuth" = [])),
     responses(
         (status = 200, description = "Certificate template with share info.", body = CertificateTemplateGetResponse),
         (status = 404, description = "Template not found.")
@@ -105,7 +107,8 @@ pub async fn certificate_templates_get(
     request_body = TemplatesCreateParams,
     responses(
         (status = 201, description = "Template was successfully created.", body = CertificateTemplate),
-        (status = BAD_REQUEST, description = "Invalid template parameters.")
+        (status = BAD_REQUEST, description = "Invalid template parameters."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/certificates/templates")]
@@ -129,7 +132,8 @@ pub async fn certificate_templates_create(
     request_body = TemplatesUpdateParams,
     responses(
         (status = 204, description = "Template was successfully updated."),
-        (status = NOT_FOUND, description = "Template not found.")
+        (status = NOT_FOUND, description = "Template not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[put("/api/certificates/templates/{template_id}")]
@@ -153,7 +157,8 @@ pub async fn certificate_templates_update(
     params(TemplateIdPath),
     responses(
         (status = 204, description = "Template was successfully deleted."),
-        (status = NOT_FOUND, description = "Template not found.")
+        (status = NOT_FOUND, description = "Template not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[delete("/api/certificates/templates/{template_id}")]
@@ -177,6 +182,7 @@ pub async fn certificate_templates_delete(
     tags = ["certificates"],
     params(TemplateIdPath),
     request_body = TemplatesGenerateParams,
+    security((), ("bearerAuth" = [])),
     responses(
         (status = 200, description = "Generated certificate data (binary, base64-encoded in JSON)."),
         (status = NOT_FOUND, description = "Template not found.")
@@ -212,7 +218,8 @@ pub async fn certificate_templates_generate(
     params(TemplateIdPath),
     responses(
         (status = 200, description = "Share info for the template."),
-        (status = NOT_FOUND, description = "Template not found.")
+        (status = NOT_FOUND, description = "Template not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/certificates/templates/{template_id}/_share")]
@@ -235,7 +242,8 @@ pub async fn certificate_templates_share(
     tags = ["certificates"],
     params(TemplateIdPath),
     responses(
-        (status = 204, description = "Template was successfully unshared.")
+        (status = 204, description = "Template was successfully unshared."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/certificates/templates/{template_id}/_unshare")]
@@ -258,7 +266,8 @@ pub async fn certificate_templates_unshare(
     request_body = TemplatesFetchCertificatesParams,
     responses(
         (status = 200, description = "PEM-encoded certificate chain.", body = [String]),
-        (status = BAD_REQUEST, description = "Invalid or unreachable URL.")
+        (status = BAD_REQUEST, description = "Invalid or unreachable URL."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/certificates/_fetch")]

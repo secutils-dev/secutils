@@ -5,7 +5,8 @@ use actix_web::{HttpResponse, Responder, get};
 #[utoipa::path(
     tags = ["users"],
     responses(
-        (status = 200, description = "The authenticated user.")
+        (status = 200, description = "The authenticated user."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/users/self")]

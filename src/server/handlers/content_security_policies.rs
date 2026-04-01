@@ -31,7 +31,8 @@ pub struct ContentSecurityPolicyGetResponse {
 #[utoipa::path(
     tags = ["web_security"],
     responses(
-        (status = 200, description = "List of content security policies.", body = [ContentSecurityPolicy])
+        (status = 200, description = "List of content security policies.", body = [ContentSecurityPolicy]),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/web_security/csp")]
@@ -52,6 +53,7 @@ pub async fn csp_list(state: web::Data<AppState>, user: User) -> Result<HttpResp
 #[utoipa::path(
     tags = ["web_security"],
     params(PolicyIdPath),
+    security((), ("bearerAuth" = [])),
     responses(
         (status = 200, description = "Content security policy with share info.", body = ContentSecurityPolicyGetResponse),
         (status = 404, description = "Policy not found.")
@@ -99,7 +101,8 @@ pub async fn csp_get(
     request_body = ContentSecurityPoliciesCreateParams,
     responses(
         (status = 201, description = "Policy was successfully created.", body = ContentSecurityPolicy),
-        (status = BAD_REQUEST, description = "Invalid policy parameters.")
+        (status = BAD_REQUEST, description = "Invalid policy parameters."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/web_security/csp")]
@@ -123,7 +126,8 @@ pub async fn csp_create(
     request_body = ContentSecurityPoliciesUpdateParams,
     responses(
         (status = 204, description = "Policy was successfully updated."),
-        (status = NOT_FOUND, description = "Policy not found.")
+        (status = NOT_FOUND, description = "Policy not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[put("/api/web_security/csp/{policy_id}")]
@@ -147,7 +151,8 @@ pub async fn csp_update(
     params(PolicyIdPath),
     responses(
         (status = 204, description = "Policy was successfully deleted."),
-        (status = NOT_FOUND, description = "Policy not found.")
+        (status = NOT_FOUND, description = "Policy not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[delete("/api/web_security/csp/{policy_id}")]
@@ -171,6 +176,7 @@ pub async fn csp_delete(
     tags = ["web_security"],
     params(PolicyIdPath),
     request_body = ContentSecurityPoliciesSerializeParams,
+    security((), ("bearerAuth" = [])),
     responses(
         (status = 200, description = "Serialized CSP header string.", body = String),
         (status = NOT_FOUND, description = "Policy not found.")
@@ -206,7 +212,8 @@ pub async fn csp_serialize(
     params(PolicyIdPath),
     responses(
         (status = 200, description = "Share info for the policy."),
-        (status = NOT_FOUND, description = "Policy not found.")
+        (status = NOT_FOUND, description = "Policy not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/web_security/csp/{policy_id}/_share")]
@@ -229,7 +236,8 @@ pub async fn csp_share(
     tags = ["web_security"],
     params(PolicyIdPath),
     responses(
-        (status = 204, description = "Policy was successfully unshared.")
+        (status = 204, description = "Policy was successfully unshared."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/web_security/csp/{policy_id}/_unshare")]

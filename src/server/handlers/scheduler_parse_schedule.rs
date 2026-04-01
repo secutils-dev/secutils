@@ -39,7 +39,8 @@ pub struct SchedulerParseScheduleResult {
     request_body = SchedulerParseScheduleParams,
     responses(
         (status = 200, description = "Parsed schedule information.", body = SchedulerParseScheduleResult),
-        (status = BAD_REQUEST, description = "Invalid schedule or interval too small.")
+        (status = BAD_REQUEST, description = "Invalid schedule or interval too small."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/scheduler/parse_schedule")]

@@ -14,7 +14,8 @@ use actix_web::{HttpResponse, post, web};
     tags = ["user-data"],
     request_body = UserDataImportPreviewParams,
     responses(
-        (status = 200, description = "Import preview result.")
+        (status = 200, description = "Import preview result."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/_import_preview")]
@@ -33,7 +34,8 @@ pub async fn user_data_import_preview(
     tags = ["user-data"],
     request_body = UserDataImportParams,
     responses(
-        (status = 200, description = "Import result.")
+        (status = 200, description = "Import result."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/_import")]

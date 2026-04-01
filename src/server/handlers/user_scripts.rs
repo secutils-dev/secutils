@@ -24,7 +24,8 @@ pub struct ListScriptsQuery {
     tags = ["scripts"],
     params(ListScriptsQuery),
     responses(
-        (status = 200, description = "List of user scripts.", body = [UserScript])
+        (status = 200, description = "List of user scripts.", body = [UserScript]),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/user/scripts")]
@@ -43,7 +44,8 @@ pub async fn user_scripts_list(
     params(ScriptIdPath),
     responses(
         (status = 200, description = "Script with the specified ID.", body = UserScript),
-        (status = NOT_FOUND, description = "Script not found.")
+        (status = NOT_FOUND, description = "Script not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/user/scripts/{script_id}")]
@@ -64,7 +66,8 @@ pub async fn user_scripts_get(
     request_body = ScriptCreateParams,
     responses(
         (status = 201, description = "Script was successfully created.", body = UserScript),
-        (status = BAD_REQUEST, description = "Invalid script parameters.")
+        (status = BAD_REQUEST, description = "Invalid script parameters."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/user/scripts")]
@@ -88,7 +91,8 @@ pub async fn user_scripts_create(
     request_body = ScriptUpdateParams,
     responses(
         (status = 200, description = "Script was successfully updated.", body = UserScript),
-        (status = NOT_FOUND, description = "Script not found.")
+        (status = NOT_FOUND, description = "Script not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[put("/api/user/scripts/{script_id}")]
@@ -112,7 +116,8 @@ pub async fn user_scripts_update(
     params(ScriptIdPath),
     responses(
         (status = 204, description = "Script was successfully deleted."),
-        (status = NOT_FOUND, description = "Script not found.")
+        (status = NOT_FOUND, description = "Script not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[delete("/api/user/scripts/{script_id}")]

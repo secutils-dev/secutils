@@ -7,6 +7,7 @@ use tracing::error;
 /// Returns the current server status.
 #[utoipa::path(
     tags = ["status"],
+    security(()),
     responses(
         (status = 200, description = "Current server status.", body = crate::server::Status)
     )

@@ -24,6 +24,7 @@ pub struct SendMessageParams {
 #[utoipa::path(
     tags = ["messages"],
     request_body = SendMessageParams,
+    security((), ("bearerAuth" = [])),
     responses(
         (status = 204, description = "Message was successfully sent."),
         (status = 403, description = "SMTP is not configured.")

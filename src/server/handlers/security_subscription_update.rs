@@ -22,7 +22,9 @@ pub struct UpdateSubscriptionParams {
     request_body = UpdateSubscriptionParams,
     responses(
         (status = 204, description = "Subscription was successfully updated."),
-        (status = 404, description = "User not found.")
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials."),
+        (status = FORBIDDEN, description = "Caller is not an operator."),
+        (status = NOT_FOUND, description = "User not found.")
     )
 )]
 #[post("/api/user/subscription")]

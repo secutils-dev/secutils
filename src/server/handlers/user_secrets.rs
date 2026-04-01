@@ -17,7 +17,8 @@ pub struct SecretIdPath {
 #[utoipa::path(
     tags = ["secrets"],
     responses(
-        (status = 200, description = "List of user secrets.", body = [UserSecret])
+        (status = 200, description = "List of user secrets.", body = [UserSecret]),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[get("/api/user/secrets")]
@@ -35,7 +36,8 @@ pub async fn user_secrets_list(
     request_body = SecretCreateParams,
     responses(
         (status = 201, description = "Secret was successfully created.", body = UserSecret),
-        (status = BAD_REQUEST, description = "Invalid secret parameters.")
+        (status = BAD_REQUEST, description = "Invalid secret parameters."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/user/secrets")]
@@ -59,7 +61,8 @@ pub async fn user_secrets_create(
     request_body = SecretUpdateParams,
     responses(
         (status = 200, description = "Secret was successfully updated.", body = UserSecret),
-        (status = NOT_FOUND, description = "Secret not found.")
+        (status = NOT_FOUND, description = "Secret not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[put("/api/user/secrets/{secret_id}")]
@@ -83,7 +86,8 @@ pub async fn user_secrets_update(
     params(SecretIdPath),
     responses(
         (status = 204, description = "Secret was successfully deleted."),
-        (status = NOT_FOUND, description = "Secret not found.")
+        (status = NOT_FOUND, description = "Secret not found."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[delete("/api/user/secrets/{secret_id}")]

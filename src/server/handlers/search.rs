@@ -20,7 +20,8 @@ pub struct SearchParams {
     tags = ["search"],
     request_body = SearchParams,
     responses(
-        (status = 200, description = "Search results.")
+        (status = 200, description = "Search results."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials.")
     )
 )]
 #[post("/api/search")]
