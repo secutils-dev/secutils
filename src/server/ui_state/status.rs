@@ -1,4 +1,4 @@
-use crate::server::StatusLevel;
+use crate::server::{DatabaseStatus, StatusLevel};
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -9,11 +9,13 @@ pub struct Status {
     pub version: String,
     /// Current availability level.
     pub level: StatusLevel,
+    /// Status of the database connection.
+    pub db: DatabaseStatus,
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::server::{Status, StatusLevel};
+    use crate::server::{DatabaseStatus, Status, StatusLevel};
     use insta::assert_json_snapshot;
 
     #[test]
@@ -21,10 +23,14 @@ mod tests {
         assert_json_snapshot!(Status {
             version: "1.0.0-alpha.4".to_string(),
             level: StatusLevel::Available,
+            db: DatabaseStatus { operational: true },
         }, @r###"
         {
           "version": "1.0.0-alpha.4",
-          "level": "available"
+          "level": "available",
+          "db": {
+            "operational": true
+          }
         }
         "###);
 

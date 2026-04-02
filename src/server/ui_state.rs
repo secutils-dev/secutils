@@ -1,3 +1,4 @@
+mod database_status;
 mod status;
 mod status_level;
 mod webhook_url_type;
@@ -5,8 +6,8 @@ mod webhook_url_type;
 mod subscription_state;
 
 pub use self::{
-    status::Status, status_level::StatusLevel, subscription_state::SubscriptionState,
-    webhook_url_type::WebhookUrlType,
+    database_status::DatabaseStatus, status::Status, status_level::StatusLevel,
+    subscription_state::SubscriptionState, webhook_url_type::WebhookUrlType,
 };
 use crate::{
     users::{ClientUserShare, User, UserSettings},
@@ -51,7 +52,7 @@ mod tests {
 
     use crate::{
         server::{
-            Status, StatusLevel, UiPlatformState, UiState, WebhookUrlType,
+            DatabaseStatus, Status, StatusLevel, UiPlatformState, UiState, WebhookUrlType,
             ui_state::subscription_state::SubscriptionState,
         },
         tests::{mock_config, mock_user},
@@ -70,6 +71,7 @@ mod tests {
             status: &Status {
                 version: "1.0.0-alpha.4".to_string(),
                 level: StatusLevel::Available,
+                db: DatabaseStatus { operational: true },
             },
             user: Some(user),
             subscription: Some(SubscriptionState {
@@ -106,7 +108,10 @@ mod tests {
         {
           "status": {
             "version": "1.0.0-alpha.4",
-            "level": "available"
+            "level": "available",
+            "db": {
+              "operational": true
+            }
           },
           "user": {
             "email": "dev-00000000-0000-0000-0000-000000000001@secutils.dev",
@@ -168,6 +173,7 @@ mod tests {
             status: &Status {
                 version: "1.0.0-alpha.4".to_string(),
                 level: StatusLevel::Available,
+                db: DatabaseStatus { operational: true },
             },
             user: None,
             subscription: Default::default(),
@@ -183,7 +189,10 @@ mod tests {
         {
           "status": {
             "version": "1.0.0-alpha.4",
-            "level": "available"
+            "level": "available",
+            "db": {
+              "operational": true
+            }
           },
           "utils": [],
           "webhookUrlType": "subdomain",

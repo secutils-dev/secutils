@@ -245,6 +245,7 @@ pub(crate) async fn resolve_shared_user(
         crate::users::UserSettings,
         crate::users::UserSettingsSetter,
         // Status
+        crate::server::DatabaseStatus,
         crate::server::Status,
         crate::server::StatusLevel,
         // Subscription
@@ -466,6 +467,7 @@ mod tests {
           "ContentSecurityPolicyTrustedTypesDirectiveValue",
           "ContentSecurityPolicyWebrtcDirectiveValue",
           "DataFileSecret",
+          "DatabaseStatus",
           "EmailParams",
           "EntityTag",
           "ExportFormat",

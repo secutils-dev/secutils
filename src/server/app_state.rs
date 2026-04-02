@@ -2,7 +2,7 @@ use crate::{
     api::Api,
     config::Config,
     network::{DnsResolver, EmailTransport, TokioDnsResolver},
-    server::{Status, StatusLevel},
+    server::{DatabaseStatus, Status, StatusLevel},
 };
 use dashmap::DashMap;
 use lettre::{AsyncSmtpTransport, Tokio1Executor};
@@ -28,6 +28,7 @@ impl<DR: DnsResolver, ET: EmailTransport> AppState<DR, ET> {
             status: RwLock::new(Status {
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 level: StatusLevel::Available,
+                db: DatabaseStatus { operational: true },
             }),
             api,
             responder_semaphores: DashMap::new(),

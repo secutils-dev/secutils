@@ -7,7 +7,8 @@ mod ui_state;
 #[cfg(test)]
 pub use self::app_state::tests;
 pub use self::ui_state::{
-    Status, StatusLevel, SubscriptionState, UiPlatformState, UiState, WebhookUrlType,
+    DatabaseStatus, Status, StatusLevel, SubscriptionState, UiPlatformState, UiState,
+    WebhookUrlType,
 };
 
 use crate::{
@@ -27,8 +28,8 @@ pub use app_state::AppState;
 use handlers::SecutilsOpenApi;
 use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
-use std::sync::Arc;
-use tracing::info;
+use std::{sync::Arc, time::Duration};
+use tracing::{info, warn};
 use tracing_actix_web::TracingLogger;
 use utoipa::OpenApi;
 use utoipa_rapidoc::RapiDoc;
@@ -57,22 +58,43 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
         config.db.port,
         urlencoding::encode(&config.db.name)
     );
-    let database = Database::create(
-        PgPoolOptions::new()
-            .max_connections(config.db.max_connections)
-            .min_connections(config.db.min_connections)
-            .acquire_timeout(config.db.acquire_timeout)
-            .max_lifetime(config.db.max_lifetime)
-            .idle_timeout(config.db.idle_timeout)
-            .test_before_acquire(true)
-            .connect(&db_url)
-            .await?,
-    )
-    .await?;
+    let pool_options = PgPoolOptions::new()
+        .max_connections(config.db.max_connections)
+        .min_connections(config.db.min_connections)
+        .acquire_timeout(config.db.acquire_timeout)
+        .max_lifetime(config.db.max_lifetime)
+        .idle_timeout(config.db.idle_timeout)
+        .test_before_acquire(true);
+
+    let pool = {
+        const MAX_RETRIES: u32 = 5;
+        let mut attempt = 0;
+        loop {
+            match pool_options.clone().connect(&db_url).await {
+                Ok(pool) => break pool,
+                Err(err) => {
+                    attempt += 1;
+                    if attempt >= MAX_RETRIES {
+                        return Err(err).context(format!(
+                            "Failed to connect to database after {MAX_RETRIES} attempts"
+                        ));
+                    }
+
+                    let delay = Duration::from_secs(1 << attempt.min(4));
+                    warn!(
+                        attempt,
+                        max_retries = MAX_RETRIES,
+                        "Failed to connect to database: {err}. Retrying in {delay:?}…"
+                    );
+                    tokio::time::sleep(delay).await;
+                }
+            }
+        }
+    };
 
     let api = Arc::new(Api::new(
         config.clone(),
-        database,
+        Database::create(pool).await?,
         search_index,
         Network::create(&config)?,
         create_templates()?,
