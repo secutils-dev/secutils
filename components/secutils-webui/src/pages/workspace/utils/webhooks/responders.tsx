@@ -419,7 +419,13 @@ export default function Responders() {
                   type: 'icon',
                   // eslint-disable-next-line @typescript-eslint/no-unused-vars
                   onClick: ({ id, createdAt, updatedAt, name, ...rest }: Responder) =>
-                    setResponderToEdit({ ...rest, name: getCopyName(name) }),
+                    setResponderToEdit({
+                      ...rest,
+                      name: getCopyName(
+                        name,
+                        responders.status === 'succeeded' ? responders.data.responders.map((r) => r.name) : [],
+                      ),
+                    }),
                 },
                 {
                   name: 'Remove',

@@ -215,7 +215,7 @@ interface Context {
   query: Record<string, string>;
   // HTTP body of the received request in binary form.
   body: number[];
-  // User secrets (decrypted key-value pairs). Manage secrets in Settings → Secrets.
+  // User secrets (decrypted key-value pairs). Manage secrets in Workspace → Secrets.
   secrets: Record<string, string>;
 }
 ```
@@ -302,7 +302,7 @@ This script inspects the incoming request properties and returns them as a JSON 
 ```
 
 ### Use secrets in a response
-This script reads a user secret and includes it in the response. Secrets are managed in **Settings → Secrets** and are available via `context.secrets`:
+This script reads a user secret and includes it in the response. Secrets are managed in **Workspace → Secrets** and are available via `context.secrets`:
 
 ```javascript
 (async () => {

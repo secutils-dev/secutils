@@ -1,7 +1,7 @@
 import { FILTER_PARAM_QUERY } from '../components/items_table_filter';
 
 export function getWorkspaceUtilLink(utilHandle: string): string {
-  return utilHandle === 'home' ? '/ws' : `/ws/${utilHandle}`;
+  return utilHandle === 'workspace__overview' ? '/ws' : `/ws/${utilHandle}`;
 }
 
 export function getWorkspaceEntityLink(utilHandle: string, entityId: string): string {

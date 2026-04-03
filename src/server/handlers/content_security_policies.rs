@@ -48,7 +48,7 @@ pub async fn csp_list(state: web::Data<AppState>, user: User) -> Result<HttpResp
 /// Gets a content security policy by ID, including its share status.
 ///
 /// Supports shared access: when an `X-User-Share-ID` header is present and points to
-/// a share for this policy, the request is served on behalf of the share owner — even
+/// a share for this policy, the request is served on behalf of the share owner - even
 /// if the caller is unauthenticated.
 #[utoipa::path(
     tags = ["web_security"],

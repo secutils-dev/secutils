@@ -2,7 +2,11 @@ import type { ComponentType, LazyExoticComponent } from 'react';
 import { lazy } from 'react';
 
 export const UTIL_HANDLES = Object.freeze({
-  home: 'home',
+  workspace: 'workspace',
+  workspaceOverview: 'workspace__overview',
+  workspaceTags: 'workspace__tags',
+  workspaceSecrets: 'workspace__secrets',
+  workspaceScripts: 'workspace__scripts',
   webhooks: 'webhooks',
   webhooksResponders: 'webhooks__responders',
   certificates: 'certificates',
@@ -17,7 +21,10 @@ export const UTIL_HANDLES = Object.freeze({
 });
 
 export const UtilsComponents = new Map<string, LazyExoticComponent<ComponentType>>([
-  [UTIL_HANDLES.home, lazy(() => import('./home/home'))],
+  [UTIL_HANDLES.workspaceOverview, lazy(() => import('./home/home'))],
+  [UTIL_HANDLES.workspaceTags, lazy(() => import('./workspace/workspace_tags'))],
+  [UTIL_HANDLES.workspaceSecrets, lazy(() => import('./workspace/workspace_secrets'))],
+  [UTIL_HANDLES.workspaceScripts, lazy(() => import('./workspace/workspace_scripts'))],
   [UTIL_HANDLES.webhooksResponders, lazy(() => import('./webhooks/responders'))],
   [
     UTIL_HANDLES.certificatesCertificateTemplates,
@@ -37,8 +44,16 @@ export const UtilsShareComponents = new Map<string, LazyExoticComponent<Componen
 
 export function getUtilIcon(utilHandle: string, purpose: 'navigation' | 'title') {
   switch (utilHandle) {
-    case UTIL_HANDLES.home:
-      return 'home';
+    case UTIL_HANDLES.workspace:
+      return 'spaces';
+    case UTIL_HANDLES.workspaceOverview:
+      return purpose === 'title' ? 'spaces' : 'home';
+    case UTIL_HANDLES.workspaceTags:
+      return purpose === 'title' ? 'tag' : 'tag';
+    case UTIL_HANDLES.workspaceSecrets:
+      return purpose === 'title' ? 'lock' : 'lock';
+    case UTIL_HANDLES.workspaceScripts:
+      return purpose === 'title' ? 'editorCodeBlock' : 'editorCodeBlock';
     case UTIL_HANDLES.webhooks:
       return 'node';
     case UTIL_HANDLES.webhooksResponders:

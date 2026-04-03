@@ -51,7 +51,7 @@ pub async fn certificate_templates_list(
 /// Gets a certificate template by ID, including its share status.
 ///
 /// Supports shared access: when an `X-User-Share-ID` header is present and points to
-/// a share for this template, the request is served on behalf of the share owner — even
+/// a share for this template, the request is served on behalf of the share owner - even
 /// if the caller is unauthenticated.
 #[utoipa::path(
     tags = ["certificates"],

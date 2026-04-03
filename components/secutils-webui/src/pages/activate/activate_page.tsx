@@ -1,16 +1,17 @@
 import { EuiButton, EuiFieldText, EuiForm, EuiFormRow, EuiLink, EuiPanel } from '@elastic/eui';
 import type { FrontendApi, VerificationFlow } from '@ory/kratos-client-fetch';
 import type { ChangeEvent } from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 
-import { SettingsFlyout } from '../../app_container';
 import { PageErrorState, PageLoadingState, PageSuccessState } from '../../components';
 import { useAppContext, usePageHeaderActions, usePageMeta } from '../../hooks';
 import type { AsyncData } from '../../model';
 import { getCsrfToken, getSecurityErrorMessage } from '../../model';
 import { getOryApi } from '../../tools/ory';
 import { Page } from '../page';
+
+const SettingsFlyout = lazy(() => import('../../app_container/settings_flyout'));
 
 async function getVerificationFlow(api: FrontendApi, flowId?: string) {
   if (flowId) {
@@ -272,11 +273,13 @@ export function ActivatePage() {
       <>
         {pageBody}
         {isSettingsOpen ? (
-          <SettingsFlyout
-            onClose={hideSettings}
-            importUrl={pendingImportUrl}
-            onImportUrlConsumed={clearPendingImportUrl}
-          />
+          <Suspense fallback={null}>
+            <SettingsFlyout
+              onClose={hideSettings}
+              importUrl={pendingImportUrl}
+              onImportUrlConsumed={clearPendingImportUrl}
+            />
+          </Suspense>
         ) : null}
       </>
     </Page>

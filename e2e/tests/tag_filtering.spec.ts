@@ -51,14 +51,14 @@ test.describe('Tag filtering', () => {
     const scopeButton = page.getByRole('button', { name: 'Filter all lists by tags' });
     await scopeButton.click();
 
-    // Select "alpha" — shows R-alpha-beta and R-only-alpha (both have alpha).
+    // Select "alpha" - shows R-alpha-beta and R-only-alpha (both have alpha).
     await page.getByRole('option', { name: 'alpha' }).click();
     await page.keyboard.press('Escape');
     await expect(page.getByText('R-alpha-beta')).toBeVisible();
     await expect(page.getByText('R-only-alpha')).toBeVisible();
     await expect(page.getByText('R-only-gamma')).not.toBeVisible();
 
-    // Also select "beta" (AND logic) — only R-alpha-beta has BOTH alpha AND beta.
+    // Also select "beta" (AND logic) - only R-alpha-beta has BOTH alpha AND beta.
     await scopeButton.click();
     await page.getByRole('option', { name: 'beta' }).click();
     await page.keyboard.press('Escape');
@@ -66,7 +66,7 @@ test.describe('Tag filtering', () => {
     await expect(page.getByText('R-only-alpha')).not.toBeVisible();
     await expect(page.getByText('R-only-gamma')).not.toBeVisible();
 
-    // Deselect both — all visible again.
+    // Deselect both - all visible again.
     await scopeButton.click();
     await page.getByRole('option', { name: 'alpha' }).click();
     await page.getByRole('option', { name: 'beta' }).click();
@@ -102,7 +102,7 @@ test.describe('Tag filtering', () => {
     const tagFilter = page.getByRole('button', { name: /Tags/ });
     await tagFilter.click();
 
-    // Select alpha and gamma (OR logic) — R-only-alpha and R-only-gamma visible, R-only-beta hidden.
+    // Select alpha and gamma (OR logic) - R-only-alpha and R-only-gamma visible, R-only-beta hidden.
     await page.getByRole('option', { name: 'alpha' }).click();
     await page.getByRole('option', { name: 'gamma' }).click();
     await page.keyboard.press('Escape');
@@ -134,7 +134,7 @@ test.describe('Tag filtering', () => {
     await goto(page, '/ws/webhooks__responders');
     await expect(page.getByText('R-alpha-beta')).toBeVisible({ timeout: 15000 });
 
-    // Set global scope to "alpha" — shows R-alpha-beta, R-alpha-gamma, R-only-alpha.
+    // Set global scope to "alpha" - shows R-alpha-beta, R-alpha-gamma, R-only-alpha.
     const scopeButton = page.getByRole('button', { name: 'Filter all lists by tags' });
     await scopeButton.click();
     await page.getByRole('option', { name: 'alpha' }).click();
@@ -342,7 +342,7 @@ test.describe('Tag filtering', () => {
       await page.waitForTimeout(200); // debounce
       expect(page.url()).toContain(`q=${encodeURIComponent(alphaName)}`);
 
-      // 3. Apply both filters — then click "Clear filters" from filtered empty state.
+      // 3. Apply both filters - then click "Clear filters" from filtered empty state.
       // First make the search hide everything by searching for a non-existent term.
       await searchInput.fill('zzz-no-match');
       await page.waitForTimeout(200);
@@ -540,18 +540,13 @@ test.describe('Tag filtering', () => {
     await expect(page.getByText('CSP-alpha')).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('CSP-gamma')).not.toBeVisible();
 
-    // Verify on secrets tab (via settings flyout, now inside WorkspaceContext).
-    await page.getByRole('button', { name: 'Account menu' }).click();
-    await page.getByText('Settings').click();
-    const secretsTab = page.getByRole('tab', { name: 'Secrets' });
-    await expect(secretsTab).toBeVisible({ timeout: 15000 });
-    await secretsTab.click();
+    // Verify on secrets page.
+    await goto(page, '/ws/workspace__secrets');
     await expect(page.getByText('Secret-alpha')).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('Secret-gamma')).not.toBeVisible();
 
-    // Verify on scripts tab.
-    const scriptsTab = page.getByRole('tab', { name: 'Scripts' });
-    await scriptsTab.click();
+    // Verify on scripts page.
+    await goto(page, '/ws/workspace__scripts');
     await expect(page.getByText('Script-alpha')).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('Script-gamma')).not.toBeVisible();
   });

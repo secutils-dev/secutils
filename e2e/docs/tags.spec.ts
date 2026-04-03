@@ -21,16 +21,9 @@ test.describe('Tags guide screenshots', () => {
     await fixEntityTimestamps(page, '**/api/user/tags');
   });
 
-  test('manage tags in settings', async ({ page }) => {
-    // Step 1: Open settings and navigate to the Tags tab - empty state.
-    await page.getByRole('button', { name: 'Account menu' }).click();
-    const settingsButton = page.getByText('Settings');
-    await expect(settingsButton).toBeVisible();
-    await settingsButton.click();
-
-    const tagsTab = page.getByRole('tab', { name: 'Tags' });
-    await expect(tagsTab).toBeVisible({ timeout: 15000 });
-    await tagsTab.click();
+  test('manage tags', async ({ page }) => {
+    // Step 1: Navigate to the workspace Tags page - empty state.
+    await goto(page, '/ws/workspace__tags');
 
     await expect(page.getByText('No tags yet')).toBeVisible({ timeout: 15000 });
     const addButton = page.getByRole('button', { name: 'Add tag' });
@@ -45,7 +38,7 @@ test.describe('Tags guide screenshots', () => {
     await page.screenshot({ path: join(IMG_DIR, 'tags_step2_form.png') });
 
     // Submit and dismiss the toast.
-    await modal.getByRole('button', { name: 'Create' }).click();
+    await modal.getByRole('button', { name: 'Save' }).click();
     await dismissAllToasts(page);
     await expect(page.getByText('production', { exact: true })).toBeVisible({ timeout: 15000 });
 
@@ -60,13 +53,8 @@ test.describe('Tags guide screenshots', () => {
       expect(res.ok()).toBeTruthy();
     }
 
-    // Reload the settings flyout to show all tags.
-    await page.getByRole('button', { name: 'Close this dialog' }).click();
-    await page.getByRole('button', { name: 'Account menu' }).click();
-    await page.getByText('Settings').click();
-    const tagsTabReload = page.getByRole('tab', { name: 'Tags' });
-    await expect(tagsTabReload).toBeVisible({ timeout: 15000 });
-    await tagsTabReload.click();
+    // Reload navigation to show all tags.
+    await goto(page, '/ws/workspace__tags');
     await expect(page.getByText('staging')).toBeVisible({ timeout: 15000 });
     await page.screenshot({ path: join(IMG_DIR, 'tags_step3_list.png') });
   });

@@ -10,7 +10,6 @@ import { TagScopeSelector } from './components/tag_scope_selector';
 import { getUtilIcon, UTIL_HANDLES, UtilsComponents, UtilsShareComponents } from './utils';
 import { getWorkspaceUtilLink } from './utils/workspace_links';
 import { WorkspaceContext } from './workspace_context';
-import { SettingsFlyout } from '../../app_container';
 import { PageLoadingState } from '../../components';
 import { useAppContext, usePageHeaderActions, usePageMeta } from '../../hooks';
 import type { Util } from '../../model';
@@ -18,6 +17,7 @@ import { USER_SETTINGS_KEY_COMMON_GLOBAL_SCOPE_TAG_IDS } from '../../model';
 import { Page } from '../page';
 
 const DEFAULT_COMPONENT = lazy(() => import('../../components/page_under_construction_state'));
+const SettingsFlyout = lazy(() => import('../../app_container/settings_flyout'));
 
 export function WorkspacePage() {
   usePageMeta('Workspace');
@@ -27,7 +27,7 @@ export function WorkspacePage() {
   const { actions, isSettingsOpen, hideSettings, pendingImportUrl, clearPendingImportUrl } = usePageHeaderActions();
 
   const { uiState, settings, setSettings } = useAppContext();
-  const { util: utilIdFromParam = UTIL_HANDLES.home, deepLink: deepLinkFromParam } = useParams<{
+  const { util: utilIdFromParam = UTIL_HANDLES.workspaceOverview, deepLink: deepLinkFromParam } = useParams<{
     util?: string;
     deepLink?: string;
   }>();

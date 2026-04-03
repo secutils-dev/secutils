@@ -43,7 +43,7 @@ pub async fn import_tags<DR: DnsResolver, ET: EmailTransport>(
         let selection = selections.get(&file_tag.id);
 
         if let Some(existing) = existing_by_name.get(file_tag.name.as_str()) {
-            // Name conflict — apply conflict resolution.
+            // Name conflict - apply conflict resolution.
             let resolution = selection.and_then(|s| s.conflict_resolution);
             match resolution {
                 Some(ConflictResolution::Rename) => {
@@ -79,7 +79,7 @@ pub async fn import_tags<DR: DnsResolver, ET: EmailTransport>(
                 }
             }
         } else {
-            // No conflict — create new tag.
+            // No conflict - create new tag.
             match tags_api
                 .create_tag(TagCreateParams {
                     name: file_tag.name.clone(),

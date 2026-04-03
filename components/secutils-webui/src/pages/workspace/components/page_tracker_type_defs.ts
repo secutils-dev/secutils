@@ -249,7 +249,7 @@ interface ExtractorContext {
   };
   /** Parameters passed to the extractor, including user secrets if the script references them. */
   params?: {
-    /** User secrets (key-value pairs). Available when the script contains \`context.params.secrets\`. Manage secrets in Settings > Secrets. */
+    /** User secrets (key-value pairs). Available when the script contains \`context.params.secrets\`. Manage secrets in Workspace > Secrets. */
     secrets?: Record<string, string>;
   };
 }

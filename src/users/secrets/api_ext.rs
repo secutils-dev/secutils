@@ -29,7 +29,7 @@ pub struct SecretCreateParams {
 #[serde(rename_all = "camelCase")]
 #[schema(example = json!({"value": "ghp_yyyyyyyyyyyy"}))]
 pub struct SecretUpdateParams {
-    pub value: String,
+    pub value: Option<String>,
     pub tag_ids: Option<Vec<Uuid>>,
 }
 
@@ -119,14 +119,12 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
         })
     }
 
-    /// Updates an existing secret's value.
+    /// Updates an existing secret's value and/or tags.
     pub async fn update_secret(
         &self,
         id: Uuid,
         params: SecretUpdateParams,
     ) -> anyhow::Result<UserSecret> {
-        Self::validate_value(&params.value)?;
-
         let secrets_db = self.api.db.secrets();
         let existing_secret = secrets_db
             .get_user_secrets(self.user.id, false)
@@ -137,12 +135,16 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
                 anyhow::Error::from(Error::not_found(format!("Secret '{id}' not found.")))
             })?;
 
-        let encryption = self.get_encryption()?;
-        let encrypted_value = encryption.encrypt(params.value.as_bytes())?;
+        let encrypted_value = if let Some(ref value) = params.value {
+            Self::validate_value(value)?;
+            let encryption = self.get_encryption()?;
+            Some(encryption.encrypt(value.as_bytes())?)
+        } else {
+            existing_secret.encrypted_value.clone()
+        };
 
         let secret = UserSecret {
-            encrypted_value: Some(encrypted_value),
-            // Preserve timestamp only up to seconds.
+            encrypted_value,
             updated_at: OffsetDateTime::from_unix_timestamp(
                 OffsetDateTime::now_utc().unix_timestamp(),
             )?,
@@ -153,7 +155,10 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> SecretsApiExt<'a, 'u, DR, ET> 
             .update_user_secret(self.user.id, &secret, params.tag_ids)
             .await?;
 
-        self.sync_tracker_secrets().await;
+        if params.value.is_some() {
+            self.sync_tracker_secrets().await;
+        }
+
         Ok(UserSecret {
             tags: updated_tags.unwrap_or(secret.tags),
             encrypted_value: None,
@@ -405,8 +410,9 @@ mod tests {
     fn secret_update_params_example_is_valid() {
         let example: SecretUpdateParams =
             serde_json::from_value(schema_example::<SecretUpdateParams>()).unwrap();
-        assert!(!example.value.is_empty());
-        assert!(example.value.len() <= MAX_SECRET_VALUE_LENGTH);
+        let value = example.value.expect("example should have a value");
+        assert!(!value.is_empty());
+        assert!(value.len() <= MAX_SECRET_VALUE_LENGTH);
     }
     use uuid::uuid;
 
@@ -616,7 +622,7 @@ mod tests {
             .update_secret(
                 created.id,
                 SecretUpdateParams {
-                    value: "new-value".into(),
+                    value: Some("new-value".into()),
                     tag_ids: None,
                 },
             )
@@ -644,7 +650,7 @@ mod tests {
             .update_secret(
                 uuid::Uuid::now_v7(),
                 SecretUpdateParams {
-                    value: "val".into(),
+                    value: Some("val".into()),
                     tag_ids: None,
                 },
             )
@@ -1261,7 +1267,7 @@ mod tests {
             .update_secret(
                 all_key.id,
                 SecretUpdateParams {
-                    value: "new-value".into(),
+                    value: Some("new-value".into()),
                     tag_ids: None,
                 },
             )
@@ -1333,7 +1339,7 @@ mod tests {
             .update_secret(
                 sel_key.id,
                 SecretUpdateParams {
-                    value: "new-value".into(),
+                    value: Some("new-value".into()),
                     tag_ids: None,
                 },
             )
@@ -1399,7 +1405,7 @@ mod tests {
             .update_secret(
                 all_key.id,
                 SecretUpdateParams {
-                    value: "new-value".into(),
+                    value: Some("new-value".into()),
                     tag_ids: None,
                 },
             )

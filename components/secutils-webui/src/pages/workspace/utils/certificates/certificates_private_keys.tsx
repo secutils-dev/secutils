@@ -389,7 +389,13 @@ export default function CertificatesPrivateKeys() {
                   type: 'icon',
                   // eslint-disable-next-line @typescript-eslint/no-unused-vars
                   onClick: ({ id, createdAt, updatedAt, name, ...rest }: PrivateKey) =>
-                    setPrivateKeyToEdit({ ...rest, name: getCopyName(name) }),
+                    setPrivateKeyToEdit({
+                      ...rest,
+                      name: getCopyName(
+                        name,
+                        privateKeys.status === 'succeeded' ? privateKeys.data.map((k) => k.name) : [],
+                      ),
+                    }),
                 },
                 {
                   name: 'Remove',

@@ -427,7 +427,10 @@ export default function ApiTrackers() {
                   type: 'icon',
                   // eslint-disable-next-line @typescript-eslint/no-unused-vars
                   onClick: ({ id, createdAt, updatedAt, name, ...rest }: ApiTracker) =>
-                    setTrackerToEdit({ ...rest, name: getCopyName(name) }),
+                    setTrackerToEdit({
+                      ...rest,
+                      name: getCopyName(name, trackers.status === 'succeeded' ? trackers.data.map((t) => t.name) : []),
+                    }),
                 },
                 {
                   name: 'Remove',

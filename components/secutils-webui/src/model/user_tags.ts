@@ -39,7 +39,8 @@ export async function createUserTag(name: string, color: string): Promise<UserTa
     body: JSON.stringify({ name, color }),
   });
   if (!response.ok) {
-    throw new Error(`Failed to create tag: ${response.status}`);
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.message ?? 'Failed to create tag.');
   }
   return response.json();
 }
@@ -51,7 +52,8 @@ export async function updateUserTag(id: string, params: { name?: string; color?:
     body: JSON.stringify(params),
   });
   if (!response.ok) {
-    throw new Error(`Failed to update tag: ${response.status}`);
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.message ?? 'Failed to update tag.');
   }
   return response.json();
 }
@@ -62,6 +64,7 @@ export async function deleteUserTag(id: string): Promise<void> {
     method: 'DELETE',
   });
   if (!response.ok) {
-    throw new Error(`Failed to delete tag: ${response.status}`);
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.message ?? 'Failed to delete tag.');
   }
 }

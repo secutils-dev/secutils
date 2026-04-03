@@ -429,7 +429,13 @@ export default function CertificatesCertificateTemplates() {
                   type: 'icon',
                   // eslint-disable-next-line @typescript-eslint/no-unused-vars
                   onClick: ({ id, createdAt, updatedAt, name, ...rest }: CertificateTemplate) =>
-                    setTemplateToEdit({ ...rest, name: getCopyName(name) }),
+                    setTemplateToEdit({
+                      ...rest,
+                      name: getCopyName(
+                        name,
+                        templates.status === 'succeeded' ? templates.data.map((t) => t.name) : [],
+                      ),
+                    }),
                 },
                 {
                   name: 'Remove',

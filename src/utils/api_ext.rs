@@ -54,12 +54,51 @@ mod tests {
         [
             Util {
                 id: 1,
-                handle: "home",
-                name: "Home",
+                handle: "workspace",
+                name: "Workspace",
                 keywords: Some(
-                    "home start docs guides changes",
+                    "workspace overview home tags secrets scripts",
                 ),
-                utils: None,
+                utils: Some(
+                    [
+                        Util {
+                            id: 13,
+                            handle: "workspace__overview",
+                            name: "Overview",
+                            keywords: Some(
+                                "home start docs guides changes overview dashboard",
+                            ),
+                            utils: None,
+                        },
+                        Util {
+                            id: 14,
+                            handle: "workspace__tags",
+                            name: "Tags",
+                            keywords: Some(
+                                "tags labels categories organize",
+                            ),
+                            utils: None,
+                        },
+                        Util {
+                            id: 15,
+                            handle: "workspace__secrets",
+                            name: "Secrets",
+                            keywords: Some(
+                                "secrets keys values environment variables credentials",
+                            ),
+                            utils: None,
+                        },
+                        Util {
+                            id: 16,
+                            handle: "workspace__scripts",
+                            name: "Scripts",
+                            keywords: Some(
+                                "scripts deno javascript typescript automation user",
+                            ),
+                            utils: None,
+                        },
+                    ],
+                ),
             },
             Util {
                 id: 2,

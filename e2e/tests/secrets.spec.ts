@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { dismissAllToasts, ensureUserAndLogin } from '../helpers';
+import { dismissAllToasts, ensureUserAndLogin, goto } from '../helpers';
 
 test.describe('User Secrets CRUD', () => {
   test.beforeEach(async ({ request, page }) => {
@@ -8,15 +8,7 @@ test.describe('User Secrets CRUD', () => {
   });
 
   test('create, list, update, and delete a secret', async ({ page }) => {
-    // Open settings flyout and go to Secrets tab.
-    await page.getByRole('button', { name: 'Account menu' }).click();
-    const settingsButton = page.getByText('Settings');
-    await expect(settingsButton).toBeVisible();
-    await settingsButton.click();
-
-    const secretsTab = page.getByRole('tab', { name: 'Secrets' });
-    await expect(secretsTab).toBeVisible({ timeout: 15000 });
-    await secretsTab.click();
+    await goto(page, '/ws/workspace__secrets');
 
     // Empty state.
     await expect(page.getByText('No secrets yet')).toBeVisible({ timeout: 15000 });
@@ -27,7 +19,7 @@ test.describe('User Secrets CRUD', () => {
     await expect(modal).toBeVisible({ timeout: 15000 });
     await modal.getByPlaceholder('MY_API_KEY').fill('TEST_SECRET');
     await modal.getByPlaceholder('Enter secret value…').fill('super-secret-value');
-    await modal.getByRole('button', { name: 'Create' }).click();
+    await modal.getByRole('button', { name: 'Save' }).click();
 
     // Verify secret appears in the table.
     await expect(page.getByText('TEST_SECRET', { exact: true })).toBeVisible({ timeout: 15000 });
@@ -42,10 +34,10 @@ test.describe('User Secrets CRUD', () => {
 
     // Update the secret.
     await page.getByRole('button', { name: 'Edit' }).click();
-    const editModal = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Update secret' }) });
-    await expect(editModal).toBeVisible({ timeout: 15000 });
-    await editModal.getByPlaceholder('Enter secret value…').fill('updated-value');
-    await editModal.getByRole('button', { name: 'Update' }).click();
+    const editFlyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Update secret' }) });
+    await expect(editFlyout).toBeVisible({ timeout: 15000 });
+    await editFlyout.getByPlaceholder('Enter secret value…').fill('updated-value');
+    await editFlyout.getByRole('button', { name: 'Save' }).click();
 
     // Verify toast appears.
     await expect(page.getByText('Secret "TEST_SECRET" updated')).toBeVisible({ timeout: 15000 });
@@ -70,12 +62,7 @@ test.describe('User Secrets CRUD', () => {
     });
     expect(createResponse.ok()).toBeTruthy();
 
-    // Navigate to secrets settings
-    await page.getByRole('button', { name: 'Account menu' }).click();
-    await page.getByText('Settings').click();
-    const secretsTab = page.getByRole('tab', { name: 'Secrets' });
-    await expect(secretsTab).toBeVisible({ timeout: 15000 });
-    await secretsTab.click();
+    await goto(page, '/ws/workspace__secrets');
 
     // Wait for the secret to be visible
     await expect(page.getByText('UNIQUE_SECRET', { exact: true })).toBeVisible({ timeout: 15000 });
@@ -89,15 +76,16 @@ test.describe('User Secrets CRUD', () => {
     await modal.getByPlaceholder('MY_API_KEY').fill('UNIQUE_SECRET');
     await modal.getByPlaceholder('Enter secret value…').fill('another-value');
 
-    // Click Create button
-    await modal.getByRole('button', { name: 'Create' }).click();
+    // Click Save button
+    await modal.getByRole('button', { name: 'Save' }).click();
 
     // Expect toast message about duplicate name
     await expect(page.getByText("A secret with name 'UNIQUE_SECRET' already exists.")).toBeVisible({ timeout: 15000 });
     await dismissAllToasts(page);
 
-    // Close modal
-    await modal.getByRole('button', { name: 'Cancel' }).click();
+    // Close flyout (has unsaved changes, so confirm discard).
+    await modal.getByRole('button', { name: 'Close' }).click();
+    await page.getByRole('button', { name: 'Discard' }).click();
     await expect(modal).not.toBeVisible();
   });
 });

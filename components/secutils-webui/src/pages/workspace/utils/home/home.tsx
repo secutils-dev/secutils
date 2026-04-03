@@ -172,7 +172,7 @@ function findUtilByNames(utils: Util[], utilNames: string[]): Util | undefined {
 }
 
 function getWorkspacePath(utilHandle?: string): string {
-  return utilHandle && utilHandle !== 'home' ? `/ws/${utilHandle}` : '/ws';
+  return utilHandle && utilHandle !== 'workspace__overview' ? `/ws/${utilHandle}` : '/ws';
 }
 
 const sidePanelStyle = css`

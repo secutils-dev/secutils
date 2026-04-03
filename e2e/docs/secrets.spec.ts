@@ -8,6 +8,7 @@ import {
   EMAIL,
   ensureUserAndLogin,
   fixEntityTimestamps,
+  goto,
   highlightOn,
   PASSWORD,
 } from '../helpers';
@@ -21,15 +22,8 @@ test.describe('Secrets guide screenshots', () => {
   });
 
   test('manage user secrets', async ({ page }) => {
-    // Step 1: Open settings and navigate to the Secrets tab - empty state.
-    await page.getByRole('button', { name: 'Account menu' }).click();
-    const settingsButton = page.getByText('Settings');
-    await expect(settingsButton).toBeVisible();
-    await settingsButton.click();
-
-    const secretsTab = page.getByRole('tab', { name: 'Secrets' });
-    await expect(secretsTab).toBeVisible({ timeout: 15000 });
-    await secretsTab.click();
+    // Step 1: Navigate to the workspace Secrets page - empty state.
+    await goto(page, '/ws/workspace__secrets');
 
     await expect(page.getByText('No secrets yet')).toBeVisible({ timeout: 15000 });
     const addButton = page.getByRole('button', { name: 'Add secret' });
@@ -45,7 +39,7 @@ test.describe('Secrets guide screenshots', () => {
     await page.screenshot({ path: join(IMG_DIR, 'secrets_step2_form.png') });
 
     // Submit and dismiss the toast.
-    await modal.getByRole('button', { name: 'Create' }).click();
+    await modal.getByRole('button', { name: 'Save' }).click();
     await dismissAllToasts(page);
     await expect(page.getByText('API_TOKEN', { exact: true })).toBeVisible({ timeout: 15000 });
     await page.screenshot({ path: join(IMG_DIR, 'secrets_step3_created.png') });
@@ -56,7 +50,7 @@ test.describe('Secrets guide screenshots', () => {
     await expect(modal2).toBeVisible({ timeout: 15000 });
     await modal2.getByPlaceholder('MY_API_KEY').fill('DB_PASSWORD');
     await modal2.getByPlaceholder('Enter secret value…').fill('p@ssw0rd!');
-    await modal2.getByRole('button', { name: 'Create' }).click();
+    await modal2.getByRole('button', { name: 'Save' }).click();
     await dismissAllToasts(page);
     await expect(page.getByText('DB_PASSWORD', { exact: true })).toBeVisible({ timeout: 15000 });
     await page.screenshot({ path: join(IMG_DIR, 'secrets_step4_list.png') });

@@ -75,11 +75,11 @@ pub(crate) async fn resolve_shared_user(
     expected_resource: &SharedResource,
 ) -> Result<User, Error> {
     match (user, user_share) {
-        // Authenticated user without a share header — use directly.
+        // Authenticated user without a share header - use directly.
         (Some(user), None) => Ok(user),
-        // Authenticated user whose share belongs to themselves — use directly.
+        // Authenticated user whose share belongs to themselves - use directly.
         (Some(user), Some(ref share)) if user.id == share.user_id => Ok(user),
-        // Share present (anonymous or different user) — verify resource and resolve owner.
+        // Share present (anonymous or different user) - verify resource and resolve owner.
         (_, Some(share)) if &share.resource == expected_resource => state
             .api
             .users()

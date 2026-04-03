@@ -1,5 +1,6 @@
 import {
   EuiButton,
+  EuiButtonEmpty,
   EuiConfirmModal,
   EuiEmptyPrompt,
   EuiFlexGroup,
@@ -11,65 +12,76 @@ import {
 } from '@elastic/eui';
 import type { EuiBasicTableColumn } from '@elastic/eui';
 import { unix } from 'moment/moment';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { SecretEditModal } from './secret_edit_modal';
-import { useUserTags } from '../hooks';
-import { createUserSecret, deleteUserSecret, getUserSecrets, updateUserSecret } from '../model';
-import type { UserSecret } from '../model';
-import type { PageToast } from '../pages/page';
-import { EntityName } from '../pages/workspace/components/entity_name';
+import { SecretEditFlyout } from './secret_edit_flyout';
+import { PageLoadingState } from '../../../../components';
+import { useUserTags } from '../../../../hooks';
+import { deleteUserSecret, getUserSecrets } from '../../../../model';
+import type { UserSecret } from '../../../../model';
+import { EntityName } from '../../components/entity_name';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
   TagsFilter,
   useItemsTableFilter,
-} from '../pages/workspace/components/items_table_filter';
+} from '../../components/items_table_filter';
+import { useWorkspaceContext } from '../../hooks';
 
 interface DeleteConfirmation {
   id: string;
   name: string;
 }
 
-export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void }) {
+export default function WorkspaceSecrets() {
+  const { addToast, setTitleActions } = useWorkspaceContext();
+
   const [secrets, setSecrets] = useState<UserSecret[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editModal, setEditModal] = useState<
-    { visible: false } | { visible: true; editingId?: string; editingName?: string; initialTagIds?: string[] }
-  >({
-    visible: false,
-  });
+  const [secretToEdit, setSecretToEdit] = useState<null | {
+    editingId?: string;
+    editingName?: string;
+    initialTagIds?: string[];
+  }>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmation | null>(null);
   const { allTags } = useUserTags();
+
+  const createButton = useMemo(
+    () => (
+      <EuiButton iconType={'plusInCircle'} title="Create a new secret" fill onClick={() => setSecretToEdit({})}>
+        Add secret
+      </EuiButton>
+    ),
+    [],
+  );
+
+  const docsButton = (
+    <EuiButtonEmpty
+      iconType={'documentation'}
+      title="Learn how to use secrets"
+      target={'_blank'}
+      href={'/docs/guides/platform/secrets'}
+    >
+      Learn how to
+    </EuiButtonEmpty>
+  );
 
   const loadSecrets = useCallback(async () => {
     setLoading(true);
     try {
-      setSecrets(await getUserSecrets());
+      const loaded = await getUserSecrets();
+      setSecrets(loaded);
+      setTitleActions(loaded.length === 0 ? null : createButton);
     } catch {
       addToast({ id: 'load-secrets-error', color: 'danger', title: 'Failed to load secrets' });
     } finally {
       setLoading(false);
     }
-  }, [addToast]);
+  }, [addToast, createButton, setTitleActions]);
 
   useEffect(() => {
     loadSecrets();
   }, [loadSecrets]);
-
-  const handleSave = useCallback(
-    async (name: string, value: string, editingId?: string, tagIds?: string[]) => {
-      if (editingId !== undefined) {
-        await updateUserSecret(editingId, value, tagIds);
-        addToast({ id: 'update-secret', color: 'success', title: `Secret "${name}" updated` });
-      } else {
-        await createUserSecret(name, value, tagIds);
-        addToast({ id: 'create-secret', color: 'success', title: `Secret "${name}" created` });
-      }
-      await loadSecrets();
-    },
-    [loadSecrets, addToast],
-  );
 
   const handleDelete = useCallback(
     async (id: string, name: string) => {
@@ -126,8 +138,7 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
           icon: 'pencil',
           type: 'icon',
           onClick: (secret: UserSecret) =>
-            setEditModal({
-              visible: true,
+            setSecretToEdit({
               editingId: secret.id,
               editingName: secret.name,
               initialTagIds: secret.tags?.map((t) => t.id),
@@ -145,57 +156,81 @@ export function SecretsTab({ addToast }: { addToast: (toast: PageToast) => void 
     },
   ];
 
-  return (
-    <>
-      <EuiFlexGroup justifyContent="flexEnd">
-        <EuiFlexItem grow={false}>
-          <EuiButton
-            iconType="plusInCircle"
-            size="s"
-            onClick={() => setEditModal({ visible: true })}
-            disabled={loading}
-          >
-            Add secret
-          </EuiButton>
+  if (loading && secrets.length === 0) {
+    return <PageLoadingState />;
+  }
+
+  let content;
+  if (secrets.length === 0) {
+    content = (
+      <EuiFlexGroup
+        direction={'column'}
+        gutterSize={'s'}
+        justifyContent="center"
+        alignItems="center"
+        style={{ height: '100%' }}
+      >
+        <EuiFlexItem>
+          <EuiEmptyPrompt
+            icon={<EuiIcon type={'lock'} size={'xl'} />}
+            title={<h2>No secrets yet</h2>}
+            titleSize="s"
+            style={{ maxWidth: '60em', display: 'flex' }}
+            body={
+              <div>
+                <p>Add secrets to use in your responder scripts, tracker scripts, and responder templates.</p>
+                {createButton}
+                <EuiSpacer size={'s'} />
+                {docsButton}
+              </div>
+            }
+          />
         </EuiFlexItem>
       </EuiFlexGroup>
-      <EuiSpacer size="m" />
-      <ItemsTableFilter query={query} onQueryChange={setQuery} onRefresh={loadSecrets} placeholder="Search secrets…">
-        <TagsFilter tags={allTags} selectedTagIds={selectedTagIds} onSelectedTagIdsChange={setSelectedTagIds} />
-      </ItemsTableFilter>
-      <EuiSpacer size="m" />
-      <EuiInMemoryTable
-        items={filteredItems}
-        columns={columns}
-        loading={loading}
-        sorting={{ sort: { field: 'updatedAt', direction: 'desc' } }}
-        pagination={{ pageSize: 10, showPerPageOptions: true }}
-        noItemsMessage={
-          totalItems > 0 ? (
+    );
+  } else {
+    content = (
+      <>
+        <ItemsTableFilter query={query} onQueryChange={setQuery} onRefresh={loadSecrets} placeholder="Search secrets…">
+          <TagsFilter tags={allTags} selectedTagIds={selectedTagIds} onSelectedTagIdsChange={setSelectedTagIds} />
+        </ItemsTableFilter>
+        <EuiSpacer size="m" />
+        <EuiInMemoryTable
+          items={filteredItems}
+          columns={columns}
+          loading={loading}
+          sorting={{ sort: { field: 'updatedAt', direction: 'desc' } }}
+          pagination={{ pageSize: 10, showPerPageOptions: true }}
+          noItemsMessage={
             <FilteredEmptyState
               totalItems={totalItems}
               hasPageFilters={hasPageFilters}
               onClearFilters={clearPageFilters}
             />
-          ) : (
-            <EuiEmptyPrompt
-              icon={<EuiIcon type="lock" size="xl" />}
-              title={<h3>No secrets yet</h3>}
-              body="Add secrets to use in your responder scripts, tracker scripts, and responder templates."
-            />
-          )
-        }
-      />
-      {editModal.visible ? (
-        <SecretEditModal
-          editingId={editModal.editingId}
-          editingName={editModal.editingName}
-          initialTagIds={editModal.initialTagIds}
-          onSave={handleSave}
-          onClose={() => setEditModal({ visible: false })}
-          addToast={addToast}
+          }
         />
-      ) : null}
+      </>
+    );
+  }
+
+  const editFlyout = secretToEdit ? (
+    <SecretEditFlyout
+      editingId={secretToEdit.editingId}
+      editingName={secretToEdit.editingName}
+      initialTagIds={secretToEdit.initialTagIds}
+      onClose={(success) => {
+        if (success) {
+          loadSecrets();
+        }
+        setSecretToEdit(null);
+      }}
+    />
+  ) : null;
+
+  return (
+    <>
+      {content}
+      {editFlyout}
       {deleteConfirm ? (
         <EuiConfirmModal
           title={`Delete secret "${deleteConfirm.name}"?`}

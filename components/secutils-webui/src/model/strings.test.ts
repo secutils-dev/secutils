@@ -24,6 +24,26 @@ describe('getCopyName', () => {
   it('handles names with nested copy-like patterns', () => {
     expect(getCopyName('Item (Copy 3) extra')).toBe('Item (Copy 3) extra (Copy 1)');
   });
+
+  it('skips names that already exist', () => {
+    const existing = ['item', 'item (Copy 1)'];
+    expect(getCopyName('item', existing)).toBe('item (Copy 2)');
+  });
+
+  it('skips multiple existing copies', () => {
+    const existing = ['item', 'item (Copy 1)', 'item (Copy 2)', 'item (Copy 3)'];
+    expect(getCopyName('item', existing)).toBe('item (Copy 4)');
+  });
+
+  it('skips existing when duplicating a copy', () => {
+    const existing = ['item', 'item (Copy 1)', 'item (Copy 2)'];
+    expect(getCopyName('item (Copy 1)', existing)).toBe('item (Copy 3)');
+  });
+
+  it('does not skip when no conflict', () => {
+    const existing = ['item', 'item (Copy 3)'];
+    expect(getCopyName('item', existing)).toBe('item (Copy 1)');
+  });
 });
 
 describe('formatBytes', () => {

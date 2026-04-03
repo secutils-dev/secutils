@@ -7,8 +7,9 @@
   "trackedBundles": [
     { "name": "secutils-webui-js", "pattern": "secutils-webui.*.js", "category": "main" },
     { "name": "secutils-webui-css", "pattern": "secutils-webui.*.css", "category": "main" },
-    { "name": "scripts_tab-js", "pattern": "scripts_tab.*.js", "category": "feature" },
-    { "name": "scripts_tab-css", "pattern": "scripts_tab.*.css", "category": "feature" },
+    { "name": "workspace_scripts", "pattern": "workspace_scripts.*.js", "category": "feature" },
+    { "name": "workspace_secrets", "pattern": "workspace_secrets.*.js", "category": "feature" },
+    { "name": "workspace_tags", "pattern": "workspace_tags.*.js", "category": "feature" },
     { "name": "page_trackers", "pattern": "page_trackers.*.js", "category": "feature" },
     { "name": "api_trackers", "pattern": "api_trackers.*.js", "category": "feature" },
     { "name": "responders", "pattern": "responders.*.js", "category": "feature" },

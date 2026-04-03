@@ -39,7 +39,7 @@ interface ServerSummary {
 }
 
 function getUtilPath(utilHandle: string): string {
-  return utilHandle === 'home' ? '/ws' : `/ws/${utilHandle}`;
+  return utilHandle === 'workspace__overview' ? '/ws' : `/ws/${utilHandle}`;
 }
 
 export function useWorkspaceSummary(isAuthenticated: boolean): WorkspaceSummary {

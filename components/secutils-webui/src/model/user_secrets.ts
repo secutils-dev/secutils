@@ -29,10 +29,17 @@ export async function createUserSecret(name: string, value: string, tagIds?: str
   return response.json();
 }
 
-export async function updateUserSecret(id: string, value: string, tagIds?: string[]): Promise<UserSecret> {
+export async function updateUserSecret(id: string, value?: string, tagIds?: string[]): Promise<UserSecret> {
+  const body: Record<string, unknown> = {};
+  if (value !== undefined) {
+    body.value = value;
+  }
+  if (tagIds !== undefined) {
+    body.tagIds = tagIds;
+  }
   const response = await fetch(getApiUrl(`/api/user/secrets/${encodeURIComponent(id)}`), {
     ...getApiRequestConfig('PUT'),
-    body: JSON.stringify({ value, ...(tagIds !== undefined ? { tagIds } : {}) }),
+    body: JSON.stringify(body),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);

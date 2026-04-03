@@ -86,7 +86,7 @@ export function ScriptImportSelector({ context, onSelect, onClose }: ScriptImpor
             No compatible scripts found.
             <EuiSpacer size="s" />
             <EuiText size="s" color="subdued">
-              Go to <strong>Settings → Scripts</strong> to create scripts that can be imported here.
+              Go to <strong>Workspace → Scripts</strong> to create scripts that can be imported here.
             </EuiText>
           </EuiText>
         ) : (

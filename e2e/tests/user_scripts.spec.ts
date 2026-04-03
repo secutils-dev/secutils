@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { dismissAllToasts, EMAIL, ensureUserAndLogin, fixEntityTimestamps, PASSWORD } from '../helpers';
+import { dismissAllToasts, EMAIL, ensureUserAndLogin, fixEntityTimestamps, goto, PASSWORD } from '../helpers';
 
 test.describe('User Scripts guide screenshots', () => {
   test.beforeEach(async ({ page, request }) => {
@@ -19,12 +19,7 @@ test.describe('User Scripts guide screenshots', () => {
     });
     expect(createResponse.ok()).toBeTruthy();
 
-    // Navigate to scripts settings
-    await page.getByRole('button', { name: 'Account menu' }).click();
-    await page.getByText('Settings').click();
-    const scriptsTab = page.getByRole('tab', { name: 'Scripts' });
-    await expect(scriptsTab).toBeVisible({ timeout: 15000 });
-    await scriptsTab.click();
+    await goto(page, '/ws/workspace__scripts');
 
     // Wait for the script to be visible
     await expect(page.getByText('UNIQUE_SCRIPT', { exact: true })).toBeVisible({ timeout: 15000 });
@@ -42,15 +37,16 @@ test.describe('User Scripts guide screenshots', () => {
     await modal.locator('.monaco-editor textarea').click({ force: true });
     await page.keyboard.type('(() => { return { statusCode: 200 }; })();');
 
-    // Click Create button
-    await modal.getByRole('button', { name: 'Create' }).click();
+    // Click Save button
+    await modal.getByRole('button', { name: 'Save' }).click();
 
     // Expect toast message about duplicate name
     await expect(page.getByText("A script with name 'UNIQUE_SCRIPT' already exists.")).toBeVisible({ timeout: 15000 });
     await dismissAllToasts(page);
 
-    // Close modal
-    await modal.getByRole('button', { name: 'Cancel' }).click();
+    // Close flyout (has unsaved changes, so confirm discard).
+    await modal.getByRole('button', { name: 'Close' }).click();
+    await page.getByRole('button', { name: 'Discard' }).click();
     await expect(modal).not.toBeVisible();
   });
 });

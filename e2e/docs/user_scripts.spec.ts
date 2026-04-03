@@ -3,16 +3,7 @@ import { join } from 'path';
 import { expect, test } from '@playwright/test';
 import type { Locator } from '@playwright/test';
 
-import {
-  dismissAllToasts,
-  DOCS_IMG_DIR,
-  EMAIL,
-  ensureUserAndLogin,
-  fixEntityTimestamps,
-  goto,
-  highlightOn,
-  PASSWORD,
-} from '../helpers';
+import { DOCS_IMG_DIR, EMAIL, ensureUserAndLogin, fixEntityTimestamps, goto, highlightOn, PASSWORD } from '../helpers';
 
 const IMG_DIR = join(DOCS_IMG_DIR, 'user_scripts');
 
@@ -27,15 +18,8 @@ test.describe('User Scripts guide screenshots', () => {
   });
 
   test('manage user scripts', async ({ page }) => {
-    // Step 1: Open settings and navigate to the Scripts tab - empty state.
-    await page.getByRole('button', { name: 'Account menu' }).click();
-    const settingsButton = page.getByText('Settings');
-    await expect(settingsButton).toBeVisible();
-    await settingsButton.click();
-
-    const scriptsTab = page.getByRole('tab', { name: 'Scripts' });
-    await expect(scriptsTab).toBeVisible({ timeout: 15000 });
-    await scriptsTab.click();
+    // Step 1: Navigate to the workspace Scripts page - empty state.
+    await goto(page, '/ws/workspace__scripts');
 
     await expect(page.getByText('No scripts yet')).toBeVisible({ timeout: 15000 });
     const addButton = page.getByRole('button', { name: 'Add script' });
@@ -53,8 +37,9 @@ test.describe('User Scripts guide screenshots', () => {
     await page.screenshot({ path: join(IMG_DIR, 'scripts_step2_form.png') });
 
     // Step 3: Create the first script via API (Monaco editor cannot be reliably filled via Playwright).
-    // Close modal first
+    // Close flyout first (has unsaved changes, so confirm discard).
     await modal.getByRole('button', { name: 'Close' }).click();
+    await page.getByRole('button', { name: 'Discard' }).click();
     await expect(modal).not.toBeVisible();
 
     const apiResponse = await page.request.post('/api/user/scripts', {
@@ -66,16 +51,8 @@ test.describe('User Scripts guide screenshots', () => {
     });
     expect(apiResponse.ok()).toBeTruthy();
 
-    // Refresh to see the created script (need to reopen settings as flyout closes on reload)
-    await page.reload();
-    await page.waitForLoadState('networkidle');
-    await dismissAllToasts(page);
-    // Reopen settings and navigate to Scripts tab
-    await page.getByRole('button', { name: 'Account menu' }).click();
-    await page.getByText('Settings').click();
-    const scriptsTabAfterReload = page.getByRole('tab', { name: 'Scripts' });
-    await expect(scriptsTabAfterReload).toBeVisible({ timeout: 15000 });
-    await scriptsTabAfterReload.click();
+    // Refresh to see the created script.
+    await goto(page, '/ws/workspace__scripts');
     await expect(page.getByText('EXTRACTOR_SCRIPT', { exact: true })).toBeVisible({ timeout: 15000 });
     await page.screenshot({ path: join(IMG_DIR, 'scripts_step3_created.png') });
 
@@ -89,16 +66,8 @@ test.describe('User Scripts guide screenshots', () => {
     });
     expect(apiResponse2.ok()).toBeTruthy();
 
-    // Refresh to see both scripts (need to reopen settings as flyout closes on reload)
-    await page.reload();
-    await page.waitForLoadState('networkidle');
-    await dismissAllToasts(page);
-    // Reopen settings and navigate to Scripts tab
-    await page.getByRole('button', { name: 'Account menu' }).click();
-    await page.getByText('Settings').click();
-    const scriptsTabFinal = page.getByRole('tab', { name: 'Scripts' });
-    await expect(scriptsTabFinal).toBeVisible({ timeout: 15000 });
-    await scriptsTabFinal.click();
+    // Refresh to see both scripts.
+    await goto(page, '/ws/workspace__scripts');
     await expect(page.getByText('RESPONDER_SCRIPT', { exact: true })).toBeVisible({ timeout: 15000 });
     await page.screenshot({ path: join(IMG_DIR, 'scripts_step4_list.png') });
   });

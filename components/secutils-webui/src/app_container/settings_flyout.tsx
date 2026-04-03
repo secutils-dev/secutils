@@ -34,13 +34,10 @@ import {
   isClientError,
   USER_SETTINGS_KEY_COMMON_UI_THEME,
 } from '../model';
-import { SecretsTab } from './secrets_tab';
-import { TagsTab } from './tags_tab';
 import { signupWithPasskey } from '../model/webauthn';
 import { getOryApi } from '../tools/ory';
 import { isWebAuthnSupported } from '../tools/webauthn';
 
-const ScriptsTab = lazy(() => import('./scripts_tab'));
 const ConfirmAccessModal = lazy(() => import('../pages/signin/confirm_access_modal'));
 const ExportDataModal = lazy(() => import('./export_data_modal'));
 const ImportDataModal = lazy(() => import('./import_data_modal'));
@@ -51,7 +48,7 @@ export interface Props {
   onImportUrlConsumed?: () => void;
 }
 
-export function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed }: Props) {
+export default function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed }: Props) {
   const { settings, setSettings, uiState, refreshUiState, addToast } = useAppContext();
 
   const uiTheme = settings?.[USER_SETTINGS_KEY_COMMON_UI_THEME] as EuiThemeColorMode | undefined;
@@ -179,28 +176,9 @@ export function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed }: Prop
     </EuiFormRow>
   ) : null;
 
-  const [selectedTab, setSelectedTab] = useState<'general' | 'security' | 'tags' | 'secrets' | 'scripts' | 'account'>(
-    importUrl ? 'account' : 'general',
-  );
+  const [selectedTab, setSelectedTab] = useState<'account' | 'security'>('account');
   let selectedTabContent;
-  if (selectedTab === 'general') {
-    selectedTabContent = (
-      <EuiDescribedFormGroup title={<h3>Appearance</h3>} description={'Customize Secutils.dev appearance'}>
-        <EuiFormRow label="Theme" fullWidth>
-          <EuiSelect
-            options={[
-              { value: 'light', text: 'Light' },
-              { value: 'dark', text: 'Dark' },
-            ]}
-            value={uiTheme ?? 'light'}
-            onChange={(e: ChangeEvent<HTMLSelectElement>) => {
-              setSettings({ [USER_SETTINGS_KEY_COMMON_UI_THEME]: e.target.value });
-            }}
-          />
-        </EuiFormRow>
-      </EuiDescribedFormGroup>
-    );
-  } else if (selectedTab === 'security') {
+  if (selectedTab === 'security') {
     selectedTabContent = (
       <EuiDescribedFormGroup title={<h3>Credentials</h3>} description={'Configure your Secutils.dev credentials'}>
         <EuiFormRow fullWidth isDisabled={changeInProgress}>
@@ -312,16 +290,6 @@ export function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed }: Prop
         {passkeySection}
       </EuiDescribedFormGroup>
     );
-  } else if (selectedTab === 'tags') {
-    selectedTabContent = <TagsTab addToast={addToast} />;
-  } else if (selectedTab === 'secrets') {
-    selectedTabContent = <SecretsTab addToast={addToast} />;
-  } else if (selectedTab === 'scripts') {
-    selectedTabContent = (
-      <Suspense fallback={<EuiLoadingSpinner size="l" />}>
-        <ScriptsTab addToast={addToast} />
-      </Suspense>
-    );
   } else {
     const subscription = uiState.user?.subscription;
     let trialSection = null;
@@ -356,6 +324,20 @@ export function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed }: Prop
     const subscriptionDescription = <span>View and manage your current Secutils.dev subscription</span>;
     selectedTabContent = (
       <>
+        <EuiDescribedFormGroup title={<h3>Appearance</h3>} description={'Customize Secutils.dev appearance'}>
+          <EuiFormRow label="Theme" fullWidth>
+            <EuiSelect
+              options={[
+                { value: 'light', text: 'Light' },
+                { value: 'dark', text: 'Dark' },
+              ]}
+              value={uiTheme ?? 'light'}
+              onChange={(e: ChangeEvent<HTMLSelectElement>) => {
+                setSettings({ [USER_SETTINGS_KEY_COMMON_UI_THEME]: e.target.value });
+              }}
+            />
+          </EuiFormRow>
+        </EuiDescribedFormGroup>
         <EuiDescribedFormGroup
           title={<h3>Account</h3>}
           description={
@@ -500,23 +482,11 @@ export function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed }: Prop
       </EuiFlyoutHeader>
       <EuiFlyoutBody>
         <EuiTabs>
-          <EuiTab onClick={() => setSelectedTab('general')} isSelected={selectedTab === 'general'}>
-            General
+          <EuiTab onClick={() => setSelectedTab('account')} isSelected={selectedTab === 'account'}>
+            Account
           </EuiTab>
           <EuiTab onClick={() => setSelectedTab('security')} isSelected={selectedTab === 'security'}>
             Security
-          </EuiTab>
-          <EuiTab onClick={() => setSelectedTab('tags')} isSelected={selectedTab === 'tags'}>
-            Tags
-          </EuiTab>
-          <EuiTab onClick={() => setSelectedTab('secrets')} isSelected={selectedTab === 'secrets'}>
-            Secrets
-          </EuiTab>
-          <EuiTab onClick={() => setSelectedTab('scripts')} isSelected={selectedTab === 'scripts'}>
-            Scripts
-          </EuiTab>
-          <EuiTab onClick={() => setSelectedTab('account')} isSelected={selectedTab === 'account'}>
-            Account
           </EuiTab>
         </EuiTabs>
         <EuiSpacer />

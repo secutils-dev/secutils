@@ -381,7 +381,10 @@ export default function WebSecurityContentSecurityPolicies() {
                   type: 'icon',
                   // eslint-disable-next-line @typescript-eslint/no-unused-vars
                   onClick: ({ id, createdAt, updatedAt, name, ...rest }: ContentSecurityPolicy) =>
-                    setPolicyToEdit({ ...rest, name: getCopyName(name) }),
+                    setPolicyToEdit({
+                      ...rest,
+                      name: getCopyName(name, policies.status === 'succeeded' ? policies.data.map((p) => p.name) : []),
+                    }),
                 },
                 {
                   name: 'Remove',
