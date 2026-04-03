@@ -107,6 +107,7 @@ mod tests {
 
         [security]
         session_cookie_name = 'id'
+        max_user_api_keys = 30
 
         [components]
         kratos_url = 'http://localhost:4433/'
@@ -419,6 +420,7 @@ mod tests {
                         },
                     },
                 ),
+                max_user_api_keys: 30,
             },
             components: ComponentsConfig {
                 kratos_url: Url {

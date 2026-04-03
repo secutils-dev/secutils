@@ -11,7 +11,7 @@ pub struct PreconfiguredUserConfig {
     pub tier: SubscriptionTier,
 }
 
-/// Configuration for the SMTP functionality.
+/// Configuration for the security functionality.
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct SecurityConfig {
     /// Name of the session cookie used by the authentication component.
@@ -25,6 +25,15 @@ pub struct SecurityConfig {
     pub operators: Option<HashSet<String>>,
     /// List of the preconfigured users, if specified.
     pub preconfigured_users: Option<HashMap<String, PreconfiguredUserConfig>>,
+    /// Maximum number of API keys a single user can create.
+    #[serde(default = "SecurityConfig::default_max_user_api_keys")]
+    pub max_user_api_keys: usize,
+}
+
+impl SecurityConfig {
+    fn default_max_user_api_keys() -> usize {
+        30
+    }
 }
 
 impl Default for SecurityConfig {
@@ -35,6 +44,7 @@ impl Default for SecurityConfig {
             secrets_encryption_key: None,
             preconfigured_users: None,
             operators: None,
+            max_user_api_keys: Self::default_max_user_api_keys(),
         }
     }
 }
@@ -49,7 +59,10 @@ mod tests {
 
     #[test]
     fn serialization_and_default() {
-        assert_toml_snapshot!(SecurityConfig::default(), @"session_cookie_name = 'id'");
+        assert_toml_snapshot!(SecurityConfig::default(), @r###"
+        session_cookie_name = 'id'
+        max_user_api_keys = 30
+        "###);
 
         let config = SecurityConfig {
             session_cookie_name: "id".to_string(),
@@ -69,6 +82,7 @@ mod tests {
                 .into_iter()
                 .collect(),
             ),
+            max_user_api_keys: 30,
         };
 
         assert_toml_snapshot!(config, @r###"
@@ -76,6 +90,7 @@ mod tests {
         jwt_secret = '3024bf8975b03b84e405f36a7bacd1c1'
         secrets_encryption_key = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2'
         operators = ['test@secutils.dev']
+        max_user_api_keys = 30
         [preconfigured_users."test@secutils.dev"]
         handle = 'test-handle'
         tier = 'basic'
@@ -99,6 +114,7 @@ mod tests {
                 secrets_encryption_key: None,
                 preconfigured_users: None,
                 operators: None,
+                max_user_api_keys: 30,
             }
         );
 
@@ -131,6 +147,7 @@ mod tests {
                     .collect(),
                 ),
                 operators: Some(["test@secutils.dev".to_string()].into_iter().collect()),
+                max_user_api_keys: 30,
                 ..Default::default()
             }
         );

@@ -64,24 +64,19 @@ where
         Ok(())
     }
 
-    /// Authenticates user with the specified credentials.
+    /// Authenticates a user with the specified credentials.
     pub async fn authenticate(&self, credentials: &Credentials) -> anyhow::Result<Option<User>> {
-        let identity = match &credentials {
+        let identity = match credentials {
             Credentials::Jwt(token) => {
                 self.get_identity_by_email(&self.get_jwt_claims(token).await?.sub)
                     .await
             }
             Credentials::SessionCookie(cookie) => self.get_identity_by_cookie(cookie).await,
+            Credentials::ApiKey(token) => self.get_identity_by_api_key(token).await,
         }?;
 
         let Some(identity) = identity else {
-            error!(
-                "Couldn't retrieve user identity with `{}` credentials.",
-                match credentials {
-                    Credentials::SessionCookie(_) => "session",
-                    Credentials::Jwt(_) => "jwt",
-                }
-            );
+            error!("Couldn't retrieve user identity with provided credentials.");
             return Ok(None);
         };
 
@@ -125,11 +120,14 @@ where
     }
 
     /// Checks if the user or service account with specified credentials is an operator.
+    /// API keys are never allowed to act as operators.
     pub async fn get_operator(
         &self,
         credentials: &Credentials,
     ) -> anyhow::Result<Option<Operator>> {
         let operator_id = match credentials {
+            // API keys cannot act as operators.
+            Credentials::ApiKey(_) => return Ok(None),
             // If the user is authenticated with a session cookie, user's email is used as an
             // operator identifier.
             Credentials::SessionCookie(cooke) => {
@@ -262,6 +260,66 @@ where
             .json::<Vec<Identity>>()
             .await
             .map(|identities| identities.into_iter().next())?)
+    }
+
+    /// Validates an API key token and retrieves the corresponding Kratos identity.
+    async fn get_identity_by_api_key(&self, token: &str) -> anyhow::Result<Option<Identity>> {
+        let api_keys_api = self.api.api_keys_system();
+        let Some(api_key) = api_keys_api.validate_api_key_token(token).await? else {
+            return Ok(None);
+        };
+
+        let identity = self.get_identity_by_id(*api_key.user_id).await?;
+
+        // Best-effort last_used_at update.
+        api_keys_api.touch_api_key_last_used(api_key.id).await;
+
+        Ok(identity)
+    }
+
+    /// Retrieves a Kratos identity by its UUID.
+    async fn get_identity_by_id(&self, id: Uuid) -> anyhow::Result<Option<Identity>> {
+        let request_builder = self.api.network.http_client.request(
+            reqwest::Method::GET,
+            format!(
+                "{}admin/identities/{id}",
+                self.api.config.components.kratos_admin_url.as_str(),
+            ),
+        );
+
+        let request = match request_builder.build() {
+            Ok(client) => client,
+            Err(err) => {
+                error!("Cannot build Kratos request: {err:?}");
+                bail!(err);
+            }
+        };
+
+        let response = match self.api.network.http_client.execute(request).await {
+            Ok(response) => response,
+            Err(err) => {
+                error!("Cannot execute Kratos request: {err:?}");
+                bail!(err);
+            }
+        };
+
+        let response_status = response.status();
+        if !response_status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return match response_status {
+                StatusCode::NOT_FOUND => Ok(None),
+                _ => {
+                    error!(
+                        "Kratos request failed with the status code `{response_status}` and body: {error_text}"
+                    );
+                    Err(anyhow!(
+                        "Kratos request failed with the status code `{response_status}`."
+                    ))
+                }
+            };
+        }
+
+        Ok(Some(response.json::<Identity>().await?))
     }
 
     /// Deletes user identity from Kratos.

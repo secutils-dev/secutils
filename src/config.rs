@@ -146,6 +146,7 @@ mod tests {
                 secrets_encryption_key: None,
                 operators: None,
                 preconfigured_users: None,
+                max_user_api_keys: 30,
             },
             utils: UtilsConfig {
                 webhook_url_type: Subdomain,

@@ -13,7 +13,14 @@ impl FromRequest for Credentials {
         Box::pin(async move {
             let state = web::Data::<AppState>::extract(&req).await?;
             Ok(match Option::<BearerAuth>::extract(&req).await? {
-                Some(bearer_auth) => Credentials::Jwt(bearer_auth.token().to_string()),
+                Some(bearer_auth) => {
+                    let token = bearer_auth.token().to_string();
+                    if token.starts_with("su_ak_") {
+                        Credentials::ApiKey(token)
+                    } else {
+                        Credentials::Jwt(token)
+                    }
+                }
                 None => Credentials::SessionCookie(
                     req.cookie(&state.config.security.session_cookie_name)
                         .ok_or_else(|| ErrorUnauthorized(anyhow!("Unauthorized")))?,

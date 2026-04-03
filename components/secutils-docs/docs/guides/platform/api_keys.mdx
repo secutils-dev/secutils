@@ -1,0 +1,93 @@
+---
+sidebar_position: 2
+sidebar_label: API Keys
+title: API Keys
+description: Create and manage API keys for programmatic access to the Secutils.dev API from scripts, CI pipelines, and AI agents.
+---
+
+import Steps from '@site/src/components/Steps';
+
+# API Keys
+
+Secutils.dev supports **API keys** for programmatic access to the REST API. API keys are ideal for CI/CD pipelines, automation scripts, and AI agents that need to interact with Secutils.dev without a browser session.
+
+## Key features
+
+- **Opaque tokens** - each key is a random token prefixed with `su_ak_` for easy identification
+- **Optional expiration** - keys can be set to expire on a specific date, or never
+- **One-time display** - the plaintext token is shown only at creation and regeneration; it cannot be retrieved afterward
+- **Independent of sessions** - API keys work without cookies or browser login
+
+## Managing API keys
+
+Navigate to **Settings → Security** and click **Manage API keys** to open the API keys management panel.
+
+<Steps steps={[
+    {
+        img: '../../img/docs/guides/api_keys/api_keys_step1_security_tab.png',
+        caption: <>Navigate to <b>Settings → Security</b> and click <b>Manage API keys</b>.</>,
+        alt: 'Settings Security tab with the Manage API keys button highlighted.',
+    },
+    {
+        img: '../../img/docs/guides/api_keys/api_keys_step2_empty.png',
+        caption: <>The API keys panel in its empty state. Click <b>Create API key</b> to create your first key.</>,
+        alt: 'Empty API keys modal with the Create API key button highlighted.',
+    },
+    {
+        img: '../../img/docs/guides/api_keys/api_keys_step3_create_form.png',
+        caption: <>Enter a <b>Name</b> for the key and optionally set an <b>Expires</b> date. Click <b>Save</b> to generate the key.</>,
+        alt: 'Inline create form with Name and Expires fields.',
+    },
+    {
+        img: '../../img/docs/guides/api_keys/api_keys_step4_token_reveal.png',
+        caption: <>The token is displayed once. <b>Copy it now</b> - it cannot be retrieved again after you dismiss this message.</>,
+        alt: 'Token reveal callout showing the generated API key with a Copy button.',
+    },
+    {
+        img: '../../img/docs/guides/api_keys/api_keys_step5_list.png',
+        caption: <>The API keys list showing your keys with their expiration and usage information. Use the actions menu to <b>Edit</b>, <b>Regenerate</b>, or <b>Delete</b> a key.</>,
+        alt: 'API keys table with multiple keys and action buttons.',
+    },
+]} />
+
+## Using API keys
+
+Include the API key in the `Authorization` header of your HTTP requests:
+
+```bash
+curl -H "Authorization: Bearer su_ak_your_token_here" \
+  https://secutils.dev/api/user/api_keys
+```
+
+API keys grant access to all user-facing API endpoints. They **cannot** be used to manage other API keys (the server returns 403 for API-key-management endpoints when authenticated with an API key).
+
+## Key actions
+
+### Rename
+
+Use the **Edit** action to change a key's name. The name is for your reference only and does not affect the key's functionality.
+
+### Regenerate
+
+The **Regenerate** action creates a new token and immediately invalidates the old one. You can optionally set a new expiration date during regeneration. This is the only way to change expiration after creation.
+
+:::warning
+Regenerating a key is irreversible. Any application using the old token will immediately lose access.
+:::
+
+### Delete
+
+The **Delete** action permanently removes the key. This cannot be undone.
+
+## Expiration
+
+- Keys created without an expiration date are valid indefinitely
+- Expired keys remain visible in the list with a **red** expiration indicator
+- Expired keys cannot be used for authentication - the server rejects them
+- To extend an expired key, use **Regenerate** and set a new expiration date
+
+## Limits
+
+- Up to **30** API keys per user (configurable via `security.max_user_api_keys`)
+- Key names must be unique and at most **128** characters
+- Tokens are approximately **70** characters long (`su_ak_` prefix + 64 hex characters)

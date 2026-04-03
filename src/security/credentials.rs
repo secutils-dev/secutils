@@ -7,4 +7,6 @@ pub enum Credentials {
     SessionCookie(Cookie<'static>),
     /// JSON Web Token tied to a Kratos identity.
     Jwt(String),
+    /// Opaque API key token (prefixed with `su_ak_`).
+    ApiKey(String),
 }

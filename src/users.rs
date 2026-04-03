@@ -1,4 +1,5 @@
 pub mod api_ext;
+mod api_keys;
 mod database_ext;
 mod scripts;
 mod secrets;
@@ -12,6 +13,10 @@ mod user_subscription;
 
 pub use self::{
     api_ext::errors::UserSignupError,
+    api_keys::{
+        ApiKeyCreateParams, ApiKeyCreateResponse, ApiKeyRegenerateParams, ApiKeyUpdateParams,
+        UserApiKey,
+    },
     scripts::{ScriptContext, ScriptCreateParams, ScriptUpdateParams, UserScript, UserScriptType},
     secrets::{SecretCreateParams, SecretUpdateParams, SecretsAccess, UserSecret},
     settings::{UserSettings, UserSettingsSetter},

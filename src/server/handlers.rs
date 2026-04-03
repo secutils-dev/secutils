@@ -18,6 +18,7 @@ pub mod send_message;
 pub mod status_get;
 pub mod status_set;
 mod ui_state_get;
+pub mod user_api_keys;
 pub mod user_data_export;
 pub mod user_data_import;
 pub mod user_scripts;
@@ -120,9 +121,17 @@ pub(crate) async fn resolve_shared_user(
         (name = "scheduler", description = "Schedule parsing utilities."),
         (name = "search", description = "Full-text search across user resources."),
         (name = "messages", description = "Send messages and notifications."),
-        (name = "web_scraping", description = "Track changes to web pages and API endpoints.")
+        (name = "web_scraping", description = "Track changes to web pages and API endpoints."),
+        (name = "api_keys", description = "Create and manage API keys for programmatic access.")
     ),
     paths(
+        // API keys
+        user_api_keys::user_api_keys_list,
+        user_api_keys::user_api_keys_create,
+        user_api_keys::user_api_keys_update,
+        user_api_keys::user_api_keys_delete,
+        user_api_keys::user_api_keys_regenerate,
+        user_api_keys::user_api_keys_create_for_user,
         // Tags
         user_tags::user_tags_list,
         user_tags::user_tags_create,
@@ -226,6 +235,12 @@ pub(crate) async fn resolve_shared_user(
         ("bearerAuth" = [])
     ),
     components(schemas(
+        // API keys
+        crate::users::UserApiKey,
+        crate::users::ApiKeyCreateResponse,
+        crate::users::ApiKeyCreateParams,
+        crate::users::ApiKeyUpdateParams,
+        crate::users::ApiKeyRegenerateParams,
         // Tags
         crate::users::UserTag,
         crate::users::EntityTag,
@@ -381,6 +396,9 @@ mod tests {
           "/api/search",
           "/api/send_message",
           "/api/status",
+          "/api/user/api_keys",
+          "/api/user/api_keys/{api_key_id}",
+          "/api/user/api_keys/{api_key_id}/_regenerate",
           "/api/user/data/_export",
           "/api/user/data/_import",
           "/api/user/data/_import_preview",
@@ -398,6 +416,7 @@ mod tests {
           "/api/users/self",
           "/api/users/signup",
           "/api/users/{user_id}",
+          "/api/users/{user_id}/api_keys",
           "/api/web_scraping/api_trackers",
           "/api/web_scraping/api_trackers/_debug",
           "/api/web_scraping/api_trackers/_logs_summary",
@@ -437,6 +456,10 @@ mod tests {
         schema_keys.sort();
         assert_json_snapshot!(schema_keys, @r###"
         [
+          "ApiKeyCreateParams",
+          "ApiKeyCreateResponse",
+          "ApiKeyRegenerateParams",
+          "ApiKeyUpdateParams",
           "ApiTarget",
           "ApiTracker",
           "ApiTrackerConfig",
@@ -547,6 +570,7 @@ mod tests {
           "TrackerDataValue_Value",
           "TrackerTarget",
           "UpdateSubscriptionParams",
+          "UserApiKey",
           "UserDataExportInclude",
           "UserDataExportParams",
           "UserDataImportFile",
@@ -1239,5 +1263,143 @@ mod tests {
             tag_map["scripts"],
             "Manage reusable JavaScript scripts for responders and trackers."
         );
+        assert_eq!(
+            tag_map["api_keys"],
+            "Create and manage API keys for programmatic access."
+        );
+    }
+
+    #[test]
+    fn openapi_spec_api_keys_crud_operations() {
+        let spec = spec();
+        let path = &spec["paths"]["/api/user/api_keys"];
+
+        // GET (list)
+        assert_eq!(path["get"]["operationId"], "user_api_keys_list");
+        assert_eq!(path["get"]["tags"][0], "api_keys");
+        assert!(path["get"]["responses"]["200"]["content"]["application/json"]["schema"]["items"]
+            ["$ref"]
+            .as_str()
+            .unwrap()
+            .ends_with("/UserApiKey"));
+
+        // POST (create)
+        assert_eq!(path["post"]["operationId"], "user_api_keys_create");
+        assert_eq!(
+            path["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ApiKeyCreateParams"
+        );
+        assert!(
+            path["post"]["responses"]["201"]["content"]["application/json"]["schema"]["$ref"]
+                .as_str()
+                .unwrap()
+                .ends_with("/ApiKeyCreateResponse")
+        );
+    }
+
+    #[test]
+    fn openapi_spec_api_keys_update_delete_operations() {
+        let spec = spec();
+        let path = &spec["paths"]["/api/user/api_keys/{api_key_id}"];
+
+        // PUT (update)
+        assert_eq!(path["put"]["operationId"], "user_api_keys_update");
+        assert_eq!(
+            path["put"]["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ApiKeyUpdateParams"
+        );
+        assert!(
+            path["put"]["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+                .as_str()
+                .unwrap()
+                .ends_with("/UserApiKey")
+        );
+
+        // DELETE
+        assert_eq!(path["delete"]["operationId"], "user_api_keys_delete");
+        assert!(path["delete"]["responses"]["204"].is_object());
+    }
+
+    #[test]
+    fn openapi_spec_api_keys_regenerate_operation() {
+        let spec = spec();
+        let regenerate = &spec["paths"]["/api/user/api_keys/{api_key_id}/_regenerate"]["post"];
+        assert_eq!(regenerate["operationId"], "user_api_keys_regenerate");
+        assert_eq!(regenerate["tags"][0], "api_keys");
+        assert_eq!(
+            regenerate["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ApiKeyRegenerateParams"
+        );
+        assert!(
+            regenerate["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+                .as_str()
+                .unwrap()
+                .ends_with("/ApiKeyCreateResponse")
+        );
+    }
+
+    #[test]
+    fn openapi_spec_api_keys_operator_provisioning() {
+        let spec = spec();
+        let provision = &spec["paths"]["/api/users/{user_id}/api_keys"]["post"];
+        assert_eq!(provision["operationId"], "user_api_keys_create_for_user");
+        assert_eq!(provision["tags"][0], "api_keys");
+        assert_eq!(
+            provision["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ApiKeyCreateParams"
+        );
+        assert!(
+            provision["responses"]["201"]["content"]["application/json"]["schema"]["$ref"]
+                .as_str()
+                .unwrap()
+                .ends_with("/ApiKeyCreateResponse")
+        );
+    }
+
+    #[test]
+    fn openapi_spec_user_api_key_schema() {
+        let spec = spec();
+        let schema = &spec["components"]["schemas"]["UserApiKey"];
+        let props = schema["properties"].as_object().unwrap();
+        assert!(props.contains_key("id"));
+        assert!(props.contains_key("name"));
+        assert!(props.contains_key("createdAt"));
+        assert!(props.contains_key("updatedAt"));
+        assert!(props.contains_key("expiresAt"));
+        assert!(props.contains_key("lastUsedAt"));
+        // Internal fields must not appear.
+        assert!(!props.contains_key("userId"), "userId should be excluded");
+        assert!(
+            !props.contains_key("tokenHash"),
+            "tokenHash should be excluded"
+        );
+        // Timestamps are integers.
+        assert_eq!(props["createdAt"]["type"], "integer");
+        assert_eq!(props["updatedAt"]["type"], "integer");
+    }
+
+    #[test]
+    fn openapi_spec_api_key_create_params_has_example() {
+        let spec = spec();
+        let example = &spec["components"]["schemas"]["ApiKeyCreateParams"]["example"];
+        assert!(example["name"].is_string());
+        assert!(example["expiresAt"].is_number());
+    }
+
+    #[test]
+    fn openapi_spec_api_key_update_params_has_example() {
+        let spec = spec();
+        assert_json_snapshot!(spec["components"]["schemas"]["ApiKeyUpdateParams"]["example"], @r###"
+        {
+          "name": "Production agent key"
+        }
+        "###);
+    }
+
+    #[test]
+    fn openapi_spec_api_key_regenerate_params_has_example() {
+        let spec = spec();
+        let example = &spec["components"]["schemas"]["ApiKeyRegenerateParams"]["example"];
+        assert!(example["expiresAt"].is_number());
     }
 }

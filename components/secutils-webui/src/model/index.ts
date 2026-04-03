@@ -25,6 +25,14 @@ export type {
 export { getCopyName, formatBytes } from './strings';
 export type { UserSecret } from './user_secrets';
 export { getUserSecrets, createUserSecret, updateUserSecret, deleteUserSecret } from './user_secrets';
+export type { UserApiKey, ApiKeyCreateResponse } from './user_api_keys';
+export {
+  getUserApiKeys,
+  createUserApiKey,
+  updateUserApiKey,
+  deleteUserApiKey,
+  regenerateUserApiKey,
+} from './user_api_keys';
 export type { EntityTag, UserTag } from './user_tags';
 export { TAG_COLOR_SWATCHES, getUserTags, createUserTag, updateUserTag, deleteUserTag } from './user_tags';
 export type { UserScript, UserScriptType, UserScriptWithContent } from './user_scripts';

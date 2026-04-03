@@ -38,6 +38,7 @@ import { signupWithPasskey } from '../model/webauthn';
 import { getOryApi } from '../tools/ory';
 import { isWebAuthnSupported } from '../tools/webauthn';
 
+const ApiKeysModal = lazy(() => import('./api_keys_modal'));
 const ConfirmAccessModal = lazy(() => import('../pages/signin/confirm_access_modal'));
 const ExportDataModal = lazy(() => import('./export_data_modal'));
 const ImportDataModal = lazy(() => import('./import_data_modal'));
@@ -72,6 +73,7 @@ export default function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed
   const [setPasswordStatus, setSetPasswordStatus] = useState<AsyncData<null> | null>(null);
   const [setPasskeyStatus, setSetPasskeyStatus] = useState<AsyncData<null> | null>(null);
 
+  const [apiKeysModalVisible, setApiKeysModalVisible] = useState(false);
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [importModalVisible, setImportModalVisible] = useState(!!importUrl);
 
@@ -180,115 +182,130 @@ export default function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed
   let selectedTabContent;
   if (selectedTab === 'security') {
     selectedTabContent = (
-      <EuiDescribedFormGroup title={<h3>Credentials</h3>} description={'Configure your Secutils.dev credentials'}>
-        <EuiFormRow fullWidth isDisabled={changeInProgress}>
-          <EuiFieldText
-            placeholder="New password"
-            type={'password'}
-            autoComplete="new-password"
-            onChange={onPasswordChange}
-            minLength={8}
-            value={password}
-          />
-        </EuiFormRow>
-        <EuiFormRow fullWidth isDisabled={changeInProgress}>
-          <EuiFieldText
-            placeholder="Repeat new password"
-            type={'password'}
-            autoComplete="new-password"
-            onChange={onRepeatPasswordChange}
-            minLength={8}
-            isInvalid={repeatPassword !== password}
-            value={repeatPassword}
-          />
-        </EuiFormRow>
-        <EuiFormRow fullWidth>
-          <EuiFlexGroup justifyContent={'spaceBetween'} wrap>
-            <EuiFlexItem>
-              <EuiButton
-                disabled={password !== repeatPassword || password.length < 8 || changeInProgress}
-                isLoading={setPasswordStatus?.status === 'pending'}
-                onClick={() => {
-                  if (setPasswordStatus?.status === 'pending' || password !== repeatPassword) {
-                    return;
-                  }
+      <>
+        <EuiDescribedFormGroup title={<h3>Credentials</h3>} description={'Configure your Secutils.dev credentials'}>
+          <EuiFormRow fullWidth isDisabled={changeInProgress}>
+            <EuiFieldText
+              placeholder="New password"
+              type={'password'}
+              autoComplete="new-password"
+              onChange={onPasswordChange}
+              minLength={8}
+              value={password}
+            />
+          </EuiFormRow>
+          <EuiFormRow fullWidth isDisabled={changeInProgress}>
+            <EuiFieldText
+              placeholder="Repeat new password"
+              type={'password'}
+              autoComplete="new-password"
+              onChange={onRepeatPasswordChange}
+              minLength={8}
+              isInvalid={repeatPassword !== password}
+              value={repeatPassword}
+            />
+          </EuiFormRow>
+          <EuiFormRow fullWidth>
+            <EuiFlexGroup justifyContent={'spaceBetween'} wrap>
+              <EuiFlexItem>
+                <EuiButton
+                  disabled={password !== repeatPassword || password.length < 8 || changeInProgress}
+                  isLoading={setPasswordStatus?.status === 'pending'}
+                  onClick={() => {
+                    if (setPasswordStatus?.status === 'pending' || password !== repeatPassword) {
+                      return;
+                    }
 
-                  setSetPasswordStatus({ status: 'pending' });
-                  getOryApi()
-                    .then(async (api) => {
-                      const updateState = () => {
-                        setSetPasswordStatus({ status: 'succeeded', data: null });
-                        setPassword('');
-                        setRepeatPassword('');
+                    setSetPasswordStatus({ status: 'pending' });
+                    getOryApi()
+                      .then(async (api) => {
+                        const updateState = () => {
+                          setSetPasswordStatus({ status: 'succeeded', data: null });
+                          setPassword('');
+                          setRepeatPassword('');
 
-                        addToast({ id: 'set-password', color: 'success', title: 'Password has been set' });
+                          addToast({ id: 'set-password', color: 'success', title: 'Password has been set' });
 
-                        refreshUiState();
-                      };
+                          refreshUiState();
+                        };
 
-                      const flow = await api.createBrowserSettingsFlow();
-                      try {
-                        await api.updateSettingsFlow({
-                          flow: flow.id,
-                          updateSettingsFlowBody: {
-                            method: 'password' as const,
-                            password,
-                            csrf_token: getCsrfToken(flow),
-                          },
-                        });
-                      } catch (err) {
-                        if (getErrorStatus(err) !== 403) {
-                          throw err;
+                        const flow = await api.createBrowserSettingsFlow();
+                        try {
+                          await api.updateSettingsFlow({
+                            flow: flow.id,
+                            updateSettingsFlowBody: {
+                              method: 'password' as const,
+                              password,
+                              csrf_token: getCsrfToken(flow),
+                            },
+                          });
+                        } catch (err) {
+                          if (getErrorStatus(err) !== 403) {
+                            throw err;
+                          }
+
+                          setSetPasswordStatus({ status: 'failed', error: 'Access confirmation required' });
+                          setIsReauthenticateModalVisible({
+                            visible: true,
+                            action: async () => {
+                              const updatedFlow = await api.getSettingsFlow({ id: flow.id });
+                              await api.updateSettingsFlow({
+                                flow: flow.id,
+                                updateSettingsFlowBody: {
+                                  method: 'password' as const,
+                                  password,
+                                  csrf_token: getCsrfToken(updatedFlow),
+                                },
+                              });
+
+                              updateState();
+                            },
+                          });
+                          return;
                         }
 
-                        setSetPasswordStatus({ status: 'failed', error: 'Access confirmation required' });
-                        setIsReauthenticateModalVisible({
-                          visible: true,
-                          action: async () => {
-                            const updatedFlow = await api.getSettingsFlow({ id: flow.id });
-                            await api.updateSettingsFlow({
-                              flow: flow.id,
-                              updateSettingsFlowBody: {
-                                method: 'password' as const,
-                                password,
-                                csrf_token: getCsrfToken(updatedFlow),
-                              },
-                            });
+                        updateState();
+                      })
+                      .catch(async (err: Error) => {
+                        const originalErrorMessage = await getSecurityErrorMessage(err);
+                        setSetPasswordStatus({ status: 'failed', error: originalErrorMessage ?? 'Unknown error' });
 
-                            updateState();
-                          },
+                        addToast({
+                          id: 'set-password-error',
+                          color: 'danger',
+                          title: 'Failed to set password',
+                          text: (
+                            <>
+                              {isClientError(err) && originalErrorMessage
+                                ? originalErrorMessage
+                                : 'Unable to set password, please try again later.'}
+                            </>
+                          ),
                         });
-                        return;
-                      }
-
-                      updateState();
-                    })
-                    .catch(async (err: Error) => {
-                      const originalErrorMessage = await getSecurityErrorMessage(err);
-                      setSetPasswordStatus({ status: 'failed', error: originalErrorMessage ?? 'Unknown error' });
-
-                      addToast({
-                        id: 'set-password-error',
-                        color: 'danger',
-                        title: 'Failed to set password',
-                        text: (
-                          <>
-                            {isClientError(err) && originalErrorMessage
-                              ? originalErrorMessage
-                              : 'Unable to set password, please try again later.'}
-                          </>
-                        ),
                       });
-                    });
-                }}
-              >
-                Set password
-              </EuiButton>
-            </EuiFlexItem>
-          </EuiFlexGroup>
-        </EuiFormRow>
-        {passkeySection}
-      </EuiDescribedFormGroup>
+                  }}
+                >
+                  Set password
+                </EuiButton>
+              </EuiFlexItem>
+            </EuiFlexGroup>
+          </EuiFormRow>
+          {passkeySection}
+        </EuiDescribedFormGroup>
+        <EuiDescribedFormGroup
+          title={<h3>API keys</h3>}
+          description="Create and manage API keys for programmatic access to the Secutils.dev API."
+        >
+          <EuiFormRow fullWidth>
+            <EuiButton onClick={() => setApiKeysModalVisible(true)}>Manage API keys</EuiButton>
+          </EuiFormRow>
+        </EuiDescribedFormGroup>
+        {apiKeysModalVisible && (
+          <Suspense fallback={<EuiLoadingSpinner size="l" />}>
+            <ApiKeysModal addToast={addToast} onClose={() => setApiKeysModalVisible(false)} />
+          </Suspense>
+        )}
+      </>
     );
   } else {
     const subscription = uiState.user?.subscription;

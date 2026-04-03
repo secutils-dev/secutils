@@ -120,6 +120,13 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
                 RapiDoc::with_openapi("/api-docs/openapi.json", SecutilsOpenApi::openapi())
                     .path("/api-docs"),
             )
+            // API keys
+            .service(handlers::user_api_keys::user_api_keys_list)
+            .service(handlers::user_api_keys::user_api_keys_create)
+            .service(handlers::user_api_keys::user_api_keys_update)
+            .service(handlers::user_api_keys::user_api_keys_delete)
+            .service(handlers::user_api_keys::user_api_keys_regenerate)
+            .service(handlers::user_api_keys::user_api_keys_create_for_user)
             // Tags
             .service(handlers::user_tags::user_tags_list)
             .service(handlers::user_tags::user_tags_create)
