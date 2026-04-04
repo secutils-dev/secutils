@@ -11,9 +11,10 @@ export {
   USER_SETTINGS_KEY_COMMON_GLOBAL_SCOPE_TAG_IDS,
   getUserSettings,
   setUserSettings,
+  parseSidebarCollapsed,
 } from './user_settings';
-export type { UserSettings } from './user_settings';
-export { getApiUrl, getApiRequestConfig } from './urls';
+export type { UserSettings, SidebarCollapsedState } from './user_settings';
+export { getApiUrl, getApiRequestConfig, apiFetch } from './urls';
 export type { SerializedSearchItem, SearchItem } from './search_item';
 export { deserializeSearchItem } from './search_item';
 export type { UserSubscription } from './user_subscription';

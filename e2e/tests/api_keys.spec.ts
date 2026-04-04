@@ -59,10 +59,10 @@ test.describe('API Keys CRUD', () => {
 
     await modal.getByRole('button', { name: 'Create API key' }).click();
 
-    const nameInput = modal.getByPlaceholder('e.g. CI deployment key');
-    await expect(nameInput).toBeVisible({ timeout: 15000 });
-    await nameInput.fill('Test Key');
-    await modal.getByRole('button', { name: 'Save' }).click();
+    const createDialog = page.getByRole('alertdialog');
+    await expect(createDialog).toBeVisible({ timeout: 15000 });
+    await createDialog.getByPlaceholder('e.g. CI deployment key').fill('Test Key');
+    await createDialog.getByRole('button', { name: 'Create' }).click();
 
     // Token reveal callout should be visible.
     await expect(modal.getByText('API key created')).toBeVisible({ timeout: 15000 });
@@ -110,10 +110,12 @@ test.describe('API Keys CRUD', () => {
     const row = getKeyRow(modal, 'Original Name');
     await row.getByRole('button', { name: 'Edit' }).click();
 
-    const editNameInput = modal.locator('input[value="Original Name"]');
+    const editDialog = page.getByRole('alertdialog');
+    await expect(editDialog).toBeVisible({ timeout: 15000 });
+    const editNameInput = editDialog.locator('input[value="Original Name"]');
     await expect(editNameInput).toBeVisible({ timeout: 15000 });
     await editNameInput.fill('Renamed Key');
-    await modal.getByRole('button', { name: 'Save' }).click();
+    await editDialog.getByRole('button', { name: 'Save' }).click();
 
     await expect(page.getByText('API key updated.')).toBeVisible({ timeout: 15000 });
     await dismissAllToasts(page);
@@ -189,15 +191,15 @@ test.describe('API Keys CRUD', () => {
     await expect(modal.getByText('Unique Key')).toBeVisible({ timeout: 15000 });
 
     await modal.getByRole('button', { name: 'Create API key' }).click();
-    const nameInput = modal.getByPlaceholder('e.g. CI deployment key');
-    await expect(nameInput).toBeVisible({ timeout: 15000 });
-    await nameInput.fill('Unique Key');
-    await modal.getByRole('button', { name: 'Save' }).click();
+    const createDialog = page.getByRole('alertdialog');
+    await expect(createDialog).toBeVisible({ timeout: 15000 });
+    await createDialog.getByPlaceholder('e.g. CI deployment key').fill('Unique Key');
+    await createDialog.getByRole('button', { name: 'Create' }).click();
 
     await expect(page.getByText(/already exists/i)).toBeVisible({ timeout: 15000 });
     await dismissAllToasts(page);
 
-    await modal.getByRole('button', { name: 'Cancel' }).click();
+    await createDialog.getByRole('button', { name: 'Cancel' }).click();
     await closeModal(modal);
   });
 
@@ -208,10 +210,10 @@ test.describe('API Keys CRUD', () => {
     const modal = await openApiKeysModal(page);
 
     await modal.getByRole('button', { name: 'Create API key' }).click();
-    const nameInput = modal.getByPlaceholder('e.g. CI deployment key');
-    await expect(nameInput).toBeVisible({ timeout: 15000 });
-    await nameInput.fill('Copy Test Key');
-    await modal.getByRole('button', { name: 'Save' }).click();
+    const createDialog = page.getByRole('alertdialog');
+    await expect(createDialog).toBeVisible({ timeout: 15000 });
+    await createDialog.getByPlaceholder('e.g. CI deployment key').fill('Copy Test Key');
+    await createDialog.getByRole('button', { name: 'Create' }).click();
 
     await expect(modal.getByText('API key created')).toBeVisible({ timeout: 15000 });
 

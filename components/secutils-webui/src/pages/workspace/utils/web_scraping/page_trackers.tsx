@@ -26,14 +26,7 @@ import { TrackerRevisions } from './tracker_revisions';
 import { useTrackerHealth } from './use_tracker_health';
 import { PageErrorState, PageLoadingState } from '../../../../components';
 import { useUserTags } from '../../../../hooks';
-import {
-  type AsyncData,
-  getApiRequestConfig,
-  getApiUrl,
-  getCopyName,
-  getErrorMessage,
-  ResponseError,
-} from '../../../../model';
+import { apiFetch, type AsyncData, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
@@ -81,7 +74,7 @@ export default function PageTrackers() {
   );
 
   const loadTrackers = useCallback(() => {
-    fetch(getApiUrl('/api/web_scraping/page_trackers'), getApiRequestConfig())
+    apiFetch('/api/web_scraping/page_trackers')
       .then(async (res) => {
         if (!res.ok) {
           throw await ResponseError.fromResponse(res);
@@ -152,10 +145,7 @@ export default function PageTrackers() {
       onConfirm={() => {
         setTrackerToRemove(null);
 
-        fetch(
-          getApiUrl(`/api/web_scraping/page_trackers/${encodeURIComponent(trackerToRemove?.id)}`),
-          getApiRequestConfig('DELETE'),
-        )
+        apiFetch(`/api/web_scraping/page_trackers/${encodeURIComponent(trackerToRemove?.id)}`, { method: 'DELETE' })
           .then(async (res) => {
             if (!res.ok) {
               throw await ResponseError.fromResponse(res);

@@ -12,7 +12,7 @@ import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 import type { AsyncData, SearchItem, SerializedSearchItem } from '../../../model';
-import { deserializeSearchItem, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../model';
+import { apiFetch, deserializeSearchItem, getErrorMessage, ResponseError } from '../../../model';
 import { getUtilIcon } from '../utils';
 
 function debounce(callback: (searchQuery: string) => void) {
@@ -38,8 +38,8 @@ export function SiteSearchBar() {
         return;
       }
 
-      fetch(getApiUrl('/api/search'), {
-        ...getApiRequestConfig('POST'),
+      apiFetch('/api/search', {
+        method: 'POST',
         body: JSON.stringify({ query: searchQuery }),
       })
         .then(async (res) => {

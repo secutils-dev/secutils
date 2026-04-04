@@ -140,7 +140,10 @@ mod tests {
             [
                 ("common.uiTheme".to_string(), Some(json!("light"))),
                 ("common.globalScopeTagIds".to_string(), None),
-                ("common.sidebarCollapsed".to_string(), Some(json!(true))),
+                (
+                    "common.sidebarCollapsed".to_string(),
+                    Some(json!({"nav": true})),
+                ),
             ]
             .into_iter()
             .collect(),
@@ -150,7 +153,7 @@ mod tests {
         assert!(!result.0.contains_key("common.globalScopeTagIds"));
         assert_eq!(
             result.0.get("common.sidebarCollapsed").unwrap(),
-            &json!(true)
+            &json!({"nav": true})
         );
 
         Ok(())
@@ -223,7 +226,7 @@ mod tests {
 
         // Replace with completely different settings.
         let new_settings = UserSettings(
-            [("common.sidebarCollapsed".to_string(), json!(true))]
+            [("common.sidebarCollapsed".to_string(), json!({"nav": true}))]
                 .into_iter()
                 .collect(),
         );
@@ -233,7 +236,7 @@ mod tests {
         assert_eq!(result.0.len(), 1);
         assert_eq!(
             result.0.get("common.sidebarCollapsed").unwrap(),
-            &json!(true)
+            &json!({"nav": true})
         );
         assert!(!result.0.contains_key("common.uiTheme"));
 

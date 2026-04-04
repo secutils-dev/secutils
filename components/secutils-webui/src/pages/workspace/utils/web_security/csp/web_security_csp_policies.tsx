@@ -23,7 +23,7 @@ import { ContentSecurityPolicyShareModal } from './content_security_policy_share
 import { PageErrorState, PageLoadingState } from '../../../../../components';
 import { useUserTags } from '../../../../../hooks';
 import type { AsyncData } from '../../../../../model';
-import { getApiRequestConfig, getApiUrl, getCopyName, getErrorMessage, ResponseError } from '../../../../../model';
+import { apiFetch, getCopyName, getErrorMessage, ResponseError } from '../../../../../model';
 import { EntityName } from '../../../components/entity_name';
 import {
   FilteredEmptyState,
@@ -86,7 +86,7 @@ export default function WebSecurityContentSecurityPolicies() {
   );
 
   const loadPolicies = useCallback(() => {
-    fetch(getApiUrl('/api/web_security/csp'), getApiRequestConfig())
+    apiFetch('/api/web_security/csp')
       .then(async (res) => {
         if (!res.ok) {
           throw await ResponseError.fromResponse(res);
@@ -152,10 +152,7 @@ export default function WebSecurityContentSecurityPolicies() {
       onConfirm={() => {
         setPolicyToRemove(null);
 
-        fetch(
-          getApiUrl(`/api/web_security/csp/${encodeURIComponent(policyToRemove.id)}`),
-          getApiRequestConfig('DELETE'),
-        )
+        apiFetch(`/api/web_security/csp/${encodeURIComponent(policyToRemove.id)}`, { method: 'DELETE' })
           .then(async (res) => {
             if (!res.ok) {
               throw await ResponseError.fromResponse(res);

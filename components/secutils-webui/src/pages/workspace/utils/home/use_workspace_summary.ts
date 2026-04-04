@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { getApiRequestConfig, getApiUrl } from '../../../../model';
+import { apiFetch } from '../../../../model';
 
 interface ToolCount {
   webhooks: number | null;
@@ -57,7 +57,7 @@ export function useWorkspaceSummary(isAuthenticated: boolean): WorkspaceSummary 
 
     setSummary({ status: 'pending', counts: EMPTY_COUNTS, recentItems: [] });
 
-    fetch(getApiUrl('/api/ui/home/summary'), getApiRequestConfig())
+    apiFetch('/api/ui/home/summary')
       .then(async (res) => {
         if (!res.ok) {
           throw new Error(`Failed to fetch home summary: ${res.status}`);

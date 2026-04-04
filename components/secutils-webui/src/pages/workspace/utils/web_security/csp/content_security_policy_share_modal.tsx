@@ -18,9 +18,8 @@ import { useCallback, useEffect, useState } from 'react';
 
 import type { ContentSecurityPolicy } from './content_security_policy';
 import {
+  apiFetch,
   type AsyncData,
-  getApiRequestConfig,
-  getApiUrl,
   getErrorMessage,
   ResponseError,
   USER_SHARE_ID_HEADER_NAME,
@@ -49,10 +48,9 @@ export function ContentSecurityPolicyShareModal({ policy, onClose }: ContentSecu
 
       setUserShare({ status: 'pending' });
 
-      fetch(
-        getApiUrl(`/api/web_security/csp/${encodeURIComponent(policy.id)}/${share ? '_share' : '_unshare'}`),
-        getApiRequestConfig('POST'),
-      )
+      apiFetch(`/api/web_security/csp/${encodeURIComponent(policy.id)}/${share ? '_share' : '_unshare'}`, {
+        method: 'POST',
+      })
         .then(async (res) => {
           if (!res.ok) {
             throw await ResponseError.fromResponse(res);
@@ -73,7 +71,7 @@ export function ContentSecurityPolicyShareModal({ policy, onClose }: ContentSecu
       return;
     }
 
-    fetch(getApiUrl(`/api/web_security/csp/${encodeURIComponent(policy.id)}`), getApiRequestConfig())
+    apiFetch(`/api/web_security/csp/${encodeURIComponent(policy.id)}`)
       .then(async (res) => {
         if (!res.ok) {
           throw await ResponseError.fromResponse(res);

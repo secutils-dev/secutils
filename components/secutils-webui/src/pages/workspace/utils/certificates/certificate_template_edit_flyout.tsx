@@ -6,7 +6,7 @@ import type { CertificateTemplateProps } from './certificate_template_form';
 import { CertificateTemplateForm } from './certificate_template_form';
 import { useFormChanges, useUserTags } from '../../../../hooks';
 import type { AsyncData } from '../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage, isClientError, ResponseError } from '../../../../model';
+import { apiFetch, getErrorMessage, isClientError, ResponseError } from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
 import { TagsComboBox } from '../../components/tags_combo_box';
 import { useWorkspaceContext } from '../../hooks';
@@ -63,8 +63,8 @@ export function CertificateTemplateEditFlyout({ onClose, template }: Certificate
 
         const [requestPromise, successMessage, errorMessage] = template?.id
           ? [
-              fetch(getApiUrl(`/api/certificates/templates/${template.id}`), {
-                ...getApiRequestConfig('PUT'),
+              apiFetch(`/api/certificates/templates/${template.id}`, {
+                method: 'PUT',
                 body: JSON.stringify({
                   templateName: templateToSave.name !== template?.name ? templateToSave.name : null,
                   attributes: templateToSave.attributes,
@@ -75,8 +75,8 @@ export function CertificateTemplateEditFlyout({ onClose, template }: Certificate
               `Unable to update "${templateToSave.name}" certificate template, please try again later`,
             ]
           : [
-              fetch(getApiUrl('/api/certificates/templates'), {
-                ...getApiRequestConfig('POST'),
+              apiFetch('/api/certificates/templates', {
+                method: 'POST',
                 body: JSON.stringify({
                   templateName: templateToSave.name,
                   attributes: templateToSave.attributes,

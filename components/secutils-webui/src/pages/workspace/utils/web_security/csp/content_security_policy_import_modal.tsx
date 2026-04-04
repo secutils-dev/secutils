@@ -21,14 +21,7 @@ import {
 } from '@elastic/eui';
 import { useState } from 'react';
 
-import {
-  type AsyncData,
-  getApiRequestConfig,
-  getApiUrl,
-  getErrorMessage,
-  isClientError,
-  ResponseError,
-} from '../../../../../model';
+import { apiFetch, type AsyncData, getErrorMessage, isClientError, ResponseError } from '../../../../../model';
 import { isValidURL } from '../../../../../tools/url';
 import { useWorkspaceContext } from '../../../hooks';
 
@@ -161,8 +154,8 @@ export function ContentSecurityPolicyImportModal({ onClose }: ContentSecurityPol
 
             setImportStatus({ status: 'pending' });
 
-            fetch(getApiUrl('/api/web_security/csp'), {
-              ...getApiRequestConfig('POST'),
+            apiFetch('/api/web_security/csp', {
+              method: 'POST',
               body: JSON.stringify({
                 name,
                 content: { type: importType, value: importType === 'serialized' ? serializedPolicy : remotePolicy },

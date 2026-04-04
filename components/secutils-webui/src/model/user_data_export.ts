@@ -1,4 +1,5 @@
-import { getApiRequestConfig, getApiUrl } from './urls';
+import { ResponseError } from './errors';
+import { apiFetch } from './urls';
 
 export type ExportSelection = { type: 'all' } | { type: 'selected'; ids: string[] };
 
@@ -146,9 +147,9 @@ export interface NamedEntity {
 }
 
 async function fetchEntities(path: string): Promise<NamedEntity[]> {
-  const response = await fetch(getApiUrl(path), getApiRequestConfig());
+  const response = await apiFetch(path);
   if (!response.ok) {
-    throw new Error(`Failed to fetch ${path}`);
+    throw await ResponseError.fromResponse(response, `Failed to fetch ${path}`);
   }
   return response.json();
 }
@@ -182,37 +183,34 @@ export function getApiTrackers(): Promise<NamedEntity[]> {
 }
 
 export async function exportUserData(params: ExportParams): Promise<Blob> {
-  const response = await fetch(getApiUrl('/api/user/data/_export'), {
-    ...getApiRequestConfig('POST'),
+  const response = await apiFetch('/api/user/data/_export', {
+    method: 'POST',
     body: JSON.stringify(params),
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.message ?? 'Failed to export data.');
+    throw await ResponseError.fromResponse(response, 'Failed to export data.');
   }
   return response.blob();
 }
 
 export async function previewImport(params: ImportPreviewParams): Promise<ImportPreview> {
-  const response = await fetch(getApiUrl('/api/user/data/_import_preview'), {
-    ...getApiRequestConfig('POST'),
+  const response = await apiFetch('/api/user/data/_import_preview', {
+    method: 'POST',
     body: JSON.stringify(params),
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.message ?? 'Failed to preview import.');
+    throw await ResponseError.fromResponse(response, 'Failed to preview import.');
   }
   return response.json();
 }
 
 export async function executeImport(params: ImportParams): Promise<ImportResult> {
-  const response = await fetch(getApiUrl('/api/user/data/_import'), {
-    ...getApiRequestConfig('POST'),
+  const response = await apiFetch('/api/user/data/_import', {
+    method: 'POST',
     body: JSON.stringify(params),
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.message ?? 'Failed to import data.');
+    throw await ResponseError.fromResponse(response, 'Failed to import data.');
   }
   return response.json();
 }

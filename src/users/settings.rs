@@ -5,6 +5,17 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use utoipa::ToSchema;
 
+/// Stored value for `common.sidebarCollapsed`:
+/// `{ nav?: bool, sections?: string[] }`.
+#[derive(Deserialize)]
+struct SidebarCollapsedSetting {
+    #[serde(default)]
+    #[allow(dead_code)]
+    nav: bool,
+    #[serde(default)]
+    sections: Vec<String>,
+}
+
 struct KnownUserSettingDescriptor {
     setting_key: &'static str,
     setting_value_validator: fn(&serde_json::Value) -> bool,
@@ -13,7 +24,13 @@ struct KnownUserSettingDescriptor {
 const KNOWN_USER_SETTINGS: [KnownUserSettingDescriptor; 5] = [
     KnownUserSettingDescriptor {
         setting_key: "common.sidebarCollapsed",
-        setting_value_validator: |value| value.is_boolean(),
+        setting_value_validator: |value| {
+            if let Ok(parsed) = serde_json::from_value::<SidebarCollapsedSetting>(value.clone()) {
+                parsed.sections.iter().all(|s| !s.is_empty())
+            } else {
+                false
+            }
+        },
     },
     KnownUserSettingDescriptor {
         setting_key: "common.uiTheme",
@@ -52,7 +69,7 @@ const KNOWN_USER_SETTINGS: [KnownUserSettingDescriptor; 5] = [
 
 /// User preferences stored as key-value pairs.
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, ToSchema)]
-#[schema(example = json!({"common.uiTheme": "dark", "common.sidebarCollapsed": false}))]
+#[schema(example = json!({"common.uiTheme": "dark", "common.sidebarCollapsed": {"nav": false, "sections": []}}))]
 pub struct UserSettings(pub BTreeMap<String, serde_json::Value>);
 
 /// Partial update of user settings. Keys map to new values, or null to delete the setting.
@@ -118,6 +135,121 @@ mod tests {
             serde_json::from_value(schema_example::<UserSettingsSetter>()).unwrap();
         assert!(!example.0.is_empty());
         assert!(example.is_valid());
+    }
+
+    #[test]
+    fn should_properly_validate_common_sidebar_collapsed() {
+        // Null (delete) is always valid.
+        let user_settings = UserSettingsSetter(
+            [("common.sidebarCollapsed".to_string(), None)]
+                .into_iter()
+                .collect(),
+        );
+        assert!(user_settings.is_valid());
+
+        // Full object format.
+        let user_settings = UserSettingsSetter(
+            [(
+                "common.sidebarCollapsed".to_string(),
+                Some(json!({"nav": true, "sections": ["web_security", "certificates"]})),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        assert!(user_settings.is_valid());
+
+        // Object with only nav.
+        let user_settings = UserSettingsSetter(
+            [(
+                "common.sidebarCollapsed".to_string(),
+                Some(json!({"nav": false})),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        assert!(user_settings.is_valid());
+
+        // Object with only sections.
+        let user_settings = UserSettingsSetter(
+            [(
+                "common.sidebarCollapsed".to_string(),
+                Some(json!({"sections": ["webhooks"]})),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        assert!(user_settings.is_valid());
+
+        // Empty object is valid (both fields default).
+        let user_settings = UserSettingsSetter(
+            [("common.sidebarCollapsed".to_string(), Some(json!({})))]
+                .into_iter()
+                .collect(),
+        );
+        assert!(user_settings.is_valid());
+
+        // Empty sections array is valid.
+        let user_settings = UserSettingsSetter(
+            [(
+                "common.sidebarCollapsed".to_string(),
+                Some(json!({"nav": false, "sections": []})),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        assert!(user_settings.is_valid());
+
+        // Invalid: sections contains empty string.
+        let user_settings = UserSettingsSetter(
+            [(
+                "common.sidebarCollapsed".to_string(),
+                Some(json!({"sections": [""]})),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        assert!(!user_settings.is_valid());
+
+        // Invalid: sections contains non-string.
+        let user_settings = UserSettingsSetter(
+            [(
+                "common.sidebarCollapsed".to_string(),
+                Some(json!({"sections": [42]})),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        assert!(!user_settings.is_valid());
+
+        // Invalid: nav is not boolean.
+        let user_settings = UserSettingsSetter(
+            [(
+                "common.sidebarCollapsed".to_string(),
+                Some(json!({"nav": "yes"})),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        assert!(!user_settings.is_valid());
+
+        // Invalid: plain boolean (no longer accepted).
+        let user_settings = UserSettingsSetter(
+            [("common.sidebarCollapsed".to_string(), Some(json!(true)))]
+                .into_iter()
+                .collect(),
+        );
+        assert!(!user_settings.is_valid());
+
+        // Invalid: string value.
+        let user_settings = UserSettingsSetter(
+            [(
+                "common.sidebarCollapsed".to_string(),
+                Some(json!("collapsed")),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        assert!(!user_settings.is_valid());
     }
 
     #[test]
@@ -232,7 +364,10 @@ mod tests {
             let user_settings = UserSettingsSetter(
                 [
                     (format!("certificates.{setting_name}"), Some(json!(true))),
-                    ("common.sidebarCollapsed".to_string(), Some(json!(false))),
+                    (
+                        "common.sidebarCollapsed".to_string(),
+                        Some(json!({"nav": false, "sections": []})),
+                    ),
                 ]
                 .into_iter()
                 .collect(),

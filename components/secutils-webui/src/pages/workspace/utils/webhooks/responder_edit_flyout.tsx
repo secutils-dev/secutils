@@ -23,7 +23,7 @@ import type { ChangeEvent } from 'react';
 import type { Responder } from './responder';
 import { useFormChanges, useRangeTicks, useUserTags } from '../../../../hooks';
 import type { AsyncData } from '../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage, isClientError, ResponseError } from '../../../../model';
+import { apiFetch, getErrorMessage, isClientError, ResponseError } from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
 import { ScriptEditor } from '../../components/script_editor';
 import type { ImportAction, ScriptSnippet } from '../../components/script_editor';
@@ -263,7 +263,7 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
     if (secretsMode !== 'selected' || secretsLoaded) {
       return;
     }
-    fetch(getApiUrl('/api/user/secrets'), getApiRequestConfig())
+    apiFetch('/api/user/secrets')
       .then(async (res) => {
         if (res.ok) {
           const data: Array<{ name: string }> = await res.json();
@@ -371,16 +371,16 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
 
     const [requestPromise, successMessage, errorMessage] = !newResponder
       ? [
-          fetch(getApiUrl(`/api/webhooks/responders/${responder.id}`), {
-            ...getApiRequestConfig('PUT'),
+          apiFetch(`/api/webhooks/responders/${responder.id}`, {
+            method: 'PUT',
             body: JSON.stringify(responderToUpdate),
           }),
           `Successfully updated "${name}" responder`,
           `Unable to update "${name}" responder, please try again later`,
         ]
       : [
-          fetch(getApiUrl('/api/webhooks/responders'), {
-            ...getApiRequestConfig('POST'),
+          apiFetch('/api/webhooks/responders', {
+            method: 'POST',
             body: JSON.stringify(responderToUpdate),
           }),
           `Successfully saved "${name}" responder`,

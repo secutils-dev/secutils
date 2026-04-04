@@ -27,7 +27,7 @@ import type { ResponderStats } from './responder_stats';
 import { PageErrorState, PageLoadingState } from '../../../../components';
 import { useUserTags } from '../../../../hooks';
 import type { AsyncData } from '../../../../model';
-import { getApiRequestConfig, getApiUrl, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
+import { apiFetch, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
 import {
   FilteredEmptyState,
   ItemsTableFilter,
@@ -77,10 +77,7 @@ export default function Responders() {
   );
 
   const loadResponders = useCallback(() => {
-    Promise.all([
-      fetch(getApiUrl('/api/webhooks/responders'), getApiRequestConfig()),
-      fetch(getApiUrl('/api/webhooks/responders/_stats'), getApiRequestConfig()),
-    ])
+    Promise.all([apiFetch('/api/webhooks/responders'), apiFetch('/api/webhooks/responders/_stats')])
       .then(async ([respondersRes, respondersStatsRes]) => {
         if (!respondersRes.ok) {
           throw await ResponseError.fromResponse(respondersRes);
@@ -175,10 +172,7 @@ export default function Responders() {
       onConfirm={() => {
         setResponderToRemove(null);
 
-        fetch(
-          getApiUrl(`/api/webhooks/responders/${encodeURIComponent(responderToRemove?.id)}`),
-          getApiRequestConfig('DELETE'),
-        )
+        apiFetch(`/api/webhooks/responders/${encodeURIComponent(responderToRemove?.id)}`, { method: 'DELETE' })
           .then(async (res) => {
             if (!res.ok) {
               throw await ResponseError.fromResponse(res);

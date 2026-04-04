@@ -28,7 +28,7 @@ import { privateKeyAlgString } from './private_key_alg';
 import { PageErrorState, PageLoadingState } from '../../../../components';
 import { useUserTags } from '../../../../hooks';
 import type { AsyncData } from '../../../../model';
-import { getApiRequestConfig, getApiUrl, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
+import { apiFetch, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
 import { EntityName } from '../../components/entity_name';
 import {
   FilteredEmptyState,
@@ -96,7 +96,7 @@ export default function CertificatesCertificateTemplates() {
   );
 
   const loadCertificateTemplates = useCallback(() => {
-    fetch(getApiUrl('/api/certificates/templates'), getApiRequestConfig())
+    apiFetch('/api/certificates/templates')
       .then(async (res) => {
         if (!res.ok) {
           throw await ResponseError.fromResponse(res);
@@ -144,10 +144,7 @@ export default function CertificatesCertificateTemplates() {
       onCancel={() => setTemplateToRemove(null)}
       onConfirm={() => {
         setTemplateToRemove(null);
-        fetch(
-          getApiUrl(`/api/certificates/templates/${encodeURIComponent(templateToRemove.id)}`),
-          getApiRequestConfig('DELETE'),
-        )
+        apiFetch(`/api/certificates/templates/${encodeURIComponent(templateToRemove.id)}`, { method: 'DELETE' })
           .then(async (res) => {
             if (!res.ok) {
               throw await ResponseError.fromResponse(res);

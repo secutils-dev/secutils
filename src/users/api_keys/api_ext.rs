@@ -404,6 +404,40 @@ mod tests {
     }
 
     #[sqlx::test]
+    async fn update_api_key_rejects_duplicate_name(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
+        let mock_user = mock_user()?;
+        api.db.upsert_user(&mock_user).await?;
+
+        let api_keys = api.api_keys(&mock_user);
+        api_keys
+            .create_api_key(ApiKeyCreateParams {
+                name: "Existing".into(),
+                expires_at: None,
+            })
+            .await?;
+        let (second, _) = api_keys
+            .create_api_key(ApiKeyCreateParams {
+                name: "Other".into(),
+                expires_at: None,
+            })
+            .await?;
+
+        let err = api_keys
+            .update_api_key(
+                second.id,
+                ApiKeyUpdateParams {
+                    name: "Existing".into(),
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("already exists"));
+
+        Ok(())
+    }
+
+    #[sqlx::test]
     async fn update_api_key_not_found(pool: PgPool) -> anyhow::Result<()> {
         let api = mock_api(pool).await?;
         let mock_user = mock_user()?;

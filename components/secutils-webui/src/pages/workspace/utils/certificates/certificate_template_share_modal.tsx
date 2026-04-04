@@ -17,14 +17,7 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 
 import type { CertificateTemplate } from './certificate_template';
-import {
-  type AsyncData,
-  getApiRequestConfig,
-  getApiUrl,
-  getErrorMessage,
-  ResponseError,
-  USER_SHARE_ID_HEADER_NAME,
-} from '../../../../model';
+import { apiFetch, type AsyncData, getErrorMessage, ResponseError, USER_SHARE_ID_HEADER_NAME } from '../../../../model';
 import type { UserShare } from '../../../../model/user_share';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -49,10 +42,9 @@ export function CertificateTemplateShareModal({ template, onClose }: Certificate
 
       setUserShare({ status: 'pending' });
 
-      fetch(
-        getApiUrl(`/api/certificates/templates/${encodeURIComponent(template.id)}/${share ? '_share' : '_unshare'}`),
-        getApiRequestConfig('POST'),
-      )
+      apiFetch(`/api/certificates/templates/${encodeURIComponent(template.id)}/${share ? '_share' : '_unshare'}`, {
+        method: 'POST',
+      })
         .then(async (res) => {
           if (!res.ok) {
             throw await ResponseError.fromResponse(res);
@@ -75,7 +67,7 @@ export function CertificateTemplateShareModal({ template, onClose }: Certificate
       return;
     }
 
-    fetch(getApiUrl(`/api/certificates/templates/${encodeURIComponent(template.id)}`), getApiRequestConfig())
+    apiFetch(`/api/certificates/templates/${encodeURIComponent(template.id)}`)
       .then(async (res) => {
         if (!res.ok) {
           throw await ResponseError.fromResponse(res);

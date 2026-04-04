@@ -1,4 +1,5 @@
-import { getApiRequestConfig, getApiUrl } from './urls';
+import { ResponseError } from './errors';
+import { apiFetch } from './urls';
 import type { EntityTag } from './user_tags';
 
 export interface UserSecret {
@@ -10,21 +11,20 @@ export interface UserSecret {
 }
 
 export async function getUserSecrets(): Promise<UserSecret[]> {
-  const response = await fetch(getApiUrl('/api/user/secrets'), getApiRequestConfig('GET'));
+  const response = await apiFetch('/api/user/secrets');
   if (!response.ok) {
-    throw new Error('Failed to fetch secrets.');
+    throw await ResponseError.fromResponse(response, 'Failed to fetch secrets.');
   }
   return response.json();
 }
 
 export async function createUserSecret(name: string, value: string, tagIds?: string[]): Promise<UserSecret> {
-  const response = await fetch(getApiUrl('/api/user/secrets'), {
-    ...getApiRequestConfig('POST'),
+  const response = await apiFetch('/api/user/secrets', {
+    method: 'POST',
     body: JSON.stringify({ name, value, ...(tagIds !== undefined ? { tagIds } : {}) }),
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.message ?? 'Failed to create secret.');
+    throw await ResponseError.fromResponse(response, 'Failed to create secret.');
   }
   return response.json();
 }
@@ -37,21 +37,19 @@ export async function updateUserSecret(id: string, value?: string, tagIds?: stri
   if (tagIds !== undefined) {
     body.tagIds = tagIds;
   }
-  const response = await fetch(getApiUrl(`/api/user/secrets/${encodeURIComponent(id)}`), {
-    ...getApiRequestConfig('PUT'),
+  const response = await apiFetch(`/api/user/secrets/${encodeURIComponent(id)}`, {
+    method: 'PUT',
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.message ?? 'Failed to update secret.');
+    throw await ResponseError.fromResponse(response, 'Failed to update secret.');
   }
   return response.json();
 }
 
 export async function deleteUserSecret(id: string): Promise<void> {
-  const response = await fetch(getApiUrl(`/api/user/secrets/${encodeURIComponent(id)}`), getApiRequestConfig('DELETE'));
+  const response = await apiFetch(`/api/user/secrets/${encodeURIComponent(id)}`, { method: 'DELETE' });
   if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.message ?? 'Failed to delete secret.');
+    throw await ResponseError.fromResponse(response, 'Failed to delete secret.');
   }
 }

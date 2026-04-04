@@ -1,4 +1,11 @@
-import { EuiButton, EuiFieldSearch, EuiFlexGroup, EuiFlexItem } from '@elastic/eui';
+import {
+  EuiButton,
+  EuiButtonIcon,
+  EuiFieldSearch,
+  EuiFlexGroup,
+  EuiFlexItem,
+  useIsWithinMaxBreakpoint,
+} from '@elastic/eui';
 import type { ChangeEvent, ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -21,6 +28,7 @@ export function ItemsTableFilter({
 }: ItemsTableFilterProps) {
   const [localQuery, setLocalQuery] = useState(query);
   const debounceRef = useRef<number | null>(null);
+  const isMobile = useIsWithinMaxBreakpoint('s');
 
   // Sync local state when the query prop is cleared externally (e.g., "Clear filters").
   useEffect(() => {
@@ -61,9 +69,13 @@ export function ItemsTableFilter({
       {children}
       {onRefresh && (
         <EuiFlexItem grow={false}>
-          <EuiButton iconType="refresh" aria-label="Refresh" onClick={onRefresh}>
-            Refresh
-          </EuiButton>
+          {isMobile ? (
+            <EuiButtonIcon iconType="refresh" aria-label="Refresh" display="base" size="m" onClick={onRefresh} />
+          ) : (
+            <EuiButton iconType="refresh" aria-label="Refresh" onClick={onRefresh}>
+              Refresh
+            </EuiButton>
+          )}
         </EuiFlexItem>
       )}
     </EuiFlexGroup>

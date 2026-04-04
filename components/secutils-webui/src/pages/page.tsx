@@ -25,7 +25,7 @@ import { PageHeader } from './page_header';
 import { ContactFormModal } from '../app_container/contact_form_modal';
 import { LogoWithName, PageErrorState, PageLoadingState } from '../components';
 import { useAppContext } from '../hooks';
-import { USER_SETTINGS_KEY_COMMON_SIDEBAR_COLLAPSED } from '../model';
+import { parseSidebarCollapsed, USER_SETTINGS_KEY_COMMON_SIDEBAR_COLLAPSED } from '../model';
 
 export interface PageProps {
   children: ReactElement | ReactElement[];
@@ -62,10 +62,14 @@ export function Page({
   const location = useLocation();
   const [searchParams] = useSearchParams();
 
-  const isNavOpen = settings?.[USER_SETTINGS_KEY_COMMON_SIDEBAR_COLLAPSED] !== true;
+  const sidebarState = parseSidebarCollapsed(settings?.[USER_SETTINGS_KEY_COMMON_SIDEBAR_COLLAPSED]);
+  const isNavOpen = !sidebarState.nav;
   const onToggleNav = useCallback(
-    (open: boolean) => setSettings({ [USER_SETTINGS_KEY_COMMON_SIDEBAR_COLLAPSED]: !open }),
-    [setSettings],
+    (open: boolean) => {
+      const current = parseSidebarCollapsed(settings?.[USER_SETTINGS_KEY_COMMON_SIDEBAR_COLLAPSED]);
+      setSettings({ [USER_SETTINGS_KEY_COMMON_SIDEBAR_COLLAPSED]: { ...current, nav: !open } });
+    },
+    [setSettings, settings],
   );
 
   const [isContactFormOpen, setIsContactFormOpen] = useState<boolean>(false);

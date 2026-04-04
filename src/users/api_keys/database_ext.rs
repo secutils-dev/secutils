@@ -161,7 +161,7 @@ VALUES ($1, $2, $3, $4, $5, $6, $7)
         name: &str,
         updated_at: OffsetDateTime,
     ) -> anyhow::Result<Option<UserApiKey>> {
-        let raw: Option<RawUserApiKey> = query_as!(
+        let raw: Option<RawUserApiKey> = match query_as!(
             RawUserApiKey,
             r#"
 UPDATE user_api_keys SET name = $1, updated_at = $2
@@ -174,7 +174,20 @@ RETURNING id, user_id, name, token_hash, created_at, updated_at, expires_at, las
             id
         )
         .fetch_optional(self.pool)
-        .await?;
+        .await
+        {
+            Ok(raw) => raw,
+            Err(err)
+                if err.as_database_error().is_some_and(|db_err| {
+                    matches!(db_err.kind(), SqlxErrorKind::UniqueViolation)
+                }) =>
+            {
+                return Err(anyhow::Error::from(Error::conflict(format!(
+                    "An API key with name '{name}' already exists."
+                ))));
+            }
+            Err(err) => return Err(err.into()),
+        };
 
         Ok(raw.map(UserApiKey::from))
     }

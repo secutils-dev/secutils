@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { TrackerExecutionLog } from './tracker_execution_log';
-import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
+import { apiFetch, type AsyncData, getErrorMessage, ResponseError } from '../../../../model';
 
 export interface TrackerHealthData {
   data: AsyncData<Record<string, TrackerExecutionLog[]>>;
@@ -19,7 +19,7 @@ export function useTrackerHealth(kind: 'page' | 'api', trackerIds: string[] | un
       return;
     }
 
-    fetch(getApiUrl(`/api/web_scraping/${kind}_trackers/_logs_summary`), getApiRequestConfig())
+    apiFetch(`/api/web_scraping/${kind}_trackers/_logs_summary`)
       .then(async (res) => {
         if (!res.ok) {
           throw await ResponseError.fromResponse(res);

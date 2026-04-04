@@ -1,4 +1,5 @@
-import { getApiRequestConfig, getApiUrl } from './urls';
+import { ResponseError } from './errors';
+import { apiFetch } from './urls';
 import type { EntityTag } from './user_tags';
 
 export type UserScriptType = 'responder' | 'api_configurator' | 'api_extractor' | 'page_extractor' | 'universal';
@@ -17,18 +18,18 @@ export interface UserScriptWithContent extends UserScript {
 }
 
 export async function getUserScripts(context?: 'responder' | 'api_tracker' | 'page_tracker'): Promise<UserScript[]> {
-  const url = context ? getApiUrl(`/api/user/scripts?context=${context}`) : getApiUrl('/api/user/scripts');
-  const response = await fetch(url, getApiRequestConfig('GET'));
+  const path = context ? `/api/user/scripts?context=${context}` : '/api/user/scripts';
+  const response = await apiFetch(path);
   if (!response.ok) {
-    throw new Error('Failed to fetch scripts.');
+    throw await ResponseError.fromResponse(response, 'Failed to fetch scripts.');
   }
   return response.json();
 }
 
 export async function getUserScript(id: string): Promise<UserScriptWithContent> {
-  const response = await fetch(getApiUrl(`/api/user/scripts/${encodeURIComponent(id)}`), getApiRequestConfig('GET'));
+  const response = await apiFetch(`/api/user/scripts/${encodeURIComponent(id)}`);
   if (!response.ok) {
-    throw new Error('Failed to fetch script.');
+    throw await ResponseError.fromResponse(response, 'Failed to fetch script.');
   }
   return response.json();
 }
@@ -39,34 +40,31 @@ export async function createUserScript(
   content: string,
   tagIds?: string[],
 ): Promise<UserScript> {
-  const response = await fetch(getApiUrl('/api/user/scripts'), {
-    ...getApiRequestConfig('POST'),
+  const response = await apiFetch('/api/user/scripts', {
+    method: 'POST',
     body: JSON.stringify({ name, scriptType, content, ...(tagIds !== undefined ? { tagIds } : {}) }),
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.message ?? 'Failed to create script.');
+    throw await ResponseError.fromResponse(response, 'Failed to create script.');
   }
   return response.json();
 }
 
 export async function updateUserScript(id: string, content: string, tagIds?: string[]): Promise<UserScript> {
-  const response = await fetch(getApiUrl(`/api/user/scripts/${encodeURIComponent(id)}`), {
-    ...getApiRequestConfig('PUT'),
+  const response = await apiFetch(`/api/user/scripts/${encodeURIComponent(id)}`, {
+    method: 'PUT',
     body: JSON.stringify({ content, ...(tagIds !== undefined ? { tagIds } : {}) }),
   });
   if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.message ?? 'Failed to update script.');
+    throw await ResponseError.fromResponse(response, 'Failed to update script.');
   }
   return response.json();
 }
 
 export async function deleteUserScript(id: string): Promise<void> {
-  const response = await fetch(getApiUrl(`/api/user/scripts/${encodeURIComponent(id)}`), getApiRequestConfig('DELETE'));
+  const response = await apiFetch(`/api/user/scripts/${encodeURIComponent(id)}`, { method: 'DELETE' });
   if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(body?.message ?? 'Failed to delete script.');
+    throw await ResponseError.fromResponse(response, 'Failed to delete script.');
   }
 }
 

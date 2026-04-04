@@ -18,6 +18,7 @@ default_schema_id = "user"
 schemas = [{ id = "user", url = "file:///etc/config/kratos/user_identity.schema.json" }]
 
 [session]
+lifespan = "10m"
 cookie = { name = "id" }
 
 [selfservice]

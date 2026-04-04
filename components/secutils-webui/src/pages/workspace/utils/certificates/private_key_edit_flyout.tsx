@@ -9,7 +9,7 @@ import type { PrivateKeyAlgorithm, PrivateKeyCurveName, PrivateKeySize } from '.
 import { privateKeyCurveNameString } from './private_key_alg';
 import { useFormChanges, useUserTags } from '../../../../hooks';
 import type { AsyncData } from '../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage, isClientError, ResponseError } from '../../../../model';
+import { apiFetch, getErrorMessage, isClientError, ResponseError } from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
 import { TagsComboBox } from '../../components/tags_combo_box';
 import { useWorkspaceContext } from '../../hooks';
@@ -115,8 +115,8 @@ export function PrivateKeyEditFlyout({ onClose, privateKey }: PrivateKeyEditFlyo
         const currentPassphraseToSend = privateKey?.encrypted ? currentPassphrase : null;
         const [requestPromise, successMessage, errorMessage] = privateKey?.id
           ? [
-              fetch(getApiUrl(`/api/certificates/private_keys/${privateKey.id}`), {
-                ...getApiRequestConfig('PUT'),
+              apiFetch(`/api/certificates/private_keys/${privateKey.id}`, {
+                method: 'PUT',
                 body: JSON.stringify({
                   keyName: privateKey.name !== name ? name.trim() : null,
                   ...(!privateKey.encrypted || newPassphraseToSend !== currentPassphraseToSend
@@ -129,8 +129,8 @@ export function PrivateKeyEditFlyout({ onClose, privateKey }: PrivateKeyEditFlyo
               `Unable to update "${name}" private key, please try again later`,
             ]
           : [
-              fetch(getApiUrl('/api/certificates/private_keys'), {
-                ...getApiRequestConfig('POST'),
+              apiFetch('/api/certificates/private_keys', {
+                method: 'POST',
                 body: JSON.stringify({
                   keyName: name,
                   alg: keyAlgorithm,

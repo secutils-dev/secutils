@@ -6,7 +6,7 @@ import type { ContentSecurityPolicyProps } from './content_security_policy_form'
 import { ContentSecurityPolicyForm } from './content_security_policy_form';
 import { useFormChanges, useUserTags } from '../../../../../hooks';
 import type { AsyncData } from '../../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage, isClientError, ResponseError } from '../../../../../model';
+import { apiFetch, getErrorMessage, isClientError, ResponseError } from '../../../../../model';
 import { EditorFlyout } from '../../../components/editor_flyout';
 import { TagsComboBox } from '../../../components/tags_combo_box';
 import { useWorkspaceContext } from '../../../hooks';
@@ -51,8 +51,8 @@ export function ContentSecurityPolicyEditFlyout({ onClose, policy }: ContentSecu
 
         const [requestPromise, successMessage, errorMessage] = policy?.id
           ? [
-              fetch(getApiUrl(`/api/web_security/csp/${policy.id}`), {
-                ...getApiRequestConfig('PUT'),
+              apiFetch(`/api/web_security/csp/${policy.id}`, {
+                method: 'PUT',
                 body: JSON.stringify({
                   name: policyToSave.name !== policy?.name ? policyToSave.name : null,
                   directives: serializeContentSecurityPolicyDirectives(policyToSave.directives),
@@ -63,8 +63,8 @@ export function ContentSecurityPolicyEditFlyout({ onClose, policy }: ContentSecu
               `Unable to update "${policyToSave.name}" policy, please try again later`,
             ]
           : [
-              fetch(getApiUrl('/api/web_security/csp'), {
-                ...getApiRequestConfig('POST'),
+              apiFetch('/api/web_security/csp', {
+                method: 'POST',
                 body: JSON.stringify({
                   name: policyToSave.name,
                   content: {

@@ -49,13 +49,13 @@ test.describe('API Keys guide screenshots', () => {
 
     // Step 3: Click "Create API key" and fill in the form.
     await createButton.click();
-    const nameInput = modal.getByPlaceholder('e.g. CI deployment key');
-    await expect(nameInput).toBeVisible({ timeout: 15000 });
-    await nameInput.fill('CI deployment key');
+    const createDialog = page.getByRole('alertdialog');
+    await expect(createDialog).toBeVisible({ timeout: 15000 });
+    await createDialog.getByPlaceholder('e.g. CI deployment key').fill('CI deployment key');
     await page.screenshot({ path: join(IMG_DIR, 'api_keys_step3_create_form.png') });
 
     // Step 4: Save and show the token reveal.
-    await modal.getByRole('button', { name: 'Save' }).click();
+    await createDialog.getByRole('button', { name: 'Create' }).click();
     await expect(modal.getByText('API key created')).toBeVisible({ timeout: 15000 });
     await page.screenshot({ path: join(IMG_DIR, 'api_keys_step4_token_reveal.png') });
 
@@ -64,10 +64,10 @@ test.describe('API Keys guide screenshots', () => {
 
     // Step 5: Create a second key to show a populated list.
     await createButton.click();
-    const nameInput2 = modal.getByPlaceholder('e.g. CI deployment key');
-    await expect(nameInput2).toBeVisible({ timeout: 15000 });
-    await nameInput2.fill('Staging environment');
-    await modal.getByRole('button', { name: 'Save' }).click();
+    const createDialog2 = page.getByRole('alertdialog');
+    await expect(createDialog2).toBeVisible({ timeout: 15000 });
+    await createDialog2.getByPlaceholder('e.g. CI deployment key').fill('Staging environment');
+    await createDialog2.getByRole('button', { name: 'Create' }).click();
     await expect(modal.getByText('API key created')).toBeVisible({ timeout: 15000 });
     await modal.getByRole('button', { name: 'Dismiss' }).click();
 

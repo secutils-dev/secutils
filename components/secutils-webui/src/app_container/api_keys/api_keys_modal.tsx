@@ -6,11 +6,8 @@ import {
   EuiCode,
   EuiConfirmModal,
   EuiCopy,
-  EuiDatePicker,
-  EuiFieldText,
   EuiFlexGroup,
   EuiFlexItem,
-  EuiFormRow,
   EuiInMemoryTable,
   EuiLoadingSpinner,
   EuiModal,
@@ -21,101 +18,28 @@ import {
   EuiSpacer,
   EuiText,
 } from '@elastic/eui';
-import type { Moment } from 'moment/moment';
-import moment from 'moment/moment';
-import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import type { ApiKeyCreateResponse, UserApiKey } from '../model';
-import { createUserApiKey, deleteUserApiKey, getUserApiKeys, regenerateUserApiKey, updateUserApiKey } from '../model';
-import type { PageToast } from '../pages/page';
-import { TimestampTableCell } from '../pages/workspace/components/timestamp_table_cell';
+import { CreateEditModal } from './create_edit_api_key_modal';
+import { RegenerateConfirmModal } from './regenerate_api_key_modal';
+import type { ApiKeyCreateResponse, UserApiKey } from '../../model';
+import {
+  createUserApiKey,
+  deleteUserApiKey,
+  getUserApiKeys,
+  regenerateUserApiKey,
+  updateUserApiKey,
+} from '../../model';
+import type { PageToast } from '../../pages/page';
+import { TimestampTableCell } from '../../pages/workspace/components/timestamp_table_cell';
 
 interface Props {
   addToast: (toast: PageToast) => void;
   onClose: () => void;
 }
 
-const NEW_KEY_SENTINEL = '__new__';
-const MAX_NAME_LENGTH = 128;
-
 function isExpired(expiresAt: number | null) {
   return expiresAt != null && expiresAt < Date.now() / 1000;
-}
-
-interface InlineFormProps {
-  initialName?: string;
-  showExpires?: boolean;
-  saving: boolean;
-  onSave: (name: string, expiresAt?: number) => void;
-  onCancel: () => void;
-}
-
-function InlineForm({ initialName = '', showExpires, saving, onSave, onCancel }: InlineFormProps) {
-  const [name, setName] = useState(initialName);
-  const [expiresDate, setExpiresDate] = useState<Moment | null>(null);
-
-  const nameValid = name.trim().length > 0 && name.length <= MAX_NAME_LENGTH;
-  const expiresValid = !expiresDate || expiresDate.isAfter(moment());
-  const canSave = nameValid && expiresValid && !saving;
-
-  return (
-    <div style={{ padding: '8px 0' }}>
-      <EuiFlexGroup gutterSize="s" alignItems="flexEnd" responsive={false} wrap>
-        <EuiFlexItem grow={2}>
-          <EuiFormRow label="Name">
-            <EuiFieldText
-              compressed
-              placeholder="e.g. CI deployment key"
-              value={name}
-              maxLength={MAX_NAME_LENGTH}
-              onChange={(e) => setName(e.target.value)}
-              autoFocus
-            />
-          </EuiFormRow>
-        </EuiFlexItem>
-        {showExpires && (
-          <EuiFlexItem grow={2}>
-            <EuiFormRow label="Expires">
-              <EuiDatePicker
-                selected={expiresDate}
-                onChange={setExpiresDate}
-                minDate={moment()}
-                showTimeSelect
-                compressed
-                placeholder="Never"
-                isInvalid={!!expiresDate && !expiresValid}
-              />
-            </EuiFormRow>
-          </EuiFlexItem>
-        )}
-        <EuiFlexItem grow={false}>
-          <EuiFormRow hasEmptyLabelSpace>
-            <EuiFlexGroup gutterSize="s" responsive={false}>
-              <EuiFlexItem grow={false}>
-                <EuiButton
-                  size="s"
-                  fill
-                  disabled={!canSave}
-                  isLoading={saving}
-                  onClick={() => {
-                    onSave(name.trim(), expiresDate ? expiresDate.unix() : undefined);
-                  }}
-                >
-                  Save
-                </EuiButton>
-              </EuiFlexItem>
-              <EuiFlexItem grow={false}>
-                <EuiButtonEmpty size="s" disabled={saving} onClick={onCancel}>
-                  Cancel
-                </EuiButtonEmpty>
-              </EuiFlexItem>
-            </EuiFlexGroup>
-          </EuiFormRow>
-        </EuiFlexItem>
-      </EuiFlexGroup>
-    </div>
-  );
 }
 
 interface TokenRevealProps {
@@ -160,8 +84,8 @@ export default function ApiKeysModal({ addToast, onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
+  const [creatingKey, setCreatingKey] = useState(false);
+  const [editingKey, setEditingKey] = useState<UserApiKey | null>(null);
   const [revealedToken, setRevealedToken] = useState<{ token: string; isRegenerate: boolean } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
   const [regenerateConfirm, setRegenerateConfirm] = useState<{ id: string; name: string } | null>(null);
@@ -187,8 +111,7 @@ export default function ApiKeysModal({ addToast, onClose }: Props) {
       try {
         const result: ApiKeyCreateResponse = await createUserApiKey(name, expiresAt);
         setRevealedToken({ token: result.token, isRegenerate: false });
-        setIsCreating(false);
-        setExpandedRowId(null);
+        setCreatingKey(false);
         await loadKeys();
       } catch (err) {
         addToast({
@@ -208,7 +131,7 @@ export default function ApiKeysModal({ addToast, onClose }: Props) {
       setSaving(true);
       try {
         await updateUserApiKey(id, name);
-        setExpandedRowId(null);
+        setEditingKey(null);
         await loadKeys();
         addToast({ id: 'update-api-key', color: 'success', title: 'API key updated.' });
       } catch (err) {
@@ -259,57 +182,15 @@ export default function ApiKeysModal({ addToast, onClose }: Props) {
     [addToast, loadKeys],
   );
 
-  const cancelEditing = useCallback(() => {
-    setExpandedRowId(null);
-    setIsCreating(false);
-  }, []);
-
   const startCreate = useCallback(() => {
     setRevealedToken(null);
-    setExpandedRowId(NEW_KEY_SENTINEL);
-    setIsCreating(true);
+    setCreatingKey(true);
   }, []);
 
   const startEdit = useCallback((key: UserApiKey) => {
     setRevealedToken(null);
-    setIsCreating(false);
-    setExpandedRowId(key.id);
+    setEditingKey(key);
   }, []);
-
-  const expandedRowMap = useMemo(() => {
-    const map: Record<string, ReactNode> = {};
-    if (expandedRowId === NEW_KEY_SENTINEL && isCreating) {
-      map[NEW_KEY_SENTINEL] = <InlineForm showExpires saving={saving} onSave={handleCreate} onCancel={cancelEditing} />;
-    } else if (expandedRowId && !isCreating) {
-      const key = apiKeys.find((k) => k.id === expandedRowId);
-      if (key) {
-        map[key.id] = (
-          <InlineForm
-            initialName={key.name}
-            saving={saving}
-            onSave={(name) => handleUpdate(key.id, name)}
-            onCancel={cancelEditing}
-          />
-        );
-      }
-    }
-    return map;
-  }, [expandedRowId, isCreating, saving, apiKeys, handleCreate, handleUpdate, cancelEditing]);
-
-  const items = useMemo(() => {
-    if (isCreating) {
-      const placeholder: UserApiKey = {
-        id: NEW_KEY_SENTINEL,
-        name: '',
-        createdAt: 0,
-        updatedAt: 0,
-        expiresAt: null,
-        lastUsedAt: null,
-      };
-      return [placeholder, ...apiKeys];
-    }
-    return apiKeys;
-  }, [apiKeys, isCreating]);
 
   const columns: Array<EuiBasicTableColumn<UserApiKey>> = useMemo(
     () => [
@@ -317,25 +198,13 @@ export default function ApiKeysModal({ addToast, onClose }: Props) {
         field: 'name',
         name: 'Name',
         sortable: true,
-        render: (name: string, key: UserApiKey) => {
-          if (key.id === NEW_KEY_SENTINEL) {
-            return (
-              <EuiText size="s" color="subdued">
-                <i>New API key</i>
-              </EuiText>
-            );
-          }
-          return <EuiText size="s">{name}</EuiText>;
-        },
+        render: (name: string) => <EuiText size="s">{name}</EuiText>,
       },
       {
         field: 'expiresAt',
         name: 'Expires',
         sortable: true,
-        render: (expiresAt: number | null, key: UserApiKey) => {
-          if (key.id === NEW_KEY_SENTINEL) {
-            return null;
-          }
+        render: (expiresAt: number | null) => {
           if (expiresAt == null) {
             return <EuiText size="s">Never</EuiText>;
           }
@@ -346,23 +215,13 @@ export default function ApiKeysModal({ addToast, onClose }: Props) {
         field: 'lastUsedAt',
         name: 'Last used',
         sortable: true,
-        render: (lastUsedAt: number | null, key: UserApiKey) => {
-          if (key.id === NEW_KEY_SENTINEL) {
-            return null;
-          }
-          return <TimestampTableCell timestamp={lastUsedAt} highlightRecent />;
-        },
+        render: (lastUsedAt: number | null) => <TimestampTableCell timestamp={lastUsedAt} highlightRecent />,
       },
       {
         field: 'updatedAt',
         name: 'Last updated',
         sortable: true,
-        render: (updatedAt: number, key: UserApiKey) => {
-          if (key.id === NEW_KEY_SENTINEL) {
-            return null;
-          }
-          return <TimestampTableCell timestamp={updatedAt} />;
-        },
+        render: (updatedAt: number) => <TimestampTableCell timestamp={updatedAt} />,
       },
       {
         name: 'Actions',
@@ -374,7 +233,6 @@ export default function ApiKeysModal({ addToast, onClose }: Props) {
             icon: 'pencil',
             type: 'icon' as const,
             isPrimary: true,
-            available: (key: UserApiKey) => key.id !== NEW_KEY_SENTINEL,
             onClick: startEdit,
           },
           {
@@ -382,7 +240,6 @@ export default function ApiKeysModal({ addToast, onClose }: Props) {
             description: 'Regenerate API key token',
             icon: 'refresh',
             type: 'icon' as const,
-            available: (key: UserApiKey) => key.id !== NEW_KEY_SENTINEL,
             onClick: (key: UserApiKey) => setRegenerateConfirm({ id: key.id, name: key.name }),
           },
           {
@@ -392,7 +249,6 @@ export default function ApiKeysModal({ addToast, onClose }: Props) {
             color: 'danger' as const,
             type: 'icon' as const,
             isPrimary: true,
-            available: (key: UserApiKey) => key.id !== NEW_KEY_SENTINEL,
             onClick: (key: UserApiKey) => setDeleteConfirm({ id: key.id, name: key.name }),
           },
         ],
@@ -427,19 +283,18 @@ export default function ApiKeysModal({ addToast, onClose }: Props) {
           <>
             <EuiFlexGroup justifyContent="flexEnd">
               <EuiFlexItem grow={false}>
-                <EuiButton size="s" iconType="plusInCircle" disabled={isCreating} onClick={startCreate}>
+                <EuiButton size="s" iconType="plusInCircle" onClick={startCreate}>
                   Create API key
                 </EuiButton>
               </EuiFlexItem>
             </EuiFlexGroup>
             <EuiSpacer size="s" />
             <EuiInMemoryTable
-              items={items}
+              items={apiKeys}
               itemId="id"
               columns={columns}
               loading={loading}
               sorting={{ sort: { field: 'updatedAt', direction: 'desc' } }}
-              itemIdToExpandedRowMap={expandedRowMap}
               pagination={apiKeys.length > 10 ? { pageSize: 10, showPerPageOptions: false } : undefined}
               noItemsMessage="No API keys yet."
             />
@@ -449,6 +304,20 @@ export default function ApiKeysModal({ addToast, onClose }: Props) {
       <EuiModalFooter>
         <EuiButtonEmpty onClick={onClose}>Close</EuiButtonEmpty>
       </EuiModalFooter>
+
+      {creatingKey && (
+        <CreateEditModal mode="create" saving={saving} onSave={handleCreate} onCancel={() => setCreatingKey(false)} />
+      )}
+
+      {editingKey && (
+        <CreateEditModal
+          mode="edit"
+          initialName={editingKey.name}
+          saving={saving}
+          onSave={(name) => handleUpdate(editingKey.id, name)}
+          onCancel={() => setEditingKey(null)}
+        />
+      )}
 
       {deleteConfirm && (
         <EuiConfirmModal
@@ -472,42 +341,5 @@ export default function ApiKeysModal({ addToast, onClose }: Props) {
         />
       )}
     </EuiModal>
-  );
-}
-
-interface RegenerateConfirmModalProps {
-  name: string;
-  saving: boolean;
-  onCancel: () => void;
-  onConfirm: (expiresAt?: number) => void;
-}
-
-function RegenerateConfirmModal({ name, saving, onCancel, onConfirm }: RegenerateConfirmModalProps) {
-  const [expiresDate, setExpiresDate] = useState<Moment | null>(null);
-  const expiresValid = !expiresDate || expiresDate.isAfter(moment());
-
-  return (
-    <EuiConfirmModal
-      title={`Regenerate API key "${name}"?`}
-      onCancel={onCancel}
-      onConfirm={() => onConfirm(expiresDate ? expiresDate.unix() : undefined)}
-      cancelButtonText="Cancel"
-      confirmButtonText="Regenerate"
-      buttonColor="warning"
-      confirmButtonDisabled={!expiresValid || saving}
-      isLoading={saving}
-    >
-      <p>The current token will be immediately invalidated. A new token will be generated.</p>
-      <EuiFormRow label="New expiration">
-        <EuiDatePicker
-          selected={expiresDate}
-          onChange={setExpiresDate}
-          minDate={moment()}
-          showTimeSelect
-          placeholder="Never"
-          isInvalid={!!expiresDate && !expiresValid}
-        />
-      </EuiFormRow>
-    </EuiConfirmModal>
   );
 }

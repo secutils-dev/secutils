@@ -16,7 +16,7 @@ import {
 import type { ChangeEvent, MouseEventHandler } from 'react';
 import { useCallback, useState } from 'react';
 
-import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../model';
+import { apiFetch, type AsyncData, getErrorMessage, ResponseError } from '../model';
 
 export interface ContactFormModalProps {
   onClose: () => void;
@@ -44,8 +44,8 @@ export function ContactFormModal({ onClose }: ContactFormModalProps) {
 
       setSendingStatus({ status: 'pending' });
 
-      fetch(getApiUrl('/api/send_message'), {
-        ...getApiRequestConfig('POST'),
+      apiFetch('/api/send_message', {
+        method: 'POST',
         body: JSON.stringify(email ? { message, email } : { message }),
       })
         .then(async (res) => {

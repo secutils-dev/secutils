@@ -30,14 +30,7 @@ import {
   parseCertificateFromDer,
   parsePemContent,
 } from './certificate_import_utils';
-import {
-  type AsyncData,
-  getApiRequestConfig,
-  getApiUrl,
-  getErrorMessage,
-  isClientError,
-  ResponseError,
-} from '../../../../model';
+import { apiFetch, type AsyncData, getErrorMessage, isClientError, ResponseError } from '../../../../model';
 import { isValidURL } from '../../../../tools/url';
 import { useWorkspaceContext } from '../../hooks';
 
@@ -157,8 +150,8 @@ export function CertificateTemplateImportModal({ onClose }: CertificateTemplateI
     setFetchStatus({ status: 'pending' });
 
     try {
-      const response = await fetch(getApiUrl('/api/certificates/_fetch'), {
-        ...getApiRequestConfig('POST'),
+      const response = await apiFetch('/api/certificates/_fetch', {
+        method: 'POST',
         body: JSON.stringify({ url: urlValue }),
       });
 
@@ -207,8 +200,8 @@ export function CertificateTemplateImportModal({ onClose }: CertificateTemplateI
       }
 
       try {
-        const response = await fetch(getApiUrl('/api/certificates/templates'), {
-          ...getApiRequestConfig('POST'),
+        const response = await apiFetch('/api/certificates/templates', {
+          method: 'POST',
           body: JSON.stringify({ templateName: selection.name.trim(), attributes }),
         });
 

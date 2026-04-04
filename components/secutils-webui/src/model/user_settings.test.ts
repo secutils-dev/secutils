@@ -34,10 +34,26 @@ describe('getUserSettings', () => {
 
   it('throws ResponseError when the response is not ok', async () => {
     mockFetch.mockResolvedValueOnce(
-      new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401, statusText: 'Unauthorized' }),
+      new Response(JSON.stringify({ message: 'Forbidden' }), { status: 403, statusText: 'Forbidden' }),
     );
 
     await expect(getUserSettings()).rejects.toThrow(ResponseError);
+  });
+
+  it('redirects to sign-in on 401', async () => {
+    const replaceMock = vi.fn();
+    vi.stubGlobal('location', { ...window.location, replace: replaceMock });
+
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401, statusText: 'Unauthorized' }),
+    );
+
+    const settingsPromise = getUserSettings();
+
+    // The promise should never resolve (redirect happens instead).
+    const result = await Promise.race([settingsPromise, new Promise((r) => setTimeout(() => r('timeout'), 100))]);
+    expect(result).toBe('timeout');
+    expect(replaceMock).toHaveBeenCalledWith('/signin');
   });
 });
 

@@ -32,7 +32,7 @@ import { PageTrackerRetryStrategy } from './page_tracker_retry_strategy';
 import { TrackerDebugPanel } from './tracker_debug_panel';
 import { useFormChanges, useRangeTicks, useUserTags } from '../../../../hooks';
 import type { AsyncData } from '../../../../model';
-import { getApiRequestConfig, getApiUrl, getErrorMessage, isClientError, ResponseError } from '../../../../model';
+import { apiFetch, getApiUrl, getErrorMessage, isClientError, ResponseError } from '../../../../model';
 import { EditorFlyout } from '../../components/editor_flyout';
 import type { ImportAction, ScriptSnippet } from '../../components/script_editor';
 import { ScriptEditor } from '../../components/script_editor';
@@ -302,7 +302,7 @@ export default function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
     if (secretsMode !== 'selected' || secretsLoaded) {
       return;
     }
-    fetch(getApiUrl('/api/user/secrets'), getApiRequestConfig())
+    apiFetch('/api/user/secrets')
       .then(async (res) => {
         if (res.ok) {
           const data: Array<{ name: string }> = await res.json();
@@ -457,15 +457,15 @@ export default function ApiTrackerEditFlyout({ onClose, tracker }: Props) {
       tagIds: selectedTagIds,
     };
 
-    const requestInit = { ...getApiRequestConfig(), body: JSON.stringify(trackerToUpdate) };
+    const trackerRequestBody = JSON.stringify(trackerToUpdate);
     const [requestPromise, successMessage, errorMessage] = tracker?.id
       ? [
-          fetch(getApiUrl(`/api/web_scraping/api_trackers/${tracker.id}`), { ...requestInit, method: 'PUT' }),
+          apiFetch(`/api/web_scraping/api_trackers/${tracker.id}`, { method: 'PUT', body: trackerRequestBody }),
           `Successfully updated "${name}" API tracker`,
           `Unable to update "${name}" API tracker, please try again later`,
         ]
       : [
-          fetch(getApiUrl('/api/web_scraping/api_trackers'), { ...requestInit, method: 'POST' }),
+          apiFetch('/api/web_scraping/api_trackers', { method: 'POST', body: trackerRequestBody }),
           `Successfully saved "${name}" API tracker`,
           `Unable to save "${name}" API tracker, please try again later`,
         ];

@@ -17,7 +17,7 @@ import type { ChangeEvent } from 'react';
 import { useCallback, useState } from 'react';
 
 import type { CertificateTemplate } from './certificate_template';
-import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
+import { apiFetch, type AsyncData, getErrorMessage, ResponseError } from '../../../../model';
 import { Downloader } from '../../../../tools/downloader';
 
 export interface CertificateTemplateGenerateModalProps {
@@ -101,8 +101,8 @@ export function CertificateTemplateGenerateModal({ template, onClose }: Certific
 
             setGeneratingStatus({ status: 'pending' });
 
-            fetch(getApiUrl(`/api/certificates/templates/${encodeURIComponent(template.id)}/_generate`), {
-              ...getApiRequestConfig('POST'),
+            apiFetch(`/api/certificates/templates/${encodeURIComponent(template.id)}/_generate`, {
+              method: 'POST',
               body: JSON.stringify({ format, passphrase: passphrase || null }),
             })
               .then(async (res) => {

@@ -33,13 +33,16 @@ export class ResponseError extends Error {
     this.status = status;
   }
 
-  static async fromResponse(res: Response) {
+  static async fromResponse(res: Response, defaultMessage?: string) {
     let message: string | undefined;
     try {
       message = (await res.json()).message;
     } catch {
       //
     }
-    return new ResponseError(message ?? `${res.status} ${res.statusText ?? 'Unknown error'}`, res.status);
+    return new ResponseError(
+      message ?? defaultMessage ?? `${res.status} ${res.statusText ?? 'Unknown error'}`,
+      res.status,
+    );
   }
 }

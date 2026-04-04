@@ -18,7 +18,7 @@ import { useCallback, useState } from 'react';
 import type { EncryptionMode } from './encryption_mode';
 import { EncryptionModeSelector } from './encryption_mode_selector';
 import type { PrivateKey } from './private_key';
-import { type AsyncData, getApiRequestConfig, getApiUrl, getErrorMessage, ResponseError } from '../../../../model';
+import { apiFetch, type AsyncData, getErrorMessage, ResponseError } from '../../../../model';
 import { Downloader } from '../../../../tools/downloader';
 
 export interface PrivateKeyExportModalProps {
@@ -108,8 +108,8 @@ export function PrivateKeyExportModal({ privateKey, onClose }: PrivateKeyExportM
 
             setExportStatus({ status: 'pending' });
 
-            fetch(getApiUrl(`/api/certificates/private_keys/${encodeURIComponent(privateKey.id)}/_export`), {
-              ...getApiRequestConfig('POST'),
+            apiFetch(`/api/certificates/private_keys/${encodeURIComponent(privateKey.id)}/_export`, {
+              method: 'POST',
               body: JSON.stringify({
                 format,
                 passphrase: privateKey.encrypted ? currentPassphrase : null,

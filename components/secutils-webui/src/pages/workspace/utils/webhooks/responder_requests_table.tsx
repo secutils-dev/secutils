@@ -18,14 +18,7 @@ import { buildHar } from './build_har';
 import type { Responder } from './responder';
 import type { ResponderRequest } from './responder_request';
 import { DataGrid, PageErrorState, PageLoadingState } from '../../../../components';
-import {
-  type AsyncData,
-  formatBytes,
-  getApiRequestConfig,
-  getApiUrl,
-  getErrorMessage,
-  ResponseError,
-} from '../../../../model';
+import { apiFetch, type AsyncData, formatBytes, getErrorMessage, ResponseError } from '../../../../model';
 import { useWorkspaceContext } from '../../hooks';
 
 export interface ResponderRequestsTableProps {
@@ -92,7 +85,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
         setRequests({ status: 'pending' });
       }
 
-      fetch(getApiUrl(`/api/webhooks/responders/${encodeURIComponent(responder.id)}/_history`), getApiRequestConfig())
+      apiFetch(`/api/webhooks/responders/${encodeURIComponent(responder.id)}/_history`)
         .then(async (res) => {
           if (!res.ok) {
             throw await ResponseError.fromResponse(res);
@@ -358,10 +351,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
       onConfirm={() => {
         setClearHistoryStatus((currentStatus) => ({ ...currentStatus, isInProgress: true }));
 
-        fetch(
-          getApiUrl(`/api/webhooks/responders/${encodeURIComponent(responder.id)}/_clear`),
-          getApiRequestConfig('POST'),
-        )
+        apiFetch(`/api/webhooks/responders/${encodeURIComponent(responder.id)}/_clear`, { method: 'POST' })
           .then(async (res) => {
             if (!res.ok) {
               throw await ResponseError.fromResponse(res);

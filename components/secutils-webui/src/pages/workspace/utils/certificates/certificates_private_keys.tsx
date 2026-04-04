@@ -25,7 +25,7 @@ import { PrivateKeyExportModal } from './private_key_export_modal';
 import { PageErrorState, PageLoadingState } from '../../../../components';
 import { useUserTags } from '../../../../hooks';
 import type { AsyncData } from '../../../../model';
-import { getApiRequestConfig, getApiUrl, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
+import { apiFetch, getCopyName, getErrorMessage, ResponseError } from '../../../../model';
 import { EntityName } from '../../components/entity_name';
 import {
   FilteredEmptyState,
@@ -73,7 +73,7 @@ export default function CertificatesPrivateKeys() {
   );
 
   const loadPrivateKeys = useCallback(() => {
-    fetch(getApiUrl('/api/certificates/private_keys'), getApiRequestConfig())
+    apiFetch('/api/certificates/private_keys')
       .then(async (res) => {
         if (!res.ok) {
           throw await ResponseError.fromResponse(res);
@@ -118,10 +118,7 @@ export default function CertificatesPrivateKeys() {
       onConfirm={() => {
         setPrivateKeyToRemove(null);
 
-        fetch(
-          getApiUrl(`/api/certificates/private_keys/${encodeURIComponent(privateKeyToRemove?.id)}`),
-          getApiRequestConfig('DELETE'),
-        )
+        apiFetch(`/api/certificates/private_keys/${encodeURIComponent(privateKeyToRemove?.id)}`, { method: 'DELETE' })
           .then(async (res) => {
             if (!res.ok) {
               throw await ResponseError.fromResponse(res);

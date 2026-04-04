@@ -1,50 +1,119 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { getApiRequestConfig, getApiUrl } from './urls';
-import { USER_SHARE_ID_HEADER_NAME } from './user_share';
+vi.mock('./user_share', () => ({
+  USER_SHARE_ID_HEADER_NAME: 'x-user-share-id',
+  getUserShareId: vi.fn(),
+}));
 
-function setSearch(search: string) {
-  window.history.replaceState(null, '', `${window.location.pathname}${search}`);
-}
+import { apiFetch, getApiRequestConfig, getApiUrl } from './urls';
+import { getUserShareId, USER_SHARE_ID_HEADER_NAME } from './user_share';
+
+let mockFetch: ReturnType<typeof vi.fn>;
+
+beforeEach(() => {
+  mockFetch = vi.fn();
+  vi.stubGlobal('fetch', mockFetch);
+  vi.mocked(getUserShareId).mockReturnValue(null);
+});
 
 afterEach(() => {
-  setSearch('');
+  vi.restoreAllMocks();
 });
 
 describe('getApiUrl', () => {
-  it('returns the path unchanged', () => {
-    expect(getApiUrl('/api/test')).toBe('/api/test');
-    expect(getApiUrl('/api/user/data?namespace=settings')).toBe('/api/user/data?namespace=settings');
+  it('returns path unchanged', () => {
+    expect(getApiUrl('/api/foo')).toBe('/api/foo');
+    expect(getApiUrl('')).toBe('');
   });
 });
 
 describe('getApiRequestConfig', () => {
-  it('defaults to GET method', () => {
+  it('defaults to GET, includes Content-Type header', () => {
     const config = getApiRequestConfig();
     expect(config.method).toBe('GET');
+    expect(config.headers).toEqual({ 'Content-Type': 'application/json' });
   });
 
-  it('uses the specified method', () => {
+  it('respects explicit method', () => {
     expect(getApiRequestConfig('POST').method).toBe('POST');
     expect(getApiRequestConfig('PUT').method).toBe('PUT');
     expect(getApiRequestConfig('DELETE').method).toBe('DELETE');
   });
 
-  it('always includes Content-Type header', () => {
-    const config = getApiRequestConfig();
-    expect((config.headers as Record<string, string>)['Content-Type']).toBe('application/json');
-  });
-
-  it('does not include share header when no share id in URL', () => {
-    setSearch('');
-    const config = getApiRequestConfig();
-    expect((config.headers as Record<string, string>)[USER_SHARE_ID_HEADER_NAME]).toBeUndefined();
-  });
-
-  it('includes share header when share id is in URL', () => {
-    setSearch(`?${USER_SHARE_ID_HEADER_NAME}=share-42`);
+  it('includes share ID header when getUserShareId returns a value', () => {
+    vi.mocked(getUserShareId).mockReturnValue('share-abc');
     const config = getApiRequestConfig('GET');
-    expect((config.headers as Record<string, string>)[USER_SHARE_ID_HEADER_NAME]).toBe('share-42');
+    expect(config.headers).toEqual({
+      [USER_SHARE_ID_HEADER_NAME]: 'share-abc',
+      'Content-Type': 'application/json',
+    });
+  });
+});
+
+describe('apiFetch', () => {
+  let replaceMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    replaceMock = vi.fn();
+    vi.stubGlobal('location', { ...window.location, replace: replaceMock });
+  });
+
+  it('calls fetch with correct URL and merged config', async () => {
+    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }));
+
+    await apiFetch('/api/foo');
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe('/api/foo');
+    expect(init).toEqual(
+      expect.objectContaining({
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+  });
+
+  it('defaults to GET method', async () => {
+    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }));
+
+    await apiFetch('/api/items');
+
+    const [, init] = mockFetch.mock.calls[0];
+    expect(init.method).toBe('GET');
+  });
+
+  it('passes custom init (method, body) through', async () => {
+    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }));
+
+    await apiFetch('/api/items', { method: 'POST', body: '{"a":1}' });
+
+    const [, init] = mockFetch.mock.calls[0];
+    expect(init.method).toBe('POST');
+    expect(init.body).toBe('{"a":1}');
+  });
+
+  it('on 401, calls window.location.replace("/signin") and returns a never-resolving promise', async () => {
+    mockFetch.mockResolvedValueOnce(new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 }));
+
+    const fetchPromise = apiFetch('/api/secret');
+
+    const result = await Promise.race([fetchPromise, new Promise((r) => setTimeout(() => r('timeout'), 100))]);
+    expect(result).toBe('timeout');
+    expect(replaceMock).toHaveBeenCalledWith('/signin');
+  });
+
+  it('on non-401 error (e.g. 500), returns the response normally (does not redirect)', async () => {
+    const errorResponse = new Response(JSON.stringify({ message: 'Server error' }), {
+      status: 500,
+      statusText: 'Internal Server Error',
+    });
+    mockFetch.mockResolvedValueOnce(errorResponse);
+
+    const response = await apiFetch('/api/broken');
+
+    expect(response.status).toBe(500);
+    expect(replaceMock).not.toHaveBeenCalled();
   });
 });

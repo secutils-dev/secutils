@@ -2,6 +2,7 @@ mod app_state;
 mod extractors;
 mod handlers;
 mod http_errors;
+mod middlewares;
 mod ui_state;
 
 #[cfg(test)]
@@ -26,6 +27,7 @@ use actix_web::{App, HttpResponse, HttpServer, Result, middleware, web};
 use anyhow::Context;
 pub use app_state::AppState;
 use handlers::SecutilsOpenApi;
+use middlewares::ClearSessionCookie;
 use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
 use std::{sync::Arc, time::Duration};
@@ -108,12 +110,14 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
 
     let max_responder_body_size = config.utils.max_responder_body_size;
     let max_import_file_size = config.platform.max_import_file_size;
+    let session_cookie_name = config.security.session_cookie_name.clone();
     let state = web::Data::new(AppState::new(config, api.clone()));
     let http_server = HttpServer::new(move || {
         App::new()
             .wrap(middleware::Compat::new(TracingLogger::default()))
             .wrap(middleware::Compat::new(middleware::Compress::default()))
             .wrap(middleware::NormalizePath::trim())
+            .wrap(ClearSessionCookie::new(session_cookie_name.clone()))
             .app_data(state.clone())
             // OpenAPI documentation
             .service(

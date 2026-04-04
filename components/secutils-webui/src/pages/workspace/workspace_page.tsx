@@ -2,7 +2,7 @@ import type { EuiBreadcrumb, EuiSideNavItemType } from '@elastic/eui';
 import { EuiFlexGroup, EuiFlexItem, EuiIcon, EuiSideNav, EuiSpacer } from '@elastic/eui';
 import { css } from '@emotion/react';
 import type { MouseEvent, ReactNode } from 'react';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
 
 import { SiteSearchBar } from './components/site_search_bar';
@@ -13,7 +13,11 @@ import { WorkspaceContext } from './workspace_context';
 import { PageLoadingState } from '../../components';
 import { useAppContext, usePageHeaderActions, usePageMeta } from '../../hooks';
 import type { Util } from '../../model';
-import { USER_SETTINGS_KEY_COMMON_GLOBAL_SCOPE_TAG_IDS } from '../../model';
+import {
+  parseSidebarCollapsed,
+  USER_SETTINGS_KEY_COMMON_GLOBAL_SCOPE_TAG_IDS,
+  USER_SETTINGS_KEY_COMMON_SIDEBAR_COLLAPSED,
+} from '../../model';
 import { Page } from '../page';
 
 /** Maps each util handle to its parent util handle (tree-based; not derived from handle string). */
@@ -119,10 +123,21 @@ export function WorkspacePage() {
   // EuiSideNav root items (depth 0) are always open and have no toggle caret.
   // To make them collapsible, we manage their open/closed state manually and
   // conditionally pass `items` only when the section is expanded.
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
-  const toggleSection = useCallback((handle: string) => {
-    setOpenSections((prev) => ({ ...prev, [handle]: !(prev[handle] ?? true) }));
-  }, []);
+  // Collapsed section handles are persisted in user settings.
+  const sidebarState = useMemo(
+    () => parseSidebarCollapsed(settings?.[USER_SETTINGS_KEY_COMMON_SIDEBAR_COLLAPSED]),
+    [settings],
+  );
+  const collapsedSections = useMemo(() => new Set(sidebarState.sections), [sidebarState.sections]);
+  const toggleSection = useCallback(
+    (handle: string) => {
+      const updated = collapsedSections.has(handle)
+        ? sidebarState.sections.filter((h) => h !== handle)
+        : [...sidebarState.sections, handle];
+      setSettings({ [USER_SETTINGS_KEY_COMMON_SIDEBAR_COLLAPSED]: { ...sidebarState, sections: updated } });
+    },
+    [collapsedSections, sidebarState, setSettings],
+  );
 
   const [sideNavItems, utilsMap, utilParentMap] = useMemo(() => {
     const utilsMap = new Map<string, Util>();
@@ -133,7 +148,7 @@ export function WorkspacePage() {
       const childItems = childUtils.length > 0 ? childUtils.map((nestedUtil) => createItem(nestedUtil)) : undefined;
 
       if (isRoot && childItems) {
-        const isOpen = openSections[util.handle] ?? true;
+        const isOpen = !collapsedSections.has(util.handle);
         return {
           id: util.handle,
           name: util.name,
@@ -157,7 +172,7 @@ export function WorkspacePage() {
     };
 
     return [uiState.utils.map((u) => createItem(u, true)), utilsMap, buildUtilParentMap(uiState.utils)];
-  }, [uiState, selectedUtil, deepLinkFromParam, openSections, toggleSection]);
+  }, [uiState, selectedUtil, deepLinkFromParam, collapsedSections, toggleSection]);
 
   useEffect(() => {
     const newSelectedUtil =
@@ -175,23 +190,27 @@ export function WorkspacePage() {
     }
   }, [utilIdFromParam, selectedUtil, utilsMap, utilParentMap, deepLinkFromParam, navigationBar, getBreadcrumbs]);
 
-  // Auto-expand the section that contains the selected util.
+  // Auto-expand the section that contains the selected util, but only when navigation changes.
+  const prevUtilHandle = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (!selectedUtil) {
+    if (!selectedUtil || selectedUtil.handle === prevUtilHandle.current) {
       return;
     }
+    prevUtilHandle.current = selectedUtil.handle;
+
     for (const root of uiState.utils) {
       const contains =
         root.handle === selectedUtil.handle ||
         root.utils?.some(
           (c) => c.handle === selectedUtil.handle || c.utils?.some((gc) => gc.handle === selectedUtil.handle),
         );
-      if (contains) {
-        setOpenSections((prev) => (prev[root.handle] === false ? { ...prev, [root.handle]: true } : prev));
+      if (contains && collapsedSections.has(root.handle)) {
+        const updated = sidebarState.sections.filter((h) => h !== root.handle);
+        setSettings({ [USER_SETTINGS_KEY_COMMON_SIDEBAR_COLLAPSED]: { ...sidebarState, sections: updated } });
         break;
       }
     }
-  }, [selectedUtil, uiState.utils]);
+  }, [selectedUtil, uiState.utils, collapsedSections, sidebarState, setSettings]);
 
   const content = useMemo(() => {
     // Check if URL is invalid.
