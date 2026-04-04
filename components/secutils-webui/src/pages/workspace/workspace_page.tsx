@@ -116,15 +116,35 @@ export function WorkspacePage() {
     deepLink: deepLinkFromParam,
   });
 
+  // EuiSideNav root items (depth 0) are always open and have no toggle caret.
+  // To make them collapsible, we manage their open/closed state manually and
+  // conditionally pass `items` only when the section is expanded.
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const toggleSection = useCallback((handle: string) => {
+    setOpenSections((prev) => ({ ...prev, [handle]: !(prev[handle] ?? true) }));
+  }, []);
+
   const [sideNavItems, utilsMap, utilParentMap] = useMemo(() => {
     const utilsMap = new Map<string, Util>();
-    const createItem = (util: Util): EuiSideNavItemType<unknown> => {
+    const createItem = (util: Util, isRoot = false): EuiSideNavItemType<unknown> => {
       utilsMap.set(util.handle, util);
       const utilUrl = getWorkspaceUtilLink(util.handle);
-      const utilIcon = selectedUtil ? getUtilIcon(util.handle, 'navigation') : undefined;
       const childUtils = util.utils ?? [];
       const childItems = childUtils.length > 0 ? childUtils.map((nestedUtil) => createItem(nestedUtil)) : undefined;
 
+      if (isRoot && childItems) {
+        const isOpen = openSections[util.handle] ?? true;
+        return {
+          id: util.handle,
+          name: util.name,
+          onClick: () => toggleSection(util.handle),
+          icon: <EuiIcon type={isOpen ? 'arrowDown' : 'arrowRight'} size="s" />,
+          items: isOpen ? childItems : undefined,
+          isSelected: false,
+        };
+      }
+
+      const utilIcon = selectedUtil ? getUtilIcon(util.handle) : undefined;
       return {
         id: util.handle,
         name: util.name,
@@ -132,11 +152,12 @@ export function WorkspacePage() {
         icon: utilIcon ? <EuiIcon type={utilIcon} /> : undefined,
         isSelected: selectedUtil?.handle === util.handle && !deepLinkFromParam,
         items: childItems,
+        forceOpen: childItems ? false : undefined,
       };
     };
 
-    return [uiState.utils.map(createItem), utilsMap, buildUtilParentMap(uiState.utils)];
-  }, [uiState, selectedUtil, deepLinkFromParam]);
+    return [uiState.utils.map((u) => createItem(u, true)), utilsMap, buildUtilParentMap(uiState.utils)];
+  }, [uiState, selectedUtil, deepLinkFromParam, openSections, toggleSection]);
 
   useEffect(() => {
     const newSelectedUtil =
@@ -153,6 +174,24 @@ export function WorkspacePage() {
       setTitleActions(null);
     }
   }, [utilIdFromParam, selectedUtil, utilsMap, utilParentMap, deepLinkFromParam, navigationBar, getBreadcrumbs]);
+
+  // Auto-expand the section that contains the selected util.
+  useEffect(() => {
+    if (!selectedUtil) {
+      return;
+    }
+    for (const root of uiState.utils) {
+      const contains =
+        root.handle === selectedUtil.handle ||
+        root.utils?.some(
+          (c) => c.handle === selectedUtil.handle || c.utils?.some((gc) => gc.handle === selectedUtil.handle),
+        );
+      if (contains) {
+        setOpenSections((prev) => (prev[root.handle] === false ? { ...prev, [root.handle]: true } : prev));
+        break;
+      }
+    }
+  }, [selectedUtil, uiState.utils]);
 
   const content = useMemo(() => {
     // Check if URL is invalid.
@@ -174,7 +213,7 @@ export function WorkspacePage() {
     return <ResolvedComponent />;
   }, [selectedUtil, utilsMap, utilIdFromParam, uiState]);
 
-  const utilIcon = selectedUtil ? getUtilIcon(selectedUtil.handle, 'title') : undefined;
+  const utilIcon = selectedUtil ? getUtilIcon(selectedUtil.handle) : undefined;
   const titleIcon = utilIcon ? (
     <EuiIcon
       css={css`

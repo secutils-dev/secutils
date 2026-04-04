@@ -41,34 +41,24 @@ export const UtilsShareComponents = new Map<string, LazyExoticComponent<Componen
   [UTIL_HANDLES.webSecurityCsp, lazy(() => import('./web_security/csp/web_security_csp_shared_policy'))],
 ]);
 
-export function getUtilIcon(utilHandle: string, purpose: 'navigation' | 'title') {
+export function getUtilIcon(utilHandle: string) {
   switch (utilHandle) {
-    case UTIL_HANDLES.workspace:
-      return 'spaces';
     case UTIL_HANDLES.workspaceOverview:
-      return purpose === 'title' ? 'spaces' : 'home';
+      return 'spaces';
     case UTIL_HANDLES.workspaceTags:
-      return purpose === 'title' ? 'tag' : 'tag';
+      return 'tag';
     case UTIL_HANDLES.workspaceSecrets:
-      return purpose === 'title' ? 'lock' : 'lock';
+      return 'lock';
     case UTIL_HANDLES.workspaceScripts:
-      return purpose === 'title' ? 'editorCodeBlock' : 'editorCodeBlock';
-    case UTIL_HANDLES.webhooks:
-      return 'node';
+      return 'editorCodeBlock';
     case UTIL_HANDLES.webhooksResponders:
-      return 'inputOutput';
-    case UTIL_HANDLES.certificates:
-      return 'securityApp';
+      return 'node';
     case UTIL_HANDLES.certificatesCertificateTemplates:
       return 'document';
     case UTIL_HANDLES.certificatesPrivateKeys:
       return 'key';
-    case UTIL_HANDLES.webSecurity:
-      return 'globe';
     case UTIL_HANDLES.webSecurityCsp:
       return 'documents';
-    case UTIL_HANDLES.webScraping:
-      return 'cut';
     case UTIL_HANDLES.webScrapingPage:
       return 'article';
     case UTIL_HANDLES.webScrapingApi:

@@ -46,7 +46,7 @@ test.describe('Home page', () => {
 
       await expect(page.getByRole('heading', { name: 'Welcome', level: 2 })).toBeVisible({ timeout: 15000 });
 
-      await page.getByRole('button', { name: 'Webhooks', exact: true }).click();
+      await page.locator('.euiCard').filter({ hasText: 'Webhooks' }).click();
 
       await expect(page).toHaveURL(/\/ws\/webhooks__responders/, { timeout: 15000 });
     });

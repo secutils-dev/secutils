@@ -34,7 +34,7 @@ All API endpoints require authentication. The following methods are supported:
 
 | Method             | Format                          | Description                                                                                                   |
 |--------------------|---------------------------------|---------------------------------------------------------------------------------------------------------------|
-| **Session cookie** | `ory_kratos_session` cookie     | Automatically set by the browser after login                                                                  |
+| **Session cookie** | `id` cookie                     | Automatically set by the browser after login                                                                  |
 | **API key**        | `Authorization: Bearer su_ak_…` | Opaque token for programmatic/agent access. Create via the API keys page or the `/api/user/api_keys` endpoint |
 | **JWT**            | `Authorization: Bearer eyJ…`    | Service-account token (operator use only)                                                                     |
 
