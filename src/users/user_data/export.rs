@@ -130,14 +130,10 @@ pub async fn generate_export<DR: DnsResolver, ET: EmailTransport>(
     // Export certificate templates.
     let certificate_templates = match &include.certificate_templates {
         None => vec![],
-        Some(ExportSelection::All) => {
-            api.certificates()
-                .get_certificate_templates(user.id)
-                .await?
-        }
+        Some(ExportSelection::All) => api.certificates(user).get_certificate_templates().await?,
         Some(ExportSelection::Selected { ids }) => {
-            api.certificates()
-                .bulk_get_certificate_templates(user.id, ids)
+            api.certificates(user)
+                .bulk_get_certificate_templates(ids)
                 .await?
         }
     };
@@ -154,8 +150,8 @@ pub async fn generate_export<DR: DnsResolver, ET: EmailTransport>(
             .map(ExportedPrivateKey::from)
             .collect(),
         Some(ExportSelection::Selected { ids }) => api
-            .certificates()
-            .bulk_get_private_keys_for_export(user.id, ids)
+            .certificates(user)
+            .bulk_get_private_keys_for_export(ids)
             .await?
             .into_iter()
             .map(ExportedPrivateKey::from)
@@ -166,13 +162,13 @@ pub async fn generate_export<DR: DnsResolver, ET: EmailTransport>(
     let content_security_policies = match &include.content_security_policies {
         None => vec![],
         Some(ExportSelection::All) => {
-            api.web_security()
-                .get_content_security_policies(user.id)
+            api.web_security(user)
+                .get_content_security_policies()
                 .await?
         }
         Some(ExportSelection::Selected { ids }) => {
-            api.web_security()
-                .bulk_get_content_security_policies(user.id, ids)
+            api.web_security(user)
+                .bulk_get_content_security_policies(ids)
                 .await?
         }
     };
@@ -473,10 +469,7 @@ mod tests {
         let user = mock_user()?;
         api.db.upsert_user(&user).await?;
 
-        let templates = api
-            .certificates()
-            .get_certificate_templates(user.id)
-            .await?;
+        let templates = api.certificates(&user).get_certificate_templates().await?;
         assert!(templates.is_empty());
 
         let params = UserDataExportParams {
@@ -514,16 +507,13 @@ mod tests {
         api.db.upsert_user(&user).await?;
 
         let key = api
-            .certificates()
-            .create_private_key(
-                user.id,
-                PrivateKeysCreateParams {
-                    key_name: "test-key".to_string(),
-                    alg: PrivateKeyAlgorithm::Ed25519,
-                    passphrase: None,
-                    tag_ids: vec![],
-                },
-            )
+            .certificates(&user)
+            .create_private_key(PrivateKeysCreateParams {
+                key_name: "test-key".to_string(),
+                alg: PrivateKeyAlgorithm::Ed25519,
+                passphrase: None,
+                tag_ids: vec![],
+            })
             .await?;
         assert!(!key.pkcs8.is_empty(), "created key should have pkcs8 data");
 
@@ -556,29 +546,23 @@ mod tests {
         let user = mock_user()?;
         api.db.upsert_user(&user).await?;
 
-        api.certificates()
-            .create_private_key(
-                user.id,
-                PrivateKeysCreateParams {
-                    key_name: "key-1".to_string(),
-                    alg: PrivateKeyAlgorithm::Ed25519,
-                    passphrase: None,
-                    tag_ids: vec![],
-                },
-            )
+        api.certificates(&user)
+            .create_private_key(PrivateKeysCreateParams {
+                key_name: "key-1".to_string(),
+                alg: PrivateKeyAlgorithm::Ed25519,
+                passphrase: None,
+                tag_ids: vec![],
+            })
             .await?;
-        api.certificates()
-            .create_private_key(
-                user.id,
-                PrivateKeysCreateParams {
-                    key_name: "key-2".to_string(),
-                    alg: PrivateKeyAlgorithm::Rsa {
-                        key_size: PrivateKeySize::Size2048,
-                    },
-                    passphrase: None,
-                    tag_ids: vec![],
+        api.certificates(&user)
+            .create_private_key(PrivateKeysCreateParams {
+                key_name: "key-2".to_string(),
+                alg: PrivateKeyAlgorithm::Rsa {
+                    key_size: PrivateKeySize::Size2048,
                 },
-            )
+                passphrase: None,
+                tag_ids: vec![],
+            })
             .await?;
 
         // Export All.
@@ -847,30 +831,27 @@ mod tests {
         let user = mock_user()?;
         api.db.upsert_user(&user).await?;
 
-        api.certificates()
-            .create_certificate_template(
-                user.id,
-                TemplatesCreateParams {
-                    template_name: "template-a".to_string(),
-                    attributes: CertificateAttributes {
-                        common_name: Some("cn".to_string()),
-                        country: None,
-                        state_or_province: None,
-                        locality: None,
-                        organization: None,
-                        organizational_unit: None,
-                        key_algorithm: PrivateKeyAlgorithm::Ed25519,
-                        signature_algorithm: SignatureAlgorithm::Md5,
-                        not_valid_before: datetime!(2020-01-01 00:00:00 UTC),
-                        not_valid_after: datetime!(2030-01-01 00:00:00 UTC),
-                        version: Version::One,
-                        is_ca: false,
-                        key_usage: None,
-                        extended_key_usage: None,
-                    },
-                    tag_ids: vec![],
+        api.certificates(&user)
+            .create_certificate_template(TemplatesCreateParams {
+                template_name: "template-a".to_string(),
+                attributes: CertificateAttributes {
+                    common_name: Some("cn".to_string()),
+                    country: None,
+                    state_or_province: None,
+                    locality: None,
+                    organization: None,
+                    organizational_unit: None,
+                    key_algorithm: PrivateKeyAlgorithm::Ed25519,
+                    signature_algorithm: SignatureAlgorithm::Md5,
+                    not_valid_before: datetime!(2020-01-01 00:00:00 UTC),
+                    not_valid_after: datetime!(2030-01-01 00:00:00 UTC),
+                    version: Version::One,
+                    is_ca: false,
+                    key_usage: None,
+                    extended_key_usage: None,
                 },
-            )
+                tag_ids: vec![],
+            })
             .await?;
 
         let params = UserDataExportParams {
@@ -895,55 +876,49 @@ mod tests {
         api.db.upsert_user(&user).await?;
 
         let tmpl_a = api
-            .certificates()
-            .create_certificate_template(
-                user.id,
-                TemplatesCreateParams {
-                    template_name: "tmpl-a".to_string(),
-                    attributes: CertificateAttributes {
-                        common_name: Some("cn-a".to_string()),
-                        country: None,
-                        state_or_province: None,
-                        locality: None,
-                        organization: None,
-                        organizational_unit: None,
-                        key_algorithm: PrivateKeyAlgorithm::Ed25519,
-                        signature_algorithm: SignatureAlgorithm::Md5,
-                        not_valid_before: datetime!(2020-01-01 00:00:00 UTC),
-                        not_valid_after: datetime!(2030-01-01 00:00:00 UTC),
-                        version: Version::One,
-                        is_ca: false,
-                        key_usage: None,
-                        extended_key_usage: None,
-                    },
-                    tag_ids: vec![],
+            .certificates(&user)
+            .create_certificate_template(TemplatesCreateParams {
+                template_name: "tmpl-a".to_string(),
+                attributes: CertificateAttributes {
+                    common_name: Some("cn-a".to_string()),
+                    country: None,
+                    state_or_province: None,
+                    locality: None,
+                    organization: None,
+                    organizational_unit: None,
+                    key_algorithm: PrivateKeyAlgorithm::Ed25519,
+                    signature_algorithm: SignatureAlgorithm::Md5,
+                    not_valid_before: datetime!(2020-01-01 00:00:00 UTC),
+                    not_valid_after: datetime!(2030-01-01 00:00:00 UTC),
+                    version: Version::One,
+                    is_ca: false,
+                    key_usage: None,
+                    extended_key_usage: None,
                 },
-            )
+                tag_ids: vec![],
+            })
             .await?;
-        api.certificates()
-            .create_certificate_template(
-                user.id,
-                TemplatesCreateParams {
-                    template_name: "tmpl-b".to_string(),
-                    attributes: CertificateAttributes {
-                        common_name: Some("cn-b".to_string()),
-                        country: None,
-                        state_or_province: None,
-                        locality: None,
-                        organization: None,
-                        organizational_unit: None,
-                        key_algorithm: PrivateKeyAlgorithm::Ed25519,
-                        signature_algorithm: SignatureAlgorithm::Md5,
-                        not_valid_before: datetime!(2020-01-01 00:00:00 UTC),
-                        not_valid_after: datetime!(2030-01-01 00:00:00 UTC),
-                        version: Version::One,
-                        is_ca: false,
-                        key_usage: None,
-                        extended_key_usage: None,
-                    },
-                    tag_ids: vec![],
+        api.certificates(&user)
+            .create_certificate_template(TemplatesCreateParams {
+                template_name: "tmpl-b".to_string(),
+                attributes: CertificateAttributes {
+                    common_name: Some("cn-b".to_string()),
+                    country: None,
+                    state_or_province: None,
+                    locality: None,
+                    organization: None,
+                    organizational_unit: None,
+                    key_algorithm: PrivateKeyAlgorithm::Ed25519,
+                    signature_algorithm: SignatureAlgorithm::Md5,
+                    not_valid_before: datetime!(2020-01-01 00:00:00 UTC),
+                    not_valid_after: datetime!(2030-01-01 00:00:00 UTC),
+                    version: Version::One,
+                    is_ca: false,
+                    key_usage: None,
+                    extended_key_usage: None,
                 },
-            )
+                tag_ids: vec![],
+            })
             .await?;
 
         // Export only tmpl-a.
@@ -970,17 +945,14 @@ mod tests {
         let user = mock_user()?;
         api.db.upsert_user(&user).await?;
 
-        api.web_security()
-            .create_content_security_policy(
-                user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "csp-a".to_string(),
-                    content: ContentSecurityPolicyContent::Directives(vec![
-                        ContentSecurityPolicyDirective::UpgradeInsecureRequests,
-                    ]),
-                    tag_ids: vec![],
-                },
-            )
+        api.web_security(&user)
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "csp-a".to_string(),
+                content: ContentSecurityPolicyContent::Directives(vec![
+                    ContentSecurityPolicyDirective::UpgradeInsecureRequests,
+                ]),
+                tag_ids: vec![],
+            })
             .await?;
 
         let params = UserDataExportParams {
@@ -1005,29 +977,23 @@ mod tests {
         api.db.upsert_user(&user).await?;
 
         let csp_a = api
-            .web_security()
-            .create_content_security_policy(
-                user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "csp-a".to_string(),
-                    content: ContentSecurityPolicyContent::Directives(vec![
-                        ContentSecurityPolicyDirective::UpgradeInsecureRequests,
-                    ]),
-                    tag_ids: vec![],
-                },
-            )
+            .web_security(&user)
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "csp-a".to_string(),
+                content: ContentSecurityPolicyContent::Directives(vec![
+                    ContentSecurityPolicyDirective::UpgradeInsecureRequests,
+                ]),
+                tag_ids: vec![],
+            })
             .await?;
-        api.web_security()
-            .create_content_security_policy(
-                user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "csp-b".to_string(),
-                    content: ContentSecurityPolicyContent::Directives(vec![
-                        ContentSecurityPolicyDirective::UpgradeInsecureRequests,
-                    ]),
-                    tag_ids: vec![],
-                },
-            )
+        api.web_security(&user)
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "csp-b".to_string(),
+                content: ContentSecurityPolicyContent::Directives(vec![
+                    ContentSecurityPolicyDirective::UpgradeInsecureRequests,
+                ]),
+                tag_ids: vec![],
+            })
             .await?;
 
         let params = UserDataExportParams {
@@ -1244,16 +1210,13 @@ mod tests {
             })
             .await?;
         let key = api
-            .certificates()
-            .create_private_key(
-                user.id,
-                PrivateKeysCreateParams {
-                    key_name: "export-key".to_string(),
-                    alg: PrivateKeyAlgorithm::Ed25519,
-                    passphrase: None,
-                    tag_ids: vec![],
-                },
-            )
+            .certificates(&user)
+            .create_private_key(PrivateKeysCreateParams {
+                key_name: "export-key".to_string(),
+                alg: PrivateKeyAlgorithm::Ed25519,
+                passphrase: None,
+                tag_ids: vec![],
+            })
             .await?;
 
         let params = UserDataExportParams {
@@ -1291,27 +1254,21 @@ mod tests {
         api.db.upsert_user(&user).await?;
 
         let key_a = api
-            .certificates()
-            .create_private_key(
-                user.id,
-                PrivateKeysCreateParams {
-                    key_name: "key-a".to_string(),
-                    alg: PrivateKeyAlgorithm::Ed25519,
-                    passphrase: None,
-                    tag_ids: vec![],
-                },
-            )
+            .certificates(&user)
+            .create_private_key(PrivateKeysCreateParams {
+                key_name: "key-a".to_string(),
+                alg: PrivateKeyAlgorithm::Ed25519,
+                passphrase: None,
+                tag_ids: vec![],
+            })
             .await?;
-        api.certificates()
-            .create_private_key(
-                user.id,
-                PrivateKeysCreateParams {
-                    key_name: "key-b".to_string(),
-                    alg: PrivateKeyAlgorithm::Ed25519,
-                    passphrase: None,
-                    tag_ids: vec![],
-                },
-            )
+        api.certificates(&user)
+            .create_private_key(PrivateKeysCreateParams {
+                key_name: "key-b".to_string(),
+                alg: PrivateKeyAlgorithm::Ed25519,
+                passphrase: None,
+                tag_ids: vec![],
+            })
             .await?;
 
         // Export only key-a.

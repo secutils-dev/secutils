@@ -24,9 +24,9 @@ pub async fn import_certificate_templates<DR: DnsResolver, ET: EmailTransport>(
     let mut result = ImportEntityResult::default();
 
     // Pre-fetch existing templates once for overwritten resolution.
-    let certificates_api = api.certificates();
+    let certificates_api = api.certificates(user);
     let existing_templates = certificates_api
-        .get_certificate_templates(user.id)
+        .get_certificate_templates()
         .await
         .unwrap_or_default();
     let mut used_names: HashSet<_> = existing_templates.iter().map(|t| t.name.clone()).collect();
@@ -44,21 +44,16 @@ pub async fn import_certificate_templates<DR: DnsResolver, ET: EmailTransport>(
         if selection.is_some_and(|s| s.conflict_resolution == Some(ConflictResolution::Overwrite))
             && let Some(e) = existing_templates.iter().find(|t| t.name == template.name)
         {
-            let _ = certificates_api
-                .remove_certificate_template(user.id, e.id)
-                .await;
+            let _ = certificates_api.remove_certificate_template(e.id).await;
             used_names.remove(&template.name);
         }
 
         match certificates_api
-            .create_certificate_template(
-                user.id,
-                TemplatesCreateParams {
-                    template_name: resolved_name.clone(),
-                    attributes: template.attributes.clone(),
-                    tag_ids: remap_tag_ids(&template.tags, tag_id_map),
-                },
-            )
+            .create_certificate_template(TemplatesCreateParams {
+                template_name: resolved_name.clone(),
+                attributes: template.attributes.clone(),
+                tag_ids: remap_tag_ids(&template.tags, tag_id_map),
+            })
             .await
         {
             Ok(_) => {
@@ -170,10 +165,7 @@ mod tests {
         assert_eq!(result.results.certificate_templates.imported, 1);
         assert_eq!(result.results.certificate_templates.failed, 0);
 
-        let templates = api
-            .certificates()
-            .get_certificate_templates(user.id)
-            .await?;
+        let templates = api.certificates(&user).get_certificate_templates().await?;
         assert_eq!(templates.len(), 1);
         assert_eq!(templates[0].name, "my_template");
 

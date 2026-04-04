@@ -27,9 +27,9 @@ pub async fn import_private_keys<DR: DnsResolver, ET: EmailTransport>(
     let mut result = ImportEntityResult::default();
 
     // Pre-fetch existing keys once for overwritten resolution.
-    let certificates_api = api.certificates();
+    let certificates_api = api.certificates(user);
     let existing_keys = certificates_api
-        .get_private_keys(user.id)
+        .get_private_keys()
         .await
         .unwrap_or_default();
     let mut used_names: HashSet<_> = existing_keys.iter().map(|k| k.name.clone()).collect();
@@ -47,7 +47,7 @@ pub async fn import_private_keys<DR: DnsResolver, ET: EmailTransport>(
         if selection.is_some_and(|s| s.conflict_resolution == Some(ConflictResolution::Overwrite))
             && let Some(e) = existing_keys.iter().find(|k| k.name == key.name)
         {
-            let _ = certificates_api.remove_private_key(user.id, e.id).await;
+            let _ = certificates_api.remove_private_key(e.id).await;
             used_names.remove(&key.name);
         }
 
@@ -181,7 +181,7 @@ mod tests {
         assert_eq!(result.results.private_keys.imported, 1);
         assert_eq!(result.results.private_keys.failed, 0);
 
-        let keys = api.certificates().get_private_keys(user.id).await?;
+        let keys = api.certificates(&user).get_private_keys().await?;
         assert_eq!(keys.len(), 1);
         assert_eq!(keys[0].name, "my_key");
 

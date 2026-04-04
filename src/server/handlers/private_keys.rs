@@ -28,7 +28,7 @@ pub async fn private_keys_list(
     state: web::Data<AppState>,
     user: User,
 ) -> Result<HttpResponse, Error> {
-    let keys = state.api.certificates().get_private_keys(user.id).await?;
+    let keys = state.api.certificates(&user).get_private_keys().await?;
     Ok(HttpResponse::Ok().json(keys))
 }
 
@@ -50,8 +50,8 @@ pub async fn private_keys_get(
 ) -> Result<HttpResponse, Error> {
     let Some(key) = state
         .api
-        .certificates()
-        .get_private_key(user.id, path.key_id)
+        .certificates(&user)
+        .get_private_key(path.key_id)
         .await?
     else {
         return Err(Error::not_found("Private key not found."));
@@ -78,8 +78,8 @@ pub async fn private_keys_create(
 ) -> Result<HttpResponse, Error> {
     let key = state
         .api
-        .certificates()
-        .create_private_key(user.id, body.into_inner())
+        .certificates(&user)
+        .create_private_key(body.into_inner())
         .await?;
     Ok(HttpResponse::Created().json(key))
 }
@@ -104,8 +104,8 @@ pub async fn private_keys_update(
 ) -> Result<HttpResponse, Error> {
     state
         .api
-        .certificates()
-        .update_private_key(user.id, path.key_id, body.into_inner())
+        .certificates(&user)
+        .update_private_key(path.key_id, body.into_inner())
         .await?;
     Ok(HttpResponse::NoContent().finish())
 }
@@ -128,8 +128,8 @@ pub async fn private_keys_delete(
 ) -> Result<HttpResponse, Error> {
     state
         .api
-        .certificates()
-        .remove_private_key(user.id, path.key_id)
+        .certificates(&user)
+        .remove_private_key(path.key_id)
         .await?;
     Ok(HttpResponse::NoContent().finish())
 }
@@ -154,8 +154,8 @@ pub async fn private_keys_export(
 ) -> Result<HttpResponse, Error> {
     let data = state
         .api
-        .certificates()
-        .export_private_key(user.id, path.key_id, body.into_inner())
+        .certificates(&user)
+        .export_private_key(path.key_id, body.into_inner())
         .await?;
     Ok(HttpResponse::Ok().json(data))
 }

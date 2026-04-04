@@ -25,9 +25,9 @@ pub async fn import_content_security_policies<DR: DnsResolver, ET: EmailTranspor
     let mut result = ImportEntityResult::default();
 
     // Pre-fetch existing CSPs once for overwritten resolution.
-    let web_security_api = api.web_security();
+    let web_security_api = api.web_security(user);
     let existing_csps = web_security_api
-        .get_content_security_policies(user.id)
+        .get_content_security_policies()
         .await
         .unwrap_or_default();
     let mut used_names: HashSet<_> = existing_csps.iter().map(|c| c.name.clone()).collect();
@@ -45,21 +45,16 @@ pub async fn import_content_security_policies<DR: DnsResolver, ET: EmailTranspor
         if selection.is_some_and(|s| s.conflict_resolution == Some(ConflictResolution::Overwrite))
             && let Some(e) = existing_csps.iter().find(|c| c.name == csp.name)
         {
-            let _ = web_security_api
-                .remove_content_security_policy(user.id, e.id)
-                .await;
+            let _ = web_security_api.remove_content_security_policy(e.id).await;
             used_names.remove(&csp.name);
         }
 
         match web_security_api
-            .create_content_security_policy(
-                user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: resolved_name.clone(),
-                    content: ContentSecurityPolicyContent::Directives(csp.directives.clone()),
-                    tag_ids: remap_tag_ids(&csp.tags, tag_id_map),
-                },
-            )
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: resolved_name.clone(),
+                content: ContentSecurityPolicyContent::Directives(csp.directives.clone()),
+                tag_ids: remap_tag_ids(&csp.tags, tag_id_map),
+            })
             .await
         {
             Ok(_) => {
@@ -155,8 +150,8 @@ mod tests {
         assert_eq!(result.results.content_security_policies.failed, 0);
 
         let csps = api
-            .web_security()
-            .get_content_security_policies(user.id)
+            .web_security(&user)
+            .get_content_security_policies()
             .await?;
         assert_eq!(csps.len(), 1);
         assert_eq!(csps[0].name, "my_csp");

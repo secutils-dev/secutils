@@ -39,8 +39,8 @@ pub struct ContentSecurityPolicyGetResponse {
 pub async fn csp_list(state: web::Data<AppState>, user: User) -> Result<HttpResponse, Error> {
     let policies = state
         .api
-        .web_security()
-        .get_content_security_policies(user.id)
+        .web_security(&user)
+        .get_content_security_policies()
         .await?;
     Ok(HttpResponse::Ok().json(policies))
 }
@@ -74,9 +74,9 @@ pub async fn csp_get(
     )
     .await?;
 
-    let web_security = state.api.web_security();
+    let web_security = state.api.web_security(&user);
     let Some(policy) = web_security
-        .get_content_security_policy(user.id, path.policy_id)
+        .get_content_security_policy(path.policy_id)
         .await?
     else {
         return Err(Error::not_found("Content security policy not found."));
@@ -113,8 +113,8 @@ pub async fn csp_create(
 ) -> Result<HttpResponse, Error> {
     let policy = state
         .api
-        .web_security()
-        .create_content_security_policy(user.id, body.into_inner())
+        .web_security(&user)
+        .create_content_security_policy(body.into_inner())
         .await?;
     Ok(HttpResponse::Created().json(policy))
 }
@@ -139,8 +139,8 @@ pub async fn csp_update(
 ) -> Result<HttpResponse, Error> {
     state
         .api
-        .web_security()
-        .update_content_security_policy(user.id, path.policy_id, body.into_inner())
+        .web_security(&user)
+        .update_content_security_policy(path.policy_id, body.into_inner())
         .await?;
     Ok(HttpResponse::NoContent().finish())
 }
@@ -163,8 +163,8 @@ pub async fn csp_delete(
 ) -> Result<HttpResponse, Error> {
     state
         .api
-        .web_security()
-        .remove_content_security_policy(user.id, path.policy_id)
+        .web_security(&user)
+        .remove_content_security_policy(path.policy_id)
         .await?;
     Ok(HttpResponse::NoContent().finish())
 }
@@ -200,8 +200,8 @@ pub async fn csp_serialize(
 
     let data = state
         .api
-        .web_security()
-        .serialize_content_security_policy(user.id, path.policy_id, body.into_inner())
+        .web_security(&user)
+        .serialize_content_security_policy(path.policy_id, body.into_inner())
         .await?;
     Ok(HttpResponse::Ok().json(data))
 }
@@ -224,8 +224,8 @@ pub async fn csp_share(
 ) -> Result<HttpResponse, Error> {
     let user_share = state
         .api
-        .web_security()
-        .share_content_security_policy(user.id, path.policy_id)
+        .web_security(&user)
+        .share_content_security_policy(path.policy_id)
         .await
         .map(ClientUserShare::from)?;
     Ok(HttpResponse::Ok().json(user_share))
@@ -248,8 +248,8 @@ pub async fn csp_unshare(
 ) -> Result<HttpResponse, Error> {
     state
         .api
-        .web_security()
-        .unshare_content_security_policy(user.id, path.policy_id)
+        .web_security(&user)
+        .unshare_content_security_policy(path.policy_id)
         .await?;
     Ok(HttpResponse::NoContent().finish())
 }

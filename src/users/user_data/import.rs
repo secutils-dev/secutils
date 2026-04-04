@@ -170,8 +170,8 @@ pub async fn generate_import_preview<DR: DnsResolver, ET: EmailTransport>(
 
     let existing_templates = fetch_existing(!import_templates.is_empty() || is_apply, || async {
         Ok(api
-            .certificates()
-            .get_certificate_templates(user.id)
+            .certificates(user)
+            .get_certificate_templates()
             .await?
             .into_iter()
             .map(|t| (t.id, t.name))
@@ -181,8 +181,8 @@ pub async fn generate_import_preview<DR: DnsResolver, ET: EmailTransport>(
 
     let existing_keys = fetch_existing(!import_keys.is_empty() || is_apply, || async {
         Ok(api
-            .certificates()
-            .get_private_keys(user.id)
+            .certificates(user)
+            .get_private_keys()
             .await?
             .into_iter()
             .map(|k| (k.id, k.name))
@@ -192,8 +192,8 @@ pub async fn generate_import_preview<DR: DnsResolver, ET: EmailTransport>(
 
     let existing_csps = fetch_existing(!import_csps.is_empty() || is_apply, || async {
         Ok(api
-            .web_security()
-            .get_content_security_policies(user.id)
+            .web_security(user)
+            .get_content_security_policies()
             .await?
             .into_iter()
             .map(|c| (c.id, c.name))
@@ -587,8 +587,8 @@ pub async fn execute_import<DR: DnsResolver, ET: EmailTransport>(
         // Delete CSPs.
         for id in &deletions.content_security_policies {
             if api
-                .web_security()
-                .remove_content_security_policy(user.id, *id)
+                .web_security(user)
+                .remove_content_security_policy(*id)
                 .await
                 .is_ok()
             {
@@ -597,20 +597,15 @@ pub async fn execute_import<DR: DnsResolver, ET: EmailTransport>(
         }
         // Delete private keys.
         for id in &deletions.private_keys {
-            if api
-                .certificates()
-                .remove_private_key(user.id, *id)
-                .await
-                .is_ok()
-            {
+            if api.certificates(user).remove_private_key(*id).await.is_ok() {
                 keys_result.deleted += 1;
             }
         }
         // Delete certificate templates.
         for id in &deletions.certificate_templates {
             if api
-                .certificates()
-                .remove_certificate_template(user.id, *id)
+                .certificates(user)
+                .remove_certificate_template(*id)
                 .await
                 .is_ok()
             {

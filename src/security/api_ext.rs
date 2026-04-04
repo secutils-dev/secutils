@@ -430,12 +430,49 @@ where
 #[cfg(test)]
 mod tests {
     use crate::{
-        tests::{mock_api, mock_user},
-        users::{SubscriptionTier, UserSubscription},
+        security::credentials::Credentials,
+        tests::{mock_api, mock_api_with_config, mock_config, mock_user},
+        users::{ApiKeyCreateParams, SubscriptionTier, UserSubscription},
     };
+    use actix_web::cookie::Cookie;
+    use httpmock::MockServer;
     use insta::assert_debug_snapshot;
+    use jsonwebtoken::{EncodingKey, Header, encode};
+    use serde_json::json;
     use sqlx::PgPool;
+    use std::collections::HashSet;
     use time::OffsetDateTime;
+    use url::Url;
+
+    fn mock_identity_json(user_id: &str, email: &str) -> serde_json::Value {
+        json!({
+            "id": user_id,
+            "traits": { "email": email },
+            "verifiable_addresses": [{ "value": email, "verified": true }],
+            "created_at": "2010-01-01T11:00:00Z"
+        })
+    }
+
+    fn mock_session_json(user_id: &str, email: &str) -> serde_json::Value {
+        json!({
+            "id": "00000000-0000-0000-0000-000000000099",
+            "identity": mock_identity_json(user_id, email)
+        })
+    }
+
+    const TEST_JWT_SECRET: &str = "test-jwt-secret";
+
+    fn encode_test_jwt(sub: &str, secret: &str) -> anyhow::Result<String> {
+        let claims = json!({
+            "sub": sub,
+            "exp": (OffsetDateTime::now_utc() + time::Duration::hours(1)).unix_timestamp()
+        });
+        Ok(encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(secret.as_bytes()),
+        )?)
+    }
 
     #[sqlx::test]
     async fn properly_signs_user_up(pool: PgPool) -> anyhow::Result<()> {
@@ -518,6 +555,369 @@ mod tests {
             )
             .await?;
         assert!(updated_user.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_generate_user_handle(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
+        let handle = api.security().generate_user_handle().await?;
+        assert_eq!(handle.len(), super::USER_HANDLE_LENGTH_BYTES * 2);
+        assert!(handle.chars().all(|c| c.is_ascii_hexdigit()));
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_authenticate_with_session_cookie(pool: PgPool) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/sessions/whoami");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(mock_session_json(
+                    &mock_user.id.to_string(),
+                    &mock_user.email,
+                ));
+        });
+
+        let mut config = mock_config()?;
+        config.components.kratos_url = Url::parse(&server.base_url())?;
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let cookie = Cookie::new("id", "test-session-value");
+        let user = api
+            .security()
+            .authenticate(&Credentials::SessionCookie(cookie))
+            .await?
+            .unwrap();
+        assert_eq!(user.email, mock_user.email);
+        assert_eq!(*user.id, *mock_user.id);
+        assert!(user.is_activated);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn returns_none_for_invalid_session_cookie(pool: PgPool) -> anyhow::Result<()> {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/sessions/whoami");
+            then.status(401);
+        });
+
+        let mut config = mock_config()?;
+        config.components.kratos_url = Url::parse(&server.base_url())?;
+        let api = mock_api_with_config(pool, config).await?;
+
+        let cookie = Cookie::new("id", "invalid-session");
+        let result = api
+            .security()
+            .authenticate(&Credentials::SessionCookie(cookie))
+            .await?;
+        assert!(result.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_authenticate_with_jwt(pool: PgPool) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+        let token = encode_test_jwt(&mock_user.email, TEST_JWT_SECRET)?;
+
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/admin/identities");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!([mock_identity_json(
+                    &mock_user.id.to_string(),
+                    &mock_user.email,
+                )]));
+        });
+
+        let mut config = mock_config()?;
+        config.security.jwt_secret = Some(TEST_JWT_SECRET.to_string());
+        config.components.kratos_admin_url = Url::parse(&server.base_url())?;
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let user = api
+            .security()
+            .authenticate(&Credentials::Jwt(token))
+            .await?
+            .unwrap();
+        assert_eq!(user.email, mock_user.email);
+        assert_eq!(*user.id, *mock_user.id);
+        assert!(user.is_activated);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn fails_to_authenticate_with_jwt_if_secret_not_configured(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
+
+        let result = api
+            .security()
+            .authenticate(&Credentials::Jwt("some-token".to_string()))
+            .await;
+        assert_debug_snapshot!(result.unwrap_err(), @r###""JWT secret is not configured.""###);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_authenticate_with_api_key(pool: PgPool) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+
+        let server = MockServer::start();
+        let user_id_str = mock_user.id.to_string();
+        let user_email = mock_user.email.clone();
+        server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path(format!("/admin/identities/{user_id_str}"));
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(mock_identity_json(&user_id_str, &user_email));
+        });
+
+        let mut config = mock_config()?;
+        config.components.kratos_admin_url = Url::parse(&server.base_url())?;
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.upsert_user(&mock_user).await?;
+
+        let (_key, plaintext) = api
+            .api_keys(&mock_user)
+            .create_api_key(ApiKeyCreateParams {
+                name: "test-key".into(),
+                expires_at: None,
+            })
+            .await?;
+
+        let user = api
+            .security()
+            .authenticate(&Credentials::ApiKey(plaintext))
+            .await?
+            .unwrap();
+        assert_eq!(user.email, mock_user.email);
+        assert_eq!(*user.id, *mock_user.id);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn returns_none_for_invalid_api_key(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
+
+        let result = api
+            .security()
+            .authenticate(&Credentials::ApiKey("su_ak_invalid_token".to_string()))
+            .await?;
+        assert!(result.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_terminate_user(pool: PgPool) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+
+        let server = MockServer::start();
+        let user_id_str = mock_user.id.to_string();
+        let user_email = mock_user.email.clone();
+        server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/admin/identities");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!([mock_identity_json(&user_id_str, &user_email)]));
+        });
+        server.mock(|when, then| {
+            when.method(httpmock::Method::DELETE)
+                .path(format!("/admin/identities/{user_id_str}"));
+            then.status(204);
+        });
+
+        let mut config = mock_config()?;
+        config.components.kratos_admin_url = Url::parse(&server.base_url())?;
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let terminated_id = api.security().terminate(&mock_user.email).await?.unwrap();
+        assert_eq!(terminated_id, mock_user.id);
+        assert!(api.users().get(mock_user.id).await?.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn terminate_returns_none_for_nonexistent_user(pool: PgPool) -> anyhow::Result<()> {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/admin/identities");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!([]));
+        });
+
+        let mut config = mock_config()?;
+        config.components.kratos_admin_url = Url::parse(&server.base_url())?;
+        let api = mock_api_with_config(pool, config).await?;
+
+        let result = api.security().terminate("nonexistent@secutils.dev").await?;
+        assert!(result.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_get_operator_with_jwt(pool: PgPool) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+        let token = encode_test_jwt(&mock_user.email, TEST_JWT_SECRET)?;
+
+        let mut config = mock_config()?;
+        config.security.jwt_secret = Some(TEST_JWT_SECRET.to_string());
+        config.security.operators = Some(HashSet::from([mock_user.email.clone()]));
+        let api = mock_api_with_config(pool, config).await?;
+
+        let operator = api
+            .security()
+            .get_operator(&Credentials::Jwt(token))
+            .await?
+            .unwrap();
+        assert_eq!(operator.id(), mock_user.email);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn get_operator_returns_none_for_non_operator_jwt(pool: PgPool) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+        let token = encode_test_jwt(&mock_user.email, TEST_JWT_SECRET)?;
+
+        let mut config = mock_config()?;
+        config.security.jwt_secret = Some(TEST_JWT_SECRET.to_string());
+        config.security.operators = Some(HashSet::from(["other@secutils.dev".to_string()]));
+        let api = mock_api_with_config(pool, config).await?;
+
+        let result = api
+            .security()
+            .get_operator(&Credentials::Jwt(token))
+            .await?;
+        assert!(result.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn get_operator_returns_none_for_api_key(pool: PgPool) -> anyhow::Result<()> {
+        let api = mock_api(pool).await?;
+
+        let result = api
+            .security()
+            .get_operator(&Credentials::ApiKey("su_ak_any_token".to_string()))
+            .await?;
+        assert!(result.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_get_operator_with_session_cookie(pool: PgPool) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/sessions/whoami");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(mock_session_json(
+                    &mock_user.id.to_string(),
+                    &mock_user.email,
+                ));
+        });
+
+        let mut config = mock_config()?;
+        config.components.kratos_url = Url::parse(&server.base_url())?;
+        config.security.operators = Some(HashSet::from([mock_user.email.clone()]));
+        let api = mock_api_with_config(pool, config).await?;
+
+        let cookie = Cookie::new("id", "test-session-value");
+        let operator = api
+            .security()
+            .get_operator(&Credentials::SessionCookie(cookie))
+            .await?
+            .unwrap();
+        assert_eq!(operator.id(), mock_user.email);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn authenticate_sets_is_operator_flag(pool: PgPool) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+        let token = encode_test_jwt(&mock_user.email, TEST_JWT_SECRET)?;
+
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/admin/identities");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!([mock_identity_json(
+                    &mock_user.id.to_string(),
+                    &mock_user.email,
+                )]));
+        });
+
+        let mut config = mock_config()?;
+        config.security.jwt_secret = Some(TEST_JWT_SECRET.to_string());
+        config.security.operators = Some(HashSet::from([mock_user.email.clone()]));
+        config.components.kratos_admin_url = Url::parse(&server.base_url())?;
+        let api = mock_api_with_config(pool, config).await?;
+        api.db.insert_user(&mock_user).await?;
+
+        let user = api
+            .security()
+            .authenticate(&Credentials::Jwt(token))
+            .await?
+            .unwrap();
+        assert!(user.is_operator);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn authenticate_returns_none_when_user_not_in_db(pool: PgPool) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+        let token = encode_test_jwt(&mock_user.email, TEST_JWT_SECRET)?;
+
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/admin/identities");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!([mock_identity_json(
+                    &mock_user.id.to_string(),
+                    &mock_user.email,
+                )]));
+        });
+
+        let mut config = mock_config()?;
+        config.security.jwt_secret = Some(TEST_JWT_SECRET.to_string());
+        config.components.kratos_admin_url = Url::parse(&server.base_url())?;
+        let api = mock_api_with_config(pool, config).await?;
+        // Do NOT insert user in DB
+
+        let result = api
+            .security()
+            .authenticate(&Credentials::Jwt(token))
+            .await?;
+        assert!(result.is_none());
 
         Ok(())
     }

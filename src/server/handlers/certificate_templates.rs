@@ -42,8 +42,8 @@ pub async fn certificate_templates_list(
 ) -> Result<HttpResponse, Error> {
     let templates = state
         .api
-        .certificates()
-        .get_certificate_templates(user.id)
+        .certificates(&user)
+        .get_certificate_templates()
         .await?;
     Ok(HttpResponse::Ok().json(templates))
 }
@@ -77,9 +77,9 @@ pub async fn certificate_templates_get(
     )
     .await?;
 
-    let certificates = state.api.certificates();
+    let certificates = state.api.certificates(&user);
     let Some(template) = certificates
-        .get_certificate_template(user.id, path.template_id)
+        .get_certificate_template(path.template_id)
         .await?
     else {
         return Err(Error::not_found("Certificate template not found."));
@@ -119,8 +119,8 @@ pub async fn certificate_templates_create(
 ) -> Result<HttpResponse, Error> {
     let template = state
         .api
-        .certificates()
-        .create_certificate_template(user.id, body.into_inner())
+        .certificates(&user)
+        .create_certificate_template(body.into_inner())
         .await?;
     Ok(HttpResponse::Created().json(template))
 }
@@ -145,8 +145,8 @@ pub async fn certificate_templates_update(
 ) -> Result<HttpResponse, Error> {
     state
         .api
-        .certificates()
-        .update_certificate_template(user.id, path.template_id, body.into_inner())
+        .certificates(&user)
+        .update_certificate_template(path.template_id, body.into_inner())
         .await?;
     Ok(HttpResponse::NoContent().finish())
 }
@@ -169,8 +169,8 @@ pub async fn certificate_templates_delete(
 ) -> Result<HttpResponse, Error> {
     state
         .api
-        .certificates()
-        .remove_certificate_template(user.id, path.template_id)
+        .certificates(&user)
+        .remove_certificate_template(path.template_id)
         .await?;
     Ok(HttpResponse::NoContent().finish())
 }
@@ -206,8 +206,8 @@ pub async fn certificate_templates_generate(
 
     let data = state
         .api
-        .certificates()
-        .generate_self_signed_certificate(user.id, path.template_id, body.into_inner())
+        .certificates(&user)
+        .generate_self_signed_certificate(path.template_id, body.into_inner())
         .await?;
     Ok(HttpResponse::Ok().json(data))
 }
@@ -230,8 +230,8 @@ pub async fn certificate_templates_share(
 ) -> Result<HttpResponse, Error> {
     let user_share = state
         .api
-        .certificates()
-        .share_certificate_template(user.id, path.template_id)
+        .certificates(&user)
+        .share_certificate_template(path.template_id)
         .await
         .map(ClientUserShare::from)?;
     Ok(HttpResponse::Ok().json(user_share))
@@ -254,8 +254,8 @@ pub async fn certificate_templates_unshare(
 ) -> Result<HttpResponse, Error> {
     state
         .api
-        .certificates()
-        .unshare_certificate_template(user.id, path.template_id)
+        .certificates(&user)
+        .unshare_certificate_template(path.template_id)
         .await?;
     Ok(HttpResponse::NoContent().finish())
 }
@@ -276,10 +276,9 @@ pub async fn certificates_fetch(
     user: User,
     body: web::Json<TemplatesFetchCertificatesParams>,
 ) -> Result<HttpResponse, Error> {
-    let _ = user; // authenticated but not used for this operation
     let certs = state
         .api
-        .certificates()
+        .certificates(&user)
         .get_peer_certificates(&body.url)
         .await?;
     Ok(HttpResponse::Ok().json(certs))

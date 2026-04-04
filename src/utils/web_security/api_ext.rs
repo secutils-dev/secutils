@@ -15,7 +15,7 @@ use crate::{
     config::SECUTILS_USER_AGENT,
     error::Error as SecutilsError,
     network::{DnsResolver, EmailTransport},
-    users::{EntityTag, SharedResource, UserId, UserShare},
+    users::{EntityTag, SharedResource, User, UserShare},
     utils::{
         constants::MAX_ENTITY_NAME_LENGTH,
         web_security::{
@@ -32,36 +32,37 @@ use tracing::{debug, error, warn};
 use uuid::Uuid;
 
 /// API extension to work with web security utilities.
-pub struct WebSecurityApiExt<'a, DR: DnsResolver, ET: EmailTransport> {
+pub struct WebSecurityApiExt<'a, 'u, DR: DnsResolver, ET: EmailTransport> {
     api: &'a Api<DR, ET>,
+    user: &'u User,
 }
 
-impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
+impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, 'u, DR, ET> {
     /// Creates WebSecurity API.
-    pub fn new(api: &'a Api<DR, ET>) -> Self {
-        Self { api }
+    pub fn new(api: &'a Api<DR, ET>, user: &'u User) -> Self {
+        Self { api, user }
     }
 
     /// Returns content security policy by its ID.
     pub async fn get_content_security_policy(
         &self,
-        user_id: UserId,
         id: Uuid,
     ) -> anyhow::Result<Option<ContentSecurityPolicy>> {
         self.api
             .db
             .web_security()
-            .get_content_security_policy(user_id, id)
+            .get_content_security_policy(self.user.id, id)
             .await
     }
 
     /// Retrieves all content security policies that belong to the specified user.
     pub async fn get_content_security_policies(
         &self,
-        user_id: UserId,
     ) -> anyhow::Result<Vec<ContentSecurityPolicy>> {
         let web_security = self.api.db.web_security();
-        let mut policies = web_security.get_content_security_policies(user_id).await?;
+        let mut policies = web_security
+            .get_content_security_policies(self.user.id)
+            .await?;
         let mut tags_map = web_security
             .get_csp_tags(&policies.iter().map(|p| p.id).collect::<Vec<_>>())
             .await?;
@@ -74,20 +75,18 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
     /// Retrieves content security policies with the specified IDs.
     pub async fn bulk_get_content_security_policies(
         &self,
-        user_id: UserId,
         ids: &[Uuid],
     ) -> anyhow::Result<Vec<ContentSecurityPolicy>> {
         self.api
             .db
             .web_security()
-            .bulk_get_content_security_policies(user_id, ids)
+            .bulk_get_content_security_policies(self.user.id, ids)
             .await
     }
 
     /// Creates content security policy with the specified parameters and stores it in the database.
     pub async fn create_content_security_policy(
         &self,
-        user_id: UserId,
         params: ContentSecurityPoliciesCreateParams,
     ) -> anyhow::Result<ContentSecurityPolicy> {
         // First, fetch policy text if needed.
@@ -234,7 +233,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
             .api
             .db
             .web_security()
-            .insert_content_security_policy(user_id, &policy)
+            .insert_content_security_policy(self.user.id, &policy)
             .await?;
 
         Ok(ContentSecurityPolicy { tags, ..policy })
@@ -243,7 +242,6 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
     /// Updates content security policy.
     pub async fn update_content_security_policy(
         &self,
-        user_id: UserId,
         id: Uuid,
         params: ContentSecurityPoliciesUpdateParams,
     ) -> anyhow::Result<ContentSecurityPolicy> {
@@ -255,7 +253,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
 
         let web_security = self.api.db.web_security();
         let Some(existing_policy) = web_security
-            .get_content_security_policy(user_id, id)
+            .get_content_security_policy(self.user.id, id)
             .await?
         else {
             bail!(SecutilsError::client(format!(
@@ -277,7 +275,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
         self.validate_content_security_policy(&policy).await?;
 
         let updated_tags = web_security
-            .update_content_security_policy(user_id, &policy, params.tag_ids)
+            .update_content_security_policy(self.user.id, &policy, params.tag_ids)
             .await?;
 
         Ok(if let Some(tags) = updated_tags {
@@ -290,7 +288,6 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
     /// Serializes content security policy.
     pub async fn serialize_content_security_policy(
         &self,
-        user_id: UserId,
         id: Uuid,
         params: ContentSecurityPoliciesSerializeParams,
     ) -> anyhow::Result<String> {
@@ -298,7 +295,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
             .api
             .db
             .web_security()
-            .get_content_security_policy(user_id, id)
+            .get_content_security_policy(self.user.id, id)
             .await?
         else {
             bail!(SecutilsError::client(format!(
@@ -315,23 +312,18 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
     }
 
     /// Removes content security policy by its ID.
-    pub async fn remove_content_security_policy(
-        &self,
-        user_id: UserId,
-        id: Uuid,
-    ) -> anyhow::Result<()> {
-        self.unshare_content_security_policy(user_id, id).await?;
+    pub async fn remove_content_security_policy(&self, id: Uuid) -> anyhow::Result<()> {
+        self.unshare_content_security_policy(id).await?;
         self.api
             .db
             .web_security()
-            .remove_content_security_policy(user_id, id)
+            .remove_content_security_policy(self.user.id, id)
             .await
     }
 
     /// Shares content security policy by its name.
     pub async fn share_content_security_policy(
         &self,
-        user_id: UserId,
         policy_id: Uuid,
     ) -> anyhow::Result<UserShare> {
         let users_api = self.api.users();
@@ -339,18 +331,14 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
 
         // Return early if policy is already shared.
         if let Some(user_share) = users_api
-            .get_user_share_by_resource(user_id, &policy_resource)
+            .get_user_share_by_resource(self.user.id, &policy_resource)
             .await?
         {
             return Ok(user_share);
         }
 
         // Ensure that policy exists.
-        if self
-            .get_content_security_policy(user_id, policy_id)
-            .await?
-            .is_none()
-        {
+        if self.get_content_security_policy(policy_id).await?.is_none() {
             bail!(SecutilsError::client(format!(
                 "Content security policy ('{policy_id}') is not found."
             )));
@@ -359,7 +347,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
         // Create new user share.
         let user_share = UserShare {
             id: Default::default(),
-            user_id,
+            user_id: self.user.id,
             resource: policy_resource,
             // Preserve timestamp only up to seconds.
             created_at: OffsetDateTime::from_unix_timestamp(
@@ -375,7 +363,6 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
     /// Unshares content security policy by its name.
     pub async fn unshare_content_security_policy(
         &self,
-        user_id: UserId,
         policy_id: Uuid,
     ) -> anyhow::Result<Option<UserShare>> {
         let users_api = self.api.users();
@@ -383,7 +370,7 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
         // Check if policy is shared.
         let Some(user_share) = users_api
             .get_user_share_by_resource(
-                user_id,
+                self.user.id,
                 &SharedResource::ContentSecurityPolicy { policy_id },
             )
             .await?
@@ -447,9 +434,9 @@ impl<'a, DR: DnsResolver, ET: EmailTransport> WebSecurityApiExt<'a, DR, ET> {
 }
 
 impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET> {
-    /// Returns an API to work with web scraping data.
-    pub fn web_security(&self) -> WebSecurityApiExt<'_, DR, ET> {
-        WebSecurityApiExt::new(self)
+    /// Returns an API to work with web security utilities.
+    pub fn web_security<'a, 'u>(&'a self, user: &'u User) -> WebSecurityApiExt<'a, 'u, DR, ET> {
+        WebSecurityApiExt::new(self, user)
     }
 }
 
@@ -514,22 +501,19 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let web_security = WebSecurityApiExt::new(&api);
+        let web_security = WebSecurityApiExt::new(&api, &mock_user);
         let policy = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "name_one".to_string(),
-                    content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
-                    tag_ids: vec![],
-                },
-            )
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "name_one".to_string(),
+                content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                tag_ids: vec![],
+            })
             .await?;
 
         assert_eq!(
             policy,
             web_security
-                .get_content_security_policy(mock_user.id, policy.id)
+                .get_content_security_policy(policy.id)
                 .await?
                 .unwrap()
         );
@@ -545,7 +529,7 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebSecurityApiExt::new(&api);
+        let web_security = WebSecurityApiExt::new(&api, &mock_user);
         let directives = get_mock_directives()?;
 
         let create_and_fail = |result: anyhow::Result<_>| -> SecutilsError {
@@ -554,7 +538,7 @@ mod tests {
 
         // Empty name.
         assert_debug_snapshot!(
-            create_and_fail(api.create_content_security_policy(mock_user.id, ContentSecurityPoliciesCreateParams {
+            create_and_fail(web_security.create_content_security_policy(ContentSecurityPoliciesCreateParams {
                 name: "".to_string(),
                 content: ContentSecurityPolicyContent::Directives(directives.clone()),
                 tag_ids: vec![],
@@ -564,7 +548,7 @@ mod tests {
 
         // Very long name.
         assert_debug_snapshot!(
-            create_and_fail(api.create_content_security_policy(mock_user.id, ContentSecurityPoliciesCreateParams {
+            create_and_fail(web_security.create_content_security_policy(ContentSecurityPoliciesCreateParams {
                 name: "a".repeat(101),
                 content: ContentSecurityPolicyContent::Directives(directives.clone()),
                 tag_ids: vec![],
@@ -574,7 +558,7 @@ mod tests {
 
         // Empty directives.
         assert_debug_snapshot!(
-            create_and_fail(api.create_content_security_policy(mock_user.id, ContentSecurityPoliciesCreateParams{
+            create_and_fail(web_security.create_content_security_policy(ContentSecurityPoliciesCreateParams{
                 name: "name".to_string(),
                 content: ContentSecurityPolicyContent::Directives(vec![]),
                 tag_ids: vec![],
@@ -584,7 +568,7 @@ mod tests {
 
         // Invalid remote URL schema.
         assert_debug_snapshot!(
-            create_and_fail(api.create_content_security_policy(mock_user.id, ContentSecurityPoliciesCreateParams {
+            create_and_fail(web_security.create_content_security_policy(ContentSecurityPoliciesCreateParams {
                 name: "name".to_string(),
                 content: ContentSecurityPolicyContent::Remote {
                     url: "ftp://secutils.dev".parse()?,
@@ -608,7 +592,7 @@ mod tests {
 
         // Non-public URL.
         assert_debug_snapshot!(
-            create_and_fail(WebSecurityApiExt::new(&api_with_local_network).create_content_security_policy(mock_user.id, ContentSecurityPoliciesCreateParams {
+            create_and_fail(WebSecurityApiExt::new(&api_with_local_network, &mock_user).create_content_security_policy(ContentSecurityPoliciesCreateParams {
                 name: "name".to_string(),
                  content: ContentSecurityPolicyContent::Remote {
                     url: "https://127.0.0.1".parse()?,
@@ -629,22 +613,18 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebSecurityApiExt::new(&api);
-        let policy = api
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "name_one".to_string(),
-                    content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
-                    tag_ids: vec![],
-                },
-            )
+        let web_security = WebSecurityApiExt::new(&api, &mock_user);
+        let policy = web_security
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "name_one".to_string(),
+                content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                tag_ids: vec![],
+            })
             .await?;
 
         // Update name.
-        let updated_policy = api
+        let updated_policy = web_security
             .update_content_security_policy(
-                mock_user.id,
                 policy.id,
                 ContentSecurityPoliciesUpdateParams {
                     name: Some("name_two".to_string()),
@@ -661,15 +641,15 @@ mod tests {
         assert_eq!(expected_policy, updated_policy);
         assert_eq!(
             expected_policy,
-            api.get_content_security_policy(mock_user.id, policy.id)
+            web_security
+                .get_content_security_policy(policy.id)
                 .await?
                 .unwrap()
         );
 
         // Update directives.
-        let updated_policy = api
+        let updated_policy = web_security
             .update_content_security_policy(
-                mock_user.id,
                 policy.id,
                 ContentSecurityPoliciesUpdateParams {
                     directives: Some(vec![ContentSecurityPolicyDirective::DefaultSrc(
@@ -691,7 +671,8 @@ mod tests {
         assert_eq!(expected_policy, updated_policy);
         assert_eq!(
             expected_policy,
-            api.get_content_security_policy(mock_user.id, policy.id)
+            web_security
+                .get_content_security_policy(policy.id)
                 .await?
                 .unwrap()
         );
@@ -707,16 +688,13 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let api = WebSecurityApiExt::new(&api);
-        let policy = api
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "name_one".to_string(),
-                    content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
-                    tag_ids: vec![],
-                },
-            )
+        let web_security = WebSecurityApiExt::new(&api, &mock_user);
+        let policy = web_security
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "name_one".to_string(),
+                content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                tag_ids: vec![],
+            })
             .await?;
 
         let update_and_fail = |result: anyhow::Result<_>| -> SecutilsError {
@@ -725,16 +703,16 @@ mod tests {
 
         // Empty parameters.
         let update_result = update_and_fail(
-            api.update_content_security_policy(
-                mock_user.id,
-                policy.id,
-                ContentSecurityPoliciesUpdateParams {
-                    name: None,
-                    directives: None,
-                    tag_ids: None,
-                },
-            )
-            .await,
+            web_security
+                .update_content_security_policy(
+                    policy.id,
+                    ContentSecurityPoliciesUpdateParams {
+                        name: None,
+                        directives: None,
+                        tag_ids: None,
+                    },
+                )
+                .await,
         );
         assert_eq!(
             update_result.to_string(),
@@ -746,16 +724,16 @@ mod tests {
 
         // Non-existent policy.
         let update_result = update_and_fail(
-            api.update_content_security_policy(
-                mock_user.id,
-                uuid!("00000000-0000-0000-0000-000000000002"),
-                ContentSecurityPoliciesUpdateParams {
-                    name: Some("name".to_string()),
-                    directives: None,
-                    tag_ids: None,
-                },
-            )
-            .await,
+            web_security
+                .update_content_security_policy(
+                    uuid!("00000000-0000-0000-0000-000000000002"),
+                    ContentSecurityPoliciesUpdateParams {
+                        name: Some("name".to_string()),
+                        directives: None,
+                        tag_ids: None,
+                    },
+                )
+                .await,
         );
         assert_eq!(
             update_result.to_string(),
@@ -764,7 +742,7 @@ mod tests {
 
         // Empty name.
         assert_debug_snapshot!(
-            update_and_fail(api.update_content_security_policy(mock_user.id, policy.id, ContentSecurityPoliciesUpdateParams {
+            update_and_fail(web_security.update_content_security_policy(policy.id, ContentSecurityPoliciesUpdateParams {
                 name: Some("".to_string()),
                 directives: None,
                 tag_ids: None,
@@ -774,7 +752,7 @@ mod tests {
 
         // Very long name.
         assert_debug_snapshot!(
-            update_and_fail(api.update_content_security_policy(mock_user.id, policy.id, ContentSecurityPoliciesUpdateParams {
+            update_and_fail(web_security.update_content_security_policy(policy.id, ContentSecurityPoliciesUpdateParams {
                 name: Some("a".repeat(101)),
                 directives: None,
                 tag_ids: None,
@@ -784,7 +762,7 @@ mod tests {
 
         // Empty directive list.
         assert_debug_snapshot!(
-            update_and_fail(api.update_content_security_policy(mock_user.id, policy.id, ContentSecurityPoliciesUpdateParams {
+            update_and_fail(web_security.update_content_security_policy(policy.id, ContentSecurityPoliciesUpdateParams {
                 name: None,
                 directives: Some(vec![]),
                 tag_ids: None,
@@ -802,18 +780,13 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let web_security = WebSecurityApiExt::new(&api);
+        let web_security = WebSecurityApiExt::new(&api, &mock_user);
         let policy = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "policy-one".to_string(),
-                    content: ContentSecurityPolicyContent::Serialized(
-                        "child-src 'self'".to_string(),
-                    ),
-                    tag_ids: vec![],
-                },
-            )
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "policy-one".to_string(),
+                content: ContentSecurityPolicyContent::Serialized("child-src 'self'".to_string()),
+                tag_ids: vec![],
+            })
             .await?;
 
         assert_eq!(
@@ -827,23 +800,16 @@ mod tests {
             }
         );
         assert_eq!(
-            web_security
-                .get_content_security_policy(mock_user.id, policy.id)
-                .await?,
+            web_security.get_content_security_policy(policy.id).await?,
             Some(policy)
         );
 
         let policy = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "policy-two".to_string(),
-                    content: ContentSecurityPolicyContent::Serialized(
-                        "script-src 'none'".to_string(),
-                    ),
-                    tag_ids: vec![],
-                },
-            )
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "policy-two".to_string(),
+                content: ContentSecurityPolicyContent::Serialized("script-src 'none'".to_string()),
+                tag_ids: vec![],
+            })
             .await?;
 
         assert_eq!(
@@ -857,9 +823,7 @@ mod tests {
             }
         );
         assert_eq!(
-            web_security
-                .get_content_security_policy(mock_user.id, policy.id)
-                .await?,
+            web_security.get_content_security_policy(policy.id).await?,
             Some(policy)
         );
 
@@ -890,21 +854,18 @@ mod tests {
                 .header("Content-Security-Policy", "child-src 'self'");
         });
 
-        let web_security = WebSecurityApiExt::new(&api_with_public_network);
+        let web_security = WebSecurityApiExt::new(&api_with_public_network, &mock_user);
         let policy = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "policy-one".to_string(),
-                    content: ContentSecurityPolicyContent::Remote {
-                        // Use `localhost` to trick public domain check logic.
-                        url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
-                        follow_redirects: true,
-                        source: ContentSecurityPolicySource::EnforcingHeader,
-                    },
-                    tag_ids: vec![],
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "policy-one".to_string(),
+                content: ContentSecurityPolicyContent::Remote {
+                    // Use `localhost` to trick public domain check logic.
+                    url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::EnforcingHeader,
                 },
-            )
+                tag_ids: vec![],
+            })
             .await?;
 
         web_page_mock.assert();
@@ -920,9 +881,7 @@ mod tests {
             }
         );
         assert_eq!(
-            web_security
-                .get_content_security_policy(mock_user.id, policy.id)
-                .await?,
+            web_security.get_content_security_policy(policy.id).await?,
             Some(policy)
         );
 
@@ -953,21 +912,18 @@ mod tests {
                 .header("Content-Security-Policy-Report-Only", "child-src 'self'");
         });
 
-        let web_security = WebSecurityApiExt::new(&api_with_public_network);
+        let web_security = WebSecurityApiExt::new(&api_with_public_network, &mock_user);
         let policy = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "policy-one".to_string(),
-                    content: ContentSecurityPolicyContent::Remote {
-                        // Use `localhost` to trick public domain check logic.
-                        url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
-                        follow_redirects: true,
-                        source: ContentSecurityPolicySource::ReportOnlyHeader,
-                    },
-                    tag_ids: vec![],
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "policy-one".to_string(),
+                content: ContentSecurityPolicyContent::Remote {
+                    // Use `localhost` to trick public domain check logic.
+                    url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::ReportOnlyHeader,
                 },
-            )
+                tag_ids: vec![],
+            })
             .await?;
 
         web_page_mock.assert();
@@ -983,9 +939,7 @@ mod tests {
             }
         );
         assert_eq!(
-            web_security
-                .get_content_security_policy(mock_user.id, policy.id)
-                .await?,
+            web_security.get_content_security_policy(policy.id).await?,
             Some(policy)
         );
 
@@ -1026,21 +980,18 @@ mod tests {
                 );
         });
 
-        let web_security = WebSecurityApiExt::new(&api_with_public_network);
+        let web_security = WebSecurityApiExt::new(&api_with_public_network, &mock_user);
         let policy = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "policy-one".to_string(),
-                    content: ContentSecurityPolicyContent::Remote {
-                        // Use `localhost` to trick public domain check logic.
-                        url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
-                        follow_redirects: true,
-                        source: ContentSecurityPolicySource::Meta,
-                    },
-                    tag_ids: vec![],
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "policy-one".to_string(),
+                content: ContentSecurityPolicyContent::Remote {
+                    // Use `localhost` to trick public domain check logic.
+                    url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::Meta,
                 },
-            )
+                tag_ids: vec![],
+            })
             .await?;
 
         web_page_mock.assert();
@@ -1056,9 +1007,7 @@ mod tests {
             }
         );
         assert_eq!(
-            web_security
-                .get_content_security_policy(mock_user.id, policy.id)
-                .await?,
+            web_security.get_content_security_policy(policy.id).await?,
             Some(policy)
         );
 
@@ -1097,21 +1046,18 @@ mod tests {
                 .header("Content-Security-Policy", "child-src 'self'");
         });
 
-        let web_security = WebSecurityApiExt::new(&api_with_public_network);
+        let web_security = WebSecurityApiExt::new(&api_with_public_network, &mock_user);
         let policy = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "policy-one".to_string(),
-                    content: ContentSecurityPolicyContent::Remote {
-                        // Use `localhost` to trick public domain check logic.
-                        url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
-                        follow_redirects: true,
-                        source: ContentSecurityPolicySource::EnforcingHeader,
-                    },
-                    tag_ids: vec![],
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "policy-one".to_string(),
+                content: ContentSecurityPolicyContent::Remote {
+                    // Use `localhost` to trick public domain check logic.
+                    url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::EnforcingHeader,
                 },
-            )
+                tag_ids: vec![],
+            })
             .await?;
 
         redirect_mock.assert();
@@ -1128,9 +1074,7 @@ mod tests {
             }
         );
         assert_eq!(
-            web_security
-                .get_content_security_policy(mock_user.id, policy.id)
-                .await?,
+            web_security.get_content_security_policy(policy.id).await?,
             Some(policy)
         );
 
@@ -1178,21 +1122,18 @@ mod tests {
                 );
         });
 
-        let web_security = WebSecurityApiExt::new(&api_with_public_network);
+        let web_security = WebSecurityApiExt::new(&api_with_public_network, &mock_user);
         let policy = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "policy-one".to_string(),
-                    content: ContentSecurityPolicyContent::Remote {
-                        // Use `localhost` to trick public domain check logic.
-                        url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
-                        follow_redirects: true,
-                        source: ContentSecurityPolicySource::EnforcingHeader,
-                    },
-                    tag_ids: vec![],
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "policy-one".to_string(),
+                content: ContentSecurityPolicyContent::Remote {
+                    // Use `localhost` to trick public domain check logic.
+                    url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::EnforcingHeader,
                 },
-            )
+                tag_ids: vec![],
+            })
             .await?;
 
         web_page_mock_head.assert();
@@ -1208,26 +1149,21 @@ mod tests {
             }
         );
         assert_eq!(
-            web_security
-                .get_content_security_policy(mock_user.id, policy.id)
-                .await?,
+            web_security.get_content_security_policy(policy.id).await?,
             Some(policy)
         );
 
         let policy = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "policy-two".to_string(),
-                    content: ContentSecurityPolicyContent::Remote {
-                        // Use `localhost` to trick public domain check logic.
-                        url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
-                        follow_redirects: true,
-                        source: ContentSecurityPolicySource::Meta,
-                    },
-                    tag_ids: vec![],
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "policy-two".to_string(),
+                content: ContentSecurityPolicyContent::Remote {
+                    // Use `localhost` to trick public domain check logic.
+                    url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::Meta,
                 },
-            )
+                tag_ids: vec![],
+            })
             .await?;
 
         web_page_mock_get.assert();
@@ -1243,9 +1179,7 @@ mod tests {
             }
         );
         assert_eq!(
-            web_security
-                .get_content_security_policy(mock_user.id, policy.id)
-                .await?,
+            web_security.get_content_security_policy(policy.id).await?,
             Some(policy)
         );
 
@@ -1292,21 +1226,18 @@ mod tests {
                 );
         });
 
-        let web_security = WebSecurityApiExt::new(&api_with_public_network);
+        let web_security = WebSecurityApiExt::new(&api_with_public_network, &mock_user);
         let policy = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "policy-one".to_string(),
-                    content: ContentSecurityPolicyContent::Remote {
-                        // Use `localhost` to trick public domain check logic.
-                        url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
-                        follow_redirects: true,
-                        source: ContentSecurityPolicySource::EnforcingHeader,
-                    },
-                    tag_ids: vec![],
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "policy-one".to_string(),
+                content: ContentSecurityPolicyContent::Remote {
+                    // Use `localhost` to trick public domain check logic.
+                    url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::EnforcingHeader,
                 },
-            )
+                tag_ids: vec![],
+            })
             .await?;
 
         web_page_mock_head.assert();
@@ -1327,26 +1258,21 @@ mod tests {
             }
         );
         assert_eq!(
-            web_security
-                .get_content_security_policy(mock_user.id, policy.id)
-                .await?,
+            web_security.get_content_security_policy(policy.id).await?,
             Some(policy)
         );
 
         let policy = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "policy-two".to_string(),
-                    content: ContentSecurityPolicyContent::Remote {
-                        // Use `localhost` to trick public domain check logic.
-                        url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
-                        follow_redirects: true,
-                        source: ContentSecurityPolicySource::Meta,
-                    },
-                    tag_ids: vec![],
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "policy-two".to_string(),
+                content: ContentSecurityPolicyContent::Remote {
+                    // Use `localhost` to trick public domain check logic.
+                    url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::Meta,
                 },
-            )
+                tag_ids: vec![],
+            })
             .await?;
 
         web_page_mock_get.assert();
@@ -1367,9 +1293,7 @@ mod tests {
             }
         );
         assert_eq!(
-            web_security
-                .get_content_security_policy(mock_user.id, policy.id)
-                .await?,
+            web_security.get_content_security_policy(policy.id).await?,
             Some(policy)
         );
 
@@ -1408,21 +1332,18 @@ mod tests {
                 .header("Content-Security-Policy", "child-src 'self'");
         });
 
-        let web_security = WebSecurityApiExt::new(&api_with_public_network);
+        let web_security = WebSecurityApiExt::new(&api_with_public_network, &mock_user);
         let import_result = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "policy-one".to_string(),
-                    content: ContentSecurityPolicyContent::Remote {
-                        // Use `localhost` to trick public domain check logic.
-                        url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
-                        follow_redirects: false,
-                        source: ContentSecurityPolicySource::EnforcingHeader,
-                    },
-                    tag_ids: vec![],
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "policy-one".to_string(),
+                content: ContentSecurityPolicyContent::Remote {
+                    // Use `localhost` to trick public domain check logic.
+                    url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
+                    follow_redirects: false,
+                    source: ContentSecurityPolicySource::EnforcingHeader,
                 },
-            )
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err()
             .downcast::<SecutilsError>()?;
@@ -1439,7 +1360,7 @@ mod tests {
 
         assert!(
             web_security
-                .get_content_security_policies(mock_user.id)
+                .get_content_security_policies()
                 .await?
                 .is_empty()
         );
@@ -1485,21 +1406,18 @@ mod tests {
                 );
         });
 
-        let web_security = WebSecurityApiExt::new(&api_with_public_network);
+        let web_security = WebSecurityApiExt::new(&api_with_public_network, &mock_user);
         let import_result = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "policy-one".to_string(),
-                    content: ContentSecurityPolicyContent::Remote {
-                        // Use `localhost` to trick public domain check logic.
-                        url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
-                        follow_redirects: false,
-                        source: ContentSecurityPolicySource::EnforcingHeader,
-                    },
-                    tag_ids: vec![],
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "policy-one".to_string(),
+                content: ContentSecurityPolicyContent::Remote {
+                    // Use `localhost` to trick public domain check logic.
+                    url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
+                    follow_redirects: false,
+                    source: ContentSecurityPolicySource::EnforcingHeader,
                 },
-            )
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err()
             .downcast::<SecutilsError>()?;
@@ -1512,19 +1430,16 @@ mod tests {
         );
 
         let import_result = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "policy-one".to_string(),
-                    content: ContentSecurityPolicyContent::Remote {
-                        // Use `localhost` to trick public domain check logic.
-                        url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
-                        follow_redirects: false,
-                        source: ContentSecurityPolicySource::ReportOnlyHeader,
-                    },
-                    tag_ids: vec![],
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "policy-one".to_string(),
+                content: ContentSecurityPolicyContent::Remote {
+                    // Use `localhost` to trick public domain check logic.
+                    url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
+                    follow_redirects: false,
+                    source: ContentSecurityPolicySource::ReportOnlyHeader,
                 },
-            )
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err()
             .downcast::<SecutilsError>()?;
@@ -1539,19 +1454,16 @@ mod tests {
         web_page_mock_head.assert_calls(2);
 
         let import_result = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "policy-one".to_string(),
-                    content: ContentSecurityPolicyContent::Remote {
-                        // Use `localhost` to trick public domain check logic.
-                        url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
-                        follow_redirects: false,
-                        source: ContentSecurityPolicySource::Meta,
-                    },
-                    tag_ids: vec![],
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "policy-one".to_string(),
+                content: ContentSecurityPolicyContent::Remote {
+                    // Use `localhost` to trick public domain check logic.
+                    url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
+                    follow_redirects: false,
+                    source: ContentSecurityPolicySource::Meta,
                 },
-            )
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err()
             .downcast::<SecutilsError>()?;
@@ -1567,7 +1479,7 @@ mod tests {
 
         assert!(
             web_security
-                .get_content_security_policies(mock_user.id)
+                .get_content_security_policies()
                 .await?
                 .is_empty()
         );
@@ -1612,21 +1524,18 @@ mod tests {
                 );
         });
 
-        let web_security = WebSecurityApiExt::new(&api_with_public_network);
+        let web_security = WebSecurityApiExt::new(&api_with_public_network, &mock_user);
         let import_result = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "policy-one".to_string(),
-                    content: ContentSecurityPolicyContent::Remote {
-                        // Use `localhost` to trick public domain check logic.
-                        url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
-                        follow_redirects: true,
-                        source: ContentSecurityPolicySource::EnforcingHeader,
-                    },
-                    tag_ids: vec![],
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "policy-one".to_string(),
+                content: ContentSecurityPolicyContent::Remote {
+                    // Use `localhost` to trick public domain check logic.
+                    url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
+                    follow_redirects: true,
+                    source: ContentSecurityPolicySource::EnforcingHeader,
                 },
-            )
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err()
             .downcast::<SecutilsError>()?;
@@ -1641,19 +1550,16 @@ mod tests {
         web_page_mock_head.assert();
 
         let import_result = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "policy-one".to_string(),
-                    content: ContentSecurityPolicyContent::Remote {
-                        // Use `localhost` to trick public domain check logic.
-                        url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
-                        follow_redirects: false,
-                        source: ContentSecurityPolicySource::Meta,
-                    },
-                    tag_ids: vec![],
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "policy-one".to_string(),
+                content: ContentSecurityPolicyContent::Remote {
+                    // Use `localhost` to trick public domain check logic.
+                    url: Url::parse(&format!("http://localhost:{}/some-path", server.port()))?,
+                    follow_redirects: false,
+                    source: ContentSecurityPolicySource::Meta,
                 },
-            )
+                tag_ids: vec![],
+            })
             .await
             .unwrap_err()
             .downcast::<SecutilsError>()?;
@@ -1669,7 +1575,7 @@ mod tests {
 
         assert!(
             web_security
-                .get_content_security_policies(mock_user.id)
+                .get_content_security_policies()
                 .await?
                 .is_empty()
         );
@@ -1684,59 +1590,49 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let web_security = WebSecurityApiExt::new(&api);
+        let web_security = WebSecurityApiExt::new(&api, &mock_user);
         let policy_one = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "name_one".to_string(),
-                    content: ContentSecurityPolicyContent::Directives(vec![
-                        ContentSecurityPolicyDirective::ChildSrc(
-                            ["'self'".to_string()].into_iter().collect(),
-                        ),
-                    ]),
-                    tag_ids: vec![],
-                },
-            )
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "name_one".to_string(),
+                content: ContentSecurityPolicyContent::Directives(vec![
+                    ContentSecurityPolicyDirective::ChildSrc(
+                        ["'self'".to_string()].into_iter().collect(),
+                    ),
+                ]),
+                tag_ids: vec![],
+            })
             .await?;
         let policy_two = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "name_two".to_string(),
-                    content: ContentSecurityPolicyContent::Directives(vec![
-                        ContentSecurityPolicyDirective::ChildSrc(
-                            ["'none'".to_string()].into_iter().collect(),
-                        ),
-                    ]),
-                    tag_ids: vec![],
-                },
-            )
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "name_two".to_string(),
+                content: ContentSecurityPolicyContent::Directives(vec![
+                    ContentSecurityPolicyDirective::ChildSrc(
+                        ["'none'".to_string()].into_iter().collect(),
+                    ),
+                ]),
+                tag_ids: vec![],
+            })
             .await?;
 
         assert_eq!(
-            web_security
-                .get_content_security_policies(mock_user.id)
-                .await?,
+            web_security.get_content_security_policies().await?,
             [policy_one.clone(), policy_two.clone()]
         );
 
         web_security
-            .remove_content_security_policy(mock_user.id, policy_one.id)
+            .remove_content_security_policy(policy_one.id)
             .await?;
         assert_eq!(
-            web_security
-                .get_content_security_policies(mock_user.id)
-                .await?,
+            web_security.get_content_security_policies().await?,
             slice::from_ref(&policy_two)
         );
 
         web_security
-            .remove_content_security_policy(mock_user.id, policy_two.id)
+            .remove_content_security_policy(policy_two.id)
             .await?;
         assert!(
             web_security
-                .get_content_security_policies(mock_user.id)
+                .get_content_security_policies()
                 .await?
                 .is_empty()
         );
@@ -1751,19 +1647,16 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let web_security = WebSecurityApiExt::new(&api);
+        let web_security = WebSecurityApiExt::new(&api, &mock_user);
         let policy = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "name_one".to_string(),
-                    content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
-                    tag_ids: vec![],
-                },
-            )
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "name_one".to_string(),
+                content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                tag_ids: vec![],
+            })
             .await?;
         let policy_share_one = web_security
-            .share_content_security_policy(mock_user.id, policy.id)
+            .share_content_security_policy(policy.id)
             .await?;
 
         assert_eq!(
@@ -1773,7 +1666,7 @@ mod tests {
 
         // Repetitive sharing should return the same share.
         let policy_share_two = web_security
-            .share_content_security_policy(mock_user.id, policy.id)
+            .share_content_security_policy(policy.id)
             .await?;
 
         assert_eq!(policy_share_one, policy_share_two,);
@@ -1792,23 +1685,20 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let web_security = WebSecurityApiExt::new(&api);
+        let web_security = WebSecurityApiExt::new(&api, &mock_user);
         let policy = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "name_one".to_string(),
-                    content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
-                    tag_ids: vec![],
-                },
-            )
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "name_one".to_string(),
+                content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                tag_ids: vec![],
+            })
             .await?;
         let policy_share_one = web_security
-            .share_content_security_policy(mock_user.id, policy.id)
+            .share_content_security_policy(policy.id)
             .await?;
         assert_eq!(
             web_security
-                .unshare_content_security_policy(mock_user.id, policy.id)
+                .unshare_content_security_policy(policy.id)
                 .await?,
             Some(policy_share_one.clone())
         );
@@ -1822,13 +1712,13 @@ mod tests {
 
         // Sharing again should return different share.
         let policy_share_two = web_security
-            .share_content_security_policy(mock_user.id, policy.id)
+            .share_content_security_policy(policy.id)
             .await?;
         assert_ne!(policy_share_one.id, policy_share_two.id);
 
         assert_eq!(
             web_security
-                .unshare_content_security_policy(mock_user.id, policy.id)
+                .unshare_content_security_policy(policy.id)
                 .await?,
             Some(policy_share_two.clone())
         );
@@ -1850,19 +1740,16 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let web_security = WebSecurityApiExt::new(&api);
+        let web_security = WebSecurityApiExt::new(&api, &mock_user);
         let policy = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "name_one".to_string(),
-                    content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
-                    tag_ids: vec![],
-                },
-            )
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "name_one".to_string(),
+                content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                tag_ids: vec![],
+            })
             .await?;
         let policy_share = web_security
-            .share_content_security_policy(mock_user.id, policy.id)
+            .share_content_security_policy(policy.id)
             .await?;
 
         assert_eq!(
@@ -1871,12 +1758,12 @@ mod tests {
         );
 
         web_security
-            .remove_content_security_policy(mock_user.id, policy.id)
+            .remove_content_security_policy(policy.id)
             .await?;
 
         assert!(
             web_security
-                .get_content_security_policy(mock_user.id, policy.id)
+                .get_content_security_policy(policy.id)
                 .await?
                 .is_none()
         );
@@ -1891,22 +1778,18 @@ mod tests {
         let mock_user = mock_user()?;
         api.db.insert_user(&mock_user).await?;
 
-        let web_security = WebSecurityApiExt::new(&api);
+        let web_security = WebSecurityApiExt::new(&api, &mock_user);
         let policy = web_security
-            .create_content_security_policy(
-                mock_user.id,
-                ContentSecurityPoliciesCreateParams {
-                    name: "name_one".to_string(),
-                    content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
-                    tag_ids: vec![],
-                },
-            )
+            .create_content_security_policy(ContentSecurityPoliciesCreateParams {
+                name: "name_one".to_string(),
+                content: ContentSecurityPolicyContent::Directives(get_mock_directives()?),
+                tag_ids: vec![],
+            })
             .await?;
 
         assert_eq!(
             web_security
                 .serialize_content_security_policy(
-                    mock_user.id,
                     policy.id,
                     ContentSecurityPoliciesSerializeParams {
                         source: ContentSecurityPolicySource::EnforcingHeader
@@ -1919,7 +1802,6 @@ mod tests {
         assert_eq!(
             web_security
                 .serialize_content_security_policy(
-                    mock_user.id,
                     policy.id,
                     ContentSecurityPoliciesSerializeParams {
                         source: ContentSecurityPolicySource::ReportOnlyHeader
@@ -1932,7 +1814,6 @@ mod tests {
         assert_eq!(
             web_security
                 .serialize_content_security_policy(
-                    mock_user.id,
                     policy.id,
                     ContentSecurityPoliciesSerializeParams {
                         source: ContentSecurityPolicySource::Meta
