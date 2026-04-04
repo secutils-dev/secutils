@@ -79,7 +79,7 @@ const TOOLS: ToolDefinition[] = [
     title: 'Content Security Policy',
     icon: 'globe',
     description: 'Create, import, and test Content Security Policies for your web applications.',
-    utilNames: ['Web Security', 'CSP', 'Policies'],
+    utilNames: ['Web Security', 'CSP'],
     guideUrl: '/docs/guides/web_security/csp',
     checklistPrompt: 'Set up a content security policy',
   },

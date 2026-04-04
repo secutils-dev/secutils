@@ -30,7 +30,7 @@ test.describe('CSP guide screenshots', () => {
   });
 
   test('create a content security policy', async ({ page }) => {
-    await goto(page, '/ws/web_security__csp__policies');
+    await goto(page, '/ws/web_security__csp');
 
     // Empty policies list.
     const createButton = page.getByRole('button', { name: 'Create policy' });
@@ -101,7 +101,7 @@ test.describe('CSP guide screenshots', () => {
       }
     });
 
-    await goto(page, '/ws/web_security__csp__policies');
+    await goto(page, '/ws/web_security__csp');
 
     // Empty policies list.
     const importButton = page.getByRole('button', { name: 'Import policy' });
@@ -136,7 +136,7 @@ test.describe('CSP guide screenshots', () => {
   });
 
   test('import policy from string', async ({ page }) => {
-    await goto(page, '/ws/web_security__csp__policies');
+    await goto(page, '/ws/web_security__csp');
 
     // Empty policies list.
     const importButton = page.getByRole('button', { name: 'Import policy' });
@@ -249,7 +249,7 @@ test.describe('CSP guide screenshots', () => {
     await evalPage.close();
 
     // Step 2: Create a CSP policy that forbids eval().
-    await goto(page, '/ws/web_security__csp__policies');
+    await goto(page, '/ws/web_security__csp');
     const createPolicyButton = page.getByRole('button', { name: 'Create policy' });
     await expect(createPolicyButton).toBeVisible({ timeout: 15000 });
     await createPolicyButton.click();
@@ -405,7 +405,7 @@ test.describe('CSP guide screenshots', () => {
     await dismissAllToasts(page);
 
     // Step 2: Create a CSP policy with report-uri pointing to the reporting responder.
-    await goto(page, '/ws/web_security__csp__policies');
+    await goto(page, '/ws/web_security__csp');
     const createPolicyButton = page.getByRole('button', { name: 'Create policy' });
     await expect(createPolicyButton).toBeVisible({ timeout: 15000 });
     await createPolicyButton.click();
@@ -559,7 +559,7 @@ test.describe('CSP guide screenshots', () => {
   });
 
   test('share a policy', async ({ page }) => {
-    await goto(page, '/ws/web_security__csp__policies');
+    await goto(page, '/ws/web_security__csp');
 
     // Empty policies list.
     const createButton = page.getByRole('button', { name: 'Create policy' });

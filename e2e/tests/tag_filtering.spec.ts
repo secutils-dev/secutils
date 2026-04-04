@@ -367,7 +367,7 @@ test.describe('Tag filtering', () => {
     await verifyPageFilters('/ws/web_scraping__api', 'AT-alpha', 'AT-beta');
     await verifyPageFilters('/ws/certificates__private_keys', 'PK-alpha', 'PK-beta');
     await verifyPageFilters('/ws/certificates__certificate_templates', 'CT-alpha', 'CT-beta');
-    await verifyPageFilters('/ws/web_security__csp__policies', 'CSP-alpha', 'CSP-beta');
+    await verifyPageFilters('/ws/web_security__csp', 'CSP-alpha', 'CSP-beta');
   });
 
   test('global filter applies to all workspace utility pages', async ({ page }) => {
@@ -534,9 +534,12 @@ test.describe('Tag filtering', () => {
     await expect(page.getByText('CT-alpha')).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('CT-gamma')).not.toBeVisible();
 
-    // Verify on CSP policies (nested under Web Security → CSP button → Policies link).
-    await page.getByRole('button', { name: 'CSP' }).click();
-    await page.locator('a[href*="web_security__csp__policies"]').click();
+    // Verify on CSP (under Web Security).
+    const cspPoliciesLink = page.locator('a[href^="/ws/web_security__csp"]');
+    if (!(await cspPoliciesLink.isVisible())) {
+      await page.getByRole('button', { name: 'Web Security', exact: true }).click();
+    }
+    await cspPoliciesLink.click();
     await expect(page.getByText('CSP-alpha')).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('CSP-gamma')).not.toBeVisible();
 

@@ -9,7 +9,7 @@ test.describe('Unsaved changes confirmation', () => {
 
   test.describe('CSP policy flyout', () => {
     test('create - closes without confirmation when no changes were made', async ({ page }) => {
-      await page.goto('/ws/web_security__csp__policies');
+      await page.goto('/ws/web_security__csp');
       const createButton = page.getByRole('button', { name: 'Create policy' });
       await expect(createButton).toBeVisible({ timeout: 15000 });
 
@@ -22,7 +22,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('create - shows confirmation when closing with unsaved changes via Close button', async ({ page }) => {
-      await page.goto('/ws/web_security__csp__policies');
+      await page.goto('/ws/web_security__csp');
       const createButton = page.getByRole('button', { name: 'Create policy' });
       await expect(createButton).toBeVisible({ timeout: 15000 });
 
@@ -48,7 +48,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('create - discards changes when confirming the discard dialog', async ({ page }) => {
-      await page.goto('/ws/web_security__csp__policies');
+      await page.goto('/ws/web_security__csp');
       const createButton = page.getByRole('button', { name: 'Create policy' });
       await expect(createButton).toBeVisible({ timeout: 15000 });
 
@@ -72,7 +72,7 @@ test.describe('Unsaved changes confirmation', () => {
     });
 
     test('create - shows confirmation when closing with unsaved changes via overlay click', async ({ page }) => {
-      await page.goto('/ws/web_security__csp__policies');
+      await page.goto('/ws/web_security__csp');
       const createButton = page.getByRole('button', { name: 'Create policy' });
       await expect(createButton).toBeVisible({ timeout: 15000 });
 
@@ -105,7 +105,7 @@ test.describe('Unsaved changes confirmation', () => {
       });
       expect(res.ok()).toBeTruthy();
 
-      await page.goto('/ws/web_security__csp__policies');
+      await page.goto('/ws/web_security__csp');
       const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'existing-policy' }) });
       await expect(row).toBeVisible({ timeout: 15000 });
 
@@ -126,7 +126,7 @@ test.describe('Unsaved changes confirmation', () => {
       });
       expect(res.ok()).toBeTruthy();
 
-      await page.goto('/ws/web_security__csp__policies');
+      await page.goto('/ws/web_security__csp');
       const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'existing-policy' }) });
       await expect(row).toBeVisible({ timeout: 15000 });
 
@@ -158,7 +158,7 @@ test.describe('Unsaved changes confirmation', () => {
       });
       expect(res.ok()).toBeTruthy();
 
-      await page.goto('/ws/web_security__csp__policies');
+      await page.goto('/ws/web_security__csp');
       const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'existing-policy' }) });
       await expect(row).toBeVisible({ timeout: 15000 });
 
@@ -196,7 +196,7 @@ test.describe('Unsaved changes confirmation', () => {
       });
       expect(res.ok()).toBeTruthy();
 
-      await page.goto('/ws/web_security__csp__policies');
+      await page.goto('/ws/web_security__csp');
       const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'existing-policy' }) });
       await expect(row).toBeVisible({ timeout: 15000 });
 
@@ -217,7 +217,7 @@ test.describe('Unsaved changes confirmation', () => {
       });
       expect(res.ok()).toBeTruthy();
 
-      await page.goto('/ws/web_security__csp__policies');
+      await page.goto('/ws/web_security__csp');
       const row = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'existing-policy' }) });
       await expect(row).toBeVisible({ timeout: 15000 });
 

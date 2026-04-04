@@ -12,12 +12,12 @@ test.describe('Workspace links', () => {
     await expect(page.getByRole('heading', { name: 'Welcome', level: 2 })).toBeVisible({ timeout: 15000 });
 
     const sidebar = page.locator('aside');
-    // "Policies" is nested under a collapsible "CSP" group in Web Security.
-    const policiesLink = sidebar.getByRole('link', { name: 'Policies', exact: true });
+    // "CSP" is nested under the collapsible "Web Security" group.
+    const policiesLink = sidebar.getByRole('link', { name: 'CSP', exact: true });
     if (!(await policiesLink.isVisible())) {
-      const cspButton = sidebar.getByRole('button', { name: 'CSP', exact: true });
-      if (await cspButton.isVisible()) {
-        await cspButton.click();
+      const webSecurityButton = sidebar.getByRole('button', { name: 'Web Security', exact: true });
+      if (await webSecurityButton.isVisible()) {
+        await webSecurityButton.click();
       }
     }
 
@@ -25,7 +25,7 @@ test.describe('Workspace links', () => {
       Responders: '/ws/webhooks__responders',
       'Certificate templates': '/ws/certificates__certificate_templates',
       'Private keys': '/ws/certificates__private_keys',
-      Policies: '/ws/web_security__csp__policies',
+      CSP: '/ws/web_security__csp',
       'Page trackers': '/ws/web_scraping__page',
       'API trackers': '/ws/web_scraping__api',
     };

@@ -14,7 +14,7 @@ Like anything we invest our time and energy in, I want to raise awareness about 
 
 <!--truncate-->
 
-Alright, let's explore a few popular websites and uncover any new insights from the CSP they employ. To import the policy, head to [**Web Security → CSP → Policies**](https://secutils.dev/ws/web_security__csp__policies) and click the `Import policy` button. Within the import modal, enter an arbitrary name, the webpage URL, and select the source from which to import the policy: `HTTP header (enforcing)`, `HTTP header (report only)`, or `HTML meta tag`.
+Alright, let's explore a few popular websites and uncover any new insights from the CSP they employ. To import the policy, head to [**Web Security → CSP**](https://secutils.dev/ws/web_security__csp) and click the `Import policy` button. Within the import modal, enter an arbitrary name, the webpage URL, and select the source from which to import the policy: `HTTP header (enforcing)`, `HTTP header (report only)`, or `HTML meta tag`.
 
 ![Import CSP dialog](/img/blog/2023-11-28_import_policy_dialog.png)
 

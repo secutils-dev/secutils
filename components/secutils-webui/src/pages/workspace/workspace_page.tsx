@@ -16,6 +16,18 @@ import type { Util } from '../../model';
 import { USER_SETTINGS_KEY_COMMON_GLOBAL_SCOPE_TAG_IDS } from '../../model';
 import { Page } from '../page';
 
+/** Maps each util handle to its parent util handle (tree-based; not derived from handle string). */
+function buildUtilParentMap(utils: Util[], parentHandle?: string): Map<string, string | undefined> {
+  const map = new Map<string, string | undefined>();
+  for (const u of utils) {
+    map.set(u.handle, parentHandle);
+    if (u.utils?.length) {
+      buildUtilParentMap(u.utils, u.handle).forEach((v, k) => map.set(k, v));
+    }
+  }
+  return map;
+}
+
 const DEFAULT_COMPONENT = lazy(() => import('../../components/page_under_construction_state'));
 const SettingsFlyout = lazy(() => import('../../app_container/settings_flyout'));
 
@@ -44,7 +56,7 @@ export function WorkspacePage() {
   );
 
   const getBreadcrumbs = useCallback(
-    (util: Util, utilsMap: Map<string, Util>, deepLink?: string) => {
+    (util: Util, utilsMap: Map<string, Util>, utilParentMap: Map<string, string | undefined>, deepLink?: string) => {
       const breadcrumbs: EuiBreadcrumb[] = [];
       let utilToBreadcrumb: Util | undefined = util;
       while (utilToBreadcrumb) {
@@ -62,9 +74,8 @@ export function WorkspacePage() {
           href: shouldIncludeURL ? utilUrl : undefined,
         });
 
-        const utilSeparatorIndex = utilToBreadcrumb.handle.lastIndexOf('__');
-        utilToBreadcrumb =
-          utilSeparatorIndex > 0 ? utilsMap.get(utilToBreadcrumb.handle.slice(0, utilSeparatorIndex)) : undefined;
+        const parentHandle = utilParentMap.get(utilToBreadcrumb.handle);
+        utilToBreadcrumb = parentHandle ? utilsMap.get(parentHandle) : undefined;
       }
 
       return deepLink ? [...breadcrumbs, { text: deepLink }] : breadcrumbs;
@@ -105,7 +116,7 @@ export function WorkspacePage() {
     deepLink: deepLinkFromParam,
   });
 
-  const [sideNavItems, utilsMap] = useMemo(() => {
+  const [sideNavItems, utilsMap, utilParentMap] = useMemo(() => {
     const utilsMap = new Map<string, Util>();
     const createItem = (util: Util): EuiSideNavItemType<unknown> => {
       utilsMap.set(util.handle, util);
@@ -124,7 +135,7 @@ export function WorkspacePage() {
       };
     };
 
-    return [uiState.utils.map(createItem), utilsMap];
+    return [uiState.utils.map(createItem), utilsMap, buildUtilParentMap(uiState.utils)];
   }, [uiState, selectedUtil, deepLinkFromParam]);
 
   useEffect(() => {
@@ -136,12 +147,12 @@ export function WorkspacePage() {
       setSelectedUtil(newSelectedUtil);
       setTitle(newSelectedUtil.name);
       setNavigationBar({
-        breadcrumbs: getBreadcrumbs(newSelectedUtil, utilsMap, deepLinkFromParam),
+        breadcrumbs: getBreadcrumbs(newSelectedUtil, utilsMap, utilParentMap, deepLinkFromParam),
         deepLink: deepLinkFromParam,
       });
       setTitleActions(null);
     }
-  }, [utilIdFromParam, selectedUtil, utilsMap, deepLinkFromParam, navigationBar, getBreadcrumbs]);
+  }, [utilIdFromParam, selectedUtil, utilsMap, utilParentMap, deepLinkFromParam, navigationBar, getBreadcrumbs]);
 
   const content = useMemo(() => {
     // Check if URL is invalid.

@@ -155,23 +155,13 @@ mod tests {
                 utils: Some(
                     [
                         Util {
-                            id: 8,
+                            id: 9,
                             handle: "web_security__csp",
                             name: "CSP",
-                            keywords: None,
-                            utils: Some(
-                                [
-                                    Util {
-                                        id: 9,
-                                        handle: "web_security__csp__policies",
-                                        name: "Policies",
-                                        keywords: Some(
-                                            "csp policies content web security",
-                                        ),
-                                        utils: None,
-                                    },
-                                ],
+                            keywords: Some(
+                                "csp policies content web security",
                             ),
+                            utils: None,
                         },
                     ],
                 ),

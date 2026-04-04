@@ -14,7 +14,6 @@ export const UTIL_HANDLES = Object.freeze({
   certificatesPrivateKeys: 'certificates__private_keys',
   webSecurity: 'web_security',
   webSecurityCsp: 'web_security__csp',
-  webSecurityCspPolicies: 'web_security__csp__policies',
   webScraping: 'web_scraping',
   webScrapingPage: 'web_scraping__page',
   webScrapingApi: 'web_scraping__api',
@@ -31,7 +30,7 @@ export const UtilsComponents = new Map<string, LazyExoticComponent<ComponentType
     lazy(() => import('./certificates/certificates_certificate_templates')),
   ],
   [UTIL_HANDLES.certificatesPrivateKeys, lazy(() => import('./certificates/certificates_private_keys'))],
-  [UTIL_HANDLES.webSecurityCspPolicies, lazy(() => import('./web_security/csp/web_security_csp_policies'))],
+  [UTIL_HANDLES.webSecurityCsp, lazy(() => import('./web_security/csp/web_security_csp_policies'))],
   [UTIL_HANDLES.webScrapingPage, lazy(() => import('./web_scraping/page_trackers'))],
   [UTIL_HANDLES.webScrapingApi, lazy(() => import('./web_scraping/api_trackers'))],
 ]);
@@ -39,7 +38,7 @@ export const UtilsComponents = new Map<string, LazyExoticComponent<ComponentType
 // Dedicated set of component overrides for user shares.
 export const UtilsShareComponents = new Map<string, LazyExoticComponent<ComponentType>>([
   [UTIL_HANDLES.certificatesCertificateTemplates, lazy(() => import('./certificates/shared_certificate_template'))],
-  [UTIL_HANDLES.webSecurityCspPolicies, lazy(() => import('./web_security/csp/web_security_csp_shared_policy'))],
+  [UTIL_HANDLES.webSecurityCsp, lazy(() => import('./web_security/csp/web_security_csp_shared_policy'))],
 ]);
 
 export function getUtilIcon(utilHandle: string, purpose: 'navigation' | 'title') {
@@ -57,22 +56,23 @@ export function getUtilIcon(utilHandle: string, purpose: 'navigation' | 'title')
     case UTIL_HANDLES.webhooks:
       return 'node';
     case UTIL_HANDLES.webhooksResponders:
-      return purpose === 'title' ? 'node' : undefined;
+      return 'inputOutput';
     case UTIL_HANDLES.certificates:
       return 'securityApp';
     case UTIL_HANDLES.certificatesCertificateTemplates:
+      return 'document';
     case UTIL_HANDLES.certificatesPrivateKeys:
-      return purpose === 'title' ? 'securityApp' : undefined;
+      return 'key';
     case UTIL_HANDLES.webSecurity:
       return 'globe';
     case UTIL_HANDLES.webSecurityCsp:
-    case UTIL_HANDLES.webSecurityCspPolicies:
-      return purpose === 'title' ? 'globe' : undefined;
+      return 'documents';
     case UTIL_HANDLES.webScraping:
       return 'cut';
     case UTIL_HANDLES.webScrapingPage:
+      return 'article';
     case UTIL_HANDLES.webScrapingApi:
-      return purpose === 'title' ? 'cut' : undefined;
+      return 'nested';
     default:
       return;
   }

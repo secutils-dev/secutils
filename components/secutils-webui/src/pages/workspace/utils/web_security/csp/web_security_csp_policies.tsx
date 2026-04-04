@@ -306,7 +306,7 @@ export default function WebSecurityContentSecurityPolicies() {
               render: (_, item: ContentSecurityPolicy) => (
                 <EntityName
                   name={item.name}
-                  href={getWorkspaceEntityLink(UTIL_HANDLES.webSecurityCspPolicies, item.id)}
+                  href={getWorkspaceEntityLink(UTIL_HANDLES.webSecurityCsp, item.id)}
                   tags={item.tags}
                 />
               ),
@@ -348,9 +348,7 @@ export default function WebSecurityContentSecurityPolicies() {
                   icon: 'link',
                   type: 'icon',
                   onClick: ({ id }: ContentSecurityPolicy) =>
-                    void navigator.clipboard.writeText(
-                      getWorkspaceEntityAbsoluteLink(UTIL_HANDLES.webSecurityCspPolicies, id),
-                    ),
+                    void navigator.clipboard.writeText(getWorkspaceEntityAbsoluteLink(UTIL_HANDLES.webSecurityCsp, id)),
                 },
                 {
                   name: 'Copy',

@@ -438,10 +438,7 @@ mod tests {
         );
 
         assert_eq!(summary.recent_items[2].name, "mid-csp");
-        assert_eq!(
-            summary.recent_items[2].util_handle,
-            "web_security__csp__policies"
-        );
+        assert_eq!(summary.recent_items[2].util_handle, "web_security__csp");
 
         Ok(())
     }

@@ -1,7 +1,7 @@
 ---
 sidebar_position: 1
-sidebar_label: Content Security Policies
-title: Web Security ➔ Content security policies (CSP)
+sidebar_label: CSP
+title: Web Security ➔ CSP
 description: Learn how to create and use content security policies (CSP) in Secutils.dev.
 ---
 
@@ -27,8 +27,8 @@ In this guide you'll create a simple Content Security Policy template that allow
 <Steps steps={[
   {
     img: '../../img/docs/guides/csp/create_step1_empty.png',
-    caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp__policies"><b>Web Security → CSP → Policies</b></a> and click <strong>Create policy</strong>.</>,
-    alt: 'Navigate to Web Security → CSP → Policies and click Create policy.'
+    caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp"><b>Web Security → CSP</b></a> and click <strong>Create policy</strong>.</>,
+    alt: 'Navigate to Web Security → CSP and click Create policy.'
   },
   {
       img: '../../img/docs/guides/csp/create_step2_form.png',
@@ -59,8 +59,8 @@ In this guide you'll import a Content Security Policy from an external URL:
 <Steps steps={[
   {
     img: '../../img/docs/guides/csp/import_url_step1_empty.png',
-    caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp__policies"><b>Web Security → CSP → Policies</b></a> and click <strong>Import policy</strong>.</>,
-    alt: 'Navigate to Web Security → CSP → Policies and click Import policy.'
+    caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp"><b>Web Security → CSP</b></a> and click <strong>Import policy</strong>.</>,
+    alt: 'Navigate to Web Security → CSP and click Import policy.'
   },
   {
     img: '../../img/docs/guides/csp/import_url_step2_modal.png',
@@ -84,8 +84,8 @@ In this guide you'll import a Content Security Policy from a string (serialized 
 <Steps steps={[
     {
         img: '../../img/docs/guides/csp/import_string_step1_empty.png',
-        caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp__policies"><b>Web Security → CSP → Policies</b></a> and click <strong>Import policy</strong>.</>,
-        alt: 'Navigate to Web Security → CSP → Policies and click Import policy.'
+        caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp"><b>Web Security → CSP</b></a> and click <strong>Import policy</strong>.</>,
+        alt: 'Navigate to Web Security → CSP and click Import policy.'
     },
     {
         img: '../../img/docs/guides/csp/import_string_step2_modal.png',
@@ -105,7 +105,7 @@ In this guide you'll import a Content Security Policy from a string (serialized 
 
 This guide will walk you through sharing a Content Security Policy template publicly, allowing anyone on the internet to view it:
 
-1. Navigate to [Web Security → CSP → Policies](https://secutils.dev/ws/web_security__csp__policies) and pick the policy you'd like to share
+1. Navigate to [Web Security → CSP](https://secutils.dev/ws/web_security__csp) and pick the policy you'd like to share
 2. Click the policy's **Share policy** button and toggle **Share policy** switch to **on** position
 3. Once the policy is shared, the dialog will show a **Copy link** button
 4. Click the **Copy link** button to copy a unique shared policy link to your clipboard
@@ -114,8 +114,8 @@ This guide will walk you through sharing a Content Security Policy template publ
 <Steps steps={[
     {
         img: '../../img/docs/guides/csp/share_step1_share.png',
-        caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp__policies"><b>Web Security → CSP → Policies</b></a>, pick the policy you'd like to share, and click <strong>Share</strong>.</>,
-        alt: 'Navigate to Web Security → CSP → Policies, pick the policy you\'d like to share, and click Share.'
+        caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp"><b>Web Security → CSP</b></a>, pick the policy you'd like to share, and click <strong>Share</strong>.</>,
+        alt: 'Navigate to Web Security → CSP, pick the policy you\'d like to share, and click Share.'
     },
     {
         img: '../../img/docs/guides/csp/share_step2_copy_link.png',
@@ -176,7 +176,7 @@ In this guide, you will create a Content Security Policy and test it using a cus
     },
     {
         img: '../../img/docs/guides/csp/test_step3_policy_form.png',
-        caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp__policies"><b>Web Security → CSP → Policies</b></a>, click <strong>Create policy</strong>, and configure it to forbid <code>eval()</code>. Click <b>Save</b>.<br/><br/>
+        caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp"><b>Web Security → CSP</b></a>, click <strong>Create policy</strong>, and configure it to forbid <code>eval()</code>. Click <b>Save</b>.<br/><br/>
             <table className="su-table">
                 <tbody>
                 <tr><td><b>Name</b></td><td><CodeBlock>CSP Test</CodeBlock></td></tr>
@@ -258,7 +258,7 @@ In this guide, you will create a Content Security Policy and collect its violati
     },
     {
         img: '../../img/docs/guides/csp/report_step3_policy_form.png',
-        caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp__policies"><b>Web Security → CSP → Policies</b></a>, click <strong>Create policy</strong>, and configure it with the <code>report-uri</code> directive pointing to the reporting responder URL. Click <b>Save</b>.<br/><br/>
+        caption: <>Navigate to <a href="https://secutils.dev/ws/web_security__csp"><b>Web Security → CSP</b></a>, click <strong>Create policy</strong>, and configure it with the <code>report-uri</code> directive pointing to the reporting responder URL. Click <b>Save</b>.<br/><br/>
             <SampleFields
                 sample={cspReportingSample}
                 entity="contentSecurityPolicies"
