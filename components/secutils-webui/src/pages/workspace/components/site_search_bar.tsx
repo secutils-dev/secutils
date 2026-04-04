@@ -8,12 +8,19 @@ import {
   useIsWithinMaxBreakpoint,
 } from '@elastic/eui';
 import type { KeyboardEvent } from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 import type { AsyncData, SearchItem, SerializedSearchItem } from '../../../model';
 import { apiFetch, deserializeSearchItem, getErrorMessage, ResponseError } from '../../../model';
 import { getUtilIcon } from '../utils';
+
+function isMacLikePlatform(): boolean {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+  return /Mac|iPhone|iPad|iPod/i.test(navigator.platform) || navigator.userAgent.includes('Mac OS');
+}
 
 function debounce(callback: (searchQuery: string) => void) {
   let timeout: number;
@@ -27,8 +34,30 @@ function debounce(callback: (searchQuery: string) => void) {
 export function SiteSearchBar() {
   const navigate = useNavigate();
   const isWithinMaxBreakpoint = useIsWithinMaxBreakpoint('s');
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const [searchItems, setSearchItems] = useState<AsyncData<EuiSelectableTemplateSitewideOption[]> | null>(null);
+  const [shortcutHint, setShortcutHint] = useState('⌘K');
+
+  useEffect(() => {
+    setShortcutHint(isMacLikePlatform() ? '⌘K' : 'Ctrl+K');
+  }, []);
+
+  useEffect(() => {
+    const onGlobalKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'k') {
+        return;
+      }
+      const t = e.target;
+      if (t instanceof Element && t.closest('.monaco-editor')) {
+        return;
+      }
+      e.preventDefault();
+      searchInputRef.current?.focus();
+    };
+    window.addEventListener('keydown', onGlobalKeyDown);
+    return () => window.removeEventListener('keydown', onGlobalKeyDown);
+  }, []);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const onKeyUpCapture = useCallback(
@@ -85,7 +114,12 @@ export function SiteSearchBar() {
       isLoading={searchItems?.status === 'pending'}
       onChange={onChange}
       options={searchItems?.status === 'succeeded' ? searchItems.data : []}
-      searchProps={{ onKeyUpCapture }}
+      searchProps={{
+        onKeyUpCapture,
+        inputRef: (node: HTMLInputElement | null) => {
+          searchInputRef.current = node;
+        },
+      }}
       popoverProps={{ width: isWithinMaxBreakpoint ? undefined : 400 }}
       popoverFooter={
         <EuiText color="subdued" size="xs">
@@ -93,7 +127,7 @@ export function SiteSearchBar() {
             <EuiFlexItem />
             <EuiFlexItem grow={false}>Quickly search using</EuiFlexItem>
             <EuiFlexItem grow={false}>
-              <EuiBadge>Command + K</EuiBadge>
+              <EuiBadge>{shortcutHint}</EuiBadge>
             </EuiFlexItem>
           </EuiFlexGroup>
         </EuiText>

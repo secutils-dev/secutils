@@ -465,15 +465,17 @@ export function TrackerRevisions({ kind, tracker, onHealthRefreshNeeded, childre
     </EuiFlexItem>
   );
   return (
-    <EuiFlexGroup direction={'column'} style={{ height: '100%' }} gutterSize={'s'}>
-      {controlPanel}
-      <EuiFlexItem>
-        <EuiPanel hasShadow={false} hasBorder={true}>
-          {history}
-        </EuiPanel>
-        {clearConfirmModal}
-        {clearLogsConfirmModal}
-      </EuiFlexItem>
-    </EuiFlexGroup>
+    <div style={{ width: 0, minWidth: '100%', overflow: 'hidden' }}>
+      <EuiFlexGroup direction={'column'} style={{ height: '100%' }} gutterSize={'s'}>
+        {controlPanel}
+        <EuiFlexItem>
+          <EuiPanel hasShadow={false} hasBorder={true}>
+            {history}
+          </EuiPanel>
+          {clearConfirmModal}
+          {clearLogsConfirmModal}
+        </EuiFlexItem>
+      </EuiFlexGroup>
+    </div>
   );
 }
