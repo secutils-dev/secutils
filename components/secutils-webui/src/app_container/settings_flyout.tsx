@@ -1,4 +1,3 @@
-import type { EuiThemeColorMode } from '@elastic/eui';
 import {
   EuiButton,
   EuiButtonEmpty,
@@ -32,6 +31,7 @@ import {
   getErrorStatus,
   getSecurityErrorMessage,
   isClientError,
+  parseUserUiThemePreference,
   USER_SETTINGS_KEY_COMMON_UI_THEME,
 } from '../model';
 import { signupWithPasskey } from '../model/webauthn';
@@ -52,7 +52,7 @@ export interface Props {
 export default function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed }: Props) {
   const { settings, setSettings, uiState, refreshUiState, addToast } = useAppContext();
 
-  const uiTheme = settings?.[USER_SETTINGS_KEY_COMMON_UI_THEME] as EuiThemeColorMode | undefined;
+  const uiTheme = parseUserUiThemePreference(settings?.[USER_SETTINGS_KEY_COMMON_UI_THEME]);
 
   const [isPasskeySupported] = useState<boolean>(isWebAuthnSupported());
 
@@ -347,10 +347,11 @@ export default function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed
           <EuiFormRow label="Theme" fullWidth>
             <EuiSelect
               options={[
+                { value: 'system', text: 'System (default)' },
                 { value: 'light', text: 'Light' },
                 { value: 'dark', text: 'Dark' },
               ]}
-              value={uiTheme ?? 'light'}
+              value={uiTheme}
               onChange={(e: ChangeEvent<HTMLSelectElement>) => {
                 setSettings({ [USER_SETTINGS_KEY_COMMON_UI_THEME]: e.target.value });
               }}

@@ -6,14 +6,16 @@ export { getUserShareId, removeUserShareId, USER_SHARE_ID_HEADER_NAME } from './
 export type { User } from './user';
 export type { Util } from './util';
 export {
+  USER_SETTINGS_DEFAULT_UI_THEME,
   USER_SETTINGS_KEY_COMMON_UI_THEME,
   USER_SETTINGS_KEY_COMMON_SIDEBAR_COLLAPSED,
   USER_SETTINGS_KEY_COMMON_GLOBAL_SCOPE_TAG_IDS,
   getUserSettings,
   setUserSettings,
   parseSidebarCollapsed,
+  parseUserUiThemePreference,
 } from './user_settings';
-export type { UserSettings, SidebarCollapsedState } from './user_settings';
+export type { UserSettings, SidebarCollapsedState, UserUiThemePreference } from './user_settings';
 export { getApiUrl, getApiRequestConfig, apiFetch } from './urls';
 export type { SerializedSearchItem, SearchItem } from './search_item';
 export { deserializeSearchItem } from './search_item';

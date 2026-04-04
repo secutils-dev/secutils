@@ -37,7 +37,7 @@ const KNOWN_USER_SETTINGS: [KnownUserSettingDescriptor; 5] = [
         setting_value_validator: |value| {
             value
                 .as_str()
-                .map(|value| value == "light" || value == "dark")
+                .map(|value| value == "light" || value == "dark" || value == "system")
                 .unwrap_or_default()
         },
     },
@@ -267,6 +267,13 @@ mod tests {
 
         let user_settings = UserSettingsSetter(
             [("common.uiTheme".to_string(), Some(json!("dark")))]
+                .into_iter()
+                .collect(),
+        );
+        assert!(user_settings.is_valid());
+
+        let user_settings = UserSettingsSetter(
+            [("common.uiTheme".to_string(), Some(json!("system")))]
                 .into_iter()
                 .collect(),
         );

@@ -11,6 +11,7 @@ import {
   getApiUrl,
   getErrorMessage,
   getUserShareId,
+  parseUserUiThemePreference,
   removeUserShareId,
   ResponseError,
   setUserSettings,
@@ -91,7 +92,8 @@ export function AppContainer() {
     [setLocalSettings],
   );
 
-  const uiTheme = settings?.[USER_SETTINGS_KEY_COMMON_UI_THEME] as EuiThemeColorMode | undefined;
+  const uiThemePreference = parseUserUiThemePreference(settings?.[USER_SETTINGS_KEY_COMMON_UI_THEME]);
+  const euiColorMode: EuiThemeColorMode | undefined = uiThemePreference === 'system' ? undefined : uiThemePreference;
   const [toasts, setToasts] = useState<PageToast[]>([]);
   const addToast = useCallback((toast: PageToast) => {
     setToasts((currentToasts) => [...currentToasts, toast]);
@@ -101,7 +103,7 @@ export function AppContainer() {
   }, []);
 
   return (
-    <EuiProvider colorMode={uiTheme}>
+    <EuiProvider colorMode={euiColorMode}>
       <AppContext.Provider value={{ uiState, refreshUiState, settings, setSettings: updateSettings, addToast }}>
         <Outlet />
       </AppContext.Provider>

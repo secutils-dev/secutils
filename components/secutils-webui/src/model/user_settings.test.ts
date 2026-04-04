@@ -2,7 +2,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ResponseError } from './errors';
-import { getUserSettings, setUserSettings } from './user_settings';
+import {
+  getUserSettings,
+  parseUserUiThemePreference,
+  setUserSettings,
+  USER_SETTINGS_DEFAULT_UI_THEME,
+} from './user_settings';
 
 let mockFetch: ReturnType<typeof vi.fn>;
 
@@ -54,6 +59,21 @@ describe('getUserSettings', () => {
     const result = await Promise.race([settingsPromise, new Promise((r) => setTimeout(() => r('timeout'), 100))]);
     expect(result).toBe('timeout');
     expect(replaceMock).toHaveBeenCalledWith('/signin');
+  });
+});
+
+describe('parseUserUiThemePreference', () => {
+  it('returns system for missing or invalid values', () => {
+    expect(parseUserUiThemePreference(undefined)).toBe(USER_SETTINGS_DEFAULT_UI_THEME);
+    expect(parseUserUiThemePreference(null)).toBe(USER_SETTINGS_DEFAULT_UI_THEME);
+    expect(parseUserUiThemePreference('')).toBe(USER_SETTINGS_DEFAULT_UI_THEME);
+    expect(parseUserUiThemePreference('auto')).toBe(USER_SETTINGS_DEFAULT_UI_THEME);
+  });
+
+  it('returns light, dark, and system when valid', () => {
+    expect(parseUserUiThemePreference('light')).toBe('light');
+    expect(parseUserUiThemePreference('dark')).toBe('dark');
+    expect(parseUserUiThemePreference('system')).toBe('system');
   });
 });
 
