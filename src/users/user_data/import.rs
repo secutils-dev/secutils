@@ -3,6 +3,7 @@ mod detect_deletions;
 mod detect_duplicates;
 mod file;
 mod importers;
+mod normalize_responder;
 mod params;
 mod resolve_name;
 mod results;
@@ -36,6 +37,7 @@ use importers::{
     responders::import_responders, scripts::import_scripts, secrets::import_secrets,
     tags::import_tags, trackers::import_trackers,
 };
+use normalize_responder::should_strip_subdomain_prefixes;
 use results::{
     ApplyDeleteItem, ApplyDeleteSummary, ImportEntitySummary, ImportPreviewSummary,
     ImportResultsSummary, ImportSettingsSummary, UserDataImportPreview, UserDataImportResult,
@@ -238,7 +240,11 @@ pub async fn generate_import_preview<DR: DnsResolver, ET: EmailTransport>(
     let existing_responder_refs: Vec<&Responder> = existing_responders.iter().collect();
     let responders_summary = ImportEntitySummary {
         total: import_responder_refs.len(),
-        conflicts: detect_responder_conflicts(&import_responder_refs, &existing_responder_refs),
+        conflicts: detect_responder_conflicts(
+            &import_responder_refs,
+            &existing_responder_refs,
+            should_strip_subdomain_prefixes(&api.config, user),
+        ),
     };
     let existing_responder_pairs: Vec<(Uuid, String)> = existing_responders
         .iter()

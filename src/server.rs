@@ -260,6 +260,10 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
                                         "/{user_handle}/{responder_path:.*}",
                                         web::route().to(handlers::webhooks_responders),
                                     )
+                                    .route(
+                                        "/{user_handle}",
+                                        web::route().to(handlers::webhooks_responders),
+                                    )
                                     .route("", web::route().to(handlers::webhooks_responders)),
                             ),
                     )

@@ -6,8 +6,11 @@ use crate::{
         user_data::{
             export::{ExportedResponder, ExportedResponderRequest},
             import::{
-                ConflictResolution, ImportEntityResult, ImportEntitySelection, remap_tag_ids,
-                resolve_name, should_skip,
+                ConflictResolution, ImportEntityResult, ImportEntitySelection,
+                normalize_responder::{
+                    should_strip_subdomain_prefixes, strip_location_subdomain_prefix,
+                },
+                remap_tag_ids, resolve_name, should_skip,
             },
         },
     },
@@ -34,6 +37,7 @@ pub async fn import_responders<DR: DnsResolver, ET: EmailTransport>(
     let existing_responders = webhooks_api.get_responders().await.unwrap_or_default();
     let mut used_names: HashSet<_> = existing_responders.iter().map(|r| r.name.clone()).collect();
     let mut deleted_ids: HashSet<Uuid> = HashSet::new();
+    let strip_prefix = should_strip_subdomain_prefixes(&api.config, user);
 
     for exported in responders {
         let resp = &exported.responder;
@@ -42,6 +46,15 @@ pub async fn import_responders<DR: DnsResolver, ET: EmailTransport>(
             result.skipped += 1;
             continue;
         }
+
+        // Compute normalized location once per responder - clone only the location,
+        // not the whole responder, and only when it carries a prefix that must be stripped.
+        let normalized_location = if strip_prefix && resp.location.subdomain_prefix.is_some() {
+            Some(strip_location_subdomain_prefix(&resp.location))
+        } else {
+            None
+        };
+        let location = normalized_location.as_ref().unwrap_or(&resp.location);
 
         let name = resolve_name(&resp.name, selection, &used_names);
         let is_overwrite =
@@ -59,7 +72,7 @@ pub async fn import_responders<DR: DnsResolver, ET: EmailTransport>(
             }
 
             // Delete any existing responder that conflicts on location+method.
-            let import_loc = resp.location.to_string();
+            let import_loc = location.to_string();
             if let Some(e) = existing_responders.iter().find(|r| {
                 !deleted_ids.contains(&r.id)
                     && r.location.to_string() == import_loc
@@ -76,7 +89,7 @@ pub async fn import_responders<DR: DnsResolver, ET: EmailTransport>(
         match webhooks_api
             .create_responder(RespondersCreateParams {
                 name: name.clone(),
-                location: resp.location.clone(),
+                location: location.clone(),
                 method: resp.method,
                 enabled: resp.enabled,
                 settings: resp.settings.clone(),

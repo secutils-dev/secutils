@@ -88,6 +88,8 @@ pub async fn webhooks_responders(
     // Extract the responder path either from path or from the request headers.
     let mut responder_path = if let Some(responder_path) = path_params.responder_path {
         format!("/{responder_path}")
+    } else if path_params.user_handle.is_some() {
+        "/".to_string()
     } else {
         let replaced_path = request
             .headers()
