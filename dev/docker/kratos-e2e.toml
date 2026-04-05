@@ -1,6 +1,6 @@
 # Kratos configuration for e2e testing (all services running inside Docker).
 # See the full config at https://www.ory.sh/docs/kratos/reference/configuration
-version = "v25.4.0"
+version = "v26.2.0"
 
 dsn = "postgres://postgres@secutils_db:5432/secutils?sslmode=disable&max_conns=20&max_idle_conns=4&search_path=kratos,public"
 
