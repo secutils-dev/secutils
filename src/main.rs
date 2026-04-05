@@ -23,6 +23,10 @@ use clap::{Arg, Command, crate_authors, crate_description, crate_version, value_
 use std::env;
 use tracing::info;
 
+#[cfg(target_os = "linux")]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 fn main() -> Result<(), anyhow::Error> {
     dotenvy::dotenv().ok();
 

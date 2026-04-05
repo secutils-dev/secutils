@@ -80,6 +80,9 @@ zip = { version = "8.4.0", default-features = false }
 zstd = "0.13.3"
 argon2 = "0.5.3"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+tikv-jemallocator = "0.6.1"
+
 [dev-dependencies]
 ctor = "0.6.3"
 httpmock = "0.8.3"

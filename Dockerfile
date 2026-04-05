@@ -3,7 +3,7 @@
 FROM rust:1.93-slim-trixie@sha256:c0a38f5662afdb298898da1d70b909af4bda4e0acff2dc52aea6360a9b9c6956 AS server_builder
 
 ARG TARGETARCH
-ARG UPX_VERSION=5.1.0
+ARG UPX_VERSION=5.1.1
 
 ## Statically link binary to OpenSSL libraries.
 ENV OPENSSL_STATIC=yes
