@@ -6,6 +6,13 @@ use url::Url;
 pub struct RetrackConfig {
     /// The URL to access the Retrack service.
     pub host: Url,
+    /// Maximum allowed JSON body size (in bytes) for the Retrack webhook route.
+    #[serde(default = "default_max_webhook_body_size")]
+    pub max_webhook_body_size: usize,
+}
+
+fn default_max_webhook_body_size() -> usize {
+    10 * 1024 * 1024
 }
 
 impl Default for RetrackConfig {
@@ -13,6 +20,7 @@ impl Default for RetrackConfig {
         Self {
             host: Url::parse("http://localhost:7676")
                 .expect("Cannot parse Retrack host parameter."),
+            max_webhook_body_size: default_max_webhook_body_size(),
         }
     }
 }
@@ -43,6 +51,7 @@ mod tests {
                 query: None,
                 fragment: None,
             },
+            max_webhook_body_size: 10485760,
         }
         "###);
     }
@@ -59,6 +68,25 @@ mod tests {
             config,
             RetrackConfig {
                 host: url::Url::parse("http://localhost:8686").unwrap(),
+                max_webhook_body_size: 10 * 1024 * 1024,
+            }
+        );
+    }
+
+    #[test]
+    fn deserialization_with_custom_body_size() {
+        let config: RetrackConfig = toml::from_str(
+            r#"
+        host = 'http://localhost:8686/'
+        max_webhook_body_size = 52428800
+    "#,
+        )
+        .unwrap();
+        assert_eq!(
+            config,
+            RetrackConfig {
+                host: url::Url::parse("http://localhost:8686").unwrap(),
+                max_webhook_body_size: 50 * 1024 * 1024,
             }
         );
     }

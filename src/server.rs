@@ -109,6 +109,7 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
     JsRuntime::init_platform();
 
     let max_responder_body_size = config.utils.max_responder_body_size;
+    let max_retrack_webhook_body_size = config.retrack.max_webhook_body_size;
     let max_import_file_size = config.platform.max_import_file_size;
     let session_cookie_name = config.security.session_cookie_name.clone();
     let state = web::Data::new(AppState::new(config, api.clone()));
@@ -249,7 +250,14 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
                 web::scope("/api")
                     .service(
                         web::scope("/webhooks")
-                            .route("/retrack", web::post().to(handlers::webhooks_retrack))
+                            .service(
+                                web::scope("/retrack")
+                                    .app_data(
+                                        web::JsonConfig::default()
+                                            .limit(max_retrack_webhook_body_size),
+                                    )
+                                    .route("", web::post().to(handlers::webhooks_retrack)),
+                            )
                             .service(
                                 web::scope("")
                                     .app_data(

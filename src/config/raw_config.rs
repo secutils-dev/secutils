@@ -236,6 +236,7 @@ mod tests {
 
         [retrack]
         host = 'http://localhost:7676/'
+        max_webhook_body_size = 10485760
 
         [platform]
         max_import_file_size = 10485760
@@ -672,6 +673,7 @@ mod tests {
                     query: None,
                     fragment: None,
                 },
+                max_webhook_body_size: 10485760,
             },
             platform: PlatformConfig {
                 max_import_file_size: 10485760,

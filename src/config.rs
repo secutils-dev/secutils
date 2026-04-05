@@ -400,6 +400,7 @@ mod tests {
                     query: None,
                     fragment: None,
                 },
+                max_webhook_body_size: 10485760,
             },
             platform: PlatformConfig {
                 max_import_file_size: 10485760,
