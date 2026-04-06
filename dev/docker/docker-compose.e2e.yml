@@ -33,6 +33,7 @@ services:
     ports:
       - "7070:7070"
     environment:
+      - RUST_LOG=debug,tokio_postgres=warn,tantivy=warn
       - SECUTILS_CONFIG=/etc/config/secutils/secutils.toml
       - SECUTILS_SECURITY__JWT_SECRET=65b033522af6769e89ee9017e1caf0a4
       - SECUTILS_SMTP__ADDRESS=${SECUTILS_SMTP__ADDRESS:-localhost}
