@@ -108,6 +108,7 @@ default = [
     "lettre/smtp-transport",
     "lettre/tokio1-rustls-tls",
     "postcard/use-std",
+    "reqwest/gzip",
     "reqwest/json",
     "reqwest-middleware/json",
     "reqwest-retry/tracing",

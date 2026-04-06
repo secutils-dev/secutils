@@ -25,7 +25,7 @@ pub trait PublicUrlValidator: Send + Sync {
 /// Each script execution creates its own `ProxyState` (and thus its own
 /// `reqwest::Client` instances).  This is critical because each script runs on
 /// a dedicated `CurrentThread` tokio runtime that is dropped when the script
-/// finishes.  A static/shared `reqwest::Client` would keep pooled connections
+/// finishes. A static/shared `reqwest::Client` would keep pooled connections
 /// whose hyper background tasks are bound to the *previous* runtime, causing
 /// "dispatch task is gone" errors on the next invocation.
 #[derive(Clone)]
@@ -64,7 +64,8 @@ impl ProxyState {
         cell.get_or_init(|| {
             let mut builder = reqwest::Client::builder()
                 .redirect(RedirectPolicy::none())
-                .http1_only();
+                .http1_only()
+                .no_gzip();
             if insecure {
                 builder = builder.danger_accept_invalid_certs(true);
             }

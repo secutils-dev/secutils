@@ -133,6 +133,42 @@ pub mod tests {
 
     pub use super::dns_resolver::tests::*;
 
+    /// Gzip-compresses the given bytes.
+    fn gzip_encode(data: &[u8]) -> Vec<u8> {
+        use flate2::{Compression, write::GzEncoder};
+        use std::io::Write;
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+        encoder.write_all(data).unwrap();
+        encoder.finish().unwrap()
+    }
+
+    #[tokio::test]
+    async fn http_client_negotiates_gzip_compression() -> anyhow::Result<()> {
+        let server = httpmock::MockServer::start();
+        let body = serde_json::json!({"message": "hello from gzip"});
+        let body_bytes = serde_json::to_vec(&body)?;
+        let compressed = gzip_encode(&body_bytes);
+
+        let mock = server.mock(|when, then| {
+            when.method(httpmock::Method::GET)
+                .path("/gzip-test")
+                .header_exists("accept-encoding");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .header("Content-Encoding", "gzip")
+                .body(compressed);
+        });
+
+        let client = Client::builder().build()?;
+        let response = client.get(server.url("/gzip-test")).send().await?;
+        let json: serde_json::Value = response.json().await?;
+
+        mock.assert();
+        assert_eq!(json, body);
+
+        Ok(())
+    }
+
     #[tokio::test]
     async fn correctly_checks_public_web_urls() -> anyhow::Result<()> {
         let public_network = Network::new(
