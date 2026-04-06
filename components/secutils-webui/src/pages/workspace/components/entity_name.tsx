@@ -1,4 +1,4 @@
-import { EuiBadge, EuiLink, EuiText, useEuiTheme } from '@elastic/eui';
+import { EuiBadge, EuiLink, EuiText, EuiToolTip, useEuiTheme } from '@elastic/eui';
 import type { ReactNode } from 'react';
 
 import type { EntityTag } from '../../../model';
@@ -51,9 +51,19 @@ export function EntityName({ name, href, disabled, icons, tags }: EntityNameProp
         ) : null}
       </span>
       {tags?.map((tag) => (
-        <EuiBadge key={tag.id} color={tag.color} style={{ opacity: disabled ? 0.5 : undefined }}>
-          {tag.name}
-        </EuiBadge>
+        <EuiToolTip key={tag.id} content={tag.name}>
+          <EuiBadge
+            color={tag.color}
+            isDisabled={disabled}
+            style={{
+              maxWidth: 120,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {tag.name}
+          </EuiBadge>
+        </EuiToolTip>
       ))}
     </div>
   );
