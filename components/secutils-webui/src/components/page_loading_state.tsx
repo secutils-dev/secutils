@@ -11,7 +11,7 @@ export function PageLoadingState({ title = 'Loading…' }: PageLoadingStateProps
     <EuiFlexGroup
       direction={'column'}
       gutterSize={'s'}
-      style={{ height: '100%' }}
+      style={{ minHeight: '100%' }}
       alignItems="center"
       justifyContent="center"
     >

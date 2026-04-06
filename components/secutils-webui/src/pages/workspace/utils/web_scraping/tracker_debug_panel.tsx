@@ -2,11 +2,9 @@ import {
   EuiBadge,
   EuiCallOut,
   EuiCodeBlock,
-  EuiEmptyPrompt,
   EuiFlexGroup,
   EuiFlexItem,
   EuiImage,
-  EuiLoadingLogo,
   EuiModal,
   EuiModalBody,
   EuiModalHeader,
@@ -29,7 +27,7 @@ import type {
   ScriptDebugInfo,
 } from './tracker_debug_types';
 import { buildPipelineStages } from './tracker_debug_types';
-import { Logo } from '../../../../components';
+import { PageLoadingState } from '../../../../components';
 import { type AsyncData, getApiRequestConfig, getErrorMessage, ResponseError } from '../../../../model';
 
 export interface TrackerDebugPanelProps {
@@ -609,20 +607,7 @@ export function TrackerDebugPanel({ isOpen, onClose, onStatusChange, buildDebugR
         <EuiModalHeaderTitle>Debug</EuiModalHeaderTitle>
       </EuiModalHeader>
       {result?.status === 'pending' ? (
-        <div
-          css={css`
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          `}
-        >
-          <EuiEmptyPrompt
-            icon={<EuiLoadingLogo logo={() => <Logo size={40} />} size="l" />}
-            titleSize="xs"
-            title={<h2>Running debug pipeline…</h2>}
-          />
-        </div>
+        <PageLoadingState title="Running debug pipeline…" />
       ) : (
         <EuiModalBody style={{ minHeight: 0 }}>
           {result?.status === 'failed' ? (

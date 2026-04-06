@@ -14,7 +14,6 @@ import {
   EuiFlexItem,
   EuiIcon,
   EuiInMemoryTable,
-  EuiLoadingSpinner,
   EuiModal,
   EuiModalBody,
   EuiModalFooter,
@@ -27,6 +26,7 @@ import {
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { PageLoadingState } from '../components';
 import type {
   ApplyDeletionSelections,
   ImportEntitySelection,
@@ -1020,17 +1020,7 @@ export default function ImportDataModal({ addToast, onClose, maxImportFileSize, 
           {step === 'upload' ? 'Import data' : step === 'preview' ? 'Review import' : 'Import results'}
         </EuiModalHeaderTitle>
       </EuiModalHeader>
-      <EuiModalBody>
-        {loading ? (
-          <EuiFlexGroup justifyContent="center">
-            <EuiFlexItem grow={false}>
-              <EuiLoadingSpinner size="l" />
-            </EuiFlexItem>
-          </EuiFlexGroup>
-        ) : (
-          content
-        )}
-      </EuiModalBody>
+      {loading ? <PageLoadingState /> : <EuiModalBody>{content}</EuiModalBody>}
       <EuiModalFooter>
         {step === 'upload' && (
           <>

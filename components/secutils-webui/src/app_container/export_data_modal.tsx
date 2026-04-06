@@ -11,7 +11,6 @@ import {
   EuiFlexItem,
   EuiIcon,
   EuiInMemoryTable,
-  EuiLoadingSpinner,
   EuiModal,
   EuiModalBody,
   EuiModalFooter,
@@ -24,6 +23,7 @@ import {
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { PageLoadingState } from '../components';
 import { getUserScripts, getUserSecrets } from '../model';
 import type { ExportParams } from '../model/user_data_export';
 import {
@@ -538,14 +538,10 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
       <EuiModalHeader>
         <EuiModalHeaderTitle>Export data</EuiModalHeaderTitle>
       </EuiModalHeader>
-      <EuiModalBody>
-        {loading ? (
-          <EuiFlexGroup justifyContent="center">
-            <EuiFlexItem grow={false}>
-              <EuiLoadingSpinner size="l" />
-            </EuiFlexItem>
-          </EuiFlexGroup>
-        ) : (
+      {loading ? (
+        <PageLoadingState />
+      ) : (
+        <EuiModalBody>
           <EuiBasicTable
             items={visibleRows}
             responsiveBreakpoint={false}
@@ -553,8 +549,8 @@ export default function ExportDataModal({ addToast, onClose }: Props) {
             columns={outerColumns}
             itemIdToExpandedRowMap={expandedRows}
           />
-        )}
-      </EuiModalBody>
+        </EuiModalBody>
+      )}
       <EuiModalFooter>
         <EuiButtonEmpty onClick={onClose}>Cancel</EuiButtonEmpty>
         <EuiButton
