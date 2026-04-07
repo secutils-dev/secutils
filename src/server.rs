@@ -9,7 +9,6 @@ mod ui_state;
 pub use self::app_state::tests;
 pub use self::ui_state::{
     DatabaseStatus, Status, StatusLevel, SubscriptionState, UiPlatformState, UiState,
-    WebhookUrlType,
 };
 
 use crate::{
@@ -263,14 +262,6 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
                                     .app_data(
                                         web::PayloadConfig::default()
                                             .limit(max_responder_body_size),
-                                    )
-                                    .route(
-                                        "/{user_handle}/{responder_path:.*}",
-                                        web::route().to(handlers::webhooks_responders),
-                                    )
-                                    .route(
-                                        "/{user_handle}",
-                                        web::route().to(handlers::webhooks_responders),
                                     )
                                     .route("", web::route().to(handlers::webhooks_responders)),
                             ),

@@ -122,7 +122,6 @@ mod tests {
         [subscriptions.basic.webhooks]
         responders = 100
         responder_requests = 30
-        responder_custom_subdomain_prefix = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
         restrict_to_public_urls = true
@@ -148,7 +147,6 @@ mod tests {
         [subscriptions.standard.webhooks]
         responders = 100
         responder_requests = 30
-        responder_custom_subdomain_prefix = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
         restrict_to_public_urls = true
@@ -174,7 +172,6 @@ mod tests {
         [subscriptions.professional.webhooks]
         responders = 100
         responder_requests = 30
-        responder_custom_subdomain_prefix = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
         restrict_to_public_urls = true
@@ -200,7 +197,6 @@ mod tests {
         [subscriptions.ultimate.webhooks]
         responders = 100
         responder_requests = 30
-        responder_custom_subdomain_prefix = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
         restrict_to_public_urls = true
@@ -225,7 +221,6 @@ mod tests {
         max_scripts = 100
 
         [utils]
-        webhook_url_type = 'subdomain'
         diff_context_radius = 3
         max_responder_body_size = 10485760
         [http.client]
@@ -287,7 +282,6 @@ mod tests {
         [subscriptions.basic.webhooks]
         responders = 1
         responder_requests = 11
-        responder_custom_subdomain_prefix = false
         js_runtime_heap_size = 10
         js_runtime_script_execution_time = 20
 
@@ -308,7 +302,6 @@ mod tests {
         [subscriptions.standard.webhooks]
         responders = 2
         responder_requests = 22
-        responder_custom_subdomain_prefix = true
         js_runtime_heap_size = 30
         js_runtime_script_execution_time = 40
 
@@ -329,7 +322,6 @@ mod tests {
         [subscriptions.professional.webhooks]
         responders = 3
         responder_requests = 33
-        responder_custom_subdomain_prefix = true
         js_runtime_heap_size = 50
         js_runtime_script_execution_time = 60
 
@@ -350,7 +342,6 @@ mod tests {
         [subscriptions.ultimate.webhooks]
         responders = 4
         responder_requests = 44
-        responder_custom_subdomain_prefix = true
         js_runtime_heap_size = 70
         js_runtime_script_execution_time = 80
 
@@ -368,7 +359,6 @@ mod tests {
         templates = 44
 
         [utils]
-        webhook_url_type = 'subdomain'
         diff_context_radius = 3
     "#,
         )
@@ -488,7 +478,6 @@ mod tests {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 1,
                         responder_requests: 11,
-                        responder_custom_subdomain_prefix: false,
                         js_runtime_heap_size: 10,
                         js_runtime_script_execution_time: 20ms,
                         restrict_to_public_urls: true,
@@ -528,7 +517,6 @@ mod tests {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 2,
                         responder_requests: 22,
-                        responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 30,
                         js_runtime_script_execution_time: 40ms,
                         restrict_to_public_urls: true,
@@ -568,7 +556,6 @@ mod tests {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 3,
                         responder_requests: 33,
-                        responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 50,
                         js_runtime_script_execution_time: 60ms,
                         restrict_to_public_urls: true,
@@ -608,7 +595,6 @@ mod tests {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 4,
                         responder_requests: 44,
-                        responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 70,
                         js_runtime_script_execution_time: 80ms,
                         restrict_to_public_urls: true,
@@ -642,7 +628,6 @@ mod tests {
                 },
             },
             utils: UtilsConfig {
-                webhook_url_type: Subdomain,
                 diff_context_radius: 3,
                 max_responder_body_size: 10485760,
             },

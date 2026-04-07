@@ -83,15 +83,6 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
         path: &str,
         method: ResponderMethod,
     ) -> anyhow::Result<Option<Responder>> {
-        if subdomain_prefix.is_some() {
-            let features = self.user.subscription.get_features(&self.api.config);
-            if !features.config.webhooks.responder_custom_subdomain_prefix {
-                bail!(SecutilsError::client(
-                    "Responder subdomain prefixes are not allowed."
-                ));
-            }
-        }
-
         self.api
             .db
             .webhooks()
@@ -354,12 +345,6 @@ impl<'a, 'u, DR: DnsResolver, ET: EmailTransport> WebhooksApiExt<'a, 'u, DR, ET>
 
         let features = self.user.subscription.get_features(&self.api.config);
         if let Some(ref subdomain_prefix) = responder.location.subdomain_prefix {
-            if !features.config.webhooks.responder_custom_subdomain_prefix {
-                bail!(SecutilsError::client(
-                    "Responder subdomain prefixes are not allowed."
-                ));
-            }
-
             let Some(public_host) = self.api.config.public_url.host_str() else {
                 bail!(SecutilsError::client(
                     "Public URL doesn't have a host, cannot validate responder subdomain prefix."

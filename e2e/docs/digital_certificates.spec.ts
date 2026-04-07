@@ -371,7 +371,7 @@ test.describe('Certificate templates guide screenshots', () => {
     await page.screenshot({ path: join(CERT_TEMPLATES_IMG_DIR, 'jwk_step6_responder_created.png') });
 
     // Step 7: Open the responder URL, upload the .p8 file, and view the JWK.
-    const responderLink = responderRow.getByRole('link', { name: /\/api\/webhooks\/u\// });
+    const responderLink = responderRow.getByRole('link', { name: /\.webhooks\./ });
     await expect(responderLink).toBeVisible();
     const responderUrl = await responderLink.getAttribute('href');
     const cryptoPage = await page.context().newPage();

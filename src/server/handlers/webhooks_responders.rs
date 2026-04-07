@@ -49,48 +49,32 @@ struct ResponderInfo<'a> {
     max_proxy_request_timeout: std::time::Duration,
 }
 
-#[derive(Deserialize)]
-pub struct PathParams {
-    pub user_handle: Option<String>,
-    pub responder_path: Option<String>,
-}
-
 pub async fn webhooks_responders(
     state: web::Data<AppState>,
     request: HttpRequest,
     payload: Bytes,
-    path_params: web::Path<PathParams>,
 ) -> Result<HttpResponse, SecutilsError> {
-    let path_params = path_params.into_inner();
-
-    // Remember the host from the request, if we need to extract subdomain and user handle from it.
+    // Extract user handle and subdomain prefix from the request host (set by reverse proxy
+    // via X-Forwarded-Host header, e.g. "handle.webhooks.localhost").
     let request_host = {
         let connection_info = request.connection_info();
         connection_info.host().to_string()
     };
 
-    // Extract user handle either from path or from the request headers.
-    let (user_handle, subdomain_prefix) = if let Some(user_handle) = &path_params.user_handle {
-        (user_handle.as_str(), None)
-    } else {
-        match parse_webhook_host(&state.config, &request_host) {
-            Ok((user_handle, subdomain_prefix)) => (user_handle, subdomain_prefix),
-            Err(err) => {
-                error!(
-                    "Failed to extract user handle and subdomain prefix from the request host ({:?}): {err:?}",
-                    request_host
-                );
-                return Ok(HttpResponse::NotFound().finish());
-            }
+    let (user_handle, subdomain_prefix) = match parse_webhook_host(&state.config, &request_host) {
+        Ok((user_handle, subdomain_prefix)) => (user_handle, subdomain_prefix),
+        Err(err) => {
+            error!(
+                "Failed to extract user handle and subdomain prefix from the request host ({:?}): {err:?}",
+                request_host
+            );
+            return Ok(HttpResponse::NotFound().finish());
         }
     };
 
-    // Extract the responder path either from path or from the request headers.
-    let mut responder_path = if let Some(responder_path) = path_params.responder_path {
-        format!("/{responder_path}")
-    } else if path_params.user_handle.is_some() {
-        "/".to_string()
-    } else {
+    // Extract the responder path from the X-Replaced-Path header (set by the reverse proxy,
+    // which rewrites the original request path to /api/webhooks).
+    let mut responder_path = {
         let replaced_path = request
             .headers()
             .get(X_REPLACED_PATH_HEADER_NAME)
@@ -132,15 +116,9 @@ pub async fn webhooks_responders(
         responder_path.pop();
     }
 
-    // Extract the raw (percent-encoded) responder path from the URI for scripts that need
-    // to preserve encoding (e.g., base64 document IDs containing `/`, `+`, `=`).
-    let raw_uri_path = request.uri().path();
-    let raw_responder_path = {
-        let prefix = format!("/api/webhooks/{user_handle}");
-        raw_uri_path
-            .strip_prefix(prefix.as_str())
-            .unwrap_or(&responder_path)
-    };
+    // The raw (percent-encoded) responder path is the same as the X-Replaced-Path header value,
+    // since the reverse proxy preserves the original URI encoding.
+    let raw_responder_path = &responder_path;
 
     let responder_method = match request.method().try_into() {
         Ok(responder_method) => responder_method,
@@ -641,6 +619,11 @@ pub fn parse_webhook_host<'s>(
         ));
     };
 
+    // Strip port if present (e.g. "handle.webhooks.localhost:7171" → "handle.webhooks.localhost").
+    let webhook_host = webhook_host
+        .rsplit_once(':')
+        .map_or(webhook_host, |(host, _port)| host);
+
     // First remove the public URL host from the request host to keep only user-specific part.
     let Some(webhook_subdomain) = webhook_host.strip_suffix(&format!(".webhooks.{public_host}"))
     else {
@@ -662,7 +645,6 @@ pub fn parse_webhook_host<'s>(
 mod tests {
     use super::{parse_webhook_host, webhooks_responders};
     use crate::{
-        server::handlers::webhooks_responders::PathParams,
         tests::{mock_app_state, mock_config, mock_user},
         users::SecretsAccess,
         utils::webhooks::{
@@ -670,14 +652,7 @@ mod tests {
             tests::{RespondersCreateParams, RespondersUpdateParams},
         },
     };
-    use actix_web::{
-        FromRequest,
-        body::MessageBody,
-        dev::Payload,
-        http::{Method, StatusCode},
-        test::TestRequest,
-        web,
-    };
+    use actix_web::{body::MessageBody, http::StatusCode, test::TestRequest, web};
     use bytes::Bytes;
     use insta::assert_debug_snapshot;
     use serde_json::json;
@@ -685,176 +660,7 @@ mod tests {
     use std::{borrow::Cow, default::Default};
 
     #[sqlx::test]
-    async fn can_handle_request_with_path_url_type(pool: PgPool) -> anyhow::Result<()> {
-        let app_state = mock_app_state(pool).await?;
-
-        // Insert user into the database.
-        let user = mock_user()?;
-        app_state.api.db.upsert_user(&user).await?;
-
-        // Insert responders data.
-        let responder = app_state
-            .api
-            .webhooks(&user)
-            .create_responder(RespondersCreateParams {
-                name: "name_one".to_string(),
-                location: ResponderLocation {
-                    path_type: ResponderPathType::Exact,
-                    path: "/one/two".to_string(),
-                    subdomain_prefix: None,
-                },
-                method: ResponderMethod::Any,
-                enabled: true,
-                settings: ResponderSettings {
-                    requests_to_track: 3,
-                    status_code: 200,
-                    body: Some("body".to_string()),
-                    headers: Some(vec![("key".to_string(), "value".to_string())]),
-                    script: None,
-                    secrets: SecretsAccess::None,
-                },
-                tag_ids: vec![],
-            })
-            .await?;
-
-        let request = TestRequest::with_uri(
-            "https://secutils.dev/api/webhooks/devhandle00000000000000000000000000000001/one/two?query=value",
-        )
-        .method(Method::PUT)
-        .insert_header(("x-key", "x-value"))
-        .insert_header(("x-key-2", "x-value-2"))
-        .param("user_handle", "devhandle00000000000000000000000000000001")
-        .param("responder_path", "one/two")
-        .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
-        let app_state = web::Data::new(app_state);
-        let response = webhooks_responders(
-            app_state.clone(),
-            request,
-            Bytes::from_static(b"incoming-body"),
-            path,
-        )
-        .await
-        .unwrap();
-        assert_debug_snapshot!(response, @r###"
-        HttpResponse {
-            error: None,
-            res: 
-            Response HTTP/1.1 200 OK
-              headers:
-                "key": "value"
-              body: Sized(4)
-            ,
-        }
-        "###);
-
-        let body = response.into_body().try_into_bytes().unwrap();
-        assert_eq!(body, Bytes::from_static(b"body"));
-
-        let mut responder_requests = app_state
-            .api
-            .webhooks(&user)
-            .get_responder_requests(responder.id)
-            .await?;
-        assert_eq!(responder_requests.len(), 1);
-        assert_eq!(responder_requests[0].method, "PUT");
-
-        let headers = responder_requests[0].headers.as_mut().unwrap();
-        headers.sort_by(|(name1, _), (name2, _)| name1.cmp(name2));
-        assert_eq!(
-            headers,
-            [
-                (
-                    Cow::Borrowed("x-key"),
-                    Cow::Borrowed([120, 45, 118, 97, 108, 117, 101].as_ref())
-                ),
-                (
-                    Cow::Borrowed("x-key-2"),
-                    Cow::Borrowed([120, 45, 118, 97, 108, 117, 101, 45, 50].as_ref())
-                ),
-            ]
-            .as_ref()
-        );
-        assert_eq!(
-            responder_requests[0].body,
-            Some(Cow::Borrowed(
-                [105, 110, 99, 111, 109, 105, 110, 103, 45, 98, 111, 100, 121].as_ref()
-            ))
-        );
-        assert_eq!(
-            responder_requests[0].url,
-            Cow::Borrowed("/one/two?query=value")
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn preserves_percent_encoding_in_tracked_path(pool: PgPool) -> anyhow::Result<()> {
-        let app_state = mock_app_state(pool).await?;
-        let user = mock_user()?;
-        app_state.api.db.upsert_user(&user).await?;
-
-        let responder = app_state
-            .api
-            .webhooks(&user)
-            .create_responder(RespondersCreateParams {
-                name: "name_one".to_string(),
-                location: ResponderLocation {
-                    path_type: ResponderPathType::Prefix,
-                    path: "/service".to_string(),
-                    subdomain_prefix: None,
-                },
-                method: ResponderMethod::Any,
-                enabled: true,
-                settings: ResponderSettings {
-                    requests_to_track: 3,
-                    status_code: 200,
-                    body: None,
-                    headers: None,
-                    script: None,
-                    secrets: SecretsAccess::None,
-                },
-                tag_ids: vec![],
-            })
-            .await?;
-
-        // Simulate a request with percent-encoded characters in the path (base64 doc ID).
-        let request = TestRequest::with_uri(
-            "https://secutils.dev/api/webhooks/devhandle00000000000000000000000000000001/service/.doc/_create/Ln%2BtX6SI%2F3Vw%3D",
-        )
-        .method(Method::PUT)
-        .param("user_handle", "devhandle00000000000000000000000000000001")
-        .param("responder_path", "service/.doc/_create/Ln+tX6SI/3Vw=")
-        .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
-        let app_state = web::Data::new(app_state);
-        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let requests = app_state
-            .api
-            .webhooks(&user)
-            .get_responder_requests(responder.id)
-            .await?;
-        assert_eq!(requests.len(), 1);
-        // The tracked URL must preserve percent-encoding from the original URI.
-        assert_eq!(
-            requests[0].url,
-            Cow::Borrowed("/service/.doc/_create/Ln%2BtX6SI%2F3Vw%3D")
-        );
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn can_handle_request_with_subdomain_url_type(pool: PgPool) -> anyhow::Result<()> {
+    async fn can_handle_request(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
         // Insert user into the database.
@@ -891,11 +697,8 @@ mod tests {
                 .insert_header(("x-replaced-path", "/one/two"))
                 .insert_header(("x-forwarded-host", "devhandle00000000000000000000000000000001.webhooks.secutils.dev"))
                 .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
         let app_state = web::Data::new(app_state);
-        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new())
             .await
             .unwrap();
         assert_debug_snapshot!(response, @r###"
@@ -928,9 +731,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn can_handle_request_with_subdomain_url_type_for_root_path(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
+    async fn can_handle_request_for_root_path(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
         // Insert user into the database.
@@ -971,11 +772,8 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
         let app_state = web::Data::new(app_state);
-        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new())
             .await
             .unwrap();
         assert_debug_snapshot!(response, @r###"
@@ -1004,9 +802,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn can_handle_request_with_subdomain_url_type_and_custom_subdomain(
-        pool: PgPool,
-    ) -> anyhow::Result<()> {
+    async fn can_handle_request_with_custom_subdomain(pool: PgPool) -> anyhow::Result<()> {
         let app_state = mock_app_state(pool).await?;
 
         // Insert user into the database.
@@ -1066,11 +862,8 @@ mod tests {
                 .insert_header(("x-replaced-path", "/one/two"))
                 .insert_header(("x-forwarded-host", "abc-devhandle00000000000000000000000000000001.webhooks.secutils.dev"))
                 .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
         let app_state = web::Data::new(app_state);
-        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new())
             .await
             .unwrap();
         assert_debug_snapshot!(response, @r###"
@@ -1104,10 +897,7 @@ mod tests {
                 .insert_header(("x-replaced-path", "/one/two"))
                 .insert_header(("x-forwarded-host", "cba-devhandle00000000000000000000000000000001.webhooks.secutils.dev"))
                 .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
-        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new())
             .await
             .unwrap();
         assert_debug_snapshot!(response, @r###"
@@ -1182,15 +972,11 @@ mod tests {
                 .insert_header(("x-forwarded-host", "devhandle00000000000000000000000000000001.webhooks.secutils.dev"))
                 .peer_addr("127.0.0.1:8080".parse()?)
                 .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
         let app_state = web::Data::new(app_state);
         let response = webhooks_responders(
             app_state.clone(),
             request,
             Bytes::from_static(b"incoming-body"),
-            path,
         )
         .await
         .unwrap();
@@ -1278,10 +1064,7 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
-        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new())
             .await
             .unwrap();
 
@@ -1307,16 +1090,9 @@ mod tests {
         let app_state = web::Data::new(app_state);
 
         // 1. Non-existent user handle.
-        let response = webhooks_responders(
-            app_state.clone(),
-            request.clone(),
-            Bytes::new(),
-            web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-                .await
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        let response = webhooks_responders(app_state.clone(), request.clone(), Bytes::new())
+            .await
+            .unwrap();
         assert_debug_snapshot!(response, @r###"
         HttpResponse {
             error: None,
@@ -1332,16 +1108,9 @@ mod tests {
         app_state.api.db.upsert_user(&user).await?;
 
         // 2. Non-existent responder.
-        let response = webhooks_responders(
-            app_state.clone(),
-            request.clone(),
-            Bytes::new(),
-            web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-                .await
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        let response = webhooks_responders(app_state.clone(), request.clone(), Bytes::new())
+            .await
+            .unwrap();
         assert_debug_snapshot!(response, @r###"
         HttpResponse {
             error: None,
@@ -1379,16 +1148,9 @@ mod tests {
             .await?;
 
         // 3. Inactive responder.
-        let response = webhooks_responders(
-            app_state.clone(),
-            request.clone(),
-            Bytes::new(),
-            web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-                .await
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        let response = webhooks_responders(app_state.clone(), request.clone(), Bytes::new())
+            .await
+            .unwrap();
         assert_debug_snapshot!(response, @r###"
         HttpResponse {
             error: None,
@@ -1419,16 +1181,9 @@ mod tests {
             .await?;
 
         // 4. Active responder.
-        let response = webhooks_responders(
-            app_state.clone(),
-            request.clone(),
-            Bytes::new(),
-            web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-                .await
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        let response = webhooks_responders(app_state.clone(), request.clone(), Bytes::new())
+            .await
+            .unwrap();
         assert_debug_snapshot!(response, @r###"
         HttpResponse {
             error: None,
@@ -1524,11 +1279,8 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
         let app_state = web::Data::new(app_state);
-        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new())
             .await
             .unwrap();
         assert_eq!(
@@ -1588,10 +1340,7 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
-        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new())
             .await
             .unwrap();
         assert_eq!(
@@ -1645,10 +1394,7 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
-        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new())
             .await
             .unwrap();
         assert_eq!(response.status(), actix_web::http::StatusCode::BAD_GATEWAY);
@@ -1706,10 +1452,7 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
-        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new())
             .await
             .unwrap();
         assert_eq!(response.status(), actix_web::http::StatusCode::BAD_GATEWAY);
@@ -1761,10 +1504,7 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
-        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new())
             .await
             .unwrap();
         assert_eq!(response.status(), actix_web::http::StatusCode::BAD_GATEWAY);
@@ -1816,10 +1556,7 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
-        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new())
             .await
             .unwrap();
         assert_eq!(
@@ -1882,10 +1619,7 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
-        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new())
             .await
             .unwrap();
         assert_eq!(
@@ -1959,10 +1693,7 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
-        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new())
             .await
             .unwrap();
         assert_eq!(
@@ -2027,10 +1758,7 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
-        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new())
             .await
             .unwrap();
         assert_eq!(response.status(), actix_web::http::StatusCode::OK);
@@ -2081,10 +1809,7 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
-        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new())
             .await
             .unwrap();
         assert_debug_snapshot!(response, @r###"
@@ -2145,10 +1870,7 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
-        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new(), path)
+        let response = webhooks_responders(web::Data::new(app_state), request, Bytes::new())
             .await
             .unwrap();
         // Script overrides status code to 202 but doesn't override headers/body, so defaults apply.
@@ -2212,11 +1934,8 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
         let app_state = web::Data::new(app_state);
-        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new())
             .await
             .unwrap();
         assert_debug_snapshot!(response, @r###"
@@ -2280,11 +1999,8 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
         let app_state = web::Data::new(app_state);
-        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -2339,11 +2055,8 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
         let app_state = web::Data::new(app_state);
-        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -2400,11 +2113,8 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
         let app_state = web::Data::new(app_state);
-        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
@@ -2465,11 +2175,8 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
         let app_state = web::Data::new(app_state);
-        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::CREATED);
@@ -2534,11 +2241,8 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
         let app_state = web::Data::new(app_state);
-        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -2602,11 +2306,8 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
         let app_state = web::Data::new(app_state);
-        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
@@ -2661,11 +2362,8 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
         let app_state = web::Data::new(app_state);
-        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
@@ -2726,11 +2424,8 @@ mod tests {
             "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
         ))
         .to_http_request();
-        let path = web::Path::<PathParams>::from_request(&request, &mut Payload::None)
-            .await
-            .unwrap();
         let app_state = web::Data::new(app_state);
-        let response = webhooks_responders(app_state.clone(), request, Bytes::new(), path)
+        let response = webhooks_responders(app_state.clone(), request, Bytes::new())
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);

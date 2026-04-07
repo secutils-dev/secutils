@@ -81,8 +81,10 @@ test.describe('Tags guide screenshots', () => {
     const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add responder' }) });
     await expect(flyout).toBeVisible({ timeout: 15000 });
 
-    // Fill in the name and a fixed path (default is random).
+    // Fill in the name and a fixed path (default is random). Clear the
+    // auto-generated subdomain prefix so the screenshot is deterministic.
     await flyout.getByLabel('Name').fill('My API Responder');
+    await flyout.getByLabel('Subdomain prefix').clear();
     const pathInput = flyout.getByRole('textbox', { name: 'Path' });
     await pathInput.fill('/my-api');
 

@@ -9,8 +9,6 @@ pub struct SubscriptionWebhooksConfig {
     pub responders: usize,
     /// The number of responders requests per responder that retained for a particular subscription.
     pub responder_requests: usize,
-    /// Indicates whether the subscription supports custom prefix for a responder subdomain.
-    pub responder_custom_subdomain_prefix: bool,
     /// The hard limit for the JS runtime heap size in bytes. Defaults to 10485760 bytes or 10 MB.
     pub js_runtime_heap_size: usize,
     /// The maximum duration for a single JS script execution. Defaults to 30 seconds.
@@ -59,7 +57,6 @@ impl Default for SubscriptionWebhooksConfig {
         Self {
             responders: 100,
             responder_requests: 30,
-            responder_custom_subdomain_prefix: true,
             js_runtime_heap_size: 10_485_760,
             js_runtime_script_execution_time: Duration::from_secs(30),
             restrict_to_public_urls: default_restrict_to_public_urls(),
@@ -82,7 +79,6 @@ mod tests {
         assert_toml_snapshot!(config, @r###"
         responders = 100
         responder_requests = 30
-        responder_custom_subdomain_prefix = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
         restrict_to_public_urls = true
@@ -99,7 +95,6 @@ mod tests {
             r#"
         responders = 100
         responder_requests = 30
-        responder_custom_subdomain_prefix = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
         restrict_to_public_urls = true
@@ -119,7 +114,6 @@ mod tests {
             r#"
         responders = 100
         responder_requests = 30
-        responder_custom_subdomain_prefix = true
         js_runtime_heap_size = 10485760
         js_runtime_script_execution_time = 30000
     "#,

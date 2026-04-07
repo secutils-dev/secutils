@@ -254,9 +254,12 @@ These apply to every screenshot without any test-level code:
    - Waits for `domcontentloaded` and `networkidle` (with 5 s timeout).
    - Waits for all EUI icons to finish loading (`.euiIcon[data-is-loading="true"]`).
    - Waits for all web fonts to reach `loaded` status (`document.fonts.status`).
-   - Normalizes webhook URLs in the DOM - replaces user-specific UUIDs in
-     `/api/webhooks/u/<uuid>/` with `/api/webhooks/u/preview/` in links, input values,
-     code blocks, and data grid popovers.
+   - Normalizes webhook subdomain URLs in the DOM - replaces user-specific subdomains
+     (e.g. `handle.webhooks.localhost:7171`) with a stable value (`docs.webhooks.`) everywhere
+     they appear: `input`/`textarea` `.value` properties, and all text nodes in the body
+     (table cells, flyout help text, link text, code blocks, data grid popovers, etc.).
+     **The `href` attribute of links is never modified** so tests can still read it for
+     navigation after a screenshot.
    - Waits three animation frames for layout/paint/composite to settle.
 
 3. **Sticky-pixel screenshot stabilization** - `stabilizeScreenshot()` runs after
@@ -282,8 +285,12 @@ Each source of dynamic data needs explicit stabilization in the test code:
 - **CSP nonces**: Intercept responses and replace rotating nonces with a fixed value
   (e.g. `nonce-m0ck`).
 - **URL query strings**: Strip random cache-buster parameters from resource URLs.
-- **Webhook subdomains**: Normalize user-specific subdomains to a fixed value
-  (e.g. `preview.webhooks.secutils.dev`).
+- **Webhook subdomains**: Automatic - `waitForStableUiBeforeScreenshot` replaces every
+  `{handle}.webhooks.` occurrence in the DOM with `docs.webhooks.` before each screenshot.
+  No test-level code is needed for the URL displayed in grids, help text, or code blocks.
+  However, if the "Add responder" flyout is open and a screenshot is taken, the
+  auto-generated random subdomain prefix in the **Subdomain prefix** input must be cleared
+  explicitly in the test: `await flyout.getByLabel('Subdomain prefix').clear()`.
 - **Cryptographic output** (JWK values, key exports): Replace dynamic fields via
   `element.evaluate()` after the UI renders them.
 - **Home page summary**: Intercept `/api/ui/home/summary` and call `pinEntityTimestamps()`
@@ -380,16 +387,17 @@ reference file on disk, the first run establishes the baseline; subsequent runs 
 
 **Common instability patterns and their solutions:**
 
-| Symptom                     | Likely Cause                                 | Fix                                                                  |
-|-----------------------------|----------------------------------------------|----------------------------------------------------------------------|
-| Byte-diff but no pixel diff | PNG DEFLATE non-determinism or ±1 AA jitter  | `stabilizeScreenshot()` (automatic - restores reference file)        |
-| Text changes between runs   | Relative timestamps ("a few seconds ago")    | `fixEntityTimestamps()` or `pinEntityTimestamps()`                   |
-| URL segments differ         | User-specific webhook UUIDs                  | Automatic DOM normalization in `waitForStableUiBeforeScreenshot`     |
-| ±1 diffs at icon/text edges | Sub-pixel anti-aliasing between browser runs | Handled by sticky-pixel stabilization (automatic)                    |
-| Thin line diffs at edges    | Scrollbar visibility                         | Hidden by stability CSS (`::-webkit-scrollbar`)                      |
-| Monaco editor differences   | Cursor, minimap, decorations                 | Hidden by stability CSS                                              |
-| Clipped region shifts       | Tooltip/bounding box sub-pixel jitter        | Use `Math.floor`/`Math.ceil` + generous padding                      |
-| Animation artifacts         | CSS transitions captured in screenshot       | `addStyleTag` after `goto()` disables transitions before screenshots |
+| Symptom                     | Likely Cause                                 | Fix                                                                     |
+|-----------------------------|----------------------------------------------|-------------------------------------------------------------------------|
+| Byte-diff but no pixel diff | PNG DEFLATE non-determinism or ±1 AA jitter  | `stabilizeScreenshot()` (automatic - restores reference file)           |
+| Text changes between runs   | Relative timestamps ("a few seconds ago")    | `fixEntityTimestamps()` or `pinEntityTimestamps()`                      |
+| URL segments differ         | User-specific webhook subdomain              | Automatic DOM normalization in `waitForStableUiBeforeScreenshot`        |
+| Random subdomain in flyout  | Auto-generated prefix in "Add responder"     | `await flyout.getByLabel('Subdomain prefix').clear()` before screenshot |
+| ±1 diffs at icon/text edges | Sub-pixel anti-aliasing between browser runs | Handled by sticky-pixel stabilization (automatic)                       |
+| Thin line diffs at edges    | Scrollbar visibility                         | Hidden by stability CSS (`::-webkit-scrollbar`)                         |
+| Monaco editor differences   | Cursor, minimap, decorations                 | Hidden by stability CSS                                                 |
+| Clipped region shifts       | Tooltip/bounding box sub-pixel jitter        | Use `Math.floor`/`Math.ceil` + generous padding                         |
+| Animation artifacts         | CSS transitions captured in screenshot       | `addStyleTag` after `goto()` disables transitions before screenshots    |
 
 **Important: Do NOT use `addInitScript` to inject stability CSS.** Injecting
 `transition-duration: 0s` before the React app renders prevents `transitionend` events from
@@ -442,6 +450,16 @@ syntax errors. Instead:
 - **EUI actions column**: When a grid row has a collapsed actions menu, click
   `row.getByRole('button', { name: 'All actions, row' })` first, then select the action
   from the context menu scoped to the dialog/popover.
+- **Responder URL links**: Locate the URL link in a responder grid row with
+  `row.getByRole('link', { name: /\.webhooks\./ })`. The normalization in
+  `waitForStableUiBeforeScreenshot` rewrites the visible text to `docs.webhooks.*` before
+  screenshots, but the `href` attribute retains the real URL. Always read `href` **after**
+  any screenshot that precedes the navigation:
+  ```typescript
+  await page.screenshot({ … });   // normalization runs here (text only, href untouched)
+  const url = await responderLink.getAttribute('href');  // real URL, safe to navigate to
+  await goto(newPage, url!);
+  ```
 
 ### MDX documentation pattern
 

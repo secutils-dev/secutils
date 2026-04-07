@@ -71,36 +71,32 @@ async function waitForStableUiBeforeScreenshot(page: Page) {
     )
     .catch(() => {});
 
-  // Replace user-specific webhook UUIDs in visible DOM elements so
+  // Replace user-specific webhook subdomains in visible DOM elements so
   // screenshots don't change when a new user is created per run.
   await page
     .evaluate(() => {
-      const WEBHOOK_RE = /\/api\/webhooks\/u\/[^/]+\//g;
-      const STABLE = '/api/webhooks/u/preview/';
-      for (const a of Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/api/webhooks/u/"]'))) {
-        a.href = a.href.replace(WEBHOOK_RE, STABLE);
-        if (a.textContent?.includes('/api/webhooks/u/')) {
-          a.textContent = a.href;
-        }
-      }
+      const SUBDOMAIN_RE = /[a-z0-9_-]+\.webhooks\./gi;
+      const STABLE = 'docs.webhooks.';
+
+      // 1. Input / textarea values (not reflected in text nodes).
+      //    Query all inputs — React sets the value property, not the HTML
+      //    attribute, so attribute selectors like [value*=...] may miss them.
       for (const el of Array.from(
-        document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input[value*="/api/webhooks/u/"], textarea'),
+        document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea'),
       )) {
-        if (el.value.includes('/api/webhooks/u/')) {
-          el.value = el.value.replace(WEBHOOK_RE, STABLE);
+        if (el.value.includes('.webhooks.')) {
+          el.value = el.value.replace(SUBDOMAIN_RE, STABLE);
         }
       }
-      const containers = Array.from(
-        document.querySelectorAll('.euiCodeBlock, [data-test-subj="euiDataGridExpansionPopover"], pre, code'),
-      );
-      for (const container of containers) {
-        if (!container.textContent?.includes('/api/webhooks/u/')) continue;
-        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-        let node;
-        while ((node = walker.nextNode())) {
-          if (node.textContent?.includes('/api/webhooks/u/')) {
-            node.textContent = node.textContent.replace(WEBHOOK_RE, STABLE);
-          }
+
+      // 2. Walk every text node in the body. This covers links (without
+      //    destroying EUI's hidden screen-reader spans), table cells,
+      //    flyout help text, code blocks, data grid popovers, etc.
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.textContent?.includes('.webhooks.')) {
+          node.textContent = node.textContent.replace(SUBDOMAIN_RE, STABLE);
         }
       }
     })
@@ -397,7 +393,7 @@ export async function fixTrackerResourceRevisions(page: Page, fallback?: object[
 
 function stabilizeResourceUrl(url: string): string {
   if (!url) return url;
-  return url.replace(/\?[^?]*$/, '').replace(/https:\/\/[^.]+\.webhooks\./, 'https://preview.webhooks.');
+  return url.replace(/\?[^?]*$/, '').replace(/https:\/\/[^.]+\.webhooks\./, 'https://docs.webhooks.');
 }
 
 function stableResourceSize(url: string): number {

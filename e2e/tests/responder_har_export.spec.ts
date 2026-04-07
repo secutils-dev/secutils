@@ -29,7 +29,7 @@ test.describe('Responder HAR Export', () => {
     expect(createResponse.ok()).toBeTruthy();
     const responder = await createResponse.json();
 
-    const webhookUrl = `/api/webhooks/${userHandle}/har-test`;
+    const webhookUrl = `http://${userHandle}.webhooks.localhost:7171/har-test`;
     const reqOne = await page.request.fetch(webhookUrl, { method: 'GET' });
     expect(reqOne.ok()).toBeTruthy();
     const reqTwo = await page.request.fetch(webhookUrl, {

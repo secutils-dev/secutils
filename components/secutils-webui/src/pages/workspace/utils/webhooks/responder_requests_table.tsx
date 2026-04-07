@@ -411,13 +411,11 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
                       return;
                     }
                     const responderBaseUrl = uiState.user
-                      ? uiState.webhookUrlType === 'path'
-                        ? `${location.origin}/api/webhooks/${uiState.user.handle}`
-                        : `${location.protocol}//${
-                            responder.location.subdomainPrefix
-                              ? `${responder.location.subdomainPrefix}-${uiState.user.handle}`
-                              : uiState.user.handle
-                          }.webhooks.${location.host}`
+                      ? `${location.protocol}//${
+                          responder.location.subdomainPrefix
+                            ? `${responder.location.subdomainPrefix}-${uiState.user.handle}`
+                            : uiState.user.handle
+                        }.webhooks.${location.host}`
                       : location.origin;
                     const har = buildHar(requests.data, responderBaseUrl);
                     const blob = new Blob([JSON.stringify(har, null, 2)], { type: 'application/json' });

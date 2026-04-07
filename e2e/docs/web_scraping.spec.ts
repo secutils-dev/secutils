@@ -454,7 +454,7 @@ test.describe('Web scraping guide screenshots', () => {
       "    await (await fetch('https://secutils.dev/retrack/utilities.js')).text()",
       '  )}`);',
       '  utils.startTracking(page);',
-      "  await page.goto('https://preview.webhooks.secutils.dev/track-me.html');",
+      "  await page.goto('https://docs.webhooks.secutils.dev/track-me.html');",
       '  await page.waitForTimeout(1000);',
       '  const resources = await utils.stopTracking(page);',
       '  return utils.formatAsTable(',
@@ -606,7 +606,7 @@ test.describe('Web scraping guide screenshots', () => {
     await page.screenshot({ path: join(IMG_DIR, 'detect_resources_step10_tracker_created.png') });
 
     // Set up mocked route handler for stable screenshots.
-    const BASE = 'https://preview.webhooks.secutils.dev';
+    const BASE = 'https://docs.webhooks.secutils.dev';
     const initialRows = [
       { source: `${BASE}/no-changes.js`, type: 'Script', size: '81' },
       { source: `${BASE}/changed.js`, type: 'Script', size: '91' },

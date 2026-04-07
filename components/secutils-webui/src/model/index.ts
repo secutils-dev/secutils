@@ -1,5 +1,5 @@
 export type { ServerStatus } from './server_status';
-export type { UiState, WebhookUrlType } from './ui_state';
+export type { UiState } from './ui_state';
 export type { AsyncData } from './async_data';
 export { ResponseError, getErrorMessage, isClientError, getErrorStatus } from './errors';
 export { getUserShareId, removeUserShareId, USER_SHARE_ID_HEADER_NAME } from './user_share';

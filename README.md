@@ -146,9 +146,6 @@ host = 'http://localhost:7676/'
 address = "xxx"
 username = "xxx"
 password = "xxx"
-
-[utils]
-webhook_url_type = "path"
 ```
 
 You can also override configuration values via environment variables with the `SECUTILS_` prefix

@@ -171,28 +171,18 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
   }, []);
 
   const defaultRandom = useMemo(() => (!responder ? nanoidCustom().toLowerCase() : ''), [responder]);
-  const supportsCustomSubdomainPrefixes =
-    uiState.webhookUrlType === 'subdomain' && !!uiState.subscription?.features?.webhooks.responderCustomSubdomainPrefix;
-  const [subdomainPrefix, setSubdomainPrefix] = useState<string>(
-    responder?.location?.subdomainPrefix ?? (supportsCustomSubdomainPrefixes ? defaultRandom : ''),
-  );
+  const [subdomainPrefix, setSubdomainPrefix] = useState<string>(responder?.location?.subdomainPrefix ?? defaultRandom);
   const onSubdomainPrefixChange = (e: ChangeEvent<HTMLInputElement>) => {
     setSubdomainPrefix(e.target.value.toLowerCase());
   };
 
-  const [path, setPath] = useState<string>(
-    // If custom subdomain prefixes are supported, then when a creating a new responder a random prefix will be
-    // generated, so we safely default path to `/` (prefix).
-    responder?.location?.path ?? (supportsCustomSubdomainPrefixes ? '/' : `/${defaultRandom}`),
-  );
+  const [path, setPath] = useState<string>(responder?.location?.path ?? '/');
   const onPathChange = (e: ChangeEvent<HTMLInputElement>) => {
     setPath(e.target.value.toLowerCase());
   };
   const isPathValid = path.startsWith('/') && (path.length === 1 || !path.endsWith('/'));
 
-  const [pathType, setPathType] = useState<string>(
-    responder?.location?.pathType ?? (supportsCustomSubdomainPrefixes ? '^' : '='),
-  );
+  const [pathType, setPathType] = useState<string>(responder?.location?.pathType ?? '^');
   const onPathTypeChange = (e: ChangeEvent<HTMLSelectElement>) => {
     setPathType(e.target.value);
   };
@@ -326,7 +316,7 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
 
     setUpdatingStatus({ status: 'pending' });
 
-    const locationSubdomainPrefix = supportsCustomSubdomainPrefixes ? subdomainPrefix || undefined : undefined;
+    const locationSubdomainPrefix = subdomainPrefix || undefined;
     let location;
     if (!newResponder) {
       location =
@@ -431,7 +421,6 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
     selectedTagIds,
     responder,
     updatingStatus,
-    supportsCustomSubdomainPrefixes,
     newResponder,
     addToast,
     onClose,
@@ -514,37 +503,35 @@ export default function ResponderEditFlyout({ onClose, responder }: ResponderEdi
           title={<h3>Request</h3>}
           description={'Properties of the responder related to the HTTP requests it handles'}
         >
-          {supportsCustomSubdomainPrefixes && (
-            <EuiFormRow
-              label="Subdomain prefix"
-              helpText={
-                <>
-                  Responder will only respond to requests with the&nbsp;
-                  <b>
-                    {subdomainPrefix || '<subdomain-prefix>'}-{uiState.user?.handle ?? '<user-handle>'}
-                    .webhooks.secutils.dev
-                  </b>
-                  &nbsp;domain
-                </>
+          <EuiFormRow
+            label="Subdomain prefix"
+            helpText={
+              <>
+                Responder will only respond to requests with the&nbsp;
+                <b>
+                  {subdomainPrefix || '<subdomain-prefix>'}-{uiState.user?.handle ?? '<user-handle>'}
+                  .webhooks.{location.host}
+                </b>
+                &nbsp;domain
+              </>
+            }
+          >
+            <EuiFieldText
+              value={subdomainPrefix}
+              isInvalid={subdomainPrefix.length > 0 && !isSubdomainPrefixValid(subdomainPrefix)}
+              placeholder={`If not specified, ${uiState.user?.handle ?? '<user-handle>'} subdomain will be used`}
+              type={'text'}
+              onChange={onSubdomainPrefixChange}
+              append={
+                <EuiButtonIcon
+                  iconType="refresh"
+                  title={'Generate random prefix'}
+                  aria-label="Generate random prefix"
+                  onClick={() => setSubdomainPrefix(nanoidCustom().toLowerCase())}
+                />
               }
-            >
-              <EuiFieldText
-                value={subdomainPrefix}
-                isInvalid={subdomainPrefix.length > 0 && !isSubdomainPrefixValid(subdomainPrefix)}
-                placeholder={`If not specified, ${uiState.user?.handle ?? '<user-handle>'} subdomain will be used`}
-                type={'text'}
-                onChange={onSubdomainPrefixChange}
-                append={
-                  <EuiButtonIcon
-                    iconType="refresh"
-                    title={'Generate random prefix'}
-                    aria-label="Generate random prefix"
-                    onClick={() => setSubdomainPrefix(nanoidCustom().toLowerCase())}
-                  />
-                }
-              />
-            </EuiFormRow>
-          )}
+            />
+          </EuiFormRow>
           <EuiFormRow label="Path" helpText="Responder path should start with a '/', and should not end with a '/'">
             <EuiFieldText
               value={path}

@@ -22,14 +22,11 @@ secrets_encryption_key = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7
 operators = ["@kratos", "@secutils", "@retrack", "demo@secutils.dev"]
 
 [security.preconfigured_users]
-"e2e@secutils.dev" = { handle = "u", tier = "ultimate" }
+"e2e@secutils.dev" = { handle = "docs", tier = "ultimate" }
 "demo@secutils.dev" = { handle = "demo", tier = "ultimate" }
 
 [scheduler]
 notifications_send = "@weekly"
-
-[utils]
-webhook_url_type = "path"
 
 [subscriptions]
 manage_url = "http://localhost:7575/subscription"
@@ -37,7 +34,7 @@ feature_overview_url = "http://localhost:7474/pricing"
 
 [subscriptions.basic]
 certificates = { private_keys = 5, templates = 5, private_key_algorithms = ["RSA-1024", "DSA-1024", "ECDSA-SECP256R1", "ECDSA-SECP384R1", "ECDSA-SECP521R1", "ED25519"] }
-webhooks = { responders = 3, responder_requests = 3, responder_custom_subdomain_prefix = false, js_runtime_heap_size = 5_242_880, js_runtime_script_execution_time = 10_000 }
+webhooks = { responders = 3, responder_requests = 3, js_runtime_heap_size = 5_242_880, js_runtime_script_execution_time = 10_000 }
 web_scraping = { trackers = 3, tracker_revisions = 3, tracker_schedules = ["@", "@daily", "@weekly", "@monthly"], min_schedule_interval = 86_400_000 }
 web_security = { policies = 10, import_policy_from_url = false }
 

@@ -14,8 +14,6 @@ export interface License {
   maxEndpoints: number;
 }
 
-export type WebhookUrlType = 'path' | 'subdomain';
-
 /**
  * Defines subscription related properties returned as a part of the UI state.
  */
@@ -25,7 +23,7 @@ export interface SubscriptionState {
    */
   features?: {
     certificates: { privateKeyAlgorithms?: string[] };
-    webhooks: { responderRequests: number; responderCustomSubdomainPrefix: boolean };
+    webhooks: { responderRequests: number };
     webScraping: { trackerRevisions: number; trackerSchedules?: string[] };
     webSecurity: { importPolicyFromUrl: boolean };
   };
@@ -55,7 +53,6 @@ export interface UiState {
   userShare?: UserShare;
   settings?: UserSettings;
   utils: Util[];
-  webhookUrlType: WebhookUrlType;
   subscription?: SubscriptionState;
   platform: PlatformState;
 }

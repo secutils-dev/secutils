@@ -32,7 +32,6 @@ export function AppContainer() {
     status: { level: 'available' },
     license: { maxEndpoints: Infinity },
     utils: [],
-    webhookUrlType: 'path',
     platform: { maxImportFileSize: 10 * 1024 * 1024 },
   });
   const refreshUiState = useCallback(() => {

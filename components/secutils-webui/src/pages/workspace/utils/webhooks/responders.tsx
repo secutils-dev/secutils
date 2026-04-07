@@ -117,9 +117,7 @@ export default function Responders() {
       const subdomain = responder.location.subdomainPrefix
         ? `${responder.location.subdomainPrefix}-${uiState.user.handle}`
         : uiState.user.handle;
-      return uiState.webhookUrlType === 'path'
-        ? `${location.origin}/api/webhooks/${uiState.user.handle}${responder.location.path}`
-        : `${location.protocol}//${subdomain}.webhooks.${location.host}${responder.location.path}`;
+      return `${location.protocol}//${subdomain}.webhooks.${location.host}${responder.location.path}`;
     },
     [uiState],
   );

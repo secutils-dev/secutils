@@ -7,5 +7,5 @@
     "jsx": "react",
     "jsxImportSource": "@emotion/react"
   },
-  "include": ["src", "retrack", "scripts", "vitest.config.ts"]
+  "include": ["src", "retrack", "scripts", "vitest.config.ts", ".proxyrc.ts"]
 }

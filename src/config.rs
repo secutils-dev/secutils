@@ -149,7 +149,6 @@ mod tests {
                 max_user_api_keys: 30,
             },
             utils: UtilsConfig {
-                webhook_url_type: Subdomain,
                 diff_context_radius: 3,
                 max_responder_body_size: 10485760,
             },
@@ -241,7 +240,6 @@ mod tests {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 100,
                         responder_requests: 30,
-                        responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 10485760,
                         js_runtime_script_execution_time: 30s,
                         restrict_to_public_urls: true,
@@ -277,7 +275,6 @@ mod tests {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 100,
                         responder_requests: 30,
-                        responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 10485760,
                         js_runtime_script_execution_time: 30s,
                         restrict_to_public_urls: true,
@@ -313,7 +310,6 @@ mod tests {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 100,
                         responder_requests: 30,
-                        responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 10485760,
                         js_runtime_script_execution_time: 30s,
                         restrict_to_public_urls: true,
@@ -349,7 +345,6 @@ mod tests {
                     webhooks: SubscriptionWebhooksConfig {
                         responders: 100,
                         responder_requests: 30,
-                        responder_custom_subdomain_prefix: true,
                         js_runtime_heap_size: 10485760,
                         js_runtime_script_execution_time: 30s,
                         restrict_to_public_urls: true,

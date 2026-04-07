@@ -95,8 +95,10 @@ test.describe('User Scripts guide screenshots', () => {
     const flyout = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Add responder' }) });
     await expect(flyout).toBeVisible({ timeout: 15000 });
 
-    // Fill in basic details
+    // Fill in basic details. Clear the auto-generated subdomain prefix
+    // so the screenshot is deterministic.
     await flyout.getByLabel('Name').fill('Test Responder');
+    await flyout.getByLabel('Subdomain prefix').clear();
     await getByRoleAndLabel(flyout, 'textbox', 'Path').fill('/test-path');
 
     // Enable advanced mode to see the script field

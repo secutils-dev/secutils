@@ -924,7 +924,7 @@ test.describe('Data Export and Import', () => {
     expect(importedResponseBody).toBe('pre-import-response');
 
     // ── Step 7h: Call responder webhook + validate a new tracked entry ────
-    const webhookUrl = `/api/webhooks/${userHandle}/import-resp-test`;
+    const webhookUrl = `http://${userHandle}.webhooks.localhost:7171/import-resp-test`;
     const webhookRes = await page.request.fetch(webhookUrl, { method: 'GET' });
     expect(webhookRes.ok()).toBeTruthy();
     const webhookBody = await webhookRes.text();

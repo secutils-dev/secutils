@@ -235,7 +235,7 @@ test.describe('CSP guide screenshots', () => {
     await dismissAllToasts(page);
 
     // Step 2b: Open the responder URL and capture the eval page.
-    const responderLink = responderRow.getByRole('link', { name: /\/api\/webhooks\/u\// });
+    const responderLink = responderRow.getByRole('link', { name: /\.webhooks\./ });
     await expect(responderLink).toBeVisible();
     const responderUrl = await responderLink.getAttribute('href');
     const evalPage = await page.context().newPage();
@@ -378,6 +378,7 @@ test.describe('CSP guide screenshots', () => {
     await expect(reportingFlyout).toBeVisible();
 
     await reportingFlyout.getByLabel('Name').fill('CSP Reporting');
+    await reportingFlyout.getByLabel('Subdomain prefix').clear();
     await getByRoleAndLabel(reportingFlyout, 'textbox', 'Path').fill('/csp-reporting');
 
     await reportingFlyout.getByLabel('Advanced mode').click();
@@ -394,7 +395,7 @@ test.describe('CSP guide screenshots', () => {
     const reportingRow = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'CSP Reporting' }) });
     await expect(reportingRow).toBeVisible();
 
-    const reportingLink = reportingRow.getByRole('link', { name: /\/api\/webhooks\/u\// });
+    const reportingLink = reportingRow.getByRole('link', { name: /\.webhooks\./ });
     await expect(reportingLink).toBeVisible();
     const reportingUrl = await reportingLink.getAttribute('href');
 
@@ -522,7 +523,7 @@ test.describe('CSP guide screenshots', () => {
     await page.screenshot({ path: join(IMG_DIR, 'report_step7_eval_created.png') });
 
     // Step 5: Open the eval test page and try eval() - CSP blocks it and sends a report via report-uri.
-    const evalLink = evalRow.getByRole('link', { name: /\/api\/webhooks\/u\// });
+    const evalLink = evalRow.getByRole('link', { name: /\.webhooks\./ });
     await expect(evalLink).toBeVisible();
     const evalUrl = await evalLink.getAttribute('href');
     const evalPage = await page.context().newPage();

@@ -1,13 +1,12 @@
 mod database_status;
 mod status;
 mod status_level;
-mod webhook_url_type;
 
 mod subscription_state;
 
 pub use self::{
     database_status::DatabaseStatus, status::Status, status_level::StatusLevel,
-    subscription_state::SubscriptionState, webhook_url_type::WebhookUrlType,
+    subscription_state::SubscriptionState,
 };
 use crate::{
     users::{ClientUserShare, User, UserSettings},
@@ -28,7 +27,6 @@ pub struct UiState<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub settings: Option<UserSettings>,
     pub utils: Vec<Util>,
-    pub webhook_url_type: WebhookUrlType,
     pub platform: UiPlatformState,
 }
 
@@ -52,7 +50,7 @@ mod tests {
 
     use crate::{
         server::{
-            DatabaseStatus, Status, StatusLevel, UiPlatformState, UiState, WebhookUrlType,
+            DatabaseStatus, Status, StatusLevel, UiPlatformState, UiState,
             ui_state::subscription_state::SubscriptionState,
         },
         tests::{mock_config, mock_user},
@@ -99,7 +97,6 @@ mod tests {
                 keywords: Some("some keywords".to_string()),
                 utils: None,
             }],
-            webhook_url_type: WebhookUrlType::Path,
             platform: UiPlatformState {
                 max_import_file_size: 10 * 1024 * 1024,
             },
@@ -127,8 +124,7 @@ mod tests {
             "features": {
               "certificates": {},
               "webhooks": {
-                "responderRequests": 30,
-                "responderCustomSubdomainPrefix": true
+                "responderRequests": 30
               },
               "webScraping": {
                 "trackerRevisions": 30
@@ -157,7 +153,6 @@ mod tests {
               "name": "some-name"
             }
           ],
-          "webhookUrlType": "path",
           "platform": {
             "maxImportFileSize": 10485760
           }
@@ -180,7 +175,6 @@ mod tests {
             user_share: None,
             settings: None,
             utils: vec![],
-            webhook_url_type: WebhookUrlType::Subdomain,
             platform: UiPlatformState {
                 max_import_file_size: 10 * 1024 * 1024,
             },
@@ -195,7 +189,6 @@ mod tests {
             }
           },
           "utils": [],
-          "webhookUrlType": "subdomain",
           "platform": {
             "maxImportFileSize": 10485760
           }
