@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 import type { ChartDataPoint } from './page_tracker_revision_chart_utils';
-import { formatChartValue, revisionsToChartData } from './page_tracker_revision_chart_utils';
+import { formatChartValue, formatCompactValue, revisionsToChartData } from './page_tracker_revision_chart_utils';
 import type { TrackerDataRevision } from '../tracker_data_revision';
 
 export interface PageTrackerRevisionChartViewProps {
@@ -103,7 +103,7 @@ function ChartContent({ chartData, yDomain, height, isFullScreen, onToggleFullSc
             />
             <YAxis
               domain={yDomain}
-              tickFormatter={formatChartValue}
+              tickFormatter={formatCompactValue}
               stroke={textColor}
               fontSize={12}
               tickLine={false}

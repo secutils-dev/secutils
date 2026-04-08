@@ -52,18 +52,31 @@ function isChartableRevisionData(data: unknown) {
 }
 
 /**
+ * Extracts the millisecond-precision Unix timestamp from a UUIDv7 string.
+ * UUIDv7 encodes the timestamp in the first 48 bits (12 hex characters).
+ */
+function uuidv7ToTimestamp(uuid: string): number {
+  const hex = uuid.replace(/-/g, '').substring(0, 12);
+  return parseInt(hex, 16);
+}
+
+/**
  * Converts revisions to chart data points.
  * Returns data sorted by timestamp (oldest first) for proper chart display.
+ * Uses the millisecond-precision timestamp from UUIDv7 IDs so that revisions
+ * created within the same second get distinct X-axis positions.
  */
 export function revisionsToChartData(revisions: TrackerDataRevision[]): ChartDataPoint[] {
-  return revisions
-    .map((revision) => ({
-      // Convert to milliseconds
-      timestamp: revision.createdAt * 1000,
-      value: parseNumericValue(revision.data.original),
-      formattedDate: new Date(revision.createdAt * 1000).toLocaleString(),
-    }))
-    .sort((a, b) => a.timestamp - b.timestamp);
+  return [...revisions]
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((revision) => {
+      const timestamp = uuidv7ToTimestamp(revision.id);
+      return {
+        timestamp,
+        value: parseNumericValue(revision.data.original),
+        formattedDate: new Date(timestamp).toLocaleString(),
+      };
+    });
 }
 
 /**
@@ -86,6 +99,32 @@ export function formatChartValue(value: number): string {
 
   // For very small numbers, show more precision
   return value.toLocaleString(undefined, { maximumSignificantDigits: 6 });
+}
+
+const COMPACT_SUFFIXES: Array<[number, string]> = [
+  [1e12, 'T'],
+  [1e9, 'B'],
+  [1e6, 'M'],
+  [1e3, 'K'],
+];
+
+/**
+ * Formats a number compactly for Y-axis tick labels (e.g., "1.78T", "234K").
+ * Falls back to full formatting for numbers below 1,000.
+ */
+export function formatCompactValue(value: number): string {
+  const absValue = Math.abs(value);
+  for (const [threshold, suffix] of COMPACT_SUFFIXES) {
+    if (absValue >= threshold) {
+      const scaled = value / threshold;
+      const formatted = scaled.toLocaleString(undefined, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      });
+      return `${formatted}${suffix}`;
+    }
+  }
+  return formatChartValue(value);
 }
 
 /**
