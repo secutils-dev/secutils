@@ -8,39 +8,86 @@ All tools in `dev/tools/` are standalone single-HTML-file apps (embedded CSS + J
 - Title format: `<title>Tool Name | Secutils.dev</title>`
 - Default to `data-theme="dark"` on `<html>`, with theme toggle
 
+## Responder Path Alias (`su-tool-path`)
+
+Every tool HTML file (including `index.html`) must contain a `<meta name="su-tool-path">`
+tag in `<head>` that declares the URL path where the tool is hosted as a responder. The
+filename on disk does **not** need to match the responder path - the meta tag is the
+source of truth.
+
+```html
+<meta name="su-tool-path" content="/jwt">
+```
+
+Current mapping:
+
+| File                    | `su-tool-path`            | Description     |
+|-------------------------|---------------------------|-----------------|
+| `index.html`            | `/`                       | Tool index page |
+| `jwt-debugger.html`     | `/jwt`                    | JWT Debugger    |
+| `saml-decoder.html`     | `/saml`                   | SAML Decoder    |
+| `mock-saml-idp.html`    | `/elastic/saml/idp-login` | Mock SAML IdP   |
+| `markdown-to-html.html` | `/md-to-html`             | Markdown → HTML |
+
+When **creating a new tool**, **deleting a tool**, or **changing a tool's alias**:
+
+1. **Set or update the `su-tool-path` meta tag** in the tool's own HTML file. This is
+   always the first step - the meta tag is the canonical reference for the responder path.
+
+2. **Update `index.html`** - the tool index page at `dev/tools/index.html` must stay in
+   sync. Each tool is a `<a class="tool-card">` entry in the `.tool-list` container. To
+   keep it consistent:
+
+   - **Adding a tool**: read the new file's `su-tool-path` value and add a new card entry
+     with the correct `href`, path badge, tool name, and description.
+   - **Removing a tool**: delete the corresponding `<a class="tool-card">` block.
+   - **Changing an alias**: update the `href` attribute and the `<span class="tool-path">`
+     text in the existing card to match the new `su-tool-path` value.
+
+   Card entry format:
+
+   ```html
+   <a class="tool-card" href="/the-path">
+       <div class="tool-name">Tool Name <span class="tool-path">/the-path</span> <span class="arrow">&rarr;</span></div>
+       <div class="tool-desc">Short description of what the tool does.</div>
+   </a>
+   ```
+
+3. **Update the table above** in this AGENTS.md file to keep the mapping accurate.
+
 ## Brand Colors (from Elastic EUI theme-borealis)
 
 ### Dark theme (`:root, [data-theme="dark"]`)
-| Variable | Value | Source |
-|---|---|---|
-| `--bg` | `#141519` | EUI dark background |
-| `--surface` | `#1d1e24` | EUI dark header/card surface |
-| `--surface-hover` | `#2c2d33` | EUI dark hover |
-| `--border` | `#343741` | EUI dark border |
-| `--text` | `#dfe5ef` | EUI dark text |
-| `--text-muted` | `#98a2b3` | EUI dark subdued text |
-| `--primary` | `#fed047` | Secutils yellow |
-| `--primary-hover` | `#fdc615` | Secutils yellow hover |
-| `--primary-text` | `#642340` | Secutils maroon (text on yellow bg) |
-| `--accent` | `#642340` | Secutils maroon |
-| `--badge-bg` | `#2B394F` | EUI breadcrumb bg (dark) - `colors.backgroundLightText` = blueGrey120 |
-| `--badge-text` | `#98A8C3` | EUI breadcrumb text (dark) - `colors.textSubdued` = blueGrey55 |
+| Variable          | Value     | Source                                                                |
+|-------------------|-----------|-----------------------------------------------------------------------|
+| `--bg`            | `#141519` | EUI dark background                                                   |
+| `--surface`       | `#1d1e24` | EUI dark header/card surface                                          |
+| `--surface-hover` | `#2c2d33` | EUI dark hover                                                        |
+| `--border`        | `#343741` | EUI dark border                                                       |
+| `--text`          | `#dfe5ef` | EUI dark text                                                         |
+| `--text-muted`    | `#98a2b3` | EUI dark subdued text                                                 |
+| `--primary`       | `#fed047` | Secutils yellow                                                       |
+| `--primary-hover` | `#fdc615` | Secutils yellow hover                                                 |
+| `--primary-text`  | `#642340` | Secutils maroon (text on yellow bg)                                   |
+| `--accent`        | `#642340` | Secutils maroon                                                       |
+| `--badge-bg`      | `#2B394F` | EUI breadcrumb bg (dark) - `colors.backgroundLightText` = blueGrey120 |
+| `--badge-text`    | `#98A8C3` | EUI breadcrumb text (dark) - `colors.textSubdued` = blueGrey55        |
 
 ### Light theme (`[data-theme="light"]`)
-| Variable | Value | Source |
-|---|---|---|
-| `--bg` | `#f5f7fa` | EUI light background |
-| `--surface` | `#ffffff` | White |
-| `--surface-hover` | `#f1f3f5` | EUI light hover |
-| `--border` | `#d3dae6` | EUI light border |
-| `--text` | `#343741` | EUI light text |
-| `--text-muted` | `#69707d` | EUI light subdued text |
-| `--primary` | `#fed047` | Secutils yellow |
-| `--primary-hover` | `#fdc615` | Secutils yellow hover |
-| `--primary-text` | `#642340` | Secutils maroon |
-| `--accent` | `#642340` | Secutils maroon |
-| `--badge-bg` | `#E3E8F2` | EUI breadcrumb bg (light) - `colors.backgroundLightText` = blueGrey20 |
-| `--badge-text` | `#505F79` | EUI breadcrumb text (light) - `colors.textSubdued` |
+| Variable          | Value     | Source                                                                |
+|-------------------|-----------|-----------------------------------------------------------------------|
+| `--bg`            | `#f5f7fa` | EUI light background                                                  |
+| `--surface`       | `#ffffff` | White                                                                 |
+| `--surface-hover` | `#f1f3f5` | EUI light hover                                                       |
+| `--border`        | `#d3dae6` | EUI light border                                                      |
+| `--text`          | `#343741` | EUI light text                                                        |
+| `--text-muted`    | `#69707d` | EUI light subdued text                                                |
+| `--primary`       | `#fed047` | Secutils yellow                                                       |
+| `--primary-hover` | `#fdc615` | Secutils yellow hover                                                 |
+| `--primary-text`  | `#642340` | Secutils maroon                                                       |
+| `--accent`        | `#642340` | Secutils maroon                                                       |
+| `--badge-bg`      | `#E3E8F2` | EUI breadcrumb bg (light) - `colors.backgroundLightText` = blueGrey20 |
+| `--badge-text`    | `#505F79` | EUI breadcrumb text (light) - `colors.textSubdued`                    |
 
 ## Typography
 
