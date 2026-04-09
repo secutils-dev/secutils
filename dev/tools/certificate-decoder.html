@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Certificate Decoder | Secutils.dev</title>
+    <meta name="su-tool-path" content="/pem">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/forge/1.3.1/forge.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
+    <style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root, [data-theme="dark"] {
+    --bg: #141519; --surface: #1d1e24; --surface-hover: #2c2d33;
+    --border: #343741; --text: #dfe5ef; --text-muted: #98a2b3;
+    --primary: #fed047; --primary-hover: #fdc615;
+    --primary-text: #642340;
+    --accent: #642340;
+    --badge-bg: #2B394F; --badge-text: #98A8C3;
+    --radius: 12px;
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --mono: 'Roboto Mono', 'SF Mono', 'Fira Code', Consolas, monospace;
+    --dn-bg: #16171c;
+    --valid-bg: rgba(16,185,129,0.12); --valid-text: #6ee7b7; --valid-border: rgba(16,185,129,0.2); --valid-dot: #10b981;
+    --invalid-bg: rgba(239,68,68,0.12); --invalid-text: #fca5a5; --invalid-border: rgba(239,68,68,0.2); --invalid-dot: #ef4444;
+    --role-root-bg: rgba(168,85,247,0.1); --role-root-text: #c084fc; --role-root-border: rgba(168,85,247,0.2);
+    --role-leaf-bg: rgba(96,165,250,0.1); --role-leaf-text: #93c5fd; --role-leaf-border: rgba(96,165,250,0.2);
+    --error-bg: rgba(239,68,68,0.1); --error-text: #fca5a5; --error-border: rgba(239,68,68,0.2);
+}
+[data-theme="light"] {
+    --bg: #f5f7fa; --surface: #ffffff; --surface-hover: #f1f3f5;
+    --border: #d3dae6; --text: #343741; --text-muted: #69707d;
+    --primary: #fed047; --primary-hover: #fdc615;
+    --primary-text: #642340;
+    --accent: #642340;
+    --badge-bg: #E3E8F2; --badge-text: #505F79;
+    --dn-bg: #f0f2f5;
+    --valid-bg: rgba(16,185,129,0.08); --valid-text: #059669; --valid-border: rgba(16,185,129,0.25); --valid-dot: #10b981;
+    --invalid-bg: rgba(239,68,68,0.08); --invalid-text: #dc2626; --invalid-border: rgba(239,68,68,0.25); --invalid-dot: #ef4444;
+    --role-root-bg: rgba(147,51,234,0.08); --role-root-text: #7c3aed; --role-root-border: rgba(147,51,234,0.25);
+    --role-leaf-bg: rgba(37,99,235,0.08); --role-leaf-text: #2563eb; --role-leaf-border: rgba(37,99,235,0.25);
+    --error-bg: rgba(239,68,68,0.06); --error-text: #dc2626; --error-border: rgba(239,68,68,0.2);
+}
+body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; transition: background .25s, color .25s; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 48px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; transition: background .25s, border-color .25s; }
+.logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.logo-svg { flex-shrink: 0; }
+.logo-svg .logo-text-fill { fill: var(--text); }
+.logo-badge { display: inline-flex; align-items: center; padding: 4px 16px; border-radius: 4px; border: none; background: var(--badge-bg); color: var(--badge-text); font-size: 12px; font-weight: 450; line-height: 16px; white-space: nowrap; }
+.header-right { display: flex; gap: 8px; align-items: center; }
+.btn { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
+.btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); font-weight: 600; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.theme-toggle { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .2s; }
+.theme-toggle:hover { background: var(--surface-hover); color: var(--text); }
+.theme-toggle svg { width: 16px; height: 16px; fill: currentColor; }
+.theme-toggle .icon-sun { display: none; }
+.theme-toggle .icon-moon { display: block; }
+[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overflow: hidden; }
+.grid { display: grid; grid-template-columns: 1fr 12px 1fr; gap: 0; flex: 1; min-height: 0; }
+.panel { display: flex; flex-direction: column; min-height: 0; }
+.panel-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+.panel-label { font-size: 13px; font-weight: 600; color: var(--text); }
+.panel-actions { display: flex; align-items: center; gap: 8px; }
+.link-btn { border: none; background: none; font: 12px var(--font); color: var(--text-muted); cursor: pointer; padding: 2px 4px; transition: color .15s; }
+.link-btn:hover { color: var(--text); }
+.stats-text { font: 11px var(--mono); color: var(--text-muted); }
+.editor-area { width: 100%; flex: 1; min-height: 300px; font: 13px/1.6 var(--mono); background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; resize: none; outline: none; transition: border-color .15s, background .25s, color .25s; }
+.editor-area:focus { border-color: var(--primary); }
+.output-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; overflow: hidden; min-height: 0; transition: background .25s, border-color .25s; }
+.output-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+.output-bar-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.output-bar-actions { display: flex; align-items: center; gap: 10px; }
+.output-scroll { flex: 1; overflow-y: auto; padding: 20px; }
+
+.splitter { cursor: col-resize; background: transparent; position: relative; z-index: 1; }
+.splitter::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: var(--border); transition: width .15s, background .15s; transform: translateX(-50%); }
+.splitter:hover::after, .splitter.active::after { width: 3px; background: var(--primary); border-radius: 2px; }
+
+/* Certificate cards */
+.cert-card { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; transition: border-color .15s; }
+.cert-card:hover { border-color: var(--text-muted); }
+.cert-card + .cert-card { margin-top: 32px; }
+.chain-arrow { position: absolute; left: 32px; top: -28px; width: 1px; height: 24px; background: var(--border); }
+.chain-arrow::after { content: ''; position: absolute; bottom: -4px; left: -3px; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid var(--border); }
+.cert-card-head { display: flex; justify-content: space-between; align-items: flex-start; padding: 16px 20px; border-bottom: 1px solid var(--border); gap: 12px; }
+.cert-cn-row { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.cert-icon { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background: var(--surface-hover); color: var(--text-muted); flex-shrink: 0; }
+.cert-icon svg { width: 16px; height: 16px; stroke: currentColor; fill: none; }
+.cert-cn { font-size: 15px; font-weight: 700; color: var(--text); word-break: break-all; }
+.cert-meta { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.cert-role { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 3px 10px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-hover); color: var(--text-muted); }
+.cert-role.root { background: var(--role-root-bg); color: var(--role-root-text); border-color: var(--role-root-border); }
+.cert-role.leaf { background: var(--role-leaf-bg); color: var(--role-leaf-text); border-color: var(--role-leaf-border); }
+.cert-org { font-size: 12px; color: var(--text-muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cert-status-col { text-align: right; flex-shrink: 0; }
+.cert-status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; border: 1px solid; font-size: 11px; font-weight: 700; letter-spacing: 0.3px; }
+.cert-status.valid { background: var(--valid-bg); color: var(--valid-text); border-color: var(--valid-border); }
+.cert-status.invalid { background: var(--invalid-bg); color: var(--invalid-text); border-color: var(--invalid-border); }
+.cert-status-dot { width: 6px; height: 6px; border-radius: 50%; }
+.cert-status.valid .cert-status-dot { background: var(--valid-dot); }
+.cert-status.invalid .cert-status-dot { background: var(--invalid-dot); }
+.cert-expiry { font: 10px var(--mono); color: var(--text-muted); margin-top: 6px; }
+.cert-card-body { padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+.cert-dn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.cert-label { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.cert-label-count { color: var(--text-muted); opacity: 0.6; margin-left: 4px; }
+.dn-box { background: var(--dn-bg); padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border); font: 11px/1.6 var(--mono); color: var(--text); word-break: break-all; user-select: all; }
+.dn-key { color: var(--text-muted); }
+.dn-issuer-cn { font-weight: 700; margin-bottom: 4px; }
+.san-list { display: flex; flex-wrap: wrap; gap: 6px; max-height: 128px; overflow-y: auto; }
+.san-tag { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 4px; background: var(--surface-hover); border: 1px solid var(--border); font: 12px var(--mono); color: var(--text); user-select: all; transition: border-color .15s; }
+.san-tag:hover { border-color: var(--text-muted); }
+.cert-details { display: flex; gap: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+.cert-detail-col { flex: 1; min-width: 0; }
+.cert-dates { font: 12px var(--mono); color: var(--text); line-height: 1.8; }
+.cert-dim { color: var(--text-muted); }
+.fingerprint-box { font: 12px var(--mono); color: var(--text); word-break: break-all; user-select: all; background: var(--dn-bg); padding: 6px 8px; border-radius: 4px; border: 1px solid var(--border); }
+.serial-value { font: 10px var(--mono); color: var(--text-muted); word-break: break-all; user-select: all; margin-top: 4px; }
+
+/* Empty state */
+.empty-state { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-muted); opacity: 0.5; padding: 40px; }
+.empty-state-icon { width: 56px; height: 56px; margin-bottom: 16px; border-radius: 14px; background: var(--surface-hover); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.empty-state-icon svg { width: 28px; height: 28px; stroke: currentColor; fill: none; }
+.empty-state-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.empty-state-sub { font-size: 12px; }
+
+/* Error */
+.error-box { padding: 14px 16px; border-radius: 8px; background: var(--error-bg); border: 1px solid var(--error-border); color: var(--error-text); font-size: 13px; display: flex; align-items: flex-start; gap: 10px; }
+.error-box svg { flex-shrink: 0; margin-top: 1px; }
+.error-title { font-weight: 600; margin-bottom: 4px; }
+
+/* Toast */
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); color: var(--text); padding: 10px 18px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 8px; }
+.toast.show { animation: toastIn .2s ease; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.su-footer { text-align: center; padding: 16px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; transition: border-color .25s, color .25s; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+@media (max-width: 768px) {
+    .cert-dn-grid { grid-template-columns: 1fr; }
+    .cert-details { flex-direction: column; }
+}
+@media (max-width: 640px) {
+    header { padding: 0 12px; }
+    .logo-svg { height: 20px; }
+    .logo-badge { font-size: 11px; padding: 2px 7px; }
+    .btn { padding: 6px 10px; font-size: 12px; }
+    main { padding: 16px 12px; }
+    .grid { grid-template-columns: 1fr; }
+    .editor-area { min-height: 200px; flex: none; }
+    .splitter { display: none; }
+    .output-panel { min-height: 400px; margin-top: 12px; }
+    .cert-card-head { flex-direction: column; gap: 10px; }
+    .cert-status-col { text-align: left; }
+}
+    </style>
+</head>
+<body>
+    <header>
+        <a class="logo" href="https://secutils.dev" target="_blank" rel="noopener">
+            <svg class="logo-svg" height="24" role="img" viewBox="0 0 98 16" xmlns="http://www.w3.org/2000/svg">
+                <path d="m3 0h10c1.662 0 3 1.338 3 3v10c0 1.662-1.338 3-3 3h-10c-1.662 0-3-1.338-3-3v-10c0-1.662 1.338-3 3-3z" fill="#fed047"/>
+                <path aria-label="SU" d="m11.285 12q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667t1.216-0.26667 1.216 0.26667q0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50133-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832t0.46933 1.4613q0 0.69334-0.30933 1.2053-0.30933 0.50133-0.864 0.77867-0.55467 0.27733-1.312 0.27733z" fill="#642340"/>
+                <path class="logo-text-fill" aria-label="SECUTILS.DEV" d="m93.158 12.117-1.9733-7.7867h1.1733l1.2587 5.184q0.11733 0.46933 0.20267 0.91734 0.08533 0.448 0.128 0.69334 0.04267-0.24533 0.128-0.69334 0.096-0.45867 0.21333-0.928l1.2053-5.1733h1.184l-1.984 7.7867zm-7.8294 0v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-6.5174 0v-7.7867h2.176q0.768 0 1.3333 0.29867 0.56534 0.288 0.87467 0.832 0.32 0.53334 0.32 1.248v3.008q0 0.736-0.32 1.2693-0.30933 0.53334-0.87467 0.832-0.56534 0.29867-1.3333 0.29867zm1.152-1.0347h1.024q0.62934 0 1.0027-0.36267 0.37333-0.36267 0.37333-1.0027v-3.008q0-0.61867-0.37333-0.98134-0.37334-0.37333-1.0027-0.37333h-1.024zm-5.2374 1.1413q-0.416 0-0.68267-0.24533-0.256-0.256-0.256-0.672 0-0.416 0.256-0.672 0.26667-0.26667 0.68267-0.26667 0.416 0 0.672 0.26667 0.26667 0.256 0.26667 0.672 0 0.416-0.26667 0.672-0.256 0.24533-0.672 0.24533zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733zm-8.288-0.10667v-7.7867h1.152v6.7414h3.4027v1.0453zm-6.6987 0v-1.0453h1.568v-5.696h-1.568v-1.0453h4.32v1.0453h-1.5787v5.696h1.5787v1.0453zm-4.8214 0v-6.7414h-2.08v-1.0453h5.3227v1.0453h-2.0907v6.7414zm-5.824 0.10667q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.3147 0q-1.0987 0-1.7493-0.608-0.64-0.61867-0.64-1.664v-3.456q0-1.056 0.64-1.664 0.65067-0.608 1.7493-0.608 1.088 0 1.728 0.61867 0.65067 0.608 0.65067 1.6533h-1.152q0-0.608-0.33067-0.928-0.32-0.32-0.896-0.32-0.58667 0-0.91734 0.32-0.32 0.32-0.32 0.928v3.456q0 0.608 0.32 0.928 0.33067 0.32 0.91734 0.32 0.576 0 0.896-0.32 0.33067-0.32 0.33067-0.928h1.152q0 1.0453-0.65067 1.664-0.64 0.608-1.728 0.608zm-8.6827-0.10667v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-4.1707 0.10667q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667-0.23467-0.32-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34134-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733z"/>
+            </svg>
+            <span class="logo-badge">Certificate Decoder</span>
+        </a>
+        <div class="header-right">
+            <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+                <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8.5 15h-1v-2h1v2Zm-3.674-3.107-1.414 1.414-.707-.707 1.414-1.415.707.708Zm8.479.707-.707.707-1.414-1.414.707-.708 1.414 1.415Z"/><path fill-rule="evenodd" d="M8 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 1a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" clip-rule="evenodd"/><path d="M3.005 8.505h-2v-1h2v1Zm12 0h-2v-1h2v1ZM4.82 4.114l-.708.707-1.414-1.414.707-.707L4.82 4.114Zm8.492-.707-1.414 1.414-.708-.707L12.605 2.7l.707.707ZM8.5 3h-1V1h1v2Z"/></svg>
+                <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4.05 12.95A6.982 6.982 0 0 1 2 8c0-1.79.684-3.583 2.05-4.95A6.982 6.982 0 0 1 9 1a1 1 0 0 1 .708 1.707 4.982 4.982 0 0 0-1.465 3.536 4.98 4.98 0 0 0 1.465 3.535 4.98 4.98 0 0 0 3.535 1.465 1 1 0 0 1 .707 1.707A6.981 6.981 0 0 1 9 15a6.983 6.983 0 0 1-4.95-2.05Zm.708-.707A5.983 5.983 0 0 0 9 14c1.535 0 3.07-.586 4.242-1.757a5.98 5.98 0 0 1-4.018-1.545L9 10.485a5.982 5.982 0 0 1-1.758-4.242A5.986 5.986 0 0 1 9 2a5.983 5.983 0 0 0-4.243 1.757A5.98 5.98 0 0 0 3 8l.006.288a5.978 5.978 0 0 0 1.75 3.955Z"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <div class="grid">
+            <div class="panel">
+                <div class="panel-bar">
+                    <span class="panel-label">PEM Input</span>
+                    <div class="panel-actions">
+                        <button class="link-btn" id="exampleBtn">Example</button>
+                        <button class="link-btn" id="clearBtn">Clear</button>
+                    </div>
+                </div>
+                <textarea id="pemInput" class="editor-area" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----&#10;MIID...&#10;-----END CERTIFICATE-----&#10;&#10;Paste one or more PEM certificates here"></textarea>
+            </div>
+
+            <div class="splitter" id="splitter"></div>
+
+            <div class="panel">
+                <div class="panel-bar">
+                    <span class="panel-label">Decoded</span>
+                    <div class="panel-actions">
+                        <span id="stats" class="stats-text">0 certificates</span>
+                        <button id="shareBtn" class="btn btn-primary btn-sm">Share</button>
+                    </div>
+                </div>
+                <div class="output-panel">
+                    <div id="outputContainer" class="output-scroll">
+                        <div id="emptyState" class="empty-state">
+                            <div class="empty-state-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                            </div>
+                            <div class="empty-state-title">Waiting for input...</div>
+                            <div class="empty-state-sub">Paste a PEM-encoded certificate chain</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="su-footer">
+        <p>Decode and inspect PEM-encoded X.509 certificate chains.</p>
+    </footer>
+
+    <div id="toast" class="toast" style="display:none">
+        <span id="toastMsg"></span>
+    </div>
+
+<script>
+(function() {
+    var toggle = document.getElementById('themeToggle');
+    var root = document.documentElement;
+    function setTheme(t) {
+        root.setAttribute('data-theme', t);
+        try { localStorage.setItem('su-tool-theme', t); } catch(e) {}
+    }
+    toggle.addEventListener('click', function() {
+        setTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    });
+    try {
+        var saved = localStorage.getItem('su-tool-theme');
+        if (saved) setTheme(saved);
+        else if (window.matchMedia('(prefers-color-scheme: light)').matches) setTheme('light');
+    } catch(e) {}
+})();
+
+document.addEventListener('DOMContentLoaded', function() {
+    var textarea = document.getElementById('pemInput');
+    var outputContainer = document.getElementById('outputContainer');
+    var emptyState = document.getElementById('emptyState');
+    var statsDiv = document.getElementById('stats');
+    var toastEl = document.getElementById('toast');
+    var toastMsg = document.getElementById('toastMsg');
+    var shareBtn = document.getElementById('shareBtn');
+    var exampleBtn = document.getElementById('exampleBtn');
+    var clearBtn = document.getElementById('clearBtn');
+
+    var parseTimeout;
+    var toastTimeout;
+
+    var params = new URLSearchParams(window.location.search);
+    var pemParam = params.get('pem');
+    if (pemParam) {
+        textarea.value = pemParam;
+        processInput();
+    }
+
+    textarea.addEventListener('input', function() {
+        clearTimeout(parseTimeout);
+        parseTimeout = setTimeout(processInput, 300);
+    });
+
+    clearBtn.addEventListener('click', function() {
+        textarea.value = '';
+        var url = new URL(window.location);
+        url.searchParams.delete('pem');
+        window.history.replaceState({}, '', url);
+        processInput();
+    });
+
+    exampleBtn.addEventListener('click', function() {
+        textarea.value = '-----BEGIN CERTIFICATE-----\n'
+            + 'MIIDrzCCApegAwIBAgIQCDvgVpBCRrGhdWrJWZHHSjANBgkqhkiG9w0BAQUFADBh\n'
+            + 'MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3\n'
+            + 'd3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBD\n'
+            + 'QTAeFw0wNjExMTAwMDAwMDBaFw0zMTExMTAwMDAwMDBaMGExCzAJBgNVBAYTAlVT\n'
+            + 'MRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5j\n'
+            + 'b20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IENBMIIBIjANBgkqhkiG\n'
+            + '9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4jvhEXLeqKTTo1eqUKKPC3eQyaKl7hLOllsB\n'
+            + 'CSDMAZOnTjC3U/dDxGkAV53ijSLdhwZAAIEJzs4bg7/fzTtxRuLWZscFs3YnFo97\n'
+            + 'nh6Vfe63SKMI2tavegw5BmV/Sl0fvBf4q77uKNd0f3p4mVmFaG5cIzJLv07A6Fpt\n'
+            + '43C/dxC//AH2hdmoRBBYMql1GNXRor5H4idq9Joz+EkIYIvUX7Q6hL+hqkpMfT7P\n'
+            + 'T19sdl6gSzeRntwi5m3OFBqOasv+zbMUZBfHWymeMr/y7vrTC0LUq7dBMtoM1O/4\n'
+            + 'gdW7jVg/tRvoSSiicNoxBN33shbyTApOB6jtSj1etX+jkMOvJwIDAQABo2MwYTAO\n'
+            + 'BgNVHQ8BAf8EBAMCAYYwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUA95QNVbR\n'
+            + 'TLtm8KPiGxvDl7I90VUwHwYDVR0jBBgwFoAUA95QNVbRTLtm8KPiGxvDl7I90VUw\n'
+            + 'DQYJKoZIhvcNAQEFBQADggEBAMucN6pIExIK+t1EnE9SsPTfrgT1eXkIoyQY/Esr\n'
+            + 'hMAtudXH/vTBH1jLuG2cenTnmCmrEbXjcKChzUyImZOMkXDiqw8cvpOp/2PV5Adg\n'
+            + '06O/nVsJ8dWO41P0jmP6P6fbtGbfYmbW0W5BjfIttep3Sp+dWOIrWcBAI+0tKIJF\n'
+            + 'PnlUkiaY4IBIqDfv8NZ5YBberOgOzW6sRBc4L0na4UU+Krk2U886UAb3LujEV0ls\n'
+            + 'YSEY1QSteDwsOoBrp+uvFRTp2InBuThs4pFsiv9kuXclVzDAGySj4dzp30d8tbQk\n'
+            + 'CAUw7C29C79Fv1C5qfPrmAESrciIxpg0X40KPMbp1ZWVbd4=\n'
+            + '-----END CERTIFICATE-----';
+        processInput();
+    });
+
+    shareBtn.addEventListener('click', function() {
+        var content = textarea.value.trim();
+        if (!content) { showToast('No content to share'); return; }
+        var url = new URL(window.location.href);
+        url.searchParams.set('pem', content);
+        window.history.replaceState({}, '', url);
+        navigator.clipboard.writeText(url.toString()).then(function() {
+            showToast('Link copied to clipboard');
+        }).catch(function() {
+            showToast('Failed to copy link');
+        });
+    });
+
+    function showToast(msg) {
+        clearTimeout(toastTimeout);
+        toastMsg.textContent = msg;
+        toastEl.style.display = 'flex';
+        toastEl.classList.remove('show');
+        void toastEl.offsetWidth;
+        toastEl.classList.add('show');
+        toastTimeout = setTimeout(function() {
+            toastEl.style.display = 'none';
+            toastEl.classList.remove('show');
+        }, 2000);
+    }
+
+    function processInput() {
+        var pemText = textarea.value.trim();
+
+        if (!pemText) {
+            outputContainer.innerHTML = '';
+            outputContainer.appendChild(emptyState);
+            emptyState.style.display = 'flex';
+            statsDiv.textContent = '0 certificates';
+            return;
+        }
+
+        emptyState.style.display = 'none';
+
+        var regex = /-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g;
+        var matches = pemText.match(regex);
+
+        if (!matches) {
+            renderError('No valid PEM certificate blocks found.');
+            statsDiv.textContent = 'Error';
+            return;
+        }
+
+        try {
+            var parsedCerts = matches.map(function(pem) {
+                try {
+                    var cert = forge.pki.certificateFromPem(pem);
+                    return {
+                        cert: cert,
+                        pem: pem,
+                        subjectDN: cert.subject.attributes.map(function(a) { return a.shortName + '=' + a.value; }).join(', '),
+                        issuerDN: cert.issuer.attributes.map(function(a) { return a.shortName + '=' + a.value; }).join(', '),
+                        fingerprint: getFingerprint(cert)
+                    };
+                } catch (e) {
+                    return null;
+                }
+            }).filter(function(c) { return c !== null; });
+
+            var sortedCerts = sortCertificates(parsedCerts);
+            renderCerts(sortedCerts);
+            statsDiv.textContent = parsedCerts.length + ' certificate' + (parsedCerts.length !== 1 ? 's' : '');
+        } catch (e) {
+            renderError('Error parsing certificates: ' + e.message);
+        }
+    }
+
+    function getFingerprint(cert) {
+        try {
+            var der = forge.asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes();
+            var md = forge.md.sha1.create();
+            md.update(der);
+            var hex = md.digest().toHex();
+            return hex.match(/.{2}/g).join(':').toUpperCase();
+        } catch (e) {
+            return 'Calculation failed';
+        }
+    }
+
+    function sortCertificates(certs) {
+        if (certs.length <= 1) return certs;
+        var pool = certs.slice();
+        var chain = [];
+        var leafIndex = pool.findIndex(function(candidate) {
+            return !pool.some(function(other) {
+                return other !== candidate && other.issuerDN === candidate.subjectDN;
+            });
+        });
+        var current = leafIndex >= 0 ? pool.splice(leafIndex, 1)[0] : pool.shift();
+        chain.push(current);
+        while (pool.length > 0) {
+            var issuerIndex = pool.findIndex(function(c) { return c.subjectDN === current.issuerDN; });
+            if (issuerIndex >= 0) {
+                current = pool.splice(issuerIndex, 1)[0];
+                chain.push(current);
+            } else {
+                chain.push.apply(chain, pool);
+                pool = [];
+            }
+        }
+        return chain;
+    }
+
+    function renderError(msg) {
+        outputContainer.innerHTML =
+            '<div class="error-box">' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>' +
+                '<div><div class="error-title">Parsing Error</div>' + escapeHtml(msg) + '</div>' +
+            '</div>';
+    }
+
+    function renderCerts(certs) {
+        outputContainer.innerHTML = '';
+
+        certs.forEach(function(item, index) {
+            var cert = item.cert;
+            var isSelfSigned = item.subjectDN === item.issuerDN;
+            var now = new Date();
+            var notBefore = cert.validity.notBefore;
+            var notAfter = cert.validity.notAfter;
+            var isValid = now >= notBefore && now <= notAfter;
+            var daysRemaining = Math.ceil((notAfter - now) / (1000 * 60 * 60 * 24));
+
+            var role = 'Intermediate CA';
+            var roleClass = '';
+            if (index === 0 && certs.length > 1) { role = 'Leaf Certificate'; roleClass = 'leaf'; }
+            if (isSelfSigned) { role = 'Root CA'; roleClass = 'root'; }
+            if (certs.length === 1 && !isSelfSigned) { role = 'Certificate'; roleClass = ''; }
+
+            var cnField = cert.subject.getField('CN');
+            var commonName = cnField ? cnField.value : '(No CN)';
+            var orgField = cert.subject.getField('O');
+            var org = orgField ? orgField.value : null;
+            var issuerCnField = cert.issuer.getField('CN');
+            var issuerCN = issuerCnField ? issuerCnField.value : '(No Issuer CN)';
+
+            var altNameExt = cert.getExtension('subjectAltName');
+            var sans = [];
+            if (altNameExt && altNameExt.altNames) {
+                sans = altNameExt.altNames.map(function(a) {
+                    if (a.type === 2) return a.value;
+                    if (a.type === 7) return a.ip;
+                    return a.value;
+                });
+            }
+
+            var card = document.createElement('div');
+            card.className = 'cert-card';
+
+            if (index > 0) {
+                var arrow = document.createElement('div');
+                arrow.className = 'chain-arrow';
+                card.appendChild(arrow);
+            }
+
+            var sansHtml = '';
+            if (sans.length > 0) {
+                sansHtml =
+                    '<div>' +
+                        '<div class="cert-label">Subject Alternative Names <span class="cert-label-count">(' + sans.length + ')</span></div>' +
+                        '<div class="san-list">' +
+                            sans.map(function(s) { return '<span class="san-tag">' + escapeHtml(s) + '</span>'; }).join('') +
+                        '</div>' +
+                    '</div>';
+            }
+
+            var bodyHtml =
+                '<div class="cert-card-head">' +
+                    '<div>' +
+                        '<div class="cert-cn-row">' +
+                            '<div class="cert-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>' +
+                            '<h3 class="cert-cn">' + escapeHtml(commonName) + '</h3>' +
+                        '</div>' +
+                        '<div class="cert-meta">' +
+                            '<span class="cert-role ' + roleClass + '">' + role + '</span>' +
+                            (org ? '<span class="cert-org">' + escapeHtml(org) + '</span>' : '') +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="cert-status-col">' +
+                        '<div class="cert-status ' + (isValid ? 'valid' : 'invalid') + '">' +
+                            '<div class="cert-status-dot"></div>' +
+                            '<span>' + (isValid ? 'VALID' : 'INVALID') + '</span>' +
+                        '</div>' +
+                        '<div class="cert-expiry">' + (isValid ? 'Expires in ' + daysRemaining + ' days' : 'Expired or not yet valid') + '</div>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="cert-card-body">' +
+                    '<div class="cert-dn-grid">' +
+                        '<div>' +
+                            '<div class="cert-label">Subject</div>' +
+                            '<div class="dn-box">' + formatDN(item.subjectDN) + '</div>' +
+                        '</div>' +
+                        '<div>' +
+                            '<div class="cert-label">Issuer</div>' +
+                            '<div class="dn-box"><div class="dn-issuer-cn">' + escapeHtml(issuerCN) + '</div>' + formatDN(item.issuerDN) + '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    sansHtml +
+                    '<div class="cert-details">' +
+                        '<div class="cert-detail-col">' +
+                            '<div class="cert-label">Validity Range</div>' +
+                            '<div class="cert-dates">' +
+                                '<div><span class="cert-dim">From: </span>' + notBefore.toUTCString() + '</div>' +
+                                '<div><span class="cert-dim">To: </span>' + notAfter.toUTCString() + '</div>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="cert-detail-col">' +
+                            '<div class="cert-label">Fingerprint (SHA-1)</div>' +
+                            '<div class="fingerprint-box">' + item.fingerprint + '</div>' +
+                            '<div class="cert-label" style="margin-top:10px">Serial</div>' +
+                            '<div class="serial-value">' + cert.serialNumber + '</div>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
+
+            card.insertAdjacentHTML('beforeend', bodyHtml);
+            outputContainer.appendChild(card);
+        });
+    }
+
+    function formatDN(dn) {
+        if (!dn) return '';
+        return escapeHtml(dn).replace(/([a-zA-Z]+=)/g, '<span class="dn-key">$1</span>');
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
+
+    // Resizable splitter
+    (function() {
+        var splitter = document.getElementById('splitter');
+        var grid = splitter.parentElement;
+        var dragging = false;
+        splitter.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            dragging = true;
+            splitter.classList.add('active');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        });
+        document.addEventListener('mousemove', function(e) {
+            if (!dragging) return;
+            var rect = grid.getBoundingClientRect();
+            var offset = e.clientX - rect.left;
+            var pct = (offset / rect.width) * 100;
+            pct = Math.max(15, Math.min(85, pct));
+            grid.style.gridTemplateColumns = pct + '% 12px ' + (100 - pct) + '%';
+        });
+        document.addEventListener('mouseup', function() {
+            if (!dragging) return;
+            dragging = false;
+            splitter.classList.remove('active');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        });
+    })();
+});
+</script>
+</body>
+</html>

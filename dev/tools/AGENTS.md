@@ -21,13 +21,14 @@ source of truth.
 
 Current mapping:
 
-| File                    | `su-tool-path`            | Description     |
-|-------------------------|---------------------------|-----------------|
-| `index.html`            | `/`                       | Tool index page |
-| `jwt-debugger.html`     | `/jwt`                    | JWT Debugger    |
-| `saml-decoder.html`     | `/saml`                   | SAML Decoder    |
-| `mock-saml-idp.html`    | `/elastic/saml/idp-login` | Mock SAML IdP   |
-| `markdown-to-html.html` | `/md-to-html`             | Markdown → HTML |
+| File                       | `su-tool-path`            | Description         |
+|----------------------------|---------------------------|---------------------|
+| `index.html`               | `/`                       | Tool index page     |
+| `jwt-debugger.html`        | `/jwt`                    | JWT Debugger        |
+| `saml-decoder.html`        | `/saml`                   | SAML Decoder        |
+| `mock-saml-idp.html`       | `/elastic/saml/idp-login` | Mock SAML IdP       |
+| `certificate-decoder.html` | `/pem`                    | Certificate Decoder |
+| `markdown-to-html.html`    | `/md-to-html`             | Markdown → HTML     |
 
 When **creating a new tool**, **deleting a tool**, or **changing a tool's alias**:
 
