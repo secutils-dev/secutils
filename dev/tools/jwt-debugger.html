@@ -232,6 +232,56 @@ main { flex: 1; padding: 24px 16px 48px; max-width: 1200px; margin: 0 auto; widt
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+/* Transform info banner */
+.transform-info {
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: var(--badge-bg);
+    color: var(--badge-text);
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+.transform-info code {
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.75rem;
+    background: var(--input-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+/* Parse error overlay on decoded panel */
+.parse-error-overlay {
+    position: absolute;
+    top: 40px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px 24px;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: var(--error-text);
+    text-align: center;
+}
+.parse-error-overlay::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    background: var(--error-bg);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1Zm0 1a6 6 0 1 0 0 12A6 6 0 0 0 8 2Zm0 3a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 8 5Zm0 5.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z' fill='%23fca5a5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 24px;
+}
+[data-theme="light"] .parse-error-overlay::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1Zm0 1a6 6 0 1 0 0 12A6 6 0 0 0 8 2Zm0 3a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 8 5Zm0 5.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z' fill='%23dc2626'/%3E%3C/svg%3E");
+}
 /* Splitter */
 .splitter { cursor: col-resize; background: transparent; position: relative; z-index: 1; }
 .splitter::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: var(--border); transition: width .15s, background .15s; transform: translateX(-50%); }
@@ -283,6 +333,7 @@ main { flex: 1; padding: 24px 16px 48px; max-width: 1200px; margin: 0 auto; widt
             <!-- Encoded Panel -->
             <div style="display: flex; flex-direction: column;">
                 <h2 style="font-size: 1rem; font-weight: 600; margin-bottom: 8px;">Encoded</h2>
+                <div id="transform-info" class="transform-info" style="display: none;"></div>
                 <div class="card" style="flex: 1; position: relative;">
                     <div class="card-body" style="height: 100%; min-height: 400px;">
                         <div id="encoded-output" contenteditable="true" spellcheck="false" class="token-input" style="width: 100%; height: 100%; min-height: 370px; white-space: pre-wrap; word-break: break-all; outline: none; font-size: 0.875rem; line-height: 1.6;"></div>
@@ -297,8 +348,9 @@ main { flex: 1; padding: 24px 16px 48px; max-width: 1200px; margin: 0 auto; widt
             <div class="splitter" id="splitter"></div>
 
             <!-- Decoded Panel -->
-            <div style="display: flex; flex-direction: column; gap: 16px;">
+            <div style="display: flex; flex-direction: column; gap: 16px; position: relative;">
                 <h2 style="font-size: 1rem; font-weight: 600;">Decoded</h2>
+                <div id="parse-error" class="parse-error-overlay" style="display: none;"></div>
 
                 <!-- Header -->
                 <div class="card">
@@ -379,6 +431,100 @@ document.addEventListener('DOMContentLoaded', () => {
         try { return decodeURIComponent(escape(atob(str))); } catch (e) { return null; }
     };
 
+    const isValidJWT = (str) => {
+        const parts = str.split('.');
+        if (parts.length !== 3) return false;
+        if (!parts.every(p => p.length > 0 && /^[A-Za-z0-9_-]+$/.test(p))) return false;
+        try {
+            const header = JSON.parse(base64UrlDecode(parts[0]));
+            return header && typeof header === 'object' && ('alg' in header || 'typ' in header);
+        } catch (e) { return false; }
+    };
+
+    const tryBase64Decode = (str) => {
+        let padded = str.replace(/-/g, '+').replace(/_/g, '/');
+        while (padded.length % 4) padded += '=';
+        try { return atob(padded); } catch (e) { return null; }
+    };
+
+    const findJWTInString = (str) => {
+        const re = /[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
+        let match;
+        while ((match = re.exec(str)) !== null) {
+            if (isValidJWT(match[0])) return match[0];
+        }
+        return null;
+    };
+
+    const extractJWT = (input) => {
+        input = input.trim();
+        if (!input) return null;
+
+        if (isValidJWT(input)) return { jwt: input, transforms: [] };
+
+        const segments = input.split('_');
+        for (let i = 1; i < segments.length && i <= 5; i++) {
+            const remainder = segments.slice(i).join('_');
+            const prefix = segments.slice(0, i).join('_') + '_';
+
+            if (isValidJWT(remainder)) {
+                return { jwt: remainder, transforms: [`Stripped prefix <code>${prefix}</code>`] };
+            }
+
+            const decoded = tryBase64Decode(remainder);
+            if (decoded) {
+                const jwt = findJWTInString(decoded);
+                if (jwt) {
+                    return { jwt, transforms: [`Stripped prefix <code>${prefix}</code>`, 'Base64-decoded', 'Extracted JWT from decoded payload'] };
+                }
+            }
+        }
+
+        const decoded = tryBase64Decode(input);
+        if (decoded) {
+            const jwt = findJWTInString(decoded);
+            if (jwt) {
+                return { jwt, transforms: ['Base64-decoded', 'Extracted JWT from decoded payload'] };
+            }
+        }
+
+        return null;
+    };
+
+    const transformInfo = document.getElementById('transform-info');
+    const parseError = document.getElementById('parse-error');
+
+    const showTransformInfo = (transforms) => {
+        if (transforms && transforms.length > 0) {
+            transformInfo.innerHTML = '<strong>Unwrapped token:</strong> ' + transforms.join(' \u2192 ');
+            transformInfo.style.display = '';
+        } else {
+            transformInfo.style.display = 'none';
+            transformInfo.innerHTML = '';
+        }
+    };
+
+    const showParseError = (message) => {
+        if (message) {
+            parseError.textContent = message;
+            parseError.style.display = '';
+        } else {
+            parseError.style.display = 'none';
+            parseError.textContent = '';
+        }
+    };
+
+    const clearDecodedPanels = () => {
+        const headerEl = document.getElementById('decoded-header');
+        const payloadEl = document.getElementById('decoded-payload');
+        if (headerEl) headerEl.value = '';
+        if (payloadEl) payloadEl.value = '';
+        populateTable('header-claims-table', null);
+        populateTable('payload-claims-table', null);
+        signatureStatus.textContent = '';
+        signatureStatus.style.cssText = 'margin-top: 12px; text-align: center; font-weight: 600; padding: 8px 16px; border-radius: 8px; font-size: 0.875rem;';
+    };
+
     const updateSignatureStatusUI = (isValid) => {
         signatureStatus.textContent = isValid ? 'Signature Verified' : 'Invalid Signature';
         signatureStatus.className = isValid ? 'sig-valid' : 'sig-invalid';
@@ -386,12 +532,28 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const updateDecodedFromToken = () => {
-        const token = encodedOutput.innerText;
-        const parts = token.split('.');
-        if (parts.length !== 3) {
-            updateSignatureStatusUI(false);
+        const rawInput = encodedOutput.innerText;
+        showParseError(null);
+
+        const result = extractJWT(rawInput);
+        if (!result) {
+            showTransformInfo(null);
+            if (rawInput.trim()) {
+                clearDecodedPanels();
+                showParseError('Could not parse as JWT. Expected format: header.payload.signature (base64url-encoded, dot-separated).');
+            }
             return;
         }
+
+        const { jwt, transforms } = result;
+        showTransformInfo(transforms);
+
+        if (transforms.length > 0) {
+            const parts = jwt.split('.');
+            encodedOutput.innerHTML = `<span class="token-part-header">${parts[0]}</span><span class="token-dot">.</span><span class="token-part-payload">${parts[1]}</span><span class="token-dot">.</span><span class="token-part-signature">${parts[2]}</span>`;
+        }
+
+        const parts = jwt.split('.');
         try {
             const headerJson = JSON.parse(base64UrlDecode(parts[0]));
             document.getElementById('decoded-header').value = JSON.stringify(headerJson, null, 2);
@@ -412,6 +574,8 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const updateEncoded = async () => {
+        showTransformInfo(null);
+        showParseError(null);
         const header = JSON.parse(document.getElementById('decoded-header').value);
         const payload = JSON.parse(document.getElementById('decoded-payload').value);
         if (!header || !payload) {
