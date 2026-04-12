@@ -1,0 +1,34 @@
+# Optional overlay: join secutils_webui (nginx) to an external Docker network so that
+# containers on that network can reach webhook responders by subdomain hostname.
+#
+# Uses *.webhooks.secutils.local instead of *.webhooks.localhost because *.localhost
+# resolves to 127.0.0.1 inside containers (RFC 6761), bypassing Docker DNS aliases.
+# A companion nginx config translates the host back to *.webhooks.localhost for the API.
+#
+# Usage:
+#   make e2e-up EXTERNAL_NETWORK=retrack
+#   make e2e-up EXTERNAL_NETWORK=retrack WEBHOOK_ALIAS=abc-docs.webhooks.secutils.local
+#
+# Then from a container on the external network:
+#   curl http://docs.webhooks.secutils.local:7171/my-path
+services:
+  secutils_api:
+    networks:
+      net: {}
+      external_net: {}
+
+  secutils_webui:
+    networks:
+      net: {}
+      external_net:
+        aliases:
+          - "${WEBHOOK_ALIAS:-docs.webhooks.secutils.local}"
+    volumes:
+      - type: bind
+        source: ./nginx-external-network.conf
+        target: /etc/nginx/conf.d/external-network.conf
+
+networks:
+  external_net:
+    external: true
+    name: ${EXTERNAL_NETWORK}

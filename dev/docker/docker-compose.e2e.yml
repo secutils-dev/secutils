@@ -70,7 +70,7 @@ services:
       context: ../..
       dockerfile: Dockerfile.webui
     ports:
-      - "7171:8080"
+      - "7171:7171"
     volumes:
       - type: bind
         source: ./nginx-e2e.conf

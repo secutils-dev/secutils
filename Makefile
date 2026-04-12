@@ -1,6 +1,7 @@
 COMPOSE_DEV          	:= dev/docker/docker-compose.yml
 COMPOSE_DEBUG_SCRAPER	:= dev/docker/docker-compose.debug-scraper.yml
 COMPOSE_E2E          	:= dev/docker/docker-compose.e2e.yml
+COMPOSE_EXTERNAL_NET 	:= dev/docker/docker-compose.external-network.yml
 ENV_FILE             	:= .env
 CHROME_PATH          	?= /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
 RUNS                 	?= 10
@@ -59,11 +60,16 @@ scraper: ## Run web scraper on host (headed browser).
 
 ## ---------- End-to-End Testing ----------
 
-e2e-up: ## Start the full e2e stack (all services in Docker). Use BUILD=1 to rebuild images.
-	docker compose -f $(COMPOSE_DEV) -f $(COMPOSE_E2E) --env-file $(ENV_FILE) up $(if $(BUILD),--build) -d
+COMPOSE_E2E_FILES := -f $(COMPOSE_DEV) -f $(COMPOSE_E2E)
+ifdef EXTERNAL_NETWORK
+  COMPOSE_E2E_FILES += -f $(COMPOSE_EXTERNAL_NET)
+endif
+
+e2e-up: ## Start the full e2e stack (all services in Docker). Use BUILD=1 to rebuild images. Use EXTERNAL_NETWORK=<name> to join an external Docker network.
+	docker compose $(COMPOSE_E2E_FILES) --env-file $(ENV_FILE) up $(if $(BUILD),--build) -d
 
 e2e-down: ## Stop the e2e stack and remove volumes.
-	docker compose -f $(COMPOSE_DEV) -f $(COMPOSE_E2E) --env-file $(ENV_FILE) down --volumes --remove-orphans
+	docker compose $(COMPOSE_E2E_FILES) --env-file $(ENV_FILE) down --volumes --remove-orphans
 
 e2e-test: ## Run Playwright e2e tests (use ARGS for extra flags, e.g. make e2e-test ARGS="--ui").
 	cd e2e && npx playwright test $(ARGS)
@@ -91,7 +97,7 @@ e2e-report: ## Open the Playwright HTML report.
 	cd e2e && npx playwright show-report
 
 e2e-logs: ## Tail logs from e2e stack.
-	docker compose -f $(COMPOSE_DEV) -f $(COMPOSE_E2E) logs -f
+	docker compose $(COMPOSE_E2E_FILES) logs -f
 
 ## ---------- Documentation ----------
 
