@@ -20,6 +20,7 @@ DEPLOY_CAMOUFOX_TAG 	?=
 .PHONY: deploy-dev deploy-dev-api deploy-dev-webui deploy-dev-docs deploy-dev-retrack-api deploy-dev-retrack-scraper
 .PHONY: deploy-prod deploy-prod-api deploy-prod-webui deploy-prod-docs deploy-prod-retrack-api deploy-prod-retrack-scraper
 .PHONY: deploy-camoufox
+.PHONY: deploy-tools
 
 ## ---------- Development ----------
 
@@ -215,6 +216,11 @@ agent-push: ## Push changes from this repo to the Agent workspace (excludes .git
 agent-pull: ## Pull changes from the Agent workspace into this repo (excludes .git and gitignored files).
 	@if [ -z "$(AGENT_WORKSPACE)" ]; then echo "Error: set AGENT_WORKSPACE to the Agent project path"; exit 1; fi
 	rsync -av --delete --exclude='.git' --filter=':- .gitignore' $(AGENT_WORKSPACE)/ ./
+
+## ---------- Tool Apps ----------
+
+deploy-tools: ## Deploy dev/tools HTML apps to responders (ARGS="calc jwt-debugger" to deploy specific tools).
+	node --env-file=.env dev/tools/deploy.ts $(ARGS)
 
 ## ---------- Docker Cleanup ----------
 
