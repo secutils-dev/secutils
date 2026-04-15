@@ -29,6 +29,7 @@ Current mapping:
 | `mock-saml-idp.html`       | `/elastic/saml/idp-login` | Mock SAML IdP       |
 | `certificate-decoder.html` | `/pem`                    | Certificate Decoder |
 | `markdown-to-html.html`    | `/md-to-html`             | Markdown → HTML     |
+| `calc.html`                | `/calc`                   | Numbr Calculator    |
 
 When **creating a new tool**, **deleting a tool**, or **changing a tool's alias**:
 
