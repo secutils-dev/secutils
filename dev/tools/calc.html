@@ -11,10 +11,13 @@
   #IyBCYXNpYyBtYXRoCjIgKyAyCjEwICogMyArIDIKKDEwICsgNSkgKiAyCgojIFNpemUgbWF0aAoy
   IGJ5dGVzICsgMiBtYiBpbiBieXRlcwoxIGdiIGluIG1iCjEwMjQga2IgaW4gbWIKNSB0YiBpbiBn
   YgoKIyBEdXJhdGlvbiBtYXRoCjIgc2VjcyArIDUgbWlucwoxIGhvdXIgaW4gbWludXRlcwo5MCBt
-  aW4gaW4gaG91cnMKMzY1IGRheXMgaW4geWVhcnMKCiMgRGF0ZSBtYXRoCjEwLjEwLjIwMjUgKyA1
-  IGRheXMKMDEuMDEuMjAyNSArIDIgd2Vla3MKMjAyNS0wNi0xNSArIDMwIGRheXMKMzEuMTIuMjAy
-  NSAtIDAxLjAxLjIwMjUKCiMgQ3VycmVuY3kKJDEwMCArICQ1MAoKIyBWYXJpYWJsZXMKcHJpY2Ug
-  PSAxMDAKdGF4ID0gMTUlCnByaWNlICsgdGF4
+  aW4gaW4gaG91cnMKMzY1IGRheXMgaW4geWVhcnMKMyBob3VycyAyMCBtaW51dGVzIGluIG1pbnV0
+  ZXMKCiMgRGF0ZSBtYXRoCjEwLjEwLjIwMjUgKyA1IGRheXMKMDEuMDEuMjAyNSArIDIgd2Vla3MK
+  MjAyNS0wNi0xNSArIDMwIGRheXMKMzEuMTIuMjAyNSAtIDAxLjAxLjIwMjUKTWFyY2ggMTIsIDIw
+  MjUgKyA1IGRheXMKRnJvbSBKYW51YXJ5IDEsIDIwMjUgdG8gTWFyY2ggMSwgMjAyNQoKIyBUaW1l
+  IG1hdGgKMzozNSBhbSArIDkgaG91cnMgMjAgbWludXRlcwoxMTozMCBwbSArIDIgaG91cnMKMTQ6
+  MDAgLSAyIGhvdXJzCgojIEN1cnJlbmN5CiQxMDAgKyAkNTAKCiMgVmFyaWFibGVzCnByaWNlID0g
+  MTAwCnRheCA9IDE1JQpwcmljZSArIHRheA==
 
   Expected results:
     # Basic math
@@ -33,12 +36,20 @@
     1 hour in minutes              →  60 MIN
     90 min in hours                →  1.50 HOUR
     365 days in years              →  1 YEAR
+    3 hours 20 minutes in minutes  →  200 MIN
 
     # Date math
     10.10.2025 + 5 days            →  15.10.2025
     01.01.2025 + 2 weeks           →  15.01.2025
     2025-06-15 + 30 days           →  15.07.2025
     31.12.2025 - 01.01.2025        →  364 DAY
+    March 12, 2025 + 5 days        →  17.03.2025
+    From January 1, 2025 to March 1, 2025  →  59 DAY
+
+    # Time math
+    3:35 am + 9 hours 20 minutes   →  12:55 PM
+    11:30 pm + 2 hours             →  1:30 AM
+    14:00 - 2 hours                →  12:00 PM
 
     # Currency
     $100 + $50                     →  150 USD
@@ -847,7 +858,7 @@ if(typeof window==="undefined"){(() => {
         const t = r(6103);
         n.apply = function(e, n, r, a) {
           var _S = new Set(["BIT","BYTE","KB","MB","GB","TB","PB","KIB","MIB","GIB","TIB"]);
-          var _T = new Set(["MS","SEC","MIN","HOUR","DAY","WEEK","MONTH","YEAR","DATE"]);
+          var _T = new Set(["MS","SEC","MIN","HOUR","DAY","WEEK","MONTH","YEAR","DATE","TIME"]);
           function _g(c){return _S.has(c)?"s":_T.has(c)?"t":"c";}
           if (null == n.currency || null == r.currency) return new t.Calc(e(n.value, r.value), r.currency || n.currency);
           if (n.currency == r.currency) {
@@ -867,7 +878,7 @@ if(typeof window==="undefined"){(() => {
         "use strict";
         Object.defineProperty(n, "__esModule", {
           value: !0
-        }), n.findCurrencyInfo = n.findCurrencyCode = n.currencySigns = n.currencySignsToCode = n.updateCurrenciesList = n.currenciesList = n.cryptoCurrencies = n.currencies = void 0, n.currencies = r(3389), n.cryptoCurrencies = r(9100), n.currenciesList = new Set([...Object.keys(n.currencies),...Object.keys(JSON.parse('{"BIT": {"name": "bits", "dp": 0}, "BYTE": {"name": "bytes", "dp": 0}, "KB": {"name": "kilobytes", "dp": 2}, "MB": {"name": "megabytes", "dp": 2}, "GB": {"name": "gigabytes", "dp": 2}, "TB": {"name": "terabytes", "dp": 2}, "PB": {"name": "petabytes", "dp": 2}, "KIB": {"name": "kibibytes", "dp": 2}, "MIB": {"name": "mebibytes", "dp": 2}, "GIB": {"name": "gibibytes", "dp": 2}, "TIB": {"name": "tebibytes", "dp": 2}}')),...Object.keys(JSON.parse('{"MS": {"name": "milliseconds", "dp": 0}, "SEC": {"name": "seconds", "dp": 2}, "MIN": {"name": "minutes", "dp": 2}, "HOUR": {"name": "hours", "dp": 2}, "DAY": {"name": "days", "dp": 2}, "WEEK": {"name": "weeks", "dp": 2}, "MONTH": {"name": "months", "dp": 2}, "YEAR": {"name": "years", "dp": 2}, "DATE": {"name": "date", "dp": 0}}'))]), n.updateCurrenciesList = function(e) {
+        }), n.findCurrencyInfo = n.findCurrencyCode = n.currencySigns = n.currencySignsToCode = n.updateCurrenciesList = n.currenciesList = n.cryptoCurrencies = n.currencies = void 0, n.currencies = r(3389), n.cryptoCurrencies = r(9100), n.currenciesList = new Set([...Object.keys(n.currencies),...Object.keys(JSON.parse('{"BIT": {"name": "bits", "dp": 0}, "BYTE": {"name": "bytes", "dp": 0}, "KB": {"name": "kilobytes", "dp": 2}, "MB": {"name": "megabytes", "dp": 2}, "GB": {"name": "gigabytes", "dp": 2}, "TB": {"name": "terabytes", "dp": 2}, "PB": {"name": "petabytes", "dp": 2}, "KIB": {"name": "kibibytes", "dp": 2}, "MIB": {"name": "mebibytes", "dp": 2}, "GIB": {"name": "gibibytes", "dp": 2}, "TIB": {"name": "tebibytes", "dp": 2}}')),...Object.keys(JSON.parse('{"MS": {"name": "milliseconds", "dp": 0}, "SEC": {"name": "seconds", "dp": 2}, "MIN": {"name": "minutes", "dp": 2}, "HOUR": {"name": "hours", "dp": 2}, "DAY": {"name": "days", "dp": 2}, "WEEK": {"name": "weeks", "dp": 2}, "MONTH": {"name": "months", "dp": 2}, "YEAR": {"name": "years", "dp": 2}, "DATE": {"name": "date", "dp": 0}, "TIME": {"name": "time", "dp": 0}}'))]), n.updateCurrenciesList = function(e) {
           e.forEach((e => {
             if (e.toUpperCase() != e) throw new Error(`The currency ${e} is in lowercase!`)
           })), n.currenciesList = new Set(e)
@@ -908,7 +919,7 @@ if(typeof window==="undefined"){(() => {
               if (n.test(e)) return r
           }(e), r || (n.currenciesList.has(e) ? e : void 0))
         }, n.findCurrencyInfo = function(e) {
-          return n.currencies[e] || JSON.parse('{"BIT": {"name": "bits", "dp": 0}, "BYTE": {"name": "bytes", "dp": 0}, "KB": {"name": "kilobytes", "dp": 2}, "MB": {"name": "megabytes", "dp": 2}, "GB": {"name": "gigabytes", "dp": 2}, "TB": {"name": "terabytes", "dp": 2}, "PB": {"name": "petabytes", "dp": 2}, "KIB": {"name": "kibibytes", "dp": 2}, "MIB": {"name": "mebibytes", "dp": 2}, "GIB": {"name": "gibibytes", "dp": 2}, "TIB": {"name": "tebibytes", "dp": 2}}')[e] || JSON.parse('{"MS": {"name": "milliseconds", "dp": 0}, "SEC": {"name": "seconds", "dp": 2}, "MIN": {"name": "minutes", "dp": 2}, "HOUR": {"name": "hours", "dp": 2}, "DAY": {"name": "days", "dp": 2}, "WEEK": {"name": "weeks", "dp": 2}, "MONTH": {"name": "months", "dp": 2}, "YEAR": {"name": "years", "dp": 2}, "DATE": {"name": "date", "dp": 0}}')[e] || void 0
+          return n.currencies[e] || JSON.parse('{"BIT": {"name": "bits", "dp": 0}, "BYTE": {"name": "bytes", "dp": 0}, "KB": {"name": "kilobytes", "dp": 2}, "MB": {"name": "megabytes", "dp": 2}, "GB": {"name": "gigabytes", "dp": 2}, "TB": {"name": "terabytes", "dp": 2}, "PB": {"name": "petabytes", "dp": 2}, "KIB": {"name": "kibibytes", "dp": 2}, "MIB": {"name": "mebibytes", "dp": 2}, "GIB": {"name": "gibibytes", "dp": 2}, "TIB": {"name": "tebibytes", "dp": 2}}')[e] || JSON.parse('{"MS": {"name": "milliseconds", "dp": 0}, "SEC": {"name": "seconds", "dp": 2}, "MIN": {"name": "minutes", "dp": 2}, "HOUR": {"name": "hours", "dp": 2}, "DAY": {"name": "days", "dp": 2}, "WEEK": {"name": "weeks", "dp": 2}, "MONTH": {"name": "months", "dp": 2}, "YEAR": {"name": "years", "dp": 2}, "DATE": {"name": "date", "dp": 0}, "TIME": {"name": "time", "dp": 0}}')[e] || void 0
         }
       },
       213: (e, n, r) => {
@@ -1528,14 +1539,26 @@ if(typeof window==="undefined"){(() => {
             TB:1099511627776,PB:1125899906842624,
             KIB:1024,MIB:1048576,GIB:1073741824,TIB:1099511627776,
             MS:0.001,SEC:1,MIN:60,HOUR:3600,DAY:86400,
-            WEEK:604800,MONTH:2592000,YEAR:31536000,DATE:86400};
+            WEEK:604800,MONTH:2592000,YEAR:31536000,DATE:86400,TIME:60};
           r = Object.assign({}, r || {}, _FR);
           function _d2e(y,m,d){return Math.floor(Date.UTC(y,m-1,d)/86400000);}
           function _e2d(days){
             var dt=new Date(Math.round(days)*86400000);
             return String(dt.getUTCDate()).padStart(2,"0")+"."+String(dt.getUTCMonth()+1).padStart(2,"0")+"."+dt.getUTCFullYear();
           }
+          var _MN={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,
+            may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,
+            oct:10,october:10,nov:11,november:11,dec:12,december:12};
           function _pd(line){
+            line=line.replace(/\btoday\b/gi,function(){
+              var now=new Date();
+              return _d2e(now.getFullYear(),now.getMonth()+1,now.getDate())+" DATE";
+            });
+            line=line.replace(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{1,2})(?:\s*,?\s*(\d{4}))?\b/gi,function(m,mo,d,y){
+              var M=_MN[mo.toLowerCase()],D=+d,Y=y?+y:new Date().getFullYear();
+              if(D<1||D>31)return m;
+              return _d2e(Y,M,D)+" DATE";
+            });
             line=line.replace(/\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/g,function(m,d,mo,y){
               var D=+d,M=+mo,Y=+y;
               if(M<1||M>12||D<1||D>31||Y<1900||Y>2200)return m;
@@ -1546,6 +1569,18 @@ if(typeof window==="undefined"){(() => {
               if(M<1||M>12||D<1||D>31||Y<1900||Y>2200)return m;
               return _d2e(Y,M,D)+" DATE";
             });
+            line=line.replace(/\b(\d{1,2}):(\d{2})\s*(am|pm)\b/gi,function(m,h,min,ap){
+              var H=parseInt(h)%12+(ap.toLowerCase()==="pm"?12:0),M=parseInt(min);
+              if(H>23||M>59)return m;
+              return(H*60+M)+" TIME";
+            });
+            line=line.replace(/\b(\d{1,2}):(\d{2})\b/g,function(m,h,min){
+              var H=parseInt(h),M=parseInt(min);
+              if(H>23||M>59)return m;
+              return(H*60+M)+" TIME";
+            });
+            line=line.replace(/\bfrom\s+(-?[\d.]+\s+DATE)\s+to\s+(-?[\d.]+\s+DATE)\b/gi,"($2) - ($1)");
+            line=line.replace(/(\d+(?:\.\d+)?\s*(?:milliseconds?|msecs?|ms|seconds?|secs?|sec|minutes?|mins?|min|hours?|hrs?|hr|days?|weeks?|months?|years?|yrs?|yr))\s+(\d)/gi,"$1 + $2");
             return line;
           }
           let u = (n = n.replace(/(https?:\/\/[^\s]+)/g, "")).split("\n"),
@@ -1580,6 +1615,11 @@ if(typeof window==="undefined"){(() => {
           return l.map((n => function(n, r) {
             if (n instanceof o.Calc && n.currency === "DATE") {
               return _e2d(+n.value);
+            }
+            if (n instanceof o.Calc && n.currency === "TIME") {
+              var mins=((+n.value)%1440+1440)%1440,th=Math.floor(mins/60),tm=mins%60;
+              var tap=th>=12?"PM":"AM";th=th%12||12;
+              return th+":"+String(Math.round(tm)).padStart(2,"0")+" "+tap;
             }
             if (n instanceof o.Calc && n.currency) {
               let a = (0, t.findCurrencyInfo)(n.currency);
@@ -1628,17 +1668,46 @@ var __workerBlobUrl = (function() {
   return URL.createObjectURL(blob);
 })();
 window.ym = function() {};
-window.__prepDates = function(line) {
-  return line.replace(/\\b(\\d{1,2})[.\\/](\\d{1,2})[.\\/](\\d{4})\\b/g, function(m,d,mo,y) {
-    var D=+d, M=+mo, Y=+y;
-    if (M<1||M>12||D<1||D>31||Y<1900||Y>2200) return m;
-    return Math.floor(Date.UTC(Y,M-1,D)/86400000) + " DATE";
-  }).replace(/\\b(\\d{4})-(\\d{1,2})-(\\d{1,2})\\b/g, function(m,y,mo,d) {
-    var D=+d, M=+mo, Y=+y;
-    if (M<1||M>12||D<1||D>31||Y<1900||Y>2200) return m;
-    return Math.floor(Date.UTC(Y,M-1,D)/86400000) + " DATE";
-  });
-};
+window.__prepDates = (function() {
+  var _MN={jan:1,january:1,feb:2,february:2,mar:3,march:3,apr:4,april:4,
+    may:5,jun:6,june:6,jul:7,july:7,aug:8,august:8,sep:9,september:9,
+    oct:10,october:10,nov:11,november:11,dec:12,december:12};
+  function _d2e(y,m,d){return Math.floor(Date.UTC(y,m-1,d)/86400000);}
+  return function(line) {
+    line=line.replace(/\btoday\b/gi,function(){
+      var now=new Date();
+      return _d2e(now.getFullYear(),now.getMonth()+1,now.getDate())+" DATE";
+    });
+    line=line.replace(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)\s+(\d{1,2})(?:\s*,?\s*(\d{4}))?\b/gi,function(m,mo,d,y){
+      var M=_MN[mo.toLowerCase()],D=+d,Y=y?+y:new Date().getFullYear();
+      if(D<1||D>31)return m;
+      return _d2e(Y,M,D)+" DATE";
+    });
+    line=line.replace(/\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/g,function(m,d,mo,y){
+      var D=+d,M=+mo,Y=+y;
+      if(M<1||M>12||D<1||D>31||Y<1900||Y>2200)return m;
+      return _d2e(Y,M,D)+" DATE";
+    });
+    line=line.replace(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/g,function(m,y,mo,d){
+      var D=+d,M=+mo,Y=+y;
+      if(M<1||M>12||D<1||D>31||Y<1900||Y>2200)return m;
+      return _d2e(Y,M,D)+" DATE";
+    });
+    line=line.replace(/\b(\d{1,2}):(\d{2})\s*(am|pm)\b/gi,function(m,h,min,ap){
+      var H=parseInt(h)%12+(ap.toLowerCase()==="pm"?12:0),M=parseInt(min);
+      if(H>23||M>59)return m;
+      return(H*60+M)+" TIME";
+    });
+    line=line.replace(/\b(\d{1,2}):(\d{2})\b/g,function(m,h,min){
+      var H=parseInt(h),M=parseInt(min);
+      if(H>23||M>59)return m;
+      return(H*60+M)+" TIME";
+    });
+    line=line.replace(/\bfrom\s+(-?[\d.]+\s+DATE)\s+to\s+(-?[\d.]+\s+DATE)\b/gi,"($2) - ($1)");
+    line=line.replace(/(\d+(?:\.\d+)?\s*(?:milliseconds?|msecs?|ms|seconds?|secs?|sec|minutes?|mins?|min|hours?|hrs?|hr|days?|weeks?|months?|years?|yrs?|yr))\s+(\d)/gi,"$1 + $2");
+    return line;
+  };
+})();
 window.__hashEncode = function(s) {
   try { return btoa(unescape(encodeURIComponent(s))); } catch(e) { return ""; }
 };
@@ -4356,7 +4425,7 @@ window.__hashDecode = function(h) {
         "use strict";
         Object.defineProperty(t, "__esModule", {
           value: !0
-        }), t.findCurrencyInfo = t.findCurrencyCode = t.currencySigns = t.currencySignsToCode = t.updateCurrenciesList = t.currenciesList = t.cryptoCurrencies = t.currencies = void 0, t.currencies = n(3389), t.cryptoCurrencies = n(9100), t.currenciesList = new Set([...Object.keys(t.currencies),...Object.keys(JSON.parse('{"BIT": {"name": "bits", "dp": 0}, "BYTE": {"name": "bytes", "dp": 0}, "KB": {"name": "kilobytes", "dp": 2}, "MB": {"name": "megabytes", "dp": 2}, "GB": {"name": "gigabytes", "dp": 2}, "TB": {"name": "terabytes", "dp": 2}, "PB": {"name": "petabytes", "dp": 2}, "KIB": {"name": "kibibytes", "dp": 2}, "MIB": {"name": "mebibytes", "dp": 2}, "GIB": {"name": "gibibytes", "dp": 2}, "TIB": {"name": "tebibytes", "dp": 2}}')),...Object.keys(JSON.parse('{"MS": {"name": "milliseconds", "dp": 0}, "SEC": {"name": "seconds", "dp": 2}, "MIN": {"name": "minutes", "dp": 2}, "HOUR": {"name": "hours", "dp": 2}, "DAY": {"name": "days", "dp": 2}, "WEEK": {"name": "weeks", "dp": 2}, "MONTH": {"name": "months", "dp": 2}, "YEAR": {"name": "years", "dp": 2}, "DATE": {"name": "date", "dp": 0}}'))]), t.updateCurrenciesList = function(e) {
+        }), t.findCurrencyInfo = t.findCurrencyCode = t.currencySigns = t.currencySignsToCode = t.updateCurrenciesList = t.currenciesList = t.cryptoCurrencies = t.currencies = void 0, t.currencies = n(3389), t.cryptoCurrencies = n(9100), t.currenciesList = new Set([...Object.keys(t.currencies),...Object.keys(JSON.parse('{"BIT": {"name": "bits", "dp": 0}, "BYTE": {"name": "bytes", "dp": 0}, "KB": {"name": "kilobytes", "dp": 2}, "MB": {"name": "megabytes", "dp": 2}, "GB": {"name": "gigabytes", "dp": 2}, "TB": {"name": "terabytes", "dp": 2}, "PB": {"name": "petabytes", "dp": 2}, "KIB": {"name": "kibibytes", "dp": 2}, "MIB": {"name": "mebibytes", "dp": 2}, "GIB": {"name": "gibibytes", "dp": 2}, "TIB": {"name": "tebibytes", "dp": 2}}')),...Object.keys(JSON.parse('{"MS": {"name": "milliseconds", "dp": 0}, "SEC": {"name": "seconds", "dp": 2}, "MIN": {"name": "minutes", "dp": 2}, "HOUR": {"name": "hours", "dp": 2}, "DAY": {"name": "days", "dp": 2}, "WEEK": {"name": "weeks", "dp": 2}, "MONTH": {"name": "months", "dp": 2}, "YEAR": {"name": "years", "dp": 2}, "DATE": {"name": "date", "dp": 0}, "TIME": {"name": "time", "dp": 0}}'))]), t.updateCurrenciesList = function(e) {
           e.forEach((e => {
             if (e.toUpperCase() != e) throw new Error(`The currency ${e} is in lowercase!`)
           })), t.currenciesList = new Set(e)
@@ -4397,7 +4466,7 @@ window.__hashDecode = function(h) {
               if (t.test(e)) return n
           }(e), n || (t.currenciesList.has(e) ? e : void 0))
         }, t.findCurrencyInfo = function(e) {
-          return t.currencies[e] || JSON.parse('{"BIT": {"name": "bits", "dp": 0}, "BYTE": {"name": "bytes", "dp": 0}, "KB": {"name": "kilobytes", "dp": 2}, "MB": {"name": "megabytes", "dp": 2}, "GB": {"name": "gigabytes", "dp": 2}, "TB": {"name": "terabytes", "dp": 2}, "PB": {"name": "petabytes", "dp": 2}, "KIB": {"name": "kibibytes", "dp": 2}, "MIB": {"name": "mebibytes", "dp": 2}, "GIB": {"name": "gibibytes", "dp": 2}, "TIB": {"name": "tebibytes", "dp": 2}}')[e] || JSON.parse('{"MS": {"name": "milliseconds", "dp": 0}, "SEC": {"name": "seconds", "dp": 2}, "MIN": {"name": "minutes", "dp": 2}, "HOUR": {"name": "hours", "dp": 2}, "DAY": {"name": "days", "dp": 2}, "WEEK": {"name": "weeks", "dp": 2}, "MONTH": {"name": "months", "dp": 2}, "YEAR": {"name": "years", "dp": 2}, "DATE": {"name": "date", "dp": 0}}')[e] || void 0
+          return t.currencies[e] || JSON.parse('{"BIT": {"name": "bits", "dp": 0}, "BYTE": {"name": "bytes", "dp": 0}, "KB": {"name": "kilobytes", "dp": 2}, "MB": {"name": "megabytes", "dp": 2}, "GB": {"name": "gigabytes", "dp": 2}, "TB": {"name": "terabytes", "dp": 2}, "PB": {"name": "petabytes", "dp": 2}, "KIB": {"name": "kibibytes", "dp": 2}, "MIB": {"name": "mebibytes", "dp": 2}, "GIB": {"name": "gibibytes", "dp": 2}, "TIB": {"name": "tebibytes", "dp": 2}}')[e] || JSON.parse('{"MS": {"name": "milliseconds", "dp": 0}, "SEC": {"name": "seconds", "dp": 2}, "MIN": {"name": "minutes", "dp": 2}, "HOUR": {"name": "hours", "dp": 2}, "DAY": {"name": "days", "dp": 2}, "WEEK": {"name": "weeks", "dp": 2}, "MONTH": {"name": "months", "dp": 2}, "YEAR": {"name": "years", "dp": 2}, "DATE": {"name": "date", "dp": 0}, "TIME": {"name": "time", "dp": 0}}')[e] || void 0
         }
       },
       1350: (e, t) => {
