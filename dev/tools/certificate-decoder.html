@@ -336,7 +336,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function processInput() {
-        var pemText = textarea.value.trim();
+        var pemText = normalizeInput(textarea.value);
 
         if (!pemText) {
             outputContainer.innerHTML = '';
@@ -352,9 +352,16 @@ document.addEventListener('DOMContentLoaded', function() {
         var matches = pemText.match(regex);
 
         if (!matches) {
-            renderError('No valid PEM certificate blocks found.');
-            statsDiv.textContent = 'Error';
-            return;
+            // Accept headerless input (e.g. base64 copied from Firefox/Chrome cert viewer
+            // or raw DER pasted as base64) by wrapping each block in PEM armor.
+            var wrapped = wrapHeaderlessBase64(pemText);
+            if (wrapped) {
+                matches = wrapped;
+            } else {
+                renderError('No valid PEM certificate blocks found.');
+                statsDiv.textContent = 'Error';
+                return;
+            }
         }
 
         try {
@@ -532,6 +539,57 @@ document.addEventListener('DOMContentLoaded', function() {
             card.insertAdjacentHTML('beforeend', bodyHtml);
             outputContainer.appendChild(card);
         });
+    }
+
+    function normalizeInput(raw) {
+        if (!raw) return '';
+        var text = raw;
+
+        // Peel surrounding matching quotes/backticks that often come from JSON/YAML/shell snippets.
+        var trimmed = text.trim();
+        if (trimmed.length >= 2) {
+            var first = trimmed.charAt(0);
+            var last = trimmed.charAt(trimmed.length - 1);
+            if ((first === '"' || first === "'" || first === '`') && first === last) {
+                text = trimmed.slice(1, -1);
+            }
+        }
+
+        // URL-decode if the input looks percent-encoded (e.g. cert copied from a URL query param
+        // where `+`, `/`, `=` and newlines show up as %2B/%2F/%3D/%0A). Only apply when decoding
+        // actually changes something and succeeds — otherwise fall back to the original text.
+        if (/%[0-9A-Fa-f]{2}/.test(text)) {
+            try {
+                var decoded = decodeURIComponent(text);
+                if (decoded !== text) text = decoded;
+            } catch (e) { /* leave text untouched on malformed sequences */ }
+        }
+
+        // Unescape common literal escape sequences (e.g. `\n`, `\r`, `\t`) that appear when a PEM
+        // is pasted from a JSON string.
+        if (text.indexOf('\\n') !== -1 || text.indexOf('\\r') !== -1 || text.indexOf('\\t') !== -1) {
+            text = text.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\r/g, '\n').replace(/\\t/g, '\t');
+        }
+
+        // Normalize line endings.
+        text = text.replace(/\r\n?/g, '\n');
+
+        return text.trim();
+    }
+
+    function wrapHeaderlessBase64(text) {
+        // Split on blank lines so multiple pasted base64 blobs are treated as separate certs.
+        var blocks = text.split(/\n\s*\n/).map(function(b) { return b.trim(); }).filter(Boolean);
+        if (blocks.length === 0) return null;
+
+        var wrapped = [];
+        for (var i = 0; i < blocks.length; i++) {
+            var compact = blocks[i].replace(/\s+/g, '');
+            if (!/^[A-Za-z0-9+/]+=*$/.test(compact) || compact.length < 40) return null;
+            var lines = compact.match(/.{1,64}/g) || [];
+            wrapped.push('-----BEGIN CERTIFICATE-----\n' + lines.join('\n') + '\n-----END CERTIFICATE-----');
+        }
+        return wrapped;
     }
 
     function formatDN(dn) {
