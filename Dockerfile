@@ -25,6 +25,10 @@ RUN curl -LO https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${
 COPY ["./assets", "./assets"]
 COPY ["./components/secutils-jwt-tools", "./components/secutils-jwt-tools"]
 COPY ["./components/retrack/components/retrack-types", "./components/retrack/components/retrack-types"]
+# `benches/js-runtime-perf` is a workspace member; `cargo fetch`/`cargo build`
+# need its manifest (and sources) to resolve the workspace graph, even though
+# the binary build below does not compile it.
+COPY ["./benches", "./benches"]
 COPY ["./Cargo.lock", "./Cargo.toml", "./"]
 
 # Fetch dependencies if they change.
