@@ -235,7 +235,6 @@ pub mod tests {
     use super::{JsRuntime, JsRuntimeConfig, ProxyState, PublicUrlValidator};
     use deno_core::error::{CoreError, CoreErrorKind};
     use futures::future::BoxFuture;
-    use reqwest_middleware::ClientBuilder;
     use serde::{Deserialize, Serialize};
     use std::sync::Arc;
     use url::Url;
@@ -740,6 +739,12 @@ pub mod tests {
         Ok(())
     }
 
+    // `proxy_op_ssrf_with_mock_network` pulls in `crate::network::*`, which is
+    // only wired up by `src/main.rs`. Compiling this test against the lib
+    // target would fail to resolve those imports, so the whole test is gated
+    // behind the `bin-tests` Cargo feature (off by default, on for
+    // `cargo test --bin secutils --features bin-tests`).
+    #[cfg(feature = "bin-tests")]
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn proxy_op_ssrf_with_mock_network() -> anyhow::Result<()> {
         use crate::network::{Network, tests::MockResolver};
@@ -748,6 +753,7 @@ pub mod tests {
             proto::rr::{RData, Record, rdata::A},
         };
         use lettre::transport::stub::AsyncStubTransport;
+        use reqwest_middleware::ClientBuilder;
         use std::net::Ipv4Addr;
 
         let config = JsRuntimeConfig {
@@ -1361,6 +1367,11 @@ pub mod tests {
         Ok(())
     }
 
+    // Reaches for `crate::utils::webhooks::ResponderScriptResult`, which is
+    // only in scope from the main binary. Gated behind the `bin-tests` Cargo
+    // feature so that `cargo clippy --all-targets` (which compiles the lib as
+    // a test) doesn't hit unresolved imports.
+    #[cfg(feature = "bin-tests")]
     mod body_auto_convert {
         use super::*;
         use crate::{

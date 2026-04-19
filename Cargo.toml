@@ -5,12 +5,23 @@ authors = ["Aleh Zasypkin <dev@secutils.dev>"]
 description = "An open-source, versatile, yet simple security toolbox for engineers and researchers."
 edition = "2024"
 
+[lib]
+name = "secutils"
+path = "src/lib.rs"
+# The `src/js_runtime.rs` test suite references crate-level modules
+# (`utils::*`, `network::*`) that are only wired up by `src/main.rs`. Those
+# tests are gated behind the `bin-tests` Cargo feature (off by default) and
+# run via `cargo test --bin secutils --features bin-tests`. Disabling the lib
+# test target is a belt-and-braces hint for `cargo test --workspace`.
+test = false
+
 [[bin]]
 name = "secutils"
 path = "src/main.rs"
 
 [workspace]
 members = [
+    "benches/js-runtime-perf",
     "components/secutils-jwt-tools"
 ]
 
@@ -138,6 +149,13 @@ default = [
     "uuid/v7",
     "zip/deflate"
 ]
+
+# Tests that reach for crate-level modules (`crate::utils::*`, `crate::network::*`)
+# not exposed by `src/lib.rs`. Enabled by the binary's test runner
+# (`cargo test --bin secutils --features bin-tests`) but left off by default so
+# `cargo clippy --all --all-targets -- -D warnings` can lint the lib as a test
+# without hitting unresolved imports.
+bin-tests = []
 
 [profile.release]
 strip = true

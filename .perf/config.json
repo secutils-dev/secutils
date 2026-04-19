@@ -1,0 +1,15 @@
+{
+  "thresholds": {
+    "p50": 15,
+    "p99": 20,
+    "throughput": 15,
+    "peakRssDeltaKb": 25
+  },
+  "scenarios": [
+    "cold_start_trivial",
+    "steady_state_trivial",
+    "responder_like",
+    "proxy_request",
+    "concurrent_responders_8x"
+  ]
+}

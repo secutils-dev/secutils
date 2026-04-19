@@ -16,7 +16,7 @@ DEPLOY_DEV_TAG      	?= latest
 DEPLOY_PROD_TAG     	?=
 DEPLOY_CAMOUFOX_TAG 	?=
 
-.PHONY: dev-up dev-down api webui webui-test docs e2e-up e2e-down e2e-test e2e-test-loop e2e-standalone-test docs-screenshots docs-screenshots-loop docs-screenshots-diff docs-screenshots-analyze agent-push agent-pull clean docker-df docker-prune docker-prune-images docker-prune-buildcache docker-pin-digests
+.PHONY: dev-up dev-down api webui webui-test docs e2e-up e2e-down e2e-test e2e-test-loop e2e-standalone-test docs-screenshots docs-screenshots-loop docs-screenshots-diff docs-screenshots-analyze agent-push agent-pull clean docker-df docker-prune docker-prune-images docker-prune-buildcache docker-pin-digests perf perf-analyze perf-report
 .PHONY: deploy-dev deploy-dev-api deploy-dev-webui deploy-dev-docs deploy-dev-retrack-api deploy-dev-retrack-scraper
 .PHONY: deploy-prod deploy-prod-api deploy-prod-webui deploy-prod-docs deploy-prod-retrack-api deploy-prod-retrack-scraper
 .PHONY: deploy-camoufox
@@ -216,6 +216,31 @@ agent-push: ## Push changes from this repo to the Agent workspace (excludes .git
 agent-pull: ## Pull changes from the Agent workspace into this repo (excludes .git and gitignored files).
 	@if [ -z "$(AGENT_WORKSPACE)" ]; then echo "Error: set AGENT_WORKSPACE to the Agent project path"; exit 1; fi
 	rsync -av --delete --exclude='.git' --filter=':- .gitignore' $(AGENT_WORKSPACE)/ ./
+
+## ---------- JS Runtime Perf Harness ----------
+
+PERF_OUTPUT ?= /tmp/perf.json
+PERF_ITERATIONS ?= 500
+PERF_WARMUP ?= 50
+PERF_CONCURRENCY ?= 8
+PERF_SCENARIOS ?= all
+
+perf: ## Run the JS runtime perf harness. Use ANALYZE=1 to also print the comparison table and record to .perf/history.jsonl (ARGS='--scenarios cold_start_trivial --iterations 100').
+	cargo run --release -p js-runtime-perf -- \
+		--scenarios $(PERF_SCENARIOS) \
+		--iterations $(PERF_ITERATIONS) \
+		--warmup $(PERF_WARMUP) \
+		--concurrency $(PERF_CONCURRENCY) \
+		--output $(PERF_OUTPUT) $(ARGS) \
+		$(if $(ANALYZE),&& node scripts/analyze-perf.ts $(PERF_OUTPUT))
+
+perf-analyze: ## Analyze an existing $(PERF_OUTPUT) without rerunning the harness (equivalent to the ANALYZE=1 tail of `make perf`).
+	node scripts/analyze-perf.ts $(PERF_OUTPUT)
+
+perf-report: ## Open the HTML perf viewer. Load .perf/history.jsonl inside it.
+	@open scripts/perf-report.html 2>/dev/null || \
+		xdg-open scripts/perf-report.html 2>/dev/null || \
+		echo 'Open scripts/perf-report.html in your browser'
 
 ## ---------- Tool Apps ----------
 
