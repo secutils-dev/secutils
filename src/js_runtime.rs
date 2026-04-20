@@ -1,22 +1,26 @@
 mod js_runtime_config;
 mod op_proxy_request;
 mod script_termination_reason;
+mod worker_pool;
 
 pub use self::{
     js_runtime_config::JsRuntimeConfig,
     op_proxy_request::{ProxyState, PublicUrlValidator},
 };
-use crate::js_runtime::script_termination_reason::ScriptTerminationReason;
+use crate::js_runtime::{
+    script_termination_reason::ScriptTerminationReason, worker_pool::ScriptTask,
+};
 use anyhow::Context;
-use deno_core::{PollEventLoopOptions, RuntimeOptions, scope, serde_v8, v8};
+use deno_core::{JsRuntimeForSnapshot, PollEventLoopOptions, RuntimeOptions, scope, serde_v8, v8};
 use serde::Deserialize;
 use std::{
     sync::{
-        Arc,
+        Arc, OnceLock,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
+use tokio::sync::oneshot;
 use tracing::error;
 
 /// Defines a maximum interval on which script is checked for timeout.
@@ -24,69 +28,192 @@ const SCRIPT_TIMEOUT_CHECK_INTERVAL: Duration = Duration::from_secs(2);
 
 deno_core::extension!(secutils_ext, ops = [op_proxy_request::op_proxy_request]);
 
-/// Wraps a user script in an async IIFE that auto-converts the `body` field
-/// of the returned object: strings are UTF-8 encoded, objects/arrays are
-/// JSON-serialized, and plain number arrays become `Uint8Array` for backward
-/// compatibility.  `Uint8Array`/`ArrayBuffer` values pass through unchanged.
-pub fn wrap_script_with_body_conversion(script: &str) -> String {
+/// Cached V8 startup snapshot, built once on the main thread at `init_platform`
+/// time and reused by every subsequent `deno_core::JsRuntime::new` call across
+/// every worker. `Box::leak` gives us the `&'static [u8]` shape required by
+/// `RuntimeOptions::startup_snapshot`; the bytes live for the process lifetime,
+/// which is exactly what we want.
+static STARTUP_SNAPSHOT: OnceLock<&'static [u8]> = OnceLock::new();
+
+fn build_startup_snapshot() -> &'static [u8] {
+    // The snapshot intentionally does not bake in `secutils_ext` or any JS
+    // modules: baking ops into a snapshot requires the snapshotting runtime
+    // to register the exact same op layout at runtime (a minefield of subtle
+    // version/feature mismatches). What we capture here is the expensive
+    // part - the V8 context setup and builtin JS globals. `secutils_ext` is
+    // still registered at `JsRuntime::new` time per invocation, but on top
+    // of a warm, pre-initialised context.
+    let runtime = JsRuntimeForSnapshot::new(RuntimeOptions::default());
+    let snapshot = runtime.snapshot();
+    Box::leak(snapshot) as &[u8]
+}
+
+fn startup_snapshot() -> &'static [u8] {
+    STARTUP_SNAPSHOT.get_or_init(build_startup_snapshot)
+}
+
+/// Wraps the raw user script in a minimal async IIFE so we can use
+/// `runtime.execute_script` + `runtime.resolve` uniformly whether the user
+/// returned a promise or a value.
+fn wrap_user_script_in_async_iife(script: &str) -> String {
     let script = script.trim().trim_end_matches(';');
-    format!(
-        r#"(async (globalThis) => {{
-  const __result = await ({script});
-  if (__result && __result.body !== undefined && __result.body !== null) {{
-    const __body = __result.body;
-    if (__body instanceof Uint8Array || __body instanceof ArrayBuffer || ArrayBuffer.isView(__body)) {{
-    }} else if (typeof __body === 'string') {{
-      __result.body = Deno.core.encode(__body);
-    }} else if (Array.isArray(__body)) {{
-      if (__body.length === 0 || typeof __body[0] === 'number') {{
-        __result.body = new Uint8Array(__body);
-      }} else {{
-        __result.body = Deno.core.encode(JSON.stringify(__body));
-      }}
-    }} else {{
-      __result.body = Deno.core.encode(JSON.stringify(__body));
-    }}
-  }}
-  return __result;
-}})(globalThis);"#
-    )
+    format!("(async () => (await ({script})))();")
+}
+
+/// Mutates `result` in place so that, if it is an object with a `body`
+/// property, the body value becomes a `Uint8Array` of bytes suitable for
+/// serde_v8 to deserialise into `Vec<u8>`.
+///
+/// The conversion rules match what the legacy JS wrapper did:
+/// - `Uint8Array` / `ArrayBuffer` / typed-array views: passed through.
+/// - `string`: UTF-8 encoded.
+/// - numeric arrays (or empty arrays): copied into a `Uint8Array`.
+/// - non-numeric arrays and any other objects/primitives: `JSON.stringify`
+///   followed by UTF-8 encoding.
+///
+/// `null`/`undefined` body values are left untouched so `Option<Vec<u8>>`
+/// fields can deserialise as `None`.
+fn normalize_response_body_in_place(
+    scope: &mut v8::PinScope<'_, '_>,
+    result: v8::Local<v8::Value>,
+) {
+    let Ok(obj) = v8::Local::<v8::Object>::try_from(result) else {
+        return;
+    };
+    let Some(body_key) = v8::String::new(scope, "body") else {
+        return;
+    };
+    let body_key_v: v8::Local<v8::Value> = body_key.into();
+
+    let Some(body) = obj.get(scope, body_key_v) else {
+        return;
+    };
+    if body.is_null_or_undefined() {
+        return;
+    }
+    if body.is_uint8_array() || body.is_array_buffer() || body.is_array_buffer_view() {
+        return;
+    }
+
+    let replacement_bytes: Vec<u8> = if body.is_string() {
+        v8::Local::<v8::String>::try_from(body)
+            .map(|s| s.to_rust_string_lossy(scope).into_bytes())
+            .unwrap_or_default()
+    } else if body.is_array() {
+        let Ok(arr) = v8::Local::<v8::Array>::try_from(body) else {
+            return;
+        };
+        let len = arr.length();
+        if len == 0 {
+            Vec::new()
+        } else {
+            // The legacy JS picked the code path from the first element's type:
+            // numeric first element -> treat every element as a u8 byte;
+            // anything else -> JSON.stringify the whole array. Preserve that
+            // exact semantic so behaviour is byte-identical to the old IIFE.
+            let first = arr
+                .get_index(scope, 0)
+                .unwrap_or_else(|| v8::undefined(scope).into());
+            if first.is_number() {
+                let mut bytes = Vec::with_capacity(len as usize);
+                for i in 0..len {
+                    let v = arr
+                        .get_index(scope, i)
+                        .unwrap_or_else(|| v8::undefined(scope).into());
+                    let n = v.number_value(scope).unwrap_or(0.0);
+                    bytes.push(n as u8);
+                }
+                bytes
+            } else {
+                match v8::json::stringify(scope, body) {
+                    Some(s) => s.to_rust_string_lossy(scope).into_bytes(),
+                    None => return,
+                }
+            }
+        }
+    } else {
+        match v8::json::stringify(scope, body) {
+            Some(s) => s.to_rust_string_lossy(scope).into_bytes(),
+            None => return,
+        }
+    };
+
+    let len = replacement_bytes.len();
+    let backing = v8::ArrayBuffer::new_backing_store_from_vec(replacement_bytes).make_shared();
+    let buffer = v8::ArrayBuffer::with_backing_store(scope, &backing);
+    let Some(typed) = v8::Uint8Array::new(scope, buffer, 0, len) else {
+        return;
+    };
+    obj.set(scope, body_key_v, typed.into());
 }
 
 /// An abstraction over the V8/Deno runtime that allows any utilities to execute custom user
-/// JavaScript scripts. Each invocation runs inside a dedicated `spawn_blocking` task with its own
-/// `CurrentThread` tokio runtime so that async Deno ops (e.g. `op_proxy_request`) work correctly.
+/// JavaScript scripts. Script executions are dispatched to a process-wide pool of long-lived
+/// worker threads (see [`worker_pool`]), each owning its own persistent `CurrentThread` tokio
+/// runtime and `LocalSet`. A fresh V8 isolate is still created for every execution to preserve
+/// isolation between scripts; what we avoid is rebuilding the surrounding tokio machinery on
+/// every call.
 pub struct JsRuntime;
 
 impl JsRuntime {
-    /// Initializes the JS runtime platform, should be called only once and in the main thread.
+    /// Initializes the JS runtime platform, builds the shared V8 startup
+    /// snapshot, and eagerly spins up the worker pool. Should be called exactly
+    /// once, from the main thread, during server startup.
     pub fn init_platform() {
         deno_core::JsRuntime::init_platform(None);
+        // Build the snapshot on the main thread before any worker boots so the
+        // first script execution on each worker does not pay for it. V8 requires
+        // the snapshotting isolate to run on a single thread, which is why we
+        // do it here rather than lazily inside a worker.
+        let _ = startup_snapshot();
+        worker_pool::init();
     }
 
-    /// Executes a user script and returns the result. The script runs inside a `spawn_blocking`
-    /// task with its own `CurrentThread` tokio runtime and V8 isolate, providing full isolation
-    /// from other concurrent scripts and the main server.
+    /// Executes a user script and returns the deserialised result.
     ///
-    /// `js_script_context` is an optional JSON string that will be parsed by V8's native JSON
-    /// parser and made available as the global `context` variable.
+    /// The script runs on one of the process-wide worker threads (round-robin scheduled),
+    /// using that worker's long-lived tokio runtime and a fresh V8 isolate. This provides
+    /// full isolation between scripts without paying the per-call cost of building a new
+    /// tokio runtime every time.
+    ///
+    /// The raw user script is wrapped in a trivial async IIFE so callers can supply either
+    /// a sync expression or a promise. After the script resolves, the returned object's
+    /// `body` field (if present) is normalised in place to a `Uint8Array` - see
+    /// [`normalize_response_body_in_place`] for the exact conversion rules. This keeps the
+    /// responder code path (`Vec<u8>` bodies deserialised via `serde_bytes`) fast and
+    /// avoids an async/await round-trip + JS conditional for every invocation.
+    ///
+    /// `js_script_context` is an optional JSON string that will be parsed by V8's native
+    /// JSON parser and made available as the global `context` variable.
     pub async fn execute_script<R: for<'de> Deserialize<'de> + Send + 'static>(
         config: JsRuntimeConfig,
         js_code: String,
         js_script_context: Option<String>,
         proxy_state: Option<ProxyState>,
     ) -> Result<(R, Duration), anyhow::Error> {
-        tokio::task::spawn_blocking(move || {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .context("Failed to build CurrentThread tokio runtime for script execution")?;
-            rt.block_on(async {
-                Self::execute_script_internal(config, js_code, js_script_context, proxy_state).await
+        let wrapped = wrap_user_script_in_async_iife(&js_code);
+        let (tx, rx) = oneshot::channel::<Result<(R, Duration), anyhow::Error>>();
+        let task = ScriptTask::new(move || {
+            Box::pin(async move {
+                let result = Self::execute_script_internal::<R>(
+                    config,
+                    wrapped,
+                    js_script_context,
+                    proxy_state,
+                )
+                .await;
+                // Ignore a dropped receiver: the caller awaiting `rx` either
+                // got the result or gave up; either way, nothing to do.
+                let _ = tx.send(result);
             })
-        })
-        .await
-        .map_err(|join_err| anyhow::anyhow!("Script execution task panicked: {join_err}"))?
+        });
+
+        worker_pool::global()
+            .submit(task)
+            .map_err(|_| anyhow::anyhow!("JS runtime worker pool unavailable"))?;
+
+        rx.await
+            .map_err(|_| anyhow::anyhow!("JS runtime worker dropped the script task"))?
     }
 
     async fn execute_script_internal<R: for<'de> Deserialize<'de>>(
@@ -100,6 +227,7 @@ impl JsRuntime {
         let mut runtime = deno_core::JsRuntime::new(RuntimeOptions {
             create_params: Some(v8::Isolate::create_params().heap_limits(0, config.max_heap_size)),
             extensions: vec![secutils_ext::init()],
+            startup_snapshot: Some(startup_snapshot()),
             ..Default::default()
         });
 
@@ -224,6 +352,7 @@ impl JsRuntime {
         scope!(scope, runtime);
 
         let local = v8::Local::new(scope, script_result);
+        normalize_response_body_in_place(scope, local);
         serde_v8::from_v8(scope, local)
             .map(|result| (result, now.elapsed()))
             .with_context(|| "Error deserializing script result")
@@ -549,9 +678,13 @@ pub mod tests {
         #[serde(rename_all = "camelCase")]
         struct ProxyResult {
             status_code: u16,
+            #[serde(with = "serde_bytes")]
             body: Vec<u8>,
         }
 
+        // Script returns `body` as a plain JS number array. The runtime's body
+        // normalisation converts it to a `Uint8Array` before serde_v8 sees it,
+        // so `ProxyResult::body` deserialises via `serde_bytes`.
         let url = format!("{}/data", mock_server.base_url());
         let script = format!(
             r#"(async () => {{
@@ -1374,9 +1507,7 @@ pub mod tests {
     #[cfg(feature = "bin-tests")]
     mod body_auto_convert {
         use super::*;
-        use crate::{
-            js_runtime::wrap_script_with_body_conversion, utils::webhooks::ResponderScriptResult,
-        };
+        use crate::utils::webhooks::ResponderScriptResult;
 
         fn config() -> JsRuntimeConfig {
             JsRuntimeConfig {
@@ -1388,7 +1519,7 @@ pub mod tests {
         async fn run_script(user_script: &str) -> anyhow::Result<ResponderScriptResult> {
             let (result, _) = JsRuntime::execute_script::<ResponderScriptResult>(
                 config(),
-                wrap_script_with_body_conversion(user_script),
+                user_script.to_string(),
                 None,
                 None,
             )

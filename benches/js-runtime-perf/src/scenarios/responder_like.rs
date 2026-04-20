@@ -1,8 +1,8 @@
 //! `responder_like`: reproduces the real responder flow - a user script that
 //! reads bytes out of `context.body`, does a small amount of JSON work, and
-//! returns the Secutils `{ body, headers, statusCode }` envelope. Uses
-//! `execute_script_with_body_conversion`, which wraps the script in the
-//! runtime and normalises the returned body into a `Uint8Array` in Rust.
+//! returns the Secutils `{ body, headers, statusCode }` envelope. Exercises
+//! the production `JsRuntime::execute_script`, which wraps the script in an
+//! async IIFE and normalises the returned body into a `Uint8Array` in Rust.
 //!
 //! This is the scenario most sensitive to Tier 2 #4 (moving the body
 //! serialisation from JS back into Rust).

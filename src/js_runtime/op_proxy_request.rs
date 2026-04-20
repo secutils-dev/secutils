@@ -4,11 +4,11 @@ use futures::future::BoxFuture;
 use reqwest::redirect::Policy as RedirectPolicy;
 use serde::{Deserialize, Serialize};
 use std::{
-    cell::RefCell,
+    cell::{OnceCell, RefCell},
     collections::HashMap,
     io::Read as _,
     rc::Rc,
-    sync::{Arc, OnceLock},
+    sync::Arc,
     time::Duration,
 };
 use url::Url;
@@ -22,20 +22,17 @@ pub trait PublicUrlValidator: Send + Sync {
 
 /// State injected into Deno's `OpState` before script execution.
 ///
-/// Each script execution creates its own `ProxyState` (and thus its own
-/// `reqwest::Client` instances).  This is critical because each script runs on
-/// a dedicated `CurrentThread` tokio runtime that is dropped when the script
-/// finishes. A static/shared `reqwest::Client` would keep pooled connections
-/// whose hyper background tasks are bound to the *previous* runtime, causing
-/// "dispatch task is gone" errors on the next invocation.
+/// The actual `reqwest::Client` is held in a thread-local (see [`thread_client`])
+/// and shared across every script executed on a given worker thread. Because
+/// each worker owns one long-lived tokio runtime, the hyper background tasks
+/// backing the client's connection pool stay healthy for the process lifetime
+/// and connections, TLS sessions, and DNS results are reused across requests.
 #[derive(Clone)]
 pub struct ProxyState {
     pub url_validator: Arc<dyn PublicUrlValidator>,
     pub restrict_to_public_urls: bool,
     pub max_response_size: usize,
     pub max_request_timeout: Duration,
-    client: Arc<OnceLock<reqwest::Client>>,
-    client_insecure: Arc<OnceLock<reqwest::Client>>,
 }
 
 impl ProxyState {
@@ -50,27 +47,43 @@ impl ProxyState {
             restrict_to_public_urls,
             max_response_size,
             max_request_timeout,
-            client: Arc::new(OnceLock::new()),
-            client_insecure: Arc::new(OnceLock::new()),
         }
     }
+}
 
-    fn client(&self, insecure: bool) -> &reqwest::Client {
-        let cell = if insecure {
-            &self.client_insecure
-        } else {
-            &self.client
-        };
-        cell.get_or_init(|| {
-            let mut builder = reqwest::Client::builder()
-                .redirect(RedirectPolicy::none())
-                .http1_only()
-                .no_gzip();
-            if insecure {
-                builder = builder.danger_accept_invalid_certs(true);
-            }
-            builder.build().expect("Failed to build proxy HTTP client")
-        })
+thread_local! {
+    /// Per-worker `reqwest::Client` used for proxy ops that verify TLS certs
+    /// normally. `OnceCell` so the first caller on a worker pays the build
+    /// cost (~1-2ms for TLS root store + connection pool bootstrap) and every
+    /// subsequent request on that worker reuses the connection pool.
+    static PROXY_CLIENT: OnceCell<reqwest::Client> = const { OnceCell::new() };
+
+    /// Per-worker `reqwest::Client` for `insecure: true` requests, built with
+    /// `danger_accept_invalid_certs(true)`. Kept separate from the secure
+    /// client so a compromised/self-signed cert cannot leak trust into normal
+    /// responder traffic.
+    static PROXY_CLIENT_INSECURE: OnceCell<reqwest::Client> = const { OnceCell::new() };
+}
+
+fn build_client(insecure: bool) -> reqwest::Client {
+    let mut builder = reqwest::Client::builder()
+        .redirect(RedirectPolicy::none())
+        .http1_only()
+        .no_gzip();
+    if insecure {
+        builder = builder.danger_accept_invalid_certs(true);
+    }
+    builder.build().expect("Failed to build proxy HTTP client")
+}
+
+/// Returns a cheap clone of the worker-thread-local `reqwest::Client`. The
+/// client internally holds an `Arc` to the shared connection pool, so cloning
+/// is a single atomic increment - far cheaper than rebuilding.
+fn thread_client(insecure: bool) -> reqwest::Client {
+    if insecure {
+        PROXY_CLIENT_INSECURE.with(|cell| cell.get_or_init(|| build_client(true)).clone())
+    } else {
+        PROXY_CLIENT.with(|cell| cell.get_or_init(|| build_client(false)).clone())
     }
 }
 
@@ -182,7 +195,7 @@ pub async fn op_proxy_request(
         .parse()
         .map_err(|_| JsErrorBox::generic(format!("Invalid HTTP method: '{}'", request.method)))?;
 
-    let client = proxy.client(request.insecure);
+    let client = thread_client(request.insecure);
 
     let max_timeout_ms = proxy.max_request_timeout.as_millis() as u64;
     let timeout = Duration::from_millis(

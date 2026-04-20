@@ -1,7 +1,7 @@
 use crate::{
     config::Config,
     error::Error as SecutilsError,
-    js_runtime::{JsRuntime, JsRuntimeConfig, ProxyState, wrap_script_with_body_conversion},
+    js_runtime::{JsRuntime, JsRuntimeConfig, ProxyState},
     server::app_state::AppState,
     utils::webhooks::{
         ResponderScriptContext, ResponderScriptResult, RespondersRequestCreateParams,
@@ -496,7 +496,6 @@ async fn execute_responder_script<R: for<'de> Deserialize<'de> + Send + 'static>
         responder.max_proxy_request_timeout,
     );
 
-    let js_code = wrap_script_with_body_conversion(script);
     let js_script_context_json = match serde_json::to_string(js_script_context) {
         Ok(json) => json,
         Err(err) => {
@@ -519,7 +518,7 @@ async fn execute_responder_script<R: for<'de> Deserialize<'de> + Send + 'static>
 
     match JsRuntime::execute_script::<R>(
         js_runtime_config,
-        js_code,
+        script.to_string(),
         Some(js_script_context_json),
         Some(proxy_state),
     )
