@@ -118,10 +118,10 @@ fn detect_cpu_model() -> String {
     #[cfg(target_os = "linux")]
     if let Ok(contents) = fs::read_to_string("/proc/cpuinfo") {
         for line in contents.lines() {
-            if let Some(rest) = line.strip_prefix("model name") {
-                if let Some(idx) = rest.find(':') {
-                    return rest[idx + 1..].trim().to_string();
-                }
+            if let Some(rest) = line.strip_prefix("model name")
+                && let Some(idx) = rest.find(':')
+            {
+                return rest[idx + 1..].trim().to_string();
             }
         }
     }

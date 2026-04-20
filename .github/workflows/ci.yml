@@ -204,13 +204,13 @@ jobs:
           load: true
           set: |
             retrack.cache-from=type=gha,scope=retrack
-            retrack.cache-to=type=gha,mode=max,scope=retrack
+            retrack.cache-to=type=gha,mode=max,scope=retrack,ignore-error=true
             retrack_web_scraper.cache-from=type=gha,scope=retrack-web-scraper
-            retrack_web_scraper.cache-to=type=gha,mode=max,scope=retrack-web-scraper
+            retrack_web_scraper.cache-to=type=gha,mode=max,scope=retrack-web-scraper,ignore-error=true
             secutils_api.cache-from=type=gha,scope=secutils-api
-            secutils_api.cache-to=type=gha,mode=max,scope=secutils-api
+            secutils_api.cache-to=type=gha,mode=max,scope=secutils-api,ignore-error=true
             secutils_webui.cache-from=type=gha,scope=secutils-webui
-            secutils_webui.cache-to=type=gha,mode=max,scope=secutils-webui
+            secutils_webui.cache-to=type=gha,mode=max,scope=secutils-webui,ignore-error=true
 
       - name: Save Docker images
         run: >

@@ -527,14 +527,14 @@ mod tests {
         index.upsert(&public_item)?;
 
         let mut public_items = index.search(SearchFilter::default())?;
-        public_items.sort_by(|item_a, item_b| item_a.id.cmp(&item_b.id));
+        public_items.sort_by_key(|item| item.id);
         assert_eq!(public_items, vec![public_item.clone()]);
 
         let mut public_and_user_items = index.search(
             SearchFilter::default()
                 .with_user_id(uuid!("00000000-0000-0000-0000-000000000003").into()),
         )?;
-        public_and_user_items.sort_by(|item_a, item_b| item_a.id.cmp(&item_b.id));
+        public_and_user_items.sort_by_key(|item| item.id);
         assert_eq!(
             public_and_user_items,
             vec![item_user_3, public_item.clone()]
@@ -544,7 +544,7 @@ mod tests {
             SearchFilter::default()
                 .with_user_id(uuid!("00000000-0000-0000-0000-000000000004").into()),
         )?;
-        public_and_user_items.sort_by(|item_a, item_b| item_a.id.cmp(&item_b.id));
+        public_and_user_items.sort_by_key(|item_a| item_a.id);
         assert_eq!(
             public_and_user_items,
             vec![item_user_4, public_item.clone()]
@@ -585,7 +585,7 @@ mod tests {
         index.upsert(&item_2)?;
 
         let mut items = index.search(SearchFilter::default())?;
-        items.sort_by(|item_a, item_b| item_a.id.cmp(&item_b.id));
+        items.sort_by_key(|item_a| item_a.id);
         assert_eq!(items, vec![item_1.clone(), item_2.clone()]);
 
         index.remove(item_1.id)?;
