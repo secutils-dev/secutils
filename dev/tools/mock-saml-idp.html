@@ -134,11 +134,11 @@ footer.su-footer { text-align: center; padding: 16px; font-size: 12px; color: va
   <main>
     <div class="card">
       <div class="tabs">
-        <button class="tab active" id="simpleModeBtn" onclick="setMode('simple')">Simple Mode</button>
-        <button class="tab" id="advancedModeBtn" onclick="setMode('advanced')">Advanced Mode</button>
+        <button class="tab active" id="simpleModeBtn">Simple Mode</button>
+        <button class="tab" id="advancedModeBtn">Advanced Mode</button>
       </div>
       <div class="card-body">
-        <form id="samlForm" onsubmit="handleProcess(event)">
+        <form id="samlForm">
           <div class="form-group">
             <label class="form-label">Username</label>
             <input type="text" id="username" value="test_user" required class="form-input">
@@ -154,7 +154,7 @@ footer.su-footer { text-align: center; padding: 16px; font-size: 12px; color: va
           <div class="form-group">
             <label class="form-label">Roles</label>
             <div id="selectedRoles" class="role-tags"></div>
-            <select id="roleSelect" onchange="handleRoleSelect()" class="form-input">
+            <select id="roleSelect" class="form-input">
               <option value="">Select a role...</option>
               <option value="viewer">viewer</option>
               <option value="editor">editor</option>
@@ -165,10 +165,9 @@ footer.su-footer { text-align: center; padding: 16px; font-size: 12px; color: va
             </select>
             <div id="customRoleInput" class="hidden mt-2">
               <div class="flex-row">
-                <input type="text" id="customRoleName" placeholder="Enter custom role name" class="form-input flex-1"
-                  onkeydown="if(event.key === 'Enter') { event.preventDefault(); addCustomRole(); }">
-                <button type="button" onclick="addCustomRole()" class="btn btn-primary btn-sm">Add</button>
-                <button type="button" onclick="hideCustomRoleInput()" class="btn btn-sm">Cancel</button>
+                <input type="text" id="customRoleName" placeholder="Enter custom role name" class="form-input flex-1">
+                <button type="button" id="addCustomRoleBtn" class="btn btn-primary btn-sm">Add</button>
+                <button type="button" id="cancelCustomRoleBtn" class="btn btn-sm">Cancel</button>
               </div>
             </div>
           </div>
@@ -198,22 +197,21 @@ footer.su-footer { text-align: center; padding: 16px; font-size: 12px; color: va
   </form>
 
 <script>
-// Theme toggle
-(function() {
-    var toggle = document.getElementById('themeToggle');
-    var root = document.documentElement;
-    function setThemeUI(t) {
+(() => {
+    const toggle = document.getElementById('themeToggle');
+    const root = document.documentElement;
+    const setThemeUI = (t) => {
         root.setAttribute('data-theme', t);
-        try { localStorage.setItem('su-tool-theme', t); } catch(e) {}
-    }
-    toggle.addEventListener('click', function() {
+        try { localStorage.setItem('su-tool-theme', t); } catch {}
+    };
+    toggle.addEventListener('click', () => {
         setThemeUI(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
     });
     try {
-        var saved = localStorage.getItem('su-tool-theme');
+        const saved = localStorage.getItem('su-tool-theme');
         if (saved) setThemeUI(saved);
         else if (window.matchMedia('(prefers-color-scheme: light)').matches) setThemeUI('light');
-    } catch(e) {}
+    } catch {}
 })();
 
 // ==========================================
@@ -270,377 +268,444 @@ as68JJ6Lk+gn0aJ0RJNRaOa8xeoA/YWYNfnCfiAHj82UzP5TT4L/BQ==
 const ISSUER = "urn:mock-idp";
 const SAML_CALLBACK_PATH = "/api/security/saml/callback";
 
-// ==========================================
-// 2. UI STATE MANAGEMENT
-// ==========================================
-let currentMode = 'simple';
-let selectedRoles = ['viewer'];
+(() => {
+    // ==========================================
+    // 2. UI STATE
+    // ==========================================
+    let currentMode = 'simple';
+    let selectedRoles = ['viewer'];
+    let samlRequestId = null;
+    let samlRequestAcsUrl = null;
 
-function setMode(mode) {
-    currentMode = mode;
-    var simpleBtn = document.getElementById('simpleModeBtn');
-    var advancedBtn = document.getElementById('advancedModeBtn');
-    var destinationSection = document.getElementById('destinationSection');
-    var statusSection = document.getElementById('statusSection');
-    if (mode === 'simple') {
-        simpleBtn.className = 'tab active';
-        advancedBtn.className = 'tab';
-        destinationSection.classList.add('hidden');
-        statusSection.classList.add('hidden');
-    } else {
-        advancedBtn.className = 'tab active';
-        simpleBtn.className = 'tab';
-        destinationSection.classList.remove('hidden');
-        statusSection.classList.remove('hidden');
-    }
-}
+    const $ = (id) => document.getElementById(id);
 
-// ==========================================
-// 3. ROLE MANAGEMENT
-// ==========================================
-function renderRoles() {
-    var container = document.getElementById('selectedRoles');
-    container.innerHTML = '';
-    selectedRoles.forEach(function(role) {
-        var tag = document.createElement('span');
-        tag.className = 'role-tag';
-        tag.innerHTML = escapeHtml(role) +
-            ' <button type="button" onclick="removeRole(\'' + escapeHtml(role) + '\')" title="Remove role">' +
-            '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>' +
-            '</button>';
-        container.appendChild(tag);
-    });
-}
+    // ==========================================
+    // 3. MODE SWITCHING
+    // ==========================================
+    const setMode = (mode) => {
+        currentMode = mode;
+        const isAdvanced = mode === 'advanced';
+        $('simpleModeBtn').className = isAdvanced ? 'tab' : 'tab active';
+        $('advancedModeBtn').className = isAdvanced ? 'tab active' : 'tab';
+        $('destinationSection').classList.toggle('hidden', !isAdvanced);
+        $('statusSection').classList.toggle('hidden', !isAdvanced);
+    };
 
-function escapeHtml(text) {
-    var div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
+    // ==========================================
+    // 4. ROLE MANAGEMENT
+    // ==========================================
+    const REMOVE_ROLE_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
 
-function handleRoleSelect() {
-    var select = document.getElementById('roleSelect');
-    var value = select.value;
-    if (value === '__custom__') {
-        document.getElementById('customRoleInput').classList.remove('hidden');
-        document.getElementById('customRoleName').focus();
-    } else if (value && !selectedRoles.includes(value)) {
-        selectedRoles.push(value);
-        renderRoles();
-    }
-    select.value = '';
-}
+    const renderRoles = () => {
+        const container = $('selectedRoles');
+        container.replaceChildren();
+        for (const role of selectedRoles) {
+            const tag = document.createElement('span');
+            tag.className = 'role-tag';
+            tag.append(role, ' ');
 
-function addCustomRole() {
-    var input = document.getElementById('customRoleName');
-    var roleName = input.value.trim();
-    if (roleName && !selectedRoles.includes(roleName)) {
-        selectedRoles.push(roleName);
-        renderRoles();
-    }
-    input.value = '';
-    hideCustomRoleInput();
-}
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.title = 'Remove role';
+            removeBtn.innerHTML = REMOVE_ROLE_ICON;
+            removeBtn.addEventListener('click', () => removeRole(role));
+            tag.appendChild(removeBtn);
 
-function hideCustomRoleInput() {
-    document.getElementById('customRoleInput').classList.add('hidden');
-    document.getElementById('customRoleName').value = '';
-}
-
-function removeRole(role) {
-    selectedRoles = selectedRoles.filter(function(r) { return r !== role; });
-    renderRoles();
-}
-
-// ==========================================
-// 4. DESTINATION URL HANDLING
-// ==========================================
-function normalizeDestination(input) {
-    try {
-        var urlStr = input.trim();
-        if (!urlStr.startsWith('http://') && !urlStr.startsWith('https://')) {
-            urlStr = 'http://' + urlStr;
+            container.appendChild(tag);
         }
-        var url = new URL(urlStr);
-        return url.origin + SAML_CALLBACK_PATH;
-    } catch (e) {
-        return input.replace(/\/+$/, '') + SAML_CALLBACK_PATH;
-    }
-}
+    };
 
-// ==========================================
-// 5. EXCLUSIVE XML CANONICALIZATION (exc-c14n)
-// ==========================================
-function exclusiveC14n(xmlString, inclusiveNamespaces) {
-    if (!inclusiveNamespaces) inclusiveNamespaces = [];
-    var parser = new DOMParser();
-    var doc = parser.parseFromString(xmlString, 'application/xml');
-    if (doc.documentElement.nodeName === 'parsererror') {
-        throw new Error('XML parsing error: ' + doc.documentElement.textContent);
-    }
-    return canonicalizeNode(doc.documentElement, {}, inclusiveNamespaces);
-}
+    const escapeHtml = (text) => {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    };
 
-function canonicalizeNode(node, renderedNs, inclusiveNsPrefixes) {
-    if (node.nodeType === Node.TEXT_NODE) return escapeText(node.textContent);
-    if (node.nodeType !== Node.ELEMENT_NODE) return '';
-    var visiblyUtilized = new Set();
-    var localNsDecls = {};
-    var elemPrefix = node.prefix || '';
-    var elemNs = node.namespaceURI || '';
-    if (elemNs) visiblyUtilized.add(elemPrefix);
-    var regularAttrs = [];
-    for (var i = 0; i < node.attributes.length; i++) {
-        var attr = node.attributes[i];
-        if (attr.name === 'xmlns') { localNsDecls[''] = attr.value; }
-        else if (attr.name.startsWith('xmlns:')) { localNsDecls[attr.name.substring(6)] = attr.value; }
-        else { regularAttrs.push(attr); if (attr.prefix) visiblyUtilized.add(attr.prefix); }
-    }
-    for (var j = 0; j < inclusiveNsPrefixes.length; j++) visiblyUtilized.add(inclusiveNsPrefixes[j]);
-    var nsToRender = [];
-    visiblyUtilized.forEach(function(prefix) {
-        var nsUri;
-        if (prefix in localNsDecls) nsUri = localNsDecls[prefix];
-        else if (prefix === elemPrefix && elemNs) nsUri = elemNs;
-        else { nsUri = node.lookupNamespaceURI(prefix); if (!nsUri) nsUri = ''; }
-        if (renderedNs[prefix] !== nsUri) nsToRender.push({ prefix: prefix, uri: nsUri });
+    const handleRoleSelect = () => {
+        const select = $('roleSelect');
+        const { value } = select;
+        if (value === '__custom__') {
+            $('customRoleInput').classList.remove('hidden');
+            $('customRoleName').focus();
+        } else if (value && !selectedRoles.includes(value)) {
+            selectedRoles.push(value);
+            renderRoles();
+        }
+        select.value = '';
+    };
+
+    const addCustomRole = () => {
+        const input = $('customRoleName');
+        const roleName = input.value.trim();
+        if (roleName && !selectedRoles.includes(roleName)) {
+            selectedRoles.push(roleName);
+            renderRoles();
+        }
+        input.value = '';
+        hideCustomRoleInput();
+    };
+
+    const hideCustomRoleInput = () => {
+        $('customRoleInput').classList.add('hidden');
+        $('customRoleName').value = '';
+    };
+
+    const removeRole = (role) => {
+        selectedRoles = selectedRoles.filter((r) => r !== role);
+        renderRoles();
+    };
+
+    // ==========================================
+    // 5. DESTINATION URL HANDLING
+    // ==========================================
+    const normalizeDestination = (input) => {
+        try {
+            let urlStr = input.trim();
+            if (!urlStr.startsWith('http://') && !urlStr.startsWith('https://')) {
+                urlStr = `http://${urlStr}`;
+            }
+            return new URL(urlStr).origin + SAML_CALLBACK_PATH;
+        } catch {
+            return input.replace(/\/+$/, '') + SAML_CALLBACK_PATH;
+        }
+    };
+
+    // ==========================================
+    // 6. EXCLUSIVE XML CANONICALIZATION (exc-c14n)
+    // ==========================================
+    const exclusiveC14n = (xmlString, inclusiveNamespaces = []) => {
+        const doc = new DOMParser().parseFromString(xmlString, 'application/xml');
+        if (doc.documentElement.nodeName === 'parsererror') {
+            throw new Error(`XML parsing error: ${doc.documentElement.textContent}`);
+        }
+        return canonicalizeNode(doc.documentElement, {}, inclusiveNamespaces);
+    };
+
+    const canonicalizeNode = (node, renderedNs, inclusiveNsPrefixes) => {
+        if (node.nodeType === Node.TEXT_NODE) return escapeText(node.textContent);
+        if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+        const visiblyUtilized = new Set();
+        const localNsDecls = {};
+        const elemPrefix = node.prefix || '';
+        const elemNs = node.namespaceURI || '';
+        if (elemNs) visiblyUtilized.add(elemPrefix);
+
+        const regularAttrs = [];
+        for (const attr of node.attributes) {
+            if (attr.name === 'xmlns') {
+                localNsDecls[''] = attr.value;
+            } else if (attr.name.startsWith('xmlns:')) {
+                localNsDecls[attr.name.substring(6)] = attr.value;
+            } else {
+                regularAttrs.push(attr);
+                if (attr.prefix) visiblyUtilized.add(attr.prefix);
+            }
+        }
+        for (const prefix of inclusiveNsPrefixes) visiblyUtilized.add(prefix);
+
+        const nsToRender = [];
+        for (const prefix of visiblyUtilized) {
+            let nsUri;
+            if (prefix in localNsDecls) nsUri = localNsDecls[prefix];
+            else if (prefix === elemPrefix && elemNs) nsUri = elemNs;
+            else nsUri = node.lookupNamespaceURI(prefix) ?? '';
+            if (renderedNs[prefix] !== nsUri) nsToRender.push({ prefix, uri: nsUri });
+        }
+
+        nsToRender.sort((a, b) => {
+            if (a.prefix === '') return -1;
+            if (b.prefix === '') return 1;
+            return a.prefix.localeCompare(b.prefix);
+        });
+        regularAttrs.sort((a, b) => {
+            const aHasNs = !!a.namespaceURI;
+            const bHasNs = !!b.namespaceURI;
+            if (!aHasNs && !bHasNs) return a.localName.localeCompare(b.localName);
+            if (!aHasNs) return -1;
+            if (!bHasNs) return 1;
+            if (a.namespaceURI !== b.namespaceURI) return a.namespaceURI.localeCompare(b.namespaceURI);
+            return a.localName.localeCompare(b.localName);
+        });
+
+        const tagName = elemPrefix ? `${elemPrefix}:${node.localName}` : node.localName;
+        const parts = [`<${tagName}`];
+        for (const { prefix, uri } of nsToRender) {
+            parts.push(prefix === '' ? ` xmlns="${escapeAttr(uri)}"` : ` xmlns:${prefix}="${escapeAttr(uri)}"`);
+        }
+        for (const a of regularAttrs) parts.push(` ${a.name}="${escapeAttr(a.value)}"`);
+        parts.push('>');
+
+        const childRenderedNs = { ...renderedNs };
+        for (const { prefix, uri } of nsToRender) childRenderedNs[prefix] = uri;
+        for (const child of node.childNodes) parts.push(canonicalizeNode(child, childRenderedNs, inclusiveNsPrefixes));
+
+        parts.push(`</${tagName}>`);
+        return parts.join('');
+    };
+
+    const escapeText = (text) => text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\r/g, '&#xD;');
+
+    const escapeAttr = (text) => text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/"/g, '&quot;')
+        .replace(/\t/g, '&#x9;')
+        .replace(/\n/g, '&#xA;')
+        .replace(/\r/g, '&#xD;');
+
+    // ==========================================
+    // 7. HELPER FUNCTIONS
+    // ==========================================
+    const log = (msg, type = 'info') => {
+        if (currentMode !== 'advanced') return;
+        const box = $('statusBox');
+        const cls = type === 'error' ? 'text-error' : type === 'success' ? 'text-success' : 'text-info';
+        box.insertAdjacentHTML('beforeend', `<div class="${cls}">&gt; ${msg}</div>`);
+        box.scrollTop = box.scrollHeight;
+    };
+
+    const generateID = () => `_${Array.from(crypto.getRandomValues(new Uint8Array(20)), (b) => b.toString(16).padStart(2, '0')).join('')}`;
+
+    const sha256Base64 = (str) => {
+        const md = new KJUR.crypto.MessageDigest({ alg: 'sha256' });
+        md.updateString(str);
+        return hextob64(md.digest());
+    };
+
+    // ==========================================
+    // 8. SAML REQUEST PARSING (SP-INITIATED FLOW)
+    // ==========================================
+    const parseSAMLRequestFromUrl = () => {
+        const samlRequest = new URLSearchParams(window.location.search).get('SAMLRequest');
+        if (!samlRequest) return null;
+        try {
+            log('Parsing SAMLRequest from URL...');
+            const bytes = Uint8Array.from(atob(samlRequest), (c) => c.charCodeAt(0));
+            const inflated = pako.inflateRaw(bytes);
+            const xmlString = new TextDecoder('utf-8').decode(inflated);
+            log('   SAMLRequest decoded successfully');
+            const doc = new DOMParser().parseFromString(xmlString, 'application/xml');
+            if (doc.documentElement.nodeName === 'parsererror') throw new Error('Failed to parse SAMLRequest XML');
+            const rootEl = doc.documentElement;
+            const id = rootEl.getAttribute('ID');
+            if (!id) throw new Error('No ID attribute found in SAMLRequest');
+            const acsUrl = rootEl.getAttribute('AssertionConsumerServiceURL') || '';
+            log(`   Extracted Request ID: ${id}`, 'success');
+            if (acsUrl) log(`   Extracted ACS URL: ${acsUrl}`, 'success');
+            return { id, acsUrl };
+        } catch (err) {
+            log(`Failed to parse SAMLRequest: ${err.message}`, 'error');
+            return null;
+        }
+    };
+
+    // ==========================================
+    // 9. MAIN LOGIC
+    // ==========================================
+    const handleProcess = (e) => {
+        e.preventDefault();
+        if (currentMode === 'advanced') $('statusBox').innerHTML = 'Initializing...<br>';
+
+        const username = $('username').value;
+        const fullname = $('fullname').value;
+        const email = $('email').value;
+        const roles = selectedRoles.length > 0 ? selectedRoles : ['viewer'];
+        const rawDestination = $('destination').value || 'http://localhost:5601';
+        const destination = normalizeDestination(rawDestination);
+        $('realPostForm').action = destination;
+
+        const now = new Date();
+        const issueInstant = now.toISOString();
+        const notOnOrAfter = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+        const assertionID = generateID();
+        const responseID = generateID();
+        const sessionIndex = Math.floor(Math.random() * 10000000000000000).toString();
+        const nameID = generateID();
+
+        try {
+            log('1. Building SAML Assertion...');
+            if (samlRequestId) log(`   SP-Initiated flow: InResponseTo="${samlRequestId}"`);
+            else log('   IdP-Initiated flow: No InResponseTo attribute');
+
+            const roleAttributeValues = roles.map((role) => `<saml:AttributeValue>${role}</saml:AttributeValue>`).join('');
+            const inResponseToAttr = samlRequestId ? ` InResponseTo="${samlRequestId}"` : '';
+
+            const assertionXml =
+                `<saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" Version="2.0" ID="${assertionID}" IssueInstant="${issueInstant}">` +
+                    `<saml:Issuer>${ISSUER}</saml:Issuer>` +
+                    '<saml:Subject>' +
+                        `<saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:transient">${nameID}</saml:NameID>` +
+                        '<saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">' +
+                            `<saml:SubjectConfirmationData NotOnOrAfter="${notOnOrAfter}" Recipient="${destination}"${inResponseToAttr}/>` +
+                        '</saml:SubjectConfirmation>' +
+                    '</saml:Subject>' +
+                    `<saml:AuthnStatement AuthnInstant="${issueInstant}" SessionIndex="${sessionIndex}">` +
+                        '<saml:AuthnContext>' +
+                            '<saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:unspecified</saml:AuthnContextClassRef>' +
+                        '</saml:AuthnContext>' +
+                    '</saml:AuthnStatement>' +
+                    '<saml:AttributeStatement>' +
+                        '<saml:Attribute FriendlyName="principal" Name="http://saml.elastic-cloud.com/attributes/principal" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">' +
+                            `<saml:AttributeValue>${username}</saml:AttributeValue>` +
+                        '</saml:Attribute>' +
+                        '<saml:Attribute FriendlyName="roles" Name="http://saml.elastic-cloud.com/attributes/roles" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">' +
+                            roleAttributeValues +
+                        '</saml:Attribute>' +
+                        '<saml:Attribute FriendlyName="email" Name="http://saml.elastic-cloud.com/attributes/email" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">' +
+                            `<saml:AttributeValue>${email}</saml:AttributeValue>` +
+                        '</saml:Attribute>' +
+                        '<saml:Attribute FriendlyName="name" Name="http://saml.elastic-cloud.com/attributes/name" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">' +
+                            `<saml:AttributeValue>${fullname}</saml:AttributeValue>` +
+                        '</saml:Attribute>' +
+                    '</saml:AttributeStatement>' +
+                '</saml:Assertion>';
+
+            log('2. Canonicalizing Assertion (exc-c14n)...');
+            const canonicalizedAssertion = exclusiveC14n(assertionXml);
+
+            log('3. Computing SHA-256 digest...');
+            const digestBase64 = sha256Base64(canonicalizedAssertion);
+            log(`   Digest: ${digestBase64.substring(0, 20)}...`);
+
+            log('4. Building SignedInfo...');
+            const signedInfoXml =
+                '<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">' +
+                    '<CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>' +
+                    '<SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>' +
+                    `<Reference URI="#${assertionID}">` +
+                        '<Transforms>' +
+                            '<Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>' +
+                            '<Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>' +
+                        '</Transforms>' +
+                        '<DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>' +
+                        `<DigestValue>${digestBase64}</DigestValue>` +
+                    '</Reference>' +
+                '</SignedInfo>';
+
+            log('5. Canonicalizing SignedInfo...');
+            const canonicalizedSignedInfo = exclusiveC14n(signedInfoXml);
+
+            log('6. Signing with RSA-SHA256...');
+            const rsaKey = KEYUTIL.getKey(PRIVATE_KEY);
+            const sig = new KJUR.crypto.Signature({ alg: 'SHA256withRSA' });
+            sig.init(rsaKey);
+            sig.updateString(canonicalizedSignedInfo);
+            const signatureHex = sig.sign();
+            const signatureBase64 = hextob64(signatureHex);
+            log(`   Signature: ${signatureBase64.substring(0, 20)}...`);
+
+            log('7. Verifying signature...');
+            const verifySig = new KJUR.crypto.Signature({ alg: 'SHA256withRSA' });
+            verifySig.init(KEYUTIL.getKey(PUBLIC_CERT));
+            verifySig.updateString(canonicalizedSignedInfo);
+            if (!verifySig.verify(signatureHex)) {
+                log('   Signature verification FAILED!', 'error');
+                return;
+            }
+            log('   Signature verified successfully!', 'success');
+
+            log('8. Assembling signed assertion...');
+            const signatureBlock =
+                '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">' +
+                    '<SignedInfo>' +
+                        '<CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>' +
+                        '<SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>' +
+                        `<Reference URI="#${assertionID}">` +
+                            '<Transforms>' +
+                                '<Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>' +
+                                '<Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>' +
+                            '</Transforms>' +
+                            '<DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>' +
+                            `<DigestValue>${digestBase64}</DigestValue>` +
+                        '</Reference>' +
+                    '</SignedInfo>' +
+                    `<SignatureValue>${signatureBase64}</SignatureValue>` +
+                '</Signature>';
+
+            const signedAssertionXml = assertionXml.replace(
+                `<saml:Issuer>${ISSUER}</saml:Issuer>`,
+                `<saml:Issuer>${ISSUER}</saml:Issuer>${signatureBlock}`,
+            );
+
+            log('9. Building SAML Response...');
+            const responseXml =
+                `<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" ID="${responseID}"${inResponseToAttr} Version="2.0" IssueInstant="${issueInstant}" Destination="${destination}">` +
+                    `<saml:Issuer xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion">${ISSUER}</saml:Issuer>` +
+                    '<samlp:Status>' +
+                        '<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>' +
+                    '</samlp:Status>' +
+                    signedAssertionXml +
+                '</samlp:Response>';
+
+            log('10. Encoding and submitting...');
+            const base64Response = btoa(unescape(encodeURIComponent(responseXml)));
+            log(`Submitting to: ${destination}`, 'success');
+            $('hiddenSAMLResponse').value = base64Response;
+            $('realPostForm').submit();
+        } catch (err) {
+            log(`ERROR: ${err.message}`, 'error');
+            console.error(err);
+        }
+    };
+
+    // ==========================================
+    // 10. BANNER
+    // ==========================================
+    const updateSAMLRequestUI = () => {
+        const form = $('samlForm');
+        const banner = document.createElement('div');
+        banner.id = 'spInitiatedBanner';
+        banner.className = 'info-banner';
+        const destMsg = samlRequestAcsUrl
+            ? ' Destination auto-filled from <code>AssertionConsumerServiceURL</code>.'
+            : '';
+        banner.innerHTML =
+            '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>' +
+            `<span><strong>SP-Initiated Flow:</strong> Request ID <code>${escapeHtml(samlRequestId)}</code> will be included in response.${destMsg}</span>`;
+        form.insertBefore(banner, form.firstChild);
+    };
+
+    // ==========================================
+    // 11. INITIALIZATION
+    // ==========================================
+    document.addEventListener('DOMContentLoaded', () => {
+        $('simpleModeBtn').addEventListener('click', () => setMode('simple'));
+        $('advancedModeBtn').addEventListener('click', () => setMode('advanced'));
+        $('samlForm').addEventListener('submit', handleProcess);
+        $('roleSelect').addEventListener('change', handleRoleSelect);
+        $('addCustomRoleBtn').addEventListener('click', addCustomRole);
+        $('cancelCustomRoleBtn').addEventListener('click', hideCustomRoleInput);
+        $('customRoleName').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addCustomRole();
+            }
+        });
+
+        renderRoles();
+
+        const parsed = parseSAMLRequestFromUrl();
+        if (!parsed) return;
+
+        samlRequestId = parsed.id;
+        samlRequestAcsUrl = parsed.acsUrl || null;
+        if (samlRequestAcsUrl) {
+            const destinationInput = $('destination');
+            try {
+                destinationInput.value = new URL(samlRequestAcsUrl).origin;
+            } catch {
+                destinationInput.value = samlRequestAcsUrl;
+            }
+            setMode('advanced');
+        }
+        updateSAMLRequestUI();
     });
-    nsToRender.sort(function(a, b) { if (a.prefix === '') return -1; if (b.prefix === '') return 1; return a.prefix.localeCompare(b.prefix); });
-    regularAttrs.sort(function(a, b) {
-        var aHasNs = !!a.namespaceURI, bHasNs = !!b.namespaceURI;
-        if (!aHasNs && !bHasNs) return a.localName.localeCompare(b.localName);
-        if (!aHasNs) return -1; if (!bHasNs) return 1;
-        if (a.namespaceURI !== b.namespaceURI) return a.namespaceURI.localeCompare(b.namespaceURI);
-        return a.localName.localeCompare(b.localName);
-    });
-    var result = '<';
-    if (elemPrefix) result += elemPrefix + ':';
-    result += node.localName;
-    for (var k = 0; k < nsToRender.length; k++) {
-        if (nsToRender[k].prefix === '') result += ' xmlns="' + escapeAttr(nsToRender[k].uri) + '"';
-        else result += ' xmlns:' + nsToRender[k].prefix + '="' + escapeAttr(nsToRender[k].uri) + '"';
-    }
-    for (var l = 0; l < regularAttrs.length; l++) result += ' ' + regularAttrs[l].name + '="' + escapeAttr(regularAttrs[l].value) + '"';
-    result += '>';
-    var childRenderedNs = Object.assign({}, renderedNs);
-    for (var m = 0; m < nsToRender.length; m++) childRenderedNs[nsToRender[m].prefix] = nsToRender[m].uri;
-    for (var n = 0; n < node.childNodes.length; n++) result += canonicalizeNode(node.childNodes[n], childRenderedNs, inclusiveNsPrefixes);
-    result += '</';
-    if (elemPrefix) result += elemPrefix + ':';
-    result += node.localName + '>';
-    return result;
-}
-
-function escapeText(text) { return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\r/g, '&#xD;'); }
-function escapeAttr(text) { return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;').replace(/\t/g, '&#x9;').replace(/\n/g, '&#xA;').replace(/\r/g, '&#xD;'); }
-
-// ==========================================
-// 6. HELPER FUNCTIONS
-// ==========================================
-function log(msg, type) {
-    if (!type) type = 'info';
-    if (currentMode !== 'advanced') return;
-    var box = document.getElementById('statusBox');
-    var cls = 'text-info';
-    if (type === 'error') cls = 'text-error';
-    if (type === 'success') cls = 'text-success';
-    box.innerHTML += '<div class="' + cls + '">&gt; ' + msg + '</div>';
-    box.scrollTop = box.scrollHeight;
-}
-
-function generateID() {
-    return "_" + Array.from(window.crypto.getRandomValues(new Uint8Array(20)))
-        .map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
-}
-
-function sha256Base64(str) {
-    var md = new KJUR.crypto.MessageDigest({alg: "sha256"});
-    md.updateString(str);
-    return hextob64(md.digest());
-}
-
-// ==========================================
-// 7. SAML REQUEST PARSING (SP-INITIATED FLOW)
-// ==========================================
-var samlRequestId = null;
-
-function parseSAMLRequestFromUrl() {
-    var urlParams = new URLSearchParams(window.location.search);
-    var samlRequest = urlParams.get('SAMLRequest');
-    if (!samlRequest) return null;
-    try {
-        log('Parsing SAMLRequest from URL...');
-        var binaryString = atob(samlRequest);
-        var bytes = new Uint8Array(binaryString.length);
-        for (var i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-        var inflated = pako.inflateRaw(bytes);
-        var xmlString = new TextDecoder('utf-8').decode(inflated);
-        log('   SAMLRequest decoded successfully');
-        var parser = new DOMParser();
-        var doc = parser.parseFromString(xmlString, 'application/xml');
-        if (doc.documentElement.nodeName === 'parsererror') throw new Error('Failed to parse SAMLRequest XML');
-        var id = doc.documentElement.getAttribute('ID');
-        if (!id) throw new Error('No ID attribute found in SAMLRequest');
-        log('   Extracted Request ID: ' + id, 'success');
-        return id;
-    } catch (err) {
-        log('Failed to parse SAMLRequest: ' + err.message, 'error');
-        return null;
-    }
-}
-
-// ==========================================
-// 8. MAIN LOGIC
-// ==========================================
-async function handleProcess(e) {
-    e.preventDefault();
-    if (currentMode === 'advanced') document.getElementById('statusBox').innerHTML = 'Initializing...<br>';
-    var username = document.getElementById('username').value;
-    var fullname = document.getElementById('fullname').value;
-    var email = document.getElementById('email').value;
-    var roles = selectedRoles.length > 0 ? selectedRoles : ['viewer'];
-    var rawDestination = document.getElementById('destination').value || 'http://localhost:5601';
-    var destination = normalizeDestination(rawDestination);
-    document.getElementById('realPostForm').action = destination;
-    var now = new Date();
-    var issueInstant = now.toISOString();
-    var notOnOrAfter = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
-    var assertionID = generateID();
-    var responseID = generateID();
-    var sessionIndex = Math.floor(Math.random() * 10000000000000000).toString();
-    var nameID = generateID();
-    try {
-        log("1. Building SAML Assertion...");
-        if (samlRequestId) log('   SP-Initiated flow: InResponseTo="' + samlRequestId + '"');
-        else log("   IdP-Initiated flow: No InResponseTo attribute");
-        var roleAttributeValues = roles.map(function(role) { return '<saml:AttributeValue>' + role + '</saml:AttributeValue>'; }).join('');
-        var inResponseToAttr = samlRequestId ? ' InResponseTo="' + samlRequestId + '"' : '';
-        var assertionXml =
-            '<saml:Assertion xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" Version="2.0" ID="' + assertionID + '" IssueInstant="' + issueInstant + '">' +
-            '<saml:Issuer>' + ISSUER + '</saml:Issuer>' +
-            '<saml:Subject>' +
-            '<saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:transient">' + nameID + '</saml:NameID>' +
-            '<saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">' +
-            '<saml:SubjectConfirmationData NotOnOrAfter="' + notOnOrAfter + '" Recipient="' + destination + '"' + inResponseToAttr + '/>' +
-            '</saml:SubjectConfirmation>' +
-            '</saml:Subject>' +
-            '<saml:AuthnStatement AuthnInstant="' + issueInstant + '" SessionIndex="' + sessionIndex + '">' +
-            '<saml:AuthnContext>' +
-            '<saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:unspecified</saml:AuthnContextClassRef>' +
-            '</saml:AuthnContext>' +
-            '</saml:AuthnStatement>' +
-            '<saml:AttributeStatement>' +
-            '<saml:Attribute FriendlyName="principal" Name="http://saml.elastic-cloud.com/attributes/principal" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">' +
-            '<saml:AttributeValue>' + username + '</saml:AttributeValue>' +
-            '</saml:Attribute>' +
-            '<saml:Attribute FriendlyName="roles" Name="http://saml.elastic-cloud.com/attributes/roles" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">' +
-            roleAttributeValues +
-            '</saml:Attribute>' +
-            '<saml:Attribute FriendlyName="email" Name="http://saml.elastic-cloud.com/attributes/email" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">' +
-            '<saml:AttributeValue>' + email + '</saml:AttributeValue>' +
-            '</saml:Attribute>' +
-            '<saml:Attribute FriendlyName="name" Name="http://saml.elastic-cloud.com/attributes/name" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">' +
-            '<saml:AttributeValue>' + fullname + '</saml:AttributeValue>' +
-            '</saml:Attribute>' +
-            '</saml:AttributeStatement>' +
-            '</saml:Assertion>';
-        log("2. Canonicalizing Assertion (exc-c14n)...");
-        var canonicalizedAssertion = exclusiveC14n(assertionXml);
-        log("3. Computing SHA-256 digest...");
-        var digestBase64 = sha256Base64(canonicalizedAssertion);
-        log("   Digest: " + digestBase64.substring(0, 20) + "...");
-        log("4. Building SignedInfo...");
-        var signedInfoXml =
-            '<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">' +
-            '<CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>' +
-            '<SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>' +
-            '<Reference URI="#' + assertionID + '">' +
-            '<Transforms>' +
-            '<Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>' +
-            '<Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>' +
-            '</Transforms>' +
-            '<DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>' +
-            '<DigestValue>' + digestBase64 + '</DigestValue>' +
-            '</Reference>' +
-            '</SignedInfo>';
-        log("5. Canonicalizing SignedInfo...");
-        var canonicalizedSignedInfo = exclusiveC14n(signedInfoXml);
-        log("6. Signing with RSA-SHA256...");
-        var rsaKey = KEYUTIL.getKey(PRIVATE_KEY);
-        var sig = new KJUR.crypto.Signature({alg: "SHA256withRSA"});
-        sig.init(rsaKey);
-        sig.updateString(canonicalizedSignedInfo);
-        var signatureHex = sig.sign();
-        var signatureBase64 = hextob64(signatureHex);
-        log("   Signature: " + signatureBase64.substring(0, 20) + "...");
-        log("7. Verifying signature...");
-        var verifySig = new KJUR.crypto.Signature({alg: "SHA256withRSA"});
-        var pubKey = KEYUTIL.getKey(PUBLIC_CERT);
-        verifySig.init(pubKey);
-        verifySig.updateString(canonicalizedSignedInfo);
-        var isValid = verifySig.verify(signatureHex);
-        if (isValid) { log("   Signature verified successfully!", "success"); }
-        else { log("   Signature verification FAILED!", "error"); return; }
-        log("8. Assembling signed assertion...");
-        var signatureBlock =
-            '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">' +
-            '<SignedInfo>' +
-            '<CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>' +
-            '<SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>' +
-            '<Reference URI="#' + assertionID + '">' +
-            '<Transforms>' +
-            '<Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>' +
-            '<Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>' +
-            '</Transforms>' +
-            '<DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>' +
-            '<DigestValue>' + digestBase64 + '</DigestValue>' +
-            '</Reference>' +
-            '</SignedInfo>' +
-            '<SignatureValue>' + signatureBase64 + '</SignatureValue>' +
-            '</Signature>';
-        var signedAssertionXml = assertionXml.replace(
-            '<saml:Issuer>' + ISSUER + '</saml:Issuer>',
-            '<saml:Issuer>' + ISSUER + '</saml:Issuer>' + signatureBlock
-        );
-        log("9. Building SAML Response...");
-        var responseXml =
-            '<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" ID="' + responseID + '"' + inResponseToAttr + ' Version="2.0" IssueInstant="' + issueInstant + '" Destination="' + destination + '">' +
-            '<saml:Issuer xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion">' + ISSUER + '</saml:Issuer>' +
-            '<samlp:Status>' +
-            '<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>' +
-            '</samlp:Status>' +
-            signedAssertionXml +
-            '</samlp:Response>';
-        log("10. Encoding and submitting...");
-        var base64Response = btoa(unescape(encodeURIComponent(responseXml)));
-        log("Submitting to: " + destination, "success");
-        document.getElementById('hiddenSAMLResponse').value = base64Response;
-        document.getElementById('realPostForm').submit();
-    } catch (err) {
-        log("ERROR: " + err.message, "error");
-        console.error(err);
-    }
-}
-
-// ==========================================
-// 9. INITIALIZATION
-// ==========================================
-document.addEventListener('DOMContentLoaded', function() {
-    renderRoles();
-    samlRequestId = parseSAMLRequestFromUrl();
-    if (samlRequestId) updateSAMLRequestUI();
-});
-
-function updateSAMLRequestUI() {
-    var form = document.getElementById('samlForm');
-    var banner = document.createElement('div');
-    banner.id = 'spInitiatedBanner';
-    banner.className = 'info-banner';
-    banner.innerHTML =
-        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>' +
-        '<span><strong>SP-Initiated Flow:</strong> Request ID <code>' + escapeHtml(samlRequestId) + '</code> will be included in response</span>';
-    form.insertBefore(banner, form.firstChild);
-}
+})();
 </script>
 </body>
 </html>
