@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root, [data-theme="dark"] {
@@ -134,7 +135,7 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; }
         <div class="grid">
             <div style="display:flex;flex-direction:column">
                 <div class="panel-label">Encoded SAML (Base64)</div>
-                <textarea id="encoded-saml" spellcheck="false" placeholder="Paste your Base64 encoded SAML here..." class="editor-area"></textarea>
+                <textarea id="encoded-saml" spellcheck="false" placeholder="Paste your SAML Response or Request here (HTTP-POST or HTTP-Redirect binding, URL-encoded or not)..." class="editor-area"></textarea>
             </div>
             <div class="splitter" id="splitter"></div>
             <div style="display:flex;flex-direction:column">
@@ -178,105 +179,140 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; }
     </footer>
 
 <script>
-(function() {
-    var toggle = document.getElementById('themeToggle');
-    var root = document.documentElement;
-    function setTheme(t) {
+(() => {
+    const toggle = document.getElementById('themeToggle');
+    const root = document.documentElement;
+    const setTheme = (t) => {
         root.setAttribute('data-theme', t);
-        try { localStorage.setItem('su-tool-theme', t); } catch(e) {}
-    }
-    toggle.addEventListener('click', function() {
+        try { localStorage.setItem('su-tool-theme', t); } catch {}
+    };
+    toggle.addEventListener('click', () => {
         setTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
     });
     try {
-        var saved = localStorage.getItem('su-tool-theme');
+        const saved = localStorage.getItem('su-tool-theme');
         if (saved) setTheme(saved);
         else if (window.matchMedia('(prefers-color-scheme: light)').matches) setTheme('light');
-    } catch(e) {}
+    } catch {}
 })();
 
-document.addEventListener('DOMContentLoaded', function() {
-    var encodedSamlInput = document.getElementById('encoded-saml');
-    var xmlContainer = document.getElementById('decoded-xml-container');
-    var copyButton = document.getElementById('copy-button');
-    var shareButton = document.getElementById('share-button');
-    var tabsContainer = document.getElementById('decoded-tabs');
-    var attributesTableBody = document.getElementById('attributes-table-body');
-    var tabContents = document.getElementById('decoded-tab-content');
-    var fullscreenBtn = document.getElementById('fullscreen-btn');
-    var fullscreenEnterIcon = document.getElementById('fullscreen-enter-icon');
-    var fullscreenExitIcon = document.getElementById('fullscreen-exit-icon');
-    var decodedPanel = document.getElementById('decoded-panel');
+document.addEventListener('DOMContentLoaded', () => {
+    const encodedSamlInput = document.getElementById('encoded-saml');
+    const xmlContainer = document.getElementById('decoded-xml-container');
+    const copyButton = document.getElementById('copy-button');
+    const shareButton = document.getElementById('share-button');
+    const tabsContainer = document.getElementById('decoded-tabs');
+    const attributesTableBody = document.getElementById('attributes-table-body');
+    const tabContents = document.getElementById('decoded-tab-content');
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+    const fullscreenEnterIcon = document.getElementById('fullscreen-enter-icon');
+    const fullscreenExitIcon = document.getElementById('fullscreen-exit-icon');
+    const decodedPanel = document.getElementById('decoded-panel');
 
-    var rawDecodedXml = '';
+    let rawDecodedXml = '';
 
-    function prettyPrintXml(xml) {
-        var PADDING = '  ';
-        var indent = 0;
-        var formattedXml = '';
+    const prettyPrintXml = (xml) => {
+        const PADDING = '  ';
+        let indent = 0;
+        let formatted = '';
 
-        xml = xml.replace(/>\s*</g, '><').trim();
-        var reg = /(>)(<)(\/*)/g;
-        xml = xml.replace(reg, '$1\r\n$2$3');
-        var lines = xml.split('\r\n');
+        const normalized = xml.replace(/>\s*</g, '><').trim().replace(/(>)(<)(\/*)/g, '$1\r\n$2$3');
 
-        lines.forEach(function(line) {
-            var trimmedLine = line.trim();
-            if (!trimmedLine) return;
+        for (const line of normalized.split('\r\n')) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
 
-            var isClosingTag = trimmedLine.startsWith('</');
+            const isClosingTag = trimmed.startsWith('</');
             if (isClosingTag && indent > 0) indent--;
-            formattedXml += PADDING.repeat(indent) + trimmedLine + '\n';
-            if (trimmedLine.startsWith('<') && !isClosingTag && !trimmedLine.endsWith('/>') && !trimmedLine.includes('</')) {
+            formatted += PADDING.repeat(indent) + trimmed + '\n';
+            if (trimmed.startsWith('<') && !isClosingTag && !trimmed.endsWith('/>') && !trimmed.includes('</')) {
                 indent++;
             }
-        });
+        }
 
-        return formattedXml.trim();
-    }
+        return formatted.trim();
+    };
 
-    function buildStaticXmlView(xmlString) {
-        return hljs.highlight(xmlString, { language: 'xml' }).value;
-    }
+    const buildStaticXmlView = (xmlString) => hljs.highlight(xmlString, { language: 'xml' }).value;
 
-    function parseAndDisplayAttributes(xmlString) {
+    const escapeHtml = (str) => String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const appendAttrRow = (name, value) => {
+        if (value == null || value === '') return;
+        const row = attributesTableBody.insertRow();
+        row.insertCell().textContent = name;
+        row.insertCell().innerHTML = value;
+    };
+
+    const renderRequestInfo = (rootElement) => {
+        const fields = ['ID', 'Destination', 'AssertionConsumerServiceURL', 'ProtocolBinding', 'IssueInstant'];
+        for (const field of fields) {
+            const attr = rootElement.getAttribute(field);
+            if (attr) appendAttrRow(field, escapeHtml(attr));
+        }
+
+        const [issuerNode] = rootElement.getElementsByTagNameNS('*', 'Issuer');
+        const issuer = issuerNode?.textContent.trim();
+        if (issuer) appendAttrRow('Issuer', escapeHtml(issuer));
+
+        if (!attributesTableBody.hasChildNodes()) {
+            attributesTableBody.innerHTML = '<tr><td colspan="2" class="empty-msg">No request fields found.</td></tr>';
+        }
+    };
+
+    const renderResponseAttributes = (xmlDoc) => {
+        const attributeNodes = xmlDoc.getElementsByTagNameNS('*', 'Attribute');
+        if (attributeNodes.length === 0) {
+            attributesTableBody.innerHTML = '<tr><td colspan="2" class="empty-msg">No attributes found.</td></tr>';
+            return;
+        }
+
+        for (const node of attributeNodes) {
+            const name = node.getAttribute('Name') || node.getAttribute('FriendlyName') || 'N/A';
+            const valueNodes = node.getElementsByTagNameNS('*', 'AttributeValue');
+            const valueHtml = [...valueNodes].map((vn) => escapeHtml(vn.textContent.trim())).join('<br>');
+            appendAttrRow(name, valueHtml);
+        }
+    };
+
+    const parseAndDisplayAttributes = (xmlString) => {
         attributesTableBody.innerHTML = '';
         if (!xmlString) return;
 
         try {
-            var parser = new DOMParser();
-            var xmlDoc = parser.parseFromString(xmlString, 'text/xml');
-            var parserError = xmlDoc.querySelector('parsererror');
-            if (parserError) return;
+            const xmlDoc = new DOMParser().parseFromString(xmlString, 'text/xml');
+            if (xmlDoc.querySelector('parsererror')) return;
 
-            var attributeNodes = xmlDoc.getElementsByTagNameNS('*', 'Attribute');
-            if (attributeNodes.length === 0) {
-                attributesTableBody.innerHTML = '<tr><td colspan="2" class="empty-msg">No attributes found.</td></tr>';
-                return;
-            }
+            const root = xmlDoc.documentElement;
+            const localName = root?.localName ?? '';
 
-            for (var i = 0; i < attributeNodes.length; i++) {
-                var node = attributeNodes[i];
-                var name = node.getAttribute('Name') || node.getAttribute('FriendlyName') || 'N/A';
-                var valueNodes = node.getElementsByTagNameNS('*', 'AttributeValue');
-                var valueHtml = '';
-                if (valueNodes.length > 0) {
-                    var values = Array.from(valueNodes).map(function(vn) { return vn.textContent.trim(); });
-                    valueHtml = values.join('<br>');
-                }
-                var row = attributesTableBody.insertRow();
-                var cellName = row.insertCell();
-                var cellValue = row.insertCell();
-                cellName.textContent = name;
-                cellValue.innerHTML = valueHtml;
+            if (/Request$/.test(localName)) {
+                renderRequestInfo(root);
+            } else {
+                renderResponseAttributes(xmlDoc);
             }
-        } catch (e) {
+        } catch {
             attributesTableBody.innerHTML = '<tr><td colspan="2" class="empty-msg" style="color:var(--error)">Error parsing attributes.</td></tr>';
         }
-    }
+    };
 
-    function decodeSaml() {
-        var samlValue = encodedSamlInput.value.trim();
+    const base64ToBytes = (str) => Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
+
+    const bytesToXml = (bytes) => {
+        try {
+            const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+            if (text.trim().startsWith('<')) return text;
+        } catch {}
+        return null;
+    };
+
+    const decodeSaml = () => {
+        let samlValue = encodedSamlInput.value.trim();
         encodedSamlInput.classList.remove('invalid');
 
         if (!samlValue) {
@@ -287,101 +323,99 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         try {
-            try { samlValue = decodeURIComponent(samlValue); } catch(e) {}
-            var decodedString = atob(samlValue);
+            try { samlValue = decodeURIComponent(samlValue); } catch {}
+            samlValue = samlValue.replace(/\s+/g, '');
 
-            if (decodedString.trim().startsWith('<')) {
-                var prettyXml = prettyPrintXml(decodedString);
-                rawDecodedXml = prettyXml;
-                xmlContainer.innerHTML = buildStaticXmlView(prettyXml);
-                parseAndDisplayAttributes(prettyXml);
-            } else {
-                throw new Error('Decoded content is not valid XML.');
+            const bytes = base64ToBytes(samlValue);
+
+            let decodedString = bytesToXml(bytes);
+            if (!decodedString) {
+                try {
+                    decodedString = bytesToXml(pako.inflateRaw(bytes));
+                } catch {}
             }
+
+            if (!decodedString) throw new Error('Decoded content is not valid XML.');
+
+            const prettyXml = prettyPrintXml(decodedString);
+            rawDecodedXml = prettyXml;
+            xmlContainer.innerHTML = buildStaticXmlView(prettyXml);
+            parseAndDisplayAttributes(prettyXml);
         } catch (error) {
-            var errorMessage = 'Error: ' + error.message + '\n\nPlease check if the input is a valid Base64-encoded SAML document.';
+            const errorMessage = `Error: ${error.message}\n\nPlease check if the input is a valid Base64-encoded SAML document (optionally DEFLATE-compressed and/or URL-encoded).`;
             xmlContainer.textContent = errorMessage;
             rawDecodedXml = errorMessage;
             encodedSamlInput.classList.add('invalid');
             parseAndDisplayAttributes('');
         }
-    }
+    };
 
     encodedSamlInput.addEventListener('input', decodeSaml);
 
-    copyButton.addEventListener('click', function() {
-        var activeTab = tabsContainer.querySelector('.active').dataset.tab;
-        var contentToCopy = '';
+    copyButton.addEventListener('click', async () => {
+        const activeTab = tabsContainer.querySelector('.active').dataset.tab;
+        let contentToCopy = '';
 
         if (activeTab === 'xml') {
             contentToCopy = rawDecodedXml;
         } else {
-            var rows = attributesTableBody.querySelectorAll('tr');
-            rows.forEach(function(row) {
-                var cells = row.querySelectorAll('td');
+            for (const row of attributesTableBody.querySelectorAll('tr')) {
+                const cells = row.querySelectorAll('td');
                 if (cells.length === 2) {
-                    var values = cells[1].innerHTML.replace(/<br>/g, ', ');
-                    contentToCopy += cells[0].textContent + ': ' + values + '\n';
+                    const values = cells[1].innerHTML.replace(/<br>/g, ', ');
+                    contentToCopy += `${cells[0].textContent}: ${values}\n`;
                 }
-            });
+            }
         }
 
         if (!contentToCopy) return;
-        navigator.clipboard.writeText(contentToCopy.trim()).then(function() {
-            copyButton.textContent = 'Copied!';
-            setTimeout(function() { copyButton.textContent = 'Copy'; }, 2000);
-        });
+        await navigator.clipboard.writeText(contentToCopy.trim());
+        copyButton.textContent = 'Copied!';
+        setTimeout(() => { copyButton.textContent = 'Copy'; }, 2000);
     });
 
-    shareButton.addEventListener('click', function() {
-        var samlValue = encodedSamlInput.value.trim();
+    shareButton.addEventListener('click', async () => {
+        const samlValue = encodedSamlInput.value.trim();
         if (!samlValue) return;
 
-        var encodedSamlForUrl = encodeURIComponent(samlValue);
-        var shareUrl = window.location.origin + window.location.pathname + '?saml=' + encodedSamlForUrl;
-
-        navigator.clipboard.writeText(shareUrl).then(function() {
-            shareButton.textContent = 'Linked!';
-            setTimeout(function() { shareButton.textContent = 'Share'; }, 2000);
-        });
+        const shareUrl = `${window.location.origin}${window.location.pathname}?saml=${encodeURIComponent(samlValue)}`;
+        await navigator.clipboard.writeText(shareUrl);
+        shareButton.textContent = 'Linked!';
+        setTimeout(() => { shareButton.textContent = 'Share'; }, 2000);
     });
 
-    tabsContainer.addEventListener('click', function(e) {
-        if (e.target.classList.contains('tab-btn')) {
-            tabsContainer.querySelectorAll('.tab-btn').forEach(function(btn) { btn.classList.remove('active'); });
-            e.target.classList.add('active');
-            tabContents.querySelectorAll('.tab-content').forEach(function(content) { content.classList.remove('active'); });
-            document.getElementById(e.target.dataset.tab + '-tab').classList.add('active');
-        }
+    tabsContainer.addEventListener('click', (e) => {
+        if (!e.target.classList.contains('tab-btn')) return;
+        for (const btn of tabsContainer.querySelectorAll('.tab-btn')) btn.classList.remove('active');
+        e.target.classList.add('active');
+        for (const content of tabContents.querySelectorAll('.tab-content')) content.classList.remove('active');
+        document.getElementById(`${e.target.dataset.tab}-tab`).classList.add('active');
     });
 
-    fullscreenBtn.addEventListener('click', function() {
+    fullscreenBtn.addEventListener('click', async () => {
         if (!document.fullscreenElement) {
-            decodedPanel.requestFullscreen().catch(function(err) {
-                alert('Error attempting to enable full-screen mode: ' + err.message + ' (' + err.name + ')');
-            });
+            try {
+                await decodedPanel.requestFullscreen();
+            } catch (err) {
+                alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+            }
         } else {
             document.exitFullscreen();
         }
     });
 
-    document.addEventListener('fullscreenchange', function() {
-        if (document.fullscreenElement) {
-            fullscreenEnterIcon.style.display = 'none';
-            fullscreenExitIcon.style.display = 'block';
-        } else {
-            fullscreenEnterIcon.style.display = 'block';
-            fullscreenExitIcon.style.display = 'none';
-        }
+    document.addEventListener('fullscreenchange', () => {
+        const entering = !!document.fullscreenElement;
+        fullscreenEnterIcon.style.display = entering ? 'none' : 'block';
+        fullscreenExitIcon.style.display = entering ? 'block' : 'none';
     });
 
-    // Resizable splitter
-    (function() {
-        var splitter = document.getElementById('splitter');
-        var grid = splitter.parentElement;
-        var dragging = false;
+    (() => {
+        const splitter = document.getElementById('splitter');
+        const grid = splitter.parentElement;
+        let dragging = false;
 
-        splitter.addEventListener('mousedown', function(e) {
+        splitter.addEventListener('mousedown', (e) => {
             e.preventDefault();
             dragging = true;
             splitter.classList.add('active');
@@ -389,16 +423,14 @@ document.addEventListener('DOMContentLoaded', function() {
             document.body.style.userSelect = 'none';
         });
 
-        document.addEventListener('mousemove', function(e) {
+        document.addEventListener('mousemove', (e) => {
             if (!dragging) return;
-            var rect = grid.getBoundingClientRect();
-            var offset = e.clientX - rect.left;
-            var pct = (offset / rect.width) * 100;
-            pct = Math.max(15, Math.min(85, pct));
-            grid.style.gridTemplateColumns = pct + '% 12px ' + (100 - pct) + '%';
+            const rect = grid.getBoundingClientRect();
+            const pct = Math.max(15, Math.min(85, ((e.clientX - rect.left) / rect.width) * 100));
+            grid.style.gridTemplateColumns = `${pct}% 12px ${100 - pct}%`;
         });
 
-        document.addEventListener('mouseup', function() {
+        document.addEventListener('mouseup', () => {
             if (!dragging) return;
             dragging = false;
             splitter.classList.remove('active');
@@ -407,8 +439,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     })();
 
-    var urlParams = new URLSearchParams(window.location.search);
-    var samlFromQuery = urlParams.get('saml');
+    const samlFromQuery = new URLSearchParams(window.location.search).get('saml');
     if (samlFromQuery) encodedSamlInput.value = samlFromQuery;
     decodeSaml();
 });
