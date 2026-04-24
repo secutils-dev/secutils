@@ -19,11 +19,62 @@ use actix_web::{
 use anyhow::bail;
 use bytes::Bytes;
 use serde::Deserialize;
-use std::{borrow::Cow, collections::HashMap, sync::Arc, time::Instant};
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    net::{IpAddr, SocketAddr},
+    sync::Arc,
+    time::Instant,
+};
 use tokio::sync::Semaphore;
 use tracing::{error, info, warn};
 
 const X_REPLACED_PATH_HEADER_NAME: &str = "x-replaced-path";
+
+/// Resolves the real client socket address for an incoming responder request.
+///
+/// In a reverse-proxy deployment `request.peer_addr()` is the proxy's address. The real client
+/// IP is carried in `X-Real-IP` / `X-Forwarded-For` headers (set by Nginx, Traefik, Envoy, …),
+/// which we inspect explicitly because actix's `realip_remote_addr()` ignores `X-Real-IP` and
+/// silently falls back to the peer address (losing the port). Order of resolution:
+/// 1. `X-Real-IP` — single value, just an IP (e.g. `92.211.80.87`).
+/// 2. `X-Forwarded-For` — comma-separated list, the first entry is the original client.
+/// 3. `peer_addr()` — direct TCP peer (the proxy in reverse-proxy deployments).
+///
+/// Header values may be a bare IP or a `SocketAddr` (e.g. `[2001:db8::1]:80`); we try the
+/// `SocketAddr` form first, then fall back to `IpAddr` with synthesised port `0`.
+fn resolve_client_address(request: &HttpRequest) -> Option<SocketAddr> {
+    fn parse_addr(value: &str) -> Option<SocketAddr> {
+        let trimmed = value.trim();
+        if let Ok(socket) = trimmed.parse::<SocketAddr>() {
+            return Some(socket);
+        }
+        trimmed
+            .parse::<IpAddr>()
+            .ok()
+            .map(|ip| SocketAddr::new(ip, 0))
+    }
+
+    let headers = request.headers();
+    let from_real_ip = headers
+        .get("x-real-ip")
+        .and_then(|value| value.to_str().ok())
+        .and_then(parse_addr);
+    if let Some(addr) = from_real_ip {
+        return Some(addr);
+    }
+
+    let from_forwarded_for = headers
+        .get("x-forwarded-for")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(',').next())
+        .and_then(parse_addr);
+    if let Some(addr) = from_forwarded_for {
+        return Some(addr);
+    }
+
+    request.peer_addr()
+}
 
 struct ResponderOutput {
     status_code: u16,
@@ -259,7 +310,7 @@ pub async fn webhooks_responders(
     let script_outcome: Result<ResponderOutput, ScriptError> =
         if let Some(script) = responder_settings.script.as_ref() {
             let js_script_context = ResponderScriptContext {
-                client_address: request.peer_addr(),
+                client_address: resolve_client_address(&request),
                 method: request.method().as_str(),
                 headers: request
                     .headers()
@@ -381,7 +432,7 @@ pub async fn webhooks_responders(
             .create_responder_request(
                 responder_id,
                 RespondersRequestCreateParams {
-                    client_address: request.peer_addr(),
+                    client_address: resolve_client_address(&request),
                     method: Cow::Borrowed(request.method().as_str()),
                     headers: if tracked_headers.is_empty() {
                         None
@@ -642,7 +693,7 @@ pub fn parse_webhook_host<'s>(
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_webhook_host, webhooks_responders};
+    use super::{parse_webhook_host, resolve_client_address, webhooks_responders};
     use crate::{
         tests::{mock_app_state, mock_config, mock_user},
         users::SecretsAccess,
@@ -657,6 +708,59 @@ mod tests {
     use serde_json::json;
     use sqlx::PgPool;
     use std::{borrow::Cow, default::Default};
+
+    #[test]
+    fn resolve_client_address_prefers_x_real_ip_over_peer_addr() {
+        let request = TestRequest::default()
+            .insert_header(("x-real-ip", "92.211.80.87"))
+            .peer_addr("10.0.0.1:54321".parse().unwrap())
+            .to_http_request();
+        assert_eq!(
+            resolve_client_address(&request).map(|addr| addr.to_string()),
+            Some("92.211.80.87:0".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_client_address_uses_x_forwarded_for_first_entry() {
+        let request = TestRequest::default()
+            .insert_header(("x-forwarded-for", "92.211.80.87, 10.0.0.1"))
+            .peer_addr("10.0.0.1:54321".parse().unwrap())
+            .to_http_request();
+        assert_eq!(
+            resolve_client_address(&request).map(|addr| addr.to_string()),
+            Some("92.211.80.87:0".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_client_address_falls_back_to_peer_addr_when_no_proxy_headers() {
+        let request = TestRequest::default()
+            .peer_addr("10.0.0.1:54321".parse().unwrap())
+            .to_http_request();
+        assert_eq!(
+            resolve_client_address(&request).map(|addr| addr.to_string()),
+            Some("10.0.0.1:54321".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_client_address_falls_back_to_peer_addr_when_real_ip_is_unparsable() {
+        let request = TestRequest::default()
+            .insert_header(("x-real-ip", "not-an-ip"))
+            .peer_addr("10.0.0.1:54321".parse().unwrap())
+            .to_http_request();
+        assert_eq!(
+            resolve_client_address(&request).map(|addr| addr.to_string()),
+            Some("10.0.0.1:54321".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_client_address_returns_none_when_no_source_available() {
+        let request = TestRequest::default().to_http_request();
+        assert_eq!(resolve_client_address(&request), None);
+    }
 
     #[sqlx::test]
     async fn can_handle_request(pool: PgPool) -> anyhow::Result<()> {
@@ -969,6 +1073,8 @@ mod tests {
             TestRequest::with_uri("https://devhandle00000000000000000000000000000001.webhooks.secutils.dev/one/two?query=some")
                 .insert_header(("x-replaced-path", "/one/two"))
                 .insert_header(("x-forwarded-host", "devhandle00000000000000000000000000000001.webhooks.secutils.dev"))
+                .insert_header(("x-real-ip", "92.211.80.87"))
+                .insert_header(("x-forwarded-for", "92.211.80.87"))
                 .peer_addr("127.0.0.1:8080".parse()?)
                 .to_http_request();
         let app_state = web::Data::new(app_state);
@@ -986,7 +1092,7 @@ mod tests {
             Response HTTP/1.1 300 Multiple Choices
               headers:
                 "one": "two"
-              body: Sized(300)
+              body: Sized(360)
             ,
         }
         "###);
@@ -995,11 +1101,13 @@ mod tests {
         assert_eq!(
             serde_json::from_slice::<serde_json::Value>(&body)?,
             json!({
-                "clientAddress": "127.0.0.1:8080",
+                "clientAddress": "92.211.80.87:0",
                 "method": "GET",
                 "headers": {
                     "x-replaced-path": "/one/two",
                     "x-forwarded-host": "devhandle00000000000000000000000000000001.webhooks.secutils.dev",
+                    "x-real-ip": "92.211.80.87",
+                    "x-forwarded-for": "92.211.80.87",
                 },
                 "path": "/one/two",
                 "rawQuery": "query=some",
@@ -1016,6 +1124,12 @@ mod tests {
             .get_responder_requests(responder.id)
             .await?;
         assert_eq!(responder_requests.len(), 1);
+        assert_eq!(
+            responder_requests[0]
+                .client_address
+                .map(|addr| addr.to_string()),
+            Some("92.211.80.87:0".to_string())
+        );
 
         Ok(())
     }
