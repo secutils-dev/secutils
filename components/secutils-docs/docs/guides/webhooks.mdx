@@ -220,6 +220,10 @@ interface Context {
 }
 ```
 
+:::note Reverse-proxy headers
+Incoming requests reach Secutils.dev through a reverse proxy (Nginx in self-hosted setups, Traefik in the hosted service), which injects synthetic headers used internally to reconstruct the original request - anything starting with `x-forwarded-` (e.g. `x-forwarded-for`, `x-forwarded-host`, `x-forwarded-proto`), plus `x-real-ip` and `x-replaced-path`. These remain visible in `context.headers` so scripts can use them when needed, but the request history table in the UI hides them by default in the **Headers** column and exposes them in a separate, hidden-by-default **Proxy headers** column. The **Client address** column already reflects the real client IP (resolved from `x-real-ip` / `x-forwarded-for`) - and `context.clientAddress` does the same.
+:::
+
 :::tip Secrets access
 By default, no secrets are exposed to a responder. To enable secrets, open the responder's advanced settings and set the **Secrets → Access mode** to **All secrets** or **Selected secrets**. Once enabled, you can reference secrets in scripts via `context.secrets.KEY` and in static body/headers via `${secrets.KEY}` template syntax.
 :::

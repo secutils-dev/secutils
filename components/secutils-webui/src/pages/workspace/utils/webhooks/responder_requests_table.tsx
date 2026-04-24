@@ -51,6 +51,18 @@ function getSortValue(request: ResponderRequest, columnId: string): string | num
   }
 }
 
+const NAMED_PROXY_HEADERS = new Set(['x-real-ip', 'x-replaced-path']);
+
+/**
+ * Returns true when a header is injected by the reverse proxy (Nginx/Traefik) rather than
+ * sent by the original client. Matches the entire `x-forwarded-*` family plus the two named
+ * exceptions `x-real-ip` and `x-replaced-path`.
+ */
+function isProxyHeader(name: string) {
+  const lower = name.toLowerCase();
+  return lower.startsWith('x-forwarded-') || NAMED_PROXY_HEADERS.has(lower);
+}
+
 function guessContentType(headers?: Array<[string, number[]]>) {
   for (const [headerName, headerValue] of headers ?? []) {
     if (headerName.toLowerCase() === 'content-type') {
@@ -128,7 +140,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
     return () => clearInterval(intervalId);
   }, [autoRefresh, responder.enabled, responder.settings.requestsToTrack, loadRequests]);
 
-  const HIDDEN_COLUMNS = new Set(['responseStatusCode', 'responseHeaders', 'responseBody']);
+  const HIDDEN_COLUMNS = new Set(['proxyHeaders', 'responseStatusCode', 'responseHeaders', 'responseBody']);
   const columns: EuiDataGridColumn[] = [
     {
       id: 'timestamp',
@@ -143,6 +155,7 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
     { id: 'method', display: 'Method', displayAsText: 'Method', initialWidth: 80, isExpandable: false },
     { id: 'url', display: 'URL', displayAsText: 'URL', isSortable: true },
     { id: 'headers', display: 'Headers', displayAsText: 'Headers' },
+    { id: 'proxyHeaders', display: 'Proxy headers', displayAsText: 'Proxy headers' },
     { id: 'body', display: 'Body', displayAsText: 'Body', isSortable: true },
     {
       id: 'duration',
@@ -233,19 +246,37 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
       }
 
       if (columnId === 'headers') {
-        if (!request.headers || request.headers.length === 0) {
+        const clientHeaders = request.headers?.filter(([name]) => !isProxyHeader(name)) ?? [];
+        if (clientHeaders.length === 0) {
           return '-';
         }
 
         if (isDetails) {
           return (
             <EuiCodeBlock language="http" fontSize="m" isCopyable overflowHeight={'100%'}>
-              {request.headers.map(([name, value]) => `${name}: ${binaryToText(value)}`).join('\n')}
+              {clientHeaders.map(([name, value]) => `${name}: ${binaryToText(value)}`).join('\n')}
             </EuiCodeBlock>
           );
         }
 
-        return `${request.headers.length} headers`;
+        return `${clientHeaders.length} headers`;
+      }
+
+      if (columnId === 'proxyHeaders') {
+        const proxyHeaders = request.headers?.filter(([name]) => isProxyHeader(name)) ?? [];
+        if (proxyHeaders.length === 0) {
+          return '-';
+        }
+
+        if (isDetails) {
+          return (
+            <EuiCodeBlock language="http" fontSize="m" isCopyable overflowHeight={'100%'}>
+              {proxyHeaders.map(([name, value]) => `${name}: ${binaryToText(value)}`).join('\n')}
+            </EuiCodeBlock>
+          );
+        }
+
+        return `${proxyHeaders.length} headers`;
       }
 
       if (columnId === 'body') {
