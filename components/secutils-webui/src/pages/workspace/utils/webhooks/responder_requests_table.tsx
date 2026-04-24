@@ -146,6 +146,8 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
       id: 'timestamp',
       display: 'Timestamp',
       displayAsText: 'Timestamp',
+      schema: 'datetime',
+      defaultSortDirection: 'desc',
       initialWidth: 170,
       isSortable: true,
       isExpandable: false,
@@ -156,11 +158,12 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
     { id: 'url', display: 'URL', displayAsText: 'URL', isSortable: true },
     { id: 'headers', display: 'Headers', displayAsText: 'Headers' },
     { id: 'proxyHeaders', display: 'Proxy headers', displayAsText: 'Proxy headers' },
-    { id: 'body', display: 'Body', displayAsText: 'Body', isSortable: true },
+    { id: 'body', display: 'Body', displayAsText: 'Body', schema: 'numeric', isSortable: true },
     {
       id: 'duration',
       display: 'Duration',
       displayAsText: 'Duration',
+      schema: 'numeric',
       initialWidth: 100,
       isExpandable: false,
       isSortable: true,
@@ -169,17 +172,20 @@ export function ResponderRequestsTable({ responder }: ResponderRequestsTableProp
       id: 'responseStatusCode',
       display: 'Resp. status',
       displayAsText: 'Resp. status',
+      schema: 'numeric',
       initialWidth: 110,
       isExpandable: false,
       isSortable: true,
     },
     { id: 'responseHeaders', display: 'Resp. headers', displayAsText: 'Resp. headers' },
-    { id: 'responseBody', display: 'Resp. body', displayAsText: 'Resp. body', isSortable: true },
+    { id: 'responseBody', display: 'Resp. body', displayAsText: 'Resp. body', schema: 'numeric', isSortable: true },
   ];
   const [visibleColumns, setVisibleColumns] = useState(() =>
     columns.filter(({ id }) => !HIDDEN_COLUMNS.has(id)).map(({ id }) => id),
   );
-  const [sortingColumns, setSortingColumns] = useState<Array<{ id: string; direction: 'asc' | 'desc' }>>([]);
+  const [sortingColumns, setSortingColumns] = useState<Array<{ id: string; direction: 'asc' | 'desc' }>>([
+    { id: 'timestamp', direction: 'desc' },
+  ]);
 
   const sortedData = useMemo(() => {
     if (requests.status !== 'succeeded') {
