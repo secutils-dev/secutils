@@ -178,21 +178,21 @@ Styled as an EUI application breadcrumb:
 
 ### JS for toggle
 ```js
-(function() {
-    var toggle = document.getElementById('themeToggle');
-    var root = document.documentElement;
-    function setTheme(t) {
+(() => {
+    const root = document.documentElement;
+    const toggle = document.getElementById('themeToggle');
+    const setTheme = (t) => {
         root.setAttribute('data-theme', t);
-        try { localStorage.setItem('su-tool-theme', t); } catch(e) {}
-    }
-    toggle.addEventListener('click', function() {
+        try { localStorage.setItem('su-tool-theme', t); } catch {}
+    };
+    toggle.addEventListener('click', () => {
         setTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
     });
     try {
-        var saved = localStorage.getItem('su-tool-theme');
+        const saved = localStorage.getItem('su-tool-theme');
         if (saved) setTheme(saved);
         else if (window.matchMedia('(prefers-color-scheme: light)').matches) setTheme('light');
-    } catch(e) {}
+    } catch {}
 })();
 ```
 
@@ -264,6 +264,81 @@ Watermark CSS: `text-align: center; padding: 32px 24px; opacity: 0.6; font-size:
 }
 ```
 
+## JavaScript Style
+
+These tools target evergreen browsers (current Chrome / Firefox / Safari / Edge) — no
+transpilation, no polyfills, no IE / legacy-browser support. Write modern JavaScript and
+keep the embedded `<script>` blocks compact and idiomatic.
+
+**Required:**
+
+- **`const` by default, `let` only when reassigned.** Never use `var`.
+- **Arrow functions** for callbacks and short helpers. Use named `function` declarations
+  only for top-level helpers where the name aids readability or the function needs
+  hoisting.
+- **Template literals** for any string with interpolation, multi-line content, or HTML
+  fragments. Never build HTML / CSS strings via `+` concatenation or `[…].join('\n')`.
+- **`for…of`** over `Array.prototype.forEach` for plain iteration.
+- **Spread syntax** to convert `NodeList` / iterables to arrays:
+  `[...el.querySelectorAll('…')]`.
+- **Optional chaining (`?.`) and nullish coalescing (`??`)** instead of `&&`/`||` chains
+  when the intent is "value or fallback when null/undefined".
+- **`async`/`await`** for clipboard, fetch, and any other promise-returning APIs. Avoid
+  raw `.then()` chains unless the call site can't be `async`.
+- **Destructuring** for object/array unpacking when it improves readability.
+- **`catch {}`** (no unused binding) when the error is intentionally ignored — never
+  `catch (e) {}` with an unused `e`.
+- **Hoist constants** (CDN URLs, regexes, SVG markup, repeated HTML fragments) to
+  module-top `const`s instead of inlining them at every use site.
+- **Cache element references** in a single object rather than calling
+  `document.getElementById` repeatedly; a tiny `const $ = (id) => document.getElementById(id);`
+  helper plus a frozen `els = { … }` map keeps things tidy.
+
+**Avoid:**
+
+- `var` — `const`/`let` are the only acceptable bindings.
+- `function () {}` callbacks — use arrow functions.
+- String concatenation with `+` for HTML / CSS / multi-line text.
+- Manual `Array.from(nodeList)` — use `[...nodeList]`.
+- Truthy/falsy `&&`/`||` for null-fallbacks where `??` is the correct operator.
+- `e` in `catch (e) {}` when unused — drop the binding.
+
+**Optional but encouraged:**
+
+- Top-level `await` is fine inside an `async` IIFE if the script needs it.
+- Promise-wrap legacy event-driven APIs (e.g. `iframe.onload`, paged.js polling) so the
+  control flow reads top-to-bottom.
+- Use private object short-hand (`{ foo, bar }`) and computed property names where they
+  make code clearer.
+
+The reference implementation in `markdown-to-html.html` follows all of the above and is
+the canonical example. When modifying an existing tool that still uses legacy syntax,
+modernize the surrounding code in the same edit.
+
 ## Reference Implementation
 
 See `dev/tools/markdown-to-html.html` for the complete working example.
+
+## PDF Export (optional)
+
+Tools that produce printable artifacts (rendered articles, decoded certificates, JWT
+breakdowns, etc.) can offer a PDF export without breaking the single-page-HTML constraint.
+The pattern, demonstrated in `markdown-to-html.html`, is:
+
+1. Add a `↓ PDF` action button next to the existing download / copy actions.
+2. Build a self-contained printable HTML document (same brand fonts and palette as the
+   on-screen preview) with the article content and a small `<script>` tag that lazy-loads
+   [Paged.js](https://pagedjs.org) from a CDN. Paged.js paginates the document into A4
+   pages using CSS Paged Media (`@page`, `@bottom-center`, `string-set`, etc.) — vector
+   text, selectable, fully styled to match the preview.
+3. Inject that document into a hidden, off-screen `<iframe>` via `srcdoc`.
+4. Inside the iframe, listen for `pagedjs:rendered` on `window` and flip a `__suPdfReady`
+   flag; the parent polls that flag, then calls `iframe.contentWindow.print()`. The
+   browser's native "Save as PDF" produces a vector PDF that is byte-for-byte consistent
+   with the preview.
+5. Clean up the iframe on `afterprint` (with a 30 s safety timeout for browsers that don't
+   fire it reliably).
+
+No WASM, no server round-trip, ~150 KB CDN script loaded only on first export. Always force
+`data-theme="light"` on the print document — yellow-on-dark is great on screen but reads
+poorly on paper.
