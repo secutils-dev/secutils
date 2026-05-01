@@ -143,6 +143,23 @@ jobs:
         with:
           shared-key: "ci-perf"
           cache-all-crates: true
+          # The `v8` crate's build script downloads `librusty_v8.a` into
+          # `~/.cargo/.rusty_v8/`; cache it so we don't re-download ~30MB
+          # every run.
+          cache-directories: |
+            ~/.cargo/.rusty_v8
+
+      # `Swatinem/rust-cache` only preserves `target/<profile>/{build,.fingerprint,deps}`
+      # during its save-time cleanup, which strips the non-standard
+      # `target/release/gn_out/` directory where the `v8` build script places
+      # the `librusty_v8.a` static archive. Without this step, the restored
+      # `.fingerprint/v8-*` makes cargo skip the build script while the static
+      # archive is missing, and linking fails with "could not find native
+      # static library `rusty_v8`". Clearing the v8 fingerprint forces the
+      # build script to re-run and re-populate `gn_out/obj/librusty_v8.a`
+      # (using the cached download under `~/.cargo/.rusty_v8/`).
+      - name: Force v8 build script rerun
+        run: rm -rf target/release/.fingerprint/v8-* target/release/build/v8-*
 
       - uses: actions/setup-node@v6
         with:
