@@ -269,6 +269,7 @@ main { flex: 1; padding: 32px 16px 48px; max-width: 760px; margin: 0 auto; width
 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; margin-bottom: 14px; transition: background .25s, border-color .25s; }
 .card label { display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+.label-hint { font-weight: 400; text-transform: none; letter-spacing: 0; opacity: 0.75; margin-left: 6px; }
 
 .input, .textarea, .input-mono {
     width: 100%; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px;
@@ -279,6 +280,7 @@ main { flex: 1; padding: 32px 16px 48px; max-width: 760px; margin: 0 auto; width
 .input-mono { height: 38px; font-family: var(--mono); font-size: 13px; }
 .input-status { width: 120px; font-family: var(--mono); }
 .textarea { padding: 10px 12px; font-family: var(--mono); font-size: 13px; line-height: 1.5; resize: vertical; min-height: 160px; }
+.textarea-sm { min-height: 64px; font-family: var(--font); font-size: 13px; }
 .input:focus, .textarea:focus, .input-mono:focus { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
 .input[readonly] { color: var(--text-muted); cursor: text; }
 
@@ -338,6 +340,11 @@ td:last-child { padding-right: 0; width: 38px; }
         <p class="page-subtitle">Build a mock HTTP response. Your edits are encoded in the URL fragment as you type, then served when this responder is hit with <code>?c=&hellip;</code>.</p>
 
         <section class="card">
+            <label for="description">Description <span class="label-hint">(saved in URL, not sent in response)</span></label>
+            <textarea id="description" class="textarea textarea-sm" placeholder="What is this mock for? Notes for whoever opens the share link."></textarea>
+        </section>
+
+        <section class="card">
             <label for="status">Status code</label>
             <input id="status" class="input input-status" type="number" min="100" max="599" value="200">
         </section>
@@ -376,6 +383,7 @@ td:last-child { padding-right: 0; width: 38px; }
 const $ = (id) => document.getElementById(id);
 
 const els = Object.freeze({
+    description: $('description'),
     status: $('status'),
     headers: $('headers').querySelector('tbody'),
     empty: $('empty'),
@@ -388,7 +396,10 @@ const els = Object.freeze({
     themeToggle: $('themeToggle'),
 });
 
-const defaultState = () => ({ s: 200, h: [['Content-Type', 'application/json']], b: '' });
+// `d` is a free-text description that round-trips through the URL fragment so it's
+// preserved across reloads and shared links, but the responder script ignores it
+// (only `s`/`h`/`b` are sent to clients). Useful for documenting what a mock is for.
+const defaultState = () => ({ d: '', s: 200, h: [['Content-Type', 'application/json']], b: '' });
 let state = defaultState();
 
 const utf8Enc = new TextEncoder();
@@ -481,12 +492,14 @@ const renderHeaders = () => {
 };
 
 const render = () => {
+    els.description.value = state.d;
     els.status.value = state.s;
     els.body.value = state.b;
     renderHeaders();
     syncURL();
 };
 
+els.description.addEventListener('input', (e) => { state.d = e.target.value; syncURL(); });
 els.status.addEventListener('input', (e) => {
     const n = parseInt(e.target.value, 10);
     state.s = Number.isNaN(n) ? 200 : Math.max(100, Math.min(599, n));
@@ -526,6 +539,7 @@ els.reset.addEventListener('click', () => {
             try {
                 const initial = JSON.parse(raw);
                 state = {
+                    d: typeof initial.d === 'string' ? initial.d : '',
                     s: Number.isInteger(initial.s) ? initial.s : 200,
                     h: Array.isArray(initial.h)
                         ? initial.h.filter(Array.isArray).map((p) => [String(p[0] ?? ''), String(p[1] ?? '')])
