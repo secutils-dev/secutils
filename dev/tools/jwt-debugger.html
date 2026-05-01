@@ -406,6 +406,42 @@ main { flex: 1; padding: 24px 16px 48px; max-width: 1200px; margin: 0 auto; widt
     } catch(e) {}
 })();
 
+// URL state encoding: see dev/tools/AGENTS.md → "URL state encoding".
+const utf8Enc = new TextEncoder();
+const utf8Dec = new TextDecoder();
+const toBase64Url = (bytes) => {
+    let s = '';
+    for (const b of bytes) s += String.fromCharCode(b);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+const fromBase64UrlBytes = (str) => {
+    const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '==='.slice(0, (4 - b64.length % 4) % 4);
+    const bin = atob(padded);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+};
+const encodeState = async (text) => {
+    const bytes = utf8Enc.encode(text);
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    const deflated = new Uint8Array(await new Response(stream).arrayBuffer());
+    const out = new Uint8Array(4 + deflated.length);
+    new DataView(out.buffer).setUint32(0, bytes.length, true);
+    out.set(deflated, 4);
+    return toBase64Url(out);
+};
+const decodeState = async (str) => {
+    try {
+        const bytes = fromBase64UrlBytes(str);
+        if (bytes.length < 4) return null;
+        const stream = new Blob([bytes.subarray(4)]).stream()
+            .pipeThrough(new DecompressionStream('deflate-raw'));
+        const inflated = new Uint8Array(await new Response(stream).arrayBuffer());
+        return utf8Dec.decode(inflated);
+    } catch { return null; }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     const algorithmSelect = document.getElementById('algorithm-select');
     const encodedOutput = document.getElementById('encoded-output');
@@ -683,38 +719,46 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    shareButton.addEventListener('click', () => {
+    shareButton.addEventListener('click', async () => {
         const jwtValue = encodedOutput.innerText.trim();
         if (!jwtValue || jwtValue === 'Invalid JSON') return;
-        const secretValue = secretInput.value.trim();
-        const encodedJwtForUrl = encodeURIComponent(jwtValue);
-        const encodedSecretForUrl = encodeURIComponent(secretValue);
-        const shareUrl = `${window.location.origin}${window.location.pathname}?jwt=${encodedJwtForUrl}&secret=${encodedSecretForUrl}`;
-        navigator.clipboard.writeText(shareUrl).then(() => {
+        const encoded = await encodeState(JSON.stringify({ j: jwtValue, s: secretInput.value.trim() }));
+        const shareUrl = `${window.location.origin}${window.location.pathname}#${encoded}`;
+        try {
+            await navigator.clipboard.writeText(shareUrl);
             shareButton.textContent = 'Link Copied!';
-            setTimeout(() => { shareButton.textContent = 'Share'; }, 2000);
-        });
+        } catch {
+            shareButton.textContent = 'Copy failed';
+        }
+        setTimeout(() => { shareButton.textContent = 'Share'; }, 2000);
     });
 
-    const initialize = () => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const secretFromQuery = urlParams.get('secret');
-        if (secretFromQuery != null) {
-            secretInput.value = secretFromQuery;
+    const loadDefaults = () => {
+        document.getElementById('decoded-header').value = JSON.stringify(defaultState.header, null, 2);
+        document.getElementById('decoded-payload').value = JSON.stringify(defaultState.payload, null, 2);
+        populateTable('header-claims-table', defaultState.header);
+        populateTable('payload-claims-table', defaultState.payload);
+        secretInput.value = defaultState.secret;
+        algorithmSelect.value = defaultState.header.alg;
+        updateEncoded();
+    };
+
+    const initialize = async () => {
+        if (location.hash.length > 1) {
+            const raw = await decodeState(location.hash.slice(1));
+            if (raw) {
+                try {
+                    const { j, s } = JSON.parse(raw);
+                    if (typeof s === 'string') secretInput.value = s;
+                    if (typeof j === 'string' && j) {
+                        encodedOutput.innerText = j;
+                        updateDecodedFromToken();
+                        return;
+                    }
+                } catch {}
+            }
         }
-        const jwtFromQuery = urlParams.get('jwt');
-        if (jwtFromQuery) {
-            encodedOutput.innerText = jwtFromQuery;
-            updateDecodedFromToken();
-        } else {
-            document.getElementById('decoded-header').value = JSON.stringify(defaultState.header, null, 2);
-            document.getElementById('decoded-payload').value = JSON.stringify(defaultState.payload, null, 2);
-            populateTable('header-claims-table', defaultState.header);
-            populateTable('payload-claims-table', defaultState.payload);
-            secretInput.value = defaultState.secret;
-            algorithmSelect.value = defaultState.header.alg;
-            updateEncoded();
-        }
+        loadDefaults();
     };
     initialize();
 

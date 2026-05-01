@@ -249,7 +249,43 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
     } catch(e) {}
 })();
 
-document.addEventListener('DOMContentLoaded', function() {
+// URL state encoding: see dev/tools/AGENTS.md → "URL state encoding".
+const utf8Enc = new TextEncoder();
+const utf8Dec = new TextDecoder();
+const toBase64Url = (bytes) => {
+    let s = '';
+    for (const b of bytes) s += String.fromCharCode(b);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+const fromBase64Url = (str) => {
+    const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '==='.slice(0, (4 - b64.length % 4) % 4);
+    const bin = atob(padded);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+};
+const encodeState = async (text) => {
+    const bytes = utf8Enc.encode(text);
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    const deflated = new Uint8Array(await new Response(stream).arrayBuffer());
+    const out = new Uint8Array(4 + deflated.length);
+    new DataView(out.buffer).setUint32(0, bytes.length, true);
+    out.set(deflated, 4);
+    return toBase64Url(out);
+};
+const decodeState = async (str) => {
+    try {
+        const bytes = fromBase64Url(str);
+        if (bytes.length < 4) return null;
+        const stream = new Blob([bytes.subarray(4)]).stream()
+            .pipeThrough(new DecompressionStream('deflate-raw'));
+        const inflated = new Uint8Array(await new Response(stream).arrayBuffer());
+        return utf8Dec.decode(inflated);
+    } catch { return null; }
+};
+
+document.addEventListener('DOMContentLoaded', async function() {
     var textarea = document.getElementById('pemInput');
     var outputContainer = document.getElementById('outputContainer');
     var emptyState = document.getElementById('emptyState');
@@ -263,11 +299,12 @@ document.addEventListener('DOMContentLoaded', function() {
     var parseTimeout;
     var toastTimeout;
 
-    var params = new URLSearchParams(window.location.search);
-    var pemParam = params.get('pem');
-    if (pemParam) {
-        textarea.value = pemParam;
-        processInput();
+    if (location.hash.length > 1) {
+        var initialPem = await decodeState(location.hash.slice(1));
+        if (initialPem) {
+            textarea.value = initialPem;
+            processInput();
+        }
     }
 
     textarea.addEventListener('input', function() {
@@ -277,9 +314,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     clearBtn.addEventListener('click', function() {
         textarea.value = '';
-        var url = new URL(window.location);
-        url.searchParams.delete('pem');
-        window.history.replaceState({}, '', url);
+        window.history.replaceState({}, '', window.location.pathname + window.location.search);
         processInput();
     });
 
@@ -309,17 +344,18 @@ document.addEventListener('DOMContentLoaded', function() {
         processInput();
     });
 
-    shareBtn.addEventListener('click', function() {
+    shareBtn.addEventListener('click', async function() {
         var content = textarea.value.trim();
         if (!content) { showToast('No content to share'); return; }
-        var url = new URL(window.location.href);
-        url.searchParams.set('pem', content);
-        window.history.replaceState({}, '', url);
-        navigator.clipboard.writeText(url.toString()).then(function() {
+        var encoded = await encodeState(content);
+        var shareUrl = window.location.origin + window.location.pathname + window.location.search + '#' + encoded;
+        window.history.replaceState({}, '', shareUrl);
+        try {
+            await navigator.clipboard.writeText(shareUrl);
             showToast('Link copied to clipboard');
-        }).catch(function() {
+        } catch {
             showToast('Failed to copy link');
-        });
+        }
     });
 
     function showToast(msg) {
@@ -565,6 +601,16 @@ document.addEventListener('DOMContentLoaded', function() {
             } catch (e) { /* leave text untouched on malformed sequences */ }
         }
 
+        // Firefox / Chrome cert viewer URLs concatenate every cert in the chain as repeated
+        // query params: `about:certificate?cert=<b64>&cert=<b64>&cert=<b64>`. Strip any
+        // leading `…?<key>=` prefix (full URL or just the query part) and turn inter-cert
+        // `&<key>=` separators into blank lines so wrapHeaderlessBase64 splits them.
+        // Base64's alphabet is [A-Za-z0-9+/=], so `&` and `?` cannot appear inside a cert.
+        if (/[?&]\w+=/.test(text)) {
+            text = text.replace(/^[\s\S]*?\?\w+=/, '');
+            text = text.replace(/&\w+=/g, '\n\n');
+        }
+
         // Unescape common literal escape sequences (e.g. `\n`, `\r`, `\t`) that appear when a PEM
         // is pasted from a JSON string.
         if (text.indexOf('\\n') !== -1 || text.indexOf('\\r') !== -1 || text.indexOf('\\t') !== -1) {
@@ -582,14 +628,17 @@ document.addEventListener('DOMContentLoaded', function() {
         var blocks = text.split(/\n\s*\n/).map(function(b) { return b.trim(); }).filter(Boolean);
         if (blocks.length === 0) return null;
 
+        // Skip blocks that don't look like base64 instead of rejecting the whole input —
+        // a single piece of trailing junk (e.g. a stray `&utm_source=…` after a cert
+        // viewer URL) shouldn't lose every other valid cert.
         var wrapped = [];
         for (var i = 0; i < blocks.length; i++) {
             var compact = blocks[i].replace(/\s+/g, '');
-            if (!/^[A-Za-z0-9+/]+=*$/.test(compact) || compact.length < 40) return null;
+            if (!/^[A-Za-z0-9+/]+=*$/.test(compact) || compact.length < 40) continue;
             var lines = compact.match(/.{1,64}/g) || [];
             wrapped.push('-----BEGIN CERTIFICATE-----\n' + lines.join('\n') + '\n-----END CERTIFICATE-----');
         }
-        return wrapped;
+        return wrapped.length > 0 ? wrapped : null;
     }
 
     function formatDN(dn) {

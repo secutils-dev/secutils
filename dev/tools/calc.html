@@ -1710,12 +1710,47 @@ window.__prepDates = (function() {
     return line;
   };
 })();
-window.__hashEncode = function(s) {
-  try { return btoa(unescape(encodeURIComponent(s))); } catch(e) { return ""; }
-};
-window.__hashDecode = function(h) {
-  try { return decodeURIComponent(escape(atob(h))); } catch(e) { return ""; }
-};
+// URL state encoding: see dev/tools/AGENTS.md → "URL state encoding".
+// Helpers are async because of the streaming compression API; the call sites
+// in the bundled numbr.dev code below are patched to `await` accordingly.
+(() => {
+  const utf8Enc = new TextEncoder();
+  const utf8Dec = new TextDecoder();
+  const toBase64Url = (bytes) => {
+    let s = "";
+    for (const b of bytes) s += String.fromCharCode(b);
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  };
+  const fromBase64Url = (str) => {
+    const b64 = str.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "===".slice(0, (4 - b64.length % 4) % 4);
+    const bin = atob(padded);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  };
+  const encodeState = async (text) => {
+    const bytes = utf8Enc.encode(text);
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+    const deflated = new Uint8Array(await new Response(stream).arrayBuffer());
+    const out = new Uint8Array(4 + deflated.length);
+    new DataView(out.buffer).setUint32(0, bytes.length, true);
+    out.set(deflated, 4);
+    return toBase64Url(out);
+  };
+  const decodeState = async (str) => {
+    try {
+      const bytes = fromBase64Url(str);
+      if (bytes.length < 4) return null;
+      const stream = new Blob([bytes.subarray(4)]).stream()
+        .pipeThrough(new DecompressionStream("deflate-raw"));
+      const inflated = new Uint8Array(await new Response(stream).arrayBuffer());
+      return utf8Dec.decode(inflated);
+    } catch { return null; }
+  };
+  window.__hashEncode = async (s) => { try { return await encodeState(s); } catch { return ""; } };
+  window.__hashDecode = async (h) => { try { return (await decodeState(h)) ?? ""; } catch { return ""; } };
+})();
 </script>
 
 <script>
@@ -5545,10 +5580,10 @@ window.__hashDecode = function(h) {
       let f = n(1523);
       const {
         eval: h
-      } = await (0, t.spawn)(new t.Worker(__workerBlobUrl, {CORSWorkaround: !1})), m = (0, u.debounce)(300, (() => {
+      } = await (0, t.spawn)(new t.Worker(__workerBlobUrl, {CORSWorkaround: !1})), m = (0, u.debounce)(300, (async () => {
         let e = (0, s.getCode)(d);
         localStorage.setItem("code", e);
-        history.replaceState(null, "", "#" + __hashEncode(e))
+        history.replaceState(null, "", "#" + await __hashEncode(e))
       }));
       let v = [];
       const g = (0, e.CodeJar)(d, (async e => {
@@ -5631,7 +5666,7 @@ window.__hashDecode = function(h) {
       }));
       let T = "";
       if (location.hash.length > 1) {
-        try { T = __hashDecode(location.hash.slice(1)); } catch(e) {}
+        try { T = await __hashDecode(location.hash.slice(1)); } catch(e) {}
       }
       if (!T) T = localStorage.getItem("code") || "";
       async function S() {

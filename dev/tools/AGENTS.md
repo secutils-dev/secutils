@@ -113,6 +113,115 @@ Rules and caveats:
 - **Marker is opt-in**: most tools are static HTML and don't need this - leave it off and
   deploy ships the body alone.
 
+## URL state encoding (`encodeState` / `decodeState`)
+
+Tools that need to remember their state across page reloads or build shareable URLs
+(`calc.html`, `jwt-debugger.html`, `certificate-decoder.html`, `saml-decoder.html`,
+`echo.html`, …) must use the same compression scheme. This keeps URLs short, the calling
+convention uniform, and gives any future responder script a known wire format to inflate.
+
+### Where the encoded blob goes
+
+**Default: the URL fragment (`#<encoded>`).**
+
+- The fragment is never sent to the server, so it's safe for sensitive content (tokens,
+  PEMs, SAML payloads, calculator history). It also stays out of server / proxy logs.
+- The same encoded value powers both live debounced state and the Share button - there
+  is no separate share format.
+- Live edits use `history.replaceState(null, '', '#' + encoded)`; the Share button
+  copies the page URL with the same fragment.
+
+**Exception: when a responder script must read the state server-side**, the share URL
+uses a `?c=<encoded>` query parameter (browsers strip `#` before sending the request).
+Today this applies only to `echo.html`, which still uses `#<encoded>` for its in-page
+configurator and `?c=<encoded>` for the share button (the responder reads
+`context.query.c` and synthesises the configured response).
+
+### Wire format
+
+After URL-safe base64 decoding:
+
+```
+| 4 bytes      | N bytes                                |
+| ulen (LE u32)| deflate-raw of UTF-8(JSON|raw string)  |
+```
+
+The 4-byte uncompressed-length prefix is included even for browser-only tools, so any
+future responder script can use a pure-JS inflater (e.g. `tiny-inflate`, like
+`echo.html`'s responder) without changing the format. `tiny-inflate` requires a
+pre-allocated output buffer, and the prefix lets it size that buffer in one step.
+
+### Calling convention
+
+The helpers are **async**, **string-in / string-out**. Callers `JSON.stringify` /
+`JSON.parse` themselves at the call site when state is structured. This keeps the
+helpers identical across tools regardless of payload shape.
+
+```js
+// Stash an object in the URL fragment:
+history.replaceState(null, '', '#' + await encodeState(JSON.stringify(state)));
+
+// Read it back:
+const raw = await decodeState(location.hash.slice(1));
+const state = raw ? JSON.parse(raw) : null;
+
+// For tools whose state is already a string (PEM, raw SAML, etc.), skip the
+// JSON.stringify / JSON.parse - pass the string directly.
+```
+
+### Canonical snippet (copy verbatim into each tool)
+
+```js
+const utf8Enc = new TextEncoder();
+const utf8Dec = new TextDecoder();
+const toBase64Url = (bytes) => {
+    let s = '';
+    for (const b of bytes) s += String.fromCharCode(b);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+const fromBase64Url = (str) => {
+    const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '==='.slice(0, (4 - b64.length % 4) % 4);
+    const bin = atob(padded);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+};
+const encodeState = async (text) => {
+    const bytes = utf8Enc.encode(text);
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    const deflated = new Uint8Array(await new Response(stream).arrayBuffer());
+    const out = new Uint8Array(4 + deflated.length);
+    new DataView(out.buffer).setUint32(0, bytes.length, true);
+    out.set(deflated, 4);
+    return toBase64Url(out);
+};
+const decodeState = async (str) => {
+    try {
+        const bytes = fromBase64Url(str);
+        if (bytes.length < 4) return null;
+        const stream = new Blob([bytes.subarray(4)]).stream()
+            .pipeThrough(new DecompressionStream('deflate-raw'));
+        const inflated = new Uint8Array(await new Response(stream).arrayBuffer());
+        return utf8Dec.decode(inflated);
+    } catch { return null; }
+};
+```
+
+### Caveats
+
+- DEFLATE has ~10 bytes of fixed overhead, so very small payloads (under ~50 bytes) get
+  slightly longer. Anything text-heavy compresses 2-10x.
+- `CompressionStream` / `DecompressionStream` are baseline since Safari 16.4 - matches
+  the "evergreen browsers" target stated above.
+- Old uncompressed share URLs (e.g. `?pem=…`, `?jwt=…&secret=…`, `?saml=…`) do **not**
+  decode under this format. Migrating a tool to the canonical helpers is a clean break:
+  pre-existing share links land users on the empty tool. Note this in the tool's commit
+  message and move on.
+- When a responder needs to read the state, mirror `echo.html`'s pattern: vendored
+  `tiny-inflate` + a `ulen` cap (1 MiB is plenty) + bounds-checked source pointer to
+  turn malformed input into a clean error response instead of an infinite loop.
+
 ## Brand Colors (from Elastic EUI theme-borealis)
 
 ### Dark theme (`:root, [data-theme="dark"]`)
@@ -374,6 +483,84 @@ modernize the surrounding code in the same edit.
 ## Reference Implementation
 
 See `dev/tools/markdown-to-html.html` for the complete working example.
+
+## Pre-deploy verification
+
+After editing any tool, run these checks before `make deploy-tools`. They take seconds,
+catch the failure modes the deploy pipeline can't (the deploy itself just minifies and
+PUTs - it does not parse the JS or smoke-test it), and don't need any browser.
+
+### 1. Inline `<script>` syntax check
+
+Parse every inline script block of every modified file with `node:vm`. This catches
+typos, missing brackets, accidental top-level `await` outside an `async` context, etc. -
+all the things `node --check` catches for `.js` files but with the inline-script
+extraction handled.
+
+```bash
+node -e "
+const fs = require('node:fs');
+const vm = require('node:vm');
+const files = process.argv.slice(1);
+for (const f of files) {
+  const html = fs.readFileSync(f, 'utf8');
+  const re = /<script(?:[^>]*)>([\s\S]*?)<\/script>/g;
+  let m, idx = 0, allOk = true;
+  while ((m = re.exec(html))) {
+    const code = m[1];
+    if (!code.trim()) { idx++; continue; }
+    if (/src=/.test(html.slice(m.index, m.index + 200))) { idx++; continue; }
+    try { new vm.Script(code, { filename: \`\${f}#\${idx}\` }); }
+    catch (e) { console.log('FAIL', f, 'script #' + idx, '->', e.message); allOk = false; }
+    idx++;
+  }
+  console.log(allOk ? 'OK  ' : 'FAIL', f, '(', idx, 'script tags )');
+}
+" -- dev/tools/echo.html dev/tools/jwt-debugger.html
+```
+
+### 2. Minifier dry-run
+
+Run `html-minifier-terser` with the exact options [`deploy.ts`](deploy.ts) uses. This
+catches issues that only surface after minification (e.g. `minifyJS` failing on a stray
+syntax error, or `removeComments` accidentally stripping something load-bearing).
+
+```bash
+cd dev/tools && node --input-type=module -e "
+import { readFileSync } from 'node:fs';
+import { minify } from 'html-minifier-terser';
+for (const f of process.argv.slice(1)) {
+  const html = readFileSync(f, 'utf8');
+  try {
+    const out = await minify(html, {
+      collapseWhitespace: true, removeComments: true, minifyCSS: true, minifyJS: true,
+      removeRedundantAttributes: true, removeScriptTypeAttributes: true,
+      removeStyleLinkTypeAttributes: true,
+    });
+    console.log('OK  ', f, '->', out.length, 'bytes', '(', html.length, 'src )');
+  } catch (e) { console.log('FAIL', f, '->', e.message); }
+}
+" -- echo.html jwt-debugger.html
+```
+
+### 3. URL-state round-trip
+
+If the tool stores state in the URL (see "URL state encoding"), confirm the helpers
+round-trip. Easiest to inline a copy of `encodeState` / `decodeState` and feed it
+representative payloads (small, large, unicode, the tool's own default state). Anything
+that doesn't satisfy `decodeState(await encodeState(input)) === input` is a bug.
+
+### 4. Responder-script smoke test (only for tools with `@su:responder-script`)
+
+Extract the `@su:responder-script` block, run it under `node:vm` with a stub `Deno.core`
+context, and verify it returns the expected response shape for: a valid input, a
+malformed input (must return a clean error response, not throw or hang), and a
+missing-input case (must `return null` so the static body is served). See `echo.html`
+for the wire-format pairing pattern.
+
+These four checks are what should pass before `make deploy-tools` (or before opening a
+PR if a deploy isn't immediate). Live verification in the browser still belongs in the
+post-deploy step.
 
 ## PDF Export (optional)
 
