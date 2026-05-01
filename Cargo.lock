@@ -4951,7 +4951,7 @@ dependencies = [
  "url",
  "urlencoding",
  "utoipa",
- "utoipa-rapidoc",
+ "utoipa-scalar",
  "uuid",
  "zip",
  "zstd",
@@ -6570,10 +6570,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "utoipa-rapidoc"
-version = "6.0.0"
+name = "utoipa-scalar"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5f8f5abd341cce16bb4f09a8bafc087d4884a004f25fb980e538d51d6501dab"
+checksum = "59559e1509172f6b26c1cdbc7247c4ddd1ac6560fe94b584f81ee489b141f719"
 dependencies = [
  "actix-web",
  "serde",

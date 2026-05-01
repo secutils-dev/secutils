@@ -33,7 +33,7 @@ use std::{sync::Arc, time::Duration};
 use tracing::{info, warn};
 use tracing_actix_web::TracingLogger;
 use utoipa::OpenApi;
-use utoipa_rapidoc::RapiDoc;
+use utoipa_scalar::{Scalar, Servable};
 
 #[tokio::main]
 pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
@@ -120,10 +120,11 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
             .wrap(ClearSessionCookie::new(session_cookie_name.clone()))
             .app_data(state.clone())
             // OpenAPI documentation
-            .service(
-                RapiDoc::with_openapi("/api-docs/openapi.json", SecutilsOpenApi::openapi())
-                    .path("/api-docs"),
+            .route(
+                "/api-docs/openapi.json",
+                web::get().to(|| async { web::Json(SecutilsOpenApi::openapi()) }),
             )
+            .service(Scalar::with_url("/api-docs", SecutilsOpenApi::openapi()))
             // API keys
             .service(handlers::user_api_keys::user_api_keys_list)
             .service(handlers::user_api_keys::user_api_keys_create)
