@@ -222,6 +222,84 @@ const decodeState = async (str) => {
   `tiny-inflate` + a `ulen` cap (1 MiB is plenty) + bounds-checked source pointer to
   turn malformed input into a clean error response instead of an infinite loop.
 
+## Skill link (`skill.md`)
+
+Each tool may publish a companion **AI agent skill** at `<su-tool-path>/skill.md`
+(YAML frontmatter + markdown body, following the convention pioneered by
+Anthropic Skills / Cursor skills / agents.md). The skill describes the tool's
+inputs, wire format, and trigger phrases so an LLM can drive the tool
+end-to-end without scraping the HTML UI.
+
+The skill itself lives as a **separate sibling responder** (e.g. responder at
+`/echo/skill.md` next to the responder at `/echo`). It is **not** part of the
+`dev/tools/` deploy pipeline - author and update those skill responders by
+hand. The HTML app's only job is to advertise the skill via a uniform header
+button so humans can discover the file even though it's intended for AI use.
+
+### Where the button goes
+
+Header right area, **immediately before the theme toggle**. Same chrome as on
+every other tool - the header is the one piece of layout that's identical
+across the whole `dev/tools/` family, so a single placement covers everything.
+
+The href is **derived at runtime** from `location.pathname`, so each tool's
+markup is identical and works for any responder path:
+
+```js
+document.getElementById('skillLink').href = location.pathname.replace(/\/$/, '') + '/skill.md';
+```
+
+### Markup (copy verbatim)
+
+Place inside `.header-right`, before the `<button class="theme-toggle">`:
+
+```html
+<a id="skillLink" class="skill-link" href="#" target="_blank" rel="noopener"
+   title="View AI agent skill (skill.md, opens in new tab)"
+   aria-label="View AI agent skill (opens in new tab)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+        <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
+    </svg>
+    <span>Skill</span>
+</a>
+```
+
+The icon is the Lucide `sparkles` glyph - the most widely recognised AI
+affordance in current UI design (matches Anthropic, OpenAI, Cursor, etc.).
+
+### CSS (copy verbatim)
+
+Place next to the existing `.theme-toggle` rules:
+
+```css
+.skill-link { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px;
+              border: 1px solid var(--border); border-radius: 18px; background: var(--surface);
+              color: var(--text-muted); font: 12px var(--font); text-decoration: none;
+              transition: all .15s; cursor: pointer; }
+.skill-link:hover { color: var(--text); border-color: var(--text-muted); background: var(--surface-hover); }
+.skill-link svg { width: 14px; height: 14px; fill: none; stroke: currentColor; }
+```
+
+The fixed `36px` height matches the round theme toggle, so the two header
+chrome controls line up on the same baseline. Inside the
+`@media (max-width: 640px)` block, collapse the label so the button stays
+compact on mobile:
+
+```css
+.skill-link span { display: none; }
+.skill-link { padding: 0 10px; }
+```
+
+### When to opt out
+
+Tools without a published `skill.md` (and no plan to publish one soon) should
+**leave the markup off**. A visible button that 404s is a worse UX than no
+button at all. Today this means [`dev/tools/index.html`](index.html) (a tool
+list, not a tool) skips it. As you write new `skill.md` responders for `calc`,
+`jwt`, `pem`, etc., add the markup to the corresponding HTML at the same
+time.
+
 ## Brand Colors (from Elastic EUI theme-borealis)
 
 ### Dark theme (`:root, [data-theme="dark"]`)
