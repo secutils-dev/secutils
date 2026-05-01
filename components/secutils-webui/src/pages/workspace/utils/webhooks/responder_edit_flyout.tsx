@@ -147,6 +147,259 @@ const SCRIPT_SNIPPETS: ScriptSnippet[] = [
       '})()',
     ].join('\n'),
   },
+  {
+    id: 'responder-script-basic-auth',
+    label: 'Insert Example: Protect with HTTP Basic Auth',
+    template: `(() => {
+    // === Configuration ===
+    // Set REQUIRE_USERNAME to true to also require a username.
+    // - false (default): any username is accepted; only APP_PASSWORD is checked.
+    // - true: the snippet additionally reads the expected username from
+    //   the secret APP_USER. Create it in Workspace → Secrets.
+    const REQUIRE_USERNAME = false;
+
+    const expectedPassword = context.secrets.APP_PASSWORD;
+    const expectedUsername = REQUIRE_USERNAME ? context.secrets.APP_USER : null;
+
+    if (!expectedPassword || (REQUIRE_USERNAME && !expectedUsername)) {
+        return {
+            statusCode: 500,
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+            body: REQUIRE_USERNAME
+                ? 'Missing required secrets APP_USER and/or APP_PASSWORD. Create them in Workspace → Secrets and grant this responder access to them.'
+                : 'Missing required secret APP_PASSWORD. Create it in Workspace → Secrets and grant this responder access to it.',
+        };
+    }
+
+    // Constant-time string comparison.
+    const ctEq = (a, b) => {
+        if (a.length !== b.length) return false;
+        let r = 0;
+        for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+        return r === 0;
+    };
+
+    // Pure-JS base64 decoder (no atob in the sandbox).
+    const fromBase64 = (b64) => {
+        const C = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+        const s = b64.replace(/=+$/, '');
+        const out = [];
+        for (let i = 0; i < s.length; i += 4) {
+            const a = C.indexOf(s[i]);
+            const b = C.indexOf(s[i + 1]);
+            const c = C.indexOf(s[i + 2]);
+            const d = C.indexOf(s[i + 3]);
+            out.push((a << 2) | (b >> 4));
+            if (c >= 0) out.push(((b & 15) << 4) | (c >> 2));
+            if (d >= 0) out.push(((c & 3) << 6) | d);
+        }
+        return Deno.core.decode(new Uint8Array(out));
+    };
+
+    const auth = context.headers['authorization'] || '';
+    const match = /^Basic\\s+(\\S+)$/.exec(auth);
+    if (match) {
+        const decoded = fromBase64(match[1]);
+        const colon = decoded.indexOf(':');
+        const username = colon >= 0 ? decoded.slice(0, colon) : '';
+        const password = colon >= 0 ? decoded.slice(colon + 1) : '';
+        const passwordOk = ctEq(password, expectedPassword);
+        const usernameOk = !REQUIRE_USERNAME || ctEq(username, expectedUsername);
+        if (passwordOk && usernameOk) {
+            // Authenticated — fall through to the responder's default response.
+            return null;
+        }
+    }
+
+    return {
+        statusCode: 401,
+        headers: {
+            'WWW-Authenticate': 'Basic realm="Protected", charset="UTF-8"',
+            'Content-Type': 'text/plain; charset=utf-8',
+        },
+        body: 'Authentication required',
+    };
+})();`,
+  },
+  {
+    id: 'responder-script-cookie-session',
+    label: 'Insert Example: Protect with Login Form (Cookie Session)',
+    template: `(() => {
+    // === Configuration ===
+    // Set REQUIRE_USERNAME to true to also show a Username field on the login form.
+    // - false (default): only APP_PASSWORD is required.
+    // - true: the snippet additionally reads the expected username from
+    //   the secret APP_USER. Create it in Workspace → Secrets.
+    // NOTE: set the responder's HTTP method to ANY so this script can handle
+    // both the GET (form render) and the POST (login submission).
+    const REQUIRE_USERNAME = false;
+
+    const PASSWORD = context.secrets.APP_PASSWORD;
+    const USERNAME = REQUIRE_USERNAME ? context.secrets.APP_USER : null;
+    const COOKIE_NAME = 'sec_auth';
+    const MAX_AGE_SEC = 86400; // 24 hours
+
+    if (!PASSWORD || (REQUIRE_USERNAME && !USERNAME)) {
+        return {
+            statusCode: 500,
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+            body: REQUIRE_USERNAME
+                ? 'Missing required secrets APP_USER and/or APP_PASSWORD. Create them in Workspace → Secrets and grant this responder access to them.'
+                : 'Missing required secret APP_PASSWORD. Create it in Workspace → Secrets and grant this responder access to it.',
+        };
+    }
+
+    // Constant-time string comparison.
+    const ctEq = (a, b) => {
+        if (a.length !== b.length) return false;
+        let r = 0;
+        for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+        return r === 0;
+    };
+
+    // Parse application/x-www-form-urlencoded body (URLSearchParams may not exist in the sandbox).
+    const parseForm = (raw) => {
+        const out = {};
+        for (const pair of raw.split('&')) {
+            if (!pair) continue;
+            const eq = pair.indexOf('=');
+            const rk = eq < 0 ? pair : pair.slice(0, eq);
+            const rv = eq < 0 ? '' : pair.slice(eq + 1);
+            out[decodeURIComponent(rk.replace(/\\+/g, ' '))] =
+                decodeURIComponent(rv.replace(/\\+/g, ' '));
+        }
+        return out;
+    };
+
+    const sessionCookie = \`\${COOKIE_NAME}=\${encodeURIComponent(PASSWORD)}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=\${MAX_AGE_SEC}\`;
+    const clearCookie = \`\${COOKIE_NAME}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0\`;
+
+    const usernameField = REQUIRE_USERNAME
+        ? '<label for="user">Username</label>\\n    <input type="text" name="username" id="user" autocomplete="username" autofocus required>'
+        : '';
+    const pwdAutofocus = REQUIRE_USERNAME ? '' : 'autofocus';
+
+    const renderLogin = (errorHtml) => ({
+        statusCode: 401,
+        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+        body: \`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in</title>
+<link rel="preconnect" href="https://rsms.me/">
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+<style>
+:root {
+  color-scheme: light dark;
+  --bg:#F6F9FC; --fg:#1D2A3E; --muted:#516381; --title:#111C2C;
+  --card:#FFFFFF; --card-border:#E3E8F2; --border:#CAD3E2; --input-bg:#FFFFFF;
+  --primary:#0B64DD; --primary-fg:#FFFFFF; --primary-hover:#0A59C7;
+  --error:#A71627; --error-bg:#FFE8E5;
+  --shadow:0 0 2px hsl(216.67 29.51% 23.92%/.16),
+          0 3px 10px hsl(216.67 29.51% 23.92%/.1),
+          0 6px 14px hsl(216.67 29.51% 23.92%/.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:#07101F; --fg:#CAD3E2; --muted:#98A8C3; --title:#E3E8F2;
+    --card:#0B1628; --card-border:#2B394F; --border:#485975; --input-bg:#0B1628;
+    --primary:#61A2FF; --primary-fg:#07101F; --primary-hover:#84B8FF;
+    --error:#F6726A; --error-bg:#351721;
+    --shadow:0 3px 10px hsla(0,0%,0%,.52), 0 6px 14px hsla(0,0%,0%,.28);
+  }
+}
+*,*::before,*::after { box-sizing: border-box; }
+html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+  font-family:'Inter','-apple-system',BlinkMacSystemFont,'Segoe UI','Helvetica','Arial',sans-serif;
+  font-size:14px; line-height:1.4286; }
+main { min-height:100%; display:flex; align-items:center; justify-content:center; padding:24px; }
+.card { width:320px; background:var(--card); border:1px solid var(--card-border);
+  border-radius:6px; padding:24px; box-shadow:var(--shadow); }
+h1 { margin:0 0 4px; font-size:20px; font-weight:600; line-height:1.7143rem; color:var(--title); }
+.subtitle { margin:0 0 20px; color:var(--muted); font-size:14px; }
+label { display:block; margin:14px 0 4px; font-size:12px; font-weight:600; color:var(--title); }
+.card > label:first-of-type, form > label:first-of-type { margin-top:0; }
+input { width:100%; height:40px; padding:0 12px; border:1px solid var(--border); border-radius:4px;
+  background:var(--input-bg); color:var(--fg); font-family:inherit; font-size:14px; outline:none;
+  transition:border-color .15s, box-shadow .15s; }
+input:focus { border-color:var(--primary); box-shadow:0 0 0 1px var(--primary); }
+button { margin-top:20px; width:100%; height:40px; padding:0 12px; background:var(--primary);
+  color:var(--primary-fg); border:0; border-radius:4px; font-family:inherit; font-size:14px;
+  font-weight:500; cursor:pointer; transition:background .15s; }
+button:hover { background:var(--primary-hover); }
+.error { margin:0 0 16px; padding:8px 12px; border-radius:4px;
+  background:var(--error-bg); color:var(--error); font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+  <form class="card" method="POST" action="?_auth=1">
+    <h1>Sign in</h1>
+    <p class="subtitle">Enter the password to access this page.</p>
+    \${errorHtml}
+    \${usernameField}
+    <label for="pwd">Password</label>
+    <input type="password" name="password" id="pwd" autocomplete="current-password" \${pwdAutofocus} required>
+    <button type="submit">Sign in</button>
+  </form>
+</main>
+</body>
+</html>\`,
+    });
+
+    // Logout: ?_logout=1 clears the cookie and shows the login form again.
+    if (context.query._logout === '1') {
+        return {
+            statusCode: 303,
+            headers: {
+                'Set-Cookie': clearCookie,
+                'Location': context.path,
+                'Content-Type': 'text/plain; charset=utf-8',
+            },
+            body: 'Signed out',
+        };
+    }
+
+    // Login form submission.
+    if (context.method === 'POST' && context.query._auth === '1') {
+        const form = parseForm(Deno.core.decode(new Uint8Array(context.body)));
+        const submittedPassword = form.password || '';
+        const submittedUsername = form.username || '';
+        const passwordOk = ctEq(submittedPassword, PASSWORD);
+        const usernameOk = !REQUIRE_USERNAME || ctEq(submittedUsername, USERNAME);
+        if (passwordOk && usernameOk) {
+            return {
+                statusCode: 303,
+                headers: {
+                    'Set-Cookie': sessionCookie,
+                    'Location': context.path,
+                    'Content-Type': 'text/plain; charset=utf-8',
+                },
+                body: 'Authenticated',
+            };
+        }
+        return renderLogin('<p class="error">Incorrect ' + (REQUIRE_USERNAME ? 'username or password' : 'password') + '.</p>');
+    }
+
+    // Existing session cookie?
+    const cookieHeader = context.headers['cookie'] || '';
+    const matched = cookieHeader
+        .split(';')
+        .map((s) => s.trim())
+        .find((c) => c.startsWith(COOKIE_NAME + '='));
+    if (matched) {
+        const value = decodeURIComponent(matched.slice(COOKIE_NAME.length + 1));
+        if (ctEq(value, PASSWORD)) {
+            // Authenticated — fall through to the responder's default response.
+            return null;
+        }
+    }
+
+    return renderLogin('');
+})();`,
+  },
 ];
 
 export default function ResponderEditFlyout({ onClose, responder }: ResponderEditFlyoutProps) {
