@@ -29,6 +29,30 @@ function filenameToEnvKey(filename: string): string {
   return `SECUTILS_HTML_APP_RESPONDER_ID_${stem.replace(/-/g, "_").toUpperCase()}`;
 }
 
+// Extracts the responder script embedded in an HTML comment of the form:
+//   <!-- @su:responder-script
+//   ...JS code...
+//   -->
+// The marker comment is stripped from the deployed body by html-minifier-terser
+// (`removeComments: true`); we lift its payload here so it can be sent in the
+// same PUT as the responder's `script` setting. See dev/tools/AGENTS.md for the
+// full convention.
+const RESPONDER_SCRIPT_RE = /<!--\s*@su:responder-script\s*\r?\n([\s\S]*?)\s*-->/g;
+
+function extractResponderScript(
+  rawHtml: string,
+  label: string,
+): string | undefined {
+  const matches = [...rawHtml.matchAll(RESPONDER_SCRIPT_RE)];
+  if (matches.length === 0) return undefined;
+  if (matches.length > 1) {
+    console.log(
+      `  ${label}  ${ANSI.yellow(`⚠ multiple @su:responder-script comments found, using the first`)}`,
+    );
+  }
+  return matches[0][1].trim();
+}
+
 async function main() {
   const API_DOMAIN = process.env.SECUTILS_HTML_APP_API_DOMAIN;
   const API_KEY = process.env.SECUTILS_HTML_APP_API_KEY;
@@ -108,6 +132,8 @@ async function main() {
       continue;
     }
 
+    const responderScript = extractResponderScript(rawHtml, label);
+
     let minified: string;
     try {
       minified = await minify(rawHtml, {
@@ -127,7 +153,16 @@ async function main() {
 
     const minifiedSize = Buffer.byteLength(minified, "utf-8");
     const savedPct = (((originalSize - minifiedSize) / originalSize) * 100).toFixed(1);
-    const sizeInfo = `${formatSize(originalSize)} -> ${formatSize(minifiedSize)} ${ANSI.dim(`(${savedPct}% saved)`)}`;
+    const scriptInfo = responderScript
+      ? ` ${ANSI.dim(`+ script ${formatSize(Buffer.byteLength(responderScript, "utf-8"))}`)}`
+      : "";
+    const sizeInfo = `${formatSize(originalSize)} -> ${formatSize(minifiedSize)} ${ANSI.dim(`(${savedPct}% saved)`)}${scriptInfo}`;
+
+    const settings: { statusCode: number; body: string; script?: string } = {
+      statusCode: 200,
+      body: minified,
+      ...(responderScript ? { script: responderScript } : {}),
+    };
 
     try {
       const url = `${API_DOMAIN}/api/webhooks/responders/${responderId}`;
@@ -137,7 +172,7 @@ async function main() {
           Authorization: `Bearer ${API_KEY}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ settings: { statusCode: 200, body: minified } }),
+        body: JSON.stringify({ settings }),
       });
 
       if (res.ok || res.status === 204) {

@@ -30,6 +30,7 @@ Current mapping:
 | `certificate-decoder.html` | `/pem`                    | Certificate Decoder |
 | `markdown-to-html.html`    | `/md-to-html`             | Markdown → HTML     |
 | `calc.html`                | `/calc`                   | Numbr Calculator    |
+| `echo.html`                | `/echo`                   | HTTP Echo Response  |
 
 When **creating a new tool**, **deleting a tool**, or **changing a tool's alias**:
 
@@ -56,6 +57,61 @@ When **creating a new tool**, **deleting a tool**, or **changing a tool's alias*
    ```
 
 3. **Update the table above** in this AGENTS.md file to keep the mapping accurate.
+
+## Responder Script (`@su:responder-script`)
+
+Most tools in `dev/tools/` are pure client-side HTML - the responder just serves a static
+body. A few tools also need a small server-side script (e.g. `echo.html` decodes a `?c=…`
+query parameter and returns a synthesised HTTP response). To keep the HTML the single
+source of truth for both halves, embed the responder script in an HTML comment with the
+`@su:responder-script` marker:
+
+```html
+<!DOCTYPE html>
+<!-- @su:responder-script
+// Optional human-readable preamble as JS // comments — these survive into the
+// deployed responder script (and are stripped by the responder backend if it
+// minifies; harmless either way).
+(() => {
+  const encoded = context.query.c;
+  if (!encoded) return null;        // fall through to the static HTML body
+  // ...handle the configured request...
+})();
+-->
+<html lang="en">
+…
+</html>
+```
+
+How the deploy pipeline treats it:
+
+1. [`dev/tools/deploy.ts`](deploy.ts) reads the file, finds the **first** comment whose
+   first non-whitespace content is the marker `@su:responder-script`, and captures the
+   trimmed body (everything between the marker line and `-->`).
+2. The same `html-minifier-terser` invocation that builds the deployed body strips the
+   comment via `removeComments: true`, so the script never reaches end users.
+3. The PUT to `/api/webhooks/responders/{id}` includes both `settings.body` (minified
+   HTML) and `settings.script` (extracted JS), so a single deploy keeps the two in sync.
+4. The deploy log shows the script size next to the body size, e.g.
+   `21.1 KB -> 16.2 KB (23.0% saved) + script 2.0 KB ✓ deployed`.
+5. If the file has no marker comment, the deploy behaves as before - `script` is omitted
+   from the PUT (and, since `ResponderSettings` is replaced wholesale, this clears any
+   pre-existing script on the responder).
+
+Rules and caveats:
+
+- **Marker placement**: anywhere in the file, but immediately after `<!DOCTYPE html>` is
+  the convention so it's easy to find.
+- **Content is JavaScript**: everything after the marker line is treated as the script
+  body, so any human-readable preamble must be written as `//` JS comments (not `=====`
+  banners, which would be a syntax error in JS).
+- **No `-->` inside the script**: the regex stops at the first `-->`. Vanishingly rare in
+  JS — and would also break HTML parsing — but worth knowing.
+- **Single match per file**: only the first marker comment is used; additional ones
+  produce a yellow `⚠ multiple @su:responder-script comments found, using the first`
+  warning in the deploy log.
+- **Marker is opt-in**: most tools are static HTML and don't need this - leave it off and
+  deploy ships the body alone.
 
 ## Brand Colors (from Elastic EUI theme-borealis)
 
