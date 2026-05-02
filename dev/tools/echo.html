@@ -410,6 +410,36 @@ const els = Object.freeze({
     themeToggle: $('themeToggle'),
 });
 
+// Curated response-header suggestions surfaced via native <datalist> dropdowns.
+// Names shown verbatim; values looked up case-insensitively (key = lowercased name).
+// Names without an entry in HEADER_PRESETS still autocomplete the name, but offer
+// no value suggestions — same for any custom (non-listed) header typed by the user.
+const HEADER_NAMES = [
+    'Access-Control-Allow-Credentials', 'Access-Control-Allow-Headers',
+    'Access-Control-Allow-Methods', 'Access-Control-Allow-Origin',
+    'Cache-Control', 'Content-Disposition', 'Content-Encoding', 'Content-Length',
+    'Content-Security-Policy', 'Content-Type', 'Date', 'ETag', 'Last-Modified',
+    'Location', 'Server', 'Set-Cookie', 'Strict-Transport-Security', 'Vary',
+    'WWW-Authenticate', 'X-Content-Type-Options', 'X-Frame-Options',
+];
+const HEADER_PRESETS = Object.freeze({
+    'content-type': ['application/json; charset=utf-8', 'text/html; charset=utf-8', 'text/plain', 'application/xml', 'text/css', 'application/javascript', 'image/png', 'image/jpeg', 'application/octet-stream'],
+    'cache-control': ['no-cache', 'no-store', 'max-age=0', 'max-age=3600', 'public, max-age=86400', 'private', 'must-revalidate'],
+    'content-encoding': ['gzip', 'br', 'deflate', 'identity'],
+    'server': ['nginx', 'Apache', 'cloudflare', 'Microsoft-IIS/10.0'],
+    'access-control-allow-origin': ['*', 'https://example.com', 'null'],
+    'access-control-allow-methods': ['GET, POST, PUT, DELETE, OPTIONS', 'GET, HEAD, OPTIONS'],
+    'access-control-allow-headers': ['Content-Type, Authorization', '*'],
+    'access-control-allow-credentials': ['true', 'false'],
+    'vary': ['Accept-Encoding', 'Origin', 'Accept, Accept-Encoding', 'User-Agent'],
+    'content-disposition': ['inline', 'attachment', 'attachment; filename="file.pdf"'],
+    'strict-transport-security': ['max-age=31536000', 'max-age=31536000; includeSubDomains', 'max-age=63072000; includeSubDomains; preload'],
+    'x-frame-options': ['DENY', 'SAMEORIGIN'],
+    'x-content-type-options': ['nosniff'],
+    'www-authenticate': ['Bearer', 'Bearer realm="api"', 'Bearer error="invalid_token"', 'Basic realm="api"'],
+    'content-security-policy': [`default-src 'self'`, `default-src 'self'; script-src 'self' 'unsafe-inline'`, `frame-ancestors 'none'`],
+});
+
 // `d` is a free-text description that round-trips through the URL fragment so it's
 // preserved across reloads and shared links, but the responder script ignores it
 // (only `s`/`h`/`b` are sent to clients). Useful for documenting what a mock is for.
@@ -469,23 +499,68 @@ const syncURL = async () => {
     els.preview.value = `${location.origin}${location.pathname}?c=${enc}`;
 };
 
+// Shared <datalist> of response-header names — created once and reused across all
+// name inputs (all rows link to the same `list="hdr-names"` target).
+const namesDatalist = document.createElement('datalist');
+namesDatalist.id = 'hdr-names';
+for (const name of HEADER_NAMES) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    namesDatalist.appendChild(opt);
+}
+document.body.appendChild(namesDatalist);
+
+// Populate a per-row value <datalist> from HEADER_PRESETS keyed by the lowercased
+// header name, and toggle the value input's `list` attribute so rows without
+// presets don't render an empty dropdown indicator.
+const applyValuePresets = (valueInput, valueDatalist, headerName) => {
+    const presets = HEADER_PRESETS[headerName.trim().toLowerCase()];
+    valueDatalist.replaceChildren();
+    if (presets) {
+        for (const v of presets) {
+            const opt = document.createElement('option');
+            opt.value = v;
+            valueDatalist.appendChild(opt);
+        }
+        valueInput.setAttribute('list', valueDatalist.id);
+    } else {
+        valueInput.removeAttribute('list');
+    }
+};
+
 const renderHeaders = () => {
     els.headers.replaceChildren();
     state.h.forEach((row, i) => {
         const tr = document.createElement('tr');
-        const mkInput = (placeholder, field) => {
-            const inp = document.createElement('input');
-            inp.className = 'input input-mono';
-            inp.placeholder = placeholder;
-            inp.value = row[field];
-            inp.addEventListener('input', (e) => {
-                state.h[i][field] = e.target.value;
-                syncURL();
-            });
-            return inp;
-        };
-        const tdK = document.createElement('td'); tdK.appendChild(mkInput('Header name', 0));
-        const tdV = document.createElement('td'); tdV.appendChild(mkInput('Header value', 1));
+
+        const nameInput = document.createElement('input');
+        nameInput.className = 'input input-mono';
+        nameInput.placeholder = 'Header name';
+        nameInput.value = row[0];
+        nameInput.setAttribute('list', 'hdr-names');
+
+        const valueInput = document.createElement('input');
+        valueInput.className = 'input input-mono';
+        valueInput.placeholder = 'Header value';
+        valueInput.value = row[1];
+
+        const valueDatalist = document.createElement('datalist');
+        valueDatalist.id = `hdr-vals-${i}`;
+        applyValuePresets(valueInput, valueDatalist, row[0]);
+
+        nameInput.addEventListener('input', (e) => {
+            state.h[i][0] = e.target.value;
+            applyValuePresets(valueInput, valueDatalist, e.target.value);
+            syncURL();
+        });
+        valueInput.addEventListener('input', (e) => {
+            state.h[i][1] = e.target.value;
+            syncURL();
+        });
+
+        const tdK = document.createElement('td'); tdK.appendChild(nameInput);
+        const tdV = document.createElement('td');
+        tdV.append(valueInput, valueDatalist);
         const tdRm = document.createElement('td');
         const btn = document.createElement('button');
         btn.type = 'button';
