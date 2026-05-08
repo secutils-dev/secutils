@@ -1,10 +1,11 @@
 ---
 title: Does a one-man project need a formal project management process?
-description: "Does a one-man project like Secutils.dev need a formal project management process? Project management of the open-source project in GitHub and Notion."
+description: "How a solo open-source project like Secutils.dev uses GitHub Projects and Notion for an aspirational goal, public roadmap, and private work breakdown."
 slug: project-management
 authors: azasypkin
 image: https://secutils.dev/docs/img/blog/2023-06-06_roadmap.png
 tags: [overview, project-management]
+keywords: [solo project management, open-source roadmap, github projects, notion for indie hackers, secutils.dev, work breakdown, aspirational goal]
 ---
 Hello!
 

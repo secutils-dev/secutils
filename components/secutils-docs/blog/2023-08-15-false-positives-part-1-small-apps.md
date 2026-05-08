@@ -1,10 +1,11 @@
 ---
 title: "The cost of false positives in software security, Part 1: Small applications"
-description: "The cost of false positives in software security, Part 1: Small applications: Snyk, Dependabot, vulnerabilities."
+description: "How a solo developer triages Snyk and Dependabot security findings on Secutils.dev: when to upgrade blindly, when to assess severity, and how to handle compromised secrets."
 slug: false-positives-part-1-small-apps
 authors: azasypkin
 image: https://secutils.dev/docs/img/blog/2023-08-15_cost_of_false_positives.png
 tags: [thoughts, overview, application-security]
+keywords: [false positives in security, snyk triage, dependabot, dependency vulnerability triage, supply chain attack, secret rotation, secutils.dev, application security]
 ---
 Hello!
 

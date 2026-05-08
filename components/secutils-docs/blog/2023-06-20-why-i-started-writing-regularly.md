@@ -1,10 +1,11 @@
 ---
 title: Why I started writing regularly
-description: "Why I started writing regularly: exiting comfort zone, organizing thoughts, learning how to write, getting feedback."
+description: "Four reasons a software engineer started writing publicly while building Secutils.dev: stepping out of the comfort zone, organizing thoughts, learning to write, and getting real feedback."
 slug: why-i-started-writing-regularly
 authors: azasypkin
 image: https://secutils.dev/docs/img/blog/2023-06-20_readers_stat.png
 tags: [thoughts]
+keywords: [writing as a software engineer, building in public, technical writing skills, indie hacker blog, comfort zone, feedback loop, secutils.dev]
 ---
 Hello!
 

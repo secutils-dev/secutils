@@ -1,12 +1,23 @@
 ---
 title: "A primer on open-source intelligence for bug bounty hunting in Grafana"
-description: "A primer on open-source intelligence for bug bounty hunting in Grafana."
+description: "Apply OSINT techniques to bug bounty research using Secutils.dev Page trackers: monitor a project's GitHub CODEOWNERS file, track newly introduced security domains and recent commits per domain, and watch for security-team departures via LinkedIn."
 slug: open-source-intelligence-grafana
 authors: azasypkin
 image: /img/blog/2024-06-11_open_source_intelligence_grafana.png
 tags: [thoughts, overview, technology, application-security]
+keywords: [open-source intelligence, osint, bug bounty hunting, github codeowners tracking, grafana security research, page tracker, secutils.dev, github commits api]
 ---
-:::tip ANNOUNCEMENT
+
+:::info UPDATE (May 2026)
+A few quick refreshers:
+
+- The "Page Tracker" referenced below is now formally called the [**Page tracker**](https://secutils.dev/docs/guides/web_scraping/page) (singular feature spanning content + resources + API).
+- The companion sandbox repo ([**secutils-dev/secutils-sandbox**](https://github.com/secutils-dev/secutils-sandbox)) still hosts the `github-codeowner-file.js` extractor used in this post, you can also paste the script body directly into a new tracker or import a Playwright codegen recording for richer flows.
+- For credentials such as the GitHub PAT in the second half, use [**user secrets**](https://secutils.dev/docs/guides/platform/secrets) so the token is encrypted at rest and never appears in the tracker definition or request log.
+- The original "GA announcement" admonition is preserved below as part of the historical context.
+:::
+
+:::tip ANNOUNCEMENT (June 2024)
 Before getting to the main topic of this blog post, I’d like to take a moment to share some exciting news (at least for me): [**Secutils.dev**](https://secutils.dev), the product for software engineers and security researchers that I’ve been working on lately, is **now generally available!**
 
 Preparing the tool for GA is what has been keeping me busy for the last couple of months. I’d encourage you to quickly skim through the video guides to learn what Secutils.dev is capable of today:
@@ -31,7 +42,7 @@ I’m not a security researcher nor a bug bounty hunter myself, but as an applic
 
 ## Keep your focus narrow
 
-As a security researcher, there are many ways you can approach an application you want to explore for potential security flaws, from trying to use it in esoteric conditions with tricky input data to thoroughly learning every bit and piece of its source code, hoping to find anything that can knock it out. A seasoned researcher knows that these approaches, unfortunately, can be very time-consuming with a bleak chance of success, so the first step is usually to reduce the scope of research to improve the ratio between time spent and the chance of a successful finding.
+As a security researcher, there are many ways you can approach an application you want to explore for potential security flaws, from trying to use it in esoteric conditions with tricky input data to thoroughly learning every bit and piece of its source code, hoping to find anything that can knock it out. A seasoned researcher knows that these approaches, unfortunately, can be very time-consuming with a bleak chance of success. The first step is usually to reduce the scope of research to improve the ratio between time spent and the chance of a successful finding.
 
 If it’s a new project for you, I’d recommend concentrating on understanding the security model used in the application: authentication, authorization, and integration with third-party applications and services. In an ideal scenario, you might find a very rewarding flaw in the security model itself, and in the worst case, you’ll have a better chance to spot when security primitives are used incorrectly in other areas of the application.
 
@@ -239,6 +250,24 @@ If you know who the security team members are, you can go a little bit crazy and
 I know it might look a lot like stalking, but it’s not. It’s about understanding the security posture of the organization you’re interested in, and it’s a very important part of the security research process. If you’re not comfortable with this, you can always stick to the technical part of the research, which is also very rewarding.
 
 In this blog post, I’ve covered just the most basic and obvious ways to apply open-source intelligence for security research, but there are many more. State-backed actors are known to use these techniques combined with other techniques such as social engineering, and it’s important to understand how they work to be able to defend against them. Let me know if it’s something you’d like to learn more about!
+
+## Frequently asked questions
+
+### Where do I store the GitHub PAT used in the second tracker?
+
+In a [**user secret**](https://secutils.dev/docs/guides/platform/secrets). Secrets are encrypted at rest, never appear in the tracker definition or the request log, and can be referenced from any extractor script by name.
+
+### Can I do this for any other GitHub repository?
+
+Yes. Substitute the owner and repo arguments in the extractor invocation. The same pattern works for **any** project that uses a `CODEOWNERS` file, GitLab `CODEOWNERS`, or even an internal `OWNERS` convention as long as the file is reachable over HTTPS.
+
+### How often should the tracker run?
+
+For a fast-moving project like Grafana, **daily** is a reasonable cadence. For slower-moving projects, weekly is plenty. Page trackers support arbitrary cron expressions if you want to be more specific (e.g. weekday-only mornings).
+
+### What's the right way to use this responsibly?
+
+Stick to the [**responsible disclosure**](https://en.wikipedia.org/wiki/Responsible_disclosure) playbook. The techniques described here are equally useful to defenders watching their own org's posture, which is just as legitimate a use case.
 
 That wraps up today's post, thanks for taking the time to read it!
 

@@ -1,17 +1,22 @@
 ---
 title: Technology stack overview
-description: "Technology stack overview of the Secutils.dev: Rust, Tantivy, TypeScript, React, SQLite, Docusaurus."
+description: "An updated tour of the Secutils.dev technology stack: Rust + Actix Web on PostgreSQL with Ory Kratos for identity, an embedded Deno JS runtime, Retrack for web scraping, and a React/EUI Web UI in a single mono-repo."
 slug: technology-stack-overview
 authors: azasypkin
 image: https://secutils.dev/docs/img/blog/goal.png
 tags: [overview, technology]
+keywords: [secutils.dev tech stack, rust actix web, postgresql sqlx, ory kratos, deno javascript runtime, retrack web scraper, playwright chromium, react eui, docusaurus, utoipa openapi]
 ---
 
 Hello!
 
-Today, I'd like to provide an overview of the technology stack powering [**Secutils.dev**](https://secutils.dev). Sharing this information might prove helpful to other individuals working on similar projects. So, without further ado, let's dive into the stack!
+Today, I'd like to provide an updated tour of the technology stack powering [**Secutils.dev**](https://secutils.dev), the open-source security toolbox for engineers and researchers. If you're considering similar choices for your own indie or open-source project, hopefully something here is useful. Let's dive in!
 
 <!--truncate-->
+
+:::info UPDATE (May 2026)
+This post originally described a three-repo layout, a SQLite database, and an in-process search index based on Tantivy. The codebase has matured significantly since then and is now organized as a single [**mono-repo**](https://github.com/secutils-dev/secutils) backed by **PostgreSQL 16** and **Ory Kratos**, with a separate scheduling/scraping service called [**Retrack**](https://github.com/secutils-dev/retrack) included as a git submodule. The whole architecture is described in [**ARCHITECTURE.md**](https://github.com/secutils-dev/secutils/blob/main/ARCHITECTURE.md). The sections below have been rewritten to reflect this.
+:::
 
 <div class="text--center">
   <a href="/docs/blog/beta-release"><strong>🚀 Secutils.dev beta release is now public, click here to read more</strong></a>
@@ -19,75 +24,148 @@ Today, I'd like to provide an overview of the technology stack powering [**Secut
 
 ---
 
-**DISCLAIMER:**  I want to acknowledge that some of the choices I've made for the technology stack may seem like overkill to some. However, as a solo engineer/founder, it's crucial for me to maintain internal motivation to push things forward. Personally, I find that learning something new and tackling technical challenges serves as a great source of motivation. So, while it may appear unconventional, these choices align with my personal drive and passion for building Secutils.dev.
+**DISCLAIMER:** Some of the choices below may seem like overkill for a side project. As a solo engineer/founder, internal motivation matters as much as engineering pragmatism, so a stack I enjoy maintaining helps me ship over the long run. With that out of the way, here's the picture today.
 
 ---
 
-Currently, Secutils.dev is composed of three distinct components: a [**backend server**](https://github.com/secutils-dev/secutils), a [**Web UI client**](https://github.com/secutils-dev/secutils-webui), and a [**documentation website**](https://github.com/secutils-dev/secutils-docs). I made the decision to separate these components as it aligns with my long-term vision for Secutils.dev. In the future, I plan to transform the backend server, or a portion of it, into a lightweight library that can be distributed independently. This approach will enable tighter integration with third-party solutions at compile-time, providing a more seamless and efficient experience. By structuring Secutils.dev in this manner, I aim to create a flexible and extensible platform that can easily adapt to evolving needs and integrate with various systems.
+## Repository layout
 
-## Backend
+Secutils.dev lives in a single mono-repo at [**secutils-dev/secutils**](https://github.com/secutils-dev/secutils). The high-level layout is:
 
-As you may have already deduced, the backbone of Secutils.dev lies within [**its backend server**](https://github.com/secutils-dev/secutils). This server acts as the foundation for exposing the core functionality of Secutils.dev to client applications.
+```
+secutils/
+├── components/
+│   ├── retrack/             # git submodule: scheduling + headless-browser scraper
+│   ├── secutils-docs/       # documentation site (Docusaurus)
+│   ├── secutils-jwt-tools/  # JWT generation CLI (Cargo workspace member)
+│   └── secutils-webui/      # Web UI (React + TypeScript + Parcel)
+├── dev/docker/              # Docker Compose files for local + e2e infrastructure
+├── e2e/                     # Playwright end-to-end tests
+├── migrations/              # SQLx database migrations
+└── src/                     # Secutils API server (Rust)
+```
 
-### Programming language
+The earlier split across `secutils`, `secutils-webui`, and `secutils-docs` repositories caused friction every time a change touched more than one component. Moving to a single repo lets me keep the API, UI, docs, and e2e tests in lockstep, and the [**ARCHITECTURE.md**](https://github.com/secutils-dev/secutils/blob/main/ARCHITECTURE.md) document gives a one-page overview of the moving parts.
 
-I have extensive expertise in two languages: JavaScript (TypeScript) and Rust. Despite the fact that I could have rapidly developed a functional MVP using TypeScript and Node.js, I intentionally chose Rust as the programming language for the backend.
+## Backend (API server)
 
-Now, while the usual benefits of Rust, such as memory safety and fearless concurrency, are certainly noteworthy, my primary motivation stems from a different aspect. In my experience, if a Rust program successfully compiles, it tends to function correctly most of the time. This aspect is paramount when striving for rapid iteration, minimizing the occurrence of trivial bugs, and fostering confidence in deploying changes to production. Bugs can be a major hassle, especially when they affect developer tools like Secutils.dev.
+### Programming language: Rust
 
-Moreover, Rust excels in cross-platform development. Although I mainly develop on the `x86` machine, I deploy compiled Rust code to much more cost-effective ARM servers (and even my mobile phone!). This process is incredibly smooth, thanks to the excellent tooling provided by Rust's Cargo.
+I have extensive experience in two languages: TypeScript and Rust. I could have stood up a functional MVP much faster in TypeScript and Node.js, but I deliberately chose Rust for the backend.
 
-### Web framework
+The usual benefits, memory safety and fearless concurrency, are noteworthy, but my primary motivation is more practical: in my experience, if a Rust program compiles, it tends to actually work. That property is invaluable for a small team striving for fast iteration with a low rate of trivial bugs, especially when shipping a developer-facing tool where bugs are particularly annoying.
 
-To access the functionality of Secutils.dev, users can utilize either the [**Web UI**](https://github.com/secutils-dev/secutils-webui) or tools like `curl`. These interactions are facilitated through the HTTP APIs exposed by the Secutils.dev server. While there are several exceptional open-source web frameworks available in the Rust ecosystem, I opted for [**Actix Web**](https://github.com/actix/actix-web) for Secutils.dev based on my positive experience while working on [**AZbyte | ETF**](https://azbyte.xyz).
+Rust also excels at cross-compilation: I develop on `x86_64`, but the production deployment runs on cheaper ARM servers, and Cargo handles that smoothly.
 
-Actix Web stands out for its ease of use, speed, and comprehensive set of middle-wares, including authentication and session management.
+### Web framework: Actix Web + utoipa
 
-### Database
+The API is built on [**Actix Web**](https://github.com/actix/actix-web) and is organized into ten tagged groups, each with its own base path:
 
-When it comes to the database, Secutils.dev currently has relatively straightforward requirements. It needs to store user registrations, user data, active user sessions, and a few other internal data types. For these purposes, a simple SQLite database is more than sufficient.
+| Tag            | Base path                                                           | What it covers                                                       |
+|----------------|---------------------------------------------------------------------|----------------------------------------------------------------------|
+| `webhooks`     | `/api/webhooks/responders`                                          | Webhook responders that capture, replay, and intercept HTTP requests |
+| `certificates` | `/api/certificates/templates`, `/api/certificates/private_keys`     | X.509 certificate templates and private keys                         |
+| `web_scraping` | `/api/web_scraping/page_trackers`, `/api/web_scraping/api_trackers` | Page trackers and API trackers (backed by Retrack)                   |
+| `web_security` | `/api/web_security/csp`                                             | Build, parse, and serialize Content Security Policy headers          |
+| `api_keys`     | `/api/user/api_keys`                                                | API keys for programmatic and agent access                           |
+| `tags`         | `/api/user/tags`                                                    | Coloured tags shared across every utility                            |
+| `secrets`      | `/api/user/secrets`                                                 | Encrypted user secrets referenced from scripts                       |
+| `scripts`      | `/api/user/scripts`                                                 | Reusable JS/TS snippets for responders and trackers                  |
+| `settings`     | `/api/user/settings`                                                | User preferences                                                     |
+| `data`         | `/api/user/data`                                                    | Full data export and import                                          |
 
-To interact with the SQLite database from Rust, I rely on the fantastic [**SQLx**](https://github.com/launchbadge/sqlx) crate. It allows me to verify SQL queries at compile-time without the need for a domain-specific language (DSL). One of the great advantages of SQLx is its database-agnostic nature, which means that migrating to a different database like PostgreSQL in the future is straightforward if the need arises.
+There are also unauthenticated `/api/status` and `/api/ui/*` endpoints (status probes and the Web UI bootstrap state) and the user-facing `*.webhooks.secutils.dev/*` subdomain that the API serves directly. The full list with request/response schemas is browsable at [**secutils.dev/api-docs**](https://secutils.dev/api-docs).
 
-Tools like [**Litestream**](https://github.com/benbjohnson/litestream) and [**LiteFS**](https://github.com/superfly/litefs) alleviate my concerns regarding database backups and replication.
+Every public route is annotated with [**utoipa**](https://github.com/juhaku/utoipa) so the OpenAPI specification is generated automatically from the Rust source and is published live at [**secutils.dev/api-docs/openapi.json**](https://secutils.dev/api-docs/openapi.json). The authoring conventions (path parameters, request body types, sync-guard tests for schema examples) are documented in [**AGENTS.md**](https://github.com/secutils-dev/secutils/blob/main/AGENTS.md#adding-a-new-http-route).
 
-### Search engine
+### Database: PostgreSQL 16 (via SQLx)
 
-Although Secutils.dev currently has basic search capabilities, I believe that search will play a vital role in enhancing its overall usability in the future. Users should not only be able to find the right tool for their specific needs at any given moment but also have the ability to explore the accumulated data, including user notes, content of requests triggering auto-responders, scraped HTML data, and more.
+When the project started, a single SQLite file with [**Litestream**](https://github.com/benbjohnson/litestream) replication was perfectly adequate. As the data model grew (multi-tenant tags, user secrets, tracker history, request logs, OpenAPI metadata for the UI), the operational and concurrency story for SQLite became a constraint, so the API migrated to **PostgreSQL 16** in `1.0.0-beta.1` (May 2024).
 
-To accomplish this, instead of relying on SQLite's built-in full-text search capabilities, I made the decision to leverage a dedicated full-text search engine written in Rust called [**Tantivy**](https://github.com/quickwit-oss/tantivy). Tantivy is an impressive, lightweight, and incredibly fast search engine that seamlessly integrates with Rust applications.
+I still talk to the database via the excellent [**SQLx**](https://github.com/launchbadge/sqlx) crate. SQLx verifies SQL queries at compile time, which has caught countless typos before they ever reached a test, and the `.sqlx/` cache in the repo keeps offline builds fast.
+
+### Identity: Ory Kratos
+
+Authentication and session management used to be hand-rolled inside Actix Web. Today they are delegated to [**Ory Kratos**](https://github.com/ory/kratos), an open-source identity service that handles registration, login, MFA, password recovery, and account verification flows. Kratos runs alongside the API, talks to the same PostgreSQL instance (under a separate schema), and exposes a self-service API that the Web UI consumes directly.
+
+This freed me from owning a security-critical component (the auth subsystem) without giving up any control: Kratos is open-source and runs in the same Docker network.
+
+### Embedded JavaScript runtime: Deno
+
+A surprisingly large amount of Secutils.dev is user-defined JavaScript: webhook responder bodies, tracker extractor scripts, user scripts, MITM mutations, and so on. To execute them safely in-process, the API embeds the [**Deno**](https://github.com/denoland/deno) runtime via `deno_core`, which gives me a sandboxed V8 isolate per execution with strict resource limits (default heap size and execution-time caps are configurable per subscription tier).
+
+I wrote about the design in [**"Building a Rust application with embedded JavaScript extensions"**](/blog/rust-application-with-js-extensions). The runtime now powers user scripts and secrets too, which were [**introduced later**](/docs/project/changelog/) and are documented under [**Platform → User scripts**](https://secutils.dev/docs/guides/platform/user_scripts).
+
+### Logging: tracing
+
+Structured logging is provided by the [**`tracing`**](https://github.com/tokio-rs/tracing) crate (it replaced the original `log` + `env_logger` setup). Spans capture per-request context and are emitted as JSON in production for ingestion by my monitoring pipeline.
 
 ### Tests
 
-When it comes to testing in Rust, there's not much to say except that it's a breeze! Writing tests in Rust is straightforward, thanks to the built-in testing framework provided by the language. Most of the time, running `cargo test` is all you need to validate your code.
+Rust's built-in `cargo test` runner handles the bulk of the work, complemented by [**Insta**](https://github.com/mitsuhiko/insta) snapshot tests that pin the OpenAPI spec, response shapes, and other large structured outputs. Insta brings the ergonomics of Jest snapshots to the Rust ecosystem and is genuinely a joy to use.
 
-However, I'd like to highlight a fantastic testing library called [**Insta**](https://github.com/mitsuhiko/insta). Insta is a snapshot testing library for Rust that brings the power of snapshot testing, similar to Jest, to the Rust ecosystem. If you're familiar with Jest snapshot testing, you'll appreciate how useful snapshots can be in unit tests.
+End-to-end coverage runs in [**Playwright**](https://playwright.dev/) against a full Docker Compose stack (`make e2e-up && make e2e-test`). The same Playwright harness regenerates the docs screenshots, with stability tooling that absorbs sub-pixel anti-aliasing jitter, normalises webhook subdomains, and pins timestamps so screenshots are byte-identical across runs.
 
-## Frontend
+## Web Scraper: Retrack
 
-The frontend or [**Web UI of Secutils.dev**](https://github.com/secutils-dev/secutils-webui) is a relatively straightforward "single-page" React application.
+The biggest architectural change since the original post is that web scraping moved into a dedicated open-source project: [**Retrack**](https://github.com/secutils-dev/retrack). Retrack is included in the mono-repo as a git submodule at `components/retrack` and ships two services:
 
-### Programming language
+- **Retrack API** (Rust, port `7676`): manages page and API trackers, schedules execution via cron, stores revision history.
+- **Retrack Web Scraper** (Node.js + Chromium, port `7272`): renders pages with **Playwright** and extracts content. It also supports the **Camoufox** stealth browser engine for sites that aggressively fingerprint headless Chromium.
 
-As I mentioned earlier, I have extensive experience in developing applications using JavaScript and TypeScript. Therefore, it was an obvious choice for me to utilize TypeScript for the Secutils.dev Web UI.
+Splitting Retrack out means scraping can scale independently from the API and that other projects can reuse the same scheduling/scraping engine. Inside Secutils.dev it powers the unified [**Page tracker**](https://secutils.dev/docs/guides/web_scraping/page) and [**API tracker**](https://secutils.dev/docs/guides/web_scraping/api) features.
 
-Both React and Parcel, a zero-configuration build tool, offer excellent support for TypeScript. This combination allows me to leverage the benefits of static typing and enhanced tooling, resulting in more robust and maintainable code.
+## Frontend (Web UI)
 
-### Web UI Framework
+The Web UI lives at [`components/secutils-webui/`](https://github.com/secutils-dev/secutils/tree/main/components/secutils-webui) and is a single-page React application written in TypeScript and bundled with [**Parcel**](https://parceljs.org/).
 
-With the abundance of Web UI frameworks available today, I wanted to make a practical choice that would allow me to leverage my existing knowledge and meet the specific requirements of Secutils.dev. Rather than investing time in learning a new framework, I decided to work with a framework that I was already familiar with and confident would suit my needs: [**Elastic UI**](https://eui.elastic.co/).
+### UI framework: Elastic UI
 
-It's worth mentioning that I have a personal connection to Elastic UI as I work for Elastic and know the team behind the framework. This familiarity gives me an added level of confidence in its capabilities and reliability.
+I work for Elastic, where the team behind [**Elastic UI (EUI)**](https://eui.elastic.co/) is easily reachable. Familiarity is a big part of why I chose it, but EUI is also one of the most complete React component libraries out there, with great accessibility defaults, and dense data-grid support that maps perfectly to Secutils.dev's grid-heavy workflows.
 
-However, it's important to note that I don't use React or Elastic UI for the Secutils.dev home page. To ensure the home page remains as lightweight as possible, I employ alternative approaches (static HTML + [**Tailwind CSS**](https://tailwindcss.com)).
+The static promotional homepage (`/`) does **not** ship React, only static HTML and [**Tailwind CSS**](https://tailwindcss.com), so it stays small and fast.
+
+### Recent UI additions
+
+A few quality-of-life features that landed since the original post:
+
+- Collapsible sidebar with persistent state.
+- System-default dark mode.
+- `Cmd/Ctrl-K` workspace search (replaces the original Tantivy-based plan; in practice an in-memory index is plenty for what users need to find).
+- Full-screen Monaco script editor with example scripts.
+- Auto-refresh in the responder requests grid.
+- "Duplicate" action for every utility.
+- Lazy-loaded editor flyouts and a Scripts tab loaded on demand to keep the initial bundle small.
+- The HTTP client switched from `axios` to native `fetch`.
 
 ## Documentation
 
-For the documentation of Secutils.dev, I utilize the power of [**Docusaurus**](https://github.com/facebook/docusaurus). Docusaurus is a fantastic tool that simplifies the process of creating documentation websites.
+The docs at [**secutils.dev/docs**](https://secutils.dev/docs) are built with [**Docusaurus**](https://docusaurus.io/) from `components/secutils-docs/`. Docusaurus's MDX support, Mermaid integration, and search-engine-friendly defaults make it ideal for a documentation-heavy product.
 
-One of the main reasons I chose Docusaurus is its support for writing documentation in Markdown format. Additionally, Docusaurus provides customizable styles and layouts, allowing me to maintain a consistent branding across the documentation. Another advantage of using Docusaurus is its built-in support for search engine optimization (SEO), making documentation more discoverable to users seeking information about Secutils.dev.
+To make the docs LLM-friendly, the site also publishes:
 
-By leveraging Docusaurus, I can streamline the documentation process and devote more time to creating valuable content.
+- [**`/llms.txt`**](https://secutils.dev/llms.txt): the **full** concatenated documentation in a single Markdown file.
+- [**`/llms-index.txt`**](https://secutils.dev/llms-index.txt): a compact link index pointing at each guide.
+
+Both are generated by the [`docusaurus-plugin-llms`](https://www.npmjs.com/package/docusaurus-plugin-llms) plugin during the build.
+
+## Frequently asked questions
+
+### Why Rust for a small SaaS?
+
+For confidence, longevity, and cheap deployment. Compile-time guarantees catch a wide class of bugs before they reach production, the resulting binary is small and easy to cross-compile to ARM, and the Rust ecosystem around web services (`actix-web`, `sqlx`, `tracing`, `tokio`) has matured enormously.
+
+### Why move from SQLite to PostgreSQL?
+
+PostgreSQL handles concurrent writers, larger working sets, and relational features (e.g. foreign keys with cascading deletes across user data, tag joins, JSONB indexing) much more comfortably as the data model grows. Litestream is great for SQLite, but operationally PostgreSQL is also easier to back up and replicate at scale.
+
+### Why Ory Kratos instead of rolling my own auth?
+
+Auth is one of those areas where rolling your own is a long-term liability. Kratos is open-source, runs in the same Docker network, supports modern flows (passkeys, MFA, social sign-in), and lets me focus on the security utilities Secutils.dev is actually about.
+
+### Why a separate Retrack service?
+
+Headless-browser workloads have very different scaling, security, and sandboxing characteristics from a stateless HTTP API. Splitting Retrack out lets me apply tight resource limits, enable the Chromium sandbox, and run network policies that block access to internal IP ranges, without dragging the rest of the API into that model. See [**"Running web scraping service securely"**](/blog/running-web-scraping-service-securely) for the security story.
 
 That wraps up today's post, thanks for taking the time to read it!
 

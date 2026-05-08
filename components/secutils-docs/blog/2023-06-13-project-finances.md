@@ -1,10 +1,11 @@
 ---
 title: Personal finances and indie-project budget
-description: "Personal finances and indie-project budget: bootstrapping, investment, managing project finances, tax mitigation and frugality."
+description: "Personal finances for indie hackers and bootstrappers: a dedicated bootstrapping portfolio, debt-free principles, tax mitigation, and frugality applied to Secutils.dev."
 slug: project-finances
 authors: azasypkin
 image: https://secutils.dev/docs/img/blog/2023-06-13_portfolio.png
 tags: [thoughts, economics]
+keywords: [indie hacker finances, bootstrapping portfolio, side project budget, tax mitigation, frugal living, debt-free, secutils.dev]
 ---
 Hello!
 

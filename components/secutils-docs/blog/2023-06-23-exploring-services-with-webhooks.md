@@ -1,65 +1,85 @@
 ---
 title: Exploring third-party services with webhooks
-description: "Exploring third-party services with webhooks: reconnaissance, request bin, iframely, embedding, notion."
+description: "Use Secutils.dev webhook responders to perform basic active reconnaissance on third-party services: a hands-on walk-through with Notion, Iframely, and embedded content discovery."
 slug: exploring-services-with-webhooks
 authors: azasypkin
 image: https://secutils.dev/docs/img/blog/2023-06-23_web_bookmark.png
 tags: [technology, application-security, guides]
+keywords: [webhook responder, request bin, active reconnaissance, third-party service inspection, notion iframely, http request inspection, secutils.dev webhooks, mitm responder]
 ---
+
 Hello!
 
-Today, I'd like to show you how you can leverage the ["Webhooks" feature](https://secutils.dev/docs/guides/webhooks) of Secutils.dev to explore third-party web services, or as a security researcher would say, perform a basic active reconnaissance. Reconnaissance is just a fancy word for gathering information about a target system to identify exploitable vulnerabilities and potential attack vectors. In this post, we'll focus on learning how a specific web service implements functionality that interests us. Our intention is purely innocent - we simply want to understand how it works. However, the technique we'll use is quite similar to what security researchers employ during routine reconnaissance.
+Today, I want to show how the [**Webhooks feature**](https://secutils.dev/docs/guides/webhooks) of Secutils.dev can be used to explore third-party services from the outside, what a security researcher would call basic active reconnaissance. Reconnaissance is just a fancy word for gathering information about a target system to understand exploitable vulnerabilities and attack vectors. In this post our intent is innocent: we want to learn how a particular service implements a feature we like. The technique, however, is the same one a researcher would use.
 
 <!--truncate-->
 
-For our exploration, we'll be using [Notion](https://www.notion.so/) as our target. Notion has an extensive API surface, but I'm particularly interested in how it handles the embedding of external content, such as links, images, and other web pages.
+:::info UPDATE (May 2026)
+Two things have changed since this post:
 
-I'm an avid user of Notion. - it's my go-to tool for everything. I collect numerous links within Notion and heavily rely on their "Web Bookmark" functionality, which provides neat previews and allows me to navigate through the links quickly.
+- The **Tracking** field on the responder form was renamed to **Tracked requests** (the underlying behaviour, "keep this many recent requests in the log", is the same).
+- Secutils.dev now also supports two new responder modes that are even better for this kind of work:
+   - **MITM responders** that proxy requests to a real upstream service and let you inspect (and optionally modify) both the request and the response, plus a per-request **response history**.
+   - Per-user **subdomain prefixes**, so you can hand a third party a clean `myapp.webhooks.secutils.dev/...` URL instead of a long path on the apex domain.
 
-![Bookmark in Notion](https://secutils.dev/docs/img/blog/2023-06-23_web_bookmark.png)
-
-This preview look awesome, and I'd love for my website links to appear similarly in Notion. But how does Notion achieve that? Let's find out!
-
-:::tip NOTE
-
-If you're interested in learning more about Webhooks in Secutils.dev, please refer to the [“Webhook Guides”](https://secutils.dev/docs/guides/webhooks) page.
-
+The walkthrough below still works, just with the friendlier UI labels.
 :::
 
-First and foremost, let's create a simple auto-responder that simulates a web page link:
+## The target: how Notion embeds links
 
-1. Navigate to [Webhooks → Responders](https://secutils.dev/ws/webhooks__responders) and click **Create responder** button
-2. Configure a new responder with the following values:
+I'll use [**Notion**](https://www.notion.so/) as the target. Notion has a sprawling API, but I'm specifically interested in how it handles **embedding external content** like web pages, links, and images.
+
+I'm an avid Notion user. It's my go-to tool for note-taking and link collection, and I lean heavily on the **Web Bookmark** block, which gives links a neat preview card you can click to navigate.
+
+![A Notion Web Bookmark block rendered with a thumbnail and description](https://secutils.dev/docs/img/blog/2023-06-23_web_bookmark.png)
+
+It looks great. But how does Notion build that preview, and what does my server actually see when Notion crawls a link I paste? Let's find out.
+
+:::tip NOTE
+For an introduction to webhook responders, see the [**Webhooks guides**](https://secutils.dev/docs/guides/webhooks).
+:::
+
+## Step 1: a minimal HTML responder
+
+First we need a URL Notion can crawl, served by us so we can inspect every request. Set up a tiny HTML responder:
+
+1. Navigate to [**Webhooks → Responders**](https://secutils.dev/ws/webhooks__responders) and click **Create responder**.
+2. Configure it with the following values:
 
 <table class="su-table">
 <tbody>
 <tr>
 <td><b>Name</b></td>
 <td>
+
 ```
 web-bookmark-v1
 ```
+
 </td>
 </tr>
 <tr>
-<td><b>Tracking</b></td>
+<td><b>Tracked requests</b></td>
 <td>
+
 ```
 10
 ```
+
 </td>
 </tr>
 <tr>
-    <td><b>Headers</b></td>
+<td><b>Headers</b></td>
 <td>
 
 ```http
 Content-Type: text/html; charset=utf-8
 ```
+
 </td>
 </tr>
 <tr>
-    <td><b>Body</b></td>
+<td><b>Body</b></td>
 <td>
 
 ```html
@@ -68,30 +88,37 @@ Content-Type: text/html; charset=utf-8
 <body>Hello World</body>
 </html>
 ```
+
 </td>
 </tr>
 </tbody>
 </table>
 
-3. Click the **Save** button to save the responder
-4. Once the responder is set up, it will appear in the responders grid along with its unique URL
-5. Copy responder's URL and try to create a bookmark for it in Notion
+3. Click **Save**. The responder appears in the grid with a unique URL.
+4. Copy the URL and paste it into Notion as a Web Bookmark.
 
-Here's the result:
+The result:
 
-![Auto-responder as Web bookmark in Notion](https://secutils.dev/docs/img/blog/2023-06-23_webhook_v1.png)
+![Web Bookmark for our minimal responder, with no thumbnail or title](https://secutils.dev/docs/img/blog/2023-06-23_webhook_v1.png)
 
-Hmm, not very impressive. There's no title and no image preview. Let's see what our auto-responder was able to track when Notion attempted to create a bookmark for our link:
+Not great. No title, no preview image. Let's see what Notion actually sent us:
 
-![Auto-responder as Web bookmark in Notion](https://secutils.dev/docs/img/blog/2023-06-23_webhook_v1_requests.png)
+![Tracked HTTP requests for the minimal responder, showing the User-Agent and headers Notion used](https://secutils.dev/docs/img/blog/2023-06-23_webhook_v1_requests.png)
 
-Aha! By examining the HTTP headers of the request received by our responder, we can see that Notion relies on [Iframely](https://iframely.com) to generate previews for web page links.
+Inspecting the headers: Notion outsources link previews to [**Iframely**](https://iframely.com).
 
-If I were a security researcher, I'd definitely subscribe to updates on the [Iframely GitHub repository](https://github.com/itteco/iframely) and thoroughly go through recent open issues. Who knows what useful information I might stumble upon for my research? I would also do the same for the crucial dependencies of Iframely. Unfortunately, the version mentioned in the header (v1.3.1), released more than four years ago in 2019, turns out to be a false lead. It seems they continue to use the same header even for the latest Iframely versions, so there's no way to exploit any old and disclosed vulnerabilities. What a bummer!
+If I were doing real reconnaissance, this is where I'd:
 
-Another potentially valuable piece of information I extracted from the tracked headers is the client IP, which is allocated somewhere in the AWS territory [according to ipinfo.io](https://ipinfo.io/3.94.90.129). It may not be super useful at the moment, but you never know when it might become a valuable clue.
+- Subscribe to the [**Iframely GitHub repository**](https://github.com/itteco/iframely) and skim its open issues.
+- Do the same for Iframely's critical dependencies.
+- Note the version in the User-Agent (`v1.3.1` from 2019, in this snapshot). It looks tempting until you realise Iframely keeps that header static across versions, so it's a false signal.
+- Note the client IP, which `ipinfo.io` resolves to AWS infrastructure. Could be useful context later.
 
-Alright, enough with the security researcher mindset. In my case, I simply want to make my link look nice in Notion, and the `user-agent` HTTP header helpfully provides a link where I can figure this out: https://iframely.com/docs/about. According to the documentation, all we need to do is add a few HTML meta tags to define the title and thumbnail for our link:
+Less interesting for a bookmark experiment, but exactly the kind of detail that matters in a real assessment.
+
+## Step 2: get the rich preview
+
+Back to my actual goal: I want a nice preview. The User-Agent helpfully points at [Iframely's docs](https://iframely.com/docs/about), which tell us all we need is a few `<meta>` tags:
 
 ```html
 <meta property="iframely:description" content="Hello from Secutils.dev Webhooks!" />
@@ -99,37 +126,42 @@ Alright, enough with the security researcher mindset. In my case, I simply want 
 <title>My Mega Title</title>
 ```
 
-Unfortunately, it appears that Notion/Iframely caches web page metadata. So, in order to force Notion/Iframely to fetch the web page metadata again, we'll need to create another responder with the same content plus additional `meta` tags.
+Notion (and Iframely) cache previews aggressively, so to bust the cache we'll create a new responder rather than editing the first. Same shape, with the metadata added:
 
 <table class="su-table">
 <tbody>
 <tr>
 <td><b>Name</b></td>
 <td>
+
 ```
 web-bookmark-v2
 ```
+
 </td>
 </tr>
 <tr>
-<td><b>Tracking</b></td>
+<td><b>Tracked requests</b></td>
 <td>
+
 ```
 10
 ```
+
 </td>
 </tr>
 <tr>
-    <td><b>Headers</b></td>
+<td><b>Headers</b></td>
 <td>
 
 ```http
 Content-Type: text/html; charset=utf-8
 ```
+
 </td>
 </tr>
 <tr>
-    <td><b>Body</b></td>
+<td><b>Body</b></td>
 <td>
 
 ```html
@@ -143,34 +175,63 @@ Content-Type: text/html; charset=utf-8
 <body>Hello World</body>
 </html>
 ```
+
 </td>
 </tr>
 </tbody>
 </table>
 
-And here's the result - let's call it a success!
+Result:
 
-![Auto-responder as rich Web bookmark in Notion](https://secutils.dev/docs/img/blog/2023-06-23_webhook_v2.png)
+![A Notion Web Bookmark with a custom title, description, and thumbnail](https://secutils.dev/docs/img/blog/2023-06-23_webhook_v2.png)
 
-Upon inspecting the created bookmark using browser dev tools, we can observe that Notion directly renders the image using the URL from `iframely:image`. This means we have the ability to change the image content at any time, and it will be reflected in the user's bookmark! For some reason, the concept of [PNG steganography](https://decoded.avast.io/martinchlumecky/png-steganography/) immediately comes to mind :wink:
+A small but worth noting detail: Notion renders the image directly from `iframely:image`. We control that URL, so we control the image content **on the user's bookmark** at any future point. The phrase "[**PNG steganography**](https://decoded.avast.io/martinchlumecky/png-steganography/)" comes to mind. 😉
 
-Alright, let's continue exploring what we can learn about Notion. This time, let's attempt to embed our web page directly as an `iframe` instead of a web bookmark. To bypass the Notion/Iframely cache once again, let's create another responder with the same content and select the "Create embed" option in Notion.
+## Step 3: try an embed instead
 
-If we visit Secutils.dev and inspect the requests received by our new responder, we'll notice something interesting. This time, it received three requests instead of just one:
+Embeds are different from bookmarks: instead of a preview card, Notion renders the page in an `iframe`. Create yet another responder with the same content, then use the **Create embed** option in Notion. This time three requests show up in the responder log:
 
-![Auto-responder as Web bookmark in Notion](https://secutils.dev/docs/img/blog/2023-06-23_webhook_v3_iframe.png)
+![Three tracked requests for the embed: Iframely, NotionEmbedder HEAD, and the iframe GET](https://secutils.dev/docs/img/blog/2023-06-23_webhook_v3_iframe.png)
 
-1. We see the same familiar `GET` request from Iframely, likely fetching the link metadata to automatically detect the type of content being embedded.
-2. There's a `HEAD` request coming from a user agent named `NotionEmbedder`. Hmm, what exactly is it? 
-3. Finally, there's a `GET` request from our browser, fetching the content of the embedded page and rendering it within the iframe.
+1. The same `GET` from Iframely, fetching link metadata.
+2. A `HEAD` request from a user agent named `NotionEmbedder`.
+3. A final `GET` from the user's browser, fetching the content rendered in the iframe.
 
-Let's dive into the HTTP headers of that new `HEAD` request:
+Now look at the headers of that `HEAD` request:
 
-![Auto-responder as Web bookmark in Notion](https://secutils.dev/docs/img/blog/2023-06-23_webhook_v3_headers.png)
+![HTTP headers of the HEAD request, including x-datadog-* tracing headers](https://secutils.dev/docs/img/blog/2023-06-23_webhook_v3_headers.png)
 
-Although the purpose of this request isn't entirely clear, it's likely that Notion uses it to verify the accessibility of the embedded content. If the content is not accessible, Notion displays a warning to the user indicating that it's unavailable. Additionally, based on the presence of the `x-datadog-*` HTTP headers, we can infer that the request has been made using [Synthetic APM from DataDog](https://docs.datadoghq.com/synthetics/apm/). With our security researcher hat on, it might be worth subscribing to updates on DataDog security advisories and checking if there are any known vulnerabilities in the Synthetic APM product!
+Likely Notion is verifying the embed target is reachable before showing it to the user. The `x-datadog-*` headers tell us Notion uses [**DataDog Synthetic APM**](https://docs.datadoghq.com/synthetics/apm/) for the check. With our researcher hat back on, that's another vendor whose security advisories we'd add to our monitoring list.
 
-Okay, I believe we've gained enough understanding of how Notion embeds content for now. In general, when a service allows us to embed external content or triggers communication with another web service under our control, we can gather valuable information about that service that usually isn't publicly available. This information can be highly useful for research purposes or to simply satisfy our curiosity.
+## Going further: MITM responders
+
+Plain "log everything" responders are great for inspecting what arrives. **MITM (Man-in-the-Middle) responders** go a step further: they proxy the request to a real upstream and let you inspect and modify both the request and the response, building up a per-request **response history** as you go.
+
+That makes them ideal for:
+
+- Reverse-engineering a third-party API on the wire.
+- Capturing payloads that a SaaS product sends to your service in CI.
+- Quickly stubbing or rewriting parts of a third-party response while testing an integration without touching production.
+
+The MITM responder UI lives in the same [**Webhooks workspace**](https://secutils.dev/ws/webhooks__responders), see the [**Webhooks guides**](https://secutils.dev/docs/guides/webhooks) for setup.
+
+## Wrap-up
+
+When a third-party service offers any kind of "embed" or "preview" feature, it tends to expose a surprising amount of operational detail to the URL it crawls. A throwaway responder is one of the cheapest reconnaissance tools you can wield. Used responsibly (only against your own properties or with explicit permission), it's also a great way to learn how the rest of the modern web is wired together.
+
+## Frequently asked questions
+
+### Is using webhook responders to inspect third-party services legal?
+
+Inspecting requests that a third party makes **to a URL you control** is just looking at logs of your own server. Where things get risky is using this to actively probe systems you don't own. Stay on the right side of authorisation and applicable computer-misuse laws.
+
+### What's the difference between a basic responder and a MITM responder?
+
+A basic responder serves a fixed body (or one computed by a JavaScript script) and logs the incoming request. A MITM responder also forwards the request to an upstream URL, captures the upstream response, and lets you modify either side. Useful for "see and rewrite what this third-party API sends my service".
+
+### Can I use my own subdomain instead of a long path?
+
+Yes. Configure a [**subdomain prefix**](https://secutils.dev/docs/guides/webhooks) on the responder and Secutils.dev will route traffic on `<prefix>.webhooks.secutils.dev` to it. Much cleaner for sharing with a third party.
 
 That wraps up today's post, thanks for taking the time to read it!
 

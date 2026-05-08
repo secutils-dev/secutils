@@ -1,10 +1,11 @@
 ---
 title: "Q3 2023 update - Notifications"
-description: "Q3 2023 update - Notifications: scheduler, email batching, Loops."
+description: "How Secutils.dev built a flexible notifications subsystem in Rust: a unified Notification type, scheduler-driven batching, Lettre for SMTP, and structured log destinations."
 slug: q3-2023-update-notifications
 authors: azasypkin
 image: https://secutils.dev/docs/img/blog/2023-09-05_q3_2023_update_notifications.png
 tags: [overview, technology, application-security]
+keywords: [rust notifications subsystem, email batching, tokio-cron-scheduler, lettre smtp, transactional email, secutils.dev, application monitoring]
 ---
 Hello!
 
@@ -13,6 +14,14 @@ With just one month remaining in the "Q3 2023 - Jul-Sep" milestone (this is how 
 Notifications, in general, and email notifications, specifically, are integral to any product that involves any monitoring or tracking activities. [**Secutils.dev**](https://secutils.dev) already includes, and will continue to expand, features that require the ability to send notifications. Two notable examples include sending notifications for changes detected by the web page resources trackers and changes detected in the tracked content security policies (CSP).
 
 <!--truncate-->
+
+:::info UPDATE (May 2026)
+Several details have changed since this post:
+
+- **Database**: Secutils.dev migrated from SQLite to PostgreSQL in `1.0.0-beta.1` (May 2024), so the "as cheap as inserting a single row into a SQLite database" line should now read "into PostgreSQL".
+- **Identity**: account activation, password reset, and other identity-related emails are now sent by [**Ory Kratos**](https://github.com/ory/kratos), not by the in-house notification subsystem. The notification pipeline described below still powers product notifications such as tracker change alerts.
+- **Loops**: was evaluated but never adopted, transactional email continues to flow through SMTP via [**Lettre**](https://github.com/lettre/lettre).
+:::
 
 Of course, I don't have infinite resources or time to architect different notification solutions for various use cases. Therefore, the notifications subsystem must be flexible and robust enough to cover all of today's needs and those that might arise in the near future. This includes seemingly unrelated use cases, such as new account activation emails, password reset emails, and even contact form messages. If you take a moment to think about it, you'll realize that these are essentially just different types of notifications.
 

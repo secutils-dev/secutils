@@ -1,10 +1,11 @@
 ---
 title: "Cybersecurity basics: security mindset"
-description: "Cybersecurity basics: security mindset: unhappy path, security through obscurity, assume compromise, pragmatic security."
+description: "Five foundational habits of the security mindset: explore the unhappy path, assume compromise, avoid security through obscurity, stay pragmatic, and always be learning."
 slug: security-mindset
 authors: azasypkin
 image: /img/blog/2024-02-20_security_mindset.png
 tags: [thoughts, overview, technology]
+keywords: [security mindset, cybersecurity basics, unhappy path, assume compromise, security through obscurity, pragmatic security, secure coding habits, secutils.dev]
 ---
 Hello!
 
@@ -22,7 +23,7 @@ This blog post is the presentation turned into a blog post. Read on!
 
 ![Explore unhappy path](/img/blog/2024-02-20_security_mindset_explore_unhappy_path.png)
 
-As software engineers, you've likely heard about the term "happy path" - the ideal scenario in the application flow. If the user follows the path we expect, and everything else in the application works as planned, everyone is happy. Hence, the term happy path. For a software engineer, it's entirely reasonable to think about the happy path first: it helps in understanding what needs to be built. However, when your goal is to assess whether the application is secure enough and understand how malicious actors or hackers could potentially break it, you should take a much closer look at how the application behaves when things go wrong – the so-called unhappy path.
+As software engineers, you've likely heard about the term "happy path" - the ideal scenario in the application flow. If the user follows the path we expect, and everything else in the application works as planned, everyone is happy. Hence, the term happy path. For a software engineer, it's entirely reasonable to think about the happy path first: it helps in understanding what needs to be built. However, when your goal is to assess whether the application is secure enough and understand how malicious actors or hackers could potentially break it, you should take a much closer look at how the application behaves when things go wrong, the so-called unhappy path.
 
 This approach is somewhat similar to what QA engineers do, but as a software engineer, you go much deeper. Start by examining what happens when a legitimate user does something unexpected, like pressing buttons in the wrong order, repeatedly and quickly refreshing the page, bombarding your server with requests, or uploading a file of an unexpected type or much larger size than expected. Move on to more advanced scenarios, such as what if the external service or database your application communicates with is unavailable or hacked, sending malicious data? Or if the file you're reading from disk is corrupted, or the user content you render in the application contains malicious code?
 

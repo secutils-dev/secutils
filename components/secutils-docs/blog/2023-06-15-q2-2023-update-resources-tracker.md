@@ -1,16 +1,21 @@
 ---
 title: Q2 2023 update - Web resources tracker
-description: "Q2 2023 update: web resources trackers, track JavaScript and CSS files, protect from supply chain attacks and detect broken deployment early."
+description: "Q2 2023 update from Secutils.dev: tracking JavaScript and CSS files on web pages to defend against supply chain attacks and catch broken deployments early."
 slug: q2-2023-update-resources-tracker
 authors: azasypkin
 image: https://secutils.dev/docs/img/blog/2023-06-15_resources_trackers.png
 tags: [overview, technology, application-security]
+keywords: [secutils.dev, web resources tracker, javascript change detection, css change detection, supply chain attack, broken deployment, web scraping, playwright]
 ---
 Hello!
 
 As the end of "Q2 2023 - Apr-Jun" milestone (that's how I structure [my roadmap](https://github.com/orgs/secutils-dev/projects/1/views/1)) is quickly approaching, I wanted to give a quick update on the progress so far. One of the significant deliverables for this milestone is a functional web resources tracker utility. The utility should give developers the ability to track resources of any web page. You may be wondering why they would want to do that and how it relates to security. Let me explain using two personas: the developer and the security researcher.
 
 <!--truncate-->
+
+:::info UPDATE (May 2026)
+The "Resources tracker" described in this post shipped in `1.0.0-alpha.2` and was later merged with the "Content tracker" into a single, more capable [**Page tracker**](https://secutils.dev/docs/guides/web_scraping/page) feature. Today scheduling and execution are handled by the standalone [**Retrack**](https://github.com/secutils-dev/retrack) project (included as a git submodule at `components/retrack`), and Secutils.dev also supports [**API trackers**](https://secutils.dev/docs/guides/web_scraping/api), Playwright codegen import, the Camoufox stealth browser engine, debug runs with screenshots, custom cron schedules, and Monaco-based diffs.
+:::
 
 ![Resources trackers](https://secutils.dev/docs/img/blog/2023-06-15_resources_trackers.png)
 

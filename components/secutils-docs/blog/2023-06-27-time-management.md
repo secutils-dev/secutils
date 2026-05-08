@@ -1,10 +1,11 @@
 ---
 title: Time management, subtraction as a life motto
-description: "Time management, subtraction as a life motto."
+description: "Time management for full-time engineers with side projects: ruthless subtraction, the 'second price' of distractions, and how it powers Secutils.dev development."
 slug: time-management
 authors: azasypkin
 image: https://secutils.dev/docs/img/blog/2023-06-27_time_management.png
 tags: [thoughts]
+keywords: [time management, subtraction, second price of distractions, side project productivity, indie hacker time, secutils.dev, ruthless prioritization]
 ---
 Hello!
 

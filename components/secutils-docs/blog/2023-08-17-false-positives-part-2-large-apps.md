@@ -1,10 +1,11 @@
 ---
 title: "The cost of false positives in software security, Part 2: Large applications"
-description: "The cost of false positives in software security, Part 2: Large applications: Snyk, Dependabot, Kibana, Node.js, vulnerabilities."
+description: "Why false positives are so much more expensive in big apps like Kibana: multi-version support, on-prem and Cloud deployments, transitive dependencies, and Node.js upgrades."
 slug: false-positives-part-2-large-apps
 authors: azasypkin
 image: https://secutils.dev/docs/img/blog/2023-08-17_cost_of_false_positives_large_apps.png
 tags: [thoughts, overview, application-security]
+keywords: [false positives in security, kibana security, node.js vulnerabilities, dependency triage at scale, multi-version support, on-prem deployments, transitive dependencies]
 ---
 Hello!
 

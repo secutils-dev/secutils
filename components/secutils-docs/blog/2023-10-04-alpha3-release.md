@@ -1,16 +1,21 @@
 ---
 title: "Announcing 1.0.0-alpha.3 release: more powerful resource tracking, notifications and content sharing"
-description: "Announcing 1.0.0-alpha.3 release: more powerful resource tracking, notifications and content sharing."
+description: "Secutils.dev 1.0.0-alpha.3 introduces scheduled web page resource checks, email notifications, custom JavaScript filters, and shareable Content Security Policies."
 slug: alpha3-release
 authors: azasypkin
 image: /img/blog/2023-10-04_resources_trackers_enhancements.png
 tags: [announcement, release, overview]
+keywords: [secutils.dev, 1.0.0-alpha.3, scheduled web page resource checks, email notifications, custom javascript filters, shareable csp, playwright]
 ---
 Hello!
 
-Earlier this week, I wrapped up the [**"Q3 2023 – Jul-Sep"**](https://github.com/orgs/secutils-dev/projects/1/views/1) iteration and cut a new [**1.0.0-alpha.3 release**](https://github.com/secutils-dev/secutils/releases/tag/v1.0.0-alpha.3) of [**Secutils.dev**](https://secutils.dev). In this post, I would like to quickly walk you through the major changes since [**1.0.0-alpha.2**](https://github.com/secutils-dev/secutils/releases/tag/v1.0.0-alpha.2): notifications, more powerful web page resource tracker, sharing capabilities and more. Let’s dive in!
+Earlier this week, I wrapped up the [**"Q3 2023 - Jul-Sep"**](https://github.com/orgs/secutils-dev/projects/1/views/1) iteration and cut a new [**1.0.0-alpha.3 release**](https://github.com/secutils-dev/secutils/releases/tag/v1.0.0-alpha.3) of [**Secutils.dev**](https://secutils.dev). In this post, I would like to quickly walk you through the major changes since [**1.0.0-alpha.2**](https://github.com/secutils-dev/secutils/releases/tag/v1.0.0-alpha.2): notifications, more powerful web page resource tracker, sharing capabilities and more. Let’s dive in!
 
 <!--truncate-->
+
+:::info UPDATE (May 2026)
+The "web page resources tracker" described below was later merged with the "Content tracker" into a single, more capable [**Page tracker**](https://secutils.dev/docs/guides/web_scraping/page) feature, and scheduling moved to the standalone [**Retrack**](https://github.com/secutils-dev/retrack) project. Hourly/daily/weekly/monthly schedules still work, plus arbitrary cron expressions. The custom JavaScript filtering and mapping mechanism described in "Custom resources filtering and mapping" matured into the modern [**extractor scripts**](https://secutils.dev/docs/guides/platform/user_scripts), which can also be imported directly from Playwright codegen.
+:::
 
 ## Scheduled resources checks
 
@@ -56,7 +61,7 @@ As previously mentioned, while the resource tracker functionality has become mor
 
 You can find the full change log here: [**changelog#1.0.0-alpha.3**](https://secutils.dev/docs/project/changelog/#100-alpha3)
 
-In the next few days, I'll be prioritizing work for the upcoming "Q4 2023 – Oct-Dec" iteration. In my next post, I'll provide more details on what I'll be focusing on during this period.
+In the next few days, I'll be prioritizing work for the upcoming "Q4 2023 - Oct-Dec" iteration. In my next post, I'll provide more details on what I'll be focusing on during this period.
 
 That wraps up today's post, thanks for taking the time to read it!
 

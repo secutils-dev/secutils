@@ -1,9 +1,10 @@
 ---
 title: Beta release is now public
-description: Secutils.dev beta release is now public
+description: "Secutils.dev public beta launches: an open-source security toolbox for application security engineers with X.509 certificate templates, CSP management, and HTTP responders."
 slug: beta-release
 authors: azasypkin
 tags: [announcement, release]
+keywords: [secutils.dev, open-source security toolbox, application security, beta release, x.509 certificate templates, content security policy, http responders]
 image: https://secutils.dev/docs/img/blog/goal.png
 hide_table_of_contents: false
 ---
@@ -12,6 +13,10 @@ Hello!
 My name is Aleh Zasypkin, and I am a software engineer with a passion for application security. Today, I am delighted to announce that the beta release of [**Secutils.dev**](https://secutils.dev) is now publicly available!
 
 <!--truncate-->
+
+:::info UPDATE (May 2026)
+The toolbox has grown well beyond the three utilities described below. Today Secutils.dev also includes [**Page trackers and API trackers**](https://secutils.dev/docs/guides/web_scraping/page) (powered by the standalone [**Retrack**](https://github.com/secutils-dev/retrack) project), [**MITM responders**](https://secutils.dev/docs/guides/webhooks), [**user scripts and secrets**](https://secutils.dev/docs/guides/platform/user_scripts), [**API keys**](https://secutils.dev/docs/guides/platform/api_keys), [**data export/import**](https://secutils.dev/docs/guides/platform/export_import), and more. The whole project also moved to a single mono-repo at [secutils-dev/secutils](https://github.com/secutils-dev/secutils).
+:::
 
 [**Secutils.dev**](https://secutils.dev) is an [**open-source project**](https://github.com/secutils-dev) that aims to be a go-to place for all the tools you need as an application security engineer, with an easy-to-use and friendly interface. I started this project to organize the code and shell snippets that I have collected over the years, as I often found myself spending a significant amount of time searching for the right tools and resources to support my work.
 

@@ -1,10 +1,11 @@
 ---
 title: "Interview with SafetyDetectives about the origin, future, and vision for Secutils.dev"
-description: "Interview with SafetyDetectives about the origin, future, and vision for Secutils.dev"
+description: "SafetyDetectives interview with Aleh Zasypkin on the origin, self-hostable design, CSP and tracking utilities, and future AI integration of Secutils.dev."
 slug: interview-safety-detectives
 authors: azasypkin
 image: /img/blog/2025-06-16_interview_safety_detectives.png
 tags: [interview, thoughts, overview, technology]
+keywords: [secutils.dev interview, aleh zasypkin, open-source security toolbox, self-hostable security, retrack.dev, csp validation, ai security tooling]
 ---
 
 <head>
@@ -39,7 +40,7 @@ It isn't better or worse than existing tools - it's different. It's focused on t
 
 ## Many of Secutils.dev's features emphasize transparency and control. Why was a self-hostable model so important to you, and what challenges did it present?
 
-From my experience, earning the trust of security-minded professionals is the hardest part. If you're a well-known brand, people might trust even a closed-source, fully managed, locked-in product. But if you’re not there yet, you need to earn that trust – and the way to do that is by being as transparent as possible, making the product and its roadmap open-source, and giving users control and choice via a self-hosted option.
+From my experience, earning the trust of security-minded professionals is the hardest part. If you're a well-known brand, people might trust even a closed-source, fully managed, locked-in product. But if you’re not there yet, you need to earn that trust, and the way to do that is by being as transparent as possible, making the product and its roadmap open-source, and giving users control and choice via a self-hosted option.
 
 Having access to source code that can be hosted independently and at no extra cost should send a clear signal: there's no intent to lock anyone in. Whatever users invest in Secutils.dev - time, experience, code - won't just vanish due to reasons outside of their control.
 
@@ -53,7 +54,7 @@ Self-hosting isn't free - it costs time, expertise, and focus. However, I automa
 Certificate monitoring is planned and can be done with workarounds, but not natively today. I'll focus on CSP validation.
 :::
 
-Creating a reasonably secure Content Security Policy (CSP) is straightforward. The hard part is ensuring that CSP stays effective as the product evolves – not accidentally weakened by engineers or tooling, and still responding to modern threats.
+Creating a reasonably secure Content Security Policy (CSP) is straightforward. The hard part is ensuring that CSP stays effective as the product evolves, not accidentally weakened by engineers or tooling, and still responding to modern threats.
 
 Secutils.dev helps by parsing the raw CSP and presenting it in a user-friendly UI, organizing directives into categories and flagging potentially risky ones with links to explanations. When new directives are introduced, they'll be reflected in the tool. You can also store CSP versions for reference and use the webhook utility to collect CSP violation reports - without maintaining your own endpoint or server for that.
 

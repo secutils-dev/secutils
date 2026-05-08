@@ -1,10 +1,11 @@
 ---
 title: First negative user feedback
-description: "First negative user feedback: value and conclusions."
+description: "Why the first negative user feedback on Secutils.dev was a milestone worth celebrating, and what it revealed about CSP tooling expectations."
 slug: negative-user-feedback
 authors: azasypkin
 image: https://secutils.dev/docs/img/blog/goal.png
 tags: [thoughts]
+keywords: [negative user feedback, indie hacker user research, content security policy tooling, csp validation, product feedback, secutils.dev]
 ---
 Hello!
 

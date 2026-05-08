@@ -1,184 +1,208 @@
 ---
 title: "How to track anything on the internet or use Playwright for fun and profit"
-description: "How to track anything on the internet or use Playwright for fun and profit: web scraping, browser automation, playwright, puppeteer, user JavaScript scripts."
+description: "Track changes to any web page (or HTTP API) using the Page tracker and API tracker features in Secutils.dev, powered by the open-source Retrack scheduler and a Playwright-based scraper. Real examples, the full extractor-script API, and the security model."
 slug: web-page-content-trackers-and-playwright
 authors: azasypkin
 image: /img/blog/2024-01-16_web_page_content_tracker_preview.png
 tags: [thoughts, overview, technology]
+keywords: [web page change tracker, page tracker, api tracker, retrack, playwright change detection, javascript content extractor, browser automation security, secutils.dev, github trending tracker]
 ---
+
 Hello!
 
-After a refreshing winter-time blogging-break, I'd like to resume introducing new features of [**Secutils.dev**](https://secutils.dev) through practical use cases. Ever wondered how to easily track something on the internet that does not offer subscribing to updates natively? If so, let me introduce you a recently released [**web page tracking utility**](/guides/web_scraping/page) that made its debut in [**December 2023 (v1.0.0-alpha.4)**](https://github.com/secutils-dev/secutils/releases/tag/v1.0.0-alpha.4). I'll explain how I use it for various tasks, well beyond its primary security focus. Additionally, I'll cover how it's made in case you're interested in developing a similar tool yourself. Read on!
+After a refreshing winter blogging break, I'd like to resume introducing Secutils.dev features through practical use cases. Ever wished you could subscribe to changes on a web page that does not natively offer subscriptions? That is exactly what the [**Page tracker**](/docs/guides/web_scraping/page) feature is for. It first shipped as the "web page content tracker" in [**v1.0.0-alpha.4 (December 2023)**](https://github.com/secutils-dev/secutils/releases/tag/v1.0.0-alpha.4) and has since grown into the unified Page tracker we have today. I'll walk through how I use it (mostly outside its primary security focus) and how it works under the hood.
 
 <!--truncate-->
 
-If you've read my previous blog posts or ever experimented with Secutils.dev, you might be familiar with the [**web page tracking utility**](/guides/web_scraping/page). This utility allows you to monitor changes in web page content and resources, specifically JavaScript and CSS. While it has a somewhat narrow security-focused purpose - detecting broken or tampered web application deployments - it may not be the type of tool you use daily. Nevertheless, it serves as a good example of what you can build with modern browser automation tools like [**Playwright**](https://playwright.dev/) and [**Puppeteer**](https://pptr.dev/). If you're interested in digging deeper into this specific utility, refer to the following blog post series:
+:::info UPDATE (May 2026)
+Quite a bit has happened since the original post:
 
-- [**Detecting changes in JavaScript and CSS isn't an easy task, Part 1**](./2023-07-11-detecting-changes-in-js-css-part-1.md)
-- [**Detecting changes in JavaScript and CSS isn't an easy task, Part 2**](./2023-07-13-detecting-changes-in-js-css-part-2.md)
-- [**Detecting changes in JavaScript and CSS isn't an easy task, Part 3**](./2023-07-18-detecting-changes-in-js-css-part-3.md)
+- The "Web Page Resources Tracker" and "Web Page Content Tracker" are now a single feature, the [**Page tracker**](https://secutils.dev/docs/guides/web_scraping/page). There is also a separate [**API tracker**](https://secutils.dev/docs/guides/web_scraping/api) for tracking arbitrary HTTP API responses.
+- Page trackers gained **arbitrary cron schedules**, **debug runs with screenshots**, the **Camoufox** stealth browser engine for sites that fingerprint Chromium, a **Monaco-based diff viewer**, **Charts mode** for numeric values, an **execution log**, and the ability to **import Playwright codegen output** as the extractor script (so you don't have to write the click/login flow by hand).
+- The "user data tags" idea I floated below shipped as project-wide [**user tags**](https://secutils.dev/docs/guides/platform/tags), used to label and filter content across every utility.
+- The custom Web Scraper code lives in [**Retrack**](https://github.com/secutils-dev/retrack/tree/main/components/retrack-web-scraper) (a git submodule at `components/retrack`), and the API/scheduling side lives in `retrack-api`.
+- Authenticated pages are also fully supported now via custom HTTP headers and [**user secrets**](https://secutils.dev/docs/guides/platform/secrets) for credentials.
 
-Back in July 2023, while working on the web page resources tracker utility and integrating it with other Secutils.dev components, I realized that the combination of a browser, scheduler, and notifications offers far more interesting applications beyond web page resources tracking. Imagine this scenario: there's specific content on the internet that interests you, and you want to stay informed about any updates to that content, whether it's a new blog post from your favorite author, changes to a particular web page, or a hot discussion on Hacker News.
+The example, the security model, and the architecture below all still apply, just with the names above.
+:::
 
-Typically, you would subscribe to email or push notifications through a subscription form, and in many cases, that suffices. But what if the website or application in question doesn't provide a way to subscribe to the updates you need? What if you're only interested in specific changes, or perhaps you want to adjust the frequency of notifications?
+If you've poked around Secutils.dev or read previous posts, you've probably seen the [**Page tracker**](/docs/guides/web_scraping/page). Its narrow security purpose is to detect tampered or broken web application deployments, but the underlying primitives (browser + scheduler + notifications) are useful for far more than that. The "JavaScript and CSS change detection" series goes deep on the resources side:
 
-This is where the trio of browser, scheduler, and notifications can be extremely valuable. You can instruct the scheduler to periodically check the content you're interested in, use a browser automation tool to extract the relevant part of the content, and then rely on notifications to alert you to any changes. Essentially, this is what the web page content tracker utility does. In general, if you can manually obtain the information you need through a browser, it can be automated as well.
+- [**Detecting changes in JavaScript and CSS isn't an easy task, Part 1**](/blog/detecting-changes-in-js-css-part-1)
+- [**Detecting changes in JavaScript and CSS isn't an easy task, Part 2**](/blog/detecting-changes-in-js-css-part-2)
+- [**Detecting changes in JavaScript and CSS isn't an easy task, Part 3**](/blog/detecting-changes-in-js-css-part-3)
 
-Originally, I developed the web page content trackers utility to address a very specific security-focused requirement in my day job - I needed to monitor security headers and a few other properties of the production [**Cloud Kibana**](https://www.elastic.co/kibana) deployment. However, since its release, I've found myself leveraging this the content trackers for a lot of use cases that extend well beyond security:
+Back in 2023, while wiring up the resources tracker, I realised the same browser + scheduler + notifications combination unlocks a whole pile of "I just want to know when this thing changes" use cases. If you can manually open a page in a browser and read what changed, you can almost certainly automate it.
 
-- In one of my other projects, [**AZbyte | ETF**](https://azbyte.xyz), I require up-to-date information about exchange-traded funds (ETFs) from various fund providers (iShares, Vanguard, etc.). Content trackers come in handy to monitor their websites for new funds, as these providers don't offer a way to subscribe to such updates.
-- For my day job, I track web page metadata of my development [**“serverless” Elastic projects**](https://docs.elastic.co/serverless). This helps me know when they are automatically upgraded to a new version since there's currently no straightforward way to receive notifications about this.
-- I use content trackers to keep an eye on "Pricing", "Terms", and "Privacy Policy" pages of some of the tools and services I use. This should help me to catch any unexpected changes early on, especially with services like Notion, Oracle Cloud, and Cloudflare.
-- There are several trackers dedicated to "What's New" pages that only notify me when updates include specific keywords, and so on.
+I built the original content tracker for a very specific need at my day job (monitoring security headers on production [**Cloud Kibana**](https://www.elastic.co/kibana) deployments), but in practice the trackers I run today look like this:
 
-As you can see, the use cases are virtually limitless. In fact, I've accumulated so many web page content trackers that I now need a way to organize them effectively. I'm considering picking up either the [**“Add support for user data tags”**](https://github.com/secutils-dev/secutils/issues/43) or [**“Allow grouping user content into separate projects”**](https://github.com/secutils-dev/secutils/issues/12) enhancement during the ongoing “feature sprint” to address this.
+- In another project, [**AZbyte | ETF**](https://azbyte.xyz), I need fresh data from ETF providers (iShares, Vanguard, etc.). Page trackers monitor their websites for new fund listings, since none of them offer a useful subscription endpoint.
+- For day-job work I track the metadata of my development [**serverless Elastic projects**](https://docs.elastic.co/serverless), so I get notified the moment they're auto-upgraded.
+- Trackers watch the **Pricing**, **Terms**, and **Privacy Policy** pages of services I depend on (Notion, Oracle Cloud, Cloudflare). Quiet contract changes are a real risk, this catches them.
+- Several "What's New" trackers fire only on diffs that match specific keywords.
 
-Now, let's take a closer look at one of my simplest personal web page content trackers!
+At this point I have enough trackers that organising them was the next bottleneck. The [**user tags**](https://secutils.dev/docs/guides/platform/tags) feature ([**secutils#43**](https://github.com/secutils-dev/secutils/issues/43)) eventually shipped for exactly this.
 
-## Example: Trending GitHub repositories
+Let's look at one of my simpler personal trackers.
 
-I enjoy discovering new open source projects for inspiration, and the [**GitHub trending page**](https://github.com/trending) serves as an excellent resource for that. However, as far as I'm aware, there's no straightforward way to receive notifications when a new project rises to the top of the trending repositories, unless I use GitHub APIs directly. To workaround this, I set up a web page content tracker with the following settings:
+## Example: trending GitHub repositories
 
-![Web Page Content Tracker for GitHub Trending page](/img/blog/2024-01-16_web_page_content_tracker.png)
+I like discovering open-source projects via [**github.com/trending**](https://github.com/trending), but there is no native subscribe button. So:
 
-All fields should be self-explanatory: I instruct the tracker to check for updates at `https://github.com/trending` daily, retaining only the last three revisions. I provide the tracker with a piece of JavaScript code (`Content extractor`) to execute on the target web page, extracting the relevant content. If this content differs from the previously extracted content, the tracker sends an email notification. Additionally, if the content extraction attempt fails, the tracker will retry a few more times at 2-hour intervals. If none of the attempts succeed, the tracker notifies about the failure.
+![Page tracker configuration for the GitHub trending page](/img/blog/2024-01-16_web_page_content_tracker.png)
 
-The most important part here is the `Content extractor`, a simple JavaScript script executed within the context of the target web page to extract the actual content:
+The tracker checks `https://github.com/trending` daily, retains the latest three revisions, and runs a small JavaScript "extractor" inside the page to compute the actual content of interest. If the new content differs from the previous revision, it emails me. If extraction fails, it retries a couple of times at 2-hour intervals before notifying me about the failure.
+
+The interesting bit is the **extractor**:
+
 ```javascript
-// Get top link at the "trending" page.
+// Get the top link on the trending page.
 const topLink = document.querySelector('h2 a.Link');
 
-// Cleanup the repository name.
+// Clean up the repository name.
 const topLinkName = topLink.textContent.split('/')
   .map((part) => part.trim().replaceAll('\n', ''))
   .filter((part) => part)
   .join(' / ');
 
-// Craft a Markdown-styled content with a link.
+// Return Markdown so the email body renders nicely.
 return `Top repository is **[${topLinkName}](${topLink.href})**`;
 ```
 
-While the script, relying on opaque web page-specific CSS selectors, might appear fragile, these selectors don't change frequently in practice. Moreover, the tracker will notify me if this code begins to fail, allowing me to make necessary adjustments.
+The extractor uses CSS selectors specific to GitHub's HTML, so it's not bulletproof, but in practice these don't change often. When they do, the tracker tells me, and I update the script.
 
-One doesn't need to be proficient in JavaScript to write such simple scripts - ChatGPT and similar tools can generate something like this easily nowadays. I'm seriously thinking about launching a dedicated paid service centered around this functionality. Users could simply hover over the content they want to track, and the AI would handle the rest! Wouldn't that be awesome? 😃
+You don't need to be fluent in JavaScript to write something like this, an LLM will produce a reasonable first draft from a one-line description. Even better, Page trackers can now [**import Playwright codegen output**](https://playwright.dev/docs/codegen) directly: record the click flow in your browser, paste the resulting `page.click()` / `page.locator()` script into the tracker, and it just runs.
 
-The script can return Markdown-styled content, making it easier for users to consume. Here's how it looks in Secutils.dev UI:
+The extracted value is rendered in the workspace UI:
 
-![Web Page Content Tracker UI](/img/blog/2024-01-16_web_page_content_tracker_ui.png)
+![Page tracker UI showing the most recent extracted value as Markdown](/img/blog/2024-01-16_web_page_content_tracker_ui.png)
 
-With Markdown and a bit of creativity, one can create a nice personalized version of the tracked content!
+With Markdown plus a little creativity you can build a remarkably readable personal "what changed today" feed.
 
 ## How it works
 
-I won't dive into the UI, HTTP APIs, or storage layer used for this functionality, as it's all standard tech. I'd better focus on the content extraction part, the core of this functionality.
+I'll skip the boring parts (UI, HTTP APIs, storage) and focus on the content extraction pipeline, which is where most of the interesting code lives.
 
-To begin, all functionality related to browser automation and web scraping lives in a dedicated service - [**Retrack**](https://github.com/secutils-dev/retrack). The primary rationale is that dealing with browsers and arbitrary user scripts is tricky from a security standpoint, and it's always a good idea to isolate such functionality as much as possible. You can read more about the security aspects of web scraping in the [**"Running web scraping service securely"**](./2023-09-12-running-web-scraping-service-securely.md) post.
+All browser automation is owned by a separate service, [**Retrack**](https://github.com/secutils-dev/retrack), included in the Secutils.dev mono-repo as a git submodule at `components/retrack`. Retrack itself is two services:
 
-As the post title suggests, at the heart of Web Scraper lies [**Playwright**](https://playwright.dev/) with an additional HTTP API layer on top. Playwright is an exceptional tool that manages all interactions with the headless browser and abstracts away a considerable amount of complexity. Let me show you how I use Playwright to extract content from web pages:
+- **Retrack API** (Rust): manages tracker definitions, schedules, and revision history.
+- **Retrack Web Scraper** (Node.js + Playwright + Chromium/Camoufox): runs the actual fetches and extractor scripts.
 
-:::info NOTE
-I've omitted some non-essential details for brevity, you can find the full source code at the [**Retrack GitHub repository**](https://github.com/secutils-dev/retrack/).
-:::
+The split is a security choice as much as anything else: a process that drives a real browser at user-supplied URLs has very different threat properties from a stateless API. The full security checklist is in [**"Running web scraping service securely"**](/blog/running-web-scraping-service-securely).
+
+At the heart of the scraper is Playwright with a thin HTTP layer on top. Initialisation looks like this (full source in the [**Retrack repository**](https://github.com/secutils-dev/retrack/tree/main/components/retrack-web-scraper)):
 
 ```javascript
-const browserToRun = await chromium.launch({
+const browser = await chromium.launch({
   headless: true,
   chromiumSandbox: true,
   args: ['--disable-web-security'],
 });
 ```
 
-In the snippet above, we run Chromium in headless mode and enable the [**security sandbox**](https://playwright.dev/docs/api/class-browsertype#browser-type-launch-option-chromium-sandbox), which is disabled by default, but I highly [**recommend enabling it**](./2023-09-12-running-web-scraping-service-securely.md#browser-sandbox). I also set the `--disable-web-security` flag to bypass any CORS restrictions. This is important if you want to allow injected scripts to make XHR requests to other domains/origins. It can be handy if the user's custom script is just a light "shell" that asynchronously loads the JavaScript code to execute from another place (refer to [**examples in documentation**](../guides/web_scraping/page#use-external-content-extractor-script) for more details).
+Headless Chromium with the sandbox **on** (highly recommended, see the [**security post**](/blog/running-web-scraping-service-securely)). `--disable-web-security` lets injected scripts make cross-origin XHR/`fetch` calls, which is useful when an extractor needs to load a "real" extraction module from elsewhere (see the [**guide**](/docs/guides/web_scraping/page#use-external-content-extractor-script) for an example). The browser is launched on demand and shut down after a configurable idle timeout to avoid pinning RAM.
 
-Remember that running the browser might consume a significant amount of resources, so you might want to consider shutting it down after some idle timeout or maybe even scale your service to zero completely. Secutils.dev Web Scraper runs the browser on demand and shuts it down after 10 minutes if it's not used by default.
+The scraper accepts a small set of input parameters:
 
-The next step is to decide what input parameters the content scraper should support. The most obvious candidates are:
+- **[Required]** URL of the page to track.
+- **[Required]** The previously extracted content, so the extractor can compare and decide whether anything meaningful changed.
+- **[Required]** The extractor JavaScript script that runs inside the page. The script can return any JSON-serialisable value.
+- **[Optional]** Custom HTTP headers (for `Authorization`, `Cookie`, consent banners, etc.).
+- **[Optional]** A wait selector or delay before extraction, for very dynamic single-page apps.
 
-- **[Required]** URL to track the content.
-- **[Required]** Previously extracted content. In some cases, you might want to compare the previous and new content and only save a new version if a special condition is met.
-- **[Required]** Content extractor JavaScript script. This script is injected into the target page and executed once the page is loaded. Since the script is executed in the most up-to-date version of the browser, it can use the latest JavaScript features and Web APIs! The script can return anything as long as it's possible to serialize it as a JSON string and store it in a database.
-- **[Optional]** A list of custom HTTP headers to send to the target web page. This may be required if the page you're tracking requires authentication (e.g., via `Cookie` or `Authorization` HTTP headers) or some sort of consent (e.g., Cookie consent) before rendering the content.
-- **[Optional]** A delay or CSS selector to wait for before the tracker tries to extract content. This is a must for some very dynamic and heavy modern applications that can lazily load the content.
-
-With all these parameters, the code to scrape content might look like this (simplified and with additional comments):
+The simplified extraction loop:
 
 ```typescript
-// Create a new browsing context and pass custom HTTP headers.
+// Fresh browsing context per fetch with custom HTTP headers.
 const context = await browser.newContext({ extraHTTPHeaders: headers });
-
-// Create a new page within this context.
 const page = await context.newPage();
 
-// Inject a custom script, if provided.
+// Inject the user-supplied extractor as `self.__secutils.extractContent(...)`.
 if (scripts?.extractContent) {
   await page.addInitScript({
     content: `self.__secutils = { async extractContent(context) { ${scripts.extractContent} } };`,
   });
 }
 
-// Navigate to a custom page and retain full `Response`
-// to return detailed error messages.
+// Navigate.
 let response: Response | null;
 try {
   response = await page.goto(url, { timeout });
 } catch (err) {
-  return { type: 'client-error', error: "…" };
+  return { type: 'client-error', error: '...' };
 }
 
-// Wait for a custom CSS selector, if provided.
+// Optional: wait for a specific selector before extracting.
 if (waitSelector) {
   try {
     await page.waitForSelector(waitSelector, { timeout });
   } catch (err) {
-    return { type: 'client-error', error: "…" };
+    return { type: 'client-error', error: '...' };
   }
 }
 
-// Finally, extract web page content.
+// Extract.
 let extractedContent: string;
 try {
-  // Use `jsonStableStringify` to make sure the same result
-  // always serializes to the same JSON string.
   extractedContent = jsonStableStringify(
     scripts?.extractContent
-      // If content exraction script is provided, execute it.
-      // See definiton of `extractContent` function below. 
-      ? await extractContent(page, { previousContent})
-      // Otherwise, treat the full web page HTML as content.
+      ? await extractContent(page, { previousContent })
       : jsBeautify.html_beautify(await page.content()),
   );
 } catch (err) {
-  return { type: 'client-error', error:"…" };
+  return { type: 'client-error', error: '...' };
 }
 
 async function extractContent(page: Page, context: WebPageContext<string>) {
-  // Evaluate custom script in the page context.
   return await page.evaluate(async ([context]) => {
     const extractContent = window.__secutils?.extractContent;
-    if (!extractContent || typeof extractContent !== 'function') {
-      throw new Error("…");
+    if (typeof extractContent !== 'function') {
+      throw new Error('...');
     }
-
     return await extractContent({
       ...context,
-      // Deserialize previous content, if available.
-      previousContent: context.previousContent !== undefined 
-        ? JSON.parse(context.previousContent)
-        : context.previousContent,
+      previousContent:
+        context.previousContent !== undefined
+          ? JSON.parse(context.previousContent)
+          : context.previousContent,
     });
   }, [context] as const);
 }
 ```
 
-As you can see, Playwright is a very powerful tool, and working with it is straightforward. I omitted a few pieces that rely on the Chrome DevTools Protocol (e.g., collecting all external requests with responses and clearing browser cache) that aren't strictly relevant for this post, but you can check out the [**Retrack GitHub repository**](https://github.com/secutils-dev/retrack/) to see the full source code if you're curious.
+Stable JSON stringification matters: an extractor that returns the same logical value should always serialise to the same string, otherwise the change-detection layer will flag spurious diffs.
+
+A few details I've omitted (CDP-based external request capture, cache clearing, screenshot capture for debug runs, headless detection workarounds for stealth scraping with Camoufox) are visible in the [**Retrack source**](https://github.com/secutils-dev/retrack).
 
 ## What's next
 
-Web page content trackers are already quite functional, but I have a [**number of ideas**](https://github.com/secutils-dev/secutils/issues?q=is%3Aopen+is%3Aissue+label%3A%22Component%3A+Utility%3A+Web+Scraping%22) on how to make them even more useful:
+The Page tracker still has plenty of room to grow:
 
-- Add ability to capture web page screenshots and performing visual diffs ([**secutils#33**](https://github.com/secutils-dev/secutils/issues/33))
-- Allow tracking the content of web pages protected by WAF and CAPTCHA ([**secutils#34**](https://github.com/secutils-dev/secutils/issues/34))
-- Add support for auto-generated content extraction scripts
+- Smarter "natural language" extractor authoring (the LLM generates the extractor from a one-line user description, with Playwright codegen capturing the click flow).
+- Better CAPTCHA / WAF handling on top of the Camoufox engine ([**secutils#34**](https://github.com/secutils-dev/secutils/issues/34)).
+- Visual-diff snapshots layered on top of the existing screenshot capability ([**secutils#33**](https://github.com/secutils-dev/secutils/issues/33)).
+
+## Frequently asked questions
+
+### Page tracker vs API tracker, when should I use which?
+
+Use a [**Page tracker**](https://secutils.dev/docs/guides/web_scraping/page) for anything that needs a real browser to render or interact (SPAs, login flows, stealth scraping). Use an [**API tracker**](https://secutils.dev/docs/guides/web_scraping/api) for plain HTTP API responses where running a browser would be overkill (REST endpoints, raw `Content-Security-Policy` headers, JSON feeds).
+
+### Do I need to write JavaScript to use Page trackers?
+
+Not necessarily. Page trackers can capture the full page HTML by default. For targeted extraction you can write a small extractor script, ask an LLM to write it for you, or import a Playwright codegen recording.
+
+### How do I track pages that require login?
+
+Two options. For Basic / Bearer / cookie authentication, set the credentials as a custom HTTP header on the tracker. For credentials you don't want stored in plaintext, store them as a [**user secret**](https://secutils.dev/docs/guides/platform/secrets) and reference the secret by name. For multi-step OAuth, capture the login flow with Playwright codegen and use it as the tracker's extractor script.
+
+### Is the scraper open-source?
+
+Yes. The scheduling and scraping engine is [**Retrack**](https://github.com/secutils-dev/retrack), open-source and reusable outside Secutils.dev.
+
+### Where do user tags fit in?
+
+[**Tags**](https://secutils.dev/docs/guides/platform/tags) are a workspace-wide labelling primitive. You can tag any tracker (and any other user data) and then filter by tag across the whole workspace. Excellent for organising "personal", "work", and per-project trackers.
 
 That wraps up today's post, thanks for taking the time to read it!
 

@@ -1,59 +1,78 @@
 ---
 title: Detecting changes in JavaScript and CSS isn't an easy task, Part 2
-description: "Detecting changes in JavaScript and CSS isn't an easy task: web scraping, Playwright, data and blob URLs, fuzzy hashing, TLSH, Locality Sensitive Hashing!"
+description: "Part 2: handling data: and blob: URLs as 'inline' resources, and using TLSH fuzzy hashing (Locality Sensitive Hashing) to track changes in noisy inline scripts in Secutils.dev's Page tracker."
 slug: detecting-changes-in-js-css-part-2
 authors: azasypkin
 image: https://secutils.dev/docs/img/blog/2023-07-13_web_page_resources.png
 tags: [thoughts, overview, technology]
+keywords: [data url javascript, blob url tracking, fuzzy hashing, tlsh, locality sensitive hashing, malware detection technique, page tracker, secutils.dev, retrack]
 ---
+
 Hello!
 
-This is the second part of [**my previous post**](https://secutils.dev/docs/blog/detecting-changes-in-js-css-part-1) where I started discussing the challenges related to tracking changes in JavaScript and CSS resources, and how I address these challenges in the Resources Tracker utility in [**Secutils.dev**](https://secutils.dev).
+This is Part 2 of [**a three-part series**](/blog/detecting-changes-in-js-css-part-1) on the surprisingly hard problem of detecting changes in a web page's JavaScript and CSS resources, written while building the Resources Tracker (now [**Page tracker**](https://secutils.dev/docs/guides/web_scraping/page)) feature in [**Secutils.dev**](https://secutils.dev).
 
-In the previous part, I talked about handling inline and external resources, dealing with dynamically loaded resources, and comparing large-sized resources. Now, let's explore the next set of challenges you need to consider when comparing JavaScript and CSS resources.
+In Part 1 we covered inline vs external resources, dynamically loaded resources, and how to keep storage costs low with hashing. Today we tackle two more challenges: resources that don't fit cleanly into "inline" or "external", and inline resources that change on every page load even though "nothing meaningful" changed.
 
 <!--truncate-->
 
-## Challenge #4: Data and blob URLs
+:::info UPDATE (May 2026)
+Same context as in Part 1: the "Resources Tracker" described here ships today as the unified [**Page tracker**](https://secutils.dev/docs/guides/web_scraping/page), and the underlying Playwright + TLSH pipeline now lives in the [**Retrack**](https://github.com/secutils-dev/retrack) submodule.
+:::
 
-Distinguishing between inline and external resources is usually straightforward based on the presence of the `src` attribute in `<script>` elements or the use of separate `<link[rel=stylesheet]>` elements for external CSS resources. As I mentioned in the previous post, to obtain the content of external JavaScript and CSS resources, I leverage Playwright's capability to intercept network requests. However, not all seemingly external resources are genuinely external!
+## Challenge 4: Data and blob URLs
 
-If a resource's URL is a data URL (e.g., `data:application/javascript;base64,YWxlcnQoMSk=`) or a blob URL (e.g., `blob:aac12324xxxxxx`), it does not trigger a network request that can be intercepted. This essentially makes the resource internal. To retrieve the content of a data URL, we need to parse the URL itself, while for a blob URL, we use the "fetch" API:
+Telling inline and external resources apart usually comes down to whether `<script>` has a `src` attribute, and whether `<link rel="stylesheet">` has an `href`. Part 1's approach was: parse inline resources directly, intercept network requests for external resources via Playwright.
+
+But not every "external-looking" resource is genuinely external. Two URL schemes break the assumption:
+
+- **`data:` URLs** (e.g. `data:application/javascript;base64,YWxlcnQoMSk=`) embed the content directly in the URL itself.
+- **`blob:` URLs** (e.g. `blob:aac12324xxxxxx`) point at an in-memory blob created by the page.
+
+Neither triggers a network request that the scraper can intercept. Effectively they are inline resources wearing an external-looking URL. To capture them we have to handle them in-page:
 
 ```ts
-// Split the data URL to extract the content.
+// Split the data URL to extract the base64-encoded content.
 const [/* data URL header */, dataUrlContent] = dataUrl.split(',');
 
-// Fetch the blob URL to retrieve the content.
+// Fetch the blob URL via the Fetch API to retrieve the content.
 const blobUrlContent = await fetch(url).then((res) => res.text());
 ```
 
-## Challenge #5: Constantly changing resources
+Once parsed/fetched, we can run them through the same fingerprinting pipeline as inline resources.
 
-Suppose we overcome the challenges we have discussed so far. In that case, we will have quite a solid solution to track changes in web page resources. However, detecting changes in inline resources is a non-trivial challenge on its own: how do we reliably distinguish between changed inline resources and newly added ones? Unlike external resources, inline resources don't have a unique identifier like a URL. The only identifying information we have is the content digest (e.g., SHA1 hash). Even a slight change in the content results in a completely different digest. This means that distinguishing changed inline resources from added ones is not straightforward. Here's an example:
+## Challenge 5: Constantly changing inline resources
+
+Suppose we crack everything above. We still have one painful case left: telling **changed** inline resources apart from **newly added** ones.
+
+External resources have a stable identifier (the URL). Inline resources don't, so the only thing we can hang an identity off is the content digest. The problem is that digests are deliberately fragile: a one-byte change yields a completely different SHA-1 hash.
 
 ```html
-// Inline script
+<!-- Inline script #1 -->
 <script>alert(1)</script>
-// SHA1 digest of the content (echo 'alert(1)' | sha1sum)
+<!-- SHA1 of the content -->
 739033c41a7b1047bb6a63240cbe240cd06597cd
 
-// Changed inline script
+<!-- Same script, slightly changed -->
 <script>alert(2)</script>
-// SHA1 digest of the changed content (echo 'alert(2)' | sha1sum)
+<!-- SHA1 of the changed content (completely different!) -->
 c3d954707f1c1043158a4ed38f52776e7859e80c
 ```
 
-As you can see, the scripts are almost the same, but even a minor change results in a completely different digest. Thus, a naive program would treat the case as one inline resource being removed, while another has been added.
+A naive change-detector sees one resource removed and a different one added. That's noisy.
 
-The behavior is often observed in user tracking scripts and other bloatware-resources. They are sometimes generated with the random identifiers for each unique user, resulting in frequent changes that make it challenging to track and detect modifications accurately.
+The problem is much worse in the wild. Many pages embed analytics or feature-flag scripts that bake a per-user random ID into the script body (or include cache-busting timestamps). Every page load yields a "different" inline resource, drowning real changes in noise.
 
-To address this challenge, we can turn to malware detection techniques! One such technique is [**fuzzy hashing**](https://en.wikipedia.org/wiki/Fuzzy_hashing), which helps to detect similar but not exactly identical data. Cryptographic hash functions, in contrast, generate significantly different hashes even for minor differences. Fuzzy hashing is particularly useful for malware detection, as malware authors often make slight tweaks to the code to change the hash fingerprint and evade detection by naive malware systems.
+### Fuzzy hashing to the rescue
 
-There are various fuzzy hashing approaches, such as Context Triggered Piecewise Hashing (CTPH) and Locality Sensitive Hashing (LSH). For Secutils.dev, I use [**Trend Micro Locality Sensitive Hashing (TLSH)**](https://tlsh.org/) due to its relatively low content requirements for generating hashes. It only needs content that is 50 bytes or larger and has sufficient randomness, which is typically the case for 99.99% of inline web page resources. If, for some reason, these requirements are not met, we can fall back to storing the entire content if it is small enough or using the SHA1 digest if it lacks sufficient randomness (I'd be rather surprised though):
+The trick is to borrow a technique from **malware detection**: [**fuzzy hashing**](https://en.wikipedia.org/wiki/Fuzzy_hashing). Unlike cryptographic hashes, a fuzzy hash is designed so that **similar inputs produce similar hashes**, with a quantifiable distance metric between them. Malware authors use small mutations to evade signature-based detection, defenders use fuzzy hashes to spot the family despite the mutations.
+
+Two well-known approaches are Context Triggered Piecewise Hashing (CTPH, e.g. ssdeep) and Locality Sensitive Hashing (LSH). Secutils.dev uses [**Trend Micro Locality Sensitive Hashing (TLSH)**](https://tlsh.org/), which has very mild input requirements (~50 bytes with sufficient randomness). That covers nearly every real inline web resource.
+
+A quick demonstration:
 
 ```bash
-$ cat inline-revision-0.js 
+$ cat inline-revision-0.js
 alert(1);
 alert(2);
 alert(3);
@@ -62,30 +81,46 @@ alert(5);
 alert(6);
 alert(7);
 
-cat inline-revision-1.js 
+$ cat inline-revision-1.js
 alert(1);
 alert(2);
 alert(3);
-alert(400); <-- changed value
-alert(500); <-- changed value
+alert(400); # changed
+alert(500); # changed
 alert(6);
 alert(7);
 
-$ tlsh -f inline-revision-0.js 
-T1C4A0025D65B74CD0C3B69F48020CD01304000118314F0D42000F81DC1019342C001404 <-- TLS hash #0
+$ tlsh -f inline-revision-0.js
+T1C4A0025D65B74CD0C3B69F48020CD01304000118314F0D42000F81DC1019342C001404
 
-$ tlsh -f inline-revision-1.js 
-T1B9A0024D65730CC0D77A9F48012CD00746000018318F0D42000F80DC1019342E003404 <-- TLS hash #1
+$ tlsh -f inline-revision-1.js
+T1B9A0024D65730CC0D77A9F48012CD00746000018318F0D42000F80DC1019342E003404
 
-$ tlsh -c inline-revision-0.js -f inline-revision-1.js <-- compare files/hashes
-25 <-- "distance" between two files, files are very similar!
+$ tlsh -c inline-revision-0.js -f inline-revision-1.js
+25  # small distance: the files are clearly very similar
 ```
 
-Fuzzy hashing is indeed a perfect solution for our use case, allowing us to detect changes in inline resources without the need to store the entire content!
+For each inline resource Secutils.dev computes both a SHA-1 (for exact matching) and a TLSH (for similarity matching). When two revisions are diffed, resources with identical SHA-1 are exact matches; those without an exact match are then compared by TLSH distance to identify "the same resource, slightly changed". Falls back to "small enough to store" or "no randomness" cases happen rarely in practice.
 
-## Conclusion
+Fuzzy hashing turns a previously hopeless problem ("which of these unidentified inline scripts are the new versions of which?") into a tractable one, and keeps the storage cost per revision tiny.
 
-In this post, I have highlighted a few more challenges you may encounter when tracking changes in web page resources. However, I realized that I couldn't cover everything I wanted to share in just two parts. So, stay tuned for [**the third and final part**](https://secutils.dev/docs/blog/detecting-changes-in-js-css-part-3), where I will explore the **security-oriented** (finally!) aspects of web page resource tracking. Stay tuned for more insights!
+## Where this is heading
+
+Two challenges down, four to go. [**Part 3**](/blog/detecting-changes-in-js-css-part-3) tackles the security-flavoured ones: capturing `onload`/`onerror` payloads, supporting authenticated pages, and hardening the scraper against malicious users.
+
+## Frequently asked questions
+
+### Why TLSH instead of ssdeep?
+
+Both work. TLSH was a slightly better fit because of its low minimum input size, the published distance metric, and a well-maintained Rust binding. For this use case the differences are minor.
+
+### Could you skip fuzzy hashing entirely if you stored full content?
+
+Yes, but then you'd be paying full storage cost per revision per resource, and you'd still need a heuristic to identify "this is the same script, just mutated". Fuzzy hashing solves both problems in one cheap step.
+
+### Are `data:` and `blob:` URLs common in real pages?
+
+`data:` URLs show up routinely for small inline images, fonts, and occasionally tiny scripts. `blob:` URLs are common in apps that use the Web Workers API, dynamic ESM imports, or libraries that synthesise scripts at runtime. Treating both as effectively-inline made tracker results much more accurate.
 
 That wraps up today's post, thanks for taking the time to read it!
 

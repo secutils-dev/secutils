@@ -1,10 +1,11 @@
 ---
 title: "Two simple rules for better and more secure code"
-description: "Two simple rules for better and more secure code: logs, errors, HTTP, log injections, PII, sensitive information, leaked credentials, hacks."
+description: "Two practical rules every engineer can apply today to write more secure code: don't log what you don't know, and never expose raw errors to API consumers."
 slug: two-simple-rules-for-secure-code
 authors: azasypkin
 image: /img/blog/2023-11-07_easy_rules_secure_code.png
 tags: [thoughts, overview, technology]
+keywords: [secure coding rules, log injection, pii in logs, error handling security, owasp log injection, sensitive information leaks, secutils.dev]
 ---
 Hello!
 

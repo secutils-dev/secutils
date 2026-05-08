@@ -1,38 +1,53 @@
 ---
 title: "Running web scraping service securely"
-description: "Running web scraping service securely - Playwright scraper, Node.js scraper, Docker containers, Kubernetes network policies for scraper, seccomp, Chromium sandbox."
+description: "End-to-end security checklist for running a web scraping service: input validation, resource isolation, non-root containers, Chromium sandbox, seccomp profiles, Kubernetes NetworkPolicy egress allow-lists, and monitoring. Backed by the Retrack scraper used in Secutils.dev."
 slug: running-web-scraping-service-securely
 authors: azasypkin
 image: https://secutils.dev/docs/img/blog/2023-09-12_running_web_scraping_service_securely.png
 tags: [overview, technology, application-security]
+keywords: [web scraping security, ssrf prevention, chromium sandbox, seccomp profile, kubernetes network policy, non-root container, playwright security, retrack, secutils.dev]
 ---
+
 Hello!
 
-[**In my previous post**](https://secutils.dev/docs/blog/q3-2023-update-notifications), I shared the update regarding the upcoming "Q3 2023 - Jul-Sep" milestone. While I briefly covered how I implemented the notifications subsystem in [**Secutils.dev**](https://secutils.dev), there are a few other important changes I've been working on for this milestone. One of these changes is related to the fact that I’m preparing to allow Secutils.dev users to inject custom JavaScript scripts into the web pages they track resources for (yay 🎉). As a result, I've spent some time hardening the Web Scraper environment's security and wanted to share what you should keep in mind if you’re building a service that needs to scrape arbitrary web pages.
+In an [**earlier post**](/blog/q3-2023-update-notifications) I talked about the notifications subsystem in [**Secutils.dev**](https://secutils.dev). Around the same time I was preparing to allow Secutils.dev users to inject custom JavaScript into the web pages they track resources for, which forced a serious round of security hardening on the [**Web Scraper**](https://github.com/secutils-dev/retrack/tree/main/components/retrack-web-scraper). This post is the result: an end-to-end checklist for anyone running a service that scrapes arbitrary user-supplied URLs.
 
 <!--truncate-->
 
-:::note __UPDATE (Jan 16th, 2024)__
-I've published a dedicated [**"How to track anything on the internet or use Playwright for fun and profit"**](./2024-01-16-web-page-content-trackers-and-playwright.md) with a more in-depth look into the scraping process itself. Check it out!
+:::info UPDATE (May 2026)
+This post still reflects the current security model, with a few naming updates:
+
+- The web scraper used to be called **secutils-web-scraper**. It is now part of the standalone open-source [**Retrack**](https://github.com/secutils-dev/retrack) project (a git submodule at `components/retrack` in the Secutils.dev mono-repo) and runs as the **Retrack Web Scraper** on port `7272`.
+- The "Resources Tracker" feature is now the unified [**Page tracker**](https://secutils.dev/docs/guides/web_scraping/page), there is also a separate [**API tracker**](https://secutils.dev/docs/guides/web_scraping/api) for HTTP API responses. Page trackers can also use the **Camoufox** stealth browser engine in addition to Chromium.
+- The IP-validation logic is enforced in two places: in the Rust validator before a tracker is scheduled, and in Kubernetes `NetworkPolicy` rules at the egress layer.
+
+The principles below have not changed, the references and class names have.
 :::
 
-When it comes to web page resource scraping, Secutils.dev relies on a separate component - [**secutils-dev/retrack**](https://github.com/secutils-dev/retrack). I've built it on top of [**Playwright**](https://playwright.dev/) since I need to handle both resources that are statically defined in the HTML and those that are loaded dynamically. Leveraging Playwright, backed by a real browser, instead of parsing the static HTML opens up a ton of opportunities to turn a simple web resource scraper into a much more intelligent tool capable of handling all sorts of use cases: recording and replaying HARs, imitating user activity, and more.
+For a deeper dive into the scraping mechanics themselves, see [**"How to track anything on the internet, or use Playwright for fun and profit"**](/blog/web-page-content-trackers-and-playwright).
 
-As you might have guessed, running a full-blown browser within your infrastructure that users can point literally anywhere can be quite dangerous if not done right, so security should be a top-of-mind concern here. Let me walk you through the most obvious security concerns one should address before exposing a service like that to the users.
+## The threat model in one paragraph
 
-## Input validation
+The Retrack Web Scraper drives a real Chromium (or Camoufox) browser at user-supplied URLs. That makes it a powerful tool, and it makes it a great target. The two failure modes that matter most are **server-side request forgery** ("user points the browser at our internal network") and **resource exhaustion** ("user points the browser at a 5 GB MP4"). Everything below is about closing or shrinking those classes of failure.
 
-The first line of defense, and the most basic one, is to limit where users can point their browsers through input argument validation. If you know that only certain resources are supposed to be scraped by users, ensure you properly validate the provided URLs and allow only the expected subset. As a bare minimum, you should validate the arguments on the server/API side, but also consider doing it on the client side if possible, as it would significantly improve the user experience of your service and serve your users better. However, **never-ever** rely solely on client-side validation - client-side validation is for your users' convenience and is not a security measure, as it can be easily bypassed by directly accessing your APIs.
+## 1. Input validation
 
-Although the resource tracker functionality of Secutils.dev is designed to allow users to scrape virtually any web page on the internet, I still make efforts to validate the provided URL and restrict it as much as possible:
+The first line of defence is to limit where users can point the browser. At a minimum:
+
+- Allow only `http://` and `https://` URL schemes. Reject `file://`, `chrome://`, `devtools://`, `about:`, `view-source:`, `data:`, and friends. They unlock things you don't want unlocked.
+- Resolve the hostname and reject any address that is not globally routable (loopback, link-local, private RFC 1918, IPv6 ULA, IPv4-mapped, documentation, multicast).
+- Run validation **server-side**. Client-side validation is a UX nicety, never a security control; an attacker can hit your API directly.
+
+A simplified version of the Rust validator looks like this:
+
 ```rust
 if tracker.url.scheme() != "http" && tracker.url.scheme() != "https" {
     anyhow::bail!("Tracker URL scheme must be either http or https");
 }
 
-// Checks if the specific hostname is a domain and public (not pointing to the local network).
 let is_public_host_name = if let Some(domain) = tracker.url.domain() {
-    ...
+    // Resolve and check that every resolved IP is globally routable.
+    // ...
 } else {
     false
 };
@@ -42,22 +57,24 @@ if !is_public_host_name {
 }
 ```
 
-## Resource isolation
+The full IP-validation logic is in [**Part 3 of the "Detecting changes in JS/CSS"**](/blog/detecting-changes-in-js-css-part-3#challenge-8-malicious-users) series. It runs both at scheduling time **and** at fetch time, because DNS rebinding can move a name's resolution between the two.
 
-Running an entire browser is a resource-intensive operation, even if it’s [**a headless one**](https://en.wikipedia.org/wiki/Headless_browser). It’s likely that the component responsible for running and dealing with the browser isn’t the only part of your service. It's probably not as critical as components dealing with authentication or database access, for example. You certainly don’t want your entire service to go down just because a resource-intensive web page consumed all the available resources on the host.
+## 2. Resource isolation
 
-To address this, consider running the component that spawns the browser within a separate container. This approach not only better protects your business-critical functionality but also allows you to scale up or down your browser-specific service independently.
+A headless browser is heavy even when it's quiet. The component that owns it has no business sharing a process (or even a node) with the parts of your service that handle authentication, billing, or anything else critical. So:
 
-Additionally, try to explicitly limit the resources available to the container using techniques like [**control groups**](https://en.wikipedia.org/wiki/Cgroups) or similar features that suit your environment. For instance, if you’re running your container in Kubernetes, you can [**limit resources**](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/) available to that container using configurations such as this:
+- Put the scraper in its **own container** (in Secutils.dev that's the Retrack Web Scraper). Scale it independently of the API.
+- Apply explicit **resource limits**. Both `requests` and `limits` for CPU and memory; otherwise a single hostile page can drive the node into swap.
+
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
-  name: web-scraper
+  name: retrack-web-scraper
 spec:
   containers:
   - name: app
-    image: node:20-alpine3.18
+    image: secutils/retrack-web-scraper:latest
     resources:
       requests:
         memory: "128Mi"
@@ -67,82 +84,110 @@ spec:
         cpu: "500m"
 ```
 
-## Privilege management
+Add hard timeouts at every level: the HTTP fetch, the page render, the user script execution. A single missing timeout is enough to wedge a worker.
 
-[**The principle of least privilege**](https://en.wikipedia.org/wiki/Principle_of_least_privilege) is particularly crucial when dealing with complex software like a web browser. Running a browser as the root user is inviting trouble, and it's something you should avoid. For instance, if you're using Node.js to automate a headless browser with tools like Puppeteer or Playwright, make sure to run it as a [**non-root user**](https://github.com/nodejs/docker-node/blob/main/docs/BestPractices.md#non-root-user):
-```bash
-FROM node:20-alpine3.18
-...
-USER node
-CMD [ "node", "src/index.js" ]
-```
+## 3. Privilege management
 
-If you're running your container in Kubernetes and relying on a non-root user, you can safely [**drop all capabilities**](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-capabilities-for-a-container) for that container:
-```yaml
-securityContext:
-  capabilities:
-    drop: [ ALL ]
-```
+[**Principle of least privilege**](https://en.wikipedia.org/wiki/Principle_of_least_privilege) applies extra hard to a process that drives a web browser:
 
-You can take additional steps by setting the [**appropriate seccomp profile**](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-seccomp-profile-for-a-container) for the Node.js container:
-```yaml
-securityContext:
-  seccompProfile:
-    type: Localhost
-    ## Taken from https://github.com/microsoft/playwright/tree/main/utils/docker
-    localhostProfile: secutils-web-scraper-seccomp-profile.json
-```
+- **Run as a non-root user**. Both `node` and `chromium` should run unprivileged.
 
-These measures ensure that your browser runs with the least privileges necessary, reducing potential security risks.
+  ```dockerfile
+  FROM node:22-alpine
+  # ...
+  USER node
+  CMD [ "node", "src/index.js" ]
+  ```
 
-## Browser sandbox
+- In Kubernetes, **drop all capabilities** for the scraper container:
 
-If you've followed the recommendation from the previous section and are running your browser process as a non-root user, there's no reason not to enable a [**sandbox for your browser**](https://chromium.googlesource.com/chromium/src/+/lkgr/docs/linux/sandboxing.md#linux-sandboxing). For example, if you're using Playwright with Chromium, you can enable the sandbox like this:
+  ```yaml
+  securityContext:
+    capabilities:
+      drop: [ ALL ]
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+  ```
+
+- Apply a **seccomp profile** that allows only the syscalls the browser actually needs. The Playwright maintainers ship a known-good profile that is a great starting point:
+
+  ```yaml
+  securityContext:
+    seccompProfile:
+      type: Localhost
+      # Based on https://github.com/microsoft/playwright/tree/main/utils/docker
+      localhostProfile: retrack-web-scraper-seccomp-profile.json
+  ```
+
+## 4. Browser sandbox
+
+Once you're running as non-root, **enable the Chromium sandbox**. People disable it because the error messages are confusing; the price of doing so is enormous. From [**no-sandbox.io**](https://no-sandbox.io/): with the sandbox off, a single browser bug becomes a full-process compromise.
 
 ```javascript
 import { chromium } from 'playwright';
 
-const browserToRun = await chromium.launch({
+const browser = await chromium.launch({
   chromiumSandbox: true,
 });
 ```
 
-Enabling the sandbox adds an extra layer of security to your browser operations, visit **[no-sandbox.io](https://no-sandbox.io/)** to learn about the potential risks of disabling the Chromium/Chrome sandbox.
+Camoufox (Secutils.dev's stealth engine for sites that fingerprint Chromium) takes the same option. Don't ship a scraper without one of them on.
 
-## Network policies
+## 5. Network policies
 
-Even if your input validation code appears reliable today and you have a solid test coverage, bugs can occur at any time. If you have the opportunity to implement multiple layers of defense, make use of as many layers as your financial and resource constraints allow. Implementing proper network policies for the container running the browser based on user-provided URLs is one of such layers. At the very least, you should safeguard your internal infrastructure by allowing access only to globally reachable addresses while excluding local host resources and internal network resources. For example, in the case of IPv4, you can exclude private IP ranges like `10.0.0.0/8`, `172.16.0.0/12`, and `192.168.0.0/16`.
-
-In Kubernetes, you can achieve this using [**`NetworkPolicy`**](https://kubernetes.io/docs/concepts/services-networking/network-policies/). Here's an example of how to set up a simple policy to forbid access to non-global IP addresses:
+Even with watertight input validation, software has bugs. Defence in depth means assuming the validator will eventually slip and putting a second control at the network layer. Kubernetes [**`NetworkPolicy`**](https://kubernetes.io/docs/concepts/services-networking/network-policies/) gives you a clean place to refuse egress to private IP ranges:
 
 ```yaml
 kind: NetworkPolicy
 apiVersion: networking.k8s.io/v1
 metadata:
-  name: secutils-web-scraper-network-policy
+  name: retrack-web-scraper-network-policy
   namespace: secutils
 spec:
   policyTypes: [ Egress ]
   podSelector:
     matchLabels:
-      app: secutils-web-scraper
+      app: retrack-web-scraper
   egress:
   - to:
     - ipBlock:
-        # Allow all IPs.
         cidr: 0.0.0.0/0
         except:
-          # Except for the private IP ranges.
           - 10.0.0.0/8
-          - 172.16.0.0/20
+          - 172.16.0.0/12
           - 192.168.0.0/16
+          - 169.254.0.0/16  # link-local + cloud metadata
 ```
 
-## Monitoring
+Add explicit egress rules for the Retrack API and any caches/CDNs the scraper should reach in the cluster. Everything else (database, secrets manager, internal admin services) should be unreachable.
 
-So, you've implemented robust input validation, ensured container security, isolated resource-heavy workloads, and restricted network access with network policies. Is that enough for peace of mind? Well, it might be, but then again, it might not. Threat actors and their tactics evolve daily, and what appears secure today might not be tomorrow. In our imperfect world, bugs, misconfigurations, and other errors happen regularly. Stay vigilant, keep an eye out, and maintain constant monitoring of your deployments.
+## 6. Monitoring
 
-Fortunately, there are [**numerous tools**](https://secutils.dev/docs/blog/usage-analytics-and-monitoring#monitoring) available for monitoring and alerting, ranging from free to paid, simple to sophisticated, self-hosted to fully managed. There's no excuse not to utilize them. Monitor resource usage and set alerts for unexpected spikes, watch for brute-force and DDoS attempts, and pay attention to unexpected errors and service crashes. If your service or product is publicly accessible, I guarantee, monitoring data will reveal a lot of unexpected stuff about what's happening while you're catching some sleep 🙂
+A scraper that's been running quietly for six months is the one you should distrust. Threats evolve, dependencies change, configurations drift. The mitigations above only stay effective if you're watching:
+
+- **Resource utilisation** with alerts on unexpected spikes (memory, CPU, network egress, container restarts).
+- **Brute-force / DDoS** detection on the Retrack and API endpoints.
+- **Unexpected errors** and **service crashes**, especially anything browser-internal that suggests a sandbox escape attempt.
+
+Secutils.dev uses the self-hosted Elastic Stack covered in [**"Privacy-friendly usage analytics and monitoring"**](/blog/usage-analytics-and-monitoring), but the same shape (logs + metrics + alerts) works with any stack: Datadog, Grafana + Loki + Prometheus, or even plain `journalctl` + an alerting cron.
+
+## Frequently asked questions
+
+### Is the scraper open-source?
+
+Yes. The whole engine is the [**Retrack**](https://github.com/secutils-dev/retrack) project, included in the Secutils.dev mono-repo as the `components/retrack` git submodule.
+
+### Why two layers of IP validation (Rust + NetworkPolicy)?
+
+Because they fail differently. The Rust validator catches obviously bad URLs cheaply, before any work is dispatched. The `NetworkPolicy` catches whatever the validator missed (bugs, future regressions, DNS rebinding, IPv6 corner cases). Together they make a much narrower attack surface than either alone.
+
+### What about cloud metadata endpoints (`169.254.169.254`, `100.100.100.200`)?
+
+Both layers reject link-local addresses, including the major cloud metadata IPs. The `NetworkPolicy` example above explicitly excludes `169.254.0.0/16`.
+
+### Can I run user-supplied JavaScript safely in this model?
+
+Yes, that is exactly what the Page tracker [**extractor scripts**](https://secutils.dev/docs/guides/web_scraping/page) do. They run inside the page context (so they're constrained by the same-origin policy and the Chromium sandbox), with strict execution-time and memory limits enforced by the embedded Deno runtime on the Secutils.dev side. See [**"Building a Rust application with embedded JavaScript extensions"**](/blog/rust-application-with-js-extensions) for the runtime details.
 
 That wraps up today's post, thanks for taking the time to read it!
 

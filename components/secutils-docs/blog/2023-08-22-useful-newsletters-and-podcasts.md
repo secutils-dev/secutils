@@ -1,10 +1,11 @@
 ---
 title: "Useful newsletters and podcasts"
-description: "Useful newsletters and podcasts: JavaScript and Rust newsletter, hard skills, soft skills, early-stage entrepreneurship, and financial literacy."
+description: "A short curated list of newsletters and podcasts the creator of Secutils.dev actually reads: JavaScript Weekly, This Week in Rust, Software Lead Weekly, Indie Hackers, and YC."
 slug: useful-newsletters-and-podcasts
 authors: azasypkin
 image: https://secutils.dev/docs/img/blog/2023-08-22_useful_newsletters_and_podcasts.png
 tags: [thoughts, overview]
+keywords: [javascript weekly, this week in rust, software lead weekly, indie hackers podcast, y combinator youtube, the idea farm, developer newsletters]
 ---
 Hello!
 

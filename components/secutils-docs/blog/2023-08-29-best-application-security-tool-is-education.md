@@ -1,10 +1,11 @@
 ---
 title: "The best application security tool is education"
-description: "The best application security tool is education: internal security trainings, hackathons, SAST, DAST, and more."
+description: "Why investing in mandatory, recurring security training for engineers beats spending the same budget on Veracode, Snyk, or any other security tool."
 slug: best-application-security-tool-is-education
 authors: azasypkin
 image: https://secutils.dev/docs/img/blog/2023-08-29_best_application_security_tool_is_education.png
 tags: [thoughts, application-security]
+keywords: [application security training, secure coding education, mandatory security training, sast, dast, security mindset, secutils.dev]
 ---
 Hello!
 
@@ -28,7 +29,7 @@ Historically, security was often an afterthought for the majority of software en
 
 If you really care about security, make software security trainings **mandatory** and **recurring**, just like other compulsory training sessions related to topics like equal treatment and work ethic, which are common today. All these training sessions are important and can literally impact people's lives. Also, actively ask for a feedback and continually update the training content. Admittedly, it's easier said than done, but...
 
-When you onboard a new engineer, consider sending them something more meaningful than just another useless branded mug – perhaps a book on application security or a prepaid voucher for a security training course. This gesture will send a clear message from day one that security is an important concern for your company, not merely a nice-to-have. And I **beg** you, if you offer security training or host internal security-focused hackathons, avoid making them optional or scheduling them after working hours. Otherwise, they won't be taken as seriously – I know I wouldn't.
+When you onboard a new engineer, consider sending them something more meaningful than just another useless branded mug, perhaps a book on application security or a prepaid voucher for a security training course. This gesture will send a clear message from day one that security is an important concern for your company, not merely a nice-to-have. And I **beg** you, if you offer security training or host internal security-focused hackathons, avoid making them optional or scheduling them after working hours. Otherwise, they won't be taken as seriously, I know I wouldn't.
 
 That wraps up today's post, thanks for taking the time to read it!
 

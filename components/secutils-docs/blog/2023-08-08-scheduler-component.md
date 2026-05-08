@@ -1,75 +1,95 @@
 ---
 title: Building a scheduler for a Rust application
-description: "Building a scheduler for a Rust application: tokio, cron jobs, scheduler tests, job retries, persistent storage, SQLite."
+description: "How Secutils.dev built an in-process Rust scheduler with Tokio, the tokio-cron-scheduler crate, and persistent job storage. Plus how that scheduler eventually evolved into the standalone Retrack project that powers Page and API trackers today."
 slug: scheduler-component
 authors: azasypkin
 image: https://secutils.dev/docs/img/blog/2023-08-08_scheduler_component_job_create.png
 tags: [thoughts, overview, technology]
+keywords: [rust scheduler, tokio cron scheduler, in-process job scheduler, persistent job storage, retrack scheduler, page tracker scheduling, secutils.dev, postgresql jobs]
 ---
+
 Hello!
 
-As you might have learned from the [**"A Plan for the Q3 2023 Iteration"**](https://secutils.dev/docs/blog/q3-2023-iteration) post, my focus for this iteration is on adding support for automatic scheduled resource checks for the [**"Web Scraping → Page trackers"**](https://secutils.dev/docs/guides/web_scraping/page) utility in [**Secutils.dev**](https://secutils.dev). This work is already in progress, and in this post, I'd like to share more details about how I'm designing the scheduler for Secutils.dev. If you're building a scheduler for your application, hopefully, you can learn a useful thing or two.
+As you might have learned from the [**Q3 2023 iteration plan**](/blog/q3-2023-iteration), one focus of that quarter was adding **automatic, scheduled** resource checks to the [**Web Scraping → Page tracker**](https://secutils.dev/docs/guides/web_scraping/page) feature in [**Secutils.dev**](https://secutils.dev). This post covers how I designed the scheduler that powers it. If you are building something similar in Rust, hopefully a few details here are useful.
 
 <!--truncate-->
 
-The scheduler is going to be one of the most important components of Secutils.dev. It will handle regular resource checks, monitor HTTP response headers and content security policy (CSP), manage user notifications, and much more. Therefore, it needs to be performant, reliable, and flexible.
+:::info UPDATE (May 2026)
+The scheduler described here was the right starting point, but its scope and shape have changed significantly since this post:
 
-:::note __UPDATE (Jan 10th, 2024)__
+- **Database**: jobs are now persisted in **PostgreSQL** (Secutils.dev migrated off SQLite in `1.0.0-beta.1`, May 2024). The custom SQLite job store referenced below is no longer used.
+- **Trackers**: scheduling for [**Page trackers**](https://secutils.dev/docs/guides/web_scraping/page) and [**API trackers**](https://secutils.dev/docs/guides/web_scraping/api) is now handled by the standalone [**Retrack**](https://github.com/secutils-dev/retrack) service (a git submodule at `components/retrack`). Retrack also added arbitrary `crontab` expressions, debug runs, screenshots, the Camoufox stealth engine, and tracker execution logs.
+- **Notifications**: still scheduled by an in-process Tokio cron job inside the API server, with the same `tokio-cron-scheduler` crate.
 
-Since the initial version of this post, I've successfully integrated the scheduler into [**Secutils.dev**](https://secutils.dev) components:
-
-- [**Web Scraping → Page trackers**](/docs/guides/web_scraping/page) utility that allows developers to detect and monitor the content or resources of **any** web page
-- **Platform → Notifications** component that handles all notifications sent by Secutils.dev
-
-Everything seems to be functioning smoothly!
-
-Recently, I've added support for scheduler job retries (constant, exponential, and linear backoff strategies). For further details and the UI built for this functionality, check out the [**v1.0.0-alpha.4 release**](https://github.com/secutils-dev/secutils/releases/tag/v1.0.0-alpha.4) in the release notes.
-
-If you're looking for inspiration to build your own scheduler-like component in Rust or want to learn how to write unit tests for it, feel free to explore the source code at [**#secutils-dev/secutils/scheduler**](https://github.com/secutils-dev/secutils/tree/main/src/scheduler).
+So the in-process scheduler still exists for the things tightly coupled to the Secutils.dev API (notifications, periodic housekeeping). Tracker scheduling specifically lives in Retrack now.
 :::
 
-## Performance
+## What the scheduler needs to do
 
-To achieve the best performance with minimal overhead, the scheduler should be tightly integrated with the main Secutils.dev server. This way, it can be reused for any functionality that requires repetitive or scheduled asynchronous work. After considering different options, I figured that implementing the scheduler as a part of the Secutils.dev server itself in Rust would provide the lowest overhead.
+The scheduler underpins a lot of Secutils.dev behaviour. It runs periodic resource and content checks for trackers, dispatches notifications, and handles other recurring background work. So it needs to be performant, flexible, and reliable.
+
+### Performance: keep it in-process
+
+For lowest possible overhead I wanted to avoid an external scheduler (e.g. Kubernetes `CronJob`) and run scheduling inside the Rust API server itself. That has the bonus of making **on-prem self-hosting** trivial: a single binary brings the API and its background work, no extra infrastructure needed. In the Rust ecosystem, the obvious choice for this is [**Tokio**](https://github.com/tokio-rs/tokio), the async runtime everything else builds on.
 
 :::tip NOTE
-Another important reason for integrating the scheduler into the Secutils.dev server instead of, for example, using [**Kubernetes cron jobs**](https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/) is to simplify deployment for those who want to run Secutils.dev on their premises rather than relying on my fully-managed solution.
+If you need true cron-style scheduling at the cluster level (e.g. a job that should run even if the API is down), Kubernetes `CronJob` or a dedicated job runner is still the right answer. For "the API is up so the schedule can run too" workloads, in-process is cheaper and simpler.
 :::
 
-In the Rust ecosystem, the go-to tool for writing something like this is [**Tokio**](https://github.com/tokio-rs/tokio) - an event-driven, non-blocking I/O platform for writing asynchronous applications with zero-cost abstractions, promising bare-metal performance.
+### Flexibility: cron syntax
 
-## Flexibility
+The scheduler has to support both one-shot jobs and repeating jobs with arbitrary cadence. For user-facing trackers, "hourly" or "daily" was a fine starting point, but I wanted a path to giving users full control: `0 0 * * 6` ("midnight every Saturday"), and so on. [**Crontab syntax**](https://en.wikipedia.org/wiki/Cron#Overview) is the obvious vocabulary here: well-understood, dense, and very expressive (custom cron schedules for trackers eventually shipped in `1.0.0-beta.2`).
 
-In addition to performance, the scheduler should also offer flexibility in job scheduling. It needs to support both one-time jobs and repetitive jobs with custom schedules. While many jobs will be scheduled and managed internally, I also want to provide users with the ability to configure schedules for some jobs with minimal effort.
+### Reliability: persistent job state
 
-For example, users should be able to manually set the schedule to periodically fetch resources from the web pages they are tracking. Initially, Secutils.dev might only provide simple options like scheduling jobs once a day or once a week. However, I want to give users more flexibility over time, allowing them to schedule resource checks for specific times, such as "midnight every Saturday" or other custom intervals.
+Secutils.dev pushes new versions regularly, and pods get rescheduled, restarted, or replaced. The scheduler must not lose its job state when the process restarts, jobs should resume from where they were as soon as the API comes back up. That requires persistent storage. Originally that meant SQLite, today it's PostgreSQL.
 
-As you might have guessed, I plan to have support for a [**crontab-like syntax**](https://en.wikipedia.org/wiki/Cron#Overview) in the scheduler. This syntax is powerful and familiar to many users, making it a great choice for providing advanced scheduling options.
+## The crate I picked
 
-## Reliability
+After a few hours of research I landed on [**tokio-cron-scheduler**](https://github.com/mvniekerk/tokio-cron-scheduler):
 
-Making sure the scheduler is reliable is super important for Secutils.dev because I roll out new versions all the time, and inevitably certain server pods or nodes will go offline. The scheduler must not be disrupted by these events and should continue running jobs at their expected schedules with minimal deviation as soon as the Secutils.dev server is up and running again.
+- **Performance**: Tokio under the hood.
+- **Flexibility**: one-shot and repeating jobs, full crontab syntax.
+- **Reliability**: pluggable persistent storage. Out of the box it supports PostgreSQL and NATS; SQLite required implementing the storage trait myself.
+- **Maintainability**: open-source, permissively licensed, simple architecture.
 
-To achieve this, the scheduler should rely on persistent storage for its jobs and state management. [**In the case of Secutils.dev**](https://secutils.dev/docs/blog/technology-stack-overview#database), the persistent storage mechanism is an SQLite database.
+A couple of architecture diagrams from the project repo to give a sense of how it works:
 
----
+![tokio-cron-scheduler: how a job is created](https://secutils.dev/docs/img/blog/2023-08-08_scheduler_component_job_create.png)
 
-Now, for the last and not least requirement, the scheduler should be built without taking ages 😅 After a few hours of research, I stumbled upon a promising candidate for the job (pun intended): the [**Tokio cron scheduler**](https://github.com/mvniekerk/tokio-cron-scheduler)! It's a Rust crate that allows you to schedule tasks on Tokio using a cron-like annotation.
+![tokio-cron-scheduler: job activity over time](https://secutils.dev/docs/img/blog/2023-08-08_scheduler_component_job_activity.png)
 
-* ✅ Performance - It leverages Tokio under the hood.
-* ✅ Flexibility - It supports both one-time and repetitive jobs with `crontab` syntax for the schedule.
-* ✅ Reliability - It can optionally store jobs and state in PostgreSQL or NATS. Although it doesn't support SQLite out of the box, it allows consumers to implement their own storage, which I will do.
-* ✅ Maintainability - Being open-source and having a permissive license, I can easily extend it if needed.
+When this post was originally written I had just finished a custom SQLite storage backend. After the migration to PostgreSQL the custom backend was retired in favour of the upstream Postgres backend.
 
-Here are a few diagrams from the project repository that explain how it works:
+## What lives where today
 
-**Job creation**
-![Job creation](https://secutils.dev/docs/img/blog/2023-08-08_scheduler_component_job_create.png)
+The scheduler story has split in two:
 
-**Job activity**
-![Job activity](https://secutils.dev/docs/img/blog/2023-08-08_scheduler_component_job_activity.png)
+- **In-process scheduler** (still `tokio-cron-scheduler`, still inside the API server): notifications batching, periodic housekeeping, anything that's tightly coupled to the API's data model and lifecycle. Source lives under [`src/scheduler/`](https://github.com/secutils-dev/secutils/tree/main/src/scheduler).
+- **Retrack scheduler** (a separate Rust service): everything related to tracker execution. Retrack also owns the integration with the Web Scraper, the diff/revision storage, retries with backoff, and the execution log. See the [**Retrack repository**](https://github.com/secutils-dev/retrack) for details.
 
-Tokio cron scheduler ticked all the boxes for me! Its architecture is simple, and if I need to tweak it, I can do it without much trouble. Right now, I've already added an SQLite storage provider and started hooking up the scheduler with the [**"Web Scraping → Page trackers"**](https://secutils.dev/docs/guides/web_scraping/page) utility. Everything is going smoothly, and I hope to finish up the scheduled resources checks functionality in the next few weeks.
+Splitting tracker scheduling out into Retrack has paid off in two ways:
+
+1. **Independent scaling.** Tracker workloads are bursty and CPU/network-heavy compared to the API. Running them in their own process means they cannot starve the API of resources.
+2. **Reuse.** Retrack is now used by other projects beyond Secutils.dev, which keeps the scheduling/scraping abstractions honest.
+
+## Frequently asked questions
+
+### Why an in-process scheduler instead of Kubernetes cron jobs?
+
+Easier on-prem self-hosting (a single binary instead of "a binary plus a Kubernetes operator"), lower latency for small jobs, and simpler local development. Kubernetes `CronJob` is still the right answer if you need cluster-scale scheduling that survives the API being down.
+
+### Why migrate the job store from SQLite to PostgreSQL?
+
+Concurrent writers. Once the scheduler started fanning out to many concurrent tracker checks, SQLite's single-writer model became a real bottleneck. PostgreSQL also gives us proper indexing, JSONB columns for job payloads, and standard backup tooling.
+
+### Why use a third-party crate instead of writing it myself?
+
+`tokio-cron-scheduler` covers the boring bits (cron parsing, tick loop, persistence trait, missed-job handling) so I could focus on Secutils.dev-specific behaviour. The crate is small enough that I can patch or fork if needed without inheriting much risk.
+
+### Where does Retrack come in?
+
+Retrack is the standalone open-source project that handles tracker scheduling and headless-browser execution for Secutils.dev. It started life as code inside the Secutils.dev repo, then graduated to its own repository so other projects could reuse it. Repo: [secutils-dev/retrack](https://github.com/secutils-dev/retrack).
 
 That wraps up today's post, thanks for taking the time to read it!
 

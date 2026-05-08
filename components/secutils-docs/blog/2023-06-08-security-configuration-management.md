@@ -1,76 +1,103 @@
 ---
 title: Security configuration management for software engineers
-description: "Security configuration management for software engineers: content security policy, infosec, red team, vulnerability scans, OWASP, security misconfiguration."
+description: "Why security configuration management belongs in the hands of software engineers, with a Content Security Policy (CSP) walk-through covering creation, deployment, and ongoing monitoring in Secutils.dev."
 slug: security-configuration-management
 authors: azasypkin
 image: https://secutils.dev/docs/img/blog/2023-06-08_csp_create.png
 tags: [thoughts, guides, application-security]
+keywords: [security configuration management, content security policy, csp management, owasp security misconfiguration, csp inheritance, subresource integrity, permissions policy, secutils.dev]
 ---
-In my previous posts, I have consistently emphasized the importance of improving efficiency and reducing waste, whether it's time, money, or energy. This concept has become a central theme in several projects I am currently involved in, including Secutils.dev. Today, I want to share my thoughts on security configuration management and how Secutils.dev and similar tools can enhance efficiency in this area by empowering software engineers, who are responsible for designing and implementing security configurations.
+
+In my previous posts I've consistently pushed back on waste, whether it's time, money, or process overhead. Today I want to apply that same lens to security configuration management and argue that the engineering teams who build and run a product are the right people to own a big chunk of it. I'll use [**Content Security Policy (CSP)**](https://secutils.dev/docs/guides/web_security/csp) as the concrete example and show how Secutils.dev supports the full lifecycle: create, deploy, and monitor.
 
 <!--truncate-->
 
-Currently, security configuration management primarily falls under the domain of security experts and dedicated InfoSec teams. But is this approach truly efficient? I believe not, and I think it's an area where our industry can and must do better. While security teams focus on their specialized roles, software engineers actively engage in building, testing, and using the product on a daily basis. They possess the necessary context, technical expertise, and product domain knowledge required for effective security configuration management. By limiting their involvement, the feedback cycle for detecting and addressing security configuration issues becomes significantly delayed. This delay can result in increased costs for organizations and potential harm to their brand and customer trust.
+:::info UPDATE (May 2026)
+Two notes on the original post:
 
-It's no surprise that OWASP recently elevated [**"Security Misconfiguration"**](https://owasp.org/Top10/A05_2021-Security_Misconfiguration/) from the 6th to the 5th position in the [**OWASP Top Ten Web Application Security Risks**](https://owasp.org/www-project-top-ten/). The reason is simple: dealing with security configuration for any non-trivial product is very challenging.
+- The "monitor configuration" section ended with a `:::caution` saying that automated CSP monitoring was not yet available. That has since shipped: CSP policies can be **inherited from a raw policy string or fetched from any URL**, and you can [**share a policy publicly**](https://secutils.dev/docs/guides/web_security/csp) for collaboration. Continuous monitoring (alerting on unexpected policy drift) is on the roadmap, with [**Page trackers**](https://secutils.dev/docs/guides/web_scraping/page) and [**API trackers**](https://secutils.dev/docs/guides/web_scraping/api) already usable as a workaround today.
+- The CSP UI now also categorises directives by purpose, flags risky values, and links to MDN explanations.
+:::
 
-To illustrate this point further, let's consider a specific example. Suppose you're working on a web application that accepts user input, and you want to minimize the risk of data injection attacks by implementing a restrictive [**content security policy (CSP)**](https://secutils.dev/docs/guides/web_security/csp). You create a policy that you believe is sufficiently restrictive, test it, and eventually deploy it. Maybe you verify everything is in order once more when it's in production, and then you continue with your engineering tasks.
+## Why this matters
 
-Over time, browsers introduce new APIs while deprecating others. Advancing attack techniques constantly push web standards to evolve. Just take a look at the compatibility table for content-security-policy [on MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP#browser_compatibility) alone. Even security experts may struggle to keep up with the latest developments in this area:
+Today, security configuration management mostly sits with security experts and dedicated InfoSec teams. That's not a bad thing, but it's also not always efficient. The engineering teams who build, ship, and operate the product have the relevant context, the technical depth, and the day-to-day product knowledge. Excluding them from configuration work delays the feedback loop, raises cost, and can erode customer trust when things slip.
 
-![MDN CSP compatibility matrix](https://secutils.dev/docs/img/blog/2023-06-08_mdn_csp.png)
+It's no coincidence that OWASP elevated [**"Security Misconfiguration"**](https://owasp.org/Top10/A05_2021-Security_Misconfiguration/) to the **5th** spot in the [**OWASP Top Ten**](https://owasp.org/www-project-top-ten/). Even a single non-trivial product has a sprawling security configuration surface, and keeping it correct over years of deploys is hard.
 
-The policy you created a year ago may no longer be as restrictive as you intended it to be. There might be new and more appropriate directives available, or certain directives may have been deprecated. So, how do you determine when it's time to update your policy? The answer can vary.
+Take Content Security Policy as the canonical example. You write a policy you believe is restrictive enough, test it, ship it, and move on. Over time, browsers add new APIs, deprecate old ones, and attack techniques evolve. The MDN compatibility matrix alone is a maze:
 
-In large organizations with substantial security budgets and mature security policies, there may be dedicated Red Teams constantly assessing the security posture of web applications against the latest standards and best practices. Alternatively, there may be InfoSec teams equipped with expensive enterprise-grade security configuration management software, running periodic security scans to identify any issues with the configuration. Even if these teams and tools are up-to-date and capable of detecting configuration issues, the process of triaging, assessing impact, and following up with the engineering teams responsible for the configuration can be time-consuming. It can work, but it's often an expensive, lengthy, and somewhat painful process.
+![MDN Content Security Policy directives compatibility matrix](https://secutils.dev/docs/img/blog/2023-06-08_mdn_csp.png)
 
-Smaller organizations that cannot afford dedicated security teams may rely on contracting external vendors to conduct security scans once or twice a year. The results of these scans often yield extensive reports, consisting of tens or hundreds of pages of findings, many of which turn out to be false positives. These reports are then handed off to already overloaded developers, who must perform the initial triage, plan, and implement the necessary changes.
+The policy you wrote a year ago might no longer be as restrictive as you thought. New directives might be available, others might be deprecated. So how do you know when to update it?
 
-For the smallest organizations, startups, and indie projects, even this inefficient process is unaffordable, leaving their customers and users at the greatest risk.
+- **Big orgs** with mature security budgets have Red Teams and enterprise CSPM tooling running periodic scans, then triaging across teams. Effective, but slow and expensive.
+- **Small orgs** outsource periodic security scans to vendors, get back hundreds of pages of mostly-false-positive findings, then dump triage on already-stretched developers.
+- **Indie projects and startups** can't afford either, and often have to skip configuration management entirely.
 
-The time that passes between the occurrence of a security configuration issue and its detection, triage, and remediation is often significant. The process involves multiple teams that pass the issue along until it finally reaches the engineering team, which can be resource-intensive. This notable inefficiency in security configuration management is something I have observed within the industry.
-
-Wouldn't it be more efficient to involve engineering teams, who already possess the required context and knowledge, in security configuration management and monitoring from the very beginning? In other areas such as application performance, we already do this, and it has proven to work quite well. To achieve this, we need tools and processes that are simple, accessible, and approachable for any engineering team. Organizations can still benefit greatly from the existing security processes described earlier, but eliminating unnecessary "middle-men" in certain areas can overall strengthen the organization's security posture.
-
-This is where the security configuration management capabilities of Secutils.dev can be valuable, through three essential steps: create, deploy, and monitor. Let's take a look at how the management of a [**content security policy (CSP) configuration**](https://secutils.dev/docs/guides/web_security/csp) can be handled in Secutils.dev.
+In every case, the gap between "the configuration drifted" and "we noticed and fixed it" is far too long. The fix is to give engineers tools that are simple, accessible, and approachable, so that **CSP, headers, permissions policies, and friends become as routine as performance tuning**.
 
 ## Create configuration
 
-First and foremost, a robust security configuration management system should guide engineers through the process of creating the required configuration, ensuring they have all the necessary information to make informed choices.
+A good security configuration tool should guide engineers through creation, with enough inline context that the right tradeoffs are obvious without digging through specs.
 
-For instance, when a user creates a content security policy configuration, the user interface might provide an explanation of each CSP directive and include links to the latest specification for those who want to delve deeper.
+Secutils.dev's [**CSP editor**](https://secutils.dev/docs/guides/web_security/csp) groups directives by purpose, explains each one, flags potentially risky values (e.g. `'unsafe-inline'`, broad wildcards), and links to MDN for the latest definitions. Reasonable defaults are pre-filled so a brand-new policy is a sensible starting point, not a blank canvas.
 
-![Secutils.dev CSP editor](https://secutils.dev/docs/img/blog/2023-06-08_csp_create.png)
+![Secutils.dev CSP editor showing categorised directives and inline guidance](https://secutils.dev/docs/img/blog/2023-06-08_csp_create.png)
+
+You can also **import** a policy you already have:
+
+- Paste a raw `Content-Security-Policy` header value to parse and edit it.
+- Provide an HTTPS URL and Secutils.dev fetches the live `Content-Security-Policy` header from that page, then opens it in the editor.
+
+Both flows are useful when you're auditing a third-party site or migrating an existing app onto a managed CSP workflow.
 
 ## Deploy configuration
 
-Once the security configuration is created, the system should assist engineers in correctly deploying the configuration to the appropriate locations.
+After creation, the system should help engineers ship the configuration correctly. Secutils.dev serialises the policy into a format ready for either the `Content-Security-Policy` HTTP header or the HTML `<meta>` tag, and explains how to wire up violation reports.
 
-In the case of content security policies, the system can automatically serialize the created policy into a format that is compatible with either the `Content-Security-Policy` HTTP header or the HTML `meta` tag, and explain how to report policy violations.
+![Secutils.dev serialising a CSP into a header- or meta-ready string](https://secutils.dev/docs/img/blog/2023-06-08_csp_deploy.png)
 
-![Secutils.dev CSP serialization](https://secutils.dev/docs/img/blog/2023-06-08_csp_deploy.png)
+Violation reports can be collected with the [**Webhook responder**](https://secutils.dev/docs/guides/webhooks) feature: configure a responder at the URL referenced by `report-uri` (or `report-to` via Reporting API), point your CSP at it, and inspect every report directly in the workspace, without standing up your own ingestion endpoint.
 
 ## Monitor configuration
 
-Last but certainly not least, a security configuration management system should assist engineers in ensuring that the configuration *continues* to function as intended throughout its entire lifespan.
+The third leg is making sure the configuration **continues** to work as intended over time, alerting engineers when nonces are misconfigured, when a directive is deprecated, or when a deployment unexpectedly weakens the policy.
 
-When it comes to the content security policy configuration, the system can notify engineers about common issues such as misconfigured CSP nonces, upcoming deprecations of directives, or unexpected policy changes that may occur during deployment.
-
-:::caution NOTE
-
-This functionality is not yet available in Secutils.dev. Please refer to [**#secutils/15**](https://github.com/secutils-dev/secutils/issues/15) for more information.
-
-:::
+You can already approximate this today with [**Page trackers**](https://secutils.dev/docs/guides/web_scraping/page) or [**API trackers**](https://secutils.dev/docs/guides/web_scraping/api): point a tracker at the URL serving your `Content-Security-Policy` header, store the value, and you'll get an email diff every time it changes. Native CSP-aware monitoring (categorised alerts, "your nonce just stopped rotating" detection, and similar) is the next planned step.
 
 <div class="text--center">
-    <img src="https://secutils.dev/docs/img/blog/2023-06-08_csp_monitor.png" alt="Secutils.dev CSP monitoring" />
+    <img src="https://secutils.dev/docs/img/blog/2023-06-08_csp_monitor.png" alt="Mockup: continuous CSP monitoring with categorised alerts" />
 </div>
 
-## Conclusion
+## Beyond CSP
 
-The content security policy configuration used as an example here is just one of many security configurations that modern products need to consider. Alongside content security policies, there are [**same-origin policies**](https://developer.mozilla.org/en-US/docs/Web/Security/Same-origin_policy), [**subresource integrity**](https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity) rules, [**web permissions policies**](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy), and more. These sophisticated configurations and policies exist for a reason: the cybersecurity landscape is constantly evolving. Threat actors target organizations of all sizes, and their strategies and tools adapt and evolve every single day.
+CSP is just one of many configurations modern web apps need to keep correct. The same lifecycle (create, deploy, monitor) applies to:
 
-That's why I think it's super important to democratize security configuration management even more and give engineers accessible tools to stay ahead in this ever-changing environment.
+- [**Same-origin and CORS policies**](https://developer.mozilla.org/en-US/docs/Web/Security/Same-origin_policy)
+- [**Subresource Integrity (SRI)**](https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity)
+- [**Permissions-Policy**](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy)
+- HSTS, COEP, COOP, CORP, Referrer-Policy, Trusted Types, and the rest of the modern web security alphabet soup.
+
+These exist because the cybersecurity landscape doesn't sit still. The threat model evolves, your configurations should too. Democratising configuration management, by giving engineers tools that fit naturally into their daily workflow, is one of the highest-leverage things you can do for a product's long-term security posture.
+
+## Frequently asked questions
+
+### Should engineers replace the security team?
+
+No. The point is collaboration, not replacement. Security teams set policy, define standards, and own incident response. Engineers own day-to-day implementation and operations of those policies. Tools like Secutils.dev shrink the gap between the two.
+
+### Can I import an existing CSP into Secutils.dev?
+
+Yes. Either paste the raw policy string or provide a URL and Secutils.dev will fetch the live `Content-Security-Policy` header from that page. See the [**CSP guide**](https://secutils.dev/docs/guides/web_security/csp).
+
+### How do I collect CSP violation reports?
+
+Configure a [**Webhook responder**](https://secutils.dev/docs/guides/webhooks), point your `report-uri` (or `report-to` via the Reporting API) at the responder URL, and the reports will appear in the responder's request log. No infrastructure to maintain on your side.
+
+### How do I detect when my deployed CSP changes unexpectedly?
+
+Today: a [**Page tracker**](https://secutils.dev/docs/guides/web_scraping/page) or an [**API tracker**](https://secutils.dev/docs/guides/web_scraping/api) pointed at the URL serving the header, with email notifications enabled. Native CSP-aware monitoring is on the roadmap.
 
 That wraps up today's post, thanks for taking the time to read it!
 

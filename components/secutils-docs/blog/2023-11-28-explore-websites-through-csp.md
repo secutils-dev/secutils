@@ -1,18 +1,25 @@
 ---
 title: "Explore web applications through their content security policy (CSP)"
-description: "Explore web applications through their content security policy (CSP): import and parse CSP of google.com, bing.com, duckduckgo.com, and ChatGPT. Content Security Policy best practices."
+description: "Use Secutils.dev to import and inspect Content Security Policies from real-world apps: google.com, bing.com, duckduckgo.com, and ChatGPT. A practical look at CSP best practices, report-only mode, violation reporting, and the cost of unsafe directives."
 slug: explore-websites-through-csp
 authors: azasypkin
 image: /img/blog/2023-11-28_import_policy_chatgpt_policy.png
 tags: [thoughts, overview, technology]
+keywords: [content security policy examples, csp google, csp bing, csp duckduckgo, csp chatgpt, csp report-only, csp violation reporting, secutils.dev csp import]
 ---
 Hello!
 
-I've finally wrapped up the feature development and fixes planned for the [**"Q4 2023 – Oct-Dec" milestone**](https://github.com/orgs/secutils-dev/projects/1/views/1) of [**Secutils.dev**](https://secutils.dev), a month earlier than expected! It feels good to be getting better at estimating my own work 🙂 I still need to update documentation and create a few demo videos for the new functionality, but that should be the easy part. Hopefully, I can release a new version in a week or so.
-
-Like anything we invest our time and energy in, I want to raise awareness about the work I've done, gauge interest, and hopefully receive constructive feedback. I'm not a fan of blunt self-promotion, so I'm going to try something different - demonstrating new features in action. Sometimes I'll show their business value, and other times it'll just be for fun and entertainment. In this post, I'll demonstrate how to use the new [**“Import content security policy”**](https://github.com/secutils-dev/secutils/issues/16) feature to learn a bit more about the websites you use every day. Let's dive in!
+I've finally wrapped up the feature development and fixes planned for the [**"Q4 2023 - Oct-Dec" milestone**](https://github.com/orgs/secutils-dev/projects/1/views/1) of [**Secutils.dev**](https://secutils.dev), a month earlier than expected. To make the changes more approachable than a wall of release notes, I want to demonstrate one of them in action: the new [**"Import content security policy"**](https://github.com/secutils-dev/secutils/issues/16) feature, by using it to learn a bit about the CSPs of websites you probably already use every day.
 
 <!--truncate-->
+
+:::info UPDATE (May 2026)
+A few notes that don't change the substance of the post:
+
+- The CSP screenshots below are **point-in-time snapshots from late 2023** and should be treated as such. Google, Bing, DuckDuckGo, and ChatGPT have all updated their headers since. Run the same import yourself today to see what they're actually serving now.
+- The Secutils.dev CSP utility has gained support for **inheriting from an existing policy** (paste a raw policy string or fetch from a URL) and for **publicly sharing** a policy via a unique link, both of which make the workflow below faster.
+- The `Cloudflare WAF` issue with ChatGPT in the bonus section is still common when fetching policies for sites behind a WAF, the "Serialized policy" tab is still the workaround.
+:::
 
 Alright, let's explore a few popular websites and uncover any new insights from the CSP they employ. To import the policy, head to [**Web Security → CSP**](https://secutils.dev/ws/web_security__csp) and click the `Import policy` button. Within the import modal, enter an arbitrary name, the webpage URL, and select the source from which to import the policy: `HTTP header (enforcing)`, `HTTP header (report only)`, or `HTML meta tag`.
 
@@ -32,7 +39,7 @@ Interestingly, CSP violations are directed to `https://csp.withgoogle.com/csp/gw
 
 ## Bing
 
-Alright, let's take a look at Google's competitor - [**bing.com**](https://bing.com). And here's the first surprise - Bing doesn't utilize CSP at all! Who would've thought?
+Alright, let's take a look at Google's competitor, [**bing.com**](https://bing.com). And here's the first surprise - Bing doesn't utilize CSP at all! Who would've thought?
 
 ![bing.com content security policy](/img/blog/2023-11-28_import_policy_bing.png)
 
@@ -40,7 +47,7 @@ I can understand why certain websites resort to using unsafe CSP directive value
 
 ## DuckDuckGo
 
-Okay, let's explore something more exotic - [**duckduckgo.com**](https://duckduckgo.com). And would you look at that!
+Okay, let's explore something more exotic, [**duckduckgo.com**](https://duckduckgo.com). And would you look at that!
 
 ![duckduckgo.com content security policy](/img/blog/2023-11-28_import_policy_duckduckgo.png)
 
@@ -56,7 +63,7 @@ Of course, how can a blog post these days avoid mentioning AI? Let's peek at the
 
 ![ChatGPT Cloudflare WAF](/img/blog/2023-11-28_import_policy_chatgpt.png)
 
-It's something I might address in the future. For now, let me turn this setback into an opportunity to demonstrate another method of importing content security policy to [**Secutils.dev**](https://secutils.dev) - via serialized policy text. This process is a tad more complex as it involves manually capturing the policy using the browser's developer tools and then pasting it into the `Serialized policy` tab within the import dialog. Here's the CSP manually imported from ChatGPT:
+It's something I might address in the future. For now, let me turn this setback into an opportunity to demonstrate another method of importing content security policy to [**Secutils.dev**](https://secutils.dev), via serialized policy text. This process is a tad more complex as it involves manually capturing the policy using the browser's developer tools and then pasting it into the `Serialized policy` tab within the import dialog. Here's the CSP manually imported from ChatGPT:
 
 ![ChatGPT content security policy](/img/blog/2023-11-28_import_policy_chatgpt_policy.png)
 
@@ -67,6 +74,24 @@ I also noticed that OpenAI collects CSP violation reports using the [**Datadog C
 ![ChatGPT content security policy reporting](/img/blog/2023-11-28_import_policy_chatgpt_reporting.png)
 
 Ultimately, whether you're curious about how an application operates or conducting initial reconnaissance, overlooking CSP would be a mistake. Sometimes, it's like a treasure trove, revealing the inner workings and structure of an application.
+
+## Frequently asked questions
+
+### How do I import a CSP from a URL in Secutils.dev?
+
+Go to [**Web Security → CSP**](https://secutils.dev/ws/web_security__csp), click **Import policy**, pick a name and the URL, and choose the source: `HTTP header (enforcing)`, `HTTP header (report only)`, or `HTML meta tag`. The full guide is [**here**](https://secutils.dev/docs/guides/web_security/csp).
+
+### What if the target site is behind a WAF (e.g. Cloudflare)?
+
+Use the **Serialized policy** tab in the import dialog. Capture the `Content-Security-Policy` (or `Content-Security-Policy-Report-Only`) header value yourself with browser dev tools and paste it in.
+
+### Why do some sites use `Content-Security-Policy-Report-Only`?
+
+Report-only mode reports violations without blocking the resource. It's a common choice for very high-traffic sites where the cost of accidentally breaking a feature outweighs the marginal protection of strict enforcement, as long as someone is actually triaging the violation reports.
+
+### How can I monitor a deployed CSP for unexpected changes?
+
+Today: a [**Page tracker**](https://secutils.dev/docs/guides/web_scraping/page) or an [**API tracker**](https://secutils.dev/docs/guides/web_scraping/api) pointed at the URL serving the header, with email notifications enabled. Native CSP-aware monitoring is on the roadmap (see [**"Security configuration management for software engineers"**](/blog/security-configuration-management)).
 
 That wraps up today's post, thanks for taking the time to read it!
 
