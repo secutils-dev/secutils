@@ -6,8 +6,8 @@
     ]
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.4.1",
-    "@commitlint/config-conventional": "^20.4.1",
+    "@commitlint/cli": "^21.0.0",
+    "@commitlint/config-conventional": "^21.0.0",
     "@types/html-minifier-terser": "^7.0.2",
     "html-minifier-terser": "^7.2.0",
     "husky": "^9.1.7"
