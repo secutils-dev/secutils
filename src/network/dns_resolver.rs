@@ -1,7 +1,7 @@
 use futures::future::BoxFuture;
 use hickory_resolver::{
     TokioResolver,
-    config::{ResolverConfig, ResolverOpts},
+    config::{GOOGLE, ResolverConfig, ResolverOpts},
     lookup_ip::LookupIp,
     net::NetError,
 };
@@ -21,7 +21,7 @@ impl TokioDnsResolver {
     pub fn create() -> anyhow::Result<Self> {
         Ok(Self {
             inner: TokioResolver::builder_with_config(
-                ResolverConfig::default(),
+                ResolverConfig::udp_and_tcp(&GOOGLE),
                 Default::default(),
             )
             .with_options(ResolverOpts::default())
