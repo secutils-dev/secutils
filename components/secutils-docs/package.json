@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0-beta.2",
   "engines": {
-    "node": "22.x"
+    "node": "24.x"
   },
   "browserslist": {
     "production": [
