@@ -29,7 +29,6 @@ Current mapping:
 | `mock-saml-idp.html`       | `/elastic/saml/idp-login` | Mock SAML IdP       |
 | `certificate-decoder.html` | `/pem`                    | Certificate Decoder |
 | `markdown-to-html.html`    | `/md-to-html`             | Markdown → HTML     |
-| `calc.html`                | `/calc`                   | Numbr Calculator    |
 | `echo.html`                | `/echo`                   | HTTP Echo Response  |
 
 When **creating a new tool**, **deleting a tool**, or **changing a tool's alias**:
@@ -116,7 +115,7 @@ Rules and caveats:
 ## URL state encoding (`encodeState` / `decodeState`)
 
 Tools that need to remember their state across page reloads or build shareable URLs
-(`calc.html`, `jwt-debugger.html`, `certificate-decoder.html`, `saml-decoder.html`,
+(`jwt-debugger.html`, `certificate-decoder.html`, `saml-decoder.html`,
 `echo.html`, …) must use the same compression scheme. This keeps URLs short, the calling
 convention uniform, and gives any future responder script a known wire format to inflate.
 
@@ -125,7 +124,7 @@ convention uniform, and gives any future responder script a known wire format to
 **Default: the URL fragment (`#<encoded>`).**
 
 - The fragment is never sent to the server, so it's safe for sensitive content (tokens,
-  PEMs, SAML payloads, calculator history). It also stays out of server / proxy logs.
+  PEMs, SAML payloads). It also stays out of server / proxy logs.
 - The same encoded value powers both live debounced state and the Share button - there
   is no separate share format.
 - Live edits use `history.replaceState(null, '', '#' + encoded)`; the Share button
@@ -296,9 +295,8 @@ compact on mobile:
 Tools without a published `skill.md` (and no plan to publish one soon) should
 **leave the markup off**. A visible button that 404s is a worse UX than no
 button at all. Today this means [`dev/tools/index.html`](index.html) (a tool
-list, not a tool) skips it. As you write new `skill.md` responders for `calc`,
-`jwt`, `pem`, etc., add the markup to the corresponding HTML at the same
-time.
+list, not a tool) skips it. As you write new `skill.md` responders for `jwt`,
+`pem`, etc., add the markup to the corresponding HTML at the same time.
 
 ## Brand Colors (from Elastic EUI theme-borealis)
 
