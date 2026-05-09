@@ -26,7 +26,7 @@ const config = {
   organizationName: 'secutils-dev',
   projectName: 'secutils-docs',
 
-  markdown: { mermaid: true },
+  markdown: { mermaid: true, hooks: { onBrokenMarkdownLinks: 'throw' } },
   themes: ['@docusaurus/theme-mermaid'],
   plugins: [
     'docusaurus-plugin-sass',
@@ -39,6 +39,13 @@ const config = {
         // see nothing useful. Put the full concatenated docs at `llms.txt` and keep the compact TOC as `llms-index.txt`.
         llmsTxtFilename: 'llms-index.txt',
         llmsFullTxtFilename: 'llms.txt',
+        // Emit a per-page `.md` companion next to every doc so the `.md`-suffixed links in `llms-index.txt`
+        // (default behaviour since v0.4.0) actually resolve. Together with `addMdExtension: true` (v0.4.0 default)
+        // this matches the llmstxt.org spec: each TOC link points at a clean markdown rendering of the page.
+        generateMarkdownFiles: true,
+        // The docs preset uses `routeBasePath: '/'`, so HTML routes are served at `/docs/guides/...` (no `/docs/docs/`).
+        // Strip the `docsDir` segment from the generated `.md` paths so they line up with those routes.
+        preserveDirectoryStructure: false,
         rootContent:
           'Compact index with links to each guide on the site. For all documentation in one file, use `llms.txt` in this directory.',
         fullRootContent:
@@ -55,7 +62,6 @@ const config = {
   scripts: [{ src: '/js/script.js', async: true, defer: true, 'data-domain': 'secutils.dev' }],
 
   onBrokenLinks: 'throw',
-  onBrokenMarkdownLinks: 'throw',
 
   // Even if you don't use internalization, you can use this field to set useful
   // metadata like html lang. For example, if your site is Chinese, you may want
