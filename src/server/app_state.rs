@@ -68,7 +68,7 @@ pub mod tests {
             // We should use a real network implementation in tests that rely on `AppState` being
             // extracted from `HttpRequest`, as types should match for the extraction to work.
             Network::new(
-                TokioDnsResolver::create(),
+                TokioDnsResolver::create()?,
                 AsyncSmtpTransport::<Tokio1Executor>::unencrypted_localhost(),
                 ClientBuilder::new(Client::builder().build()?).build(),
             ),

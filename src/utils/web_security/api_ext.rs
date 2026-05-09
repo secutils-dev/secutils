@@ -455,10 +455,7 @@ mod tests {
             },
         },
     };
-    use hickory_resolver::{
-        Name,
-        proto::rr::{RData, Record, rdata::A},
-    };
+    use hickory_resolver::proto::rr::{Name, RData, Record, rdata::A};
     use httpmock::MockServer;
     use insta::assert_debug_snapshot;
     use sqlx::PgPool;

@@ -881,10 +881,7 @@ pub mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn proxy_op_ssrf_with_mock_network() -> anyhow::Result<()> {
         use crate::network::{Network, tests::MockResolver};
-        use hickory_resolver::{
-            Name,
-            proto::rr::{RData, Record, rdata::A},
-        };
+        use hickory_resolver::proto::rr::{Name, RData, Record, rdata::A};
         use lettre::transport::stub::AsyncStubTransport;
         use reqwest_middleware::ClientBuilder;
         use std::net::Ipv4Addr;

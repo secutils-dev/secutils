@@ -346,9 +346,12 @@ mod tests {
         )
     }
 
-    #[ctor]
+    // SAFETY: `ctor` 1.0 requires `unsafe` because the constructor runs before `main`,
+    // before any user-defined synchronization. Initializing the V8 platform here is safe
+    // since the call is thread-safe at the deno_core level and has no side effects beyond
+    // setting up the singleton platform that the test threads rely on.
+    #[ctor(unsafe)]
     fn init_deno_runtime() {
-        // Make sure deno runtime is initialized in the main thread before other tests.
         deno_core::JsRuntime::init_platform(None);
     }
 }

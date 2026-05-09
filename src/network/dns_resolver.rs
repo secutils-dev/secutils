@@ -1,13 +1,14 @@
 use futures::future::BoxFuture;
 use hickory_resolver::{
-    ResolveError, TokioResolver,
+    TokioResolver,
     config::{ResolverConfig, ResolverOpts},
     lookup_ip::LookupIp,
+    net::NetError,
 };
 
 /// Trait describing a facade for a DNS resolver.
 pub trait DnsResolver: Sync + Send + 'static {
-    fn lookup_ip<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<LookupIp, ResolveError>>;
+    fn lookup_ip<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<LookupIp, NetError>>;
 }
 
 /// A wrapper around `TokioResolver` from `hickory-resolver`.
@@ -17,20 +18,20 @@ pub struct TokioDnsResolver {
 }
 
 impl TokioDnsResolver {
-    pub fn create() -> Self {
-        Self {
+    pub fn create() -> anyhow::Result<Self> {
+        Ok(Self {
             inner: TokioResolver::builder_with_config(
                 ResolverConfig::default(),
                 Default::default(),
             )
             .with_options(ResolverOpts::default())
-            .build(),
-        }
+            .build()?,
+        })
     }
 }
 
 impl DnsResolver for TokioDnsResolver {
-    fn lookup_ip<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<LookupIp, ResolveError>> {
+    fn lookup_ip<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<LookupIp, NetError>> {
         Box::pin(self.inner.lookup_ip(name))
     }
 }
@@ -40,30 +41,29 @@ pub mod tests {
     use crate::network::DnsResolver;
     use futures::future::BoxFuture;
     use hickory_resolver::{
-        Name, ResolveError,
         lookup::Lookup,
         lookup_ip::LookupIp,
+        net::NetError,
         proto::{
             op::Query,
-            rr::{Record, RecordType},
+            rr::{Name, Record, RecordType},
         },
     };
-    use std::sync::Arc;
 
     #[derive(Clone)]
     pub struct MockResolver<const N: usize = 0> {
         records: [Record; N],
-        error: Option<ResolveError>,
+        error: Option<NetError>,
     }
 
     impl<const N: usize> DnsResolver for MockResolver<N> {
-        fn lookup_ip<'a>(&'a self, _: &'a str) -> BoxFuture<'a, Result<LookupIp, ResolveError>> {
+        fn lookup_ip<'a>(&'a self, _: &'a str) -> BoxFuture<'a, Result<LookupIp, NetError>> {
             Box::pin(futures::future::ready(if let Some(err) = &self.error {
                 Err(err.clone())
             } else {
                 Ok(LookupIp::from(Lookup::new_with_max_ttl(
                     Query::query(Name::new(), RecordType::A),
-                    Arc::new(self.records.clone()),
+                    self.records.clone(),
                 )))
             }))
         }
@@ -86,7 +86,7 @@ pub mod tests {
             }
         }
 
-        pub fn new_with_error(err: ResolveError) -> MockResolver<0> {
+        pub fn new_with_error(err: NetError) -> MockResolver<0> {
             MockResolver {
                 records: [],
                 error: Some(err),

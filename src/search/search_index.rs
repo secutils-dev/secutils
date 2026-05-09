@@ -252,7 +252,7 @@ impl SearchIndex {
     fn execute_query(&self, query: impl Query) -> anyhow::Result<Vec<SearchItem>> {
         let searcher = self.index_reader.searcher();
 
-        let collector = TopDocs::with_limit(10000);
+        let collector = TopDocs::with_limit(10000).order_by_score();
         let top_docs = searcher.search(&query, &collector)?;
 
         let mut found_docs = Vec::with_capacity(top_docs.len());
