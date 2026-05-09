@@ -8,7 +8,7 @@ import {
   useIsWithinMaxBreakpoint,
 } from '@elastic/eui';
 import type { KeyboardEvent } from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 import type { AsyncData, SearchItem, SerializedSearchItem } from '../../../model';
@@ -59,42 +59,42 @@ export function SiteSearchBar() {
     return () => window.removeEventListener('keydown', onGlobalKeyDown);
   }, []);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const onKeyUpCapture = useCallback(
-    debounce((searchQuery: string) => {
-      if (!searchQuery) {
-        setSearchItems({ status: 'succeeded', data: [] });
-        return;
-      }
+  const onKeyUpCapture = useMemo(
+    () =>
+      debounce((searchQuery: string) => {
+        if (!searchQuery) {
+          setSearchItems({ status: 'succeeded', data: [] });
+          return;
+        }
 
-      apiFetch('/api/search', {
-        method: 'POST',
-        body: JSON.stringify({ query: searchQuery }),
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            throw await ResponseError.fromResponse(res);
-          }
-
-          const searchItems = (await res.json()) as SerializedSearchItem[];
-          setSearchItems({
-            status: 'succeeded',
-            data: searchItems.map((serializedSearchItem) => {
-              const searchItem = deserializeSearchItem(serializedSearchItem);
-              const icon = searchItem.category === 'Utils' ? getUtilIcon(searchItem.meta?.handle ?? '') : undefined;
-              return {
-                label: searchItem.label,
-                icon: icon ? { type: icon } : undefined,
-                meta: [{ text: searchItem.category, type: 'application', highlightSearchString: true }],
-                item: searchItem,
-              };
-            }),
-          });
+        apiFetch('/api/search', {
+          method: 'POST',
+          body: JSON.stringify({ query: searchQuery }),
         })
-        .catch((err: Error) => {
-          setSearchItems({ status: 'failed', error: getErrorMessage(err) });
-        });
-    }),
+          .then(async (res) => {
+            if (!res.ok) {
+              throw await ResponseError.fromResponse(res);
+            }
+
+            const searchItems = (await res.json()) as SerializedSearchItem[];
+            setSearchItems({
+              status: 'succeeded',
+              data: searchItems.map((serializedSearchItem) => {
+                const searchItem = deserializeSearchItem(serializedSearchItem);
+                const icon = searchItem.category === 'Utils' ? getUtilIcon(searchItem.meta?.handle ?? '') : undefined;
+                return {
+                  label: searchItem.label,
+                  icon: icon ? { type: icon } : undefined,
+                  meta: [{ text: searchItem.category, type: 'application', highlightSearchString: true }],
+                  item: searchItem,
+                };
+              }),
+            });
+          })
+          .catch((err: Error) => {
+            setSearchItems({ status: 'failed', error: getErrorMessage(err) });
+          });
+      }),
     [],
   );
 
