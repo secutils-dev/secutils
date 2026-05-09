@@ -1,5 +1,188 @@
 # AGENTS.md
 
+## Dependency upgrades
+
+This repo's dependency surface spans two Cargo workspaces (root + the `components/retrack`
+submodule), four NPM packages (`components/secutils-webui`, `components/secutils-docs`,
+`components/retrack` + `components/retrack/components/retrack-web-scraper`, the e2e harness
+and the workspace-root `package.json`), six Dockerfiles, an Ory Kratos server image, and
+the `playwright-core` / `@playwright/test` / `playwright-python` triple. A naive "bump
+everything in one commit" produces an unreviewable diff and an undebuggable failure mode.
+Always upgrade in **eleven sequential stages**, each individually committable and verifiable.
+
+### Recommended upgrade order
+
+The order is dictated by data flow: the retrack submodule is consumed as a path-dependency
+by the root crate, so anything that touches the retrack Rust API must land before the
+parent re-pins it; Node and `playwright-core` versions must be bumped before the Dockerfile
+rebuilds (otherwise `npm ci` in the runtime stage validates against a stale lock); Kratos
+sits between the auth e2e flows and the webui's `@ory/kratos-client-fetch` and benefits
+from being upgraded as a coupled pair.
+
+1. **Retrack Rust crates** — `components/retrack/Cargo.toml`,
+   `components/retrack/components/retrack-types/Cargo.toml`,
+   `components/retrack/benches/js-runtime-perf/Cargo.toml`. See
+   `components/retrack/AGENTS.md` for the in-submodule recipe (insta snapshots,
+   `.sqlx/` cache, perf harness).
+2. **Retrack `.nvmrc`** — bump the Node major; mirror in every `engines.node` and
+   `@types/node` ^M.x inside the submodule.
+3. **Retrack NPM packages** — submodule root + `retrack-web-scraper`. **Pin the
+   `playwright-core` exact version here** — every other consumer (webui, e2e, the
+   `playwright-python` git ref baked into `Dockerfile.web-scraper-camoufox`) must be moved
+   to the same minor in their respective stages.
+4. **Retrack Docker base images** — `Dockerfile`, `Dockerfile.web-scraper`,
+   `Dockerfile.web-scraper-camoufox`. UPX, Camoufox triple, `playwright-python` git ref.
+5. **Kratos** — bump `oryd/kratos` server image in `dev/docker/docker-compose.yml` **and**
+   `@ory/kratos-client-fetch` in `components/secutils-webui/package.json` together. Read
+   the Ory release notes for any registration/login/recovery flow schema changes; verify
+   end-to-end against `e2e/tests/registration.spec.ts`.
+6. **Root Rust crates** — `Cargo.toml`, `components/secutils-jwt-tools/Cargo.toml`,
+   `benches/js-runtime-perf/Cargo.toml`. **First** update the retrack submodule pointer
+   to the SHA you committed in stages 1–4 (`cd components/retrack && git pull` then
+   `git add components/retrack` from the parent), then `cargo update`.
+   Refresh `.sqlx/` against the dev Postgres.
+7. **Root `.nvmrc`** — bump to the same Node major as stage 2; mirror in `engines.node`
+   and `@types/node` of all four root-level `package.json` files (root, secutils-webui,
+   secutils-docs, e2e). Refresh all four lockfiles.
+8. **`components/secutils-webui` NPM packages** — read the EUI / React / Parcel release
+   notes (EUI majors and Parcel resolver behaviour have repeatedly forced workarounds,
+   see "What to watch for" below). Re-pin `playwright-core` to the same exact version as
+   stage 3.
+9. **`components/secutils-docs` NPM packages** — Docusaurus majors change config schemas
+   (e.g. `siteConfig.markdown.hooks.onBrokenMarkdownLinks` migration in 3.10), and
+   `docusaurus-plugin-llms` defaults change between minors. Verify `llms.txt` /
+   `llms-index.txt` and the per-page `.md` companions resolve, and that the Nginx config
+   serves them with the right `Content-Type`.
+10. **Root Docker base images** — `Dockerfile`, `Dockerfile.docs`, `Dockerfile.webui`. UPX,
+    distroless runtime, `nginx-unprivileged`. Re-pin SHA256 manifest digests with
+    `./dev/scripts/docker-pin-digests.sh`. Rebuild the e2e stack and curl-smoke each
+    service.
+11. **`e2e/` harness** — bump `@playwright/test` to match the `playwright-core` from
+    stages 3 & 8 (within the same minor), refresh ESLint / TypeScript-ESLint / globals.
+    `npx playwright install chromium`. Run **all three test suites**: standalone
+    (`make e2e-standalone-test`), full e2e (`make e2e-test`), docs screenshots
+    (`make docs-screenshots`).
+
+Do **not** reorder. The most common mistake is bumping the root Rust crates (stage 6)
+before the retrack submodule pointer is updated — `cargo update` will then either downgrade
+the workspace, or fail to compile because the retrack code on disk has already been
+upgraded but its public types now mismatch what the parent expects.
+
+### Stage-by-stage verification
+
+Each stage has a hard verification gate before commit. Use the matching `make` target;
+do not skip steps even when the previous stage was green.
+
+| Stage              | Verify                                                                                                                                                                                                         |
+|--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1 (retrack Rust)   | `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && make perf ANALYZE=1 PERF_ITERATIONS=20 PERF_WARMUP=5`                                                                         |
+| 2 (retrack Node)   | `npm install && npm run lint --ws --if-present && npm test --ws --if-present && npm run build --ws --if-present`                                                                                               |
+| 3 (retrack NPM)    | same as stage 2                                                                                                                                                                                                |
+| 4 (retrack Docker) | `make docker-scraper && make docker-scraper-camoufox && make docker-api` (in retrack)                                                                                                                          |
+| 5 (Kratos)         | `make e2e-up BUILD=1 && make e2e-test ARGS="tests/registration.spec.ts"`                                                                                                                                       |
+| 6 (root Rust)      | `cargo +nightly fmt --check && cargo clippy --workspace --all-targets -- -D warnings && cargo sqlx prepare --check && cargo test`                                                                              |
+| 7 (root Node)      | `npm --prefix components/secutils-webui run build && npm --prefix components/secutils-docs run build` (and lint/test in each)                                                                                  |
+| 8 (webui NPM)      | `npm --prefix components/secutils-webui run lint && npm --prefix components/secutils-webui run test && npm --prefix components/secutils-webui run build && npm --prefix components/secutils-webui run analyze` |
+| 9 (docs NPM)       | `npm --prefix components/secutils-docs run typecheck && npm --prefix components/secutils-docs run build` — then check the build output for `llms.txt`, `llms-index.txt`, and at least one per-page `.md`       |
+| 10 (root Docker)   | `make docker-api && make docker-webui && make docker-docs && make e2e-up BUILD=1` then curl-smoke `/api/status`, `/`, `/docs/`                                                                                 |
+| 11 (e2e)           | `make e2e-standalone-test && make e2e-test && make docs-screenshots` (full suites — partial runs miss DNS / network regressions, see below)                                                                    |
+
+### What to watch for
+
+#### Rust (stages 1 & 6)
+
+- **`deno_core`** bumps invalidate the `js_runtime::tests::can_access_deno_apis` snapshot
+  (same as in retrack) and may pin a transitive `deno_error` patch version that needs
+  matching in the workspace `Cargo.toml` (e.g. 0.7.1 vs 0.7.3).
+- **`sqlx`** macros validate against `.sqlx/`. After any query change or `sqlx` bump:
+  ```bash
+  docker compose -f dev/docker/docker-compose.yml up -d secutils_db
+  cargo sqlx prepare
+  ```
+  CI runs `cargo sqlx prepare --check` and fails when the cache drifts.
+- **`serde_json/arbitrary_precision`** is enabled by `secutils` and propagates via Cargo
+  feature unification to the path-dependent `retrack-types`. `retrack-types`'s snapshots
+  were recorded without the feature, so `cargo test --workspace` from the **root** repo
+  will show snapshot diffs (the values become `serde_json::private::Number` instead of
+  numeric literals). This is a known latent issue; CI runs `cargo test` (not
+  `--workspace`) so it never trips. Do not "fix" it by re-recording the retrack snapshots
+  against the unified feature set — that breaks retrack's own CI.
+
+#### Node / NPM (stages 2, 3, 7, 8, 9, 11)
+
+- **Node 24 removed `--experimental-global-webcrypto`** — `globalThis.crypto` is now
+  always present. Removing the execArgv flag in `worker.ts` is mandatory; **also**
+  `delete (globalThis as { crypto?: unknown }).crypto;` inside the sandboxed user-script
+  worker so user code cannot reach the host's `WebCrypto` API.
+- **ESLint 10** ships `preserve-caught-error` (rethrow with `{ cause: err }`) and
+  `eslint-plugin-import@2.32.0` does not yet support v10 as a peer. The whole project is
+  pinned to **ESLint 9.x** until plugin support catches up. Do not bump `eslint` /
+  `@eslint/js` past `^9` in any leaf `package.json`.
+- **TypeScript 6** deprecates `compilerOptions.baseUrl`. Remove it and migrate any `paths`
+  entries to direct relative imports. The root project is pinned to **TS 5.9.x** because
+  Docusaurus and EUI's TS consumers have not validated v6 yet.
+- **`eslint-plugin-react-hooks` 7.x** rejects `useCallback(debounce(...))` as improper
+  memoization. Use `useMemo(() => debounce(...), [])` instead.
+- **`@peculiar/x509` v2 + Parcel.** v2 transitively pulls `@peculiar/utils` which uses
+  `package.json#exports` subpaths (`./bytes`). Parcel 2.16's default resolver does not
+  honour `exports` subpaths and fails with `Failed to resolve '@peculiar/utils/bytes'`.
+  Two options: (a) keep `@peculiar/x509` pinned to `^1.x`, or (b) explicitly enable
+  Parcel's `exports` resolution via:
+  ```json
+  "@parcel/resolver-default": { "packageExports": true }
+  ```
+  in the leaf `package.json`. The webui takes option (a) for now to avoid the
+  `reflect-metadata` polyfill v2 requires.
+- **`http-proxy-middleware` v4 is ESM-only**, so it cannot be required from the CommonJS
+  `.proxyrc.ts`. Stay on v3 for the Parcel dev-server proxy.
+- **EUI majors** read the entire CHANGELOG. Common patterns: token renames in CSS-in-JS
+  (`euiTheme.colors.*`), new required props on data-grid, default ARIA-label changes that
+  break `getByRole({ name: ... })` selectors in e2e tests.
+- **`playwright-core` and `@playwright/test` must share a minor.** The webui pins
+  `playwright-core` (used at runtime to render preview), retrack pins it for the scraper,
+  and the e2e harness pins `@playwright/test`. They drive the same Chromium and the same
+  CDP protocol — a minor mismatch surfaces as "browser closed unexpectedly". After
+  bumping, run `make e2e-standalone-test` first; the codegen smoke test detects breaking
+  changes to Playwright's `--target` boilerplate before they corrupt the webui's script
+  transformer.
+
+#### Docusaurus (stage 9)
+
+- **Nginx `types {}` in server scope replaces, not merges.** When adding `text/markdown
+  md;` to serve the per-page companions, you must `include /etc/nginx/mime.types;` first
+  in the same `server { … }` block, otherwise `.txt` (and everything else) regresses to
+  `application/octet-stream`. `llms.txt` is `text/plain` per spec; the per-page
+  companions are `text/markdown`.
+
+#### Docker (stages 4 & 10)
+
+- **Re-pin SHA256 digests on every bump** with `./dev/scripts/docker-pin-digests.sh`
+  (root) or `./dev/scripts/docker-pin-digests.sh` inside the retrack submodule. The
+  scripts read `FROM image:tag@sha256:...`, drop the digest, query
+  `docker buildx imagetools inspect`, and rewrite. They always re-pin, even when the
+  tag is unchanged — rolling tags drift between runs.
+- **Disk pressure during the Rust image build is real** — the secutils API image
+  compiles the full workspace from scratch when the BuildKit cache is cold. If the build
+  fails with `No space left on device`, run `make docker-prune` (which prunes both
+  dangling images and BuildKit cache) and retry.
+- See the retrack AGENTS.md for the workspace-layout `npm ci` gotcha and the Camoufox
+  triple — those rules apply identically when bumping the root images that depend on
+  retrack's runtime images.
+
+#### Submodule pointer & commit hygiene
+
+- Stage 6 is the **only** stage that updates the retrack submodule pointer. Always do
+  `git submodule update --remote components/retrack` (or pull manually inside the
+  submodule), then `git add components/retrack` from the parent before running the rest
+  of stage 6's verification. Forgetting to commit the pointer leaves the parent referring
+  to a pre-upgrade SHA and CI re-runs the old code.
+- The repo enforces **conventional commits** via husky `commit-msg`. Use
+  `chore(deps): ...` for dependency-only commits, `chore(docker): ...` for image re-pins
+  and `chore(submodule): ...` for the retrack pointer bump. Commitlint major bumps
+  (e.g. v20 → v21) only change Node minimum; the existing config keeps working.
+- **The performance harness is advisory** (see "Tuning" below). A regression after a
+  `deno_core` / `tokio` / `reqwest` bump is informational; CI never fails on it.
+
 ## End-to-End tests (`e2e/`)
 
 ### Overview
