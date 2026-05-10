@@ -196,27 +196,27 @@ export function Page({
         <EuiPageSection color="plain" paddingSize="m">
           <EuiHorizontalRule size={'half'} margin="m" />
           <EuiText textAlign={'center'} size={'xs'}>
-            <EuiLink target="_blank" href="/about" color={'success'}>
+            <EuiLink target="_blank" href="/about" color={'success'} external={false}>
               About
             </EuiLink>{' '}
             ·{' '}
-            <EuiLink target="_blank" href="/docs/blog" color={'success'}>
+            <EuiLink target="_blank" href="/docs/blog" color={'success'} external={false}>
               Blog
             </EuiLink>{' '}
             ·{' '}
-            <EuiLink target="_blank" href="/docs" color={'success'}>
+            <EuiLink target="_blank" href="/docs" color={'success'} external={false}>
               Docs
             </EuiLink>{' '}
             ·{' '}
-            <EuiLink target="_blank" href="/pricing" color={'success'}>
+            <EuiLink target="_blank" href="/pricing" color={'success'} external={false}>
               Pricing
             </EuiLink>{' '}
             ·{' '}
-            <EuiLink target="_blank" href="/privacy" color={'success'}>
+            <EuiLink target="_blank" href="/privacy" color={'success'} external={false}>
               Privacy
             </EuiLink>{' '}
             ·{' '}
-            <EuiLink target="_blank" href="/terms" color={'success'}>
+            <EuiLink target="_blank" href="/terms" color={'success'} external={false}>
               Terms
             </EuiLink>{' '}
             ·{' '}
