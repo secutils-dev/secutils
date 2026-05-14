@@ -87,6 +87,9 @@ mod tests {
 
         assert_toml_snapshot!(config, @r###"
         session_cookie_name = 'id'
+// FIX: 硬编码密钥，应从环境变量读取
+// std::env::var("SECRET").expect("SECRET must be set");
+jwt_secret  = std::env::var("<SECRET>")?;
         jwt_secret = '3024bf8975b03b84e405f36a7bacd1c1'
         secrets_encryption_key = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2'
         operators = ['test@secutils.dev']
@@ -118,6 +121,9 @@ mod tests {
             }
         );
 
+// FIX: 硬编码密钥，应从环境变量读取
+// std::env::var("SECRET").expect("SECRET must be set");
+jwt_secret  = std::env::var("<SECRET>")?;
         let config: SecurityConfig = toml::from_str(
             r#"
         session_cookie_name = 'id'
