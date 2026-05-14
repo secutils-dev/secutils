@@ -3,9 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JWT Debugger | Secutils.dev</title>
+    <title>JWT Debugger: Decode, Verify, Sign HMAC JWTs | Secutils.dev</title>
+    <meta name="description" content="Free JWT debugger. Decode, verify, and sign HMAC JSON Web Tokens (HS256, HS384, HS512) directly in your browser. State stays in the URL fragment. No signup.">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <link rel="canonical" href="https://{{TOOLS_HOST}}/jwt">
     <meta name="su-tool-path" content="/jwt">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="su-tool-name" content="JWT Debugger">
+    <meta name="su-tool-description" content="Decode, verify, and sign HMAC JSON Web Tokens (HS256, HS384, HS512). Real-time signature validation, shareable URL state, no signup.">
+    <meta name="su-tool-promote" content="true">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Secutils.dev">
+    <meta property="og:title" content="JWT Debugger: Decode, Verify, Sign HMAC JWTs">
+    <meta property="og:description" content="Free JWT debugger. Decode, verify, and sign HMAC JSON Web Tokens (HS256, HS384, HS512) directly in your browser. State stays in the URL fragment.">
+    <meta property="og:url" content="https://{{TOOLS_HOST}}/jwt">
+    <meta property="og:image" content="https://secutils.dev/docs/img/og/og-jwt.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="JWT Debugger on Secutils.dev: decode, verify, sign HMAC JSON Web Tokens.">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="JWT Debugger: Decode, Verify, Sign HMAC JWTs">
+    <meta name="twitter:description" content="Free JWT debugger. Decode, verify, and sign HMAC JSON Web Tokens directly in your browser. No signup.">
+    <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-jwt.png">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"JWT Debugger","url":"https://{{TOOLS_HOST}}/jwt","applicationCategory":"SecurityApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/jwt-debugger.html","description":"Free JWT debugger. Decode, verify, and sign HMAC JSON Web Tokens (HS256, HS384, HS512) directly in your browser. State stays in the URL fragment so tokens never leave your machine."}</script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jose/4.14.4/index.umd.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -34,6 +54,9 @@
     --success-text: #6ee7b7;
     --error-bg: rgba(239,68,68,0.15);
     --error-text: #fca5a5;
+    --radius: 8px;
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --mono: 'Roboto Mono', 'SF Mono', 'Fira Code', Consolas, monospace;
 }
 [data-theme="light"] {
     --bg: #f5f7fa;
@@ -60,243 +83,169 @@
     --error-text: #dc2626;
 }
 *, *::before, *::after { box-sizing: border-box; }
-body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    margin: 0;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    transition: background .3s, color .3s;
-}
+body { font-family: var(--font); background: var(--bg); color: var(--text); margin: 0; min-height: 100vh; display: flex; flex-direction: column; transition: background .3s, color .3s; }
+
 /* Header */
-header {
-    height: 48px;
-    padding: 0 16px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
+header { height: 48px; padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; transition: background .25s, border-color .25s; }
 .header-left { display: flex; align-items: center; gap: 12px; }
 .logo { display: flex; align-items: center; text-decoration: none; }
 .logo-svg .logo-text-fill { fill: var(--text); }
-.logo-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 16px;
-    border-radius: 4px;
-    border: none;
-    background: var(--badge-bg);
-    color: var(--badge-text);
-    font-size: 12px;
-    font-weight: 450;
-    line-height: 16px;
-    white-space: nowrap;
-}
+.logo-badge { display: inline-flex; align-items: center; padding: 4px 16px; border-radius: 4px; border: none; background: var(--badge-bg); color: var(--badge-text); font-size: 12px; font-weight: 450; line-height: 16px; white-space: nowrap; }
 .header-right { display: flex; align-items: center; gap: 8px; }
+.skill-link { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); color: var(--text-muted); font: 12px var(--font); text-decoration: none; transition: all .15s; cursor: pointer; }
+.skill-link:hover { color: var(--text); border-color: var(--text-muted); background: var(--surface-hover); }
+.skill-link svg { width: 14px; height: 14px; fill: none; stroke: currentColor; }
+
 /* Theme toggle */
-.theme-toggle {
-    width: 36px; height: 36px; padding: 0;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 50%; border: 1px solid var(--border);
-    background: var(--surface); color: var(--text-muted);
-    cursor: pointer; transition: all .2s;
-}
+.theme-toggle { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .2s; }
 .theme-toggle:hover { background: var(--surface-hover); color: var(--text); }
 .theme-toggle svg { width: 16px; height: 16px; fill: currentColor; }
 .theme-toggle .icon-sun { display: none; }
 .theme-toggle .icon-moon { display: block; }
 [data-theme="dark"] .theme-toggle .icon-sun { display: block; }
 [data-theme="dark"] .theme-toggle .icon-moon { display: none; }
-/* Token colors */
+
+/* Noscript banner */
+.su-noscript { max-width: 720px; margin: 24px auto; padding: 16px; border: 1px solid var(--border); border-radius: 8px; font: 14px/1.5 var(--font); background: var(--surface); color: var(--text); }
+
+/* Main + grid */
+main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; max-width: 1400px; width: 100%; margin: 0 auto; }
+.grid { display: grid; grid-template-columns: 1fr 12px 1fr; gap: 0; flex: 1; min-height: 0; }
+.panel { display: flex; flex-direction: column; min-height: 0; }
+.panel-bar { display: flex; align-items: center; justify-content: space-between; padding: 0 0 8px; gap: 8px; height: 38px; box-sizing: content-box; flex-shrink: 0; }
+.panel-actions { display: flex; align-items: center; gap: 8px; }
+.panel-label { font-size: 13px; font-weight: 600; color: var(--text); }
+.link-btn { border: none; background: none; font: 12px var(--font); color: var(--text-muted); cursor: pointer; padding: 2px 4px; transition: color .15s; }
+.link-btn:hover { color: var(--text); }
+
+/* Buttons */
+.btn { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
+.btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); font-weight: 600; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+.icon-btn { padding: 4px; border: none; background: none; color: var(--text-muted); cursor: pointer; border-radius: 4px; transition: all .15s; display: inline-flex; align-items: center; justify-content: center; }
+.icon-btn:hover { color: var(--text); background: var(--surface-hover); }
+.icon-btn svg { width: 16px; height: 16px; }
+
+/* Encoded pane */
+.encoded-area { flex: 1; min-height: 400px; padding: 14px; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: var(--radius); font: 0.875rem/1.6 var(--mono); color: var(--text); white-space: pre-wrap; word-break: break-all; outline: none; overflow: auto; transition: border-color .15s, background .25s, color .25s; }
+.encoded-area:focus { border-color: var(--focus-ring); }
+.encoded-area:empty::before { content: attr(data-placeholder); color: var(--text-muted); }
 .token-part-header { color: var(--header-color); }
 .token-part-payload { color: var(--payload-color); }
 .token-part-signature { color: var(--signature-color); }
 .token-dot { color: var(--text-muted); }
-/* Inputs */
-.token-input, .json-editor, #secret-input {
-    font-family: 'Roboto Mono', 'SF Mono', 'Fira Code', Consolas, monospace;
-    font-size: 0.875rem;
-    line-height: 1.5;
-}
-.json-editor {
-    min-height: 200px;
-    background-color: var(--input-bg);
-    border-color: var(--input-border);
-    color: var(--text);
-    border-radius: 8px;
-    resize: vertical;
-}
-.json-editor:focus {
-    outline: none;
-    border-color: var(--focus-ring);
-    box-shadow: 0 0 0 2px var(--focus-ring);
-}
-.json-editor.invalid { border-color: #f87171; }
-/* Tabs */
-.tab-btn {
-    padding: 0.5rem 1rem;
-    cursor: pointer;
-    border: none;
-    background: none;
-    border-bottom: 2px solid transparent;
-    color: var(--text-muted);
-    font-family: inherit;
-    font-size: 0.875rem;
-    transition: color .15s, border-color .15s;
-}
-.tab-btn:hover { color: var(--text); }
-.tab-btn.active {
-    color: var(--text);
-    border-color: var(--primary);
-}
+
+/* Transform info banner (above the encoded area when prefix is stripped) */
+.transform-info { margin-bottom: 8px; padding: 8px 12px; border-radius: 8px; background: var(--badge-bg); color: var(--badge-text); font-size: 0.8rem; line-height: 1.4; }
+.transform-info code { font-family: var(--mono); font-size: 0.75rem; background: var(--input-bg); padding: 1px 5px; border-radius: 3px; }
+
+/* Algorithm select (compact, lives in the left panel-bar) */
+.algo-select { background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 6px; padding: 4px 10px; color: var(--text); font: 12px var(--font); cursor: pointer; transition: border-color .15s; }
+.algo-select:focus { outline: none; border-color: var(--focus-ring); }
+
+/* Decoded pane */
+.decoded-stack { flex: 1; display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow-y: auto; padding-right: 4px; position: relative; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; transition: background .25s, border-color .25s; display: flex; flex-direction: column; }
+.card-header { padding: 10px 14px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.card-body { padding: 12px 14px; }
+/* The last card (Verify Signature) absorbs any leftover vertical space so the
+   stack doesn't end with a gap below it on tall viewports. */
+.verify-card { flex: 1; min-height: 200px; }
+.verify-card .card-body { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+.verify-card #secret-input { flex: 1; min-height: 80px; }
+.verify-card #signature-status { margin-top: 0; }
+
+/* View tabs (segmented pill) - same as md-to-html / saml-decoder */
+.view-tabs { display: inline-flex; gap: 2px; padding: 2px; background: var(--input-bg); border: 1px solid var(--border); border-radius: 6px; }
+.view-tab { padding: 3px 10px; border: none; background: transparent; color: var(--text-muted); font: 12px/1 var(--font); font-weight: 500; cursor: pointer; border-radius: 4px; transition: all .15s; }
+.view-tab:hover { color: var(--text); }
+.view-tab.active { background: var(--surface-hover); color: var(--text); font-weight: 600; }
 .tab-content { display: none; }
 .tab-content.active { display: block; }
-/* Cards */
-.card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-    transition: background .3s, border-color .3s;
-}
-.card-header {
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-    font-weight: 600;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-.card-body { padding: 16px; }
-/* Buttons */
-.btn {
-    padding: 7px 14px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text);
-    font: 13px/1 'Inter', sans-serif;
-    cursor: pointer;
-    transition: all .15s;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-}
-.btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
-.btn-primary {
-    background: var(--primary);
-    border-color: var(--primary);
-    color: var(--primary-text);
-    font-weight: 600;
-}
-.btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
-/* Signature status */
+
+/* JSON editors inside cards */
+.json-editor { width: 100%; min-height: 140px; padding: 10px 12px; border: 1px solid var(--input-border); border-radius: var(--radius); background: var(--input-bg); color: var(--text); font: 0.875rem/1.5 var(--mono); resize: vertical; outline: none; transition: border-color .15s; }
+.json-editor:focus { border-color: var(--focus-ring); }
+.json-editor.invalid { border-color: var(--error-text); }
+
+/* Claims table */
+.claims-table { width: 100%; border-collapse: collapse; }
+.claims-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); font: 0.8rem/1.4 var(--mono); vertical-align: top; }
+.claims-table tr:last-child td { border-bottom: none; }
+.claims-table td:first-child { color: var(--text-muted); white-space: nowrap; }
+.claims-table td:last-child { color: var(--text); word-break: break-word; }
+.claims-desc { font-size: 0.7rem; color: var(--text-muted); display: block; margin-top: 2px; font-family: var(--font); }
+
+/* Verify Signature card */
+#secret-input { width: 100%; min-height: 80px; padding: 10px 12px; border: 1px solid var(--input-border); border-radius: var(--radius); background: var(--input-bg); color: var(--text); font: 0.875rem/1.5 var(--mono); resize: vertical; outline: none; transition: border-color .15s; }
+#secret-input:focus { border-color: var(--focus-ring); }
+#signature-status { margin-top: 12px; text-align: center; font-weight: 600; padding: 8px 16px; border-radius: var(--radius); font-size: 0.875rem; min-height: 32px; }
 .sig-valid { background: var(--success-bg); color: var(--success-text); }
 .sig-invalid { background: var(--error-bg); color: var(--error-text); }
-/* Main */
-main { flex: 1; padding: 24px 16px 48px; max-width: 1200px; margin: 0 auto; width: 100%; }
-/* Select */
-.algo-select {
-    background: var(--input-bg);
-    border: 1px solid var(--input-border);
-    border-radius: 8px;
-    padding: 8px 12px;
-    color: var(--text);
-    font-family: inherit;
-    font-size: 0.875rem;
-}
-.algo-select:focus { outline: none; border-color: var(--focus-ring); box-shadow: 0 0 0 2px var(--focus-ring); }
+
+/* Parse error overlay (above decoded stack when JWT can't be parsed) */
+.parse-error-overlay { padding: 28px 24px; border: 1px dashed var(--error-text); border-radius: 12px; background: var(--error-bg); color: var(--error-text); font-size: 0.9rem; line-height: 1.5; text-align: center; }
+.parse-error-overlay::before { content: ''; display: block; width: 36px; height: 36px; margin: 0 auto 12px; border-radius: 50%; background: var(--error-bg); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1Zm0 1a6 6 0 1 0 0 12A6 6 0 0 0 8 2Zm0 3a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 8 5Zm0 5.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z' fill='%23fca5a5'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: center; background-size: 22px; }
+[data-theme="light"] .parse-error-overlay::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1Zm0 1a6 6 0 1 0 0 12A6 6 0 0 0 8 2Zm0 3a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 8 5Zm0 5.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z' fill='%23dc2626'/%3E%3C/svg%3E"); }
+
+/* Splitter */
+.splitter { cursor: col-resize; background: transparent; position: relative; z-index: 1; }
+.splitter::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: var(--border); transition: width .15s, background .15s; transform: translateX(-50%); }
+.splitter:hover::after, .splitter.active::after { width: 3px; background: var(--primary); border-radius: 2px; }
+.splitter-overlay { position: fixed; inset: 0; z-index: 9999; cursor: col-resize; }
+
+/* Fullscreen the right (decoded) pane */
+#decodedPane:fullscreen { background: var(--bg); padding: 16px; display: flex; flex-direction: column; overflow: hidden; }
+#decodedPane:fullscreen .decoded-stack { flex: 1; min-height: 0; }
+
+/* "More free tools" CTA */
+.su-more-tools { margin: 16px 0 0; padding: 12px 18px; text-align: center; border: 1px solid rgba(254, 208, 71, 0.35); border-radius: 12px; background: rgba(254, 208, 71, 0.06); font: 13px/1.55 var(--font); color: var(--text); transition: border-color .25s, background-color .25s, color .25s; }
+.su-more-tools p { margin: 0; }
+.su-more-tools a { color: var(--primary); font-weight: 700; text-decoration: none; white-space: nowrap; }
+.su-more-tools a:hover { color: var(--primary-hover); text-decoration: underline; }
+
 /* Footer */
-.su-footer {
-    text-align: center;
-    padding: 16px;
-    border-top: 1px solid var(--border);
-    color: var(--text-muted);
-    font-size: 0.8rem;
-}
-/* Table */
-.claims-table { width: 100%; border-collapse: collapse; }
-.claims-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
-.claims-table td:first-child { color: var(--text-muted); font-family: 'Roboto Mono', monospace; font-size: 0.8rem; }
-.claims-table td:last-child { color: var(--text); font-family: 'Roboto Mono', monospace; font-size: 0.8rem; }
-.claims-desc { font-size: 0.7rem; color: var(--text-muted); display: block; margin-top: 2px; }
+.su-footer { text-align: center; padding: 16px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; transition: border-color .25s, color .25s; }
+
+/* Toast */
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); color: var(--text); padding: 10px 18px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 8px; animation: toastIn .2s ease; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
-/* Transform info banner */
-.transform-info {
-    margin-bottom: 8px;
-    padding: 8px 12px;
-    border-radius: 8px;
-    background: var(--badge-bg);
-    color: var(--badge-text);
-    font-size: 0.8rem;
-    line-height: 1.4;
-}
-.transform-info code {
-    font-family: 'Roboto Mono', monospace;
-    font-size: 0.75rem;
-    background: var(--input-bg);
-    padding: 1px 5px;
-    border-radius: 3px;
-}
-/* Parse error overlay on decoded panel */
-.parse-error-overlay {
-    position: absolute;
-    top: 40px;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 10;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 32px 24px;
-    font-size: 0.9rem;
-    line-height: 1.6;
-    color: var(--error-text);
-    text-align: center;
-}
-.parse-error-overlay::before {
-    content: '';
-    display: block;
-    width: 40px;
-    height: 40px;
-    margin: 0 auto 16px;
-    border-radius: 50%;
-    background: var(--error-bg);
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1Zm0 1a6 6 0 1 0 0 12A6 6 0 0 0 8 2Zm0 3a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 8 5Zm0 5.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z' fill='%23fca5a5'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size: 24px;
-}
-[data-theme="light"] .parse-error-overlay::before {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1Zm0 1a6 6 0 1 0 0 12A6 6 0 0 0 8 2Zm0 3a.5.5 0 0 1 .5.5v3a.5.5 0 0 1-1 0v-3A.5.5 0 0 1 8 5Zm0 5.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z' fill='%23dc2626'/%3E%3C/svg%3E");
-}
-/* Splitter */
-.splitter { cursor: col-resize; background: transparent; position: relative; z-index: 1; }
-.splitter::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: var(--border); transition: width .15s, background .15s; transform: translateX(-50%); }
-.splitter:hover::after, .splitter.active::after { width: 3px; background: var(--primary); border-radius: 2px; }
+
 /* Responsive */
+@media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; row-gap: 24px; }
+    .splitter { display: none; }
+    .encoded-area { min-height: 240px; }
+    .decoded-stack { overflow-y: visible; padding-right: 0; }
+    .panel-bar { flex-wrap: wrap; row-gap: 8px; height: auto; min-height: 38px; }
+    .panel-actions { flex-wrap: wrap; justify-content: flex-end; }
+}
+@media (max-width: 600px) { .su-more-tools { padding: 12px 14px; } .su-more-tools a { white-space: normal; } }
 @media (max-width: 640px) {
     header { padding: 0 12px; }
-    .logo-svg { height: 20px !important; }
+    .logo-svg { height: 20px; }
     .logo-badge { font-size: 11px; padding: 2px 7px; }
+    main { padding: 16px 12px; }
     .btn { padding: 6px 10px; font-size: 12px; }
-    main { padding: 16px 12px 32px; }
+    .skill-link span { display: none; }
+    .skill-link { padding: 0 10px; }
+    .algo-select { padding: 4px 8px; font-size: 11px; }
 }
     </style>
 </head>
 <body>
+    <noscript>
+        <p class="su-noscript"><strong>JWT Debugger</strong> &mdash; Decode, verify, and sign HMAC JSON Web Tokens (HS256, HS384, HS512) directly in your browser. Tokens stay in the URL fragment and never reach the server. This tool requires JavaScript; please enable it. Source on <a href="https://github.com/secutils-dev/secutils/blob/main/dev/tools/jwt-debugger.html">GitHub</a>.</p>
+    </noscript>
+
     <header>
         <div class="header-left">
             <a class="logo" href="https://secutils.dev" target="_blank" rel="noopener">
@@ -309,6 +258,15 @@ main { flex: 1; padding: 24px 16px 48px; max-width: 1200px; margin: 0 auto; widt
             <span class="logo-badge">JWT Debugger</span>
         </div>
         <div class="header-right">
+            <a id="skillLink" class="skill-link" href="#" target="_blank" rel="noopener"
+               title="View AI agent skill (skill.md, opens in new tab)"
+               aria-label="View AI agent skill (opens in new tab)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+                    <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
+                </svg>
+                <span>Skill</span>
+            </a>
             <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
                 <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8.5 15h-1v-2h1v2Zm-3.674-3.107-1.414 1.414-.707-.707 1.414-1.415.707.708Zm8.479.707-.707.707-1.414-1.414.707-.708 1.414 1.415Z"/><path fill-rule="evenodd" d="M8 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 1a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" clip-rule="evenodd"/><path d="M3.005 8.505h-2v-1h2v1Zm12 0h-2v-1h2v1ZM4.82 4.114l-.708.707-1.414-1.414.707-.707L4.82 4.114Zm8.492-.707-1.414 1.414-.708-.707L12.605 2.7l.707.707ZM8.5 3h-1V1h1v2Z"/></svg>
                 <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4.05 12.95A6.982 6.982 0 0 1 2 8c0-1.79.684-3.583 2.05-4.95A6.982 6.982 0 0 1 9 1a1 1 0 0 1 .708 1.707 4.982 4.982 0 0 0-1.465 3.536 4.98 4.98 0 0 0 1.465 3.535 4.98 4.98 0 0 0 3.535 1.465 1 1 0 0 1 .707 1.707A6.981 6.981 0 0 1 9 15a6.983 6.983 0 0 1-4.95-2.05Zm.708-.707A5.983 5.983 0 0 0 9 14c1.535 0 3.07-.586 4.242-1.757a5.98 5.98 0 0 1-4.018-1.545L9 10.485a5.982 5.982 0 0 1-1.758-4.242A5.986 5.986 0 0 1 9 2a5.983 5.983 0 0 0-4.243 1.757A5.98 5.98 0 0 0 3 8l.006.288a5.978 5.978 0 0 0 1.75 3.955Z"/></svg>
@@ -317,93 +275,109 @@ main { flex: 1; padding: 24px 16px 48px; max-width: 1200px; margin: 0 auto; widt
     </header>
 
     <main>
-        <div class="mb-6 flex justify-center" style="margin-bottom: 24px; display: flex; justify-content: center;">
-            <div style="width: 100%; max-width: 24rem;">
-                <label for="algorithm-select" style="display: block; font-size: 0.875rem; font-weight: 500; color: var(--text-muted); margin-bottom: 8px;">Algorithm</label>
-                <select id="algorithm-select" class="algo-select" style="width: 100%;">
-                    <option>HS256</option>
-                    <option>HS384</option>
-                    <option>HS512</option>
-                    <option disabled>--- RS/ES/PS algorithms require key pairs ---</option>
-                </select>
-            </div>
-        </div>
-
-        <div class="split-grid" style="display: grid; grid-template-columns: 1fr 12px 1fr; gap: 0;">
-            <!-- Encoded Panel -->
-            <div style="display: flex; flex-direction: column;">
-                <h2 style="font-size: 1rem; font-weight: 600; margin-bottom: 8px;">Encoded</h2>
-                <div id="transform-info" class="transform-info" style="display: none;"></div>
-                <div class="card" style="flex: 1; position: relative;">
-                    <div class="card-body" style="height: 100%; min-height: 400px;">
-                        <div id="encoded-output" contenteditable="true" spellcheck="false" class="token-input" style="width: 100%; height: 100%; min-height: 370px; white-space: pre-wrap; word-break: break-all; outline: none; font-size: 0.875rem; line-height: 1.6;"></div>
-                    </div>
-                    <div style="position: absolute; top: 12px; right: 12px; display: flex; gap: 6px;">
-                        <button id="share-button" class="btn-primary btn">Share</button>
-                        <button id="copy-button" class="btn">Copy</button>
+        <div class="grid">
+            <!-- Encoded pane -->
+            <div class="panel">
+                <div class="panel-bar">
+                    <span class="panel-label">Encoded</span>
+                    <div class="panel-actions">
+                        <select id="algorithm-select" class="algo-select" aria-label="Algorithm">
+                            <option>HS256</option>
+                            <option>HS384</option>
+                            <option>HS512</option>
+                            <option disabled>--- RS/ES/PS algorithms require key pairs ---</option>
+                        </select>
+                        <button class="link-btn" id="exampleBtn">Example</button>
+                        <button class="link-btn" id="clearBtn">Clear</button>
+                        <button id="share-button" class="btn btn-primary btn-sm" title="Copy a shareable link with the JWT and secret encoded in the URL">Share</button>
                     </div>
                 </div>
+                <div id="transform-info" class="transform-info" style="display:none"></div>
+                <div id="encoded-output" contenteditable="true" spellcheck="false" class="encoded-area" data-placeholder="Paste a JWT (header.payload.signature). Bearer prefixes and base64-wrapped tokens are unwrapped automatically." aria-label="Encoded JWT"></div>
             </div>
 
             <div class="splitter" id="splitter"></div>
 
-            <!-- Decoded Panel -->
-            <div style="display: flex; flex-direction: column; gap: 16px; position: relative;">
-                <h2 style="font-size: 1rem; font-weight: 600;">Decoded</h2>
-                <div id="parse-error" class="parse-error-overlay" style="display: none;"></div>
-
-                <!-- Header -->
-                <div class="card">
-                    <div class="card-header" style="color: var(--header-color);">Header: Algorithm &amp; Token Type</div>
-                    <div class="card-body">
-                        <div style="border-bottom: 1px solid var(--border); margin-bottom: 8px;"><nav style="display: flex;" id="header-tabs"></nav></div>
-                        <div id="header-tab-content"></div>
+            <!-- Decoded pane -->
+            <div id="decodedPane" class="panel">
+                <div class="panel-bar">
+                    <div class="view-tabs" id="view-tabs" role="tablist" aria-label="Decoded view (applies to header and payload)">
+                        <button class="view-tab active" data-view="json" role="tab" aria-selected="true" title="Show JSON editors">JSON</button>
+                        <button class="view-tab" data-view="table" role="tab" aria-selected="false" title="Show claim tables">Table</button>
+                    </div>
+                    <div class="panel-actions">
+                        <button id="copy-button" class="btn btn-sm" title="Copy the encoded token to your clipboard">
+                            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="9" height="10" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"/></svg>
+                            <span class="btn-label">Copy</span>
+                        </button>
+                        <button id="fullscreenBtn" class="icon-btn" title="Toggle fullscreen" aria-label="Toggle fullscreen">
+                            <svg id="fullscreenEnterIcon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                            <svg id="fullscreenExitIcon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
+                        </button>
                     </div>
                 </div>
+                <div class="decoded-stack">
+                    <div id="parse-error" class="parse-error-overlay" style="display:none"></div>
 
-                <!-- Payload -->
-                <div class="card">
-                    <div class="card-header" style="color: var(--payload-color);">Payload: Data</div>
-                    <div class="card-body">
-                        <div style="border-bottom: 1px solid var(--border); margin-bottom: 8px;"><nav style="display: flex;" id="payload-tabs"></nav></div>
-                        <div id="payload-tab-content"></div>
+                    <!-- Header card -->
+                    <div class="card">
+                        <div class="card-header" style="color: var(--header-color);">Header: Algorithm &amp; Token Type</div>
+                        <div class="card-body" id="header-tab-content"></div>
                     </div>
-                </div>
 
-                <!-- Signature -->
-                <div class="card">
-                    <div class="card-header" style="color: var(--signature-color);">Verify Signature</div>
-                    <div class="card-body">
-                        <textarea id="secret-input" spellcheck="false" placeholder="Your-256-bit-secret" class="json-editor" style="width: 100%; border: 1px solid var(--input-border); padding: 12px; min-height: 80px; height: 80px;"></textarea>
-                        <div id="signature-status" style="margin-top: 12px; text-align: center; font-weight: 600; padding: 8px 16px; border-radius: 8px; font-size: 0.875rem;"></div>
+                    <!-- Payload card -->
+                    <div class="card">
+                        <div class="card-header" style="color: var(--payload-color);">Payload: Data</div>
+                        <div class="card-body" id="payload-tab-content"></div>
+                    </div>
+
+                    <!-- Verify Signature card (grows to fill remaining vertical space) -->
+                    <div class="card verify-card">
+                        <div class="card-header" style="color: var(--signature-color);">Verify Signature</div>
+                        <div class="card-body">
+                            <textarea id="secret-input" spellcheck="false" placeholder="Your-256-bit-secret"></textarea>
+                            <div id="signature-status"></div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
+
+        <aside class="su-more-tools" aria-label="More free tools">
+            <p>Other free, no-signup Secutils.dev tools for SAML, certificates, Markdown, HTTP echo, and more - <a href="https://{{TOOLS_HOST}}/">Browse all tools &rarr;</a></p>
+        </aside>
     </main>
 
     <footer class="su-footer">
-        <p>A single-file JWT debugger for decoding, verifying, and generating JSON Web Tokens.</p>
+        <p>A single-file JWT debugger for decoding, verifying, and signing JSON Web Tokens.</p>
     </footer>
 
-    <input type="file" id="file-input" style="display:none">
+    <div id="toast" class="toast" role="status" aria-live="polite" style="display:none">
+        <span id="toastMsg"></span>
+    </div>
+
 <script>
 (function() {
-    // Theme toggle
-    var toggle = document.getElementById('themeToggle');
-    var root = document.documentElement;
-    function setTheme(t) {
-        root.setAttribute('data-theme', t);
-        try { localStorage.setItem('su-tool-theme', t); } catch(e) {}
+    const skillLinkEl = document.getElementById('skillLink');
+    if (skillLinkEl) {
+        const p = location.pathname;
+        skillLinkEl.href = (p === '/' || p === '') ? '/llms.txt' : p.replace(/\/$/, '') + '.md';
     }
-    toggle.addEventListener('click', function() {
+
+    const toggle = document.getElementById('themeToggle');
+    const root = document.documentElement;
+    const setTheme = (t) => {
+        root.setAttribute('data-theme', t);
+        try { localStorage.setItem('su-tool-theme', t); } catch (e) {}
+    };
+    toggle.addEventListener('click', () => {
         setTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
     });
     try {
-        var saved = localStorage.getItem('su-tool-theme');
+        const saved = localStorage.getItem('su-tool-theme');
         if (saved) setTheme(saved);
         else if (window.matchMedia('(prefers-color-scheme: light)').matches) setTheme('light');
-    } catch(e) {}
+    } catch (e) {}
 })();
 
 // URL state encoding: see dev/tools/AGENTS.md → "URL state encoding".
@@ -449,6 +423,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const signatureStatus = document.getElementById('signature-status');
     const copyButton = document.getElementById('copy-button');
     const shareButton = document.getElementById('share-button');
+    const exampleBtn = document.getElementById('exampleBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const fullscreenEnterIcon = document.getElementById('fullscreenEnterIcon');
+    const fullscreenExitIcon = document.getElementById('fullscreenExitIcon');
+    const decodedPane = document.getElementById('decodedPane');
+    const transformInfo = document.getElementById('transform-info');
+    const parseError = document.getElementById('parse-error');
+    const toastEl = document.getElementById('toast');
+    const toastMsgEl = document.getElementById('toastMsg');
+
+    let toastTimer;
+    const toast = (msg) => {
+        toastMsgEl.textContent = msg;
+        toastEl.style.display = 'flex';
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => { toastEl.style.display = 'none'; }, 2000);
+    };
 
     const defaultState = {
         header: { alg: 'HS256', typ: 'JWT' },
@@ -492,6 +484,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return null;
     };
 
+    // Unwraps Bearer prefixes, opaque session tokens, and base64-wrapped envelopes
+    // around a real JWT, so users can paste whatever their HTTP tooling shows.
     const extractJWT = (input) => {
         input = input.trim();
         if (!input) return null;
@@ -527,9 +521,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return null;
     };
 
-    const transformInfo = document.getElementById('transform-info');
-    const parseError = document.getElementById('parse-error');
-
     const showTransformInfo = (transforms) => {
         if (transforms && transforms.length > 0) {
             transformInfo.innerHTML = '<strong>Unwrapped token:</strong> ' + transforms.join(' \u2192 ');
@@ -558,13 +549,12 @@ document.addEventListener('DOMContentLoaded', () => {
         populateTable('header-claims-table', null);
         populateTable('payload-claims-table', null);
         signatureStatus.textContent = '';
-        signatureStatus.style.cssText = 'margin-top: 12px; text-align: center; font-weight: 600; padding: 8px 16px; border-radius: 8px; font-size: 0.875rem;';
+        signatureStatus.className = '';
     };
 
     const updateSignatureStatusUI = (isValid) => {
         signatureStatus.textContent = isValid ? 'Signature Verified' : 'Invalid Signature';
         signatureStatus.className = isValid ? 'sig-valid' : 'sig-invalid';
-        signatureStatus.style.cssText = 'margin-top: 12px; text-align: center; font-weight: 600; padding: 8px 16px; border-radius: 8px; font-size: 0.875rem; background:' + (isValid ? 'var(--success-bg)' : 'var(--error-bg)') + '; color:' + (isValid ? 'var(--success-text)' : 'var(--error-text)') + ';';
     };
 
     const updateDecodedFromToken = () => {
@@ -595,7 +585,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('decoded-header').value = JSON.stringify(headerJson, null, 2);
             populateTable('header-claims-table', headerJson);
         } catch (e) {
-            document.getElementById('decoded-header').value = base64UrlDecode(parts[0]);
+            document.getElementById('decoded-header').value = base64UrlDecode(parts[0]) || '';
             populateTable('header-claims-table', null);
         }
         try {
@@ -603,7 +593,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('decoded-payload').value = JSON.stringify(payloadJson, null, 2);
             populateTable('payload-claims-table', payloadJson);
         } catch (e) {
-            document.getElementById('decoded-payload').value = base64UrlDecode(parts[1]);
+            document.getElementById('decoded-payload').value = base64UrlDecode(parts[1]) || '';
             populateTable('payload-claims-table', null);
         }
         verifyToken();
@@ -612,10 +602,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const updateEncoded = async () => {
         showTransformInfo(null);
         showParseError(null);
-        const header = JSON.parse(document.getElementById('decoded-header').value);
-        const payload = JSON.parse(document.getElementById('decoded-payload').value);
-        if (!header || !payload) {
-            encodedOutput.innerText = 'Invalid JSON';
+        let header, payload;
+        try {
+            header = JSON.parse(document.getElementById('decoded-header').value);
+            payload = JSON.parse(document.getElementById('decoded-payload').value);
+        } catch {
+            encodedOutput.textContent = 'Invalid JSON';
             updateSignatureStatusUI(false);
             return;
         }
@@ -650,20 +642,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const populateTable = (tableBodyId, data) => {
         const tbody = document.getElementById(tableBodyId);
+        if (!tbody) return;
         tbody.innerHTML = '';
         if (!data || typeof data !== 'object') return;
         for (const key in data) {
             const row = tbody.insertRow();
             const cellKey = row.insertCell();
             const cellValue = row.insertCell();
-            cellKey.style.cssText = "padding: 6px 8px; font-family: 'Roboto Mono', monospace; font-size: 0.8rem; color: var(--text-muted); border-bottom: 1px solid var(--border); vertical-align: top;";
-            cellValue.style.cssText = "padding: 6px 8px; font-family: 'Roboto Mono', monospace; font-size: 0.8rem; color: var(--text); border-bottom: 1px solid var(--border);";
             let keyHtml = `<div>${key}</div>`;
             if (JWT_CLAIMS[key]) {
-                keyHtml += `<div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">${JWT_CLAIMS[key]}</div>`;
+                keyHtml += `<span class="claims-desc">${JWT_CLAIMS[key]}</span>`;
             }
             cellKey.innerHTML = keyHtml;
-            let value = data[key];
+            const value = data[key];
             if ((key === 'iat' || key === 'exp' || key === 'nbf') && typeof value === 'number') {
                 cellValue.textContent = `${value} (${new Date(value * 1000).toUTCString()})`;
             } else {
@@ -672,51 +663,62 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const createTabs = (containerId, contentContainerId, idPrefix) => {
-        const tabsContainer = document.getElementById(containerId);
+    // Renders the JSON editor + claim table inside a card body. Both panes are
+    // always present in the DOM; the global view-tabs at the panel-bar toggles
+    // which one is active across all cards at once.
+    const renderCardBody = (contentContainerId, idPrefix) => {
         const contentDiv = document.getElementById(contentContainerId);
-        tabsContainer.innerHTML = `
-            <button class="tab-btn active" data-tab="${idPrefix}-json">JSON</button>
-            <button class="tab-btn" data-tab="${idPrefix}-table">Table</button>`;
         contentDiv.innerHTML = `
-            <div id="${idPrefix}-json" class="tab-content active">
-                <textarea id="decoded-${idPrefix}" spellcheck="false" class="json-editor" style="width: 100%; border: 1px solid var(--input-border); padding: 12px;"></textarea>
+            <div data-tab-content="json" class="tab-content active">
+                <textarea id="decoded-${idPrefix}" spellcheck="false" class="json-editor"></textarea>
             </div>
-            <div id="${idPrefix}-table" class="tab-content">
-                <table style="width: 100%; border-collapse: collapse;">
+            <div data-tab-content="table" class="tab-content">
+                <table class="claims-table">
                     <tbody id="${idPrefix}-claims-table"></tbody>
                 </table>
             </div>`;
-        tabsContainer.addEventListener('click', e => {
-            if (e.target.classList.contains('tab-btn')) {
-                tabsContainer.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-                e.target.classList.add('active');
-                contentDiv.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-                document.getElementById(e.target.dataset.tab).classList.add('active');
-            }
-        });
         document.getElementById(`decoded-${idPrefix}`).addEventListener('input', () => {
             try {
                 const jsonData = JSON.parse(document.getElementById(`decoded-${idPrefix}`).value);
                 populateTable(`${idPrefix}-claims-table`, jsonData);
                 updateEncoded();
-            } catch (e) {
-                // Invalid JSON, don't update
+            } catch {
+                /* invalid JSON - wait for the user to finish typing */
             }
         });
     };
 
-    createTabs('header-tabs', 'header-tab-content', 'header');
-    createTabs('payload-tabs', 'payload-tab-content', 'payload');
+    renderCardBody('header-tab-content', 'header');
+    renderCardBody('payload-tab-content', 'payload');
+
+    // Global JSON ↔ Table switcher - applies to every card body in the right
+    // pane simultaneously, so users don't have to keep both per-card tabs in
+    // sync manually.
+    const viewTabsEl = document.getElementById('view-tabs');
+    viewTabsEl.addEventListener('click', (e) => {
+        if (!e.target.classList.contains('view-tab')) return;
+        for (const btn of viewTabsEl.querySelectorAll('.view-tab')) {
+            btn.classList.remove('active');
+            btn.setAttribute('aria-selected', 'false');
+        }
+        e.target.classList.add('active');
+        e.target.setAttribute('aria-selected', 'true');
+        const view = e.target.dataset.view;
+        for (const content of document.querySelectorAll('[data-tab-content]')) {
+            content.classList.toggle('active', content.dataset.tabContent === view);
+        }
+    });
     algorithmSelect.addEventListener('change', updateEncoded);
     secretInput.addEventListener('input', updateEncoded);
     encodedOutput.addEventListener('input', updateDecodedFromToken);
 
-    copyButton.addEventListener('click', () => {
-        navigator.clipboard.writeText(encodedOutput.innerText).then(() => {
-            copyButton.textContent = 'Copied!';
-            setTimeout(() => { copyButton.textContent = 'Copy'; }, 2000);
-        });
+    copyButton.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(encodedOutput.innerText);
+            toast('Copied to clipboard');
+        } catch {
+            toast('Failed to copy');
+        }
     });
 
     shareButton.addEventListener('click', async () => {
@@ -724,13 +726,45 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!jwtValue || jwtValue === 'Invalid JSON') return;
         const encoded = await encodeState(JSON.stringify({ j: jwtValue, s: secretInput.value.trim() }));
         const shareUrl = `${window.location.origin}${window.location.pathname}#${encoded}`;
+        history.replaceState({}, '', shareUrl);
         try {
             await navigator.clipboard.writeText(shareUrl);
-            shareButton.textContent = 'Link Copied!';
+            toast('Share link copied');
         } catch {
-            shareButton.textContent = 'Copy failed';
+            toast('Failed to copy share link');
         }
-        setTimeout(() => { shareButton.textContent = 'Share'; }, 2000);
+    });
+
+    exampleBtn.addEventListener('click', () => {
+        loadDefaults();
+    });
+
+    clearBtn.addEventListener('click', () => {
+        encodedOutput.innerText = '';
+        secretInput.value = '';
+        document.getElementById('decoded-header').value = '';
+        document.getElementById('decoded-payload').value = '';
+        populateTable('header-claims-table', null);
+        populateTable('payload-claims-table', null);
+        signatureStatus.textContent = '';
+        signatureStatus.className = '';
+        showTransformInfo(null);
+        showParseError(null);
+        history.replaceState({}, '', location.pathname + location.search);
+    });
+
+    fullscreenBtn.addEventListener('click', async () => {
+        try {
+            if (!document.fullscreenElement) await decodedPane.requestFullscreen();
+            else await document.exitFullscreen();
+        } catch (e) {
+            toast(`Fullscreen failed: ${e?.message ?? e}`);
+        }
+    });
+    document.addEventListener('fullscreenchange', () => {
+        const entering = !!document.fullscreenElement;
+        fullscreenEnterIcon.style.display = entering ? 'none' : 'block';
+        fullscreenExitIcon.style.display = entering ? 'block' : 'none';
     });
 
     const loadDefaults = () => {
@@ -762,45 +796,48 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     initialize();
 
-    // Resizable splitter
-    (function() {
-        var splitter = document.getElementById('splitter');
-        var grid = splitter.parentElement;
-        var dragging = false;
+    // Resizable splitter. A full-viewport overlay is mounted during drag so
+    // mousemove events aren't swallowed by the contenteditable encoded area
+    // (otherwise the cursor "sticks" mid-drag).
+    (() => {
+        const splitter = document.getElementById('splitter');
+        const grid = splitter.parentElement;
+        let dragging = false;
+        let overlay = null;
 
-        splitter.addEventListener('mousedown', function(e) {
-            e.preventDefault();
-            dragging = true;
-            splitter.classList.add('active');
-            document.body.style.cursor = 'col-resize';
-            document.body.style.userSelect = 'none';
-        });
-
-        document.addEventListener('mousemove', function(e) {
-            if (!dragging) return;
-            var rect = grid.getBoundingClientRect();
-            var offset = e.clientX - rect.left;
-            var pct = (offset / rect.width) * 100;
-            pct = Math.max(15, Math.min(85, pct));
-            grid.style.gridTemplateColumns = pct + '% 12px ' + (100 - pct) + '%';
-        });
-
-        document.addEventListener('mouseup', function() {
+        const stop = () => {
             if (!dragging) return;
             dragging = false;
             splitter.classList.remove('active');
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
+            if (overlay) { overlay.remove(); overlay = null; }
+        };
+
+        splitter.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            dragging = true;
+            splitter.classList.add('active');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            overlay = document.createElement('div');
+            overlay.className = 'splitter-overlay';
+            document.body.appendChild(overlay);
         });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!dragging) return;
+            const rect = grid.getBoundingClientRect();
+            const offset = e.clientX - rect.left;
+            let pct = (offset / rect.width) * 100;
+            pct = Math.max(15, Math.min(85, pct));
+            grid.style.gridTemplateColumns = `${pct}% 12px ${100 - pct}%`;
+        });
+
+        document.addEventListener('mouseup', stop);
+        document.addEventListener('mouseleave', stop);
     })();
 });
 </script>
-<!-- Responsive grid override for mobile -->
-<style>
-@media (max-width: 1023px) {
-    main > .split-grid { grid-template-columns: 1fr !important; }
-    main > .split-grid .splitter { display: none; }
-}
-</style>
 </body>
 </html>

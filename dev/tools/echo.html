@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- @su:responder-script
 // =============================================================================
-// RESPONDER SCRIPT — paired with echo.html, auto-deployed to the responder's
+// RESPONDER SCRIPT - paired with echo.html, auto-deployed to the responder's
 // `script` setting by dev/tools/deploy.ts. This HTML comment is stripped from
 // the served body by html-minifier-terser (`removeComments: true`).
 // See dev/tools/AGENTS.md → "Responder Script (`@su:responder-script`)".
@@ -12,7 +12,7 @@
 (() => {
   const encoded = context.query.c;
   if (!encoded) {
-    // No config — fall through to the default body (the configurator HTML).
+    // No config - fall through to the default body (the configurator HTML).
     return null;
   }
 
@@ -34,7 +34,7 @@
   };
 
   // ----------------------------------------------------------------------
-  // Vendored: tiny-inflate@1.0.3 (Devon Govett, MIT) — pure-JS raw DEFLATE
+  // Vendored: tiny-inflate@1.0.3 (Devon Govett, MIT) - pure-JS raw DEFLATE
   // inflater (~1 KB minified). Source: https://github.com/foliojs/tiny-inflate
   // The Deno sandbox has no DecompressionStream so we ship our own.
   //
@@ -221,8 +221,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Echo | Secutils.dev</title>
+    <title>HTTP Echo and Mock Response Builder | Secutils.dev</title>
+    <meta name="description" content="Free HTTP echo and mock response builder. Configure status code, headers, and body, then serve as a shareable URL. Browser-only, state in URL, no signup.">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <link rel="canonical" href="https://{{TOOLS_HOST}}/echo">
     <meta name="su-tool-path" content="/echo">
+    <meta name="su-tool-name" content="HTTP Echo / Mock Response">
+    <meta name="su-tool-description" content="Build a fully customizable mock HTTP response (status, headers, body) and serve it as a shareable URL. State in URL, no signup.">
+    <meta name="su-tool-promote" content="true">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Secutils.dev">
+    <meta property="og:title" content="HTTP Echo &amp; Mock Response Builder">
+    <meta property="og:description" content="Free HTTP echo and mock response builder. Configure status code, headers, and body. Serve as a shareable URL. Browser-only.">
+    <meta property="og:url" content="https://{{TOOLS_HOST}}/echo">
+    <meta property="og:image" content="https://secutils.dev/docs/img/og/og-echo.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="HTTP Echo / Mock Response Builder on Secutils.dev.">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="HTTP Echo &amp; Mock Response Builder">
+    <meta name="twitter:description" content="Free HTTP echo and mock response builder. Configure status, headers, body. Serve as a shareable URL. No signup.">
+    <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-echo.png">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"HTTP Echo / Mock Response","url":"https://{{TOOLS_HOST}}/echo","applicationCategory":"DeveloperApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/echo.html","description":"Free HTTP echo and mock response builder. Configure status code, headers, and body, then serve as a shareable URL. Browser-only, state in URL, no signup."}</script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
@@ -257,6 +278,12 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .skill-link { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); color: var(--text-muted); font: 12px var(--font); text-decoration: none; transition: all .15s; cursor: pointer; }
 .skill-link:hover { color: var(--text); border-color: var(--text-muted); background: var(--surface-hover); }
 .skill-link svg { width: 14px; height: 14px; fill: none; stroke: currentColor; }
+.su-more-tools { margin: 8px 0 0; padding: 12px 18px; text-align: center; border: 1px solid rgba(254, 208, 71, 0.35); border-radius: 12px; background: rgba(254, 208, 71, 0.06); font: 13px/1.55 var(--font); color: var(--text); transition: border-color .25s, background-color .25s, color .25s; }
+.su-more-tools p { margin: 0; }
+.su-more-tools a { color: var(--primary); font-weight: 700; text-decoration: none; white-space: nowrap; }
+.su-more-tools a:hover { color: var(--primary-hover); text-decoration: underline; }
+@media (max-width: 600px) { .su-more-tools { padding: 12px 14px; } .su-more-tools a { white-space: normal; } }
+.su-noscript { max-width: 720px; margin: 24px auto; padding: 16px; border: 1px solid var(--border); border-radius: 8px; font: 14px/1.5 var(--font); background: var(--surface); color: var(--text); }
 .theme-toggle { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .2s; }
 .theme-toggle:hover { background: var(--surface-hover); color: var(--text); }
 .theme-toggle svg { width: 16px; height: 16px; fill: currentColor; }
@@ -307,6 +334,9 @@ td:last-child { padding-right: 0; width: 38px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
 .actions .spacer { flex: 1; }
 
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); color: var(--text); padding: 10px 18px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 8px; animation: toastIn .2s ease; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
 .su-footer { text-align: center; padding: 16px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; transition: border-color .25s, color .25s; }
 
 @media (max-width: 640px) {
@@ -323,6 +353,9 @@ td:last-child { padding-right: 0; width: 38px; }
     </style>
 </head>
 <body>
+    <noscript>
+        <p class="su-noscript"><strong>HTTP Echo / Mock Response</strong> &mdash; Build a fully customizable HTTP response (status code, headers, body) and serve it as a shareable URL. Configuration stays in the URL fragment. Requires JavaScript; please enable it. Source on <a href="https://github.com/secutils-dev/secutils/blob/main/dev/tools/echo.html">GitHub</a>.</p>
+    </noscript>
     <header>
         <a class="logo" href="https://secutils.dev" target="_blank" rel="noopener">
             <svg class="logo-svg" height="24" role="img" viewBox="0 0 98 16" xmlns="http://www.w3.org/2000/svg">
@@ -382,16 +415,27 @@ td:last-child { padding-right: 0; width: 38px; }
             <input id="preview" class="input input-mono" readonly>
             <div class="actions">
                 <button id="open" type="button" class="btn btn-primary">Open mock response</button>
-                <button id="copy" type="button" class="btn">Copy URL</button>
+                <button id="copy" type="button" class="btn" title="Copy the mock URL to your clipboard">
+                    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="9" height="10" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"/></svg>
+                    <span class="btn-label">Copy URL</span>
+                </button>
                 <span class="spacer"></span>
                 <button id="reset" type="button" class="btn">Reset</button>
             </div>
         </section>
+
+        <aside class="su-more-tools" aria-label="More free tools">
+            <p>Other free, no-signup Secutils.dev tools for JWT, SAML, certificates, Markdown, and more - <a href="https://{{TOOLS_HOST}}/">Browse all tools &rarr;</a></p>
+        </aside>
     </main>
 
     <footer class="su-footer">
         <p>Build a fully customizable HTTP response and serve it as a shareable URL.</p>
     </footer>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" style="display:none">
+        <span id="toastMsg"></span>
+    </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -408,12 +452,14 @@ const els = Object.freeze({
     copy: $('copy'),
     reset: $('reset'),
     themeToggle: $('themeToggle'),
+    toast: $('toast'),
+    toastMsg: $('toastMsg'),
 });
 
 // Curated response-header suggestions surfaced via native <datalist> dropdowns.
 // Names shown verbatim; values looked up case-insensitively (key = lowercased name).
 // Names without an entry in HEADER_PRESETS still autocomplete the name, but offer
-// no value suggestions — same for any custom (non-listed) header typed by the user.
+// no value suggestions - same for any custom (non-listed) header typed by the user.
 const HEADER_NAMES = [
     'Access-Control-Allow-Credentials', 'Access-Control-Allow-Headers',
     'Access-Control-Allow-Methods', 'Access-Control-Allow-Origin',
@@ -499,7 +545,7 @@ const syncURL = async () => {
     els.preview.value = `${location.origin}${location.pathname}?c=${enc}`;
 };
 
-// Shared <datalist> of response-header names — created once and reused across all
+// Shared <datalist> of response-header names - created once and reused across all
 // name inputs (all rows link to the same `list="hdr-names"` target).
 const namesDatalist = document.createElement('datalist');
 namesDatalist.id = 'hdr-names';
@@ -606,14 +652,21 @@ els.open.addEventListener('click', () => {
     const url = els.preview.value || `${location.origin}${location.pathname}`;
     window.open(url, '_blank');
 });
+let toastTimer;
+function toast(msg) {
+    els.toastMsg.textContent = msg;
+    els.toast.style.display = 'flex';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { els.toast.style.display = 'none'; }, 2000);
+}
+
 els.copy.addEventListener('click', async () => {
     try {
         await navigator.clipboard.writeText(els.preview.value);
-        els.copy.textContent = 'Copied';
+        toast('Copied to clipboard');
     } catch {
-        els.copy.textContent = 'Copy failed';
+        toast('Failed to copy');
     }
-    setTimeout(() => { els.copy.textContent = 'Copy URL'; }, 1500);
 });
 els.reset.addEventListener('click', () => {
     state = defaultState();
@@ -641,7 +694,16 @@ els.reset.addEventListener('click', () => {
     render();
 })();
 
-document.getElementById('skillLink').href = location.pathname.replace(/\/$/, '') + '/skill.md';
+// Skill link href: derive '<path>.md' from current URL. Index ('/') has no
+// skill .md and falls back to the aggregate llms.txt; everything else maps
+// `/<slug>` -> `/<slug>.md`.
+{
+    const skillLinkEl = document.getElementById('skillLink');
+    if (skillLinkEl) {
+        const p = location.pathname;
+        skillLinkEl.href = (p === '/' || p === '') ? '/llms.txt' : p.replace(/\/$/, '') + '.md';
+    }
+}
 
 (() => {
     const root = document.documentElement;

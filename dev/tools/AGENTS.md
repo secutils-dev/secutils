@@ -19,17 +19,9 @@ source of truth.
 <meta name="su-tool-path" content="/jwt">
 ```
 
-Current mapping:
-
-| File                       | `su-tool-path`            | Description         |
-|----------------------------|---------------------------|---------------------|
-| `index.html`               | `/`                       | Tool index page     |
-| `jwt-debugger.html`        | `/jwt`                    | JWT Debugger        |
-| `saml-decoder.html`        | `/saml`                   | SAML Decoder        |
-| `mock-saml-idp.html`       | `/elastic/saml/idp-login` | Mock SAML IdP       |
-| `certificate-decoder.html` | `/pem`                    | Certificate Decoder |
-| `markdown-to-html.html`    | `/md-to-html`             | Markdown → HTML     |
-| `echo.html`                | `/echo`                   | HTTP Echo Response  |
+The current file ↔ path mapping lives in [`e2e/tools/registry.ts`](../../e2e/tools/registry.ts)
+(it imports the HTML files at parse time and re-exports the meta-tag values). Look
+there if you need a quick listing - do not maintain a parallel table here that can drift.
 
 When **creating a new tool**, **deleting a tool**, or **changing a tool's alias**:
 
@@ -57,6 +49,89 @@ When **creating a new tool**, **deleting a tool**, or **changing a tool's alias*
 
 3. **Update the table above** in this AGENTS.md file to keep the mapping accurate.
 
+4. **Update [`e2e/tools/registry.ts`](../../e2e/tools/registry.ts)** - append a row
+   with the tool's slug, source filename, accent color, and OG icon symbol. The
+   registry holds **OG-generation and E2E-specific metadata** that does not belong
+   in user-facing HTML (accent color, icon glyph, application category). It does
+   **not** restate the tool's name / path / description / promotion - those live in
+   the HTML `<meta>` tags (the registry just imports them at parse time so there is
+   no double-source).
+
+   Source-of-truth split:
+
+   | Field                                               | Lives in                | Read by                                                                           |
+   |-----------------------------------------------------|-------------------------|-----------------------------------------------------------------------------------|
+   | `su-tool-name`, `-path`, `-description`, `-promote` | tool HTML `<meta>` tags | deploy.ts (llms.txt, sitemap, agent-skills/index), tools-check.ts, marketing site |
+   | accent colour, OG icon, application category        | `e2e/tools/registry.ts` | `og.spec.ts` OG generator, per-tool E2E specs                                     |
+
+## Promotion (`su-tool-promote`)
+
+Every tool also carries a `<meta name="su-tool-promote" content="true|false">` tag in
+`<head>` that decides whether the tool is publicly discoverable at all (beyond a
+direct link an operator shares out of band):
+
+- `true` - listed everywhere: on `dev/tools/index.html`, on the marketing site's home
+  page in the "Free tools, no signup required" card section (anchored at
+  `#free-tools`), in the root `README.md` table, and in every agent-discovery
+  aggregate (`llms.txt`,
+  `sitemap.xml`, `.well-known/agent-skills/index.json`). This is the default for any
+  user-facing free tool.
+- `false` - listed **nowhere**: not on `dev/tools/index.html`, not on the marketing
+  site, not in `README.md`, not in `llms.txt` / `sitemap.xml` /
+  `.well-known/agent-skills/index.json`, and the page itself carries
+  `<meta name="robots" content="noindex, nofollow">` so search engines drop it from
+  their corpus too. The HTML responder and its `<path>.md` SKILL companion are still
+  deployed (and `Accept: text/markdown` content negotiation still works), so a direct
+  link an operator shares out of band keeps working - it's just not advertised
+  anywhere. Use this for niche tools, e.g. `mock-saml-idp` (Elasticsearch / Kibana
+  SSO testing only).
+
+`deploy.ts` enforces this filter in `buildLlmsTxt`, `buildSitemapXml`, and
+`buildAgentSkillsIndex` - non-promoted tools are filtered out, not reordered. The
+per-tool `*.skill.md` deploy walk is independent of those aggregates, so flipping
+`promote` to `false` does not break the direct `<path>.md` URL.
+
+`make tools-check` (Node script at `scripts/tools-check.ts`, run directly via
+Node 24+ type stripping) walks every `dev/tools/*.html`, reads its `su-tool-promote`
+value, and asserts that the marketing home page and `README.md` link only to
+`promote=true` tools. The marketing site lives in a separate (private) sibling
+checkout, so its location is supplied via the `SECUTILS_TOOLS_PROMO_HOME_INDEX`
+env var (absolute path to its `index.html`, or a path relative to this repo
+root). When the env var is unset the marketing-side check is skipped with a
+warning; the README, skill-sibling, and non-promoted-leak checks still run.
+The e2e suite (`e2e/tools/index.spec.ts` and `e2e/tools/registry.spec.ts`)
+covers the inverse - non-promoted tools must be absent from the index page and
+every aggregate, while their `.md` companion must still be reachable. Run it
+after touching either side of that boundary; CI runs it on every push.
+
+## Host config and templating (`{{TOOLS_HOST}}`)
+
+Every tool is served from a single, configurable subdomain - defaults to
+`tools.secutils.dev` - controlled by one environment variable:
+
+```bash
+# .env (root)
+SECUTILS_TOOLS_PUBLIC_HOST=tools.secutils.dev
+```
+
+Both repos respect this variable so a single rename rolls through the whole stack:
+
+- **`dev/tools/deploy.ts`** substitutes `{{TOOLS_HOST}}` in every `.html` and
+  `.skill.md` source **before** minification, so the deployed responder body /
+  markdown contains the real host. Affected places: `<title>` text, `<link
+  rel="canonical">`, `og:url`, `og:image` (if local), JSON-LD `"url"`, the
+  Related-tools navigation block, and every `wire_format.url` in the `.skill.md`
+  frontmatter.
+- **The marketing site** (Parcel build, sibling repo) consumes the same variable
+  via two parallel mechanisms - `posthtml-expressions` exposes it as a local for
+  HTML files (templates `{{ TOOLS_HOST }}`), and a tiny custom Parcel transformer
+  substitutes it in `sitemap.xml` and any other non-HTML asset.
+
+When authoring a new tool **always reference the host via `{{TOOLS_HOST}}`** in the
+sources - never hard-code `tools.secutils.dev`. The placeholder is also recognised
+inside `*.skill.md` frontmatter and inside the body (so wire-format examples use the
+configured host).
+
 ## Responder Script (`@su:responder-script`)
 
 Most tools in `dev/tools/` are pure client-side HTML - the responder just serves a static
@@ -68,7 +143,7 @@ source of truth for both halves, embed the responder script in an HTML comment w
 ```html
 <!DOCTYPE html>
 <!-- @su:responder-script
-// Optional human-readable preamble as JS // comments — these survive into the
+// Optional human-readable preamble as JS // comments - these survive into the
 // deployed responder script (and are stripped by the responder backend if it
 // minifies; harmless either way).
 (() => {
@@ -105,12 +180,17 @@ Rules and caveats:
   body, so any human-readable preamble must be written as `//` JS comments (not `=====`
   banners, which would be a syntax error in JS).
 - **No `-->` inside the script**: the regex stops at the first `-->`. Vanishingly rare in
-  JS — and would also break HTML parsing — but worth knowing.
+  JS - and would also break HTML parsing - but worth knowing.
 - **Single match per file**: only the first marker comment is used; additional ones
   produce a yellow `⚠ multiple @su:responder-script comments found, using the first`
   warning in the deploy log.
 - **Marker is opt-in**: most tools are static HTML and don't need this - leave it off and
   deploy ships the body alone.
+- **Composes with the auto-injected Markdown-negotiation prelude.** `deploy.ts` always
+  wraps every HTML responder's script (whether opt-in or empty) with a ~250 B prelude
+  that 302-redirects `Accept: text/markdown` requests to the `<slug>.md` sibling. Your
+  `@su:responder-script` body becomes the inner expression and runs only when the
+  prelude does not redirect. See **"Markdown content negotiation"** below.
 
 ## URL state encoding (`encodeState` / `decodeState`)
 
@@ -221,40 +301,275 @@ const decodeState = async (str) => {
   `tiny-inflate` + a `ulen` cap (1 MiB is plenty) + bounds-checked source pointer to
   turn malformed input into a clean error response instead of an infinite loop.
 
-## Skill link (`skill.md`)
+## AI-agent surface (`<slug>.skill.md` and `llms.txt`)
 
-Each tool may publish a companion **AI agent skill** at `<su-tool-path>/skill.md`
-(YAML frontmatter + markdown body, following the convention pioneered by
-Anthropic Skills / Cursor skills / agents.md). The skill describes the tool's
-inputs, wire format, and trigger phrases so an LLM can drive the tool
-end-to-end without scraping the HTML UI.
+Every tool has a companion **AI-agent skill** at `<su-tool-path>.md`, formatted
+as a real [Claude Code / Cursor SKILL.md](https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview):
+terse YAML frontmatter (`name` + `description` only) and a rich Markdown body
+that an agent reads top-to-bottom to learn how to drive the tool end-to-end
+without scraping the HTML UI. The skill is **the same artefact** whether it's
+loaded by Claude Code as an installable skill, fetched ad-hoc by an agent
+WebFetch call, indexed by an llmstxt.org crawler, or read by a human in a
+browser tab.
 
-The skill itself lives as a **separate sibling responder** (e.g. responder at
-`/echo/skill.md` next to the responder at `/echo`). It is **not** part of the
-`dev/tools/` deploy pipeline - author and update those skill responders by
-hand. The HTML app's only job is to advertise the skill via a uniform header
-button so humans can discover the file even though it's intended for AI use.
+The canonical reference for the shape and tone is the original Echo skill:
+<https://x.secutils.dev/echo/skill.md>. `dev/tools/echo.skill.md` is kept
+byte-aligned with that file (modulo the `tools.secutils.dev` host swap) so
+porting between repos stays trivial.
 
-### Where the button goes
+### URL shape
 
-Header right area, **immediately before the theme toggle**. Same chrome as on
-every other tool - the header is the one piece of layout that's identical
-across the whole `dev/tools/` family, so a single placement covers everything.
+| Surface           | URL                                          | Content type     | Source on disk                          |
+|-------------------|----------------------------------------------|------------------|-----------------------------------------|
+| Tool page         | `https://{{TOOLS_HOST}}/<path>`              | `text/html`      | `dev/tools/<name>.html`                 |
+| Per-tool skill    | `https://{{TOOLS_HOST}}/<path>.md`           | `text/markdown`  | `dev/tools/<name>.skill.md`             |
+| Aggregate index   | `https://{{TOOLS_HOST}}/llms.txt`            | `text/markdown`  | generated at deploy time from .html metadata; also the destination of `/`'s `Accept: text/markdown` redirect |
 
-The href is **derived at runtime** from `location.pathname`, so each tool's
-markup is identical and works for any responder path:
+Two **separate responders** per tool: one for the HTML body, one for the markdown.
+This avoids fragile content-negotiation, keeps the HTML body under
+`html-minifier-terser` while the skill is shipped untouched, and makes the URL
+shape obvious to crawlers and to humans (`/jwt` vs `/jwt.md`).
 
-```js
-document.getElementById('skillLink').href = location.pathname.replace(/\/$/, '') + '/skill.md';
+The aggregate `/llms.txt` follows the [llmstxt.org](https://llmstxt.org/) convention -
+a short Markdown index keyed by tool name, with promoted tools first. It's
+regenerated by `dev/tools/deploy.ts` every time the deploy runs (the resulting
+`dev/tools/llms.txt` is git-ignored). See **"How the deploy pipeline handles
+skills"** below for the metadata source of truth.
+
+### SKILL.md shape
+
+Each `<name>.skill.md` must be a valid SKILL.md: minimal frontmatter, the
+detail lives in the body so a skill loader can install it and an LLM can read
+it cold without parsing custom YAML.
+
+```markdown
+---
+name: jwt-debugger
+description: >-
+  Decode, verify, and sign HMAC JSON Web Tokens with the Secutils.dev JWT
+  Debugger. Build a one-click prefilled URL the user can open by encoding
+  `{j: <jwt>, s: <secret>}` into the fragment of
+  https://tools.secutils.dev/jwt#{encoded}. Trigger when the user asks to
+  "decode this JWT", "verify a JWT signature", inspect a Bearer token, or
+  anything that names secutils.dev/jwt.
+---
+
+# JWT Debugger (Secutils.dev)
+
+<one paragraph: what the tool does, where state lives, what's out of scope>
+
+## Inputs
+
+| Field | Type | Default | Notes |
+| ...   | ...  | ...     | ...   |
+
+## Wire format
+
+<the deflate-raw / ulen / base64url pipeline, copy-paste from echo>
+
+## How to produce the URL
+
+<runnable Node ≥ 18 snippet, no deps, takes argv JSON, prints the full URL>
+
+## After producing
+
+<UX guidance: one sentence summary, fenced block, don't paraphrase>
+
+## Caveats
+
+- <secrets in the fragment, content-type defaults, scope limitations, ...>
 ```
 
-### Markup (copy verbatim)
+Frontmatter rules (all that the loader contracts on):
+
+- `name`: a stable kebab-case slug. **Does not have to match the file slug** -
+  e.g. `echo.skill.md` declares `name: mock-response` to align with the
+  installed Anthropic skill of the same name.
+- `description`: a multi-line scalar (use the `>-` folded form). Pack it with
+  natural-language trigger phrases - this is what the loader matches against
+  user prompts to decide whether to surface the skill. Mention the live URL
+  shape inline so an agent that loads only the frontmatter still has enough
+  to act.
+
+Body rules (convention, not contract - but every consumer benefits):
+
+- Heading levels are flat (`#` for the title, `##` for sections). No `###`
+  unless you're really nesting.
+- The "How to produce the URL" snippet must be **runnable as-is** with Node
+  ≥ 18 and zero deps. Pass state as `argv[1]` so the shell quoting story
+  stays simple. Always `console.log` the **full** URL, never just the
+  fragment.
+- Tools without URL-state deep-linking (`markdown-to-html`, `mock-saml-idp`)
+  skip the wire format / encoder sections and use a "How to direct the user"
+  section instead - see `markdown-to-html.skill.md` for the template.
+
+### How the deploy pipeline handles skills
+
+[`dev/tools/deploy.ts`](deploy.ts) iterates `dev/tools/*.skill.md`,
+substitutes `{{TOOLS_HOST}}`, and PUTs each file as `text/markdown` to the
+corresponding `_MD`-suffixed responder. The skill body is **opaque** to the
+deploy script - it doesn't try to parse beyond the host substitution.
+
+The `llms.txt` aggregate is built from a separate metadata source: the
+`<meta name="su-tool-name">`, `su-tool-path`, `su-tool-description`, and
+`su-tool-promote` tags in the corresponding `<slug>.html`. This keeps the
+registry honest:
+
+- The HTML's meta tags are also consumed by `scripts/tools-check.ts`,
+  `e2e/tools/registry.ts`, and the marketing site, so there's exactly one
+  canonical place to declare a tool's name / path / description / promotion.
+- The skill's frontmatter stays minimal (skill-loader-friendly) and doesn't
+  drift out of sync with the page.
+- A tool only appears in `llms.txt` (and in `sitemap.xml` /
+  `agent-skills/index.json`) if **all** of (a) it has
+  `<meta name="su-tool-promote" content="true">` (see "Promotion" above),
+  (b) it has a sibling `<slug>.skill.md` on disk, and (c) the corresponding
+  `_MD` responder ID is configured in `.env`. (a) hides niche tools from
+  every aggregate; (b) and (c) together prevent 404 `.md` URLs during
+  incremental rollouts.
+
+Per-tool environment variables follow this convention:
+
+```bash
+SECUTILS_HTML_APP_RESPONDER_ID_JWT_DEBUGGER=...    # serves /jwt
+SECUTILS_HTML_APP_RESPONDER_ID_JWT_DEBUGGER_MD=... # serves /jwt.md
+SECUTILS_HTML_APP_RESPONDER_ID_LLMS_TXT=...        # serves /llms.txt
+```
+
+A skill source whose `_MD` responder ID is missing is skipped with a yellow
+warning (same staged-rollout behaviour as for HTML responders), and is
+omitted from `llms.txt`.
+
+### Cross-cutting discovery surfaces (`/robots.txt`, `/sitemap.xml`, `/.well-known/agent-skills/index.json`, Link headers)
+
+Beyond the per-tool `.md` skills and the `llms.txt` aggregate, the deploy
+script ships four additional artefacts that the [isitagentready.com](https://isitagentready.com)
+checklist asks every agent-friendly site to publish. None of them require any
+per-tool authoring; they are derived 1:1 from the same HTML registry +
+`*.skill.md` directory listing as `llms.txt`.
+
+| URL                                            | Content type        | Source of truth                            | Responder env var                                  |
+|------------------------------------------------|---------------------|--------------------------------------------|-----------------------------------------------------|
+| `/robots.txt`                                  | `text/plain`        | `buildRobotsTxt()` in `deploy.ts`          | `SECUTILS_HTML_APP_RESPONDER_ID_ROBOTS_TXT`         |
+| `/sitemap.xml`                                 | `application/xml`   | `buildSitemapXml()` in `deploy.ts`         | `SECUTILS_HTML_APP_RESPONDER_ID_SITEMAP_XML`        |
+| `/.well-known/agent-skills/index.json`         | `application/json`  | `buildAgentSkillsIndex()` in `deploy.ts`   | `SECUTILS_HTML_APP_RESPONDER_ID_AGENT_SKILLS_INDEX` |
+| `Link:` headers on `/`                         | (HTTP response headers) | hard-coded `indexLinkHeaders` in `deploy.ts` | (no extra responder; pinned via index settings)   |
+
+#### `/robots.txt`
+
+A single text file containing:
+
+- A wildcard `User-agent: * / Allow: /` rule (we have nothing private here).
+- Explicit `Allow: /` entries for every named AI crawler we know about
+  (GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, Claude-Web, anthropic-ai,
+  Google-Extended, PerplexityBot, Perplexity-User, Applebot-Extended,
+  cohere-ai, CCBot, Bytespider, Diffbot, DuckAssistBot, Meta-ExternalAgent,
+  Amazonbot, FacebookBot). The wildcard already covers them, but being
+  explicit is a clear "we welcome agent traffic" signal.
+- A [Content Signals](https://contentsignals.org/) directive declaring that
+  AI training, search indexing, and AI input (RAG / agent retrieval) are all
+  welcome: `Content-Signal: ai-train=yes, search=yes, ai-input=yes`.
+- A `Sitemap:` reference pointing at `/sitemap.xml`.
+
+To add a new AI crawler, append to the `aiAgents` array in `buildRobotsTxt`.
+
+#### `/sitemap.xml`
+
+Standard sitemaps.org 0.9 XML with one `<url>` per public surface:
+the index, every promoted tool's `<path>` and `<path>.md`, every
+non-promoted tool's `<path>` and `<path>.md`, plus the aggregate
+`/llms.txt` and `/.well-known/agent-skills/index.json`. `<lastmod>` is set
+to today's date on every deploy; `<changefreq>` is `weekly` for everything
+because the tools really do change at roughly that cadence and search
+engines respect it as a hint, not a contract.
+
+#### `/.well-known/agent-skills/index.json`
+
+[Cloudflare's Agent Skills Discovery RFC v0.2.0](https://github.com/cloudflare/agent-skills-discovery-rfc)
+shape: `$schema` field plus a `skills` array where each entry has `name`,
+`type: "skill"`, `description` (mirrors the HTML's `su-tool-description`),
+`url` (the live `<path>.md` URL), and `sha256` of the deployed skill body.
+The hash is computed from the **substituted** Markdown body that actually
+ships, so an agent that's already cached the skill can detect updates with
+a single GET.
+
+#### `Link:` headers on `/`
+
+The index responder PUTs a single RFC 8288 `Link` response header carrying
+three comma-separated link-values, so any agent that fetches just `/` gets
+pointers to the discovery surfaces in response headers, no body parsing
+required:
+
+```
+Link: </llms.txt>; rel="describedby"; type="text/markdown",
+      </.well-known/agent-skills/index.json>; rel="describedby"; type="application/json",
+      </sitemap.xml>; rel="sitemap"; type="application/xml"
+```
+
+We combine into one header rather than sending three because the responder's
+HeaderMap-style serializer collapses duplicate `Link:` entries (last write
+wins). RFC 8288 §3 explicitly allows this combined form as long as the order
+of link-values is preserved.
+
+Per-tool responders deliberately do not carry these headers -- the index is
+the single hub agents are expected to land on first.
+
+### Markdown content negotiation (`Accept: text/markdown`)
+
+Every HTML tool responder also honours `Accept: text/markdown` content
+negotiation: an agent that sends a request with `Accept: text/markdown` (or
+any Accept value that contains `text/markdown` and does not start with
+`text/html`) gets a `302` redirect to the corresponding `<slug>.md` (or
+`/llms.txt` for the index page). Browsers, `curl --compressed` (which
+sends `Accept: */*`), and any standard HTML client see no behaviour change
+because their Accept value starts with `text/html` (or is `*/*`).
+
+The redirect is wired up by a tiny prelude (~250 B minified) that
+`deploy.ts` injects automatically into every HTML responder's `script`
+setting at deploy time. See `wrapWithMdNegotiation()` in
+[`dev/tools/deploy.ts`](deploy.ts). The prelude composes with any existing
+`@su:responder-script` -- it runs first, may `return` a 302, and otherwise
+falls through to the user script's own return value. There is no
+per-tool authoring required.
+
+The redirect is pinned to a tool only when its sibling `.md` is actually
+deployable (its `_MD` responder ID is configured for tool pages, or
+`_LLMS_TXT` for the index). This prevents Accept-negotiated requests from
+landing on a 404 during an incremental rollout. The response carries
+`Vary: Accept` so any caching proxy keeps the HTML and Markdown variants
+distinct.
+
+### Skill link button (header) - per-tool pages only
+
+Each per-tool HTML carries a uniform header button so humans can discover the
+skill file (the URL is otherwise invisible to non-AI eyes). The href is set at
+runtime from `location.pathname` so the markup is identical across tools:
+
+```js
+const path = location.pathname.replace(/\/$/, '') || '/';
+if (path !== '/') {
+    document.getElementById('skillLink').href = path + '.md';
+}
+```
+
+The index page (`/`) deliberately omits this chip. Agents have five
+overlapping ways to find `/llms.txt` from `/` without parsing the HTML:
+`Accept: text/markdown` content negotiation (302 to `/llms.txt`), the `Link:`
+response header on `/`, `/robots.txt`'s `Sitemap:` reference, `/sitemap.xml`,
+and `/.well-known/agent-skills/index.json` - and `/llms.txt` itself sits at a
+[llmstxt.org](https://llmstxt.org/) well-known path that AI crawlers know to
+fetch. Humans rarely want a directory-of-all-skills URL, so the chip's primary
+human use case (right-click → copy → paste into a chat: "here is the skill
+for this tool") doesn't apply at the index. Per-tool pages keep it because
+that human use case IS real there.
+
+#### Markup (copy verbatim)
 
 Place inside `.header-right`, before the `<button class="theme-toggle">`:
 
 ```html
 <a id="skillLink" class="skill-link" href="#" target="_blank" rel="noopener"
-   title="View AI agent skill (skill.md, opens in new tab)"
+   title="View AI agent skill (opens in new tab)"
    aria-label="View AI agent skill (opens in new tab)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
@@ -267,7 +582,7 @@ Place inside `.header-right`, before the `<button class="theme-toggle">`:
 The icon is the Lucide `sparkles` glyph - the most widely recognised AI
 affordance in current UI design (matches Anthropic, OpenAI, Cursor, etc.).
 
-### CSS (copy verbatim)
+#### CSS (copy verbatim)
 
 Place next to the existing `.theme-toggle` rules:
 
@@ -290,13 +605,114 @@ compact on mobile:
 .skill-link { padding: 0 10px; }
 ```
 
-### When to opt out
+## SEO requirements
 
-Tools without a published `skill.md` (and no plan to publish one soon) should
-**leave the markup off**. A visible button that 404s is a worse UX than no
-button at all. Today this means [`dev/tools/index.html`](index.html) (a tool
-list, not a tool) skips it. As you write new `skill.md` responders for `jwt`,
-`pem`, etc., add the markup to the corresponding HTML at the same time.
+The free tools double as a lead magnet: every page lives at a stable URL on
+`{{TOOLS_HOST}}` and is the first impression a search-result or LLM-citation
+visitor gets. Each tool HTML must therefore ship the full SEO head block below
+(use `jwt-debugger.html` as the canonical reference). Per-tool E2E specs in
+`e2e/tools/<slug>.spec.ts` enforce these via `assertSeoBasics`, so a missing
+or empty tag fails CI.
+
+### Required `<head>` tags
+
+```html
+<title>{{Tool}}: {{Snappy Subtitle}} | Secutils.dev</title>
+<meta name="description"     content="{{60-160 chars; mention what it does, who it's for, and 'no signup'.}}">
+<meta name="robots"          content="index, follow, max-image-preview:large">
+<link rel="canonical"        href="https://{{TOOLS_HOST}}{{su-tool-path}}">
+
+<!-- Introspection (read by tools-check.ts and the agent surface) -->
+<meta name="su-tool-path"        content="{{path}}">
+<meta name="su-tool-name"        content="{{Tool Name}}">
+<meta name="su-tool-description" content="{{One-line marketing description}}">
+<meta name="su-tool-promote"     content="true|false">
+
+<!-- Open Graph (rich previews on Slack, GitHub, LinkedIn, …) -->
+<meta property="og:type"        content="website">
+<meta property="og:site_name"   content="Secutils.dev">
+<meta property="og:title"       content="{{Tool}}: {{Snappy Subtitle}}">
+<meta property="og:description" content="{{Same as meta description, may shorten.}}">
+<meta property="og:url"         content="https://{{TOOLS_HOST}}{{su-tool-path}}">
+<meta property="og:image"       content="https://secutils.dev/docs/img/og/og-{{slug}}.png">
+<meta property="og:image:width"  content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt"   content="{{Same as title, used by screen readers.}}">
+<meta property="og:locale"      content="en_US">
+
+<!-- Twitter card (single image, no light/dark variant) -->
+<meta name="twitter:card"        content="summary_large_image">
+<meta name="twitter:title"       content="{{Tool}}: {{Snappy Subtitle}}">
+<meta name="twitter:description" content="{{Same as og:description.}}">
+<meta name="twitter:image"       content="https://secutils.dev/docs/img/og/og-{{slug}}.png">
+
+<!-- JSON-LD: WebApplication for tools, ItemList for index.html -->
+<script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "{{Tool Name}}",
+  "url": "https://{{TOOLS_HOST}}{{su-tool-path}}",
+  "applicationCategory": "SecurityApplication",
+  "operatingSystem": "Any",
+  "browserRequirements": "Requires JavaScript",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "publisher": { "@type": "Organization", "name": "Secutils.dev", "url": "https://secutils.dev" },
+  "sameAs": "https://github.com/secutils-dev/secutils/blob/main/dev/tools/{{file}}.html",
+  "description": "{{Longer paragraph for SEO, can repeat the meta description.}}"
+}</script>
+```
+
+### Required body elements
+
+- A visible **`<noscript>` paragraph** at the top of `<body>` that explains the
+  tool needs JavaScript and links back to the secutils.dev home. SEO crawlers
+  treat this as the page's text content when JS is disabled, so it must be
+  meaningful (not just "JS required").
+- A **bottom "more free tools" banner** as the last child of `<main>` (see
+  "More free tools bottom CTA" below). This is the **only** related-tools surface
+  on the page - it carries both the SEO internal-linking value (one link from
+  every leaf back to the index) and the human / agent discovery affordance.
+
+  Earlier revisions of these tools shipped an additional `<nav class="su-related">`
+  list of every other promoted tool sitting between `</main>` and `<footer>`.
+  That block is now obsolete: it duplicated what the index already does (and
+  did so with stale, hand-curated copy that drifted out of sync), and visually
+  competed with the brighter yellow CTA. When migrating an older tool to the
+  banner, **delete** the `<nav class="su-related">` element and the matching
+  `.su-related*` CSS rules.
+
+### Per-tool OG image
+
+Every tool ships a 1200x630 OG image at
+`https://secutils.dev/docs/img/og/og-<slug>.png` (and a sibling
+`og-<slug>-light.png` for light-themed previews). These are auto-generated; do
+not paint them by hand. See **OG image generation** below.
+
+## OG image generation
+
+OG images are rendered at deploy time by the existing Playwright stack. Source
+template: [`dev/tools/og-template.html`](og-template.html), parameterised via
+URL query strings (`name`, `path`, `desc`, `accent`, `icon`, `theme`, `host`).
+The driver spec [`e2e/tools/og.spec.ts`](../../e2e/tools/og.spec.ts) iterates
+over [`e2e/tools/registry.ts`](../../e2e/tools/registry.ts) and writes both a
+dark and a light PNG per tool into
+`components/secutils-docs/static/img/og/`. Docusaurus serves `static/*`
+verbatim, so the final URLs are stable and unhashed.
+
+```bash
+# Regenerate every OG image (14 PNGs: dark + light × 7 tools)
+make tools-og
+
+# Verify byte-stability (re-runs N times, checks the files do not change)
+make tools-og-loop RUNS=5
+```
+
+The same stability guarantees as the docs screenshot suite apply: pre-screenshot
+DOM stabilization in `goto()`, sticky-pixel re-encoding to absorb sub-pixel
+anti-aliasing jitter, fixed viewport at exactly 1200x630 so no scaling
+math is involved. Adding a new tool is a one-row diff in `registry.ts` plus a
+`make tools-og` to materialise the PNGs.
 
 ## Brand Colors (from Elastic EUI theme-borealis)
 
@@ -380,15 +796,13 @@ Styled as an EUI application breadcrumb:
 }
 ```
 
-### Logo SVG (copy this exactly)
+### Logo SVG
 
-```html
-<svg class="logo-svg" height="24" role="img" viewBox="0 0 98 16" xmlns="http://www.w3.org/2000/svg">
-    <path d="m3 0h10c1.662 0 3 1.338 3 3v10c0 1.662-1.338 3-3 3h-10c-1.662 0-3-1.338-3-3v-10c0-1.662 1.338-3 3-3z" fill="#fed047"/>
-    <path aria-label="SU" d="m11.285 12q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667t1.216-0.26667 1.216 0.26667q0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50133-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832t0.46933 1.4613q0 0.69334-0.30933 1.2053-0.30933 0.50133-0.864 0.77867-0.55467 0.27733-1.312 0.27733z" fill="#642340"/>
-    <path class="logo-text-fill" aria-label="SECUTILS.DEV" d="m93.158 12.117-1.9733-7.7867h1.1733l1.2587 5.184q0.11733 0.46933 0.20267 0.91734 0.08533 0.448 0.128 0.69334 0.04267-0.24533 0.128-0.69334 0.096-0.45867 0.21333-0.928l1.2053-5.1733h1.184l-1.984 7.7867zm-7.8294 0v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-6.5174 0v-7.7867h2.176q0.768 0 1.3333 0.29867 0.56534 0.288 0.87467 0.832 0.32 0.53334 0.32 1.248v3.008q0 0.736-0.32 1.2693-0.30933 0.53334-0.87467 0.832-0.56534 0.29867-1.3333 0.29867zm1.152-1.0347h1.024q0.62934 0 1.0027-0.36267 0.37333-0.36267 0.37333-1.0027v-3.008q0-0.61867-0.37333-0.98134-0.37334-0.37333-1.0027-0.37333h-1.024zm-5.2374 1.1413q-0.416 0-0.68267-0.24533-0.256-0.256-0.256-0.672 0-0.416 0.256-0.672 0.26667-0.26667 0.68267-0.26667 0.416 0 0.672 0.26667 0.26667 0.256 0.26667 0.672 0 0.416-0.26667 0.672-0.256 0.24533-0.672 0.24533zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733zm-8.288-0.10667v-7.7867h1.152v6.7414h3.4027v1.0453zm-6.6987 0v-1.0453h1.568v-5.696h-1.568v-1.0453h4.32v1.0453h-1.5787v5.696h1.5787v1.0453zm-4.8214 0v-6.7414h-2.08v-1.0453h5.3227v1.0453h-2.0907v6.7414zm-5.824 0.10667q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.3147 0q-1.0987 0-1.7493-0.608-0.64-0.61867-0.64-1.664v-3.456q0-1.056 0.64-1.664 0.65067-0.608 1.7493-0.608 1.088 0 1.728 0.61867 0.65067 0.608 0.65067 1.6533h-1.152q0-0.608-0.33067-0.928-0.32-0.32-0.896-0.32-0.58667 0-0.91734 0.32-0.32 0.32-0.32 0.928v3.456q0 0.608 0.32 0.928 0.33067 0.32 0.91734 0.32 0.576 0 0.896-0.32 0.33067-0.32 0.33067-0.928h1.152q0 1.0453-0.65067 1.664-0.64 0.608-1.728 0.608zm-8.6827-0.10667v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-4.1707 0.10667q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667-0.23467-0.32-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34134-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733z"/>
-</svg>
-```
+The full Secutils.dev SVG (~5 KB of inline path data) is identical across every
+tool. Don't paste it into AGENTS.md - copy it verbatim from
+[`dev/tools/index.html`](index.html)'s `<a class="logo">` block. Only the wrapping
+`<a>` and the height attribute matter for new tools (height `24` everywhere except
+`20` on mobile, controlled by the `.logo-svg` rule in the responsive section).
 
 ## Dark/Light Theme Toggle
 
@@ -444,7 +858,325 @@ Styled as an EUI application breadcrumb:
 .btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
 .btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); font-weight: 600; }
 .btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+.icon-btn { padding: 4px; border: none; background: none; color: var(--text-muted); cursor: pointer; border-radius: 4px; transition: all .15s; display: inline-flex; align-items: center; justify-content: center; }
+.icon-btn:hover { color: var(--text); background: var(--surface-hover); }
+.icon-btn svg { width: 16px; height: 16px; }
 ```
+
+### Canonical control height: 24 px
+
+The three small controls that share the `.panel-bar` (`.btn-sm`, `.view-tabs`,
+`.icon-btn`) **must compute to the same outer height of 24 px** so they line
+up across the splitter when one pane has `Share` (a `.btn-sm`) and the other
+has `XML | Attributes` (a `.view-tabs` pill). The default `.btn-sm` came in
+at 22 px (4 px vertical padding + 1 px border + 12 px line + 1 px border + 4 px),
+the `.view-tabs` pill at 24 px (1 px border + 2 px padding + 18 px content + 2 px
+padding + 1 px border) and `.icon-btn` at 28 px (6 px padding + 16 px svg + 6 px),
+so all three were "centered in a 38 px bar" but their tops/bottoms drifted by
+2-6 px, which is visible across the splitter even though the bar height
+itself is invariant.
+
+The current values reconcile to 24 px:
+
+- `.btn-sm`: `padding: 5px 10px; font-size: 12px;` (inherits `line-height: 1` from `.btn { font: 13px/1 ... }`) → 5+1+12+1+5 = 24
+- `.view-tabs`: `padding: 2px;` + `border: 1px;` + `.view-tab { padding: 3px 10px; font: 12px/1; }` → 1+2+(3+12+3)+2+1 = 24
+- `.icon-btn`: `padding: 4px;` + `svg 16x16` → 4+16+4 = 24
+
+**The `/1` in `font: 12px/1 var(--font)` is load-bearing.** Without it the
+`font` shorthand resets `line-height` to `normal` (~1.2-1.4 for Inter), so the
+inner pill renders at ~21 px instead of 18 px and the outer view-tabs swells
+to 27 px. The misalignment looks like the bar got taller, but the bar is
+still 38 px - the pill's content box just outgrew the `.btn-sm` it's sitting
+across the splitter from. Always pin `line-height` explicitly on any control
+that lives in `.panel-bar`.
+
+Do **not** change one in isolation - touching any of the three requires
+checking the other two and the per-tool mobile override (`.btn-sm` shrinks
+to 23 px on mobile in `markdown-to-html` via `padding: 5px 9px; font-size:
+11px;` - keep the vertical padding at 5 px so it still matches the
+`.view-tab` mobile override which collapses font to 11 px → 22 px outer).
+
+**`.panel-bar` must always pin `flex-shrink: 0`.** This is load-bearing
+and easy to miss. The bar is a flex item inside the column wrapper
+(`.panel`), the column has another sibling (the editor or the decoded
+container), and any sibling that contributes a non-trivial flex basis
+will *steal vertical space from the bar*. The most common offender is a
+`<textarea class="editor-area">` that has `height: 100%; min-height:
+400px;` - the percentage resolves against the column height (typically
+~700 px), giving the textarea a flex basis of ~700 px. The bar's basis
+is only 46 px, so when the column has to allocate space, both items
+compete with `flex-shrink: 1` (default) and the bar gets squeezed by
+~2-3 px while the textarea takes nearly the whole column. Meanwhile
+the *other* pane has its content sized as `flex: 1; min-height: 400px;`
+(basis = 0), so its bar is never squeezed and stays at the declared
+46 px. Result: the two panel-bars end up with different heights even
+though both declare `height: 38px`, and the panes' bodies fall out of
+alignment by exactly the squeeze amount.
+
+`flex-shrink: 0` on the bar fixes it permanently regardless of what
+sibling sizing convention the editor uses (`flex: 1` vs `height: 100%`).
+The wider rule: **any flex item with a fixed `height` whose presence
+matters for cross-pane alignment must also pin `flex-shrink: 0`** -
+otherwise its declared height is just the basis, not a hard floor.
+
+The mobile media query (where `.grid` collapses to a single column and
+panes stack vertically, so cross-pane alignment no longer matters) flips
+the bar to `flex-wrap: wrap`. There it must also override the desktop
+`height: 38px` to `height: auto; min-height: 38px;` - otherwise the
+wrapped second row of controls renders **outside** the bar's 46 px box
+(because the desktop `height: 38px` is a hard cap once we've pinned
+`flex-shrink: 0` on the bar) and overlaps the editor / preview below.
+
+The **column-stacking breakpoint must be 900 px** for every two-pane tool
+(matching JWT). Splitting the viewport in half below ~900 px leaves each
+column at ≤440 px of horizontal space, which is too narrow for the
+label-plus-actions bar contents - every link button wraps to two lines
+and the bar takes up 30-40 % of the visible vertical space. Keep the
+header / button-padding tweaks (`.btn { font-size: 12px; }` etc.) on a
+separate, smaller breakpoint (typically 640 px) so they only fire at
+real phone widths. Two queries, two responsibilities:
+
+```css
+/* Stack columns + wrap bar - fires when 2 columns would be too narrow. */
+@media (max-width: 900px) {
+  .grid { grid-template-columns: 1fr; row-gap: 24px; }
+  .splitter { display: none; }
+  .panel-bar { flex-wrap: wrap; row-gap: 8px; height: auto; min-height: 38px; }
+  .panel-actions { flex-wrap: wrap; justify-content: flex-end; }
+}
+/* Phone-sized chrome tweaks - fires only at real phone widths. */
+@media (max-width: 640px) {
+  header { padding: 0 12px; }
+  .logo-svg { height: 20px; }
+  .logo-badge { font-size: 11px; padding: 2px 7px; }
+  .btn { padding: 6px 10px; font-size: 12px; }
+  main { padding: 16px 12px; }
+  .editor-area { min-height: 200px; }
+}
+```
+
+### Copy buttons (icon convention)
+
+Every "copy to clipboard" button in every tool uses the same 16-px clipboard
+SVG followed by a labelled span. The icon makes the affordance recognisable
+even when the label collapses on mobile, and it matches the visual weight of
+the `Export` icon in `markdown-to-html`. Either every Copy button has the
+icon or none does - picking and choosing per tool produces the inconsistency
+that previously made `saml-decoder` / `jwt-debugger` / `echo` look unrelated
+to `markdown-to-html`.
+
+```html
+<button id="copy-button" class="btn btn-sm" title="Copy ... to your clipboard">
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="9" height="10" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"/></svg>
+    <span class="btn-label">Copy</span>
+</button>
+```
+
+### Action feedback (toast, not button text swap)
+
+Every "thing happened" feedback - Copy, Share, Export errors - uses a
+**bottom-right toast**, not a button-label swap. The button keeps its label
+and icon stable; the toast carries the success / failure message. Three
+reasons:
+
+1. The icon + label combination has a fixed width, so swapping the label
+   (`Copy` → `Copied!`) jitters the surrounding action row.
+2. A single feedback channel covers success **and** failure (`Failed to copy`
+   has no good inline equivalent for an icon-only Export button).
+3. Screen readers announce the toast via `role="status" aria-live="polite"`
+   without the focus moving.
+
+Standard microcopy (use these literal strings - do not invent variants):
+
+| Action | Success | Failure |
+|---|---|---|
+| Copy any payload | `Copied to clipboard` | `Failed to copy` |
+| Share (URL-state link) | `Share link copied` | `Failed to copy share link` |
+
+Markup, CSS, and helper (copy verbatim into a tool that doesn't have a toast
+yet - `echo`, `jwt-debugger`):
+
+```html
+<div id="toast" class="toast" role="status" aria-live="polite" style="display:none">
+    <span id="toastMsg"></span>
+</div>
+```
+
+```css
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); color: var(--text); padding: 10px 18px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 8px; animation: toastIn .2s ease; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+```
+
+```js
+let toastTimer;
+function toast(msg) {
+    document.getElementById('toastMsg').textContent = msg;
+    const el = document.getElementById('toast');
+    el.style.display = 'flex';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.style.display = 'none'; }, 2000);
+}
+```
+
+```js
+copyBtn.addEventListener('click', async () => {
+    try {
+        await navigator.clipboard.writeText(value);
+        toast('Copied to clipboard');
+    } catch {
+        toast('Failed to copy');
+    }
+});
+```
+
+## Two-pane layouts (`.panel-bar`)
+
+Tools that show a two-pane editor / output split (`certificate-decoder`,
+`saml-decoder`, `markdown-to-html`) align the tops of both panel bodies by
+giving each header bar a **fixed** height, not `min-height` and not
+content-driven padding:
+
+```css
+.panel-bar { display: flex; align-items: center; justify-content: space-between; padding: 0 0 8px; gap: 8px; height: 38px; box-sizing: content-box; }
+```
+
+The `height: 38px; box-sizing: content-box` is load-bearing. With `min-height`
+or no height at all, a bar containing buttons (`Example`, `Clear`, tabs) grows
+to ~38 px while a bar containing only an `<h2>` stays at the text's intrinsic
+height (~24 px). The two panes' bodies then start at different `Y` coordinates
+and the misalignment is visible at every viewport width. A fixed height forces
+both bars to the same box regardless of contents.
+
+Keep the `padding: 0 0 8px` (8 px below the bar, none above) so the bar sits
+flush against the section heading; the gap above comes from the section's own
+padding.
+
+### Action layout inside `.panel-bar`
+
+The bar's two halves are conventional:
+
+- **Left half** - pane label (`<span class="panel-label">`) **or** tab pill
+  (`.view-tabs`) when the pane has multiple views. Never both - if there are
+  tabs, the label is implicit in the tab name. Keep labels to a single short
+  word (`Encoded`, `Markdown`, `Decoded`, `PEM Input`).
+- **Right half** - `.panel-actions` containing, in order:
+  1. stats text (`.stats-text`, hidden on mobile),
+  2. link-style helpers (`.link-btn` for `Example` / `Clear` / `Upload`),
+  3. primary buttons (`.btn .btn-sm`, including `Share` on the input pane and
+     `Copy` / `Export` on the output pane),
+  4. `.icon-btn` toggles **last**, so Fullscreen always sits at the far edge
+     of the bar - that position survives mobile wrap, mirrors the convention
+     across all tools, and keeps the popover-anchored buttons (`Options`,
+     `Export`) flush with the labelled buttons they belong to.
+
+### Tab pill (`.view-tabs`)
+
+Output panes that need to switch between rendered views (e.g. Markdown
+preview vs. HTML iframe in `markdown-to-html`, XML vs. Attributes in
+`saml-decoder`) use a segmented pill, not a border-bottom tab bar. The pill
+lives **inside** the panel-bar (left half), keeping the bar height invariant
+and matching the `.btn-sm` visual weight on the right.
+
+```css
+.view-tabs { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
+.view-tab  { padding: 3px 10px; border: none; background: transparent; color: var(--text-muted); font: 12px var(--font); font-weight: 500; cursor: pointer; border-radius: 4px; transition: all .15s; }
+.view-tab:hover  { color: var(--text); }
+.view-tab.active { background: var(--surface-hover); color: var(--text); font-weight: 600; }
+```
+
+```html
+<div class="view-tabs" role="tablist" aria-label="Decoded view">
+    <button class="view-tab active" data-tab="xml" role="tab" aria-selected="true">XML</button>
+    <button class="view-tab"        data-tab="attributes" role="tab" aria-selected="false">Attributes</button>
+</div>
+```
+
+The matching JS toggles `.active` on the buttons and `.tab-content.active` on
+the panels, and mirrors `aria-selected` so screen readers track the state.
+
+### Fullscreen toggle (`.icon-btn` + `:fullscreen`)
+
+The output pane's `.panel-actions` carries a 16-px icon button that requests
+fullscreen on the **wrapper** that holds both the panel-bar and the pane
+content (not the inner content alone - fullscreening only the content hides
+the tabs and actions). Give that wrapper an id (`#previewPane`,
+`#decoded-pane`, …) and target it from CSS:
+
+```css
+.icon-btn { padding: 6px; border: none; background: none; color: var(--text-muted); cursor: pointer; border-radius: 4px; transition: all .15s; display: inline-flex; align-items: center; justify-content: center; }
+.icon-btn:hover { color: var(--text); background: var(--surface-hover); }
+.icon-btn svg  { width: 16px; height: 16px; }
+
+#previewPane:fullscreen { background: var(--bg); padding: 16px; display: flex; flex-direction: column; overflow: hidden; }
+#previewPane:fullscreen .output-panel { flex: 1; min-height: 0; }
+```
+
+The button has two SVGs (enter / exit), one of which is `display:none` at any
+time. A single `fullscreenchange` listener on `document` flips them - handle
+the toggle here, not in the click handler, so the icon stays correct when the
+user exits via Esc.
+
+```js
+fullscreenBtn.addEventListener('click', async () => {
+    if (!document.fullscreenElement) await previewPane.requestFullscreen();
+    else await document.exitFullscreen();
+});
+document.addEventListener('fullscreenchange', () => {
+    const entering = !!document.fullscreenElement;
+    enterIcon.style.display = entering ? 'none' : 'block';
+    exitIcon.style.display  = entering ? 'block' : 'none';
+});
+```
+
+## "More free tools" bottom CTA
+
+Every per-tool page (not the index) carries a small yellow-accent banner as the
+**last child of `<main>`** that points back to the tools index. It serves two
+audiences at once: a human visitor who came from a search result discovers
+sibling tools without leaving the page, and the marketing site / SEO graph
+gets a hub-and-spoke of internal links between every tool and the index.
+
+### Markup (copy verbatim)
+
+Place as the last element inside `<main>`, after the tool's primary content
+section. Do **not** put it between `</main>` and `<footer>` - it must be inside
+`<main>` so it inherits the same content padding and doesn't double-pad against
+the footer.
+
+```html
+<aside class="su-more-tools" aria-label="More free tools">
+    <p>Other free, no-signup Secutils.dev tools for {{categories}} and more - <a href="https://{{TOOLS_HOST}}/">Browse all tools &rarr;</a></p>
+</aside>
+```
+
+`{{categories}}` is a hand-curated short list excluding the current tool
+(e.g. `JWT, SAML, certificates, Markdown` on echo). Keep it plain text, no
+em-dashes, single hyphen with spaces between the description and the call-to-
+action link.
+
+### CSS (copy verbatim)
+
+Place next to the existing `.su-footer` rules:
+
+```css
+.su-more-tools { margin: 8px 0 0; padding: 12px 18px; text-align: center; border: 1px solid rgba(254, 208, 71, 0.35); border-radius: 12px; background: rgba(254, 208, 71, 0.06); font: 13px/1.55 var(--font); color: var(--text); transition: border-color .25s, background-color .25s, color .25s; }
+.su-more-tools p { margin: 0; }
+.su-more-tools a { color: var(--primary); font-weight: 700; text-decoration: none; white-space: nowrap; }
+.su-more-tools a:hover { color: var(--primary-hover); text-decoration: underline; }
+@media (max-width: 600px) { .su-more-tools { padding: 12px 14px; } .su-more-tools a { white-space: normal; } }
+```
+
+The accent yellow at low opacity (border 35 %, fill 6 %) is intentional: it
+matches the brand colour without competing with the tool's own primary action
+buttons. The `8px 0 0` margin keeps the banner tight to the section above
+(main's padding handles the gap to the footer).
+
+### Why this lives only on tool pages, not the index
+
+The index already IS the "more free tools" page - adding the same banner there
+would link `/` -> `/`. The same logic applies to the marketing site's home: it
+has its own `#free-tools` card section, so no banner is needed there either.
 
 ## Footer
 
@@ -507,7 +1239,7 @@ Watermark CSS: `text-align: center; padding: 32px 24px; opacity: 0.6; font-size:
 
 ## JavaScript Style
 
-These tools target evergreen browsers (current Chrome / Firefox / Safari / Edge) — no
+These tools target evergreen browsers (current Chrome / Firefox / Safari / Edge) - no
 transpilation, no polyfills, no IE / legacy-browser support. Write modern JavaScript and
 keep the embedded `<script>` blocks compact and idiomatic.
 
@@ -527,7 +1259,7 @@ keep the embedded `<script>` blocks compact and idiomatic.
 - **`async`/`await`** for clipboard, fetch, and any other promise-returning APIs. Avoid
   raw `.then()` chains unless the call site can't be `async`.
 - **Destructuring** for object/array unpacking when it improves readability.
-- **`catch {}`** (no unused binding) when the error is intentionally ignored — never
+- **`catch {}`** (no unused binding) when the error is intentionally ignored - never
   `catch (e) {}` with an unused `e`.
 - **Hoist constants** (CDN URLs, regexes, SVG markup, repeated HTML fragments) to
   module-top `const`s instead of inlining them at every use site.
@@ -537,12 +1269,12 @@ keep the embedded `<script>` blocks compact and idiomatic.
 
 **Avoid:**
 
-- `var` — `const`/`let` are the only acceptable bindings.
-- `function () {}` callbacks — use arrow functions.
+- `var` - `const`/`let` are the only acceptable bindings.
+- `function () {}` callbacks - use arrow functions.
 - String concatenation with `+` for HTML / CSS / multi-line text.
-- Manual `Array.from(nodeList)` — use `[...nodeList]`.
+- Manual `Array.from(nodeList)` - use `[...nodeList]`.
 - Truthy/falsy `&&`/`||` for null-fallbacks where `??` is the correct operator.
-- `e` in `catch (e) {}` when unused — drop the binding.
+- `e` in `catch (e) {}` when unused - drop the binding.
 
 **Optional but encouraged:**
 
@@ -555,10 +1287,6 @@ keep the embedded `<script>` blocks compact and idiomatic.
 The reference implementation in `markdown-to-html.html` follows all of the above and is
 the canonical example. When modifying an existing tool that still uses legacy syntax,
 modernize the surrounding code in the same edit.
-
-## Reference Implementation
-
-See `dev/tools/markdown-to-html.html` for the complete working example.
 
 ## Pre-deploy verification
 
@@ -580,12 +1308,15 @@ const vm = require('node:vm');
 const files = process.argv.slice(1);
 for (const f of files) {
   const html = fs.readFileSync(f, 'utf8');
-  const re = /<script(?:[^>]*)>([\s\S]*?)<\/script>/g;
+  const re = /<script((?:[^>])*)>([\s\S]*?)<\/script>/g;
   let m, idx = 0, allOk = true;
   while ((m = re.exec(html))) {
-    const code = m[1];
+    const attrs = m[1], code = m[2];
     if (!code.trim()) { idx++; continue; }
-    if (/src=/.test(html.slice(m.index, m.index + 200))) { idx++; continue; }
+    if (/src\s*=/.test(attrs)) { idx++; continue; }
+    // JSON-LD blocks ship as <script type=\"application/ld+json\">; they are
+    // valid JSON, not JavaScript, so node:vm would reject the leading '{'.
+    if (/type\s*=\s*[\"']application\/ld\+json[\"']/i.test(attrs)) { idx++; continue; }
     try { new vm.Script(code, { filename: \`\${f}#\${idx}\` }); }
     catch (e) { console.log('FAIL', f, 'script #' + idx, '->', e.message); allOk = false; }
     idx++;
@@ -638,6 +1369,79 @@ These four checks are what should pass before `make deploy-tools` (or before ope
 PR if a deploy isn't immediate). Live verification in the browser still belongs in the
 post-deploy step.
 
+### 5. Cross-cutting checks for new / renamed tools
+
+When you add a tool (or change its alias), the four script-level checks above are not
+enough - there's also static metadata that has to stay in sync across two repos. Run:
+
+```bash
+make tools-check                       # asserts promo home + README + skill .md presence
+node --check scripts/tools-check.ts    # script self-check (parses the script itself)
+make tools-og                          # regenerates OG images from the registry
+make e2e-tools-test                    # exercises SEO + skill .md against the live host
+```
+
+`make tools-check` walks every `dev/tools/*.html`, reads `<meta name="su-tool-promote">`,
+and asserts:
+
+1. Every promoted tool is linked from the marketing home page hero strip / cards.
+2. Every promoted tool is listed in the root `README.md` "Free single-page tools" table.
+3. Every promoted tool has a sibling `<name>.skill.md` file.
+4. No non-promoted tool leaks into the marketing home page (the index page itself
+   is exempt - it is always linked via "Browse all tools").
+
+`make e2e-tools-test` runs the per-tool Playwright specs against the live tools host
+(`BASE_URL` defaults to `https://tools.secutils.dev`). Each spec asserts the SEO head
+block, the skill .md is reachable as `text/markdown`, and the tool's primary functional
+flow works end-to-end.
+
+## New-tool checklist
+
+A condensed end-to-end checklist for adding a tool. Each step references the section
+that explains it in detail.
+
+1. **Author the HTML** - single file under `dev/tools/<name>.html`, header with logo,
+   skill link button (see "Skill link button"), and theme toggle; body styled with the
+   shared brand variables; full SEO head block (see "SEO requirements"); `<noscript>`
+   fallback; `su-tool-path`, `su-tool-name`, `su-tool-description`,
+   `su-tool-promote` meta tags; **bottom "more free tools" banner** as the last
+   child of `<main>` (see "More free tools bottom CTA"); footer. Do NOT add a
+   separate `<nav class="su-related">` block - the banner is the sole
+   related-tools surface.
+2. **Author the skill** - `dev/tools/<name>.skill.md` as a real Claude Code / Cursor
+   SKILL.md (terse `name` + `description` frontmatter, rich Markdown body with `## Inputs`,
+   `## Wire format`, `## How to produce the URL` runnable snippet, `## After producing`,
+   `## Caveats`). Mirror the shape of `echo.skill.md` - see "AI-agent surface".
+3. **Add the tool to the registry** - append a row to `e2e/tools/registry.ts`
+   with the tool's OG/E2E-specific metadata only (accent, icon, applicationCategory).
+   Name / path / description / promotion live in the HTML `<meta>` tags and are
+   imported automatically.
+4. **Add the tool to `index.html`** - new card in the `.tool-list` container.
+5. **Pre-create the responder IDs** - two responders (one HTML, one MD) on the
+   responders backend; capture both IDs into `.env` as
+   `SECUTILS_HTML_APP_RESPONDER_ID_<TOOL>` and `SECUTILS_HTML_APP_RESPONDER_ID_<TOOL>_MD`.
+   The cross-cutting agent-discovery aggregate IDs (`_LLMS_TXT`, `_ROBOTS_TXT`,
+   `_SITEMAP_XML`, `_AGENT_SKILLS_INDEX`) are one-time per environment and re-used
+   for every tool deploy.
+6. **Run the pre-deploy checks** - inline-script syntax (`#1`),
+   `html-minifier-terser` dry-run (`#2`), URL-state round-trip (`#3` if applicable),
+   responder-script smoke (`#4` if applicable).
+7. **Generate OG images** - `make tools-og` (writes `og-<slug>.png` and
+   `og-<slug>-light.png`).
+8. **If `promote: true`**: add a card to the marketing site's home `#free-tools`
+   section (the bottom card list - there is no longer a hero chip strip) and add a
+   row to the README "Free single-page tools" table. **You do NOT need to touch
+   `sitemap.xml`, `robots.txt`, `llms.txt`, or `agent-skills/index.json`** - those
+   are regenerated from the HTML registry on every `make deploy-tools` run.
+9. **Add an E2E spec** - `e2e/tools/<slug>.spec.ts` based on
+   [`e2e/tools/jwt.spec.ts`](../../e2e/tools/jwt.spec.ts).
+10. **Verify cross-cutting**: `make tools-check`, `make e2e-tools-test`.
+11. **Deploy** - `make deploy-tools` (deploys the HTML, the `.skill.md`, and
+    refreshes the four agent-discovery aggregates). The aggregate refresh requires
+    `_LLMS_TXT`, `_ROBOTS_TXT`, `_SITEMAP_XML`, and `_AGENT_SKILLS_INDEX` env vars
+    to be set; missing IDs produce yellow `⚠ skipped` warnings rather than failing
+    the deploy.
+
 ## PDF Export (optional)
 
 Tools that produce printable artifacts (rendered articles, decoded certificates, JWT
@@ -648,7 +1452,7 @@ The pattern, demonstrated in `markdown-to-html.html`, is:
 2. Build a self-contained printable HTML document (same brand fonts and palette as the
    on-screen preview) with the article content and a small `<script>` tag that lazy-loads
    [Paged.js](https://pagedjs.org) from a CDN. Paged.js paginates the document into A4
-   pages using CSS Paged Media (`@page`, `@bottom-center`, `string-set`, etc.) — vector
+   pages using CSS Paged Media (`@page`, `@bottom-center`, `string-set`, etc.) - vector
    text, selectable, fully styled to match the preview.
 3. Inject that document into a hidden, off-screen `<iframe>` via `srcdoc`.
 4. Inside the iframe, listen for `pagedjs:rendered` on `window` and flip a `__suPdfReady`
@@ -659,5 +1463,5 @@ The pattern, demonstrated in `markdown-to-html.html`, is:
    fire it reliably).
 
 No WASM, no server round-trip, ~150 KB CDN script loaded only on first export. Always force
-`data-theme="light"` on the print document — yellow-on-dark is great on screen but reads
+`data-theme="light"` on the print document - yellow-on-dark is great on screen but reads
 poorly on paper.

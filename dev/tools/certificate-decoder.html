@@ -3,8 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Certificate Decoder | Secutils.dev</title>
+    <title>PEM Certificate Decoder: Inspect X.509 Chains | Secutils.dev</title>
+    <meta name="description" content="Free PEM X.509 certificate decoder. Inspect chains, view subject, issuer, SANs, validity, fingerprints. Auto-sorts chain order. Browser-only, no signup.">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <link rel="canonical" href="https://{{TOOLS_HOST}}/pem">
     <meta name="su-tool-path" content="/pem">
+    <meta name="su-tool-name" content="Certificate Decoder">
+    <meta name="su-tool-description" content="Decode PEM X.509 certificate chains. Subject, issuer, SANs, validity, fingerprints. Auto-sorts chain order. Shareable URL state.">
+    <meta name="su-tool-promote" content="true">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Secutils.dev">
+    <meta property="og:title" content="PEM Certificate Decoder: Inspect X.509 Chains">
+    <meta property="og:description" content="Free PEM X.509 certificate decoder. Inspect chains, view subject, issuer, SANs, validity, fingerprints. Browser-only, no signup.">
+    <meta property="og:url" content="https://{{TOOLS_HOST}}/pem">
+    <meta property="og:image" content="https://secutils.dev/docs/img/og/og-pem.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="PEM Certificate Decoder on Secutils.dev: inspect X.509 chains.">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="PEM Certificate Decoder: Inspect X.509 Chains">
+    <meta name="twitter:description" content="Free PEM X.509 certificate decoder. Inspect chains, view subject, issuer, SANs, validity, fingerprints. No signup.">
+    <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-pem.png">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"PEM Certificate Decoder","url":"https://{{TOOLS_HOST}}/pem","applicationCategory":"SecurityApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/certificate-decoder.html","description":"Free PEM X.509 certificate decoder. Inspect chains, view subject, issuer, SANs, validity, fingerprints. Auto-sorts chain order. Browser-only, shareable URL state, no signup."}</script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/forge/1.3.1/forge.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -53,7 +74,7 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
 .btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); font-weight: 600; }
 .btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
-.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
 .theme-toggle { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .2s; }
 .theme-toggle:hover { background: var(--surface-hover); color: var(--text); }
 .theme-toggle svg { width: 16px; height: 16px; fill: currentColor; }
@@ -61,11 +82,20 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .theme-toggle .icon-moon { display: block; }
 [data-theme="dark"] .theme-toggle .icon-sun { display: block; }
 [data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+.skill-link { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); color: var(--text-muted); font: 12px var(--font, system-ui), sans-serif; text-decoration: none; transition: all .15s; cursor: pointer; }
+.skill-link:hover { color: var(--text); border-color: var(--text-muted); background: var(--surface-hover); }
+.skill-link svg { width: 14px; height: 14px; fill: none; stroke: currentColor; }
+.su-more-tools { margin: 8px 0 0; padding: 12px 18px; text-align: center; border: 1px solid rgba(254, 208, 71, 0.35); border-radius: 12px; background: rgba(254, 208, 71, 0.06); font: 13px/1.55 var(--font); color: var(--text); transition: border-color .25s, background-color .25s, color .25s; }
+.su-more-tools p { margin: 0; }
+.su-more-tools a { color: var(--primary); font-weight: 700; text-decoration: none; white-space: nowrap; }
+.su-more-tools a:hover { color: var(--primary-hover); text-decoration: underline; }
+@media (max-width: 600px) { .su-more-tools { padding: 12px 14px; } .su-more-tools a { white-space: normal; } }
+.su-noscript { max-width: 720px; margin: 24px auto; padding: 16px; border: 1px solid var(--border); border-radius: 8px; font: 14px/1.5 var(--font, system-ui), sans-serif; background: var(--surface); color: var(--text); }
 
 main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overflow: hidden; }
 .grid { display: grid; grid-template-columns: 1fr 12px 1fr; gap: 0; flex: 1; min-height: 0; }
 .panel { display: flex; flex-direction: column; min-height: 0; }
-.panel-bar { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+.panel-bar { display: flex; align-items: center; justify-content: space-between; padding: 0 0 8px; gap: 8px; height: 38px; box-sizing: content-box; flex-shrink: 0; }
 .panel-label { font-size: 13px; font-weight: 600; color: var(--text); }
 .panel-actions { display: flex; align-items: center; gap: 8px; }
 .link-btn { border: none; background: none; font: 12px var(--font); color: var(--text-muted); cursor: pointer; padding: 2px 4px; transition: color .15s; }
@@ -73,7 +103,7 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
 .stats-text { font: 11px var(--mono); color: var(--text-muted); }
 .editor-area { width: 100%; flex: 1; min-height: 300px; font: 13px/1.6 var(--mono); background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; resize: none; outline: none; transition: border-color .15s, background .25s, color .25s; }
 .editor-area:focus { border-color: var(--primary); }
-.output-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; overflow: hidden; min-height: 0; transition: background .25s, border-color .25s; }
+.output-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 300px; transition: background .25s, border-color .25s; }
 .output-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); }
 .output-bar-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .output-bar-actions { display: flex; align-items: center; gap: 10px; }
@@ -152,22 +182,36 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
     .cert-dn-grid { grid-template-columns: 1fr; }
     .cert-details { flex-direction: column; }
 }
+/* Stack the two panes vertically as soon as the side-by-side columns get too
+   narrow for the bar contents (label + Example self-signed + Example
+   intermediate + Clear + Share on the left). 900 px matches JWT and SAML;
+   below this the 2-column splitter view forces every label and link-btn to
+   wrap onto multiple lines. */
+@media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; row-gap: 24px; }
+    .splitter { display: none; }
+    .panel-bar { flex-wrap: wrap; row-gap: 8px; height: auto; min-height: 38px; }
+    .panel-actions { flex-wrap: wrap; justify-content: flex-end; }
+    .editor-area { flex: none; }
+    .output-panel { min-height: 400px; }
+}
+/* Phone-sized tweaks (header padding, smaller logo / badge / buttons). */
 @media (max-width: 640px) {
     header { padding: 0 12px; }
     .logo-svg { height: 20px; }
     .logo-badge { font-size: 11px; padding: 2px 7px; }
     .btn { padding: 6px 10px; font-size: 12px; }
     main { padding: 16px 12px; }
-    .grid { grid-template-columns: 1fr; }
-    .editor-area { min-height: 200px; flex: none; }
-    .splitter { display: none; }
-    .output-panel { min-height: 400px; margin-top: 12px; }
+    .editor-area { min-height: 200px; }
     .cert-card-head { flex-direction: column; gap: 10px; }
     .cert-status-col { text-align: left; }
 }
     </style>
 </head>
 <body>
+    <noscript>
+        <p class="su-noscript"><strong>PEM Certificate Decoder</strong> &mdash; Decode and inspect PEM-encoded X.509 certificate chains. Subject, issuer, SANs, validity, fingerprints. Requires JavaScript; please enable it. Source on <a href="https://github.com/secutils-dev/secutils/blob/main/dev/tools/certificate-decoder.html">GitHub</a>.</p>
+    </noscript>
     <header>
         <a class="logo" href="https://secutils.dev" target="_blank" rel="noopener">
             <svg class="logo-svg" height="24" role="img" viewBox="0 0 98 16" xmlns="http://www.w3.org/2000/svg">
@@ -178,6 +222,15 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
             <span class="logo-badge">Certificate Decoder</span>
         </a>
         <div class="header-right">
+            <a id="skillLink" class="skill-link" href="#" target="_blank" rel="noopener"
+               title="View AI agent skill (skill.md, opens in new tab)"
+               aria-label="View AI agent skill (opens in new tab)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+                    <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
+                </svg>
+                <span>Skill</span>
+            </a>
             <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
                 <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8.5 15h-1v-2h1v2Zm-3.674-3.107-1.414 1.414-.707-.707 1.414-1.415.707.708Zm8.479.707-.707.707-1.414-1.414.707-.708 1.414 1.415Z"/><path fill-rule="evenodd" d="M8 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 1a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" clip-rule="evenodd"/><path d="M3.005 8.505h-2v-1h2v1Zm12 0h-2v-1h2v1ZM4.82 4.114l-.708.707-1.414-1.414.707-.707L4.82 4.114Zm8.492-.707-1.414 1.414-.708-.707L12.605 2.7l.707.707ZM8.5 3h-1V1h1v2Z"/></svg>
                 <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4.05 12.95A6.982 6.982 0 0 1 2 8c0-1.79.684-3.583 2.05-4.95A6.982 6.982 0 0 1 9 1a1 1 0 0 1 .708 1.707 4.982 4.982 0 0 0-1.465 3.536 4.98 4.98 0 0 0 1.465 3.535 4.98 4.98 0 0 0 3.535 1.465 1 1 0 0 1 .707 1.707A6.981 6.981 0 0 1 9 15a6.983 6.983 0 0 1-4.95-2.05Zm.708-.707A5.983 5.983 0 0 0 9 14c1.535 0 3.07-.586 4.242-1.757a5.98 5.98 0 0 1-4.018-1.545L9 10.485a5.982 5.982 0 0 1-1.758-4.242A5.986 5.986 0 0 1 9 2a5.983 5.983 0 0 0-4.243 1.757A5.98 5.98 0 0 0 3 8l.006.288a5.978 5.978 0 0 0 1.75 3.955Z"/></svg>
@@ -193,6 +246,7 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
                     <div class="panel-actions">
                         <button class="link-btn" id="exampleBtn">Example</button>
                         <button class="link-btn" id="clearBtn">Clear</button>
+                        <button id="shareBtn" class="btn btn-primary btn-sm" title="Copy a shareable link with your PEM input encoded in the URL">Share</button>
                     </div>
                 </div>
                 <textarea id="pemInput" class="editor-area" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----&#10;MIID...&#10;-----END CERTIFICATE-----&#10;&#10;Paste one or more PEM certificates here"></textarea>
@@ -205,7 +259,6 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
                     <span class="panel-label">Decoded</span>
                     <div class="panel-actions">
                         <span id="stats" class="stats-text">0 certificates</span>
-                        <button id="shareBtn" class="btn btn-primary btn-sm">Share</button>
                     </div>
                 </div>
                 <div class="output-panel">
@@ -221,6 +274,10 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
                 </div>
             </div>
         </div>
+
+        <aside class="su-more-tools" aria-label="More free tools">
+            <p>Other free, no-signup Secutils.dev tools for JWT, SAML, Markdown, HTTP echo, and more - <a href="https://{{TOOLS_HOST}}/">Browse all tools &rarr;</a></p>
+        </aside>
     </main>
 
     <footer class="su-footer">
@@ -233,6 +290,12 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
 
 <script>
 (function() {
+    var skillLinkEl = document.getElementById('skillLink');
+    if (skillLinkEl) {
+        var p = location.pathname;
+        skillLinkEl.href = (p === '/' || p === '') ? '/llms.txt' : p.replace(/\/$/, '') + '.md';
+    }
+
     var toggle = document.getElementById('themeToggle');
     var root = document.documentElement;
     function setTheme(t) {
@@ -352,9 +415,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         window.history.replaceState({}, '', shareUrl);
         try {
             await navigator.clipboard.writeText(shareUrl);
-            showToast('Link copied to clipboard');
+            showToast('Share link copied');
         } catch {
-            showToast('Failed to copy link');
+            showToast('Failed to copy share link');
         }
     });
 
@@ -593,7 +656,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         // URL-decode if the input looks percent-encoded (e.g. cert copied from a URL query param
         // where `+`, `/`, `=` and newlines show up as %2B/%2F/%3D/%0A). Only apply when decoding
-        // actually changes something and succeeds — otherwise fall back to the original text.
+        // actually changes something and succeeds - otherwise fall back to the original text.
         if (/%[0-9A-Fa-f]{2}/.test(text)) {
             try {
                 var decoded = decodeURIComponent(text);
@@ -628,7 +691,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         var blocks = text.split(/\n\s*\n/).map(function(b) { return b.trim(); }).filter(Boolean);
         if (blocks.length === 0) return null;
 
-        // Skip blocks that don't look like base64 instead of rejecting the whole input —
+        // Skip blocks that don't look like base64 instead of rejecting the whole input -
         // a single piece of trailing junk (e.g. a stray `&utm_source=…` after a cert
         // viewer URL) shouldn't lose every other valid cert.
         var wrapped = [];

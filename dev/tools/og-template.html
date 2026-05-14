@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>OG image template</title>
+<!--
+  Brand-consistent 1200x630 Open Graph image template, parameterized via the
+  URL query string. Driven by `e2e/tools/og.spec.ts` (Playwright takes a
+  full-viewport screenshot at exactly 1200x630).
+
+  Query parameters:
+    name   = tool display name        (e.g. "JWT Debugger")
+    path   = URL path on tools host   (e.g. "/jwt")
+    desc   = single-line description  (e.g. "Decode, verify, sign HMAC JWTs.")
+    accent = hex color for accent bar (e.g. "%237b6ff7" -> "#7b6ff7"); default brand yellow
+    icon   = symbolic id for the inline SVG icon (key | shield | cert | doc | bolt | id | grid)
+    theme  = "dark" (default, brand) or "light"
+
+  This file is local-only (no fonts loaded from the network -> deterministic
+  screenshots; no network -> file:// works in CI sandboxes). System UI fonts.
+-->
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 1200px;
+  height: 630px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-feature-settings: 'kern', 'liga';
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+  overflow: hidden;
+}
+
+/* Default = dark theme (brand). The script flips to light if ?theme=light. */
+:root {
+  --bg:           #141519;
+  --bg-radial:    #1d1e24;
+  --fg:           #f4f5f8;
+  --fg-muted:     #98a2b3;
+  --card:         #1d1e24;
+  --card-border:  #2c2d33;
+  --accent:       #fed047;
+  --accent-text:  #1a1410;
+  --brand-yellow: #fed047;
+  --brand-plum:   #642340;
+}
+[data-theme="light"] {
+  --bg:           #ffffff;
+  --bg-radial:    #f5f7fa;
+  --fg:           #1a1c23;
+  --fg-muted:     #69707d;
+  --card:         #ffffff;
+  --card-border:  #d3dae6;
+  --accent:       #fed047;
+  --accent-text:  #1a1410;
+  --brand-yellow: #fed047;
+  --brand-plum:   #642340;
+}
+
+body {
+  background:
+    radial-gradient(ellipse 900px 600px at 80% 20%, var(--bg-radial), transparent 70%),
+    var(--bg);
+  color: var(--fg);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 64px 72px;
+}
+
+/* Top brand row: logo + tagline */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  background: var(--brand-yellow);
+}
+.brand-logo-text {
+  font-weight: 800;
+  font-size: 22px;
+  color: var(--brand-plum);
+  letter-spacing: -0.02em;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.brand-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--fg);
+  letter-spacing: -0.01em;
+}
+.brand-name span {
+  color: var(--fg-muted);
+  font-weight: 400;
+}
+
+/* Title block: tool name + path + description */
+.tool-block {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 28px;
+  max-width: 920px;
+}
+
+.tool-icon-name {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.tool-icon {
+  flex-shrink: 0;
+  width: 80px;
+  height: 80px;
+  border-radius: 16px;
+  background: var(--accent);
+  color: var(--accent-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.tool-icon svg {
+  width: 48px;
+  height: 48px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tool-name {
+  font-size: 64px;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  color: var(--fg);
+}
+
+.tool-path {
+  display: inline-block;
+  font-family: 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--fg);
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-left: 4px solid var(--accent);
+  padding: 8px 18px;
+  border-radius: 8px;
+  width: fit-content;
+}
+
+.tool-desc {
+  font-size: 28px;
+  line-height: 1.4;
+  color: var(--fg-muted);
+  font-weight: 400;
+  max-width: 880px;
+}
+
+/* Bottom band: lead-magnet badges */
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 18px;
+  color: var(--fg-muted);
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  font-weight: 500;
+  color: var(--fg);
+}
+.badge::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.footer-host {
+  margin-left: auto;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 16px;
+  color: var(--fg-muted);
+}
+</style>
+</head>
+<body>
+  <div class="brand">
+    <span class="brand-logo"><span class="brand-logo-text">SU</span></span>
+    <span class="brand-name">Secutils.dev <span>/ Tools</span></span>
+  </div>
+
+  <div class="tool-block">
+    <div class="tool-icon-name">
+      <span class="tool-icon" id="icon"></span>
+      <h1 class="tool-name" id="name">Tool Name</h1>
+    </div>
+    <code class="tool-path" id="path">/path</code>
+    <p class="tool-desc" id="desc">Tool description goes here.</p>
+  </div>
+
+  <div class="footer">
+    <span class="badge">Free</span>
+    <span class="badge">No signup</span>
+    <span class="badge">Browser only</span>
+    <span class="footer-host" id="host">tools.secutils.dev</span>
+  </div>
+
+<script>
+// Inline icon library. Keys map to symbolic ids passed via `?icon=`.
+// All icons are designed for stroke=currentColor on a 24x24 viewBox.
+const ICONS = {
+  key:    '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M10.85 12.15 19 4"/><path d="M18 5l3 3"/><path d="M15 8l3 3"/></svg>',
+  shield: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>',
+  cert:   '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.4"/><path d="M9 13.5V18l-1.5-1L6 18v-4.5"/><path d="M14 9h4"/><path d="M14 12h4"/></svg>',
+  doc:    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>',
+  bolt:   '<svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+  id:     '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="12" r="2.5"/><path d="M5.5 17.5c.6-1.6 2-2.5 3.5-2.5s2.9.9 3.5 2.5"/><line x1="15" y1="10" x2="19" y2="10"/><line x1="15" y1="14" x2="18" y2="14"/></svg>',
+  grid:   '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3"  width="7" height="7" rx="1"/><rect x="14" y="3"  width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+};
+
+const params = new URLSearchParams(location.search);
+
+const name   = params.get('name')   || 'Free developer tool';
+const path   = params.get('path')   || '/';
+const desc   = params.get('desc')   || 'Free, no-signup, single-page browser tool.';
+const accent = params.get('accent') || '#fed047';
+const icon   = params.get('icon')   || 'grid';
+const theme  = params.get('theme')  || 'dark';
+const host   = params.get('host')   || 'tools.secutils.dev';
+
+document.documentElement.setAttribute('data-theme', theme);
+document.documentElement.style.setProperty('--accent', accent);
+
+document.getElementById('name').textContent = name;
+document.getElementById('path').textContent = path;
+document.getElementById('desc').textContent = desc;
+document.getElementById('icon').innerHTML = ICONS[icon] || ICONS.grid;
+document.getElementById('host').textContent = host + path.replace(/^\/$/, '');
+
+// Pick a contrasty foreground for the accent badge: WCAG-style luminance test.
+// Dark accents -> white text, light accents -> brand plum (matches yellow logo).
+(function pickAccentText() {
+  const m = /^#([0-9a-f]{6})$/i.exec(accent.trim());
+  if (!m) return;
+  const r = parseInt(m[1].slice(0, 2), 16) / 255;
+  const g = parseInt(m[1].slice(2, 4), 16) / 255;
+  const b = parseInt(m[1].slice(4, 6), 16) / 255;
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  document.documentElement.style.setProperty('--accent-text', lum > 0.55 ? '#1a1410' : '#ffffff');
+})();
+</script>
+</body>
+</html>

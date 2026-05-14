@@ -3,8 +3,29 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mock SAML IdP | Secutils.dev</title>
+  <title>Mock SAML IdP for Elasticsearch and Kibana SSO | Secutils.dev</title>
+  <meta name="description" content="Generate signed SAML responses for testing Elasticsearch and Kibana SSO. IdP-initiated and SP-initiated flows. Configurable users, roles, attributes. No signup.">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="canonical" href="https://{{TOOLS_HOST}}/elastic/saml/idp-login">
   <meta name="su-tool-path" content="/elastic/saml/idp-login">
+  <meta name="su-tool-name" content="Mock SAML IdP">
+  <meta name="su-tool-description" content="Generate signed SAML responses for ES/Kibana SSO testing. IdP- and SP-initiated flows, configurable users, roles, and attributes.">
+  <meta name="su-tool-promote" content="false">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Secutils.dev">
+  <meta property="og:title" content="Mock SAML IdP for Elasticsearch &amp; Kibana SSO">
+  <meta property="og:description" content="Generate signed SAML responses for testing Elasticsearch and Kibana SSO. IdP-initiated and SP-initiated flows.">
+  <meta property="og:url" content="https://{{TOOLS_HOST}}/elastic/saml/idp-login">
+  <meta property="og:image" content="https://secutils.dev/docs/img/og/og-mock-saml-idp.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Mock SAML IdP on Secutils.dev: signed SAML responses for ES/Kibana SSO testing.">
+  <meta property="og:locale" content="en_US">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Mock SAML IdP for Elasticsearch &amp; Kibana SSO">
+  <meta name="twitter:description" content="Generate signed SAML responses for testing Elasticsearch and Kibana SSO. IdP- and SP-initiated flows. No signup.">
+  <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-mock-saml-idp.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Mock SAML IdP","url":"https://{{TOOLS_HOST}}/elastic/saml/idp-login","applicationCategory":"SecurityApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/mock-saml-idp.html","description":"Generate signed SAML responses for testing Elasticsearch and Kibana SSO. Supports IdP-initiated and SP-initiated flows with configurable users, roles, and attributes. Browser-only, no signup."}</script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.9.0/jsrsasign-all-min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -54,6 +75,17 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .theme-toggle .icon-moon { display: block; }
 [data-theme="dark"] .theme-toggle .icon-sun { display: block; }
 [data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+.skill-link { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); color: var(--text-muted); font: 12px var(--font, system-ui), sans-serif; text-decoration: none; transition: all .15s; cursor: pointer; }
+.skill-link:hover { color: var(--text); border-color: var(--text-muted); background: var(--surface-hover); }
+.skill-link svg { width: 14px; height: 14px; fill: none; stroke: currentColor; }
+.su-related { max-width: 760px; margin: 24px auto 0; padding: 0 16px 8px; font-family: var(--font, system-ui), sans-serif; }
+.su-related-title { font-size: .75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 10px; }
+.su-related-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.su-related-list li a { display: block; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: .8rem; line-height: 1.4; text-decoration: none; transition: background .15s, border-color .15s; }
+.su-related-list li a:hover { background: var(--surface-hover); border-color: var(--text-muted); }
+.su-related-list li a strong { color: var(--text); font-weight: 600; }
+.su-related-all a { background: transparent !important; border-style: dashed !important; text-align: center; }
+.su-noscript { max-width: 720px; margin: 24px auto; padding: 16px; border: 1px solid var(--border); border-radius: 8px; font: 14px/1.5 var(--font, system-ui), sans-serif; background: var(--surface); color: var(--text); }
 
 main { flex: 1; padding: 32px 16px; display: flex; justify-content: center; }
 .card { width: 100%; max-width: 640px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.15); }
@@ -114,6 +146,9 @@ footer.su-footer { text-align: center; padding: 16px; font-size: 12px; color: va
   </style>
 </head>
 <body>
+  <noscript>
+    <p class="su-noscript"><strong>Mock SAML IdP</strong> &mdash; Generate signed SAML responses for testing Elasticsearch and Kibana SSO. Configurable users, roles, attributes. Requires JavaScript; please enable it. Source on <a href="https://github.com/secutils-dev/secutils/blob/main/dev/tools/mock-saml-idp.html">GitHub</a>.</p>
+  </noscript>
   <header>
     <a class="logo" href="https://secutils.dev" target="_blank" rel="noopener">
       <svg class="logo-svg" height="24" role="img" viewBox="0 0 98 16" xmlns="http://www.w3.org/2000/svg">
@@ -124,6 +159,15 @@ footer.su-footer { text-align: center; padding: 16px; font-size: 12px; color: va
       <span class="logo-badge">Mock SAML IdP</span>
     </a>
     <div class="header-right">
+      <a id="skillLink" class="skill-link" href="#" target="_blank" rel="noopener"
+         title="View AI agent skill (skill.md, opens in new tab)"
+         aria-label="View AI agent skill (opens in new tab)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+          <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
+        </svg>
+        <span>Skill</span>
+      </a>
       <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
         <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8.5 15h-1v-2h1v2Zm-3.674-3.107-1.414 1.414-.707-.707 1.414-1.415.707.708Zm8.479.707-.707.707-1.414-1.414.707-.708 1.414 1.415Z"/><path fill-rule="evenodd" d="M8 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 1a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" clip-rule="evenodd"/><path d="M3.005 8.505h-2v-1h2v1Zm12 0h-2v-1h2v1ZM4.82 4.114l-.708.707-1.414-1.414.707-.707L4.82 4.114Zm8.492-.707-1.414 1.414-.708-.707L12.605 2.7l.707.707ZM8.5 3h-1V1h1v2Z"/></svg>
         <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4.05 12.95A6.982 6.982 0 0 1 2 8c0-1.79.684-3.583 2.05-4.95A6.982 6.982 0 0 1 9 1a1 1 0 0 1 .708 1.707 4.982 4.982 0 0 0-1.465 3.536 4.98 4.98 0 0 0 1.465 3.535 4.98 4.98 0 0 0 3.535 1.465 1 1 0 0 1 .707 1.707A6.981 6.981 0 0 1 9 15a6.983 6.983 0 0 1-4.95-2.05Zm.708-.707A5.983 5.983 0 0 0 9 14c1.535 0 3.07-.586 4.242-1.757a5.98 5.98 0 0 1-4.018-1.545L9 10.485a5.982 5.982 0 0 1-1.758-4.242A5.986 5.986 0 0 1 9 2a5.983 5.983 0 0 0-4.243 1.757A5.98 5.98 0 0 0 3 8l.006.288a5.978 5.978 0 0 0 1.75 3.955Z"/></svg>
@@ -188,6 +232,17 @@ footer.su-footer { text-align: center; padding: 16px; font-size: 12px; color: va
     </div>
   </main>
 
+  <nav class="su-related" aria-label="Related free tools">
+    <h2 class="su-related-title">Related free tools</h2>
+    <ul class="su-related-list">
+      <li><a href="https://{{TOOLS_HOST}}/jwt"><strong>JWT Debugger</strong> &mdash; Decode, verify, sign HMAC JWTs.</a></li>
+      <li><a href="https://{{TOOLS_HOST}}/saml"><strong>SAML Decoder</strong> &mdash; Inspect SAML responses, requests, metadata.</a></li>
+      <li><a href="https://{{TOOLS_HOST}}/pem"><strong>Certificate Decoder</strong> &mdash; Decode PEM X.509 chains.</a></li>
+      <li><a href="https://{{TOOLS_HOST}}/echo"><strong>HTTP Echo / Mock</strong> &mdash; Build a shareable mock HTTP response.</a></li>
+      <li class="su-related-all"><a href="https://{{TOOLS_HOST}}/">Browse all tools &rarr;</a></li>
+    </ul>
+  </nav>
+
   <footer class="su-footer">
     <p>Generate signed SAML responses for testing Elasticsearch/Kibana SSO.</p>
   </footer>
@@ -198,6 +253,11 @@ footer.su-footer { text-align: center; padding: 16px; font-size: 12px; color: va
 
 <script>
 (() => {
+    const skillLinkEl = document.getElementById('skillLink');
+    if (skillLinkEl) {
+        const p = location.pathname;
+        skillLinkEl.href = (p === '/' || p === '') ? '/llms.txt' : p.replace(/\/$/, '') + '.md';
+    }
     const toggle = document.getElementById('themeToggle');
     const root = document.documentElement;
     const setThemeUI = (t) => {

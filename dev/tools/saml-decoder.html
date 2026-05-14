@@ -3,8 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SAML Decoder | Secutils.dev</title>
+    <title>SAML Decoder: Inspect Responses, Requests, Metadata | Secutils.dev</title>
+    <meta name="description" content="Free SAML decoder. Inspect Base64-encoded SAML responses, AuthnRequests, and metadata. Pretty-printed XML or attribute table. Browser-only, no signup.">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <link rel="canonical" href="https://{{TOOLS_HOST}}/saml">
     <meta name="su-tool-path" content="/saml">
+    <meta name="su-tool-name" content="SAML Decoder">
+    <meta name="su-tool-description" content="Decode Base64 SAML responses, requests, and metadata. Pretty-printed XML or attribute table. Shareable URL state, no signup.">
+    <meta name="su-tool-promote" content="true">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Secutils.dev">
+    <meta property="og:title" content="SAML Decoder: Inspect Responses, Requests, Metadata">
+    <meta property="og:description" content="Free SAML decoder. Inspect Base64-encoded SAML responses, AuthnRequests, and metadata in your browser. Pretty-printed XML or attribute table.">
+    <meta property="og:url" content="https://{{TOOLS_HOST}}/saml">
+    <meta property="og:image" content="https://secutils.dev/docs/img/og/og-saml.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="SAML Decoder on Secutils.dev: inspect SAML responses, requests, and metadata.">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="SAML Decoder: Inspect Responses, Requests, Metadata">
+    <meta name="twitter:description" content="Free SAML decoder. Inspect Base64-encoded SAML responses, AuthnRequests, and metadata in your browser. No signup.">
+    <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-saml.png">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"SAML Decoder","url":"https://{{TOOLS_HOST}}/saml","applicationCategory":"SecurityApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/saml-decoder.html","description":"Free SAML decoder. Inspect Base64-encoded SAML responses, requests, and metadata in your browser. Supports HTTP-POST and HTTP-Redirect bindings. Browser-only, no signup."}</script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
@@ -45,6 +66,7 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
 .btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); font-weight: 600; }
 .btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
 .theme-toggle { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .2s; }
 .theme-toggle:hover { background: var(--surface-hover); color: var(--text); }
 .theme-toggle svg { width: 16px; height: 16px; fill: currentColor; }
@@ -52,19 +74,32 @@ header { display: flex; align-items: center; justify-content: space-between; pad
 .theme-toggle .icon-moon { display: block; }
 [data-theme="dark"] .theme-toggle .icon-sun { display: block; }
 [data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+.skill-link { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); color: var(--text-muted); font: 12px var(--font, system-ui), sans-serif; text-decoration: none; transition: all .15s; cursor: pointer; }
+.skill-link:hover { color: var(--text); border-color: var(--text-muted); background: var(--surface-hover); }
+.skill-link svg { width: 14px; height: 14px; fill: none; stroke: currentColor; }
+.su-more-tools { margin: 8px 0 0; padding: 12px 18px; text-align: center; border: 1px solid rgba(254, 208, 71, 0.35); border-radius: 12px; background: rgba(254, 208, 71, 0.06); font: 13px/1.55 var(--font); color: var(--text); transition: border-color .25s, background-color .25s, color .25s; }
+.su-more-tools p { margin: 0; }
+.su-more-tools a { color: var(--primary); font-weight: 700; text-decoration: none; white-space: nowrap; }
+.su-more-tools a:hover { color: var(--primary-hover); text-decoration: underline; }
+@media (max-width: 600px) { .su-more-tools { padding: 12px 14px; } .su-more-tools a { white-space: normal; } }
+.su-noscript { max-width: 720px; margin: 24px auto; padding: 16px; border: 1px solid var(--border); border-radius: 8px; font: 14px/1.5 var(--font, system-ui), sans-serif; background: var(--surface); color: var(--text); }
 
 main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; }
 .grid { display: grid; grid-template-columns: 1fr 12px 1fr; gap: 0; flex: 1; min-height: 0; }
-.panel-label { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+.panel { display: flex; flex-direction: column; min-height: 0; }
+.panel-bar { display: flex; align-items: center; justify-content: space-between; padding: 0 0 8px; gap: 8px; height: 38px; box-sizing: content-box; flex-shrink: 0; }
+.panel-actions { display: flex; align-items: center; gap: 8px; }
+.panel-label { font-size: 13px; font-weight: 600; color: var(--text); }
+.link-btn { border: none; background: none; font: 12px var(--font); color: var(--text-muted); cursor: pointer; padding: 2px 4px; transition: color .15s; }
+.link-btn:hover { color: var(--text); }
 .editor-area { width: 100%; height: 100%; min-height: 400px; font: 13px/1.6 var(--mono); background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; resize: none; outline: none; transition: border-color .15s, background .25s, color .25s; }
 .editor-area:focus { border-color: var(--primary); }
 .editor-area.invalid { border-color: var(--error); }
 .decoded-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; overflow: hidden; transition: background .25s, border-color .25s; }
-.tab-bar { display: flex; border-bottom: 1px solid var(--border); }
-.tab-btn { padding: 8px 16px; cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; color: var(--text-muted); font: 13px/1 var(--font); transition: all .15s; }
-.tab-btn:hover { color: var(--text); }
-.tab-btn.active { color: var(--text); border-color: var(--primary); }
-.tab-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; padding-right: 8px; }
+.view-tabs { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
+.view-tab { padding: 3px 10px; border: none; background: transparent; color: var(--text-muted); font: 12px/1 var(--font); font-weight: 500; cursor: pointer; border-radius: 4px; transition: all .15s; }
+.view-tab:hover { color: var(--text); }
+.view-tab.active { background: var(--surface-hover); color: var(--text); font-weight: 600; }
 .tab-content { display: none; }
 .tab-content.active { display: block; }
 
@@ -80,40 +115,53 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; }
 .attr-view td:last-child { color: var(--text); word-break: break-all; }
 .attr-view .empty-msg { text-align: center; color: var(--text-muted); padding: 24px; font-size: 13px; }
 
-#decoded-panel:fullscreen { background: var(--bg); padding: 16px; overflow: auto; }
-#decoded-panel:fullscreen .decoded-panel { height: 100%; }
+#decoded-pane:fullscreen { background: var(--bg); padding: 16px; display: flex; flex-direction: column; overflow: hidden; }
+#decoded-pane:fullscreen .decoded-panel { flex: 1; min-height: 0; }
 
 .splitter { cursor: col-resize; background: transparent; position: relative; z-index: 1; }
 .splitter::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: var(--border); transition: width .15s, background .15s; transform: translateX(-50%); }
 .splitter:hover::after, .splitter.active::after { width: 3px; background: var(--primary); border-radius: 2px; }
 
-.fullscreen-btn { padding: 6px; border: none; background: none; color: var(--text-muted); cursor: pointer; border-radius: 4px; transition: all .15s; display: flex; align-items: center; }
-.fullscreen-btn:hover { color: var(--text); background: var(--surface-hover); }
-.fullscreen-btn svg { width: 16px; height: 16px; }
+.icon-btn { padding: 4px; border: none; background: none; color: var(--text-muted); cursor: pointer; border-radius: 4px; transition: all .15s; display: inline-flex; align-items: center; justify-content: center; }
+.icon-btn:hover { color: var(--text); background: var(--surface-hover); }
+.icon-btn svg { width: 16px; height: 16px; }
 
 .su-footer { text-align: center; padding: 16px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; transition: border-color .25s, color .25s; }
 
-.toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); color: var(--text); padding: 10px 18px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; z-index: 200; animation: fadeIn .2s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); color: var(--text); padding: 10px 18px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 8px; animation: toastIn .2s ease; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--surface); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
+/* Stack the two panes vertically as soon as the side-by-side columns get too
+   narrow for the bar contents (label + 4 link-buttons + Share on the left,
+   tab-pill + Copy + fullscreen on the right). 900 px is the same threshold
+   JWT uses; below this the 2-column splitter view forces every label and
+   link-btn to wrap onto multiple lines and looks broken. */
+@media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; row-gap: 24px; }
+    .splitter { display: none; }
+    .panel-bar { flex-wrap: wrap; row-gap: 8px; height: auto; min-height: 38px; }
+    .panel-actions { flex-wrap: wrap; justify-content: flex-end; }
+}
+/* Phone-sized tweaks (header padding, smaller logo / badge / buttons). */
 @media (max-width: 640px) {
     header { padding: 0 12px; }
     .logo-svg { height: 20px; }
     .logo-badge { font-size: 11px; padding: 2px 7px; }
     .btn { padding: 6px 10px; font-size: 12px; }
     main { padding: 16px 12px; }
-    .grid { grid-template-columns: 1fr; }
     .editor-area { min-height: 200px; }
-    .splitter { display: none; }
 }
     </style>
 </head>
 <body>
+    <noscript>
+        <p class="su-noscript"><strong>SAML Decoder</strong> &mdash; Decode Base64-encoded SAML responses, requests, and metadata. View formatted XML or browse attributes. Requires JavaScript; please enable it. Source on <a href="https://github.com/secutils-dev/secutils/blob/main/dev/tools/saml-decoder.html">GitHub</a>.</p>
+    </noscript>
     <header>
         <a class="logo" href="https://secutils.dev" target="_blank" rel="noopener">
             <svg class="logo-svg" height="24" role="img" viewBox="0 0 98 16" xmlns="http://www.w3.org/2000/svg">
@@ -124,6 +172,15 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; }
             <span class="logo-badge">SAML Decoder</span>
         </a>
         <div class="header-right">
+            <a id="skillLink" class="skill-link" href="#" target="_blank" rel="noopener"
+               title="View AI agent skill (skill.md, opens in new tab)"
+               aria-label="View AI agent skill (opens in new tab)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+                    <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
+                </svg>
+                <span>Skill</span>
+            </a>
             <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
                 <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8.5 15h-1v-2h1v2Zm-3.674-3.107-1.414 1.414-.707-.707 1.414-1.415.707.708Zm8.479.707-.707.707-1.414-1.414.707-.708 1.414 1.415Z"/><path fill-rule="evenodd" d="M8 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 1a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" clip-rule="evenodd"/><path d="M3.005 8.505h-2v-1h2v1Zm12 0h-2v-1h2v1ZM4.82 4.114l-.708.707-1.414-1.414.707-.707L4.82 4.114Zm8.492-.707-1.414 1.414-.708-.707L12.605 2.7l.707.707ZM8.5 3h-1V1h1v2Z"/></svg>
                 <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4.05 12.95A6.982 6.982 0 0 1 2 8c0-1.79.684-3.583 2.05-4.95A6.982 6.982 0 0 1 9 1a1 1 0 0 1 .708 1.707 4.982 4.982 0 0 0-1.465 3.536 4.98 4.98 0 0 0 1.465 3.535 4.98 4.98 0 0 0 3.535 1.465 1 1 0 0 1 .707 1.707A6.981 6.981 0 0 1 9 15a6.983 6.983 0 0 1-4.95-2.05Zm.708-.707A5.983 5.983 0 0 0 9 14c1.535 0 3.07-.586 4.242-1.757a5.98 5.98 0 0 1-4.018-1.545L9 10.485a5.982 5.982 0 0 1-1.758-4.242A5.986 5.986 0 0 1 9 2a5.983 5.983 0 0 0-4.243 1.757A5.98 5.98 0 0 0 3 8l.006.288a5.978 5.978 0 0 0 1.75 3.955Z"/></svg>
@@ -133,28 +190,37 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; }
 
     <main>
         <div class="grid">
-            <div style="display:flex;flex-direction:column">
-                <div class="panel-label">Encoded SAML (Base64)</div>
+            <div class="panel">
+                <div class="panel-bar">
+                    <span class="panel-label">Encoded SAML (Base64)</span>
+                    <div class="panel-actions">
+                        <button class="link-btn" id="exampleResponseBtn">Example response</button>
+                        <button class="link-btn" id="exampleRequestBtn">Example request</button>
+                        <button class="link-btn" id="clearBtn">Clear</button>
+                        <button id="share-button" class="btn btn-primary btn-sm" title="Copy a shareable link with your encoded SAML in the URL">Share</button>
+                    </div>
+                </div>
                 <textarea id="encoded-saml" spellcheck="false" placeholder="Paste your SAML Response or Request here (HTTP-POST or HTTP-Redirect binding, URL-encoded or not)..." class="editor-area"></textarea>
             </div>
             <div class="splitter" id="splitter"></div>
-            <div style="display:flex;flex-direction:column">
-                <div class="panel-label">Decoded</div>
-                <div id="decoded-panel" class="decoded-panel" style="flex:1;min-height:400px">
-                    <div class="tab-bar">
-                        <nav id="decoded-tabs" style="display:flex;flex:1">
-                            <button class="tab-btn active" data-tab="xml">XML</button>
-                            <button class="tab-btn" data-tab="attributes">Attributes</button>
-                        </nav>
-                        <div class="tab-actions">
-                            <button id="share-button" class="btn btn-primary" style="padding:4px 10px;font-size:12px">Share</button>
-                            <button id="copy-button" class="btn" style="padding:4px 10px;font-size:12px">Copy</button>
-                            <button id="fullscreen-btn" class="fullscreen-btn" title="Toggle Fullscreen">
-                                <svg id="fullscreen-enter-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-                                <svg id="fullscreen-exit-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
-                            </button>
-                        </div>
+            <div id="decoded-pane" class="panel">
+                <div class="panel-bar">
+                    <div id="decoded-tabs" class="view-tabs" role="tablist" aria-label="Decoded view">
+                        <button class="view-tab active" data-tab="xml" role="tab" aria-selected="true">XML</button>
+                        <button class="view-tab" data-tab="attributes" role="tab" aria-selected="false">Attributes</button>
                     </div>
+                    <div class="panel-actions">
+                        <button id="copy-button" class="btn btn-sm" title="Copy decoded output to your clipboard">
+                            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="9" height="10" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"/></svg>
+                            <span class="btn-label">Copy</span>
+                        </button>
+                        <button id="fullscreen-btn" class="icon-btn" title="Toggle fullscreen" aria-label="Toggle fullscreen">
+                            <svg id="fullscreen-enter-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                            <svg id="fullscreen-exit-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="decoded-panel" class="decoded-panel" style="flex:1;min-height:400px">
                     <div id="decoded-tab-content" style="flex:1;display:flex;flex-direction:column;min-height:0">
                         <div id="xml-tab" class="tab-content active" style="flex:1;min-height:0">
                             <div class="xml-view" style="height:100%">
@@ -172,14 +238,28 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; }
                 </div>
             </div>
         </div>
+
+        <aside class="su-more-tools" aria-label="More free tools">
+            <p>Other free, no-signup Secutils.dev tools for JWT, certificates, Markdown, HTTP echo, and more - <a href="https://{{TOOLS_HOST}}/">Browse all tools &rarr;</a></p>
+        </aside>
     </main>
 
     <footer class="su-footer">
         <p>Decode Base64-encoded SAML responses, requests, and metadata.</p>
     </footer>
 
+    <div id="toast" class="toast" role="status" aria-live="polite" style="display:none">
+        <span id="toastMsg"></span>
+    </div>
+
 <script>
 (() => {
+    const skillLinkEl = document.getElementById('skillLink');
+    if (skillLinkEl) {
+        const p = location.pathname;
+        skillLinkEl.href = (p === '/' || p === '') ? '/llms.txt' : p.replace(/\/$/, '') + '.md';
+    }
+
     const toggle = document.getElementById('themeToggle');
     const root = document.documentElement;
     const setTheme = (t) => {
@@ -195,6 +275,47 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; }
         else if (window.matchMedia('(prefers-color-scheme: light)').matches) setTheme('light');
     } catch {}
 })();
+
+// Example payloads for the Example response / Example request buttons.
+const EXAMPLE_SAML_RESPONSE = `<?xml version="1.0" encoding="UTF-8"?>
+<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="_response_42" Version="2.0" IssueInstant="2024-01-15T10:30:05Z" Destination="https://sp.example.com/acs" InResponseTo="_request_8e8dc5f6">
+  <saml:Issuer>https://idp.example.com/metadata</saml:Issuer>
+  <samlp:Status><samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/></samlp:Status>
+  <saml:Assertion ID="_assertion_1" Version="2.0" IssueInstant="2024-01-15T10:30:05Z">
+    <saml:Issuer>https://idp.example.com/metadata</saml:Issuer>
+    <saml:Subject>
+      <saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">jane.doe@example.com</saml:NameID>
+      <saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">
+        <saml:SubjectConfirmationData NotOnOrAfter="2024-01-15T10:35:05Z" Recipient="https://sp.example.com/acs"/>
+      </saml:SubjectConfirmation>
+    </saml:Subject>
+    <saml:Conditions NotBefore="2024-01-15T10:30:05Z" NotOnOrAfter="2024-01-15T10:35:05Z">
+      <saml:AudienceRestriction><saml:Audience>https://sp.example.com/metadata</saml:Audience></saml:AudienceRestriction>
+    </saml:Conditions>
+    <saml:AuthnStatement AuthnInstant="2024-01-15T10:30:05Z" SessionIndex="_session_42">
+      <saml:AuthnContext>
+        <saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport</saml:AuthnContextClassRef>
+      </saml:AuthnContext>
+    </saml:AuthnStatement>
+    <saml:AttributeStatement>
+      <saml:Attribute Name="email" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic">
+        <saml:AttributeValue>jane.doe@example.com</saml:AttributeValue>
+      </saml:Attribute>
+      <saml:Attribute Name="firstName"><saml:AttributeValue>Jane</saml:AttributeValue></saml:Attribute>
+      <saml:Attribute Name="lastName"><saml:AttributeValue>Doe</saml:AttributeValue></saml:Attribute>
+      <saml:Attribute Name="groups">
+        <saml:AttributeValue>admins</saml:AttributeValue>
+        <saml:AttributeValue>developers</saml:AttributeValue>
+      </saml:Attribute>
+    </saml:AttributeStatement>
+  </saml:Assertion>
+</samlp:Response>`;
+
+const EXAMPLE_SAML_REQUEST = `<?xml version="1.0" encoding="UTF-8"?>
+<samlp:AuthnRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="_request_8e8dc5f6" Version="2.0" IssueInstant="2024-01-15T10:30:00Z" Destination="https://idp.example.com/sso" ProtocolBinding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" AssertionConsumerServiceURL="https://sp.example.com/acs">
+  <saml:Issuer>https://sp.example.com/metadata</saml:Issuer>
+  <samlp:NameIDPolicy Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress" AllowCreate="true"/>
+</samlp:AuthnRequest>`;
 
 // URL state encoding: see dev/tools/AGENTS.md → "URL state encoding".
 const utf8Enc = new TextEncoder();
@@ -232,6 +353,16 @@ const decodeState = async (str) => {
     } catch { return null; }
 };
 
+const toastEl = document.getElementById('toast');
+const toastMsgEl = document.getElementById('toastMsg');
+let toastTimer;
+function toast(msg) {
+    toastMsgEl.textContent = msg;
+    toastEl.style.display = 'flex';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastEl.style.display = 'none'; }, 2000);
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     const encodedSamlInput = document.getElementById('encoded-saml');
     const xmlContainer = document.getElementById('decoded-xml-container');
@@ -243,7 +374,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const fullscreenBtn = document.getElementById('fullscreen-btn');
     const fullscreenEnterIcon = document.getElementById('fullscreen-enter-icon');
     const fullscreenExitIcon = document.getElementById('fullscreen-exit-icon');
-    const decodedPanel = document.getElementById('decoded-panel');
+    const decodedPane = document.getElementById('decoded-pane');
+    const exampleResponseBtn = document.getElementById('exampleResponseBtn');
+    const exampleRequestBtn = document.getElementById('exampleRequestBtn');
+    const clearBtn = document.getElementById('clearBtn');
 
     let rawDecodedXml = '';
 
@@ -388,6 +522,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     encodedSamlInput.addEventListener('input', decodeSaml);
 
+    exampleResponseBtn.addEventListener('click', () => {
+        encodedSamlInput.value = btoa(EXAMPLE_SAML_RESPONSE);
+        decodeSaml();
+    });
+
+    exampleRequestBtn.addEventListener('click', () => {
+        encodedSamlInput.value = btoa(EXAMPLE_SAML_REQUEST);
+        decodeSaml();
+    });
+
+    clearBtn.addEventListener('click', () => {
+        encodedSamlInput.value = '';
+        history.replaceState({}, '', location.pathname + location.search);
+        decodeSaml();
+    });
+
     copyButton.addEventListener('click', async () => {
         const activeTab = tabsContainer.querySelector('.active').dataset.tab;
         let contentToCopy = '';
@@ -405,9 +555,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         if (!contentToCopy) return;
-        await navigator.clipboard.writeText(contentToCopy.trim());
-        copyButton.textContent = 'Copied!';
-        setTimeout(() => { copyButton.textContent = 'Copy'; }, 2000);
+        try {
+            await navigator.clipboard.writeText(contentToCopy.trim());
+            toast('Copied to clipboard');
+        } catch {
+            toast('Failed to copy');
+        }
     });
 
     shareButton.addEventListener('click', async () => {
@@ -418,17 +571,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         const shareUrl = `${window.location.origin}${window.location.pathname}#${encoded}`;
         try {
             await navigator.clipboard.writeText(shareUrl);
-            shareButton.textContent = 'Linked!';
+            toast('Share link copied');
         } catch {
-            shareButton.textContent = 'Copy failed';
+            toast('Failed to copy share link');
         }
-        setTimeout(() => { shareButton.textContent = 'Share'; }, 2000);
     });
 
     tabsContainer.addEventListener('click', (e) => {
-        if (!e.target.classList.contains('tab-btn')) return;
-        for (const btn of tabsContainer.querySelectorAll('.tab-btn')) btn.classList.remove('active');
+        if (!e.target.classList.contains('view-tab')) return;
+        for (const btn of tabsContainer.querySelectorAll('.view-tab')) {
+            btn.classList.remove('active');
+            btn.setAttribute('aria-selected', 'false');
+        }
         e.target.classList.add('active');
+        e.target.setAttribute('aria-selected', 'true');
         for (const content of tabContents.querySelectorAll('.tab-content')) content.classList.remove('active');
         document.getElementById(`${e.target.dataset.tab}-tab`).classList.add('active');
     });
@@ -436,7 +592,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     fullscreenBtn.addEventListener('click', async () => {
         if (!document.fullscreenElement) {
             try {
-                await decodedPanel.requestFullscreen();
+                await decodedPane.requestFullscreen();
             } catch (err) {
                 alert(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
             }

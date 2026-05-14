@@ -30,10 +30,24 @@ Secutils.dev adheres to [open security principles](https://en.wikipedia.org/wiki
 
 ![Secutils.dev Web Security](https://github.com/secutils-dev/.github/blob/main/profile/web_security.png?raw=true)
 
+## Free single-page tools
+
+A handful of focused, no-signup, browser-only tools is hosted at [tools.secutils.dev](https://tools.secutils.dev/). Every tool ships with a stable shareable URL (drop a link into a ticket, an MCP agent, or a postmortem) and an AI-agent skill at `/<slug>.md` so coding assistants can drive the tool directly from a `WebFetch` call.
+
+| Tool                                                              | What it does                                                       | AI-agent skill                                                |
+|-------------------------------------------------------------------|--------------------------------------------------------------------|---------------------------------------------------------------|
+| [JWT Debugger](https://tools.secutils.dev/jwt)                    | Decode, verify, and sign HMAC JSON Web Tokens                      | [`/jwt.md`](https://tools.secutils.dev/jwt.md)                |
+| [SAML Decoder](https://tools.secutils.dev/saml)                   | Inspect SAML responses, requests, and metadata                     | [`/saml.md`](https://tools.secutils.dev/saml.md)              |
+| [PEM Certificate Decoder](https://tools.secutils.dev/pem)         | Inspect PEM-encoded X.509 certificate chains                       | [`/pem.md`](https://tools.secutils.dev/pem.md)                |
+| [Markdown to HTML](https://tools.secutils.dev/md-to-html)         | Self-contained HTML and PDF export from Markdown                   | [`/md-to-html.md`](https://tools.secutils.dev/md-to-html.md)  |
+| [HTTP Echo / Mock Response](https://tools.secutils.dev/echo)      | Build a customizable HTTP response, served as a shareable URL      | [`/echo.md`](https://tools.secutils.dev/echo.md)              |
+
+The aggregate index of all skills (including specialized ones not listed above) is published at [tools.secutils.dev/llms.txt](https://tools.secutils.dev/llms.txt) following the [llmstxt.org](https://llmstxt.org/) convention. Source HTML for every tool lives in [`dev/tools/`](dev/tools/) (see [`dev/tools/AGENTS.md`](dev/tools/AGENTS.md) for the deploy/SEO recipe).
+
 ## Prerequisites
 
 - [Rust](https://www.rust-lang.org/tools/install) (stable toolchain)
-- [Node.js](https://nodejs.org/) 22+ (see `.nvmrc`)
+- [Node.js](https://nodejs.org/) 24+ (see `.nvmrc`)
 - [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/)
 
 ## Getting Started

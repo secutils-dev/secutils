@@ -20,7 +20,7 @@ DEPLOY_CAMOUFOX_TAG 	?=
 .PHONY: deploy-dev deploy-dev-api deploy-dev-webui deploy-dev-docs deploy-dev-retrack-api deploy-dev-retrack-scraper
 .PHONY: deploy-prod deploy-prod-api deploy-prod-webui deploy-prod-docs deploy-prod-retrack-api deploy-prod-retrack-scraper
 .PHONY: deploy-camoufox
-.PHONY: deploy-tools
+.PHONY: deploy-tools tools-og tools-og-loop tools-check e2e-tools-test
 
 ## ---------- Development ----------
 
@@ -244,8 +244,33 @@ perf-report: ## Open the HTML perf viewer. Load .perf/history.jsonl inside it.
 
 ## ---------- Tool Apps ----------
 
-deploy-tools: ## Deploy dev/tools HTML apps to responders (ARGS="calc jwt-debugger" to deploy specific tools).
+deploy-tools: ## Deploy dev/tools HTML apps to responders (ARGS="jwt-debugger echo" to deploy specific tools; also handles *.skill.md and llms.txt).
 	node --env-file=.env dev/tools/deploy.ts $(ARGS)
+
+tools-og: ## Regenerate the per-tool 1200x630 OG images (dark + light) into components/secutils-docs/static/img/og/.
+	cd e2e && npx playwright test --config=playwright.tools.config.ts og.spec.ts $(ARGS)
+
+tools-og-loop: ## Run tools-og repeatedly to verify OG screenshots are byte-stable (RUNS=N default 10).
+	@rm -rf $(E2E_LOOP_DIR) && mkdir -p $(E2E_LOOP_DIR); \
+	pass=0; fail=0; \
+	for i in $$(seq 1 $(RUNS)); do \
+		echo "--- Run $$i/$(RUNS) ---"; \
+		rm -rf e2e/test-results; \
+		if (cd e2e && npx playwright test --config=playwright.tools.config.ts og.spec.ts $(ARGS)) > $(E2E_LOOP_DIR)/run-$$i.log 2>&1; then \
+			pass=$$((pass+1)); echo "PASS"; \
+		else \
+			fail=$$((fail+1)); echo "FAIL  →  $(E2E_LOOP_DIR)/run-$$i.log"; \
+			[ -d e2e/test-results ] && cp -r e2e/test-results $(E2E_LOOP_DIR)/artifacts-run-$$i || true; \
+		fi; \
+	done; \
+	echo "=== Results: $$pass/$(RUNS) passed, $$fail/$(RUNS) failed ==="; \
+	echo "Logs and artifacts: $(E2E_LOOP_DIR)"
+
+e2e-tools-test: ## Run the e2e/tools/ Playwright suite against $(BASE_URL) (default https://tools.secutils.dev). Use ARGS for extra flags.
+	cd e2e && npx playwright test --config=playwright.tools.config.ts $(ARGS)
+
+tools-check: ## Validate that the promo home Free-tools section matches `<meta name="su-tool-promote">` in dev/tools/. Read-only, no browser.
+	@node scripts/tools-check.ts
 
 ## ---------- Docker Cleanup ----------
 
