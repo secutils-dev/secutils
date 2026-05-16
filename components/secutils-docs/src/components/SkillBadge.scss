@@ -1,0 +1,57 @@
+/*
+ * Per-page "AI agent skill" pill. Rendered above the doc title for every guide that declares `skill: true` in its
+ * frontmatter. The visual is deliberately aligned with the `.skill-link` pill used by the static tools at
+ * `tools.secutils.dev/*.html` so the affordance is recognisable across surfaces.
+ */
+.su-skill-badge {
+  /* Lift the badge out of the document flow so it tucks neatly under the doc-page top margin (which is already
+   * provided by the theme), aligned with the right edge of the content column. The doc title gets its own vertical
+   * rhythm from <h1>, so we don't need to push the title down.
+  */
+  float: right;
+  margin: 0 0 0 16px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 14px;
+  background: var(--ifm-background-surface-color);
+  color: var(--ifm-color-emphasis-700);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  transition: color .15s ease, border-color .15s ease, background .15s ease;
+  cursor: pointer;
+}
+
+.su-skill-badge:hover,
+.su-skill-badge:focus-visible {
+  color: var(--ifm-color-emphasis-1000);
+  border-color: var(--ifm-color-emphasis-700);
+  background: var(--ifm-color-emphasis-100);
+  text-decoration: none;
+}
+
+.su-skill-badge svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+  .su-skill-badge span {
+    display: none;
+  }
+
+  .su-skill-badge {
+    padding: 0 8px;
+  }
+}

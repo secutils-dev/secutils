@@ -151,8 +151,19 @@ do not skip steps even when the previous stage was green.
 - **Nginx `types {}` in server scope replaces, not merges.** When adding `text/markdown
   md;` to serve the per-page companions, you must `include /etc/nginx/mime.types;` first
   in the same `server { … }` block, otherwise `.txt` (and everything else) regresses to
-  `application/octet-stream`. `llms.txt` is `text/plain` per spec; the per-page
-  companions are `text/markdown`.
+  `application/octet-stream`. The per-page `.md` companions are `text/markdown`. `llms.txt`
+  and `llms-index.txt` are **also** served as `text/markdown` despite the `.txt` extension
+  (they are llmstxt.org-format markdown files, and the promo site's `Accept: text/markdown`
+  content-negotiation 302 lands here -- Cloudflare's "Markdown for Agents" check at
+  isitagentready.com rejects a `text/plain` final response). Achieved with a regex
+  `location ~ ^/docs/llms(-index)?\.txt$ { types { } default_type text/markdown; }`
+  override that empties the inherited MIME map for that one location so `default_type`
+  wins. **The `/docs/` prefix matters**: the production Traefik route for the public
+  `secutils.dev/llms.txt` (and `/llms-index.txt`) URLs carries an `addPrefix: /docs`
+  middleware, so by the time the request reaches the docs nginx the URI is
+  `/docs/llms.txt`. A bare `location = /llms.txt` will silently never match -- if you
+  smoke-test this from inside the pod (e.g. `kubectl exec ... -- wget /llms.txt`), curl
+  the **prefixed** path instead.
 
 #### Docker (stages 4 & 10)
 
