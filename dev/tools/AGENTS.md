@@ -1184,11 +1184,14 @@ There are two different footer patterns depending on whether the page has the Se
 
 ### Tool app pages (have the Secutils logo header)
 
-Since branding is already in the header, the footer should contain a **short description of the tool** - not a "Powered by" watermark. Use `<p>` text, no logo repetition.
+Since branding is already in the header, the footer should contain a **short description of the tool** - not a "Powered by" watermark. Use `<p>` text, no logo repetition. Every footer also carries a **Privacy** link (a `<button>` that opens the canonical privacy dialog - see "Privacy dialog" below). The link is a `<button>` rather than an `<a href="#privacy">` so it doesn't pollute history or the URL fragment (the fragment is reserved for tool state, see "URL state encoding" above).
+
+Two-line layout: the tool description on the first line, the Privacy link demoted to a smaller, dimmer second line so it reads as "fine print" rather than competing with the description.
 
 ```html
 <footer class="su-footer">
     <p>A single-file tool description goes here.</p>
+    <p class="su-footer-fineprint"><button type="button" class="su-footer-link" id="privacyOpen">Privacy</button></p>
 </footer>
 ```
 
@@ -1200,7 +1203,13 @@ Since branding is already in the header, the footer should contain a **short des
     color: var(--text-muted);
     font-size: 0.8rem;
 }
+.su-footer p { margin: 0; }
+.su-footer-fineprint { margin-top: 6px !important; font-size: 0.7rem; opacity: 0.75; }
+.su-footer-link { background: none; border: none; padding: 0; color: inherit; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.su-footer-link:hover { color: var(--text); }
 ```
+
+`opacity: 0.75` (not a darker `color`) is intentional: it dims **both** the muted text and the inherited link colour in one go, and stays correct across the light/dark theme swap without needing per-theme overrides. The `!important` on `.su-footer-fineprint`'s `margin-top` only exists to override the universal `* { margin: 0; }` reset declared at the top of every tool's stylesheet.
 
 ### Generated/exported output files (no Secutils header - e.g. downloaded HTML from Markdown → HTML tool)
 
@@ -1225,6 +1234,156 @@ Watermark CSS: `text-align: center; padding: 32px 24px; opacity: 0.6; font-size:
 2. **Use Inter + Roboto Mono fonts** (loaded from Google Fonts CDN)
 
 3. **Use Secutils brand accent colors** (`#fed047` yellow, `#642340` maroon) for links, progress bar, blockquote borders, etc.
+
+## Analytics (Plausible)
+
+Every tool HTML file (including `index.html`) carries the same privacy-friendly
+[Plausible](https://plausible.io/) snippet. The snippet lives in `<head>`, placed
+**immediately after the Google Fonts `<link>`** and before the inline `<style>`
+block (per the [Plausible integration guides](https://plausible.io/docs/integration-guides)).
+The matching `<script type="application/ld+json">` SEO block stays where it is - it
+goes earlier in `<head>`, between the meta tags.
+
+### Markup (copy verbatim)
+
+```html
+<!-- Privacy-friendly analytics by Plausible -->
+<script defer src="https://tools.secutils.dev/js/script.js"></script>
+<script>
+    window.plausible = window.plausible || function () { (plausible.q = plausible.q || []).push(arguments) };
+    plausible.init = plausible.init || function (i) { plausible.o = i || {} };
+    plausible.init();
+</script>
+```
+
+Three load-bearing details:
+
+- **Script URL is first-party** (`https://tools.secutils.dev/js/script.js`, same
+  host as the page). Bypasses third-party adblockers that filter `plausible.io`
+  or generic analytics domains, and piggybacks on the existing connection pool.
+  The host is reverse-proxied to Plausible upstream by the same infra that
+  serves the tools.
+- **`defer`, not `async`.** `defer` keeps the script's execution ordered
+  relative to the inline init shim (which runs in document order after parsing
+  finishes) and avoids the tiny race where the queue stub might run before the
+  loader is ready. Both work in practice; `defer` is the conservative choice
+  for an in-`<head>` placement.
+- **`init()` form without `data-domain`.** Plausible auto-derives the domain
+  from `location.hostname`, so a single snippet works on every page and the
+  dashboard automatically attributes events to `tools.secutils.dev`. The
+  inline shim queues any `plausible(...)` calls made before the loader
+  arrives, so future custom events (e.g. `plausible('Copy share link')`)
+  buffer cleanly.
+
+### How the deploy pipeline treats the snippet
+
+`html-minifier-terser` strips the `<!-- Privacy-friendly analytics by Plausible -->`
+comment via `removeComments: true` and re-emits both `<script>` tags as-is (the
+`src="..."` script tag is preserved, the inline init shim goes through
+`minifyJS`). No special handling in [`deploy.ts`](deploy.ts) is required.
+
+### Why inline-HTML rather than the dynamic-injection pattern used on `secutils.dev`
+
+The main `secutils.dev` marketing site injects the same Plausible script
+dynamically from a TypeScript entry. That works because its Parcel build
+bundles the entry into a single JS file. The tools are single static HTML
+files with no per-page build step beyond `html-minifier-terser`, so inlining
+the snippet is simpler, deterministic, survives minification, and gives
+every page the analytics loader before the inline init shim runs (rather
+than after a paint).
+
+## Privacy dialog (footer)
+
+Every tool footer carries a **Privacy** button that opens a native `<dialog>`
+explaining (1) tool state stays in the browser and (2) what Plausible
+collects. The dialog is the user-facing complement of the analytics snippet
+above: every tool that runs Plausible discloses Plausible.
+
+### Why a native `<dialog>`
+
+`<dialog>.showModal()` gives Escape-to-close, focus trapping, `role="dialog"`,
+a `::backdrop` pseudo-element, and document inertness for free - no library,
+no manual ARIA, no keyboard-trap helper. Supported in every evergreen
+browser. The dialog does not close on backdrop click by default; that
+matches the "short, action-required modal" convention and avoids accidental
+dismissals on touch devices. If a tool ever needs backdrop-click dismissal,
+wire it up locally; do not add it to the canonical snippet.
+
+**Centering is `inset: 0; margin: auto;` plus a `max-height` cap.** The native
+user-agent stylesheet only resolves `margin: auto` horizontally because no
+`top`/`bottom` are set on the modal-positioned dialog; adding `inset: 0` gives
+both axes an anchor so `margin: auto` distributes the remaining space evenly,
+vertically and horizontally. `max-height: calc(100% - 32px)` keeps a 16 px
+breathing room at top/bottom on short viewports (e.g. landscape phone) and
+lets the dialog body scroll instead of overflowing the viewport. Without the
+`max-height`, the dialog could exceed the viewport and the bottom margin
+would collapse, breaking the vertical centering.
+
+### Markup (copy verbatim)
+
+Place as the **last child of `<body>`**, after `</footer>` and before the
+final `<script>` block. The copy is intentionally generic so the same block
+ships unchanged across every tool (the dialog enumerates payload types from
+every tool, not just the current page's):
+
+```html
+<dialog id="privacyDialog" class="su-dialog" aria-labelledby="privacyDialogTitle">
+    <header class="su-dialog-header">
+        <h2 id="privacyDialogTitle">Privacy</h2>
+        <button type="button" class="su-dialog-close" id="privacyClose" aria-label="Close">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>
+        </button>
+    </header>
+    <div class="su-dialog-body">
+        <p><strong>Your data stays in your browser.</strong> These tools run entirely client-side. Tokens, PEMs, SAML payloads, Markdown source, and mock-response bodies are never sent to the Secutils.dev server. State that needs to survive a reload (or be shared) lives in the URL fragment (<code>#&hellip;</code>), which browsers never transmit to the server.</p>
+        <p><strong>Anonymous usage analytics.</strong> We use <a href="https://plausible.io/" target="_blank" rel="noopener noreferrer">Plausible Analytics</a>, a privacy-first, GDPR-compliant tool, to collect aggregate usage data. No cookies, no personal data, no individual tracking. The data is limited to top pages, referral sources, visit duration, and device-class metadata (device type, OS, country, browser). Full details in the <a href="https://plausible.io/data-policy" target="_blank" rel="noopener noreferrer">Plausible Data Policy</a>.</p>
+        <p class="su-dialog-fineprint">See the full <a href="https://secutils.dev/privacy" target="_blank" rel="noopener noreferrer">Secutils.dev privacy policy</a> for details on the wider service.</p>
+    </div>
+</dialog>
+```
+
+The matching footer button is documented in the "Footer" section above
+(every footer carries `<button class="su-footer-link" id="privacyOpen">Privacy</button>`).
+
+### CSS (copy verbatim)
+
+Place next to the existing `.su-footer` rule:
+
+```css
+.su-dialog { max-width: 520px; width: calc(100% - 32px); max-height: calc(100% - 32px); inset: 0; margin: auto; padding: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+.su-dialog::backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(2px); }
+.su-dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.su-dialog-header h2 { font-size: 1rem; font-weight: 600; }
+.su-dialog-close { width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .15s; }
+.su-dialog-close:hover { background: var(--surface-hover); color: var(--text); }
+.su-dialog-body { padding: 16px 18px; font-size: 0.875rem; line-height: 1.55; color: var(--text); }
+.su-dialog-body p { margin-bottom: 12px; }
+.su-dialog-body p:last-child { margin-bottom: 0; }
+.su-dialog-body code { font-family: var(--mono); background: var(--surface-hover); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
+.su-dialog-body a { color: var(--primary); text-decoration: none; }
+.su-dialog-body a:hover { text-decoration: underline; }
+.su-dialog-fineprint { font-size: 0.8rem; color: var(--text-muted); }
+```
+
+### Wiring (copy verbatim)
+
+A standalone IIFE inside the tool's main `<script>` block, placed
+**immediately after the theme-toggle IIFE** so it sits next to the other
+chrome wiring:
+
+```js
+(() => {
+    const dlg = document.getElementById('privacyDialog');
+    document.getElementById('privacyOpen').addEventListener('click', () => dlg.showModal());
+    document.getElementById('privacyClose').addEventListener('click', () => dlg.close());
+})();
+```
+
+Three lines: open, close, and a reference. No state, no listeners on the
+backdrop, no manual focus management - the native `<dialog>` handles all of
+that. Tools that ship in IE-era syntax (`var` / `function ()`) like
+`index.html` mirror the same style with `var` instead of `const`; the
+behaviour is identical.
 
 ## Responsive (mobile)
 
@@ -1404,10 +1563,12 @@ that explains it in detail.
    skill link button (see "Skill link button"), and theme toggle; body styled with the
    shared brand variables; full SEO head block (see "SEO requirements"); `<noscript>`
    fallback; `su-tool-path`, `su-tool-name`, `su-tool-description`,
-   `su-tool-promote` meta tags; **bottom "more free tools" banner** as the last
-   child of `<main>` (see "More free tools bottom CTA"); footer. Do NOT add a
-   separate `<nav class="su-related">` block - the banner is the sole
-   related-tools surface.
+   `su-tool-promote` meta tags; the Plausible analytics snippet in `<head>` (see
+   "Analytics (Plausible)"); **bottom "more free tools" banner** as the last child of
+   `<main>` (see "More free tools bottom CTA"); footer with a **Privacy** button (see
+   "Footer") backed by the canonical `<dialog>` block as the last child of `<body>`
+   (see "Privacy dialog"). Do NOT add a separate `<nav class="su-related">` block -
+   the banner is the sole related-tools surface.
 2. **Author the skill** - `dev/tools/<name>.skill.md` as a real Claude Code / Cursor
    SKILL.md (terse `name` + `description` frontmatter, rich Markdown body with `## Inputs`,
    `## Wire format`, `## How to produce the URL` runnable snippet, `## After producing`,
