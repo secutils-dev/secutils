@@ -109,12 +109,18 @@ main { flex: 1; padding: 32px 16px; display: flex; justify-content: center; }
 .form-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 select.form-input { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2398a2b3' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 32px; cursor: pointer; }
 
-.btn { padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 500 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 6px; }
+/* `height` pins the outer size so `.btn-primary`'s `font-weight: 600` doesn't
+   render 1-2 px taller than the regular variant via expanded bold strut
+   metrics. This tool uses slightly larger paddings (8/6 px instead of 7/5 px)
+   so the pinned heights are correspondingly 31 / 26 px. `.btn-full` opts out
+   with `height: auto` because its 12 px padding + 14 px font intentionally
+   make it a taller call-to-action. See dev/tools/AGENTS.md -> "Buttons". */
+.btn { padding: 8px 16px; height: 31px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 500 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 6px; }
 .btn:hover { background: var(--surface-hover); border-color: var(--text-muted); }
-.btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); font-weight: 600; }
+.btn-primary { background: var(--primary); border-color: var(--primary-text); color: var(--primary-text); font-weight: 600; }
 .btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
-.btn-primary.btn-full { width: 100%; justify-content: center; padding: 12px; font-size: 14px; }
-.btn-sm { padding: 6px 12px; font-size: 12px; }
+.btn-primary.btn-full { width: 100%; height: auto; justify-content: center; padding: 12px; font-size: 14px; }
+.btn-sm { padding: 6px 12px; height: 26px; font-size: 12px; }
 
 .role-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; min-height: 28px; }
 .role-tag { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: var(--badge-bg); border-radius: 4px; font-size: 13px; color: var(--badge-text); }

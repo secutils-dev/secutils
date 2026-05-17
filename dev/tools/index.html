@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Free Developer and Security Tools | Secutils.dev</title>
-    <meta name="description" content="Free, no-signup single-page tools for developers and security engineers. Decode JWTs, SAML, X.509 chains, mock HTTP responses, convert Markdown. Browser-only.">
+    <meta name="description" content="Free, no-signup single-page tools for developers and security engineers. Decode JWTs, SAML, X.509 chains, mock HTTP responses, convert Markdown, extract PDF text. Browser-only.">
     <meta name="robots" content="index, follow, max-image-preview:large">
     <link rel="canonical" href="https://{{TOOLS_HOST}}/">
     <meta name="su-tool-path" content="/">
@@ -14,7 +14,7 @@
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Secutils.dev">
     <meta property="og:title" content="Free Developer &amp; Security Tools &mdash; Secutils.dev">
-    <meta property="og:description" content="Free, no-signup single-page tools for developers and security engineers. Decode JWTs, SAML, X.509 chains, mock HTTP responses, convert Markdown.">
+    <meta property="og:description" content="Free, no-signup single-page tools for developers and security engineers. Decode JWTs, SAML, X.509 chains, mock HTTP responses, convert Markdown, extract PDF text.">
     <meta property="og:url" content="https://{{TOOLS_HOST}}/">
     <meta property="og:image" content="https://secutils.dev/docs/img/og/og-index.png">
     <meta property="og:image:width" content="1200">
@@ -25,7 +25,7 @@
     <meta name="twitter:title" content="Free Developer &amp; Security Tools &mdash; Secutils.dev">
     <meta name="twitter:description" content="Free, no-signup single-page tools for developers and security engineers.">
     <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-index.png">
-    <script type="application/ld+json">{"@context":"https://schema.org","@type":"ItemList","name":"Secutils.dev Free Tools","url":"https://{{TOOLS_HOST}}/","itemListElement":[{"@type":"ListItem","position":1,"url":"https://{{TOOLS_HOST}}/jwt","name":"JWT Debugger"},{"@type":"ListItem","position":2,"url":"https://{{TOOLS_HOST}}/saml","name":"SAML Decoder"},{"@type":"ListItem","position":3,"url":"https://{{TOOLS_HOST}}/pem","name":"PEM Certificate Decoder"},{"@type":"ListItem","position":4,"url":"https://{{TOOLS_HOST}}/md-to-html","name":"Markdown to HTML"},{"@type":"ListItem","position":5,"url":"https://{{TOOLS_HOST}}/echo","name":"HTTP Echo / Mock Response"}]}</script>
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"ItemList","name":"Secutils.dev Free Tools","url":"https://{{TOOLS_HOST}}/","itemListElement":[{"@type":"ListItem","position":1,"url":"https://{{TOOLS_HOST}}/jwt","name":"JWT Debugger"},{"@type":"ListItem","position":2,"url":"https://{{TOOLS_HOST}}/saml","name":"SAML Decoder"},{"@type":"ListItem","position":3,"url":"https://{{TOOLS_HOST}}/pem","name":"PEM Certificate Decoder"},{"@type":"ListItem","position":4,"url":"https://{{TOOLS_HOST}}/md-to-html","name":"Markdown to HTML"},{"@type":"ListItem","position":5,"url":"https://{{TOOLS_HOST}}/pdf","name":"PDF Extractor"},{"@type":"ListItem","position":6,"url":"https://{{TOOLS_HOST}}/echo","name":"HTTP Echo / Mock Response"}]}</script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
@@ -115,7 +115,7 @@ main { flex: 1; padding: 48px 16px; max-width: 720px; margin: 0 auto; width: 100
 </head>
 <body>
     <noscript>
-        <p class="su-noscript"><strong>Free developer and security tools</strong> &mdash; A collection of single-page utilities (JWT, SAML, X.509, Markdown to HTML, HTTP echo) by Secutils.dev. Open any tool in your browser, no signup. Requires JavaScript; please enable it. Source on <a href="https://github.com/secutils-dev/secutils/tree/main/dev/tools">GitHub</a>.</p>
+        <p class="su-noscript"><strong>Free developer and security tools</strong> &mdash; A collection of single-page utilities (JWT, SAML, X.509, Markdown to HTML, PDF Extractor, HTTP echo) by Secutils.dev. Open any tool in your browser, no signup. Requires JavaScript; please enable it. Source on <a href="https://github.com/secutils-dev/secutils/tree/main/dev/tools">GitHub</a>.</p>
     </noscript>
     <header>
         <a class="logo" href="https://secutils.dev" target="_blank" rel="noopener">
@@ -154,6 +154,10 @@ main { flex: 1; padding: 48px 16px; max-width: 720px; margin: 0 auto; width: 100
             <a class="tool-card" href="/md-to-html">
                 <div class="tool-name">Markdown &rarr; HTML <span class="tool-path">/md-to-html</span> <span class="arrow">&rarr;</span></div>
                 <div class="tool-desc">Convert Markdown files to beautifully formatted, self-contained HTML pages or print-ready PDFs with syntax highlighting, dark mode, and table of contents.</div>
+            </a>
+            <a class="tool-card" href="/pdf">
+                <div class="tool-name">PDF Extractor <span class="tool-path">/pdf</span> <span class="arrow">&rarr;</span></div>
+                <div class="tool-desc">Extract spatial text and structured JSON (with per-item bounding boxes) from PDFs entirely in your browser. Optional Tesseract.js OCR for scanned documents.</div>
             </a>
             <a class="tool-card" href="/echo">
                 <div class="tool-name">Echo <span class="tool-path">/echo</span> <span class="arrow">&rarr;</span></div>

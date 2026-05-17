@@ -1,9 +1,17 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import { gzipSync } from "node:zlib";
 import { minify } from "html-minifier-terser";
 
 const TOOLS_DIR = resolve(dirname(process.argv[1]));
+// Each sub-directory under `dev/tools/js/` is an isolated build of one JS
+// bundle (own package.json + lockfile + Vite/Rollup config). The deploy
+// pipeline inlines these into HTML responders that reference them via a
+// `data-su-bundle="<name>"` placeholder. See dev/tools/AGENTS.md ->
+// "Embedded JS bundles (`data-su-bundle`)".
+const BUNDLES_DIR = resolve(TOOLS_DIR, "js");
 const PREFIX = "deploy-tools";
 
 const ANSI = {
@@ -66,6 +74,198 @@ function extractResponderScript(
 // to change the public host of every tool.
 function substituteToolsHost(text: string, toolsHost: string): string {
   return text.replace(/\{\{\s*TOOLS_HOST\s*\}\}/g, toolsHost);
+}
+
+// -----------------------------------------------------------------------------
+// Generic JS bundle inliner (data-su-bundle)
+// -----------------------------------------------------------------------------
+//
+// Author-side convention (in any tool HTML):
+//
+//   <script id="su-bundle-liteparse" type="text/plain"
+//           data-su-bundle="liteparse"></script>
+//
+// The placeholder is empty (`type="text/plain"` keeps the browser from
+// executing whatever lands inside on page load). At deploy time we discover
+// every `data-su-bundle="<name>"` reference, ensure
+// `dev/tools/js/<name>/dist/<name>.js` is fresh, and inject the bundle source
+// as the placeholder's text content. The tool's own JS then lazy-imports it
+// via a tiny helper:
+//
+//   const blob = new Blob([el.textContent], { type: 'text/javascript' });
+//   const mod  = await import(URL.createObjectURL(blob));
+//
+// Build rule per sub-package:
+//   dev/tools/js/<name>/package.json#scripts.build  ->  dist/<name>.js
+//
+// Idempotency: if `dist/<name>.js` exists and its mtime is >= the newest
+// source mtime (everything under the sub-package except dist/ and
+// node_modules/), the build is skipped. The deploy never silently ships a
+// stale bundle.
+
+// Matches `<script ... data-su-bundle="<name>" ...></script>` placeholders.
+// Captures the opening tag (group 1) and the bundle name (group 2). The body
+// must be empty (whitespace only) -- the inliner refuses to overwrite a tag
+// that already has content, both as a safety net and to keep the convention
+// honest. The tag survives html-minifier-terser unchanged because the body
+// is empty and `data-*` attributes are never stripped.
+const BUNDLE_PLACEHOLDER_RE =
+  /(<script\b[^>]*\bdata-su-bundle\s*=\s*["']([a-z0-9_-]+)["'][^>]*>)\s*<\/script>/gi;
+
+// Bundle names that may appear in any HTML. We accept lowercase, digits,
+// dashes, and underscores; the same charset that's allowed in URL slugs so
+// `data-su-bundle` is easy to grep across the repo.
+const BUNDLE_NAME_RE = /^[a-z0-9_-]+$/;
+
+function discoverBundleNames(html: string): string[] {
+  const names = new Set<string>();
+  for (const m of html.matchAll(BUNDLE_PLACEHOLDER_RE)) {
+    names.add(m[2]);
+  }
+  return [...names];
+}
+
+// Walks `root` recursively, returning the largest mtime (ms) of any file,
+// excluding any directory whose basename matches `excludeDirs`. Used to
+// decide whether `dist/<name>.js` is older than its sources.
+function newestMtimeUnder(root: string, excludeDirs: Set<string>): number {
+  let newest = 0;
+  const stack: string[] = [root];
+  while (stack.length > 0) {
+    const dir = stack.pop()!;
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const full = join(dir, entry);
+      let st;
+      try {
+        st = statSync(full);
+      } catch {
+        continue;
+      }
+      if (st.isDirectory()) {
+        if (excludeDirs.has(entry)) continue;
+        stack.push(full);
+      } else if (st.mtimeMs > newest) {
+        newest = st.mtimeMs;
+      }
+    }
+  }
+  return newest;
+}
+
+// Caches built bundle source so repeated calls (across HTML files that share
+// a bundle) don't re-stat / re-read it. Keyed by bundle name.
+const BUNDLE_CACHE = new Map<string, string>();
+
+// Ensures `dev/tools/js/<name>/dist/<name>.js` exists and is up to date
+// relative to the sub-package's sources, building it on demand. Returns the
+// bundle source as a string. Throws if the sub-package directory or its
+// `package.json` is missing, or the build fails.
+function ensureBundleBuilt(name: string): string {
+  if (!BUNDLE_NAME_RE.test(name)) {
+    throw new Error(`invalid data-su-bundle name "${name}"`);
+  }
+  const cached = BUNDLE_CACHE.get(name);
+  if (cached !== undefined) return cached;
+
+  const bundleDir = resolve(BUNDLES_DIR, name);
+  if (!existsSync(bundleDir)) {
+    throw new Error(
+      `bundle "${name}" not found: expected sub-package at ${bundleDir}`,
+    );
+  }
+  const pkgJson = resolve(bundleDir, "package.json");
+  if (!existsSync(pkgJson)) {
+    throw new Error(
+      `bundle "${name}" is missing package.json at ${pkgJson}`,
+    );
+  }
+  const distPath = resolve(bundleDir, "dist", `${name}.js`);
+  const exclude = new Set(["dist", "node_modules"]);
+  const sourceMtime = newestMtimeUnder(bundleDir, exclude);
+  let needsBuild = !existsSync(distPath);
+  if (!needsBuild) {
+    const distMtime = statSync(distPath).mtimeMs;
+    if (sourceMtime > distMtime) needsBuild = true;
+  }
+  if (needsBuild) {
+    log(`bundle ${ANSI.cyan(name)}: ${ANSI.dim("building...")}`);
+    // `npm ci` is the slow part; only run it when node_modules is absent.
+    // Subsequent rebuilds (e.g. a stub tweak) skip straight to `npm run build`.
+    if (!existsSync(resolve(bundleDir, "node_modules"))) {
+      execFileSync("npm", ["ci"], { cwd: bundleDir, stdio: "inherit" });
+    }
+    execFileSync("npm", ["run", "build"], { cwd: bundleDir, stdio: "inherit" });
+    if (!existsSync(distPath)) {
+      throw new Error(
+        `bundle "${name}" build finished but ${distPath} was not produced. ` +
+          `Check the sub-package's vite/rollup output config.`,
+      );
+    }
+  }
+  const code = readFileSync(distPath, "utf-8");
+  BUNDLE_CACHE.set(name, code);
+  return code;
+}
+
+// Detects `data-su-bundle-encoding="gzip-base64"` on the placeholder's
+// opening tag. Bundles flagged with this encoding are gzipped + base64'd
+// before inlining; the tool's runtime loader is expected to reverse the two
+// steps (DecompressionStream + atob) before Blob-URL'ing the result. The
+// encoding exists because some responder backends cap the PUT JSON payload
+// (~2 MB today); a 3 MB raw bundle balloons to ~3.3 MB JSON-encoded and is
+// rejected, while gzip+base64 typically lands at ~1 MB JSON-encoded for the
+// same bundle. Tradeoff: ~10-20 ms of one-time decompression on first use.
+const BUNDLE_ENCODING_RE =
+  /\bdata-su-bundle-encoding\s*=\s*["']([a-z0-9_-]+)["']/i;
+
+// Replaces every `data-su-bundle` placeholder in `html` with the corresponding
+// bundle source. Run *after* html-minifier-terser so the (potentially several
+// MB of) bundle source never passes through the minifier (it's already
+// minified by Vite/Rollup and the minifier has no useful work to do on it,
+// while a `collapseWhitespace` quirk could theoretically corrupt it). The
+// `</script>` substring inside the bundle is escaped to `<\/script>` so the
+// inlined `<script>` tag doesn't terminate early -- standard same-origin
+// HTML embedding hygiene.
+function inlineBundles(html: string): {
+  html: string;
+  bundleBytes: Map<string, number>;
+} {
+  const bundleBytes = new Map<string, number>();
+  const out = html.replace(
+    BUNDLE_PLACEHOLDER_RE,
+    (_match, openTag: string, name: string) => {
+      const code = ensureBundleBuilt(name);
+      const encoding = BUNDLE_ENCODING_RE.exec(openTag)?.[1];
+      let payload: string;
+      if (!encoding) {
+        // Raw text inlining: escape `</script>` so the host <script> tag
+        // can't terminate early.
+        payload = code.replace(/<\/script>/gi, "<\\/script>");
+      } else if (encoding === "gzip-base64") {
+        // Gzip the UTF-8 bundle source, then base64-encode. The base64
+        // alphabet is `</script>`-safe, so no further escaping is needed.
+        const gz = gzipSync(Buffer.from(code, "utf-8"), { level: 9 });
+        payload = gz.toString("base64");
+      } else {
+        throw new Error(
+          `bundle "${name}": unsupported data-su-bundle-encoding="${encoding}" ` +
+            `(known: <unset> for raw text, "gzip-base64" for compressed)`,
+        );
+      }
+      bundleBytes.set(
+        name,
+        (bundleBytes.get(name) ?? 0) + Buffer.byteLength(payload, "utf-8"),
+      );
+      return `${openTag}${payload}</script>`;
+    },
+  );
+  return { html: out, bundleBytes };
 }
 
 // llms.txt entry, sourced from the corresponding tool HTML's `su-tool-*`
@@ -395,6 +595,10 @@ type DeployTarget = {
   // Reported as `original -> minified` in the deploy log. For Markdown / text
   // we don't minify so original == minified.
   originalSize: number;
+  // Inlined `data-su-bundle` payload sizes, keyed by bundle name. Reported
+  // alongside the body size so a 2 MB liteparse blob is visible in the deploy
+  // log instead of mysteriously inflating the "minified" number.
+  bundleBytes?: Map<string, number>;
 };
 
 async function buildHtmlTarget(
@@ -413,6 +617,9 @@ async function buildHtmlTarget(
 ): Promise<DeployTarget> {
   const templated = substituteToolsHost(rawHtml, toolsHost);
   const responderScript = extractResponderScript(templated, label);
+  // `removeScriptTypeAttributes` would strip `type="text/javascript"` but
+  // intentionally leaves non-default types like `text/plain` (which we use
+  // for `data-su-bundle` placeholders) intact, so the convention survives.
   const minified = await minify(templated, {
     collapseWhitespace: true,
     removeComments: true,
@@ -422,16 +629,22 @@ async function buildHtmlTarget(
     removeScriptTypeAttributes: true,
     removeStyleLinkTypeAttributes: true,
   });
+  // Inline `data-su-bundle` payloads *after* minification: the bundle source
+  // is already minified by Vite, and bypassing the HTML minifier avoids any
+  // chance of `collapseWhitespace` / `minifyJS` corrupting the inlined ESM
+  // module. See "Generic JS bundle inliner" above.
+  const { html: withBundles, bundleBytes } = inlineBundles(minified);
   const finalScript = mdNegotiationPath
     ? wrapWithMdNegotiation(responderScript, mdNegotiationPath)
     : responderScript;
   return {
     filename,
-    body: minified,
+    body: withBundles,
     contentType: "text/html",
     script: finalScript,
     extraHeaders,
     originalSize: Buffer.byteLength(templated, "utf-8"),
+    bundleBytes: bundleBytes.size > 0 ? bundleBytes : undefined,
   };
 }
 
@@ -732,6 +945,11 @@ async function main() {
     }
     if (target.script) {
       sizeInfo += ` ${ANSI.dim(`+ script ${formatSize(Buffer.byteLength(target.script, "utf-8"))}`)}`;
+    }
+    if (target.bundleBytes) {
+      for (const [name, bytes] of target.bundleBytes) {
+        sizeInfo += ` ${ANSI.dim(`+ bundle ${name} ${formatSize(bytes)}`)}`;
+      }
     }
 
     const result = await putResponder(API_DOMAIN, API_KEY, responderId, target);

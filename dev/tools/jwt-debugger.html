@@ -126,11 +126,14 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; max-w
 .link-btn:hover { color: var(--text); }
 
 /* Buttons */
-.btn { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+/* `height` pins the outer size so `.btn-primary`'s `font-weight: 600` doesn't
+   render 1-2 px taller than the regular variant via expanded bold strut
+   metrics. See dev/tools/AGENTS.md -> "Buttons". */
+.btn { padding: 7px 14px; height: 29px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
-.btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); font-weight: 600; }
+.btn-primary { background: var(--primary); border-color: var(--primary-text); color: var(--primary-text); font-weight: 500; }
 .btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
-.btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn-sm { padding: 5px 10px; height: 24px; font-size: 12px; }
 .icon-btn { padding: 4px; border: none; background: none; color: var(--text-muted); cursor: pointer; border-radius: 4px; transition: all .15s; display: inline-flex; align-items: center; justify-content: center; }
 .icon-btn:hover { color: var(--text); background: var(--surface-hover); }
 .icon-btn svg { width: 16px; height: 16px; }

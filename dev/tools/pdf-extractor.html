@@ -1,0 +1,1770 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Extractor: Spatial Text & JSON with Bounding Boxes | Secutils.dev</title>
+    <meta name="description" content="Free in-browser PDF extractor with grid-projected text and structured JSON (bounding boxes, per-page items). Optional OCR for scanned PDFs. Powered by liteparse. No uploads, no signup.">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <link rel="canonical" href="https://{{TOOLS_HOST}}/pdf">
+    <meta name="su-tool-path" content="/pdf">
+    <meta name="su-tool-name" content="PDF Extractor">
+    <meta name="su-tool-description" content="Extract spatial text and structured JSON (bounding boxes, per-page items) from PDFs in your browser. Optional OCR for scanned pages. Powered by liteparse, no uploads, no signup.">
+    <meta name="su-tool-promote" content="true">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Secutils.dev">
+    <meta property="og:title" content="PDF Extractor: Spatial Text &amp; JSON with Bounding Boxes">
+    <meta property="og:description" content="Free in-browser PDF extractor. Grid-projected text or structured JSON with bounding boxes. Optional OCR. Powered by liteparse. No uploads.">
+    <meta property="og:url" content="https://{{TOOLS_HOST}}/pdf">
+    <meta property="og:image" content="https://secutils.dev/docs/img/og/og-pdf.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="PDF Extractor on Secutils.dev: spatial text and JSON with bounding boxes, in the browser.">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="PDF Extractor: Spatial Text &amp; JSON with Bounding Boxes">
+    <meta name="twitter:description" content="Free in-browser PDF extractor. Grid-projected text or structured JSON with bounding boxes. Optional OCR. Powered by liteparse.">
+    <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-pdf.png">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"PDF Extractor","url":"https://{{TOOLS_HOST}}/pdf","applicationCategory":"DeveloperApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/pdf-extractor.html","description":"Free in-browser PDF extractor with grid-projected text and structured JSON output. Includes per-page items, bounding boxes, and optional Tesseract.js OCR for scanned PDFs. Powered by liteparse, runs entirely client-side."}</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
+    <!-- Privacy-friendly analytics by Plausible -->
+    <script defer src="https://tools.secutils.dev/js/script.js"></script>
+    <script>
+        window.plausible = window.plausible || function () { (plausible.q = plausible.q || []).push(arguments) };
+        plausible.init = plausible.init || function (i) { plausible.o = i || {} };
+        plausible.init();
+    </script>
+    <style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root, [data-theme="dark"] {
+    --bg: #141519; --surface: #1d1e24; --surface-hover: #2c2d33;
+    --border: #343741; --text: #dfe5ef; --text-muted: #98a2b3;
+    --primary: #fed047; --primary-hover: #fdc615;
+    --primary-text: #642340;
+    --primary-glow: rgba(254,208,71,0.10);
+    --accent: #642340;
+    --badge-bg: #2B394F; --badge-text: #98A8C3;
+    --radius: 12px;
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --mono: 'Roboto Mono', 'SF Mono', 'Fira Code', Consolas, monospace;
+    --code-bg: #16171c;
+    --danger: #e07b7b;
+    --success: #7bcf9f;
+}
+[data-theme="light"] {
+    --bg: #f5f7fa; --surface: #ffffff; --surface-hover: #f1f3f5;
+    --border: #d3dae6; --text: #343741; --text-muted: #69707d;
+    --primary: #fed047; --primary-hover: #fdc615;
+    --primary-text: #642340;
+    --primary-glow: rgba(254,208,71,0.15);
+    --accent: #642340;
+    --badge-bg: #E3E8F2; --badge-text: #505F79;
+    --code-bg: #f6f8fa;
+    --danger: #d04848;
+    --success: #2e8855;
+}
+/* `min-height: 100vh` is a floor, not a cap -- without a hard upper bound,
+   a column-flex container grows with its children, which means a tall JSON
+   <pre> deep inside .output-panel makes <body> grow, <main> follow (its
+   `flex: 1` happily fills whatever body became), and the inner
+   `overflow: hidden` chain never gets to clip anything. The desktop layout
+   wants a strict viewport-sized chrome with internal scroll in the result
+   pane, so cap body's height at 100vh in the wide breakpoint (see media
+   query below). Mobile (≤768px) keeps the default scroll-the-page behaviour
+   because the single-column stack puts the result pane below the dropzone
+   and the user is expected to scroll. */
+body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; transition: background .25s, color .25s; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 48px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; transition: background .25s, border-color .25s; }
+.logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.logo-svg { flex-shrink: 0; }
+.logo-svg .logo-text-fill { fill: var(--text); }
+.logo-badge { display: inline-flex; align-items: center; padding: 4px 16px; border-radius: 4px; border: none; background: var(--badge-bg); color: var(--badge-text); font-size: 12px; font-weight: 450; line-height: 16px; white-space: nowrap; }
+.header-right { display: flex; gap: 8px; align-items: center; }
+/* `height` is load-bearing: without an explicit pixel value, the yellow
+   `.btn-primary` variant renders 1-2 px taller than the outlined regular
+   variant because the heavier font-weight expands the line box's strut
+   metrics. Pinning `height` makes both weights resolve to the same outer
+   size so the primary buttons line up flush with the outlined regular
+   ones in the same row. See dev/tools/AGENTS.md -> "Buttons" / "Canonical
+   control height: 24 px". With box-sizing: border-box (global) padding +
+   border sit inside this height; `align-items: center` centres the label.
+
+   `font-weight: 500` on .btn-primary (down from the obvious-looking 600)
+   AND `border-color: var(--primary-text)` (the dark plum used for the
+   label, instead of matching the fill) together collapse the perceptual
+   size bump that a saturated yellow fill + bold label inflicts on the
+   eye -- two 24 px boxes look the same size when type weights are 400
+   vs 500 and both have a visible 1 px edge, but the 400-vs-600 +
+   edgeless-fill pairing reads as "Parse is bigger than Options" even
+   though both boxes are exactly the same pixel height. See AGENTS.md
+   -> "Buttons" for the full rationale (including why --primary-text
+   is the only palette token with enough contrast against yellow); do
+   not revert either change in isolation. */
+.btn { padding: 7px 14px; height: 29px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
+.btn:disabled { opacity: 0.55; cursor: default; }
+.btn-primary { background: var(--primary); border-color: var(--primary-text); color: var(--primary-text); font-weight: 500; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+.btn-sm { padding: 5px 10px; height: 24px; font-size: 12px; }
+.theme-toggle { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .2s; }
+.theme-toggle:hover { background: var(--surface-hover); color: var(--text); }
+.theme-toggle svg { width: 16px; height: 16px; fill: currentColor; }
+.theme-toggle .icon-sun { display: none; }
+.theme-toggle .icon-moon { display: block; }
+[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+.skill-link { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); color: var(--text-muted); font: 12px var(--font, system-ui), sans-serif; text-decoration: none; transition: all .15s; cursor: pointer; }
+.skill-link:hover { color: var(--text); border-color: var(--text-muted); background: var(--surface-hover); }
+.skill-link svg { width: 14px; height: 14px; fill: none; stroke: currentColor; }
+.su-more-tools { margin: 8px 0 0; padding: 12px 18px; text-align: center; border: 1px solid rgba(254, 208, 71, 0.35); border-radius: 12px; background: rgba(254, 208, 71, 0.06); font: 13px/1.55 var(--font); color: var(--text); transition: border-color .25s, background-color .25s, color .25s; }
+.su-more-tools p { margin: 0; }
+.su-more-tools a { color: var(--primary); font-weight: 700; text-decoration: none; white-space: nowrap; }
+.su-more-tools a:hover { color: var(--primary-hover); text-decoration: underline; }
+@media (max-width: 600px) { .su-more-tools { padding: 12px 14px; } .su-more-tools a { white-space: normal; } }
+.su-noscript { max-width: 720px; margin: 24px auto; padding: 16px; border: 1px solid var(--border); border-radius: 8px; font: 14px/1.5 var(--font, system-ui), sans-serif; background: var(--surface); color: var(--text); }
+
+/* Two-pane layout */
+/* `min-height: 0` is critical: <main> is a column-flex child of <body>, so its
+   default `min-height: auto` resolves to its min-content height -- i.e. the
+   full height of the tallest descendant, including a many-thousand-px JSON
+   <pre>. That defeats the inner `overflow: hidden` chain because <main>
+   itself silently grows past the viewport and drags <body> with it (body
+   uses `min-height: 100vh`, not a hard cap). With `min-height: 0`, <main>
+   strictly takes its `flex: 1` share of body's 100vh and the inner panels'
+   own scroll containers (.output-scroll, .output-textarea) clip + scroll. */
+main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction: column; overflow: hidden; }
+/* `minmax(0, 1fr)` lets each grid track shrink below its content's min-content
+   width. Without this, a long line in the JSON pane (white-space: pre on the
+   <pre>) would expand the right column past 1fr and squeeze the dropzone
+   column down to 0 width, hiding the entire left pane. */
+/* `grid-template-rows: minmax(0, 1fr)` mirrors the column trick: without
+   it, the implicit single row defaults to `auto` and sizes to the tallest
+   cell's min-content -- so a tall JSON <pre> would still blow the row
+   open even after we constrain columns and the outer chain. With this,
+   the row strictly takes its `flex: 1` share of <main> and the inner
+   .output-scroll handles its own overflow. */
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 12px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 0; flex: 1; min-height: 0; }
+/* `min-width: 0` opts panels (flex containers) out of the default
+   `min-content` floor so the inner scroll container (.output-scroll) can
+   actually clip + scroll wide JSON instead of forcing the grid track wider. */
+.panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.panel-bar { display: flex; align-items: center; justify-content: space-between; padding: 0 0 8px; gap: 8px; height: 38px; box-sizing: content-box; flex-shrink: 0; }
+.panel-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.panel-label { font-size: 13px; font-weight: 600; color: var(--text); }
+.link-btn { border: none; background: none; font: 12px var(--font); color: var(--text-muted); cursor: pointer; padding: 2px 4px; transition: color .15s; }
+.link-btn:hover { color: var(--text); }
+.stats-text { font: 11px var(--mono); color: var(--text-muted); white-space: nowrap; }
+.splitter { cursor: col-resize; background: transparent; position: relative; z-index: 1; }
+.splitter::after { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: var(--border); transition: width .15s, background .15s; transform: translateX(-50%); }
+.splitter:hover::after, .splitter.active::after { width: 3px; background: var(--primary); border-radius: 2px; }
+
+/* Drop zone (left pane) */
+.dropzone { flex: 1; min-height: 300px; border: 1px dashed var(--border); border-radius: var(--radius); background: var(--surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; transition: border-color .15s, background .25s; cursor: pointer; }
+.dropzone.dragover, .dropzone:hover { border-color: var(--primary); background: var(--primary-glow); }
+.dropzone-icon { width: 64px; height: 64px; border-radius: 16px; background: var(--surface-hover); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.dropzone-icon svg { width: 28px; height: 28px; stroke: currentColor; fill: none; }
+.dropzone-title { font: 600 16px/1.3 var(--font); color: var(--text); }
+.dropzone-sub { font: 13px/1.5 var(--font); color: var(--text-muted); max-width: 360px; }
+.dropzone-formats { font: 11px var(--mono); color: var(--text-muted); opacity: 0.8; margin-top: 6px; }
+.dropzone-active { display: none; flex-direction: column; align-items: stretch; gap: 14px; width: 100%; max-width: 360px; }
+.dropzone.has-file .dropzone-prompt { display: none; }
+.dropzone.has-file .dropzone-active { display: flex; }
+.file-info { padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); text-align: left; font: 13px var(--font); display: flex; align-items: center; gap: 12px; }
+.file-info-icon { width: 28px; height: 28px; flex-shrink: 0; border-radius: 6px; background: var(--surface-hover); display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.file-info-icon svg { width: 16px; height: 16px; stroke: currentColor; fill: none; }
+.file-info-name { flex: 1; min-width: 0; word-break: break-all; font-weight: 500; color: var(--text); }
+.file-info-meta { font-size: 11px; color: var(--text-muted); font-family: var(--mono); white-space: nowrap; }
+.dropzone-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+/* OCR options popover (re-used styling from md-to-html) */
+.options-anchor { position: relative; display: inline-flex; }
+.options-popover { position: absolute; top: calc(100% + 8px); right: 0; min-width: 280px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); z-index: 60; }
+.options-popover h4 { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 10px; }
+.options-popover label { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; cursor: pointer; font-size: 13px; color: var(--text); line-height: 1.4; }
+.options-popover input[type="radio"], .options-popover input[type="checkbox"] { accent-color: var(--primary); cursor: pointer; margin-top: 2px; flex-shrink: 0; }
+.options-popover .opt-desc { display: block; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.options-popover .opt-section + .opt-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+
+/* Result tabs (Text / JSON / Screenshots) */
+.view-tabs { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; }
+.view-tab { padding: 3px 10px; border: none; background: transparent; color: var(--text-muted); font: 12px/1 var(--font); font-weight: 500; cursor: pointer; border-radius: 4px; transition: all .15s; }
+.view-tab:hover:not(:disabled) { color: var(--text); }
+.view-tab.active { background: var(--surface-hover); color: var(--text); font-weight: 600; }
+.view-tab:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.icon-btn { padding: 4px; border: none; background: none; color: var(--text-muted); cursor: pointer; border-radius: 4px; transition: all .15s; display: inline-flex; align-items: center; justify-content: center; }
+.icon-btn:hover { color: var(--text); background: var(--surface-hover); }
+.icon-btn svg { width: 16px; height: 16px; }
+
+#resultPane:fullscreen { background: var(--bg); padding: 16px; display: flex; flex-direction: column; overflow: hidden; }
+#resultPane:fullscreen .output-panel { flex: 1; min-height: 0; }
+
+/* Result pane */
+.output-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; overflow: hidden; flex: 1; min-height: 300px; transition: background .25s, border-color .25s; position: relative; }
+/* `min-height: 0` opts the scroll container out of its default `min-content`
+   floor as a column-flex child, so tall JSON actually clips + scrolls inside
+   .output-panel instead of pushing the whole page taller. The textarea
+   variant doesn't need this because it has its own `height: 100%` and
+   native scroll. `min-width: 0` mirrors the same fix for very long JSON
+   lines on the horizontal axis (the .panel already does this for grid
+   tracks, but a row-flex parent further down the tree would still apply
+   the min-content floor without this). */
+.output-scroll { flex: 1; min-height: 0; min-width: 0; overflow: auto; padding: 14px 16px; }
+.output-textarea { width: 100%; height: 100%; min-height: 100%; padding: 14px 16px; font: 13px/1.55 var(--mono); background: var(--surface); color: var(--text); border: none; outline: none; resize: none; white-space: pre; tab-size: 4; }
+.output-pre { font: 12.5px/1.5 var(--mono); color: var(--text); white-space: pre; }
+
+/* Screenshots view: vertical column of page renders. The container shares
+   .output-scroll's `flex: 1; min-height: 0; overflow: auto` so it scrolls
+   internally just like the JSON pane. Pages stream in one at a time as
+   PDF.js renders them; each one is a <figure> with the rendered <img>,
+   page caption, and a per-page download link. */
+.shots-grid { display: flex; flex-direction: column; gap: 16px; padding: 16px; align-items: center; }
+/* `flex-shrink: 0` is critical: without it, the column-flex container would
+   distribute the (constrained) scroll-pane height across all figures and
+   squeeze each one into a thin band instead of letting them stack at their
+   natural image-determined heights. The parent .shots-grid has overflow:
+   auto from .output-scroll, so the column overflows into the scrollbar. */
+.shots-figure { width: 100%; max-width: 100%; flex-shrink: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+.shots-img { display: block; width: 100%; height: auto; background: #fff; }
+.shots-caption { padding: 6px 12px; font: 11px var(--mono); color: var(--text-muted); border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.shots-caption a { color: var(--text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; transition: all .15s; }
+.shots-caption a:hover { color: var(--text); background: var(--surface-hover); }
+.shots-caption a svg { width: 12px; height: 12px; stroke: currentColor; fill: none; }
+.shots-pending { padding: 14px 16px; font: 12px var(--mono); color: var(--text-muted); text-align: center; border: 1px dashed var(--border); border-radius: 8px; width: 100%; flex-shrink: 0; }
+.shots-error { padding: 14px 16px; font: 12px var(--font); color: var(--danger); text-align: center; border: 1px solid var(--danger); border-radius: 8px; width: 100%; flex-shrink: 0; }
+
+/* Empty / progress / error states */
+.empty-state, .progress-state, .error-state { height: 100%; min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; text-align: center; gap: 12px; }
+.empty-state, .progress-state { color: var(--text-muted); }
+.error-state { color: var(--danger); }
+.empty-state-icon, .progress-icon { width: 56px; height: 56px; border-radius: 14px; background: var(--surface-hover); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
+.empty-state-icon svg, .progress-icon svg, .error-state svg { width: 28px; height: 28px; stroke: currentColor; fill: none; }
+.empty-state-title, .progress-title, .error-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.empty-state-sub, .progress-sub, .error-sub { font-size: 12px; max-width: 380px; }
+.error-sub { color: var(--text-muted); }
+.progress-spin { animation: su-spin 1s linear infinite; }
+@keyframes su-spin { to { transform: rotate(360deg); } }
+@keyframes su-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+.progress-state .progress-title { animation: su-pulse 1.8s ease-in-out infinite; }
+
+/* Toast */
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); color: var(--text); padding: 10px 18px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 8px; animation: toastIn .2s ease; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+#fileInput { display: none; }
+
+.su-footer { text-align: center; padding: 16px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; transition: border-color .25s, color .25s; }
+.su-footer p { margin: 0; }
+.su-footer-fineprint { margin-top: 6px !important; font-size: 0.7rem; opacity: 0.75; }
+.su-footer-link { background: none; border: none; padding: 0; color: inherit; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.su-footer-link:hover { color: var(--text); }
+.su-dialog { max-width: 560px; width: calc(100% - 32px); max-height: calc(100% - 32px); inset: 0; margin: auto; padding: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+.su-dialog::backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(2px); }
+.su-dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.su-dialog-header h2 { font-size: 1rem; font-weight: 600; }
+.su-dialog-close { width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .15s; }
+.su-dialog-close:hover { background: var(--surface-hover); color: var(--text); }
+.su-dialog-body { padding: 16px 18px; font-size: 0.875rem; line-height: 1.55; color: var(--text); }
+.su-dialog-body p { margin-bottom: 12px; }
+.su-dialog-body p:last-child { margin-bottom: 0; }
+.su-dialog-body code { font-family: var(--mono); background: var(--surface-hover); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
+.su-dialog-body a { color: var(--primary); text-decoration: none; }
+.su-dialog-body a:hover { text-decoration: underline; }
+.su-dialog-fineprint { font-size: 0.8rem; color: var(--text-muted); }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* Desktop: pin the page to viewport height so the tall-JSON chain has a
+   hard upper bound to clip against. See the body comment above for the
+   rationale. The mobile breakpoint (below 769px) leaves body uncapped so
+   the single-column stack scrolls naturally. */
+@media (min-width: 769px) {
+    body { height: 100vh; overflow: hidden; }
+}
+@media (max-width: 960px) {
+    .stats-text { display: none; }
+}
+@media (max-width: 880px) {
+    #ocrBtn .opt-label { display: none; }
+    #ocrBtn { padding: 4px 8px; }
+    .panel-actions { gap: 6px; }
+}
+@media (max-width: 768px) {
+    main { padding: 16px 12px; }
+    .grid { grid-template-columns: minmax(0, 1fr); row-gap: 24px; }
+    .splitter { display: none; }
+    .dropzone { min-height: 220px; }
+    .output-panel { min-height: 320px; }
+    .panel-bar { flex-wrap: wrap; row-gap: 8px; padding-bottom: 10px; height: auto; min-height: 38px; }
+    .panel-actions { gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: 1 1 auto; }
+    .btn-sm { padding: 5px 9px; height: 23px; font-size: 11px; }
+    .options-popover { right: 0; left: auto; max-width: calc(100vw - 24px); min-width: 240px; }
+    #copyBtn .btn-label, #downloadBtn .btn-label { display: none; }
+    #downloadBtn { padding: 4px 9px; }
+}
+@media (max-width: 640px) {
+    header { padding: 0 12px; }
+    .logo-svg { height: 20px; }
+    .logo-badge { font-size: 11px; padding: 2px 7px; }
+    .btn { padding: 6px 10px; font-size: 12px; }
+    .view-tab { padding: 3px 8px; font-size: 11px; }
+}
+    </style>
+</head>
+<body>
+    <noscript>
+        <p class="su-noscript"><strong>PDF Extractor</strong> &mdash; Extract spatial text and structured JSON from PDFs in your browser, with optional OCR for scanned pages. Requires JavaScript; please enable it. Source on <a href="https://github.com/secutils-dev/secutils/blob/main/dev/tools/pdf-extractor.html">GitHub</a>.</p>
+    </noscript>
+    <header>
+        <a class="logo" href="https://secutils.dev" target="_blank" rel="noopener">
+            <svg class="logo-svg" height="24" role="img" viewBox="0 0 98 16" xmlns="http://www.w3.org/2000/svg">
+                <path d="m3 0h10c1.662 0 3 1.338 3 3v10c0 1.662-1.338 3-3 3h-10c-1.662 0-3-1.338-3-3v-10c0-1.662 1.338-3 3-3z" fill="#fed047"/>
+                <path aria-label="SU" d="m11.285 12q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667t1.216-0.26667 1.216 0.26667q0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50133-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832t0.46933 1.4613q0 0.69334-0.30933 1.2053-0.30933 0.50133-0.864 0.77867-0.55467 0.27733-1.312 0.27733z" fill="#642340"/>
+                <path class="logo-text-fill" aria-label="SECUTILS.DEV" d="m93.158 12.117-1.9733-7.7867h1.1733l1.2587 5.184q0.11733 0.46933 0.20267 0.91734 0.08533 0.448 0.128 0.69334 0.04267-0.24533 0.128-0.69334 0.096-0.45867 0.21333-0.928l1.2053-5.1733h1.184l-1.984 7.7867zm-7.8294 0v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-6.5174 0v-7.7867h2.176q0.768 0 1.3333 0.29867 0.56534 0.288 0.87467 0.832 0.32 0.53334 0.32 1.248v3.008q0 0.736-0.32 1.2693-0.30933 0.53334-0.87467 0.832-0.56534 0.29867-1.3333 0.29867zm1.152-1.0347h1.024q0.62934 0 1.0027-0.36267 0.37333-0.36267 0.37333-1.0027v-3.008q0-0.61867-0.37333-0.98134-0.37334-0.37333-1.0027-0.37333h-1.024zm-5.2374 1.1413q-0.416 0-0.68267-0.24533-0.256-0.256-0.256-0.672 0-0.416 0.256-0.672 0.26667-0.26667 0.68267-0.26667 0.416 0 0.672 0.26667 0.26667 0.256 0.26667 0.672 0 0.416-0.26667 0.672-0.256 0.24533-0.672 0.24533zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733zm-8.288-0.10667v-7.7867h1.152v6.7414h3.4027v1.0453zm-6.6987 0v-1.0453h1.568v-5.696h-1.568v-1.0453h4.32v1.0453h-1.5787v5.696h1.5787v1.0453zm-4.8214 0v-6.7414h-2.08v-1.0453h5.3227v1.0453h-2.0907v6.7414zm-5.824 0.10667q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.3147 0q-1.0987 0-1.7493-0.608-0.64-0.61867-0.64-1.664v-3.456q0-1.056 0.64-1.664 0.65067-0.608 1.7493-0.608 1.088 0 1.728 0.61867 0.65067 0.608 0.65067 1.6533h-1.152q0-0.608-0.33067-0.928-0.32-0.32-0.896-0.32-0.58667 0-0.91734 0.32-0.32 0.32-0.32 0.928v3.456q0 0.608 0.32 0.928 0.33067 0.32 0.91734 0.32 0.576 0 0.896-0.32 0.33067-0.32 0.33067-0.928h1.152q0 1.0453-0.65067 1.664-0.64 0.608-1.728 0.608zm-8.6827-0.10667v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-4.1707 0.10667q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667-0.23467-0.32-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34134-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733z"/>
+            </svg>
+            <span class="logo-badge">PDF &rarr; Text / JSON</span>
+        </a>
+        <div class="header-right">
+            <a id="skillLink" class="skill-link" href="#" target="_blank" rel="noopener"
+               title="View AI agent skill (skill.md, opens in new tab)"
+               aria-label="View AI agent skill (opens in new tab)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+                    <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
+                </svg>
+                <span>Skill</span>
+            </a>
+            <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+                <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8.5 15h-1v-2h1v2Zm-3.674-3.107-1.414 1.414-.707-.707 1.414-1.415.707.708Zm8.479.707-.707.707-1.414-1.414.707-.708 1.414 1.415Z"/><path fill-rule="evenodd" d="M8 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 1a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" clip-rule="evenodd"/><path d="M3.005 8.505h-2v-1h2v1Zm12 0h-2v-1h2v1ZM4.82 4.114l-.708.707-1.414-1.414.707-.707L4.82 4.114Zm8.492-.707-1.414 1.414-.708-.707L12.605 2.7l.707.707ZM8.5 3h-1V1h1v2Z"/></svg>
+                <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4.05 12.95A6.982 6.982 0 0 1 2 8c0-1.79.684-3.583 2.05-4.95A6.982 6.982 0 0 1 9 1a1 1 0 0 1 .708 1.707 4.982 4.982 0 0 0-1.465 3.536 4.98 4.98 0 0 0 1.465 3.535 4.98 4.98 0 0 0 3.535 1.465 1 1 0 0 1 .707 1.707A6.981 6.981 0 0 1 9 15a6.983 6.983 0 0 1-4.95-2.05Zm.708-.707A5.983 5.983 0 0 0 9 14c1.535 0 3.07-.586 4.242-1.757a5.98 5.98 0 0 1-4.018-1.545L9 10.485a5.982 5.982 0 0 1-1.758-4.242A5.986 5.986 0 0 1 9 2a5.983 5.983 0 0 0-4.243 1.757A5.98 5.98 0 0 0 3 8l.006.288a5.978 5.978 0 0 0 1.75 3.955Z"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <div class="grid">
+            <div class="panel">
+                <div class="panel-bar">
+                    <span class="panel-label">PDF</span>
+                    <div class="panel-actions">
+                        <button class="link-btn" id="clearBtn" disabled>Clear</button>
+                        <div class="options-anchor">
+                            <button id="ocrBtn" class="btn btn-sm" aria-haspopup="true" aria-expanded="false" title="OCR &amp; parse options">&#9881;<span class="opt-label">&nbsp;Options</span></button>
+                            <div id="ocrPopover" class="options-popover" hidden role="dialog" aria-label="Parse options">
+                                <div class="opt-section">
+                                    <h4>OCR for scanned pages</h4>
+                                    <label>
+                                        <input type="radio" name="ocrMode" value="auto" checked>
+                                        <span>Auto
+                                            <span class="opt-desc">Run OCR only on pages with very little embedded text. Recommended.</span>
+                                        </span>
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="ocrMode" value="always">
+                                        <span>Always
+                                            <span class="opt-desc">Run OCR on every page even if it already has text. Slow.</span>
+                                        </span>
+                                    </label>
+                                    <label>
+                                        <input type="radio" name="ocrMode" value="never">
+                                        <span>Never
+                                            <span class="opt-desc">Use embedded text only. Fastest. Scanned PDFs will appear empty.</span>
+                                        </span>
+                                    </label>
+                                </div>
+                                <div class="opt-section">
+                                    <h4>OCR language</h4>
+                                    <label style="display:block; padding: 6px 0;">
+                                        <input type="text" id="ocrLang" value="eng" maxlength="32" spellcheck="false"
+                                            style="width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: 12px var(--mono);">
+                                        <span class="opt-desc" style="display:block;margin-top:6px">Tesseract.js code. <code>eng</code>, <code>deu</code>, <code>fra</code>, <code>eng+deu</code>, etc. <a href="https://github.com/naptha/tessdata/tree/gh-pages/4.0.0" target="_blank" rel="noopener">Full list</a>. Lang data is fetched from a CDN on first use.</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <button id="parseBtn" class="btn btn-primary btn-sm" disabled title="Parse the loaded PDF (Cmd/Ctrl+Enter)">Parse</button>
+                    </div>
+                </div>
+                <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Drop a PDF here or click to upload">
+                    <div class="dropzone-prompt" style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+                        <div class="dropzone-icon">
+                            <svg viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <path d="M14 2v6h6"/>
+                                <path d="M12 18v-6"/>
+                                <path d="M9 15l3-3 3 3"/>
+                            </svg>
+                        </div>
+                        <div class="dropzone-title">Drop a PDF here, or click to choose</div>
+                        <div class="dropzone-sub">Parsing happens entirely in your browser. Nothing is uploaded.</div>
+                        <div class="dropzone-formats">Accepts <code>.pdf</code> (any size; pages render at 150 DPI).</div>
+                    </div>
+                    <div class="dropzone-active">
+                        <div class="file-info">
+                            <div class="file-info-icon">
+                                <svg viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <path d="M14 2v6h6"/>
+                                </svg>
+                            </div>
+                            <span id="fileName" class="file-info-name"></span>
+                            <span id="fileMeta" class="file-info-meta"></span>
+                        </div>
+                        <div class="dropzone-actions">
+                            <button class="btn btn-sm" id="replaceBtn">Replace</button>
+                            <button class="btn btn-primary btn-sm" id="parseBtn2">Parse</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="splitter" id="splitter"></div>
+
+            <div id="resultPane" class="panel">
+                <div class="panel-bar">
+                    <div class="view-tabs" role="tablist" aria-label="Result view">
+                        <button id="tabText" class="view-tab active" role="tab" aria-selected="true" aria-controls="resultText" title="Spatial text (liteparse grid projection)">Text</button>
+                        <button id="tabJson" class="view-tab" role="tab" aria-selected="false" aria-controls="resultJson" title="Structured JSON with per-page items and bounding boxes">JSON</button>
+                        <button id="tabMd" class="view-tab" role="tab" aria-selected="false" aria-controls="resultMd" title="Heuristic Markdown reconstruction (headings, lists, tables, links)">Markdown</button>
+                        <button id="tabShots" class="view-tab" role="tab" aria-selected="false" aria-controls="resultShots" title="Per-page PNG renders (rendered on demand via PDF.js)">Screenshots</button>
+                    </div>
+                    <div class="panel-actions">
+                        <span id="resultStats" class="stats-text"></span>
+                        <button id="shareBtn" class="btn btn-primary btn-sm" disabled title="Copy a shareable link with the result encoded in the URL">Share</button>
+                        <button id="copyBtn" class="btn btn-sm" disabled title="Copy the current result to your clipboard">
+                            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="9" height="10" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"/></svg>
+                            <span class="btn-label">Copy</span>
+                        </button>
+                        <button id="downloadBtn" class="btn btn-sm" disabled title="Download the current result">
+                            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v9"/><path d="M4.5 7.5 8 11l3.5-3.5"/><path d="M3 13.5h10"/></svg>
+                            <span class="btn-label">Download</span>
+                        </button>
+                        <button id="openMdBtn" class="icon-btn" disabled title="Open this text in the Markdown to HTML tool" aria-label="Open in Markdown to HTML">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>
+                        </button>
+                        <button id="fullscreenBtn" class="icon-btn" title="Toggle fullscreen" aria-label="Toggle fullscreen">
+                            <svg id="fullscreenEnterIcon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                            <svg id="fullscreenExitIcon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="output-panel">
+                    <div id="resultEmpty" class="empty-state">
+                        <div class="empty-state-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <path d="M14 2v6h6"/>
+                                <path d="M9 13h6"/>
+                                <path d="M9 17h6"/>
+                            </svg>
+                        </div>
+                        <div class="empty-state-title">Drop a PDF and press Parse</div>
+                        <div class="empty-state-sub">Extracted text or JSON will appear here. Sharing the result puts it in the URL fragment (the PDF itself never leaves the browser).</div>
+                    </div>
+                    <div id="resultProgress" class="progress-state" style="display:none">
+                        <div class="progress-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="progress-spin" aria-hidden="true">
+                                <circle cx="12" cy="12" r="9" opacity=".25"/>
+                                <path d="M21 12a9 9 0 0 1-9 9"/>
+                            </svg>
+                        </div>
+                        <div class="progress-title" id="progressTitle">Parsing PDF...</div>
+                        <div class="progress-sub" id="progressSub">Loading the liteparse engine. First run may take a moment.</div>
+                    </div>
+                    <div id="resultError" class="error-state" style="display:none">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="9"/>
+                            <path d="M12 8v4"/>
+                            <path d="M12 16h0"/>
+                        </svg>
+                        <div class="error-title">Failed to parse PDF</div>
+                        <div class="error-sub" id="errorSub"></div>
+                    </div>
+                    <textarea id="resultText" class="output-textarea" style="display:none" readonly aria-label="Extracted text" role="tabpanel" aria-labelledby="tabText"></textarea>
+                    <div id="resultJson" class="output-scroll" style="display:none" role="tabpanel" aria-labelledby="tabJson"><pre class="output-pre" id="resultJsonPre"></pre></div>
+                    <textarea id="resultMd" class="output-textarea" style="display:none" readonly aria-label="Heuristic Markdown reconstruction" role="tabpanel" aria-labelledby="tabMd"></textarea>
+                    <div id="resultMdPending" class="progress-state" style="display:none" role="status">
+                        <div class="progress-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="progress-spin" aria-hidden="true">
+                                <circle cx="12" cy="12" r="9" opacity=".25"/>
+                                <path d="M21 12a9 9 0 0 1-9 9"/>
+                            </svg>
+                        </div>
+                        <div class="progress-title" id="mdProgressTitle">Reconstructing Markdown...</div>
+                        <div class="progress-sub" id="mdProgressSub">Detecting headings, lists, tables, and link annotations.</div>
+                    </div>
+                    <div id="resultShots" class="output-scroll shots-grid" style="display:none" role="tabpanel" aria-labelledby="tabShots"></div>
+                    <div id="resultShotsEmpty" class="empty-state" style="display:none" role="status">
+                        <div class="empty-state-icon">
+                            <svg viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="3" y="5" width="18" height="14" rx="2"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </div>
+                        <div class="empty-state-title">Screenshots need the original PDF</div>
+                        <div class="empty-state-sub">This view was opened from a shared link, which only carries the extracted Text or JSON. Drop the PDF to generate per-page renders.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <aside class="su-more-tools" aria-label="More free tools">
+            <p>Other free, no-signup Secutils.dev tools for JWT, SAML, certificates, Markdown, HTTP echo, and more - <a href="https://{{TOOLS_HOST}}/">Browse all tools &rarr;</a></p>
+        </aside>
+    </main>
+
+    <footer class="su-footer">
+        <p>Extract text and structured JSON from PDFs, in your browser. Powered by <a href="https://github.com/run-llama/liteparse" target="_blank" rel="noopener" style="color:inherit;">liteparse</a>.</p>
+        <p class="su-footer-fineprint"><button type="button" class="su-footer-link" id="privacyOpen">Privacy</button></p>
+    </footer>
+
+    <dialog id="privacyDialog" class="su-dialog" aria-labelledby="privacyDialogTitle">
+        <header class="su-dialog-header">
+            <h2 id="privacyDialogTitle">Privacy</h2>
+            <button type="button" class="su-dialog-close" id="privacyClose" aria-label="Close">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>
+            </button>
+        </header>
+        <div class="su-dialog-body">
+            <p><strong>Your PDF stays in your browser.</strong> Parsing runs entirely client-side via the bundled <a href="https://github.com/run-llama/liteparse" target="_blank" rel="noopener noreferrer">liteparse</a> + <a href="https://github.com/mozilla/pdf.js" target="_blank" rel="noopener noreferrer">PDF.js</a> engine. The PDF bytes are never uploaded. Shareable links carry only the extracted text or JSON (and only when you click Share), encoded in the URL fragment (<code>#&hellip;</code>), which browsers never transmit to the server.</p>
+            <p><strong>OCR fetches from public CDNs.</strong> When OCR is enabled and a page needs it, the bundled <a href="https://tesseract.projectnaptha.com/" target="_blank" rel="noopener noreferrer">tesseract.js</a> engine fetches its Web Worker (<code>worker.min.js</code>) from <code>unpkg.com</code> and the requested language data (e.g. <code>eng.traineddata</code>, ~10&nbsp;MB) from <code>tessdata.projectnaptha.com</code> on first use. The PDF content itself is never sent anywhere; only those static asset URLs are requested. Disable OCR in <em>Options</em> if you'd rather not contact any third party.</p>
+            <p><strong>Anonymous usage analytics.</strong> We use <a href="https://plausible.io/" target="_blank" rel="noopener noreferrer">Plausible Analytics</a>, a privacy-first, GDPR-compliant tool, to collect aggregate usage data. No cookies, no personal data, no individual tracking. Limited to top pages, referral sources, visit duration, and device-class metadata.</p>
+            <p class="su-dialog-fineprint">See the full <a href="https://secutils.dev/privacy" target="_blank" rel="noopener noreferrer">Secutils.dev privacy policy</a> for details on the wider service.</p>
+        </div>
+    </dialog>
+
+    <input type="file" id="fileInput" accept=".pdf,application/pdf">
+
+    <div id="toast" class="toast" style="display:none">
+        <span id="toastMsg"></span>
+    </div>
+
+    <!-- Inlined at deploy time by dev/tools/deploy.ts (data-su-bundle). See
+         dev/tools/AGENTS.md -> "Embedded JS bundles". Sub-package source lives
+         in dev/tools/js/liteparse/. Body is empty in source and stays empty
+         after `npm run build`; the deploy inliner fills it with the built
+         ESM module. `type="text/plain"` keeps the browser from executing the
+         multi-MB source on initial parse -- our `loadLiteparseBundle()`
+         helper Blob-URLs it on demand. -->
+    <script id="su-bundle-liteparse" type="text/plain" data-su-bundle="liteparse" data-su-bundle-encoding="gzip-base64"></script>
+
+    <script>
+const $ = (id) => document.getElementById(id);
+const els = {
+    dropzone: $('dropzone'),
+    fileInput: $('fileInput'),
+    fileName: $('fileName'),
+    fileMeta: $('fileMeta'),
+    clearBtn: $('clearBtn'),
+    replaceBtn: $('replaceBtn'),
+    parseBtn: $('parseBtn'),
+    parseBtn2: $('parseBtn2'),
+    ocrBtn: $('ocrBtn'),
+    ocrPopover: $('ocrPopover'),
+    ocrLang: $('ocrLang'),
+    themeToggle: $('themeToggle'),
+    skillLink: $('skillLink'),
+    tabText: $('tabText'),
+    tabJson: $('tabJson'),
+    tabMd: $('tabMd'),
+    tabShots: $('tabShots'),
+    resultText: $('resultText'),
+    resultJson: $('resultJson'),
+    resultJsonPre: $('resultJsonPre'),
+    resultMd: $('resultMd'),
+    resultMdPending: $('resultMdPending'),
+    mdProgressTitle: $('mdProgressTitle'),
+    mdProgressSub: $('mdProgressSub'),
+    resultShots: $('resultShots'),
+    resultShotsEmpty: $('resultShotsEmpty'),
+    resultEmpty: $('resultEmpty'),
+    resultProgress: $('resultProgress'),
+    resultError: $('resultError'),
+    progressTitle: $('progressTitle'),
+    progressSub: $('progressSub'),
+    errorSub: $('errorSub'),
+    resultStats: $('resultStats'),
+    resultPane: $('resultPane'),
+    shareBtn: $('shareBtn'),
+    copyBtn: $('copyBtn'),
+    downloadBtn: $('downloadBtn'),
+    openMdBtn: $('openMdBtn'),
+    fullscreenBtn: $('fullscreenBtn'),
+    fullscreenEnterIcon: $('fullscreenEnterIcon'),
+    fullscreenExitIcon: $('fullscreenExitIcon'),
+    splitter: $('splitter'),
+    toast: $('toast'),
+    toastMsg: $('toastMsg'),
+};
+
+// State
+let pdfFile = null;              // { name, bytes: Uint8Array, sizeBytes }
+let result = null;               // { text: string, json: object, srcName: string, ocrMode: string, ocrLang: string }
+let activeTab = 'text';
+let liteparseModule = null;      // resolved on first parse, cached after
+let toastTimer = null;
+
+// Screenshots state. Populated lazily the first time the user clicks the
+// Screenshots tab after a successful parse. Pages stream in one at a time
+// rather than blocking on all-at-once render (10 pages at 150 DPI is ~1 GB
+// of intermediate canvas memory in the worst case). Each entry is a
+// `{ page, url, width, height }` object; `url` is a Blob URL we must revoke
+// on clear / replace / re-parse to avoid leaking 5-50 MB per session.
+let shots = null;                // null | { status: 'idle'|'rendering'|'ready'|'error', items: [...], total, error? }
+let shotsAbort = null;           // AbortController-ish flag; set to true to cancel an in-flight render loop
+
+// Markdown reconstruction cache. The heuristic engine (buildMarkdown) is
+// pure but the per-PDF link-annotation pass (getPdfLinks) is async, so we
+// cache the rendered string and skip recomputation while the same result
+// is in scope. Invalidated on clear / replace / re-parse, and rebuilt on
+// the next setActiveTab('md') click.
+let markdownCache = null;        // null | string
+let markdownAbort = null;        // AbortController-ish flag for the in-flight render
+
+// Practical cap for what we will encode into the URL fragment. ~64 KB of UTF-8
+// is well within every modern browser's URL length limit, doesn't generate a
+// pathologically long anchor, and matches the guidance in
+// dev/tools/AGENTS.md ("URL state encoding"). Larger results are kept in
+// memory but Share is disabled (with a hint) -- the user can still copy /
+// download the result manually.
+const MAX_URL_STATE_BYTES = 64 * 1024;
+
+// URL state encoding: see dev/tools/AGENTS.md -> "URL state encoding".
+const utf8Enc = new TextEncoder();
+const utf8Dec = new TextDecoder();
+const toBase64Url = (bytes) => {
+    let s = '';
+    for (const b of bytes) s += String.fromCharCode(b);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+const fromBase64Url = (str) => {
+    const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '==='.slice(0, (4 - b64.length % 4) % 4);
+    const bin = atob(padded);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+};
+const encodeState = async (text) => {
+    const bytes = utf8Enc.encode(text);
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    const deflated = new Uint8Array(await new Response(stream).arrayBuffer());
+    const out = new Uint8Array(4 + deflated.length);
+    new DataView(out.buffer).setUint32(0, bytes.length, true);
+    out.set(deflated, 4);
+    return toBase64Url(out);
+};
+const decodeState = async (str) => {
+    try {
+        const bytes = fromBase64Url(str);
+        if (bytes.length < 4) return null;
+        const stream = new Blob([bytes.subarray(4)]).stream()
+            .pipeThrough(new DecompressionStream('deflate-raw'));
+        const inflated = new Uint8Array(await new Response(stream).arrayBuffer());
+        return utf8Dec.decode(inflated);
+    } catch { return null; }
+};
+
+// Theme toggle + skill link wiring (copied from markdown-to-html.html).
+(() => {
+    const root = document.documentElement;
+    const setTheme = (t) => {
+        root.setAttribute('data-theme', t);
+        try { localStorage.setItem('su-tool-theme', t); } catch {}
+    };
+    els.themeToggle.addEventListener('click', () => {
+        setTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    });
+    if (els.skillLink) {
+        const p = location.pathname;
+        els.skillLink.href = (p === '/' || p === '') ? '/llms.txt' : p.replace(/\/$/, '') + '.md';
+    }
+    try {
+        const saved = localStorage.getItem('su-tool-theme');
+        if (saved) setTheme(saved);
+        else if (window.matchMedia('(prefers-color-scheme: light)').matches) setTheme('light');
+    } catch {}
+})();
+
+(() => {
+    const dlg = $('privacyDialog');
+    $('privacyOpen').addEventListener('click', () => dlg.showModal());
+    $('privacyClose').addEventListener('click', () => dlg.close());
+})();
+
+function toast(msg) {
+    clearTimeout(toastTimer);
+    els.toastMsg.textContent = msg;
+    els.toast.style.display = 'flex';
+    toastTimer = setTimeout(() => { els.toast.style.display = 'none'; }, 2400);
+}
+
+function formatBytes(n) {
+    if (n < 1024) return `${n} B`;
+    const kb = n / 1024;
+    return kb < 1024 ? `${kb.toFixed(1)} KB` : `${(kb / 1024).toFixed(2)} MB`;
+}
+
+// Lazy-loads the inlined liteparse bundle. The `<script data-su-bundle>` tag
+// holds the ESM source as text/plain so it's never parsed on initial page
+// load; we Blob-URL it on first use. Cached for subsequent calls. When the
+// placeholder carries `data-su-bundle-encoding="gzip-base64"`, we base64-
+// decode and gunzip it first (the deploy pipeline picks this encoding when
+// the raw bundle would exceed the responder JSON payload cap; see
+// dev/tools/AGENTS.md -> "Embedded JS bundles").
+async function loadLiteparseBundle() {
+    if (liteparseModule) return liteparseModule;
+    const el = document.getElementById('su-bundle-liteparse');
+    const raw = el?.textContent?.trim();
+    if (!raw) {
+        throw new Error('liteparse bundle is missing -- the deploy step inlines it into <script id="su-bundle-liteparse">.');
+    }
+    const encoding = el.getAttribute('data-su-bundle-encoding');
+    let src;
+    if (!encoding) {
+        src = raw;
+    } else if (encoding === 'gzip-base64') {
+        const bin = atob(raw);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+        src = await new Response(stream).text();
+    } else {
+        throw new Error(`liteparse bundle: unsupported data-su-bundle-encoding="${encoding}"`);
+    }
+    const blob = new Blob([src], { type: 'text/javascript' });
+    const url = URL.createObjectURL(blob);
+    try {
+        liteparseModule = await import(url);
+    } finally {
+        // The module is locked in memory by the JS engine after import;
+        // dropping the URL frees the Blob.
+        URL.revokeObjectURL(url);
+    }
+    return liteparseModule;
+}
+
+// ----- Drop zone wiring --------------------------------------------------
+
+function setFile(file) {
+    if (!file) return;
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    if (!isPdf) {
+        toast('Only PDF files are supported.');
+        return;
+    }
+    file.arrayBuffer().then((buf) => {
+        pdfFile = {
+            name: file.name,
+            sizeBytes: file.size,
+            bytes: new Uint8Array(buf),
+        };
+        els.dropzone.classList.add('has-file');
+        els.fileName.textContent = file.name;
+        els.fileMeta.textContent = formatBytes(file.size);
+        els.parseBtn.disabled = false;
+        els.clearBtn.disabled = false;
+        // Reset any prior result; the user expects a fresh parse.
+        clearResult();
+    }).catch((err) => {
+        toast(`Failed to read file: ${err.message ?? err}`);
+    });
+}
+
+function clearFile() {
+    pdfFile = null;
+    els.dropzone.classList.remove('has-file');
+    els.fileName.textContent = '';
+    els.fileMeta.textContent = '';
+    els.parseBtn.disabled = true;
+    els.clearBtn.disabled = true;
+    els.fileInput.value = '';
+    clearResult();
+}
+
+els.dropzone.addEventListener('click', (e) => {
+    // The "Replace" / "Parse" buttons sit inside the dropzone for layout
+    // reasons; their clicks shouldn't bubble up and re-open the file picker.
+    if (e.target.closest('button')) return;
+    els.fileInput.click();
+});
+els.dropzone.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        els.fileInput.click();
+    }
+});
+els.dropzone.addEventListener('dragover', (e) => {
+    if (e.dataTransfer?.types.includes('Files')) {
+        e.preventDefault();
+        els.dropzone.classList.add('dragover');
+    }
+});
+els.dropzone.addEventListener('dragleave', () => els.dropzone.classList.remove('dragover'));
+els.dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    els.dropzone.classList.remove('dragover');
+    const file = e.dataTransfer?.files?.[0];
+    if (file) setFile(file);
+});
+els.fileInput.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (file) setFile(file);
+});
+els.replaceBtn.addEventListener('click', () => els.fileInput.click());
+els.clearBtn.addEventListener('click', clearFile);
+
+// ----- Options popover ---------------------------------------------------
+
+function toggleOcrPopover(force) {
+    const open = force !== undefined ? force : els.ocrPopover.hasAttribute('hidden');
+    if (open) {
+        els.ocrPopover.removeAttribute('hidden');
+        els.ocrBtn.setAttribute('aria-expanded', 'true');
+    } else {
+        els.ocrPopover.setAttribute('hidden', '');
+        els.ocrBtn.setAttribute('aria-expanded', 'false');
+    }
+}
+els.ocrBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleOcrPopover();
+});
+document.addEventListener('click', (e) => {
+    if (els.ocrPopover.hasAttribute('hidden')) return;
+    if (!els.ocrPopover.contains(e.target) && e.target !== els.ocrBtn && !els.ocrBtn.contains(e.target)) toggleOcrPopover(false);
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !els.ocrPopover.hasAttribute('hidden')) toggleOcrPopover(false);
+});
+function readOcrOptions() {
+    const mode = document.querySelector('input[name="ocrMode"]:checked')?.value || 'auto';
+    const lang = (els.ocrLang.value || 'eng').trim() || 'eng';
+    return { mode, lang };
+}
+
+// ----- Parse -------------------------------------------------------------
+
+function setExportEnabled(on, urlOk) {
+    els.copyBtn.disabled = !on;
+    els.downloadBtn.disabled = !on;
+    els.openMdBtn.disabled = !on || (activeTab !== 'text' && activeTab !== 'md');
+    els.shareBtn.disabled = !on || !urlOk;
+    els.shareBtn.title = on && !urlOk
+        ? `Result is too large to encode in the URL (over ${MAX_URL_STATE_BYTES / 1024} KB). Use Copy or Download instead.`
+        : 'Copy a shareable link with the result encoded in the URL';
+}
+
+function clearResult() {
+    result = null;
+    els.resultText.value = '';
+    els.resultJsonPre.textContent = '';
+    els.resultMd.value = '';
+    els.resultStats.textContent = '';
+    resetShots();
+    resetMarkdown();
+    setExportEnabled(false, false);
+    showResultPanel('empty');
+}
+
+// Tear down any in-flight Markdown render and drop the cached string so
+// the next setActiveTab('md') click rebuilds from the fresh result.
+function resetMarkdown() {
+    if (markdownAbort) markdownAbort.cancelled = true;
+    markdownAbort = null;
+    markdownCache = null;
+    els.resultMd.value = '';
+}
+
+// Tear down any in-flight render loop and revoke every Blob URL we minted.
+// Called on clear, replace, and the start of a fresh parse so the next
+// Screenshots-tab click starts from a clean slate. Shot-tab Blob URLs are
+// typically MB-sized and not GC'd until explicitly revoked.
+function resetShots() {
+    if (shotsAbort) shotsAbort.cancelled = true;
+    shotsAbort = null;
+    if (shots?.items) {
+        for (const s of shots.items) {
+            try { URL.revokeObjectURL(s.url); } catch {}
+        }
+    }
+    shots = null;
+    els.resultShots.replaceChildren();
+    els.resultShotsEmpty.style.display = 'none';
+}
+
+function showResultPanel(which) {
+    // which: 'empty' | 'progress' | 'error' | 'text' | 'json' | 'md' |
+    //        'md-pending' | 'shots' | 'shots-empty'
+    const panels = {
+        empty: els.resultEmpty,
+        progress: els.resultProgress,
+        error: els.resultError,
+        text: els.resultText,
+        json: els.resultJson,
+        md: els.resultMd,
+        'md-pending': els.resultMdPending,
+        shots: els.resultShots,
+        'shots-empty': els.resultShotsEmpty,
+    };
+    for (const [k, el] of Object.entries(panels)) {
+        let display;
+        if (k !== which) display = 'none';
+        else if (k === 'text' || k === 'json' || k === 'md') display = 'block';
+        else if (k === 'shots') display = 'flex';
+        else display = 'flex';
+        el.style.display = display;
+    }
+}
+
+function setActiveTab(tab) {
+    activeTab = tab;
+    for (const [k, el] of [['text', els.tabText], ['json', els.tabJson], ['md', els.tabMd], ['shots', els.tabShots]]) {
+        el.classList.toggle('active', k === tab);
+        el.setAttribute('aria-selected', k === tab ? 'true' : 'false');
+    }
+    if (tab === 'shots') {
+        // Screenshots need the original PDF bytes (we re-render via PDF.js
+        // on demand). If the user landed here via a shared URL (which only
+        // carries the Text or JSON payload) we have no bytes -- show the
+        // dedicated empty state explaining how to enable the tab.
+        if (!pdfFile) {
+            showResultPanel('shots-empty');
+        } else {
+            showResultPanel('shots');
+            // First click after a fresh parse triggers the render loop.
+            // Subsequent clicks reuse the cached images. An in-flight
+            // render loop also lands here and just keeps appending.
+            if (!shots) renderShots().catch(() => {});
+        }
+    } else if (tab === 'md') {
+        // Markdown is heuristic + needs an async links pass when the PDF
+        // bytes are still in scope. Compute lazily on first click and
+        // cache; show the spinner while we wait.
+        if (!result) {
+            showResultPanel('empty');
+        } else if (markdownCache != null) {
+            showResultPanel('md');
+        } else {
+            showResultPanel('md-pending');
+            renderMarkdown().catch(() => {});
+        }
+    } else if (!result) {
+        showResultPanel('empty');
+    } else {
+        showResultPanel(tab);
+    }
+    // The "open in markdown-to-html" link makes sense for both the spatial
+    // text tab and the heuristic Markdown tab (md-to-html will render the
+    // latter natively as Markdown).
+    els.openMdBtn.disabled = !result || (tab !== 'text' && tab !== 'md');
+    // Share / Copy / Download semantics differ for shots (per-page download
+    // lives inline in each figure caption). Disable the toolbar buttons
+    // while the Screenshots tab is active.
+    if (tab === 'shots') {
+        els.shareBtn.disabled = true;
+        els.copyBtn.disabled = true;
+        els.downloadBtn.disabled = true;
+        els.shareBtn.title = 'Sharing is not available for screenshots; each page has its own download link below.';
+    } else {
+        // Restore based on current result state.
+        if (result) refreshShareAvailability();
+    }
+}
+
+// Render every page of the current PDF to a PNG, streaming the results into
+// the Screenshots tab one figure at a time. Designed to interleave well
+// with the main thread: PDF.js's render() yields naturally, and we add an
+// explicit rAF tick between pages so the new <figure> paints before the
+// next page starts. Memory budget at 150 DPI is roughly 500 KB - 2 MB per
+// page; we keep PNG blobs (not raw canvases) and revoke them on reset.
+const SHOTS_DPI = 150;
+async function renderShots() {
+    if (!pdfFile?.bytes) return;
+    const abort = { cancelled: false };
+    shotsAbort = abort;
+    shots = { status: 'rendering', items: [], total: 0 };
+    els.resultShots.replaceChildren();
+
+    const pending = document.createElement('div');
+    pending.className = 'shots-pending';
+    pending.textContent = 'Loading liteparse renderer...';
+    els.resultShots.appendChild(pending);
+
+    let renderer = null;
+    try {
+        const mod = await loadLiteparseBundle();
+        const { PdfiumRenderer } = mod;
+        if (typeof PdfiumRenderer !== 'function') {
+            throw new Error('liteparse bundle did not export `PdfiumRenderer` -- bundle build may be stale.');
+        }
+        if (abort.cancelled) return;
+        renderer = new PdfiumRenderer();
+        // PdfiumRenderer.loadDocument copies its input, but pdf.js sometimes
+        // transfers the worker-side buffer back -- pass a defensive clone
+        // so the master pdfFile.bytes survives for a second render pass.
+        await renderer.loadDocument(new Uint8Array(pdfFile.bytes));
+        if (abort.cancelled) return;
+        const total = renderer.numPages;
+        shots.total = total;
+        if (total === 0) {
+            pending.textContent = 'No pages to render.';
+            shots.status = 'ready';
+            return;
+        }
+        for (let p = 1; p <= total; p++) {
+            if (abort.cancelled) return;
+            pending.textContent = `Rendering page ${p} of ${total}...`;
+            const png = await renderer.renderPageToBuffer(undefined, p, SHOTS_DPI);
+            if (abort.cancelled) return;
+            const blob = new Blob([png], { type: 'image/png' });
+            const url = URL.createObjectURL(blob);
+            const item = { page: p, url, bytes: png.length };
+            shots.items.push(item);
+            appendShotFigure(item, total);
+            // Yield to the event loop so the freshly appended image paints
+            // before we burn the main thread on the next page.
+            await new Promise((r) => requestAnimationFrame(() => r()));
+        }
+        pending.remove();
+        shots.status = 'ready';
+    } catch (err) {
+        console.error('renderShots error', err);
+        shots = { status: 'error', items: shots?.items ?? [], total: shots?.total ?? 0, error: err };
+        pending.remove();
+        const errBox = document.createElement('div');
+        errBox.className = 'shots-error';
+        errBox.textContent = `Failed to render: ${err?.message ?? err}`;
+        els.resultShots.appendChild(errBox);
+    } finally {
+        if (renderer) {
+            try { renderer.close(); } catch {}
+        }
+        if (shotsAbort === abort) shotsAbort = null;
+    }
+}
+
+function appendShotFigure(item, total) {
+    const fig = document.createElement('figure');
+    fig.className = 'shots-figure';
+    const img = document.createElement('img');
+    img.className = 'shots-img';
+    img.src = item.url;
+    img.alt = `Page ${item.page} of ${total}`;
+    img.loading = 'lazy';
+    fig.appendChild(img);
+    const cap = document.createElement('figcaption');
+    cap.className = 'shots-caption';
+    const left = document.createElement('span');
+    left.textContent = `Page ${item.page} / ${total} · ${formatBytes(item.bytes)} · ${SHOTS_DPI} DPI`;
+    cap.appendChild(left);
+    const dl = document.createElement('a');
+    dl.href = item.url;
+    const baseName = (result?.srcName || pdfFile?.name?.replace(/\.pdf$/i, '') || 'document');
+    dl.download = `${baseName}-page-${String(item.page).padStart(2, '0')}.png`;
+    dl.title = `Download page ${item.page} as PNG`;
+    dl.innerHTML = `<svg viewBox="0 0 16 16" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v9"/><path d="M4.5 7.5 8 11l3.5-3.5"/><path d="M3 13.5h10"/></svg><span>PNG</span>`;
+    cap.appendChild(dl);
+    fig.appendChild(cap);
+    // Insert before the trailing .shots-pending node so the "Rendering..."
+    // status stays visually at the bottom while pages stack above it.
+    const pending = els.resultShots.querySelector('.shots-pending');
+    if (pending) els.resultShots.insertBefore(fig, pending);
+    else els.resultShots.appendChild(fig);
+}
+// ----- Markdown engine ---------------------------------------------------
+
+// Heuristic PDF -> Markdown converter. Operates on liteparse's
+// ParseResultJson (one entry per page; each item has x/y/w/h plus optional
+// fontName + fontSize). The output preserves the visual structure of the
+// document well enough to round-trip headings, bullet/numbered lists,
+// column-aligned tables, page breaks, and inline bold/italic from fontName
+// hints. Links come from a separate PDF.js annotation pass (getPdfLinks);
+// pass [] to disable link reconstruction.
+//
+// Out of scope (called out in skill.md): bordered tables without text x-
+// alignment, multi-column flow reconstruction (newspaper layouts), math /
+// formulas, footnotes, raster images (the Screenshots tab covers those).
+
+const MD_HEADING_RATIOS = [1.45, 1.20, 1.08]; // x median body size -> H1/H2/H3
+const MD_TABLE_TOL = 5;     // PDF points; column x-anchor match tolerance
+const MD_TABLE_MIN_ROWS = 3;
+const MD_TABLE_MIN_COLS = 2;
+const MD_LINE_GAP_RATIO = 0.6; // multiplied by median item height
+const MD_PARA_GAP_RATIO = 0.8; // multiplied by median line height
+
+function median(nums) {
+    if (!nums.length) return 0;
+    const sorted = nums.slice().sort((a, b) => a - b);
+    const mid = sorted.length >> 1;
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function escapeMarkdown(s) {
+    // Backslash-escape the characters Markdown treats specially inside an
+    // inline span. Whitespace and most printable characters pass through
+    // verbatim so the round-trip stays human-readable.
+    return s.replace(/\\/g, '\\\\').replace(/([*_`\[\]<>])/g, '\\$1');
+}
+
+function escapePipe(s) {
+    return s.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+}
+
+function escapeUrl(url) {
+    // Markdown link targets can't contain unescaped `)`; also strip
+    // newlines so a malformed annotation can't break the link syntax.
+    return url.replace(/[\n\r]/g, '').replace(/\)/g, '%29');
+}
+
+function itemInsideRect(it, r) {
+    // Test the item's centre point against the link rectangle. PDFs often
+    // pad link annotations by a few points; a centre test is forgiving
+    // without being noisy on near-misses.
+    const cx = it.x + (it.width || 0) / 2;
+    const cy = it.y + (it.height || 0) / 2;
+    return cx >= r.x && cx <= r.x + r.width
+        && cy >= r.y && cy <= r.y + r.height;
+}
+
+function renderInlineItem(it, pageLinks) {
+    const raw = (it.text || '').replace(/\s+/g, ' ').trim();
+    if (!raw) return '';
+    let text = escapeMarkdown(raw);
+    const isBold = /bold|black|heavy/i.test(it.fontName || '');
+    const isItalic = /italic|oblique/i.test(it.fontName || '');
+    if (isBold && isItalic) text = `***${text}***`;
+    else if (isBold) text = `**${text}**`;
+    else if (isItalic) text = `*${text}*`;
+    if (pageLinks?.length) {
+        const link = pageLinks.find((l) => itemInsideRect(it, l));
+        if (link) text = `[${text}](${escapeUrl(link.url)})`;
+    }
+    return text;
+}
+
+function renderLineInline(items, pageLinks) {
+    return items
+        .map((it) => renderInlineItem(it, pageLinks))
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function classifyLine(line, headingThresholds) {
+    if (headingThresholds && line.medianSize) {
+        if (line.medianSize >= headingThresholds[0]) return 'heading1';
+        if (line.medianSize >= headingThresholds[1]) return 'heading2';
+        if (line.medianSize >= headingThresholds[2]) return 'heading3';
+    }
+    const first = line.items[0]?.text?.trim() ?? '';
+    if (/^[\u2022\u00b7\u25cf\u25cb\u25aa\u25a0\u2023\-\*\u2013\u2014]\s+/.test(first)) {
+        return 'list-bullet';
+    }
+    if (/^(\d+|[a-z]|[ivx]+)[\.\)]\s+/i.test(first)) {
+        return 'list-number';
+    }
+    return 'paragraph';
+}
+
+function stripListMarker(text) {
+    return text
+        .replace(/^[\u2022\u00b7\u25cf\u25cb\u25aa\u25a0\u2023\\\-\*\u2013\u2014]\s+/, '')
+        .replace(/^(\d+|[a-z]|[ivx]+)[\.\)]\s+/i, '');
+}
+
+// Detect a table run starting at line[start]. Returns
+// `{ end, anchors }` (both inclusive) or `null` if no table is detected.
+//
+// A run is a table iff at least MD_TABLE_MIN_ROWS consecutive paragraph-
+// classified lines (each with at least 2 items) share at least
+// MD_TABLE_MIN_COLS column anchors within +/- MD_TABLE_TOL PDF points.
+function findTableRun(lines, start) {
+    let end = start;
+    let sharedAnchors = lines[start].items.map((it) => it.x);
+    for (let j = start + 1; j < lines.length; j++) {
+        const next = lines[j];
+        if (next.type !== 'paragraph' || next.items.length < 2) break;
+        const cand = next.items.map((it) => it.x);
+        const newShared = sharedAnchors.filter(
+            (a) => cand.some((c) => Math.abs(c - a) <= MD_TABLE_TOL),
+        );
+        if (newShared.length < MD_TABLE_MIN_COLS) break;
+        sharedAnchors = newShared;
+        end = j;
+    }
+    if (end - start + 1 < MD_TABLE_MIN_ROWS) return null;
+    sharedAnchors.sort((a, b) => a - b);
+    return { end, anchors: sharedAnchors };
+}
+
+function emitTable(tableLines, anchors, pageLinks) {
+    const cols = anchors.length;
+    const rows = tableLines.map((line) => {
+        const cells = new Array(cols).fill('');
+        for (const it of line.items) {
+            let nearest = 0;
+            let nearestDist = Infinity;
+            for (let c = 0; c < cols; c++) {
+                const d = Math.abs(it.x - anchors[c]);
+                if (d < nearestDist) { nearestDist = d; nearest = c; }
+            }
+            const rendered = renderInlineItem(it, pageLinks);
+            if (!rendered) continue;
+            cells[nearest] = cells[nearest] ? cells[nearest] + ' ' + rendered : rendered;
+        }
+        return cells.map(escapePipe);
+    });
+    const header = rows[0];
+    const sep = new Array(cols).fill('---');
+    const body = rows.slice(1);
+    return [
+        '| ' + header.join(' | ') + ' |',
+        '| ' + sep.join(' | ') + ' |',
+        ...body.map((r) => '| ' + r.join(' | ') + ' |'),
+    ].join('\n');
+}
+
+function buildMarkdown(json, links) {
+    const pages = json?.pages ?? [];
+    if (pages.length === 0) return '';
+    const linkList = Array.isArray(links) ? links : [];
+
+    // Document-wide median font size, used to threshold headings. If the
+    // document has no fontSize metadata (e.g. some OCR-only outputs), we
+    // fall back to disabling heading detection entirely.
+    const sizes = [];
+    for (const p of pages) {
+        for (const it of (p.textItems ?? [])) {
+            if (typeof it.fontSize === 'number' && it.fontSize > 0) sizes.push(it.fontSize);
+        }
+    }
+    const medianBody = sizes.length ? median(sizes) : 0;
+    const headingThresholds = medianBody > 0
+        ? MD_HEADING_RATIOS.map((r) => medianBody * r)
+        : null;
+
+    const linksByPage = new Map();
+    for (const l of linkList) {
+        if (!linksByPage.has(l.page)) linksByPage.set(l.page, []);
+        linksByPage.get(l.page).push(l);
+    }
+
+    const pageBlocks = [];
+    pages.forEach((page, pageIdx) => {
+        const items = (page.textItems ?? []).filter((it) => it.text && it.text.trim());
+        if (items.length === 0) return;
+
+        // Bucket items into lines by y. Sort top-down, then within each
+        // line by x. The line-gap threshold scales with the median item
+        // height so 10pt body text and 24pt headings get a fair shake.
+        const lineGap = Math.max(2, median(items.map((it) => it.height || 0)) * MD_LINE_GAP_RATIO);
+        const sortedByY = items.slice().sort((a, b) => a.y - b.y);
+        const lines = [];
+        for (const it of sortedByY) {
+            const last = lines[lines.length - 1];
+            if (last && Math.abs(it.y - last.yMin) <= lineGap) {
+                last.items.push(it);
+                last.yMin = Math.min(last.yMin, it.y);
+                last.yMax = Math.max(last.yMax, it.y + (it.height || 0));
+            } else {
+                lines.push({
+                    items: [it],
+                    yMin: it.y,
+                    yMax: it.y + (it.height || 0),
+                });
+            }
+        }
+        const pageLinks = linksByPage.get(page.page ?? (pageIdx + 1)) ?? [];
+        for (const line of lines) {
+            line.items.sort((a, b) => a.x - b.x);
+            const lineFontSizes = line.items
+                .map((it) => it.fontSize || 0)
+                .filter((s) => s > 0);
+            line.medianSize = lineFontSizes.length ? median(lineFontSizes) : medianBody;
+            line.height = line.yMax - line.yMin;
+            line.rendered = renderLineInline(line.items, pageLinks);
+            line.type = classifyLine(line, headingThresholds);
+        }
+
+        const heights = lines.map((l) => l.height).filter((h) => h > 0);
+        const lineHeightMedian = heights.length ? median(heights) : 12;
+
+        const pageOut = [];
+        let i = 0;
+        while (i < lines.length) {
+            const line = lines[i];
+
+            // Try a table-detection pass before falling through to the
+            // single-line classifiers. We only attempt tables on paragraph-
+            // classified lines with at least 2 items (headings/lists are
+            // never table rows).
+            if (line.type === 'paragraph' && line.items.length >= 2) {
+                const run = findTableRun(lines, i);
+                if (run) {
+                    pageOut.push(emitTable(lines.slice(i, run.end + 1), run.anchors, pageLinks));
+                    i = run.end + 1;
+                    continue;
+                }
+            }
+
+            if (line.type === 'heading1' || line.type === 'heading2' || line.type === 'heading3') {
+                const prefix = line.type === 'heading1' ? '#'
+                    : line.type === 'heading2' ? '##' : '###';
+                pageOut.push(`${prefix} ${line.rendered}`);
+                i++;
+                continue;
+            }
+
+            if (line.type === 'list-bullet' || line.type === 'list-number') {
+                const buf = [];
+                while (i < lines.length
+                    && (lines[i].type === 'list-bullet' || lines[i].type === 'list-number')) {
+                    const stripped = stripListMarker(lines[i].rendered);
+                    const prefix = lines[i].type === 'list-bullet' ? '- ' : '1. ';
+                    buf.push(prefix + stripped);
+                    i++;
+                }
+                pageOut.push(buf.join('\n'));
+                continue;
+            }
+
+            // Paragraph: coalesce adjacent paragraph lines until a vertical
+            // gap larger than ~0.8 line-heights forces a break.
+            const paraLines = [line.rendered];
+            let j = i + 1;
+            while (j < lines.length && lines[j].type === 'paragraph') {
+                const prev = lines[j - 1];
+                const next = lines[j];
+                if (next.yMin - prev.yMax > lineHeightMedian * MD_PARA_GAP_RATIO) break;
+                paraLines.push(next.rendered);
+                j++;
+            }
+            pageOut.push(paraLines.join(' '));
+            i = j;
+        }
+
+        pageBlocks.push(pageOut.filter(Boolean).join('\n\n'));
+    });
+
+    return pageBlocks.filter(Boolean).join('\n\n---\n\n').trim() + '\n';
+}
+
+// Run the heuristic engine over the current `result.json`, joined with a
+// best-effort PDF.js annotation pass when we still have the original PDF
+// bytes in scope (a shared link only carries the rendered JSON, so links
+// are unavailable in that case). Caches the rendered string for the rest
+// of the result's lifetime.
+async function renderMarkdown() {
+    if (!result) return;
+    const abort = { cancelled: false };
+    markdownAbort = abort;
+    els.mdProgressTitle.textContent = 'Reconstructing Markdown...';
+    els.mdProgressSub.textContent = pdfFile?.bytes
+        ? 'Detecting headings, lists, tables, and link annotations.'
+        : 'Detecting headings, lists, and tables. (Links unavailable when hydrating from a shared URL.)';
+    try {
+        let links = [];
+        if (pdfFile?.bytes) {
+            try {
+                const mod = await loadLiteparseBundle();
+                if (abort.cancelled) return;
+                const { getPdfLinks } = mod;
+                if (typeof getPdfLinks === 'function') {
+                    // Defensive clone -- pdf.js may transfer the buffer to
+                    // its worker and detach the master view otherwise.
+                    links = await getPdfLinks(new Uint8Array(pdfFile.bytes));
+                    if (abort.cancelled) return;
+                }
+            } catch (err) {
+                // Annotation extraction is best-effort; a failure here
+                // just downgrades to a no-links render. The body of the
+                // tab will still be useful.
+                console.warn('getPdfLinks failed', err);
+            }
+        }
+        if (abort.cancelled) return;
+        const md = buildMarkdown(result.json, links);
+        if (abort.cancelled) return;
+        markdownCache = md;
+        els.resultMd.value = md;
+        if (activeTab === 'md') {
+            showResultPanel('md');
+            // Re-run the share/copy/download enable check now that the
+            // payload exists -- the toolbar was disabled while we waited.
+            refreshShareAvailability();
+        }
+    } catch (err) {
+        console.error('renderMarkdown error', err);
+        if (activeTab === 'md') {
+            els.errorSub.textContent = `Failed to build Markdown: ${err?.message ?? err}`;
+            showResultPanel('error');
+        }
+    } finally {
+        if (markdownAbort === abort) markdownAbort = null;
+    }
+}
+
+els.tabText.addEventListener('click', () => setActiveTab('text'));
+els.tabJson.addEventListener('click', () => setActiveTab('json'));
+els.tabMd.addEventListener('click', () => setActiveTab('md'));
+els.tabShots.addEventListener('click', () => setActiveTab('shots'));
+
+async function parsePdf() {
+    if (!pdfFile) return;
+    const opts = readOcrOptions();
+    els.parseBtn.disabled = true;
+    els.parseBtn2.disabled = true;
+    showResultPanel('progress');
+    // The cached Markdown/Screenshots views are derived from the previous
+    // parse result; a fresh Parse click invalidates both so the next
+    // tab click rebuilds against the new result.
+    resetMarkdown();
+    resetShots();
+    els.progressTitle.textContent = 'Loading liteparse...';
+    els.progressSub.textContent = liteparseModule
+        ? 'Re-using cached engine.'
+        : 'First run downloads ~3 MB of bundled engine code (already in this page).';
+    try {
+        const mod = await loadLiteparseBundle();
+        const { LiteParse } = mod;
+        if (typeof LiteParse !== 'function') {
+            throw new Error('liteparse bundle did not export `LiteParse`. The build may be stale.');
+        }
+        els.progressTitle.textContent = `Parsing ${pdfFile.name}...`;
+        els.progressSub.textContent = opts.mode === 'never'
+            ? 'OCR disabled; using embedded text only.'
+            : `OCR ${opts.mode === 'auto' ? 'in auto mode' : 'forced for every page'} (${opts.lang}). Language data downloads on first use.`;
+        // Yield a frame so the progress text actually paints before the heavy
+        // work pegs the main thread.
+        await new Promise((r) => requestAnimationFrame(() => r()));
+        const parser = new LiteParse({
+            ocrEnabled: opts.mode !== 'never',
+            // The 'always' mode tells liteparse to run OCR on every page even
+            // when there is embedded text (useful when the embedded text is
+            // a junk encoding). 'auto' lets it decide per page based on
+            // text-density heuristics. 'never' disables OCR entirely.
+            ocrAlways: opts.mode === 'always',
+            ocrLanguage: opts.lang,
+            outputFormat: 'json',
+            // Single in-browser worker. Spawning more from a tab tends to
+            // saturate the user's main thread without much speedup, since
+            // pdf.js and tesseract.js each spawn their own helper worker
+            // internally.
+            numWorkers: 1,
+        });
+        const t0 = performance.now();
+        // Defensive clone: pdf.js sometimes transfers its input ArrayBuffer
+        // to a worker, which would detach `pdfFile.bytes` and break the
+        // later Screenshots-tab render pass (and any second Parse click).
+        // `new Uint8Array(srcView)` copies the underlying bytes into a
+        // fresh ArrayBuffer, so the master view stays intact.
+        const parsed = await parser.parse(new Uint8Array(pdfFile.bytes), true /* quiet */);
+        const elapsedMs = performance.now() - t0;
+
+        const text = (parsed && typeof parsed.text === 'string') ? parsed.text : '';
+        const json = parsed?.json ?? { pages: [] };
+        const pageCount = json?.pages?.length ?? 0;
+        const bboxCount = (json?.pages || []).reduce(
+            (n, p) => n + ((p.boundingBoxes || []).length),
+            0,
+        );
+
+        result = {
+            text,
+            json,
+            srcName: pdfFile.name.replace(/\.pdf$/i, ''),
+            ocrMode: opts.mode,
+            ocrLang: opts.lang,
+        };
+        els.resultText.value = text;
+        // Pretty-print JSON for the in-panel view but cap at ~512 KB of
+        // rendered text to keep the pane snappy on big PDFs. Beyond that
+        // point the user is better off using Download anyway.
+        const jsonStr = JSON.stringify(json, null, 2);
+        if (jsonStr.length > 512 * 1024) {
+            els.resultJsonPre.textContent = jsonStr.slice(0, 512 * 1024) +
+                '\n\n/* ...truncated for display (' + formatBytes(jsonStr.length) + ' total); use Download for the full JSON. */\n';
+        } else {
+            els.resultJsonPre.textContent = jsonStr;
+        }
+        const ms = Math.round(elapsedMs);
+        els.resultStats.textContent = `${pageCount} page${pageCount === 1 ? '' : 's'} · ${bboxCount} bbox · ${ms}ms`;
+
+        // Decide whether the current tab's payload fits in the URL. The
+        // share/copy/download toolbar state and the visible panel are
+        // both driven by setActiveTab below (which also kicks off the
+        // Screenshots / Markdown render loops if that's the live tab).
+        // Markdown isn't computed yet here -- the share button stays
+        // disabled while the user is on the Markdown tab until the
+        // engine finishes and refreshShareAvailability re-evaluates.
+        const fitsTextUrl = utf8Enc.encode(text).length <= MAX_URL_STATE_BYTES;
+        const fitsJsonUrl = jsonStr.length <= MAX_URL_STATE_BYTES;
+        const urlOk = activeTab === 'json' ? fitsJsonUrl
+            : activeTab === 'md' ? false
+            : fitsTextUrl;
+        setExportEnabled(true, urlOk);
+        setActiveTab(activeTab);
+        // Strip any old hash now that the result is fresh -- a stale
+        // share-link in the URL is a usability trap.
+        if (location.hash) history.replaceState({}, '', location.pathname + location.search);
+    } catch (err) {
+        console.error('liteparse parse error', err);
+        const msg = err?.message || String(err);
+        els.errorSub.textContent = msg.length > 320 ? msg.slice(0, 320) + '...' : msg;
+        showResultPanel('error');
+        setExportEnabled(false, false);
+    } finally {
+        els.parseBtn.disabled = !pdfFile;
+        els.parseBtn2.disabled = !pdfFile;
+    }
+}
+els.parseBtn.addEventListener('click', parsePdf);
+els.parseBtn2.addEventListener('click', parsePdf);
+document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !els.parseBtn.disabled) {
+        e.preventDefault();
+        parsePdf();
+    }
+});
+
+// Re-evaluate the share button when the user flips between Text, JSON,
+// and Markdown -- the URL-fit test depends on the active payload, and the
+// Markdown payload may not be computed yet (in which case the whole
+// export toolbar stays disabled until renderMarkdown() finishes and
+// calls us back).
+function refreshShareAvailability() {
+    if (!result) return;
+    if (activeTab === 'md' && markdownCache == null) {
+        setExportEnabled(false, false);
+        return;
+    }
+    let fits;
+    if (activeTab === 'json') {
+        fits = JSON.stringify(result.json).length <= MAX_URL_STATE_BYTES;
+    } else if (activeTab === 'md') {
+        fits = utf8Enc.encode(markdownCache).length <= MAX_URL_STATE_BYTES;
+    } else {
+        fits = utf8Enc.encode(result.text).length <= MAX_URL_STATE_BYTES;
+    }
+    setExportEnabled(true, fits);
+}
+els.tabText.addEventListener('click', refreshShareAvailability);
+els.tabJson.addEventListener('click', refreshShareAvailability);
+els.tabMd.addEventListener('click', refreshShareAvailability);
+
+// ----- Share / Copy / Download / Open-in-md-to-html ----------------------
+
+// URL state shape (v2; v1 is read for backward-compat in the hydrate block):
+//   { v: 2, f: 'text'|'json'|'md', s: <srcName>, t?, j?, m? }
+// Stored as JSON.stringify(state), then encodeState() (deflate + base64url).
+// v1 was identical minus the 'md' tab + 'm' field.
+async function buildShareUrl() {
+    if (!result) return null;
+    const state = { v: 2, f: activeTab, s: result.srcName };
+    if (activeTab === 'json') state.j = result.json;
+    else if (activeTab === 'md') {
+        if (markdownCache == null) return null;
+        state.m = markdownCache;
+    } else {
+        state.t = result.text;
+    }
+    const json = JSON.stringify(state);
+    if (utf8Enc.encode(json).length > MAX_URL_STATE_BYTES + 4096) return null;
+    const encoded = await encodeState(json);
+    return `${location.origin}${location.pathname}#${encoded}`;
+}
+els.shareBtn.addEventListener('click', async () => {
+    try {
+        const url = await buildShareUrl();
+        if (!url) {
+            toast('Result is too large to share via URL. Use Copy or Download.');
+            return;
+        }
+        history.replaceState({}, '', url);
+        await navigator.clipboard.writeText(url);
+        toast('Share link copied');
+    } catch (err) {
+        toast(`Failed to copy share link: ${err.message ?? err}`);
+    }
+});
+
+// Per-tab payload + presentation metadata for the Copy / Download / Open-
+// in-md-to-html buttons. Returns null when the active tab has nothing
+// (yet) to export -- the Markdown tab during the lazy build, for instance.
+function currentExportPayload() {
+    if (!result) return null;
+    if (activeTab === 'json') {
+        return {
+            text: JSON.stringify(result.json, null, 2),
+            ext: 'json',
+            mime: 'application/json;charset=utf-8',
+            toast: 'JSON copied',
+        };
+    }
+    if (activeTab === 'md') {
+        if (markdownCache == null) return null;
+        return {
+            text: markdownCache,
+            ext: 'md',
+            mime: 'text/markdown;charset=utf-8',
+            toast: 'Markdown copied',
+        };
+    }
+    return {
+        text: result.text,
+        ext: 'txt',
+        mime: 'text/plain;charset=utf-8',
+        toast: 'Text copied',
+    };
+}
+
+els.copyBtn.addEventListener('click', async () => {
+    const payload = currentExportPayload();
+    if (!payload) return;
+    try {
+        await navigator.clipboard.writeText(payload.text);
+        toast(payload.toast);
+    } catch { toast('Failed to copy'); }
+});
+
+els.downloadBtn.addEventListener('click', () => {
+    const payload = currentExportPayload();
+    if (!payload) return;
+    const blob = new Blob([payload.text], { type: payload.mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${result.srcName || 'document'}.${payload.ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`Downloaded ${a.download}`);
+});
+
+// Open the current text (spatial Text tab) or the heuristic Markdown
+// reconstruction in the Markdown to HTML tool. md-to-html's wire format
+// is the encodeState'd text directly (no JSON wrapper), shared with this
+// tool. The Markdown payload renders natively; the spatial text usually
+// looks better wrapped in a fenced code block on the other side, but we
+// hand off the raw string for symmetry with the existing Text behaviour.
+els.openMdBtn.addEventListener('click', async () => {
+    if (!result || (activeTab !== 'text' && activeTab !== 'md')) return;
+    const payload = activeTab === 'md' ? markdownCache : result.text;
+    if (payload == null) return;
+    try {
+        // Best-effort: if the payload is too big for md-to-html's fragment
+        // either, still open it (md-to-html will silently skip the fragment
+        // and start empty -- not great, but better than blocking the click).
+        const encoded = await encodeState(payload);
+        const url = `${location.origin}/md-to-html#${encoded}`;
+        window.open(url, '_blank', 'noopener');
+    } catch (err) {
+        toast(`Open in md-to-html failed: ${err.message ?? err}`);
+    }
+});
+
+// ----- Fullscreen toggle for the result pane -----------------------------
+
+els.fullscreenBtn.addEventListener('click', async () => {
+    try {
+        if (!document.fullscreenElement) {
+            await els.resultPane.requestFullscreen();
+        } else {
+            await document.exitFullscreen();
+        }
+    } catch (e) {
+        toast(`Fullscreen failed: ${e?.message ?? e}`);
+    }
+});
+document.addEventListener('fullscreenchange', () => {
+    const entering = !!document.fullscreenElement;
+    els.fullscreenEnterIcon.style.display = entering ? 'none' : 'block';
+    els.fullscreenExitIcon.style.display = entering ? 'block' : 'none';
+});
+
+// ----- Splitter (resizable two-pane) -------------------------------------
+
+(() => {
+    const splitter = els.splitter;
+    const grid = splitter.parentElement;
+    let dragging = false;
+    let overlay = null;
+    const startDrag = (e) => {
+        e.preventDefault();
+        dragging = true;
+        splitter.classList.add('active');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;cursor:col-resize;z-index:9999;background:transparent;';
+        document.body.appendChild(overlay);
+    };
+    const stopDrag = () => {
+        if (!dragging) return;
+        dragging = false;
+        splitter.classList.remove('active');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        if (overlay) { overlay.remove(); overlay = null; }
+    };
+    splitter.addEventListener('mousedown', startDrag);
+    document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const rect = grid.getBoundingClientRect();
+        const pct = Math.max(15, Math.min(85, ((e.clientX - rect.left) / rect.width) * 100));
+        grid.style.gridTemplateColumns = `${pct}% 12px ${100 - pct}%`;
+    });
+    document.addEventListener('mouseup', stopDrag);
+    window.addEventListener('blur', stopDrag);
+})();
+
+// ----- Hydrate from URL fragment -----------------------------------------
+
+(async () => {
+    if (location.hash.length <= 1) return;
+    const decoded = await decodeState(location.hash.slice(1));
+    if (!decoded) return;
+    let state;
+    try { state = JSON.parse(decoded); } catch { return; }
+    // v1 (legacy): { v: 1, f: 'text'|'json', s, t?, j? }
+    // v2: adds 'md' to f and 'm' (rendered markdown). Both are accepted
+    // so older share links keep working after the upgrade.
+    if (!state || (state.v !== 1 && state.v !== 2)) return;
+    const requestedTab = state.f;
+    const tab = requestedTab === 'json' ? 'json'
+        : requestedTab === 'md' ? 'md'
+        : 'text';
+    result = {
+        text: state.t ?? '',
+        json: state.j ?? { pages: [] },
+        srcName: state.s || 'document',
+        ocrMode: 'auto',
+        ocrLang: 'eng',
+    };
+    els.resultText.value = result.text;
+    const jsonStr = JSON.stringify(result.json, null, 2);
+    els.resultJsonPre.textContent = jsonStr;
+    // The Markdown payload is carried verbatim in the share URL so the
+    // recipient sees the same heuristic output as the sender (the
+    // engine is allowed to evolve between releases). When the share
+    // URL carries `f: 'md'` but no `m` field (older v1 link), the
+    // Markdown tab will lazily run the engine over `state.j` on click.
+    if (typeof state.m === 'string') {
+        markdownCache = state.m;
+        els.resultMd.value = state.m;
+    }
+    const pageCount = result.json?.pages?.length ?? 0;
+    els.resultStats.textContent = `${pageCount} page${pageCount === 1 ? '' : 's'} · shared link`;
+    setActiveTab(tab);
+    // Shared links always fit (they came from a URL we just deflated).
+    setExportEnabled(true, true);
+})();
+    </script>
+</body>
+</html>

@@ -331,9 +331,12 @@ td:last-child { padding-right: 0; width: 38px; }
 .empty { color: var(--text-muted); font-size: 13px; padding: 6px 0 2px; }
 .empty code { font-family: var(--mono); font-size: 0.85em; padding: 1px 6px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); color: var(--text); }
 
-.btn { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+/* `height` pins the outer size so `.btn-primary`'s `font-weight: 600` doesn't
+   render 1-2 px taller than the regular variant via expanded bold strut
+   metrics. See dev/tools/AGENTS.md -> "Buttons". */
+.btn { padding: 7px 14px; height: 29px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
-.btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); font-weight: 600; }
+.btn-primary { background: var(--primary); border-color: var(--primary-text); color: var(--primary-text); font-weight: 500; }
 .btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
 .btn-icon { width: 36px; height: 36px; padding: 0; justify-content: center; color: var(--text-muted); font-size: 18px; line-height: 1; }
 .btn-icon:hover { color: var(--text); }

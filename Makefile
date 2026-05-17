@@ -20,7 +20,7 @@ DEPLOY_CAMOUFOX_TAG 	?=
 .PHONY: deploy-dev deploy-dev-api deploy-dev-webui deploy-dev-docs deploy-dev-retrack-api deploy-dev-retrack-scraper
 .PHONY: deploy-prod deploy-prod-api deploy-prod-webui deploy-prod-docs deploy-prod-retrack-api deploy-prod-retrack-scraper
 .PHONY: deploy-camoufox
-.PHONY: deploy-tools tools-og tools-og-loop tools-check e2e-tools-test
+.PHONY: deploy-tools tools-bundles tools-og tools-og-loop tools-check e2e-tools-test
 
 ## ---------- Development ----------
 
@@ -244,8 +244,17 @@ perf-report: ## Open the HTML perf viewer. Load .perf/history.jsonl inside it.
 
 ## ---------- Tool Apps ----------
 
-deploy-tools: ## Deploy dev/tools HTML apps to responders (ARGS="jwt-debugger echo" to deploy specific tools; also handles *.skill.md and llms.txt).
+deploy-tools: ## Deploy dev/tools HTML apps to responders (ARGS="jwt-debugger echo" to deploy specific tools; also handles *.skill.md and llms.txt). Bundles under dev/tools/js/ are rebuilt on demand by deploy.ts; use `make tools-bundles` to pre-build them.
 	node --env-file=.env dev/tools/deploy.ts $(ARGS)
+
+tools-bundles: ## Pre-build every dev/tools/js/<name>/ sub-package (Vite/Rollup). Idempotent: skips bundles whose dist/ is fresh relative to sources. Optional -- `make deploy-tools` builds on demand too.
+	@set -e; \
+	for d in dev/tools/js/*/; do \
+		name=$$(basename $$d); \
+		echo "tools-bundles: building $$name"; \
+		if [ ! -d $$d/node_modules ]; then npm --prefix $$d ci; fi; \
+		npm --prefix $$d run build; \
+	done
 
 tools-og: ## Regenerate the per-tool 1200x630 OG images (dark + light) into components/secutils-docs/static/img/og/.
 	cd e2e && npx playwright test --config=playwright.tools.config.ts og.spec.ts $(ARGS)

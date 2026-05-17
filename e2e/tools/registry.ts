@@ -30,7 +30,7 @@ export interface Tool {
   /** Per-tool accent color for OG images. Hex, lowercase. */
   accent: string;
   /** Symbolic icon id understood by `dev/tools/og-template.html`. */
-  icon: 'key' | 'shield' | 'cert' | 'doc' | 'bolt' | 'id' | 'grid';
+  icon: 'key' | 'shield' | 'cert' | 'doc' | 'bolt' | 'id' | 'grid' | 'pdf';
 }
 
 export const TOOLS: readonly Tool[] = [
@@ -77,6 +77,17 @@ export const TOOLS: readonly Tool[] = [
     promote: true,
     accent: '#ff7e3a',
     icon: 'doc',
+  },
+  {
+    slug: 'pdf',
+    source: 'pdf-extractor.html',
+    name: 'PDF Extractor',
+    path: '/pdf',
+    description: 'Extract spatial text and structured JSON from PDFs, in-browser.',
+    applicationCategory: 'DeveloperApplication',
+    promote: true,
+    accent: '#e94f64',
+    icon: 'pdf',
   },
   {
     slug: 'echo',

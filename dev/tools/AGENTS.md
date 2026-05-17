@@ -192,6 +192,152 @@ Rules and caveats:
   `@su:responder-script` body becomes the inner expression and runs only when the
   prelude does not redirect. See **"Markdown content negotiation"** below.
 
+## Embedded JS bundles (`data-su-bundle`)
+
+Most tools are pure inline JS that fits comfortably inside the HTML. A few
+need a real npm package that has Node-only dependencies (e.g. liteparse needs
+`sharp` / `fs` / `child_process` stubbed out before it can run in the browser).
+Pulling those into a tool means a bundler step. To keep that opt-in,
+deterministic, and **bundled into the HTML responder body** (no separate
+asset host, no extra requests), we use the `data-su-bundle` convention.
+
+### Layout: one sub-package per bundle under `dev/tools/js/`
+
+```
+dev/tools/js/
+  <name>/
+    package.json          # own deps + scripts.build
+    package-lock.json
+    vite.config.ts        # (or rollup, esbuild, ...) - whatever the bundler is
+    src/                  # source + stubs
+    dist/<name>.js        # build output, gitignored
+    .gitignore            # node_modules/, dist/
+    README.md             # what this bundles and which upstream version is pinned
+```
+
+The single hard contract with the deploy pipeline is: `npm run build` inside
+the sub-package must produce a single self-contained file at
+`dist/<name>.js`. Everything else (which bundler, how it stubs Node modules,
+whether it bundles workers inline, etc.) is the sub-package's business.
+
+### HTML-side placeholder
+
+The tool HTML references the bundle with an empty `<script>` placeholder:
+
+```html
+<script id="su-bundle-liteparse" type="text/plain"
+        data-su-bundle="liteparse"></script>
+```
+
+Three load-bearing details:
+
+- **`type="text/plain"`** keeps the browser from trying to execute the
+  multi-MB ESM source on initial parse. The tool's own JS pulls the source
+  out of `el.textContent`, wraps it in a Blob, and `import()`s the Blob URL
+  on first use. Lazy by design - a search-result visitor pays the HTML
+  download cost but never pays the JS parse/eval cost unless they actually
+  click the tool's primary action.
+- **`data-su-bundle="<name>"`** matches the sub-directory name under
+  `dev/tools/js/`. Accepted character set: `[a-z0-9_-]+`.
+- **The body must be empty.** `deploy.ts` refuses to overwrite a placeholder
+  that already has content - the convention is opt-in, not opt-out, and a
+  non-empty placeholder usually means someone forgot to clear test code.
+
+### Canonical loader (copy verbatim into any tool that uses a bundle)
+
+```js
+async function loadSuBundle(name) {
+    const el = document.getElementById(`su-bundle-${name}`);
+    if (!el?.textContent) throw new Error(`Bundle "${name}" is not loaded`);
+    const blob = new Blob([el.textContent], { type: 'text/javascript' });
+    return import(URL.createObjectURL(blob));
+}
+```
+
+The returned value is the module's namespace object, e.g.
+`const { LiteParse } = await loadSuBundle('liteparse')`.
+
+### How the deploy pipeline handles bundles
+
+[`dev/tools/deploy.ts`](deploy.ts) does, for every HTML responder:
+
+1. **After** `html-minifier-terser` runs (so the bundle source never passes
+   through the HTML minifier - it's already minified by Vite and we don't
+   want `collapseWhitespace` quirks corrupting an ESM module),
+2. Scan the minified HTML for `<script ... data-su-bundle="<name>" ...></script>`
+   placeholders.
+3. For each unique `<name>`, ensure `dev/tools/js/<name>/dist/<name>.js` is
+   fresh. Build rule: compare its mtime against the newest mtime under the
+   sub-package (excluding `dist/` and `node_modules/`). If stale or missing,
+   run `npm ci` (only when `node_modules/` is absent) then `npm run build`.
+   Bundles are cached per `deploy.ts` invocation so multiple HTML files that
+   share a bundle build it once.
+4. Inject the bundle source as the placeholder's text content, escaping any
+   `</script>` substring to `<\/script>` so the inlined script tag can't
+   terminate early.
+5. Log it alongside the body / script sizes, e.g.
+   `21.1 KB -> 16.2 KB (23.0% saved) + bundle liteparse 1.8 MB ✓ deployed`.
+
+Pre-building is optional. Run `make tools-bundles` once to warm every
+sub-package's `dist/` (CI does this); after that, `make deploy-tools` is the
+same fast path as for bundle-less tools.
+
+### Rules and caveats
+
+- **Sub-package isolation.** Each `dev/tools/js/<name>/` brings its own
+  `node_modules/` and lockfile. Do not hoist to the repo-root `package.json`
+  - the whole point is that bundles can ship Node-only deps without
+  polluting the rest of the repo.
+- **Pin upstream versions.** A bundle's `package.json` should pin its
+  important deps (especially anything we monkey-patch via stubs / file
+  redirects). Note the pin in the sub-package's `README.md` so a future
+  re-sync against upstream has a clear starting point.
+- **`text/plain` is final**, not `type="module"`. `type="module"` would
+  execute on page load and force every visitor to pay the parse cost. The
+  Blob+`import()` indirection costs one tick on first use and gains a clean
+  no-cost-for-non-users default.
+- **Bundle size matters but isn't policed.** Responders cap body size (and,
+  separately, the PUT JSON payload). If the raw bundle pushes a responder
+  over either cap, switch the placeholder to compressed-mode by adding
+  `data-su-bundle-encoding="gzip-base64"`:
+
+  ```html
+  <script id="su-bundle-foo" type="text/plain"
+          data-su-bundle="foo"
+          data-su-bundle-encoding="gzip-base64"></script>
+  ```
+
+  `deploy.ts` then gzips the Vite/Rollup output, base64-encodes it (the
+  base64 alphabet is `</script>`-safe so no further escaping is needed), and
+  inlines that. The tool's runtime loader must reverse both steps before
+  Blob-URL'ing the result:
+
+  ```js
+  const encoding = el.getAttribute('data-su-bundle-encoding');
+  let src = el.textContent.trim();
+  if (encoding === 'gzip-base64') {
+      const bin = atob(src);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const stream = new Blob([bytes]).stream()
+          .pipeThrough(new DecompressionStream('gzip'));
+      src = await new Response(stream).text();
+  }
+  const blob = new Blob([src], { type: 'text/javascript' });
+  await import(URL.createObjectURL(blob));
+  ```
+
+  Typical compression ratio is ~4-5x (a 3 MB raw bundle lands at ~700 KB
+  gzipped, ~950 KB base64'd, ~1 MB JSON-encoded -- well under the default
+  2 MB PUT cap). Cost is a one-time ~10-20 ms decompression on first use.
+  Today only `pdf-extractor.html` (`liteparse`) needs this; the other
+  bundle-using tools stay on raw inlining.
+- **Pre-deploy syntax check (#1 in "Pre-deploy verification" below) skips
+  `type="text/plain"` blocks** the same way it already skips
+  `application/ld+json` ones. The bundle is its own build artifact, validated
+  by the sub-package's own toolchain (Vite/Rollup error if it doesn't
+  compile), not by `node:vm`.
+
 ## URL state encoding (`encodeState` / `decodeState`)
 
 Tools that need to remember their state across page reloads or build shareable URLs
@@ -873,11 +1019,11 @@ tool. Don't paste it into AGENTS.md - copy it verbatim from
 ## Buttons
 
 ```css
-.btn { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 5px; }
+.btn { padding: 7px 14px; height: 29px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 5px; }
 .btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
-.btn-primary { background: var(--primary); border-color: var(--primary); color: var(--primary-text); font-weight: 600; }
+.btn-primary { background: var(--primary); border-color: var(--primary-text); color: var(--primary-text); font-weight: 500; }
 .btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
-.btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn-sm { padding: 5px 10px; height: 24px; font-size: 12px; }
 .icon-btn { padding: 4px; border: none; background: none; color: var(--text-muted); cursor: pointer; border-radius: 4px; transition: all .15s; display: inline-flex; align-items: center; justify-content: center; }
 .icon-btn:hover { color: var(--text); background: var(--surface-hover); }
 .icon-btn svg { width: 16px; height: 16px; }
@@ -898,9 +1044,66 @@ itself is invariant.
 
 The current values reconcile to 24 px:
 
-- `.btn-sm`: `padding: 5px 10px; font-size: 12px;` (inherits `line-height: 1` from `.btn { font: 13px/1 ... }`) → 5+1+12+1+5 = 24
+- `.btn-sm`: `padding: 5px 10px; height: 24px; font-size: 12px;` (inherits `line-height: 1` from `.btn { font: 13px/1 ... }`) → 5+1+12+1+5 = 24, pinned by `height: 24px`
 - `.view-tabs`: `padding: 2px;` + `border: 1px;` + `.view-tab { padding: 3px 10px; font: 12px/1; }` → 1+2+(3+12+3)+2+1 = 24
 - `.icon-btn`: `padding: 4px;` + `svg 16x16` → 4+16+4 = 24
+
+**The `height: 24px` on `.btn-sm` (and `height: 29px` on `.btn`) is
+load-bearing**, even though the math from padding + border + line-height
+already adds up to 24 / 29. Without an explicit `height`, the **`.btn-primary`
+variant (which carries a heavier `font-weight` than the regular variant)
+renders 1-2 px taller than the outlined regular variant**. The browser
+sizes the line box from the largest font metric on the line, and Inter's
+heavier cuts have slightly bigger ascender + descender than its regular
+(400) cut -- the unitless `line-height: 1` does not clamp the strut, only
+the leading. The mismatch is invisible inside a single pane (all primary
+buttons look fine next to each other) but jumps out the moment a primary
+and a regular button sit side by side in the same row (e.g. `Options` next
+to `Parse` in pdf-extractor's PDF panel-bar). Pinning `height` makes both
+weights resolve to the same outer size. `box-sizing: border-box` is global
+so padding + border sit inside the pinned height; `align-items: center`
+keeps the label visually centred regardless of the strut diff.
+
+**`.btn-primary` is pinned at `font-weight: 500` AND `border-color:
+var(--primary-hover)`.** Even with the outer `height` pinned so the boxes
+are byte-identical in size, the older `font-weight: 600` + same-as-fill
+border combination produced a *perceptual* size bump: Helmholtz's
+filled-vs-outlined illusion plus the extra ink stroked by a bold label
+made the eye read primary buttons as "taller / heavier" than the outlined
+regulars sitting in the same row, even though `getBoundingClientRect()`
+reported identical pixel heights across Chromium and Firefox. Two
+mitigations stack:
+
+1. **`font-weight: 500`** (down from 600) preserves the yellow +
+   `--primary-text` colour as the hierarchy signal while collapsing the
+   perceived label weight to roughly match the regular variant's 400.
+2. **`border-color: var(--primary-text)`** (instead of `var(--primary)`,
+   which is the same as the fill) gives the primary button a 1 px dark
+   plum edge that matches its label colour -- the same "stamped /
+   self-framed" silhouette that outlined `.btn` gets from `var(--border)`
+   on `var(--surface)`. The dark plum was chosen after rejecting two
+   alternatives: `var(--primary-hover)` (a barely-darker yellow) was too
+   low-contrast against the fill to be perceptible at small sizes, and
+   the neutral `var(--border)` grey looked invisible in light mode
+   (`#d3dae6` on `#fed047`) and like a rendering bug in dark mode.
+   `--primary-text` works in both themes because the token resolves to
+   the same `#642340` regardless of mode -- the only token in the
+   primary palette guaranteed to have enough luminance contrast against
+   the yellow fill.
+
+Do **not** revert either change in isolation. The visual regression is
+subtle on a single button but obvious in any `.panel-bar` row that mixes
+both variants (e.g. pdf-extractor's `Options` next to `Parse`). The
+outlier is `mock-saml-idp.html`, whose regular `.btn` is already
+`font-weight: 500`; its `.btn-primary` is left at 600 to keep the same
++100 weight delta as the other tools, but it still uses the
+`--primary-hover` border for the framing.
+
+The mobile breakpoint that shrinks `.btn-sm` (e.g. to
+`padding: 5px 9px; font-size: 11px;` in `markdown-to-html` and
+`pdf-extractor`) **must also pin `height: 23px`** to match the
+`.view-tab` mobile collapse to 22-23 px. Forgetting the mobile pin leaves
+the same primary-vs-regular drift visible at phone widths.
 
 **The `/1` in `font: 12px/1 var(--font)` is load-bearing.** Without it the
 `font` shorthand resets `line-height` to `normal` (~1.2-1.4 for Inter), so the
@@ -1495,6 +1698,10 @@ for (const f of files) {
     // JSON-LD blocks ship as <script type=\"application/ld+json\">; they are
     // valid JSON, not JavaScript, so node:vm would reject the leading '{'.
     if (/type\s*=\s*[\"']application\/ld\+json[\"']/i.test(attrs)) { idx++; continue; }
+    // data-su-bundle placeholders ship as <script type=\"text/plain\"> and are
+    // filled at deploy time by the Vite-built bundle; nothing for node:vm to
+    // syntax-check here -- the sub-package's own toolchain validates it.
+    if (/type\s*=\s*[\"']text\/plain[\"']/i.test(attrs)) { idx++; continue; }
     try { new vm.Script(code, { filename: \`\${f}#\${idx}\` }); }
     catch (e) { console.log('FAIL', f, 'script #' + idx, '->', e.message); allOk = false; }
     idx++;
