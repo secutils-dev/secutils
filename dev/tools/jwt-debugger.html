@@ -757,6 +757,42 @@ document.addEventListener('DOMContentLoaded', () => {
     secretInput.addEventListener('input', updateEncoded);
     encodedOutput.addEventListener('input', updateDecodedFromToken);
 
+    // The encoded pane is a contenteditable div, so the browser's default
+    // paste/drop inserts the source's rich HTML (with its own inline styles
+    // like `white-space: nowrap` or `<pre>` wrappers) which overrides the
+    // pane's `white-space: pre-wrap; word-break: break-all` and produces a
+    // single overflowing line. Force plain text on every insertion path so
+    // the layout stays wrapped regardless of where the token came from.
+    const insertPlainText = (text) => {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) {
+            encodedOutput.textContent = text;
+        } else {
+            const range = selection.getRangeAt(0);
+            if (!encodedOutput.contains(range.commonAncestorContainer)) {
+                encodedOutput.textContent = text;
+            } else {
+                range.deleteContents();
+                range.insertNode(document.createTextNode(text));
+                range.collapse(false);
+                selection.removeAllRanges();
+                selection.addRange(range);
+            }
+        }
+        encodedOutput.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    encodedOutput.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const text = (e.clipboardData ?? window.clipboardData)?.getData('text/plain') ?? '';
+        insertPlainText(text);
+    });
+    encodedOutput.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const text = e.dataTransfer?.getData('text/plain') ?? '';
+        encodedOutput.focus();
+        insertPlainText(text);
+    });
+
     copyButton.addEventListener('click', async () => {
         try {
             await navigator.clipboard.writeText(encodedOutput.innerText);
