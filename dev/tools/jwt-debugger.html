@@ -586,6 +586,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // Rewrites the encoded pane with the three colored segment spans. Used by
+    // every code path that produces a clean token without a live caret to
+    // preserve - `loadDefaults` / `updateEncoded` (signing), `extractJWT`
+    // unwrap, and the paste/drop handlers. Typing into the pane intentionally
+    // does NOT call this, because rewriting `innerHTML` on every keystroke
+    // would reset the caret to position 0.
+    const renderColoredToken = (jwt) => {
+        const [h, p, s] = jwt.split('.');
+        encodedOutput.innerHTML = `<span class="token-part-header">${h}</span><span class="token-dot">.</span><span class="token-part-payload">${p}</span><span class="token-dot">.</span><span class="token-part-signature">${s}</span>`;
+    };
+
     const clearDecodedPanels = () => {
         const headerEl = document.getElementById('decoded-header');
         const payloadEl = document.getElementById('decoded-payload');
@@ -620,8 +631,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showTransformInfo(transforms);
 
         if (transforms.length > 0) {
-            const parts = jwt.split('.');
-            encodedOutput.innerHTML = `<span class="token-part-header">${parts[0]}</span><span class="token-dot">.</span><span class="token-part-payload">${parts[1]}</span><span class="token-dot">.</span><span class="token-part-signature">${parts[2]}</span>`;
+            renderColoredToken(jwt);
         }
 
         const parts = jwt.split('.');
@@ -663,8 +673,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const secretKey = new TextEncoder().encode(secretInput.value);
             const jwt = await new jose.SignJWT(payload).setProtectedHeader(header).sign(secretKey);
-            const parts = jwt.split('.');
-            encodedOutput.innerHTML = `<span class="token-part-header">${parts[0]}</span><span class="token-dot">.</span><span class="token-part-payload">${parts[1]}</span><span class="token-dot">.</span><span class="token-part-signature">${parts[2]}</span>`;
+            renderColoredToken(jwt);
             updateSignatureStatusUI(true);
         } catch (err) {
             encodedOutput.textContent = `Error: ${err.message}`;
@@ -781,16 +790,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         encodedOutput.dispatchEvent(new Event('input', { bubbles: true }));
     };
+    // After a paste/drop produces a clean bare JWT, colorize the three
+    // segments. `updateDecodedFromToken` (run via the dispatched input event)
+    // intentionally only colorizes when an envelope was unwrapped, to avoid
+    // resetting the caret on every keystroke during typing. Paste/drop is the
+    // one moment where there is no live caret to preserve, so we can safely
+    // recolor here.
+    const colorizeIfBareJwt = () => {
+        const result = extractJWT(encodedOutput.innerText);
+        if (result && result.transforms.length === 0) renderColoredToken(result.jwt);
+    };
     encodedOutput.addEventListener('paste', (e) => {
         e.preventDefault();
         const text = (e.clipboardData ?? window.clipboardData)?.getData('text/plain') ?? '';
         insertPlainText(text);
+        colorizeIfBareJwt();
     });
     encodedOutput.addEventListener('drop', (e) => {
         e.preventDefault();
         const text = e.dataTransfer?.getData('text/plain') ?? '';
         encodedOutput.focus();
         insertPlainText(text);
+        colorizeIfBareJwt();
     });
 
     copyButton.addEventListener('click', async () => {
