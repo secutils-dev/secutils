@@ -319,11 +319,11 @@ porting between repos stays trivial.
 
 ### URL shape
 
-| Surface           | URL                                          | Content type     | Source on disk                          |
-|-------------------|----------------------------------------------|------------------|-----------------------------------------|
-| Tool page         | `https://{{TOOLS_HOST}}/<path>`              | `text/html`      | `dev/tools/<name>.html`                 |
-| Per-tool skill    | `https://{{TOOLS_HOST}}/<path>.md`           | `text/markdown`  | `dev/tools/<name>.skill.md`             |
-| Aggregate index   | `https://{{TOOLS_HOST}}/llms.txt`            | `text/markdown`  | generated at deploy time from .html metadata; also the destination of `/`'s `Accept: text/markdown` redirect |
+| Surface         | URL                                | Content type    | Source on disk                                                                                               |
+|-----------------|------------------------------------|-----------------|--------------------------------------------------------------------------------------------------------------|
+| Tool page       | `https://{{TOOLS_HOST}}/<path>`    | `text/html`     | `dev/tools/<name>.html`                                                                                      |
+| Per-tool skill  | `https://{{TOOLS_HOST}}/<path>.md` | `text/markdown` | `dev/tools/<name>.skill.md`                                                                                  |
+| Aggregate index | `https://{{TOOLS_HOST}}/llms.txt`  | `text/markdown` | generated at deploy time from .html metadata; also the destination of `/`'s `Accept: text/markdown` redirect |
 
 Two **separate responders** per tool: one for the HTML body, one for the markdown.
 This avoids fragile content-negotiation, keeps the HTML body under
@@ -448,12 +448,12 @@ checklist asks every agent-friendly site to publish. None of them require any
 per-tool authoring; they are derived 1:1 from the same HTML registry +
 `*.skill.md` directory listing as `llms.txt`.
 
-| URL                                            | Content type        | Source of truth                            | Responder env var                                  |
-|------------------------------------------------|---------------------|--------------------------------------------|-----------------------------------------------------|
-| `/robots.txt`                                  | `text/plain`        | `buildRobotsTxt()` in `deploy.ts`          | `SECUTILS_HTML_APP_RESPONDER_ID_ROBOTS_TXT`         |
-| `/sitemap.xml`                                 | `application/xml`   | `buildSitemapXml()` in `deploy.ts`         | `SECUTILS_HTML_APP_RESPONDER_ID_SITEMAP_XML`        |
-| `/.well-known/agent-skills/index.json`         | `application/json`  | `buildAgentSkillsIndex()` in `deploy.ts`   | `SECUTILS_HTML_APP_RESPONDER_ID_AGENT_SKILLS_INDEX` |
-| `Link:` headers on `/`                         | (HTTP response headers) | hard-coded `indexLinkHeaders` in `deploy.ts` | (no extra responder; pinned via index settings)   |
+| URL                                    | Content type            | Source of truth                              | Responder env var                                   |
+|----------------------------------------|-------------------------|----------------------------------------------|-----------------------------------------------------|
+| `/robots.txt`                          | `text/plain`            | `buildRobotsTxt()` in `deploy.ts`            | `SECUTILS_HTML_APP_RESPONDER_ID_ROBOTS_TXT`         |
+| `/sitemap.xml`                         | `application/xml`       | `buildSitemapXml()` in `deploy.ts`           | `SECUTILS_HTML_APP_RESPONDER_ID_SITEMAP_XML`        |
+| `/.well-known/agent-skills/index.json` | `application/json`      | `buildAgentSkillsIndex()` in `deploy.ts`     | `SECUTILS_HTML_APP_RESPONDER_ID_AGENT_SKILLS_INDEX` |
+| `Link:` headers on `/`                 | (HTTP response headers) | hard-coded `indexLinkHeaders` in `deploy.ts` | (no extra responder; pinned via index settings)     |
 
 #### `/robots.txt`
 
@@ -486,12 +486,31 @@ engines respect it as a hint, not a contract.
 #### `/.well-known/agent-skills/index.json`
 
 [Cloudflare's Agent Skills Discovery RFC v0.2.0](https://github.com/cloudflare/agent-skills-discovery-rfc)
-shape: `$schema` field plus a `skills` array where each entry has `name`,
-`type: "skill"`, `description` (mirrors the HTML's `su-tool-description`),
-`url` (the live `<path>.md` URL), and `sha256` of the deployed skill body.
-The hash is computed from the **substituted** Markdown body that actually
-ships, so an agent that's already cached the skill can detect updates with
-a single GET.
+shape: `$schema` URI (pinned to the canonical
+`https://schemas.agentskills.io/discovery/0.2.0/schema.json` - the spec
+requires strict clients to match it exactly) plus a `skills` array where
+each entry has:
+
+- `name` - the **frontmatter `name:` value from the SKILL.md**, not the
+  file slug. This is the canonical Agent Skills identifier (e.g.
+  `pem-certificate-decoder`, `mock-response`); the slug (`pem`, `echo`) is
+  a deploy-time path concern and would diverge from the promo site's
+  `/.well-known/agent-skills/index.json`, which keys off the same field.
+  `deploy.ts` parses the frontmatter at index build time and **fails the
+  deploy** if any skill is missing a `name:` or if two skills collide on
+  it - agents cache by name, so a collision corrupts that cache.
+- `type: "skill-md"` - the v0.2.0 RFC requires `"skill-md"` or
+  `"archive"`; strict clients silently skip unrecognized values. Earlier
+  deploys used `"skill"`, which would have made every entry invisible to
+  a literal RFC implementation.
+- `description` - mirrors the HTML's `su-tool-description` `<meta>` so
+  marketing/SEO/agent copy stays in sync from one source.
+- `url` - the live `<path>.md` URL.
+- `digest: "sha256:<hex>"` - per the RFC's "Integrity and Verification"
+  section. The hash is computed from the **substituted** Markdown body
+  that actually ships, so an agent that's already cached the skill can
+  detect updates with a single GET. Earlier deploys emitted a bare
+  `sha256: <hex>` field instead, which strict clients would not recognise.
 
 #### `Link:` headers on `/`
 

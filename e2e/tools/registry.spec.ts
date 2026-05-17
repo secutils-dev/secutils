@@ -114,16 +114,33 @@ test.describe('Tools registry - cross-cutting agent-discovery artefacts', () => 
     expect(r.headers()['content-type'] ?? '').toMatch(/application\/json/);
     const doc = await r.json();
     expect(doc).toHaveProperty('$schema');
-    expect(doc.$schema).toMatch(/agentskills/);
+    // The `$schema` URI is an opaque identifier per RFC v0.2.0; strict
+    // clients MUST match it exactly. We pin to the canonical Cloudflare URL.
+    expect(doc.$schema).toBe('https://schemas.agentskills.io/discovery/0.2.0/schema.json');
     expect(Array.isArray(doc.skills)).toBe(true);
     expect(doc.skills.length, 'should list at least one skill').toBeGreaterThan(0);
     for (const skill of doc.skills) {
-      expect(skill, 'every entry must be type=skill').toMatchObject({ type: 'skill' });
-      expect(skill.name, 'name must be non-empty').toMatch(/\S/);
+      // RFC v0.2.0: every entry MUST declare `type: "skill-md"` or `"archive"`.
+      // Earlier deploys used a non-spec `"skill"` value, which strict clients
+      // would silently skip; we now emit the spec-compliant value.
+      expect(skill, 'every entry must be type=skill-md').toMatchObject({ type: 'skill-md' });
+      // Agent Skills naming spec: 1-64 chars, lowercase alphanumeric + hyphens,
+      // no leading/trailing/consecutive hyphens.
+      expect(skill.name, 'name must conform to Agent Skills naming spec').toMatch(
+        /^[a-z0-9]+(-[a-z0-9]+)*$/,
+      );
+      expect(skill.name.length).toBeLessThanOrEqual(64);
       expect(skill.description, 'description must be non-empty').toMatch(/\S/);
       expect(skill.url, 'url must point at our tools host .md').toMatch(new RegExp(`^https://${TOOLS_HOST}/.+\\.md$`));
-      expect(skill.sha256, 'sha256 must be 64 hex chars').toMatch(/^[0-9a-f]{64}$/);
+      // RFC v0.2.0 §"Integrity and Verification": digest is `sha256:<hex>`,
+      // not a bare hex string under a `sha256` field.
+      expect(skill.digest, 'digest must be sha256:<hex>').toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(skill).not.toHaveProperty('sha256');
     }
+    // The skill `name` MUST be unique across the index: agents cache by name,
+    // and duplicates corrupt that cache.
+    const names = doc.skills.map((s: { name: string }) => s.name);
+    expect(new Set(names).size, 'skill names must be unique').toBe(names.length);
     // Non-promoted tools must not advertise their skill in the discovery
     // index (their `<path>.md` is still served for direct fetching).
     const urls = doc.skills.map((s: { url: string }) => s.url);

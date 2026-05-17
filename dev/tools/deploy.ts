@@ -250,15 +250,46 @@ function buildSitemapXml(tools: ToolMeta[], toolsHost: string): string {
 
 // `/.well-known/agent-skills/index.json` -- Cloudflare's Agent Skills
 // Discovery RFC v0.2.0 format (https://github.com/cloudflare/agent-skills-discovery-rfc).
-// One entry per deployed `<slug>.skill.md`. The sha256 of each skill body is
-// included so agent skill loaders can detect updates without re-fetching.
+// One entry per deployed `<slug>.skill.md`. The digest of each skill body is
+// included (as `sha256:<hex>` per the spec) so agent skill loaders can detect
+// updates without re-fetching.
+//
+// Strict v0.2.0 conformance (was wrong in earlier deploys, fixed for review
+// feedback from Cloudflare):
+//   - `$schema` is the canonical `https://schemas.agentskills.io/...` URL,
+//     not the `agentskills.io/schema/...` variant.
+//   - `type` is `"skill-md"` (was `"skill"`).
+//   - Integrity field is `digest: "sha256:<hex>"` (was a bare `sha256: <hex>`).
+//   - `name` is taken from the SKILL.md YAML frontmatter `name:` field, NOT
+//     from the file slug. The slug is a deploy-time path concern; the skill's
+//     canonical identifier (e.g. `pem-certificate-decoder`, `mock-response`)
+//     lives in the SKILL.md itself, where it must match the Agent Skills
+//     spec naming rules and stay in sync with the promo site's
+//     `/.well-known/agent-skills/index.json`, which keys off the same field.
 type SkillIndexEntry = {
   name: string;
-  type: "skill";
+  type: "skill-md";
   description: string;
   url: string;
-  sha256: string;
+  digest: string;
 };
+
+// Extracts the `name:` value from a SKILL.md YAML frontmatter block. The
+// frontmatter is always the first `---`-delimited block at the top of the
+// file (we generate it that way ourselves). Returns `undefined` if there is
+// no frontmatter or no `name:` line -- the caller treats that as a hard
+// error rather than silently falling back to the slug, because a wrong name
+// in the discovery index makes the skill indistinguishable from a different
+// one cached by clients keying on `name`.
+const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---/;
+const FRONTMATTER_NAME_RE = /^name:\s*["']?([^"'\r\n]+?)["']?\s*$/m;
+
+function extractSkillName(body: string): string | undefined {
+  const block = FRONTMATTER_RE.exec(body);
+  if (!block) return undefined;
+  const name = FRONTMATTER_NAME_RE.exec(block[1])?.[1]?.trim();
+  return name || undefined;
+}
 
 function buildAgentSkillsIndex(
   tools: ToolMeta[],
@@ -269,19 +300,35 @@ function buildAgentSkillsIndex(
   // non-promoted skills are still served at `<path>.md` for direct fetching.
   const ordered = tools.filter((t) => t.promote && t.path !== "/");
   const skills: SkillIndexEntry[] = [];
+  const seenNames = new Set<string>();
   for (const t of ordered) {
     const body = skillBodies.get(t.slug);
     if (!body) continue;
+    const name = extractSkillName(body);
+    if (!name) {
+      throw new Error(
+        `agent-skills index: ${t.slug}.skill.md is missing a \`name:\` field in its YAML frontmatter`,
+      );
+    }
+    if (seenNames.has(name)) {
+      throw new Error(
+        `agent-skills index: duplicate skill name "${name}" -- two SKILL.md files share the same frontmatter \`name:\``,
+      );
+    }
+    seenNames.add(name);
+    const hex = createHash("sha256").update(body, "utf-8").digest("hex");
     skills.push({
-      name: t.slug,
-      type: "skill",
+      name,
+      type: "skill-md",
       description: t.description,
       url: `https://${toolsHost}${t.path}.md`,
-      sha256: createHash("sha256").update(body, "utf-8").digest("hex"),
+      digest: `sha256:${hex}`,
     });
   }
   const doc = {
-    $schema: "https://agentskills.io/schema/v0.2.0/index.schema.json",
+    // Canonical RFC v0.2.0 schema URL. See
+    // https://github.com/cloudflare/agent-skills-discovery-rfc for the spec.
+    $schema: "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
     skills,
   };
   return JSON.stringify(doc, null, 2) + "\n";
