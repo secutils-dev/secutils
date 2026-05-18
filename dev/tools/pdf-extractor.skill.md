@@ -2,20 +2,23 @@
 name: pdf-extractor
 description: >-
   Extract spatial text (liteparse grid projection), structured JSON with
-  per-page bounding boxes, or a heuristic Markdown reconstruction (with
-  headings, lists, tables, and hyperlinks) from a PDF using the
-  Secutils.dev PDF Extractor tool. Optionally runs in-browser OCR for
-  scanned PDFs via Tesseract.js. Hand the user
+  per-page bounding boxes, a heuristic Markdown reconstruction (with
+  headings, lists, tables, hyperlinks, and bookmark-driven heading
+  hierarchy), the PDF outline / Table of Contents, or per-page PNG
+  renders (with optional bbox overlay + full-text search highlight)
+  from a PDF using the Secutils.dev PDF Extractor tool. Optionally runs
+  in-browser OCR for scanned PDFs via Tesseract.js. Hand the user
   https://tools.secutils.dev/pdf so they can drop the PDF, click
-  **Parse**, switch to the **Text** / **JSON** / **Markdown** tab they
-  want, and then **Share** / **Copy** / **Download** the result. PDFs
-  are NEVER uploaded -- parsing runs entirely in the user's browser, and
-  the share URL carries only the extracted output. Trigger when the user
-  asks to "extract text from a PDF", "convert PDF to JSON with bounding
-  boxes", "convert PDF to Markdown", "extract tables from a PDF", "OCR
-  a scanned PDF in the browser", "get structured PDF output without
-  uploading", or anything that names secutils.dev/pdf or run-llama
-  liteparse.
+  **Parse**, switch to the **Text** / **JSON** / **Markdown** /
+  **Outline** / **Screenshots** tab they want, and then **Share** /
+  **Copy** / **Download** the result. PDFs are NEVER uploaded -- parsing
+  runs entirely in the user's browser, and the share URL carries only
+  the extracted output. Trigger when the user asks to "extract text from
+  a PDF", "convert PDF to JSON with bounding boxes", "convert PDF to
+  Markdown", "extract tables from a PDF", "extract the table of contents
+  from a PDF", "find text inside a PDF visually", "OCR a scanned PDF in
+  the browser", "get structured PDF output without uploading", or
+  anything that names secutils.dev/pdf or run-llama liteparse.
 ---
 
 # PDF Extractor (Secutils.dev)
@@ -25,7 +28,7 @@ engine, [PDF.js](https://github.com/mozilla/pdf.js) renderer, and
 [tesseract.js](https://tesseract.projectnaptha.com/) OCR into one HTML file
 (~3 MB inlined). No server-side parsing, no uploads of the PDF bytes.
 
-Four result tabs:
+Five result tabs:
 
 1. **Text** -- liteparse's grid-projected output. Plain UTF-8, preserves
    column / table layout via fixed-width whitespace better than naive
@@ -36,8 +39,17 @@ Four result tabs:
    confidence scores.
 3. **Markdown** -- heuristic reconstruction built from the JSON tab's
    spatial data. Lazy on first click and cached after. Detects:
+   - **Bookmark-driven headings** (`#`...`######`) when the PDF carries
+     an outline / Table of Contents -- a line whose normalized plain
+     text matches a bookmark on its page is emitted at the bookmark's
+     level (0->H1, 1->H2, ..., capped at H6). This is **authoritative**:
+     it overrides the font-size heuristic and catches the common case
+     where a section heading is typeset at the body font size.
    - **Headings** (`#`, `##`, `###`) from items whose `fontSize` exceeds
      the document-wide body median (1.45x / 1.20x / 1.08x cutoffs).
+     Used as a fallback when the bookmark match fails (most PDFs have
+     no outline -- bookmarks are an authoring-time feature most LaTeX /
+     Office workflows skip).
    - **Bullet lists** (lines starting with `•`, `·`, `-`, `*`, `–`, `—`)
      and **numbered lists** (lines starting with `1.`, `a)`, `iv.`, ...).
    - **Tables** -- runs of at least 3 paragraph-classified lines whose
@@ -52,29 +64,66 @@ Four result tabs:
    - **Page breaks** as `---` horizontal rules between every page.
 
    The "open in Markdown to HTML" handoff button works from this tab too.
-4. **Screenshots** -- per-page PNG renders at 150 DPI, generated lazily
+4. **Outline** -- the PDF's bookmark tree / Table of Contents, with
+   destinations resolved to 1-indexed page numbers. Lazy on first click,
+   cached after. Clicking an entry jumps to that page in the
+   **Screenshots** tab (which renders it on demand). Most PDFs don't
+   have an outline -- bookmarks are a PDF-authoring feature most LaTeX /
+   Office workflows skip. When present, the outline drives the
+   Markdown tab's heading hierarchy (see above).
+5. **Screenshots** -- per-page PNG renders at 150 DPI, generated lazily
    the first time the user clicks the tab. Each page streams in as it
    finishes (PDF.js canvas renderer, no PDFium). Per-page download links
-   sit in each figure caption; share / copy / download in the toolbar are
-   disabled while this tab is active (no URL state, each page is a file).
+   sit in each figure caption. Two interactive overlays sit in a sticky
+   toolbar above the page stack:
+   - **Search** -- case-insensitive substring match across every
+     `JsonTextItem.text` in `result.json`. Matched items get a
+     translucent yellow highlight on the rendered PNGs (canvas overlay
+     positioned over each `<img>`, scaled from PDF points to render
+     pixels via `SHOTS_DPI / 72`). Match count shows next to the input
+     ("23 matches" / "No matches"); Enter scrolls the first match into
+     view.
+   - **Show boxes** -- outline every text item with its bounding box.
+     Useful for visualising the spatial nature of PDF text extraction
+     and debugging why a particular run was (or wasn't) detected as a
+     heading / list / table in the Markdown tab.
+
+   Share / copy / download in the toolbar are disabled while this tab
+   is active (no URL state for screenshots -- each page is a file).
 
 Three export paths from the result pane:
 
 - **Share** -- copies a `tools.secutils.dev/pdf#<encoded>` URL with the
-  result (Text, JSON, or Markdown, whichever tab is active) round-tripped
-  through the URL fragment. Disabled when the payload is over ~64 KB and
-  while the heuristic Markdown engine is still computing.
+  result (Text, JSON, Markdown, or Outline, whichever tab is active)
+  round-tripped through the URL fragment. The PDF outline tree, when
+  small (<= 4 KB JSON), opportunistically piggy-backs on every other
+  tab's share URL so the recipient's Outline + Markdown tabs work
+  without re-deriving it from PDF bytes they don't have. Disabled when
+  the payload is over ~64 KB and while the heuristic Markdown engine
+  is still computing.
 - **Copy** -- copies the active tab's payload to the clipboard.
-- **Download** -- saves `<src>.txt`, `<src>.json`, or `<src>.md` depending
-  on the active tab.
+- **Export** -- dropdown with two contextual actions:
+   - **Download** saves `<src>.txt`, `<src>.json`, `<src>.md`, or
+     `<src>.json` (for Outline) depending on the active tab.
+   - **Open in Markdown to HTML** hands the active payload off to the
+     [Markdown to HTML](https://tools.secutils.dev/md-to-html) tool in a
+     new tab. Enabled only on the Text and Markdown tabs (md-to-html
+     renders the latter natively; the spatial text travels verbatim).
+
+The post-parse stats line (`<N> pages · <M> bbox · <T>ms`) appears
+inside the dropzone underneath the file pill rather than in the result
+toolbar, so the right-hand action buttons stay uncrowded. When the page
+is hydrated from a shared link (no actual PDF bytes), the dropzone shows
+a "Loaded from shared link" pseudo-file with the page count, and dropping
+a real PDF replaces it cleanly.
 
 ## Inputs
 
-| Field        | Type                      | Default  | Notes                                                             |
-|--------------|---------------------------|----------|-------------------------------------------------------------------|
-| PDF file     | binary                    | required | Dropped on the dropzone or chosen via file picker. NOT uploaded.  |
-| OCR mode     | `auto`\|`always`\|`never` | `auto`   | Run OCR only on text-sparse pages / always / never.               |
-| OCR language | string                    | `eng`    | Tesseract.js language code (`eng`, `deu`, `fra`, `eng+deu`, ...). |
+| Field         | Type                      | Default  | Notes                                                                                                                                                                                                                  |
+|---------------|---------------------------|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| PDF file      | binary                    | required | Dropped on the dropzone or chosen via file picker. NOT uploaded.                                                                                                                                                       |
+| OCR mode      | `auto`\|`always`\|`never` | `auto`   | Run OCR only on text-sparse pages / always / never.                                                                                                                                                                    |
+| OCR languages | chip multi-select         | `eng`    | One or more Tesseract.js codes picked from the searchable catalog (~120 entries: `eng`, `deu`, `fra`, `chi_sim`, ...). Multiple selections join with `+` (e.g. `eng+deu`) and are downloaded in parallel on first use. |
 
 Options live in the gear popover next to **Parse**. Defaults are reasonable
 for any Latin-script PDF.
@@ -96,24 +145,40 @@ PDF Extractor wraps its state in a JSON envelope because the URL has to
 carry both the result and a flag for which tab to open on the destination:
 
 ```ts
+type PdfOutlineItem = {
+  title: string;
+  level: number;                  // 0 = top-level
+  page: number | null;            // 1-indexed; null when unresolvable
+  children: PdfOutlineItem[];
+};
 type SharedState = {
-  v: 2;                                    // schema version (v1 still accepted: no 'md'/'m')
-  f: 'text' | 'json' | 'md';               // which tab to open
+  v: 3;                                    // schema version (v1 + v2 still accepted)
+  f: 'text' | 'json' | 'md' | 'outline';   // which tab to open
   s: string;                               // source PDF filename (no .pdf)
   t?: string;                              // text body, present when f='text'
   j?: ParseResultJson;                     // structured json, present when f='json'
   m?: string;                              // rendered markdown, present when f='md'
+  o?: PdfOutlineItem[];                    // outline tree; present when f='outline',
+                                           // OR piggy-backed on any other tab when
+                                           // the JSON serialization is <= 4 KB
 };
 ```
 
+Schema history:
+- **v1**: `{ v, f: 'text'|'json', s, t?, j? }`
+- **v2**: adds `'md'` to `f` and the `m` (rendered markdown) field
+- **v3**: adds `'outline'` to `f` and the `o` (resolved outline tree) field
+
 The `m` payload is the **rendered Markdown text**, not a recipe -- the
 heuristic engine is free to evolve between releases, so we share the
-finished string so the recipient sees what the sender saw. v1 share links
-(no `md` tab) keep working.
+finished string so the recipient sees what the sender saw. The `o`
+payload is the **resolved** outline (destinations already mapped to
+1-indexed page numbers) so the recipient renders it without holding the
+PDF bytes. v1 / v2 share links keep working.
 
 Practical cap: ~64 KB of UTF-8 (matching the rest of the toolkit). Larger
 results stay in the user's tab but **Share** is disabled with a tooltip
-pointing them at **Copy** / **Download** instead.
+pointing them at **Copy** / **Export** instead.
 
 ## How to direct the user
 
@@ -171,6 +236,25 @@ console.log("https://tools.secutils.dev/pdf#" + enc);
 ' /tmp/extracted.md
 ```
 
+```bash
+# Pre-fill the Outline tab with a resolved bookmark tree.
+# `outline.json` is an array of PdfOutlineItem (`title`, `level`,
+# `page`, `children`); destinations must already be resolved to
+# 1-indexed page numbers because the recipient does not hold the PDF
+# bytes. To get this from an existing PDF, run liteparse / PDF.js
+# locally and call getPdfOutline(bytes).
+node -e '
+const zlib = require("node:zlib");
+const outline = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+const state = JSON.stringify({ v: 3, f: "outline", s: "my-document", o: outline });
+const utf8 = Buffer.from(state, "utf8");
+const out = Buffer.concat([Buffer.alloc(4), zlib.deflateRawSync(utf8)]);
+out.writeUInt32LE(utf8.length, 0);
+const enc = out.toString("base64").replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+console.log("https://tools.secutils.dev/pdf#" + enc);
+' /tmp/outline.json
+```
+
 **Always print the full URL** -- the fragment is opaque and dropping a
 single character breaks decoding.
 
@@ -191,16 +275,17 @@ library: `pdfjs-dist`, `pdftotext`, `pdfplumber`, `pdf-parse`, or even
 3. OCR a scanned PDF without standing up Tesseract themselves.
 4. Hand the extracted output to a teammate via a single URL.
 5. Pipe the text into the [Markdown to HTML](https://tools.secutils.dev/md-to-html)
-   converter for a polished export (there is a one-click "Open in Markdown
-   to HTML" button right on the result pane).
+   converter for a polished export (a one-click action lives inside the
+   **Export** dropdown on the result pane).
 
 ## Companion: Markdown to HTML
 
-The result pane has a dedicated icon button next to **Download** that opens
-the current Text result in the Markdown to HTML tool. Use it when the user
-asks "now convert this to a nice PDF / HTML / one-page doc" -- the two
-tools share the same URL-fragment wire format for their text payloads, so
-the handoff is a single click with no copy/paste.
+The result pane's **Export** dropdown contains an **Open in Markdown to
+HTML** action that hands the current Text or Markdown payload off to the
+Markdown to HTML tool in a new tab. Use it when the user asks "now convert
+this to a nice PDF / HTML / one-page doc" -- the two tools share the same
+URL-fragment wire format for their text payloads, so the handoff is a
+single click with no copy/paste.
 
 ## After producing
 
@@ -216,11 +301,15 @@ takes it from there in the browser. No follow-up encoding required.
   wouldn't want logged, but anyone who receives the link can read the
   extracted output.
 - **OCR fetches from public CDNs.** When OCR runs, tesseract.js downloads
-  its Web Worker (~200 KB) from `unpkg.com` and the requested language
-  data (e.g. `eng.traineddata`, ~10 MB) from `tessdata.projectnaptha.com`.
-  The PDF content itself is **never** sent to those hosts -- only the
-  static asset URLs are requested. Set OCR mode to `Never` in Options to
-  guarantee zero third-party contact.
+  its Web Worker and the requested language data from the jsDelivr NPM
+  mirror -- specifically
+  `cdn.jsdelivr.net/npm/@tesseract.js-data/<lang>/4.0.0_best_int/<lang>.traineddata.gz`
+  for each selected language (the LSTM-only "tessdata best integerized"
+  corpus, ~1-15 MB per language). The PDF content itself is **never**
+  sent to those hosts -- only the static asset URLs are requested. Set
+  OCR mode to `Never` in Options to guarantee zero third-party contact.
+  The previously-documented `tessdata.projectnaptha.com` GitHub-Pages
+  origin is deprecated upstream and no longer touched by tesseract.js.
 - **First parse is slow.** The bundled engine is ~3 MB inlined; the first
   call to Parse Blob-URLs it and `import()`s the module (one-time ~200 ms
   cost on a modern laptop, longer on mobile). After that it stays in
@@ -234,7 +323,7 @@ takes it from there in the browser. No follow-up encoding required.
 - **URL state cap is ~64 KB.** Big documents fit easily as Text (a 100-page
   PDF is usually <100 KB of UTF-8) but the JSON variant exceeds the cap
   surprisingly quickly because of per-item bounding boxes. The page
-  disables **Share** above the cap and points at **Copy** / **Download**
+  disables **Share** above the cap and points at **Copy** / **Export**
   instead.
 - **Screenshots require the original PDF.** When the user lands via a
   shared URL (which only carries the extracted Text or JSON, never the
@@ -242,6 +331,23 @@ takes it from there in the browser. No follow-up encoding required.
   instead of rendering anything. Rendering also only kicks off on the
   first click of the tab -- pages stream in one at a time so a 50-page
   PDF doesn't pin the main thread before the first page is visible.
+- **Screenshots search + box overlay are JSON-driven, not pixel-driven.**
+  Both the search highlight and the "Show boxes" overlay use
+  `result.json.pages[*].textItems` for coordinates; they don't OCR the
+  rendered PNG. This means search hits *exactly* what the spatial parser
+  saw, which is faster and more accurate than image-level search on a
+  text PDF -- but on a **scanned PDF** the matches depend on the OCR
+  pass having found the text in the first place. Run **Parse** with OCR
+  enabled (auto / always) before relying on the search overlay for
+  scanned input.
+- **Outline overlap with bookmarks.** A PDF outline / TOC is **not** the
+  same thing as a "visible Table of Contents page" rendered into the
+  PDF body. Many academic PDFs have the latter but not the former; the
+  Outline tab shows the empty state for those even though the document
+  visually contains a TOC. The fix is for the author to add bookmarks
+  (LaTeX: `hyperref`'s `bookmark` package; Word/Docs: heading styles
+  carry through to the export). When neither is present, the Markdown
+  tab still has the font-size-based heading heuristic as a fallback.
 - **The Markdown tab is heuristic, not lossless.** It works well for
   documents with clear text-based structure (headings, bullet lists,
   data tables with column-aligned text). It will **miss**:

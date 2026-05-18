@@ -68,6 +68,43 @@ interface PdfJsDocForLinks {
 }
 
 /**
+ * One node of a PDF outline (bookmark) tree, resolved to a 1-indexed page
+ * number. `level` is the depth (0 = top-level). `children` mirrors the
+ * outline's nested structure so consumers can render it as a tree, but the
+ * flat (`level` + parent index) form is preserved for everything that just
+ * wants a heading hierarchy (e.g. the Markdown reconstructor in the PDF
+ * Extractor).
+ *
+ * `page` is `null` when the destination could not be resolved (broken
+ * intra-doc link, named destination missing from the catalog, etc.) -- we
+ * keep the title in the tree because the bookmark is still useful for
+ * humans, but downstream code that needs page numbers should skip nulls.
+ */
+export interface PdfOutlineItem {
+  title: string;
+  level: number;
+  page: number | null;
+  children: PdfOutlineItem[];
+}
+
+interface PdfJsOutlineNode {
+  title: string;
+  // PDF.js returns the destination as either an explicit `[ref, ...]` array
+  // (already resolved) or a string (a named destination that must be looked
+  // up via `getDestination`). For "Open URL" outline entries it's null.
+  dest?: string | unknown[] | null;
+  items?: PdfJsOutlineNode[];
+}
+
+interface PdfJsDocForOutline {
+  numPages: number;
+  getOutline(): Promise<PdfJsOutlineNode[] | null>;
+  getDestination(name: string): Promise<unknown[] | null>;
+  getPageIndex(dest: unknown): Promise<number>;
+  destroy(): Promise<void>;
+}
+
+/**
  * Extract all hyperlink annotations from a PDF. The PDF Extractor's Markdown
  * tab uses this for best-effort `[text](url)` reconstruction by intersecting
  * each `JsonTextItem`'s bbox with the returned link rectangles.
@@ -116,4 +153,83 @@ export async function getPdfLinks(bytes: Uint8Array): Promise<PdfLink[]> {
     await doc.destroy().catch(() => {});
   }
   return out;
+}
+
+/**
+ * Extract the PDF outline (a.k.a. bookmarks / Table of Contents) and resolve
+ * every destination to a 1-indexed page number. Returns a forest of
+ * `PdfOutlineItem` nodes preserving the original hierarchy; an empty array
+ * means the PDF has no outline (most PDFs don't).
+ *
+ * Used by the PDF Extractor's Outline tab (navigation) and by the Markdown
+ * reconstructor (authoritative heading hierarchy that overrides the
+ * font-size heuristic when present). Resolving destinations is best-effort:
+ * named destinations that the catalog doesn't know about, and "Open URL"
+ * outline entries, are kept in the tree with `page: null` so the title is
+ * still visible -- downstream consumers can skip them at navigation time
+ * or, in the Markdown case, fall back to the heuristic for that line.
+ */
+export async function getPdfOutline(bytes: Uint8Array): Promise<PdfOutlineItem[]> {
+  const { fn: getDocument } = await importPdfJs();
+  const data = new Uint8Array(bytes);
+  const loadingTask = (
+    getDocument as (opts: { data: Uint8Array }) => {
+      promise: Promise<PdfJsDocForOutline>;
+    }
+  )({ data });
+  const doc = await loadingTask.promise;
+  try {
+    const raw = await doc.getOutline();
+    if (!raw || raw.length === 0) return [];
+    return await walkOutline(raw, 0, doc);
+  } finally {
+    await doc.destroy().catch(() => {});
+  }
+}
+
+async function walkOutline(
+  nodes: PdfJsOutlineNode[],
+  level: number,
+  doc: PdfJsDocForOutline,
+): Promise<PdfOutlineItem[]> {
+  const out: PdfOutlineItem[] = [];
+  for (const node of nodes) {
+    const page = await resolveDestPage(node.dest, doc);
+    out.push({
+      title: (node.title ?? "").trim(),
+      level,
+      page,
+      children: node.items?.length
+        ? await walkOutline(node.items, level + 1, doc)
+        : [],
+    });
+  }
+  return out;
+}
+
+async function resolveDestPage(
+  dest: PdfJsOutlineNode["dest"],
+  doc: PdfJsDocForOutline,
+): Promise<number | null> {
+  if (!dest) return null;
+  try {
+    let resolved: unknown[] | null;
+    if (typeof dest === "string") {
+      // Named destination -- catalog lookup is async. Some PDFs ship
+      // named entries that don't actually exist; treat that as
+      // "unresolvable" rather than throwing.
+      resolved = await doc.getDestination(dest);
+    } else {
+      resolved = dest as unknown[];
+    }
+    if (!resolved || resolved.length === 0) return null;
+    const ref = resolved[0];
+    // PDF.js's `getPageIndex` returns 0-indexed; we expose 1-indexed page
+    // numbers to match `ParseResultJson.pages[*].page` and the rest of
+    // this bundle's API surface.
+    const idx = await doc.getPageIndex(ref);
+    return idx + 1;
+  } catch {
+    return null;
+  }
 }
