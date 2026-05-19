@@ -1406,16 +1406,22 @@ There are two different footer patterns depending on whether the page has the Se
 
 ### Tool app pages (have the Secutils logo header)
 
-Since branding is already in the header, the footer should contain a **short description of the tool** - not a "Powered by" watermark. Use `<p>` text, no logo repetition. Every footer also carries a **Privacy** link (a `<button>` that opens the canonical privacy dialog - see "Privacy dialog" below). The link is a `<button>` rather than an `<a href="#privacy">` so it doesn't pollute history or the URL fragment (the fragment is reserved for tool state, see "URL state encoding" above).
+Since branding is already in the header, the footer should contain a **short description of the tool** - not a "Powered by" watermark. Use `<p>` text, no logo repetition. Every footer also carries a **Privacy** link and (when the tool ships any third-party browser-runtime JS) a sibling **Credits** link, both `<button>` elements that open the canonical dialogs - see "Privacy dialog" and "Credits dialog" below. The links are `<button>` rather than `<a href="#privacy">` so they don't pollute history or the URL fragment (the fragment is reserved for tool state, see "URL state encoding" above).
 
-Two-line layout: the tool description on the first line, the Privacy link demoted to a smaller, dimmer second line so it reads as "fine print" rather than competing with the description.
+Two-line layout: the tool description on the first line, the Privacy / Credits links demoted to a smaller, dimmer second line so they read as "fine print" rather than competing with the description. When both links are present, separate them with a middle dot (`&middot;`) wrapped in `<span aria-hidden="true">` so screen readers skip the visual ornament.
 
 ```html
 <footer class="su-footer">
     <p>A single-file tool description goes here.</p>
-    <p class="su-footer-fineprint"><button type="button" class="su-footer-link" id="privacyOpen">Privacy</button></p>
+    <p class="su-footer-fineprint">
+        <button type="button" class="su-footer-link" id="privacyOpen">Privacy</button>
+        <span aria-hidden="true"> &middot; </span>
+        <button type="button" class="su-footer-link" id="creditsOpen">Credits</button>
+    </p>
 </footer>
 ```
+
+Tools whose browser side ships **zero** third-party JS (today: `index.html`, `echo.html` - tiny-inflate is server-side only) omit the Credits link and the middle-dot separator, leaving the fineprint as a single Privacy button.
 
 ```css
 .su-footer {
@@ -1607,6 +1613,96 @@ that. Tools that ship in IE-era syntax (`var` / `function ()`) like
 `index.html` mirror the same style with `var` instead of `const`; the
 behaviour is identical.
 
+## Credits dialog (footer)
+
+Every tool whose browser side runs any third-party JS carries a **Credits**
+button next to **Privacy** in the footer fineprint. It opens a native
+`<dialog>` listing the major open-source libraries that power the tool, each
+linked to its GitHub repository. The dialog reuses the same `.su-dialog`
+chrome (chrome, close button, backdrop, centering) as the Privacy dialog -
+only the body content differs.
+
+### Why a separate dialog instead of a section inside Privacy
+
+Privacy is a legal-adjacent disclosure (what stays in the browser, what
+Plausible collects); Credits is attribution / acknowledgement (which OSS
+libraries the tool reuses). Conflating them buries each behind the other's
+copy, and the open-source-attribution surface needs to grow per-tool while
+the Privacy copy stays identical across every tool. Two dialogs keep each
+one short and the per-tool diff small.
+
+### When to omit the link
+
+If a tool ships **zero** third-party browser JS (today: `index.html` and
+`echo.html`), drop both the footer button and the `<dialog>` block - there
+is nothing to credit. Vendored code that runs only inside the
+`@su:responder-script` block (e.g. `echo.html`'s tiny-inflate) does not
+count: the dialog scope is the browser-side experience the user actually
+interacts with.
+
+### Markup (copy verbatim, fill in the list)
+
+Place as the **next sibling after `#privacyDialog`** (so the two dialogs sit
+together at the end of `<body>`):
+
+```html
+<dialog id="creditsDialog" class="su-dialog" aria-labelledby="creditsDialogTitle">
+    <header class="su-dialog-header">
+        <h2 id="creditsDialogTitle">Credits</h2>
+        <button type="button" class="su-dialog-close" id="creditsClose" aria-label="Close">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>
+        </button>
+    </header>
+    <div class="su-dialog-body">
+        <p>This tool is powered by the following open-source libraries:</p>
+        <ul class="su-credits-list">
+            <li><a href="https://github.com/&lt;owner&gt;/&lt;repo&gt;" target="_blank" rel="noopener noreferrer"><strong>name</strong></a> - short one-line description.</li>
+        </ul>
+        <p class="su-dialog-fineprint">All trademarks are property of their respective owners.</p>
+    </div>
+</dialog>
+```
+
+Content rules:
+
+- One `<li>` per major library. Skip transitive deps - the goal is
+  attribution of the libraries an informed reader would recognise, not
+  exhaustive SBOM coverage.
+- Link the library **name** (bolded with `<strong>`) to its canonical
+  GitHub repository. No version numbers (the cdnjs / `data-su-bundle`
+  pinned versions already record those; the dialog should not drift on
+  every bump).
+- After the link, a single hyphen surrounded by spaces, then a brief
+  one-line description. **No em-dashes anywhere** - the visual hyphen is
+  a single ASCII `-`.
+- List order follows the order the libraries appear in `<head>` `<script>`
+  tags (and after them, any libraries pulled in by `data-su-bundle` or
+  dynamic `import()` calls).
+
+### CSS (copy verbatim)
+
+Place next to the existing `.su-dialog-body` rules:
+
+```css
+.su-credits-list { margin: 0 0 12px; padding-left: 20px; }
+.su-credits-list li { margin-bottom: 6px; }
+.su-credits-list li:last-child { margin-bottom: 0; }
+```
+
+### Wiring (copy verbatim)
+
+A standalone IIFE inside the tool's main `<script>` block, placed
+**immediately after the Privacy IIFE** so the two dialog wirings sit next to
+each other:
+
+```js
+(() => {
+    const dlg = document.getElementById('creditsDialog');
+    document.getElementById('creditsOpen').addEventListener('click', () => dlg.showModal());
+    document.getElementById('creditsClose').addEventListener('click', () => dlg.close());
+})();
+```
+
 ## Responsive (mobile)
 
 ```css
@@ -1791,10 +1887,12 @@ that explains it in detail.
    fallback; `su-tool-path`, `su-tool-name`, `su-tool-description`,
    `su-tool-promote` meta tags; the Plausible analytics snippet in `<head>` (see
    "Analytics (Plausible)"); **bottom "more free tools" banner** as the last child of
-   `<main>` (see "More free tools bottom CTA"); footer with a **Privacy** button (see
+   `<main>` (see    "More free tools bottom CTA"); footer with a **Privacy** button (see
    "Footer") backed by the canonical `<dialog>` block as the last child of `<body>`
-   (see "Privacy dialog"). Do NOT add a separate `<nav class="su-related">` block -
-   the banner is the sole related-tools surface.
+   (see "Privacy dialog"); if the tool ships any third-party browser-runtime JS,
+   a sibling **Credits** button next to Privacy and a matching `<dialog>` listing
+   each library with a GitHub link (see "Credits dialog"). Do NOT add a separate
+   `<nav class="su-related">` block - the banner is the sole related-tools surface.
 2. **Author the skill** - `dev/tools/<name>.skill.md` as a real Claude Code / Cursor
    SKILL.md (terse `name` + `description` frontmatter, rich Markdown body with `## Inputs`,
    `## Wire format`, `## How to produce the URL` runnable snippet, `## After producing`,

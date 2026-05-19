@@ -236,6 +236,9 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
 .su-dialog-body a { color: var(--primary); text-decoration: none; }
 .su-dialog-body a:hover { text-decoration: underline; }
 .su-dialog-fineprint { font-size: 0.8rem; color: var(--text-muted); }
+.su-credits-list { margin: 0 0 12px; padding-left: 20px; }
+.su-credits-list li { margin-bottom: 6px; }
+.su-credits-list li:last-child { margin-bottom: 0; }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--surface); }
@@ -403,7 +406,11 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
 
     <footer class="su-footer">
         <p>Convert Markdown to self-contained HTML or print-ready PDFs.</p>
-        <p class="su-footer-fineprint"><button type="button" class="su-footer-link" id="privacyOpen">Privacy</button></p>
+        <p class="su-footer-fineprint">
+            <button type="button" class="su-footer-link" id="privacyOpen">Privacy</button>
+            <span aria-hidden="true"> &middot; </span>
+            <button type="button" class="su-footer-link" id="creditsOpen">Credits</button>
+        </p>
     </footer>
 
     <dialog id="privacyDialog" class="su-dialog" aria-labelledby="privacyDialogTitle">
@@ -417,6 +424,25 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
             <p><strong>Your data stays in your browser.</strong> These tools run entirely client-side. Tokens, PEMs, SAML payloads, Markdown source, and mock-response bodies are never sent to the Secutils.dev server. State that needs to survive a reload (or be shared) lives in the URL fragment (<code>#&hellip;</code>), which browsers never transmit to the server.</p>
             <p><strong>Anonymous usage analytics.</strong> We use <a href="https://plausible.io/" target="_blank" rel="noopener noreferrer">Plausible Analytics</a>, a privacy-first, GDPR-compliant tool, to collect aggregate usage data. No cookies, no personal data, no individual tracking. The data is limited to top pages, referral sources, visit duration, and device-class metadata (device type, OS, country, browser). Full details in the <a href="https://plausible.io/data-policy" target="_blank" rel="noopener noreferrer">Plausible Data Policy</a>.</p>
             <p class="su-dialog-fineprint">See the full <a href="https://secutils.dev/privacy" target="_blank" rel="noopener noreferrer">Secutils.dev privacy policy</a> for details on the wider service.</p>
+        </div>
+    </dialog>
+
+    <dialog id="creditsDialog" class="su-dialog" aria-labelledby="creditsDialogTitle">
+        <header class="su-dialog-header">
+            <h2 id="creditsDialogTitle">Credits</h2>
+            <button type="button" class="su-dialog-close" id="creditsClose" aria-label="Close">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>
+            </button>
+        </header>
+        <div class="su-dialog-body">
+            <p>This tool is powered by the following open-source libraries:</p>
+            <ul class="su-credits-list">
+                <li><a href="https://github.com/markedjs/marked" target="_blank" rel="noopener noreferrer"><strong>marked</strong></a> - Markdown parser and compiler, used to render the source into HTML.</li>
+                <li><a href="https://github.com/highlightjs/highlight.js" target="_blank" rel="noopener noreferrer"><strong>highlight.js</strong></a> - syntax highlighter, used to colourise fenced code blocks in the preview and exported HTML.</li>
+                <li><a href="https://github.com/codemirror/dev" target="_blank" rel="noopener noreferrer"><strong>CodeMirror</strong></a> - extensible code editor, powers the Markdown source pane with syntax highlighting and line numbers.</li>
+                <li><a href="https://github.com/pagedjs/pagedjs" target="_blank" rel="noopener noreferrer"><strong>Paged.js</strong></a> - CSS Paged Media polyfill, used to paginate the rendered HTML into a vector PDF on Export.</li>
+            </ul>
+            <p class="su-dialog-fineprint">All trademarks are property of their respective owners.</p>
         </div>
     </dialog>
 
@@ -630,6 +656,12 @@ const decodeState = async (str) => {
     const dlg = document.getElementById('privacyDialog');
     document.getElementById('privacyOpen').addEventListener('click', () => dlg.showModal());
     document.getElementById('privacyClose').addEventListener('click', () => dlg.close());
+})();
+
+(() => {
+    const dlg = document.getElementById('creditsDialog');
+    document.getElementById('creditsOpen').addEventListener('click', () => dlg.showModal());
+    document.getElementById('creditsClose').addEventListener('click', () => dlg.close());
 })();
 
 marked.use({ gfm: true, breaks: false });

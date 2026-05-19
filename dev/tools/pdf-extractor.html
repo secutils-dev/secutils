@@ -365,6 +365,9 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
 .su-dialog-body a { color: var(--primary); text-decoration: none; }
 .su-dialog-body a:hover { text-decoration: underline; }
 .su-dialog-fineprint { font-size: 0.8rem; color: var(--text-muted); }
+.su-credits-list { margin: 0 0 12px; padding-left: 20px; }
+.su-credits-list li { margin-bottom: 6px; }
+.su-credits-list li:last-child { margin-bottom: 0; }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--surface); }
@@ -664,7 +667,11 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
 
     <footer class="su-footer">
         <p>Extract text and structured JSON from PDFs, in your browser.</p>
-        <p class="su-footer-fineprint"><button type="button" class="su-footer-link" id="privacyOpen">Privacy</button></p>
+        <p class="su-footer-fineprint">
+            <button type="button" class="su-footer-link" id="privacyOpen">Privacy</button>
+            <span aria-hidden="true"> &middot; </span>
+            <button type="button" class="su-footer-link" id="creditsOpen">Credits</button>
+        </p>
     </footer>
 
     <dialog id="privacyDialog" class="su-dialog" aria-labelledby="privacyDialogTitle">
@@ -679,6 +686,24 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
             <p><strong>OCR fetches from public CDNs.</strong> When OCR is enabled and a page needs it, the bundled <a href="https://tesseract.projectnaptha.com/" target="_blank" rel="noopener noreferrer">tesseract.js</a> engine fetches its language data from the public <code>cdn.jsdelivr.net/npm/@tesseract.js-data/&lt;lang&gt;/</code> mirror. The PDF content itself is never sent anywhere, only those static asset URLs are requested. Disable OCR in <em>Options</em> if you'd rather not contact any third party.</p>
             <p><strong>Anonymous usage analytics.</strong> We use <a href="https://plausible.io/" target="_blank" rel="noopener noreferrer">Plausible Analytics</a>, a privacy-first, GDPR-compliant tool, to collect aggregate usage data. No cookies, no personal data, no individual tracking. Limited to top pages, referral sources, visit duration, and device-class metadata.</p>
             <p class="su-dialog-fineprint">See the full <a href="https://secutils.dev/privacy" target="_blank" rel="noopener noreferrer">Secutils.dev privacy policy</a> for details on the wider service.</p>
+        </div>
+    </dialog>
+
+    <dialog id="creditsDialog" class="su-dialog" aria-labelledby="creditsDialogTitle">
+        <header class="su-dialog-header">
+            <h2 id="creditsDialogTitle">Credits</h2>
+            <button type="button" class="su-dialog-close" id="creditsClose" aria-label="Close">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>
+            </button>
+        </header>
+        <div class="su-dialog-body">
+            <p>This tool is powered by the following open-source libraries:</p>
+            <ul class="su-credits-list">
+                <li><a href="https://github.com/run-llama/liteparse" target="_blank" rel="noopener noreferrer"><strong>liteparse</strong></a> - lightweight PDF text and layout extractor, orchestrates parsing and the OCR fallback inside the browser.</li>
+                <li><a href="https://github.com/mozilla/pdf.js" target="_blank" rel="noopener noreferrer"><strong>PDF.js</strong></a> - Mozilla's pure-JavaScript PDF renderer, used to parse the document structure and rasterise pages for OCR.</li>
+                <li><a href="https://github.com/naptha/tesseract.js" target="_blank" rel="noopener noreferrer"><strong>tesseract.js</strong></a> - pure-JavaScript port of the Tesseract OCR engine, used to extract text from image-only PDF pages when OCR is enabled.</li>
+            </ul>
+            <p class="su-dialog-fineprint">All trademarks are property of their respective owners.</p>
         </div>
     </dialog>
 
@@ -876,6 +901,12 @@ const decodeState = async (str) => {
     const dlg = $('privacyDialog');
     $('privacyOpen').addEventListener('click', () => dlg.showModal());
     $('privacyClose').addEventListener('click', () => dlg.close());
+})();
+
+(() => {
+    const dlg = $('creditsDialog');
+    $('creditsOpen').addEventListener('click', () => dlg.showModal());
+    $('creditsClose').addEventListener('click', () => dlg.close());
 })();
 
 function toast(msg) {
