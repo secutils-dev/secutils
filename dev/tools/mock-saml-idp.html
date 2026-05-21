@@ -26,13 +26,13 @@
   <meta name="twitter:description" content="Generate signed SAML responses for testing Elasticsearch and Kibana SSO. IdP- and SP-initiated flows. No signup.">
   <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-mock-saml-idp.png">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Mock SAML IdP","url":"https://{{TOOLS_HOST}}/elastic/saml/idp-login","applicationCategory":"SecurityApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/mock-saml-idp.html","description":"Generate signed SAML responses for testing Elasticsearch and Kibana SSO. Supports IdP-initiated and SP-initiated flows with configurable users, roles, and attributes. Browser-only, no signup."}</script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.9.0/jsrsasign-all-min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/10.9.0/jsrsasign-all-min.js" defer fetchpriority="low"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" defer fetchpriority="low"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
   <!-- Privacy-friendly analytics by Plausible -->
-  <script defer src="https://tools.secutils.dev/js/script.js"></script>
+  <script defer src="https://tools.secutils.dev/js/script.js" fetchpriority="low"></script>
   <script>
     window.plausible = window.plausible || function () { (plausible.q = plausible.q || []).push(arguments) };
     plausible.init = plausible.init || function (i) { plausible.o = i || {} };
@@ -49,6 +49,7 @@
     --accent: #642340;
     --badge-bg: #2B394F; --badge-text: #98A8C3;
     --input-bg: #16171c; --input-border: #343741;
+    --danger: #dc4a44;
     --card-bg: rgba(29,30,36,0.7);
     --info-bg: rgba(43,57,79,0.3); --info-border: rgba(43,57,79,0.6); --info-text: #98A8C3;
     --tab-active-bg: var(--primary); --tab-active-text: var(--primary-text);
@@ -64,6 +65,7 @@
     --accent: #642340;
     --badge-bg: #E3E8F2; --badge-text: #505F79;
     --input-bg: #ffffff; --input-border: #d3dae6;
+    --danger: #bd271e;
     --card-bg: #ffffff;
     --info-bg: rgba(227,232,242,0.5); --info-border: #d3dae6; --info-text: #505F79;
     --tab-active-bg: var(--primary); --tab-active-text: var(--primary-text);
@@ -106,6 +108,9 @@ main { flex: 1; padding: 32px 16px; display: flex; justify-content: center; }
 .form-label { display: block; font-size: 13px; font-weight: 500; color: var(--text-muted); margin-bottom: 6px; }
 .form-input { width: 100%; padding: 8px 12px; font: 14px/1.5 var(--font); background: var(--input-bg); color: var(--text); border: 1px solid var(--input-border); border-radius: 6px; outline: none; transition: border-color .15s; }
 .form-input:focus { border-color: var(--primary); }
+/* Defer validation feedback until the user has interacted with the field.
+   See AGENTS.md → "Form validation feedback". */
+.form-input:user-invalid { border-color: var(--danger); }
 .form-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 select.form-input { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2398a2b3' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 32px; cursor: pointer; }
 
@@ -160,6 +165,13 @@ footer.su-footer p { margin: 0; }
 .su-dialog-body a { color: var(--primary); text-decoration: none; }
 .su-dialog-body a:hover { text-decoration: underline; }
 .su-dialog-fineprint { font-size: 0.8rem; color: var(--text-muted); }
+/* Typography polish (Baseline; selectors that don't exist in this tool are no-ops). See AGENTS.md → "Typography polish". */
+.page-title, .panel-label, .su-dialog-header h2, .card-header { text-wrap: balance; }
+.su-dialog-body p, .su-more-tools p, .tool-desc, .empty-state-sub, .progress-sub, .error-sub { text-wrap: pretty; }
+/* Respect prefers-reduced-motion. See AGENTS.md → "Reduced motion". */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
 .su-credits-list { margin: 0 0 12px; padding-left: 20px; }
 .su-credits-list li { margin-bottom: 6px; }
 .su-credits-list li:last-child { margin-bottom: 0; }
@@ -285,7 +297,7 @@ footer.su-footer p { margin: 0; }
     </p>
   </footer>
 
-  <dialog id="privacyDialog" class="su-dialog" aria-labelledby="privacyDialogTitle">
+  <dialog id="privacyDialog" class="su-dialog" closedby="any" aria-labelledby="privacyDialogTitle">
     <header class="su-dialog-header">
       <h2 id="privacyDialogTitle">Privacy</h2>
       <button type="button" class="su-dialog-close" id="privacyClose" aria-label="Close">
@@ -299,7 +311,7 @@ footer.su-footer p { margin: 0; }
     </div>
   </dialog>
 
-  <dialog id="creditsDialog" class="su-dialog" aria-labelledby="creditsDialogTitle">
+  <dialog id="creditsDialog" class="su-dialog" closedby="any" aria-labelledby="creditsDialogTitle">
     <header class="su-dialog-header">
       <h2 id="creditsDialogTitle">Credits</h2>
       <button type="button" class="su-dialog-close" id="creditsClose" aria-label="Close">
@@ -354,6 +366,23 @@ footer.su-footer p { margin: 0; }
     document.getElementById('creditsOpen').addEventListener('click', () => dlg.showModal());
     document.getElementById('creditsClose').addEventListener('click', () => dlg.close());
 })();
+
+// Safari fallback for closedby="any" (Newly Baseline elsewhere; limited in Safari as of Q2 2026).
+if (!('closedBy' in HTMLDialogElement.prototype)) {
+    for (const dlg of document.querySelectorAll('dialog.su-dialog')) {
+        dlg.addEventListener('click', (e) => {
+            if (e.target !== dlg) return;
+            const r = dlg.getBoundingClientRect();
+            if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dlg.close();
+        });
+    }
+}
+
+// Mirror :user-invalid into aria-invalid on blur so screen readers announce
+// the same error state the CSS reveals. See AGENTS.md → "Form validation feedback".
+for (const i of document.querySelectorAll('input[required], input[type=email]')) {
+    i.addEventListener('blur', () => i.setAttribute('aria-invalid', String(!i.matches(':valid'))));
+}
 
 // ==========================================
 // 1. CONFIGURATION

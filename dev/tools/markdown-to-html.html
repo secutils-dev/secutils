@@ -30,7 +30,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
     <!-- Privacy-friendly analytics by Plausible -->
-    <script defer src="https://tools.secutils.dev/js/script.js"></script>
+    <script defer src="https://tools.secutils.dev/js/script.js" fetchpriority="low"></script>
     <script>
         window.plausible = window.plausible || function () { (plausible.q = plausible.q || []).push(arguments) };
         plausible.init = plausible.init || function (i) { plausible.o = i || {} };
@@ -197,19 +197,36 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
 /* Export dropdown */
 .export-anchor { position: relative; display: inline-flex; }
 .export-anchor .chevron { margin-left: 2px; transition: transform .15s; }
-.export-anchor[data-open="true"] .chevron { transform: rotate(180deg); }
-.export-menu { position: absolute; top: calc(100% + 6px); right: 0; min-width: 110px; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); z-index: 60; display: flex; flex-direction: column; gap: 2px; }
-.export-menu[hidden] { display: none; }
-.export-item { padding: 7px 14px; border: none; background: transparent; color: var(--text); font: 13px var(--font); font-weight: 500; cursor: pointer; border-radius: 6px; text-align: left; transition: background .15s; }
+/* :popover-open wins in the native path; the [aria-expanded] fallback below
+   covers browsers that fall through to the no-popover JS path. */
+.export-anchor:has(.export-menu:popover-open) .chevron,
+#exportBtn[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+/* `[popover]` is positioned in the top layer; the UA stylesheet applies
+   `position: fixed; inset: 0; margin: auto;` (centered). We override `margin`
+   to 0 and pin the popover next to its invoker from JS on the `toggle`
+   event (see positionPopover() below). `position-area` is Chromium-only at
+   time of writing so the manual positioning is the portable path.
+
+   IMPORTANT: do *not* set `display: flex` (or any other `display: …` value)
+   on the popover itself. The UA stylesheet hides closed popovers with
+   `[popover]:not(:popover-open) { display: none; }`, but author-origin rules
+   beat UA-origin rules at any specificity, so a `display: flex` on
+   `.export-menu` makes the popover permanently visible (and stuck at the
+   `inset: 0` top-left corner because the JS tether only fires on open). Lay
+   the menu items out with per-item `display: block` + margin instead. */
+.export-menu { margin: 0; min-width: 110px; max-width: calc(100vw - 24px); padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
+.export-item { display: block; width: 100%; padding: 7px 14px; border: none; background: transparent; color: var(--text); font: 13px var(--font); font-weight: 500; cursor: pointer; border-radius: 6px; text-align: left; transition: background .15s; }
+.export-item + .export-item { margin-top: 2px; }
 .export-item:hover, .export-item:focus-visible { background: var(--surface-hover); outline: none; }
 
 /* Options popover */
 .options-anchor { position: relative; display: inline-flex; }
-.options-popover { position: absolute; top: calc(100% + 8px); right: 0; min-width: 260px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); z-index: 60; }
+.options-popover { margin: 0; min-width: 260px; max-width: min(360px, calc(100vw - 24px)); padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
 .options-popover h4 { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 10px; }
 .options-popover label { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; cursor: pointer; font-size: 13px; color: var(--text); line-height: 1.4; }
 .options-popover input[type="checkbox"] { accent-color: var(--primary); cursor: pointer; margin-top: 2px; flex-shrink: 0; }
-.options-popover .opt-desc { display: block; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.options-popover .opt-desc { display: block; font-size: 11px; color: var(--text-muted); margin-top: 2px; overflow-wrap: anywhere; }
+.options-popover .opt-desc code { font-family: var(--mono); font-size: 10px; background: var(--surface-hover); padding: 0 4px; border-radius: 3px; }
 
 /* Toast */
 .toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); color: var(--text); padding: 10px 18px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 8px; animation: toastIn .2s ease; }
@@ -236,6 +253,13 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
 .su-dialog-body a { color: var(--primary); text-decoration: none; }
 .su-dialog-body a:hover { text-decoration: underline; }
 .su-dialog-fineprint { font-size: 0.8rem; color: var(--text-muted); }
+/* Typography polish (Baseline; selectors that don't exist in this tool are no-ops). See AGENTS.md → "Typography polish". */
+.page-title, .panel-label, .su-dialog-header h2, .card-header { text-wrap: balance; }
+.su-dialog-body p, .su-more-tools p, .tool-desc, .empty-state-sub, .progress-sub, .error-sub { text-wrap: pretty; }
+/* Respect prefers-reduced-motion. See AGENTS.md → "Reduced motion". */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
 .su-credits-list { margin: 0 0 12px; padding-left: 20px; }
 .su-credits-list li { margin-bottom: 6px; }
 .su-credits-list li:last-child { margin-bottom: 0; }
@@ -268,7 +292,7 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
     .panel-bar { flex-wrap: wrap; row-gap: 8px; padding-bottom: 10px; height: auto; min-height: 38px; }
     .panel-actions { gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: 1 1 auto; }
     .btn-sm { padding: 5px 9px; height: 23px; font-size: 11px; }
-    .options-popover, .export-menu { right: 0; left: auto; max-width: calc(100vw - 24px); }
+    .options-popover, .export-menu { max-width: calc(100vw - 24px); }
     .options-popover { min-width: 220px; }
     /* Collapse Copy HTML and Export to icon-only on the right pane. Share stays full-width on the left because that pane is less crowded. */
     #copyBtn .btn-label, #exportBtn .btn-label { display: none; }
@@ -339,8 +363,11 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
                     <div class="panel-actions">
                         <span id="docStats" class="stats-text">empty</span>
                         <div class="options-anchor">
-                            <button id="optionsBtn" class="btn btn-sm" aria-haspopup="true" aria-expanded="false" title="Export options">&#9881;<span class="opt-label">&nbsp;Options</span></button>
-                            <div id="optionsPopover" class="options-popover" hidden role="dialog" aria-label="Export options">
+                            <button id="optionsBtn" class="btn btn-sm" commandfor="optionsPopover" command="toggle-popover" aria-haspopup="true" title="Export options">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+                                <span class="opt-label">Options</span>
+                            </button>
+                            <div id="optionsPopover" popover class="options-popover" role="dialog" aria-label="Export options">
                                 <h4>Export options</h4>
                                 <label>
                                     <input type="checkbox" id="optToc" checked>
@@ -357,7 +384,7 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
                                 <label>
                                     <input type="checkbox" id="optSource">
                                     <span>Embed Markdown source
-                                        <span class="opt-desc">Inert <code>&lt;script type="text/markdown"&gt;</code> at the end of body, retrievable via <code>document.getElementById('su-md-source').textContent</code>.</span>
+                                        <span class="opt-desc">Embedded as <code>&lt;script type="text/markdown"&gt;</code>.</span>
                                     </span>
                                 </label>
                             </div>
@@ -367,12 +394,12 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
                             <span class="btn-label">Copy HTML</span>
                         </button>
                         <div class="export-anchor">
-                            <button id="exportBtn" class="btn btn-primary btn-sm" disabled aria-haspopup="menu" aria-expanded="false" title="Export the document">
+                            <button id="exportBtn" class="btn btn-primary btn-sm" disabled commandfor="exportMenu" command="toggle-popover" aria-haspopup="menu" title="Export the document">
                                 <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v9"/><path d="M4.5 7.5 8 11l3.5-3.5"/><path d="M3 13.5h10"/></svg>
                                 <span class="btn-label">Export</span>
                                 <svg class="chevron" viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 5 3 3 3-3"/></svg>
                             </button>
-                            <div id="exportMenu" class="export-menu" hidden role="menu" aria-label="Export menu">
+                            <div id="exportMenu" popover class="export-menu" role="menu" aria-label="Export menu">
                                 <button class="export-item" role="menuitem" id="exportHtmlBtn">HTML</button>
                                 <button class="export-item" role="menuitem" id="exportPdfBtn">PDF</button>
                             </div>
@@ -413,7 +440,7 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
         </p>
     </footer>
 
-    <dialog id="privacyDialog" class="su-dialog" aria-labelledby="privacyDialogTitle">
+    <dialog id="privacyDialog" class="su-dialog" closedby="any" aria-labelledby="privacyDialogTitle">
         <header class="su-dialog-header">
             <h2 id="privacyDialogTitle">Privacy</h2>
             <button type="button" class="su-dialog-close" id="privacyClose" aria-label="Close">
@@ -427,7 +454,7 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
         </div>
     </dialog>
 
-    <dialog id="creditsDialog" class="su-dialog" aria-labelledby="creditsDialogTitle">
+    <dialog id="creditsDialog" class="su-dialog" closedby="any" aria-labelledby="creditsDialogTitle">
         <header class="su-dialog-header">
             <h2 id="creditsDialogTitle">Credits</h2>
             <button type="button" class="su-dialog-close" id="creditsClose" aria-label="Close">
@@ -452,8 +479,10 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
         <span id="toastMsg"></span>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- marked / highlight.js are used at top-level inline-script execution (marked.use(...))
+         so they cannot be `defer`red without restructuring. Network priority is still demoted. -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" fetchpriority="low"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" fetchpriority="low"></script>
 
     <!-- CodeMirror 6 ESM loader. Falls back to a plain textarea if any import fails. -->
     <script type="module">
@@ -664,17 +693,39 @@ const decodeState = async (str) => {
     document.getElementById('creditsClose').addEventListener('click', () => dlg.close());
 })();
 
+// Safari fallback for closedby="any" (Newly Baseline elsewhere; limited in Safari as of Q2 2026).
+if (!('closedBy' in HTMLDialogElement.prototype)) {
+    for (const dlg of document.querySelectorAll('dialog.su-dialog')) {
+        dlg.addEventListener('click', (e) => {
+            if (e.target !== dlg) return;
+            const r = dlg.getBoundingClientRect();
+            if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dlg.close();
+        });
+    }
+}
+
 marked.use({ gfm: true, breaks: false });
 
 const escHTML = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-function render(md) {
+// Yield to the event loop between highlight passes so long documents
+// don't block input. See AGENTS.md → "Long tasks (scheduler.yield)".
+const yieldToMain = () => 'scheduler' in window && typeof scheduler.yield === 'function'
+    ? scheduler.yield()
+    : new Promise((r) => setTimeout(r, 0));
+
+async function render(md) {
     const el = document.createElement('div');
     el.innerHTML = marked.parse(md);
+    let deadline = performance.now() + 50;
     for (const block of el.querySelectorAll('pre code')) {
         const langCls = [...block.classList].find((c) => c.startsWith('language-'));
         try { hljs.highlightElement(block); } catch {}
         if (langCls) block.parentElement.setAttribute('data-lang', langCls.replace('language-', ''));
+        if (performance.now() >= deadline) {
+            await yieldToMain();
+            deadline = performance.now() + 50;
+        }
     }
     return el.innerHTML;
 }
@@ -692,7 +743,7 @@ function extractTitle(html) {
     return tm ? tm[1].replace(/<[^>]*>/g, '') : filename;
 }
 
-function updatePreview() {
+async function updatePreview() {
     if (!markdown.trim()) {
         els.previewArticle.innerHTML = '';
         showActiveTabPanel();
@@ -701,16 +752,16 @@ function updatePreview() {
         htmlPreviewDirty = true;
         return;
     }
-    els.previewArticle.innerHTML = render(markdown);
+    els.previewArticle.innerHTML = await render(markdown);
     htmlPreviewDirty = true;
     showActiveTabPanel();
-    if (activeTab === 'html') rebuildHtmlPreview();
+    if (activeTab === 'html') await rebuildHtmlPreview();
     const wordCount = markdown.trim().split(/\s+/).length;
     els.docStats.textContent = `${wordCount} word${wordCount === 1 ? '' : 's'}`;
     setExportEnabled(true);
 }
 
-function rebuildHtmlPreview() {
+async function rebuildHtmlPreview() {
     if (!markdown.trim()) {
         els.htmlPreview.removeAttribute('srcdoc');
         htmlPreviewDirty = false;
@@ -720,7 +771,7 @@ function rebuildHtmlPreview() {
     // sandboxed iframe can't reach the parent's localStorage; without this it
     // would fall back to prefers-color-scheme and may not match the page).
     const parentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-    const doc = generateOutput(readOptions()).replace(
+    const doc = (await generateOutput(readOptions())).replace(
         /data-theme="(?:light|dark)"/,
         `data-theme="${parentTheme}"`,
     );
@@ -755,9 +806,46 @@ function setActiveTab(tab) {
     if (!isMarkdown && htmlPreviewDirty && markdown.trim()) rebuildHtmlPreview();
 }
 
+// Close any [popover] element across the native + fallback code paths.
+const hidePopoverEl = (el) => {
+    if (typeof el.hidePopover === 'function') { if (el.matches(':popover-open')) el.hidePopover(); }
+    else el.hidden = true;
+};
+
+// Pin an open [popover] right-aligned just below its invoker. The popover is
+// in the top layer (its containing block is the viewport), so the UA stylesheet
+// uses `position: fixed; inset: 0; margin: auto;` by default — without this
+// override the popover renders centered. `position-area` would replace this
+// helper but is Chromium-only at time of writing.
+// See AGENTS.md → "Tethered popovers (native popover + commandfor)".
+const positionPopover = (popover, invoker) => {
+    // Skip in the fallback path (no Popover API) — the fallback IIFE already
+    // positions the element via inline `position: absolute; top/right` styles.
+    if (typeof popover.showPopover !== 'function') return;
+    const r = invoker.getBoundingClientRect();
+    popover.style.position = 'fixed';
+    popover.style.top = `${Math.round(r.bottom + 6)}px`;
+    popover.style.left = 'auto';
+    popover.style.right = `${Math.round(window.innerWidth - r.right)}px`;
+    popover.style.bottom = 'auto';
+};
+// Position the popover before it opens. Two listeners cover every code path:
+//   1. `click` on the invoker fires synchronously *before* the browser performs
+//      the [commandfor] default action (showPopover), so the inline `top`/
+//      `right` set here are already on the element when it enters the top
+//      layer — no flash at the UA-default `inset: 0` location.
+//   2. `beforetoggle` on the popover catches programmatic showPopover() calls
+//      and any path that bypasses the invoker click (keyboard shortcut, etc.).
+const wireTether = (invoker, popover) => {
+    invoker.addEventListener('click', () => positionPopover(popover, invoker));
+    popover.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') positionPopover(popover, invoker); });
+};
+wireTether(els.optionsBtn, els.optionsPopover);
+wireTether(els.exportBtn, els.exportMenu);
+
 function setExportEnabled(on) {
     for (const b of [els.shareBtn, els.copyBtn, els.exportBtn]) b.disabled = !on;
-    if (!on) toggleExportMenu(false);
+    if (!on) hidePopoverEl(els.exportMenu);
 }
 
 function scheduleRender() {
@@ -848,28 +936,8 @@ els.editorMount.addEventListener('drop', (e) => {
     if (file) handleFile(file);
 });
 
-// Options popover
-function toggleOptions(force) {
-    const open = force !== undefined ? force : els.optionsPopover.hasAttribute('hidden');
-    if (open) {
-        els.optionsPopover.removeAttribute('hidden');
-        els.optionsBtn.setAttribute('aria-expanded', 'true');
-    } else {
-        els.optionsPopover.setAttribute('hidden', '');
-        els.optionsBtn.setAttribute('aria-expanded', 'false');
-    }
-}
-els.optionsBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleOptions();
-});
-document.addEventListener('click', (e) => {
-    if (els.optionsPopover.hasAttribute('hidden')) return;
-    if (!els.optionsPopover.contains(e.target) && e.target !== els.optionsBtn) toggleOptions(false);
-});
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !els.optionsPopover.hasAttribute('hidden')) toggleOptions(false);
-});
+// Options popover + Export menu: declarative via popover + commandfor.
+// See AGENTS.md → "Tethered popovers (native popover + commandfor)".
 function readOptions() {
     return { toc: els.optToc.checked, pdf: els.optPdf.checked, source: els.optSource.checked };
 }
@@ -906,42 +974,33 @@ els.shareBtn.addEventListener('click', async () => {
     }
 });
 
-// Export dropdown (Download HTML / Download PDF)
-function toggleExportMenu(force) {
-    const open = force !== undefined ? force : els.exportMenu.hasAttribute('hidden');
-    if (open && !els.exportBtn.disabled) {
-        els.exportMenu.removeAttribute('hidden');
-        els.exportBtn.setAttribute('aria-expanded', 'true');
-        els.exportBtn.parentElement.setAttribute('data-open', 'true');
-    } else {
-        els.exportMenu.setAttribute('hidden', '');
-        els.exportBtn.setAttribute('aria-expanded', 'false');
-        els.exportBtn.parentElement.removeAttribute('data-open');
+// Fallback for engines without Popover API + Invoker Commands (older Safari, older Firefox).
+// See AGENTS.md → "Tethered popovers (native popover + commandfor)" for the canonical snippet.
+if (!('popover' in HTMLElement.prototype) || !('commandForElement' in HTMLButtonElement.prototype)) {
+    const pops = document.querySelectorAll('[popover]');
+    for (const p of pops) { p.hidden = true; p.style.position = 'absolute'; p.style.top = 'calc(100% + 6px)'; p.style.right = '0'; }
+    const setState = (p, open) => { if (p.hidden === !open) return; p.hidden = !open; p.dispatchEvent(Object.assign(new Event('toggle'), { newState: open ? 'open' : 'closed' })); };
+    const closeAll = () => { for (const p of pops) setState(p, false); for (const i of document.querySelectorAll('[commandfor]')) i.setAttribute('aria-expanded', 'false'); };
+    for (const inv of document.querySelectorAll('[commandfor]')) {
+        const t = document.getElementById(inv.getAttribute('commandfor'));
+        if (!t) continue;
+        inv.addEventListener('click', (e) => { if (inv.disabled) return; e.stopPropagation(); const opening = t.hidden; closeAll(); if (opening) { setState(t, true); inv.setAttribute('aria-expanded', 'true'); } });
     }
+    document.addEventListener('click', (e) => { for (const p of pops) if (!p.hidden && !p.contains(e.target)) closeAll(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAll(); });
 }
-els.exportBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleExportMenu();
-});
-document.addEventListener('click', (e) => {
-    if (els.exportMenu.hasAttribute('hidden')) return;
-    if (!els.exportMenu.contains(e.target) && e.target !== els.exportBtn && !els.exportBtn.contains(e.target)) toggleExportMenu(false);
-});
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !els.exportMenu.hasAttribute('hidden')) toggleExportMenu(false);
-});
 
 // Copy / Download / PDF
 els.copyBtn.addEventListener('click', async () => {
     try {
-        await navigator.clipboard.writeText(generateOutput(readOptions()));
+        await navigator.clipboard.writeText(await generateOutput(readOptions()));
         toast('Copied to clipboard');
     } catch { toast('Failed to copy'); }
 });
 
-els.exportHtmlBtn.addEventListener('click', () => {
-    toggleExportMenu(false);
-    const blob = new Blob([generateOutput(readOptions())], { type: 'text/html;charset=utf-8' });
+els.exportHtmlBtn.addEventListener('click', async () => {
+    hidePopoverEl(els.exportMenu);
+    const blob = new Blob([await generateOutput(readOptions())], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -952,13 +1011,13 @@ els.exportHtmlBtn.addEventListener('click', () => {
 });
 
 els.exportPdfBtn.addEventListener('click', async () => {
-    toggleExportMenu(false);
+    hidePopoverEl(els.exportMenu);
     const btn = els.exportBtn;
     const orig = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" style="animation:su-spin-edit 1s linear infinite"><circle cx="12" cy="12" r="9" opacity=".25"/><path d="M21 12a9 9 0 0 1-9 9" stroke-linecap="round"/></svg><span class="btn-label" style="margin-left:6px">Preparing...</span>';
 
-    const content = render(markdown);
+    const content = await render(markdown);
     const printDoc = generatePrintDoc(content, extractTitle(content));
 
     const iframe = document.createElement('iframe');
@@ -1094,9 +1153,9 @@ ${watermarkFooter('Generated with')}
 </html>`;
 }
 
-function generateOutput(opts) {
+async function generateOutput(opts) {
     const o = opts || readOptions();
-    const content = render(markdown);
+    const content = await render(markdown);
     const title = extractTitle(content);
     const tocChrome = o.toc ? '<nav id="toc"></nav>' : '';
     const pdfBtnChrome = o.pdf ? `<button id="pdf-btn" aria-label="Download PDF" title="Download as PDF">${PDF_ICON_SVG}</button>` : '';

@@ -30,7 +30,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
     <!-- Privacy-friendly analytics by Plausible -->
-    <script defer src="https://tools.secutils.dev/js/script.js"></script>
+    <script defer src="https://tools.secutils.dev/js/script.js" fetchpriority="low"></script>
     <script>
         window.plausible = window.plausible || function () { (plausible.q = plausible.q || []).push(arguments) };
         plausible.init = plausible.init || function (i) { plausible.o = i || {} };
@@ -162,6 +162,13 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
 /* Drop zone (left pane) */
 .dropzone { flex: 1; min-height: 300px; border: 1px dashed var(--border); border-radius: var(--radius); background: var(--surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; transition: border-color .15s, background .25s; cursor: pointer; }
 .dropzone.dragover, .dropzone:hover { border-color: var(--primary); background: var(--primary-glow); }
+/* Block click / hover / drop while a parse is in flight. `setParsingBusy()`
+   toggles this class; `pointer-events: none` short-circuits the JS click and
+   drag handlers (and `aria-busy="true"` on the same element surfaces the
+   state to assistive tech). The cursor reverts so users get visual feedback
+   that the upload affordance is temporarily inert. */
+.dropzone.is-busy { pointer-events: none; cursor: default; opacity: .85; }
+.dropzone.is-busy.dragover { border-color: var(--border); background: var(--surface); }
 .dropzone-icon { width: 64px; height: 64px; border-radius: 16px; background: var(--surface-hover); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text-muted); }
 .dropzone-icon svg { width: 28px; height: 28px; stroke: currentColor; fill: none; }
 .dropzone-title { font: 600 16px/1.3 var(--font); color: var(--text); }
@@ -193,7 +200,12 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
    itself -- a few of the longer Tesseract entries (e.g. "Chinese --
    Simplified (vertical)") otherwise nudged the box wider, and removing
    them via the chip × then snapped it back. */
-.options-popover { position: absolute; top: calc(100% + 8px); right: 0; width: 320px; max-height: calc(100vh - 96px); overflow-y: auto; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); z-index: 60; }
+/* [popover] is positioned in the top layer; the UA stylesheet applies
+   `position: fixed; inset: 0; margin: auto;` (centered). We override `margin`
+   to 0 and pin the popover next to its invoker from JS on the `toggle`
+   event (see positionPopover() below). `position-area` is Chromium-only at
+   time of writing so the manual positioning is the portable path. */
+.options-popover { margin: 0; width: 320px; max-width: calc(100vw - 24px); max-height: calc(100vh - 96px); overflow-y: auto; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
 .options-popover h4 { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 10px; }
 .options-popover label { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; cursor: pointer; font-size: 13px; color: var(--text); line-height: 1.4; }
 .options-popover input[type="radio"], .options-popover input[type="checkbox"] { accent-color: var(--primary); cursor: pointer; margin-top: 2px; flex-shrink: 0; }
@@ -235,6 +247,8 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
 .export-menu-title { font-size: 13px; line-height: 1.3; color: var(--text); }
 .export-menu-desc { font-size: 11px; color: var(--text-muted); line-height: 1.3; }
 #exportBtn .export-caret { margin-left: 2px; opacity: .7; transition: transform .15s; }
+/* :popover-open wins in the native path; [aria-expanded] covers the no-popover JS fallback. */
+.options-anchor:has(#exportMenu:popover-open) .export-caret,
 #exportBtn[aria-expanded="true"] .export-caret { transform: rotate(180deg); }
 
 /* Result tabs (Text / JSON / Screenshots) */
@@ -292,7 +306,10 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
    squeeze each one into a thin band instead of letting them stack at their
    natural image-determined heights. The parent .shots-grid has overflow:
    auto from .output-scroll, so the column overflows into the scrollbar. */
-.shots-figure { width: 100%; max-width: 100%; flex-shrink: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+/* Skip rendering for off-screen page captures + outline branches; the browser
+   uses contain-intrinsic-size as a placeholder until the element scrolls
+   close to the viewport. See AGENTS.md → "Long tasks". */
+.shots-figure { width: 100%; max-width: 100%; flex-shrink: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; content-visibility: auto; contain-intrinsic-size: auto 800px; }
 /* `.shots-img-wrap` is the canvas overlay's positioning context: the wrap
    keeps `position: relative` so the canvas absolutely covers the image
    pixel-for-pixel, and `line-height: 0` collapses the inline strut the
@@ -315,7 +332,7 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
    (Tab + Enter / Space). */
 .outline-tree { padding: 16px; }
 .outline-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; }
-.outline-list .outline-list { padding-left: 18px; border-left: 1px dashed var(--border); margin-left: 6px; margin-top: 2px; }
+.outline-list .outline-list { padding-left: 18px; border-left: 1px dashed var(--border); margin-left: 6px; margin-top: 2px; content-visibility: auto; contain-intrinsic-size: auto 200px; }
 .outline-item { display: flex; align-items: baseline; gap: 8px; }
 .outline-item-row { flex: 1; display: flex; align-items: baseline; gap: 8px; padding: 4px 8px; background: transparent; border: none; color: var(--text); font: 13px/1.4 var(--font); text-align: left; cursor: pointer; border-radius: 4px; transition: background .15s; min-width: 0; }
 .outline-item-row:hover { background: var(--surface-hover); }
@@ -365,6 +382,13 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
 .su-dialog-body a { color: var(--primary); text-decoration: none; }
 .su-dialog-body a:hover { text-decoration: underline; }
 .su-dialog-fineprint { font-size: 0.8rem; color: var(--text-muted); }
+/* Typography polish (Baseline; selectors that don't exist in this tool are no-ops). See AGENTS.md → "Typography polish". */
+.page-title, .panel-label, .su-dialog-header h2, .card-header { text-wrap: balance; }
+.su-dialog-body p, .su-more-tools p, .tool-desc, .empty-state-sub, .progress-sub, .error-sub { text-wrap: pretty; }
+/* Respect prefers-reduced-motion. See AGENTS.md → "Reduced motion". */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
 .su-credits-list { margin: 0 0 12px; padding-left: 20px; }
 .su-credits-list li { margin-bottom: 6px; }
 .su-credits-list li:last-child { margin-bottom: 0; }
@@ -395,7 +419,7 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
     .panel-bar { flex-wrap: wrap; row-gap: 8px; padding-bottom: 10px; height: auto; min-height: 38px; }
     .panel-actions { gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: 1 1 auto; }
     .btn-sm { padding: 5px 9px; height: 23px; font-size: 11px; }
-    .options-popover { right: 0; left: auto; width: min(320px, calc(100vw - 24px)); }
+    .options-popover { width: min(320px, calc(100vw - 24px)); }
     #copyBtn .btn-label, #exportBtn .btn-label { display: none; }
     #exportBtn { padding: 4px 9px; }
     .export-menu { min-width: 220px; }
@@ -447,8 +471,11 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
                     <div class="panel-actions">
                         <button class="link-btn" id="clearBtn" disabled>Clear</button>
                         <div class="options-anchor">
-                            <button id="ocrBtn" class="btn btn-sm" aria-haspopup="true" aria-expanded="false" title="OCR &amp; parse options">&#9881;<span class="opt-label">&nbsp;Options</span></button>
-                            <div id="ocrPopover" class="options-popover" hidden role="dialog" aria-label="Parse options">
+                            <button id="ocrBtn" class="btn btn-sm" commandfor="ocrPopover" command="toggle-popover" aria-haspopup="true" title="OCR &amp; parse options">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+                                <span class="opt-label">Options</span>
+                            </button>
+                            <div id="ocrPopover" popover class="options-popover" role="dialog" aria-label="Parse options">
                                 <div class="opt-section">
                                     <h4>OCR for scanned pages</h4>
                                     <label>
@@ -538,12 +565,12 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
                             <span class="btn-label">Copy</span>
                         </button>
                         <div class="options-anchor">
-                            <button id="exportBtn" class="btn btn-sm" aria-haspopup="true" aria-expanded="false" disabled title="Export the current result">
+                            <button id="exportBtn" class="btn btn-sm" commandfor="exportMenu" command="toggle-popover" aria-haspopup="true" disabled title="Export the current result">
                                 <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v9"/><path d="M4.5 7.5 8 11l3.5-3.5"/><path d="M3 13.5h10"/></svg>
                                 <span class="btn-label">Export</span>
                                 <svg class="export-caret" viewBox="0 0 10 6" width="8" height="6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 1l4 4 4-4"/></svg>
                             </button>
-                            <div id="exportMenu" class="options-popover export-menu" hidden role="menu" aria-label="Export options">
+                            <div id="exportMenu" popover class="options-popover export-menu" role="menu" aria-label="Export options">
                                 <button id="exportDownload" class="export-menu-item" role="menuitem" type="button">
                                     <svg class="export-menu-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v9"/><path d="M4.5 7.5 8 11l3.5-3.5"/><path d="M3 13.5h10"/></svg>
                                     <span class="export-menu-body">
@@ -674,7 +701,7 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
         </p>
     </footer>
 
-    <dialog id="privacyDialog" class="su-dialog" aria-labelledby="privacyDialogTitle">
+    <dialog id="privacyDialog" class="su-dialog" closedby="any" aria-labelledby="privacyDialogTitle">
         <header class="su-dialog-header">
             <h2 id="privacyDialogTitle">Privacy</h2>
             <button type="button" class="su-dialog-close" id="privacyClose" aria-label="Close">
@@ -689,7 +716,7 @@ main { flex: 1; min-height: 0; padding: 24px 16px; display: flex; flex-direction
         </div>
     </dialog>
 
-    <dialog id="creditsDialog" class="su-dialog" aria-labelledby="creditsDialogTitle">
+    <dialog id="creditsDialog" class="su-dialog" closedby="any" aria-labelledby="creditsDialogTitle">
         <header class="su-dialog-header">
             <h2 id="creditsDialogTitle">Credits</h2>
             <button type="button" class="su-dialog-close" id="creditsClose" aria-label="Close">
@@ -909,12 +936,32 @@ const decodeState = async (str) => {
     $('creditsClose').addEventListener('click', () => dlg.close());
 })();
 
+// Safari fallback for closedby="any" (Newly Baseline elsewhere; limited in Safari as of Q2 2026).
+if (!('closedBy' in HTMLDialogElement.prototype)) {
+    for (const dlg of document.querySelectorAll('dialog.su-dialog')) {
+        dlg.addEventListener('click', (e) => {
+            if (e.target !== dlg) return;
+            const r = dlg.getBoundingClientRect();
+            if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dlg.close();
+        });
+    }
+}
+
 function toast(msg) {
     clearTimeout(toastTimer);
     els.toastMsg.textContent = msg;
     els.toast.style.display = 'flex';
     toastTimer = setTimeout(() => { els.toast.style.display = 'none'; }, 2400);
 }
+
+// Yield to the event loop so progress updates / freshly-appended images paint
+// before the next chunk of synchronous work. Prefers `scheduler.yield()` (resumes
+// in the same priority queue, lower latency than rAF) and falls back to rAF for
+// the visual-frame-aligned semantics on browsers without the API.
+// See AGENTS.md → "Long tasks (scheduler.yield)".
+const yieldToMain = () => 'scheduler' in window && typeof scheduler.yield === 'function'
+    ? scheduler.yield()
+    : new Promise((r) => requestAnimationFrame(() => r()));
 
 function formatBytes(n) {
     if (n < 1024) return `${n} B`;
@@ -1036,30 +1083,40 @@ els.clearBtn.addEventListener('click', clearFile);
 
 // ----- Options popover ---------------------------------------------------
 
-function toggleOcrPopover(force) {
-    const open = force !== undefined ? force : els.ocrPopover.hasAttribute('hidden');
-    if (open) {
-        els.ocrPopover.removeAttribute('hidden');
-        els.ocrBtn.setAttribute('aria-expanded', 'true');
-    } else {
-        els.ocrPopover.setAttribute('hidden', '');
-        els.ocrBtn.setAttribute('aria-expanded', 'false');
-        // Tear down the language-suggestions list too, otherwise the next
-        // time the popover opens it'll briefly flash the stale state.
-        // (showLangSuggestions is hoisted via the function-declaration form.)
-        if (typeof showLangSuggestions === 'function') showLangSuggestions(false);
-    }
-}
-els.ocrBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleOcrPopover();
-});
-document.addEventListener('click', (e) => {
-    if (els.ocrPopover.hasAttribute('hidden')) return;
-    if (!els.ocrPopover.contains(e.target) && e.target !== els.ocrBtn && !els.ocrBtn.contains(e.target)) toggleOcrPopover(false);
-});
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !els.ocrPopover.hasAttribute('hidden')) toggleOcrPopover(false);
+// Pin an open [popover] right-aligned just below its invoker. The popover is
+// in the top layer (its containing block is the viewport), so the UA stylesheet
+// uses `position: fixed; inset: 0; margin: auto;` by default — without this
+// override the popover renders centered. `position-area` would replace this
+// helper but is Chromium-only at time of writing.
+// See AGENTS.md → "Tethered popovers (native popover + commandfor)".
+const positionPopover = (popover, invoker) => {
+    // Skip in the fallback path (no Popover API) — the fallback IIFE already
+    // positions the element via inline `position: absolute; top/right` styles.
+    if (typeof popover.showPopover !== 'function') return;
+    const r = invoker.getBoundingClientRect();
+    popover.style.position = 'fixed';
+    popover.style.top = `${Math.round(r.bottom + 6)}px`;
+    popover.style.left = 'auto';
+    popover.style.right = `${Math.round(window.innerWidth - r.right)}px`;
+    popover.style.bottom = 'auto';
+};
+
+// Position the popover before it opens. Two listeners cover every code path:
+//   1. `click` on the invoker fires synchronously *before* the browser performs
+//      the [commandfor] default action (showPopover), so the inline `top`/
+//      `right` set here are already on the element when it enters the top
+//      layer — no flash at the UA-default `inset: 0` location.
+//   2. `beforetoggle` on the popover catches programmatic showPopover() calls
+//      and any path that bypasses the invoker click (keyboard shortcut, etc.).
+const wireTether = (invoker, popover) => {
+    invoker.addEventListener('click', () => positionPopover(popover, invoker));
+    popover.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') positionPopover(popover, invoker); });
+};
+wireTether(els.ocrBtn, els.ocrPopover);
+// `toggle` runs the language-suggestion teardown after the popover closes
+// (the visual state has settled by then).
+els.ocrPopover.addEventListener('toggle', (e) => {
+    if (e.newState === 'closed' && typeof showLangSuggestions === 'function') showLangSuggestions(false);
 });
 // ----- OCR language picker -----------------------------------------------
 // tesseract.js downloads each language's `.traineddata.gz` lazily on first
@@ -1648,7 +1705,7 @@ async function renderShots() {
             appendShotFigure(item, total);
             // Yield to the event loop so the freshly appended image paints
             // before we burn the main thread on the next page.
-            await new Promise((r) => requestAnimationFrame(() => r()));
+            await yieldToMain();
         }
         pending.remove();
         shots.status = 'ready';
@@ -2467,11 +2524,46 @@ function jumpToPage(pageNum) {
     }, 250);
 }
 
+// Controls that must be inert while a parse is in flight. Mid-parse clicks
+// on Clear / Replace would race the engine into either crashing (the input
+// `pdfFile.bytes` view gets detached) or silently throwing away the result;
+// switching tabs while the result panel is showing `<progress>` would expose
+// stale text from the previous parse; toggling OCR options would have no
+// effect because `readOcrOptions()` already snapshotted them. Disabling
+// everything in both pane bars is the simplest, least-surprising model.
+//
+// On busy=false we re-derive enabled state from app-state predicates rather
+// than from a snapshot taken on entry, because the parse itself flips
+// share/copy/export via setExportEnabled() during the try block and the
+// snapshot would clobber that work. The Parse buttons are excluded because
+// the parsePdf() finally block computes their state from `!pdfFile`
+// (mirroring how the file loader leaves them).
+function setParsingBusy(busy) {
+    els.clearBtn.disabled = busy || !pdfFile;
+    els.replaceBtn.disabled = busy || !pdfFile;
+    els.ocrBtn.disabled = busy;
+    for (const t of [els.tabText, els.tabJson, els.tabMd, els.tabOutline, els.tabShots]) {
+        t.disabled = busy;
+    }
+    // Share / Copy / Export are managed by setExportEnabled() based on the
+    // parse result. Force-disable on entry; on exit, leave alone so the
+    // setExportEnabled() call inside the try block (or the catch's
+    // setExportEnabled(false, false)) wins.
+    if (busy) {
+        els.shareBtn.disabled = true;
+        els.copyBtn.disabled = true;
+        els.exportBtn.disabled = true;
+    }
+    els.dropzone.classList.toggle('is-busy', busy);
+    if (busy) els.dropzone.setAttribute('aria-busy', 'true');
+    else els.dropzone.removeAttribute('aria-busy');
+    els.dropzone.tabIndex = busy ? -1 : 0;
+}
+
 async function parsePdf() {
     if (!pdfFile) return;
     const opts = readOcrOptions();
-    els.parseBtn.disabled = true;
-    els.parseBtn2.disabled = true;
+    setParsingBusy(true);
     showResultPanel('progress');
     // The cached Markdown/Screenshots views are derived from the previous
     // parse result; a fresh Parse click invalidates both so the next
@@ -2494,7 +2586,7 @@ async function parsePdf() {
             : `OCR ${opts.mode === 'auto' ? 'in auto mode' : 'forced for every page'} (${opts.lang}). Language data downloads on first use.`;
         // Yield a frame so the progress text actually paints before the heavy
         // work pegs the main thread.
-        await new Promise((r) => requestAnimationFrame(() => r()));
+        await yieldToMain();
         const parser = new LiteParse({
             ocrEnabled: opts.mode !== 'never',
             // The 'always' mode tells liteparse to run OCR on every page even
@@ -2573,6 +2665,10 @@ async function parsePdf() {
         showResultPanel('error');
         setExportEnabled(false, false);
     } finally {
+        setParsingBusy(false);
+        // Parse buttons mirror file-loaded state, not the prior disabled
+        // snapshot (the snapshot was `true` because we just disabled them on
+        // entry — restoring that would leave them stuck).
         els.parseBtn.disabled = !pdfFile;
         els.parseBtn2.disabled = !pdfFile;
     }
@@ -2737,36 +2833,36 @@ els.copyBtn.addEventListener('click', async () => {
 // items; syncExportMenuItems() is responsible for keeping their enabled
 // state + descriptions in sync with the active tab.
 
-function toggleExportMenu(force) {
-    if (els.exportBtn.disabled && force !== false) return;
-    const open = force !== undefined ? force : els.exportMenu.hasAttribute('hidden');
-    if (open) {
-        // Re-sync just before showing so the user always sees an up-to-date
-        // Download extension (Markdown / Outline caches may have resolved
-        // while the menu was closed).
-        syncExportMenuItems();
-        els.exportMenu.removeAttribute('hidden');
-        els.exportBtn.setAttribute('aria-expanded', 'true');
-    } else {
-        els.exportMenu.setAttribute('hidden', '');
-        els.exportBtn.setAttribute('aria-expanded', 'false');
-    }
+// Export menu: open/close handled declaratively by [popover] + [commandfor].
+// Re-sync the menu items every time the popover transitions to the open state
+// so the user always sees an up-to-date Download extension (Markdown / Outline
+// caches may have resolved while the menu was closed). Fires for both the
+// native showPopover() path and the fallback IIFE below.
+wireTether(els.exportBtn, els.exportMenu);
+els.exportMenu.addEventListener('toggle', (e) => {
+    if (e.newState === 'open') syncExportMenuItems();
+});
+function closeExportMenu() {
+    if (typeof els.exportMenu.hidePopover === 'function') { if (els.exportMenu.matches(':popover-open')) els.exportMenu.hidePopover(); }
+    else els.exportMenu.hidden = true;
 }
-function closeExportMenu() { toggleExportMenu(false); }
 
-els.exportBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleExportMenu();
-});
-document.addEventListener('click', (e) => {
-    if (els.exportMenu.hasAttribute('hidden')) return;
-    if (!els.exportMenu.contains(e.target) && e.target !== els.exportBtn && !els.exportBtn.contains(e.target)) {
-        toggleExportMenu(false);
+// Shared fallback for engines without Popover API + Invoker Commands (older Safari, older Firefox).
+// Wires the OCR popover and the Export menu at the same time; see
+// AGENTS.md → "Tethered popovers (native popover + commandfor)".
+if (!('popover' in HTMLElement.prototype) || !('commandForElement' in HTMLButtonElement.prototype)) {
+    const pops = document.querySelectorAll('[popover]');
+    for (const p of pops) { p.hidden = true; p.style.position = 'absolute'; p.style.top = 'calc(100% + 6px)'; p.style.right = '0'; }
+    const setState = (p, open) => { if (p.hidden === !open) return; p.hidden = !open; p.dispatchEvent(Object.assign(new Event('toggle'), { newState: open ? 'open' : 'closed' })); };
+    const closeAll = () => { for (const p of pops) setState(p, false); for (const i of document.querySelectorAll('[commandfor]')) i.setAttribute('aria-expanded', 'false'); };
+    for (const inv of document.querySelectorAll('[commandfor]')) {
+        const t = document.getElementById(inv.getAttribute('commandfor'));
+        if (!t) continue;
+        inv.addEventListener('click', (e) => { if (inv.disabled) return; e.stopPropagation(); const opening = t.hidden; closeAll(); if (opening) { setState(t, true); inv.setAttribute('aria-expanded', 'true'); } });
     }
-});
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !els.exportMenu.hasAttribute('hidden')) toggleExportMenu(false);
-});
+    document.addEventListener('click', (e) => { for (const p of pops) if (!p.hidden && !p.contains(e.target)) closeAll(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAll(); });
+}
 
 els.exportDownload.addEventListener('click', () => {
     const payload = currentExportPayload();

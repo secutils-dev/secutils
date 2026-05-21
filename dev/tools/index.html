@@ -30,7 +30,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
     <!-- Privacy-friendly analytics by Plausible -->
-    <script defer src="https://tools.secutils.dev/js/script.js"></script>
+    <script defer src="https://tools.secutils.dev/js/script.js" fetchpriority="low"></script>
     <script>
         window.plausible = window.plausible || function () { (plausible.q = plausible.q || []).push(arguments) };
         plausible.init = plausible.init || function (i) { plausible.o = i || {} };
@@ -103,6 +103,13 @@ main { flex: 1; padding: 48px 16px; max-width: 720px; margin: 0 auto; width: 100
 .su-dialog-body a { color: var(--primary); text-decoration: none; }
 .su-dialog-body a:hover { text-decoration: underline; }
 .su-dialog-fineprint { font-size: 0.8rem; color: var(--text-muted); }
+/* Typography polish (Baseline; selectors that don't exist in this tool are no-ops). See AGENTS.md → "Typography polish". */
+.page-title, .panel-label, .su-dialog-header h2, .card-header { text-wrap: balance; }
+.su-dialog-body p, .su-more-tools p, .tool-desc, .empty-state-sub, .progress-sub, .error-sub { text-wrap: pretty; }
+/* Respect prefers-reduced-motion. See AGENTS.md → "Reduced motion". */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
 
 @media (max-width: 640px) {
     header { padding: 0 12px; }
@@ -171,7 +178,7 @@ main { flex: 1; padding: 48px 16px; max-width: 720px; margin: 0 auto; width: 100
         <p class="su-footer-fineprint"><button type="button" class="su-footer-link" id="privacyOpen">Privacy</button></p>
     </footer>
 
-    <dialog id="privacyDialog" class="su-dialog" aria-labelledby="privacyDialogTitle">
+    <dialog id="privacyDialog" class="su-dialog" closedby="any" aria-labelledby="privacyDialogTitle">
         <header class="su-dialog-header">
             <h2 id="privacyDialogTitle">Privacy</h2>
             <button type="button" class="su-dialog-close" id="privacyClose" aria-label="Close">
@@ -208,6 +215,20 @@ main { flex: 1; padding: 48px 16px; max-width: 720px; margin: 0 auto; width: 100
     document.getElementById('privacyOpen').addEventListener('click', function () { dlg.showModal(); });
     document.getElementById('privacyClose').addEventListener('click', function () { dlg.close(); });
 })();
+
+// Safari fallback for closedby="any" (Newly Baseline elsewhere; limited in Safari as of Q2 2026).
+if (!('closedBy' in HTMLDialogElement.prototype)) {
+    var dialogs = document.querySelectorAll('dialog.su-dialog');
+    for (var i = 0; i < dialogs.length; i++) {
+        (function (d) {
+            d.addEventListener('click', function (e) {
+                if (e.target !== d) return;
+                var r = d.getBoundingClientRect();
+                if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) d.close();
+            });
+        })(dialogs[i]);
+    }
+}
 </script>
 </body>
 </html>

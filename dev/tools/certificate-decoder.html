@@ -26,12 +26,12 @@
     <meta name="twitter:description" content="Free PEM X.509 certificate decoder. Inspect chains, view subject, issuer, SANs, validity, fingerprints. No signup.">
     <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-pem.png">
     <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"PEM Certificate Decoder","url":"https://{{TOOLS_HOST}}/pem","applicationCategory":"SecurityApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/certificate-decoder.html","description":"Free PEM X.509 certificate decoder. Inspect chains, view subject, issuer, SANs, validity, fingerprints. Auto-sorts chain order. Browser-only, shareable URL state, no signup."}</script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/forge/1.3.1/forge.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/forge/1.3.1/forge.min.js" defer fetchpriority="low"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
     <!-- Privacy-friendly analytics by Plausible -->
-    <script defer src="https://tools.secutils.dev/js/script.js"></script>
+    <script defer src="https://tools.secutils.dev/js/script.js" fetchpriority="low"></script>
     <script>
         window.plausible = window.plausible || function () { (plausible.q = plausible.q || []).push(arguments) };
         plausible.init = plausible.init || function (i) { plausible.o = i || {} };
@@ -199,6 +199,13 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
 .su-dialog-body a { color: var(--primary); text-decoration: none; }
 .su-dialog-body a:hover { text-decoration: underline; }
 .su-dialog-fineprint { font-size: 0.8rem; color: var(--text-muted); }
+/* Typography polish (Baseline; selectors that don't exist in this tool are no-ops). See AGENTS.md → "Typography polish". */
+.page-title, .panel-label, .su-dialog-header h2, .card-header { text-wrap: balance; }
+.su-dialog-body p, .su-more-tools p, .tool-desc, .empty-state-sub, .progress-sub, .error-sub { text-wrap: pretty; }
+/* Respect prefers-reduced-motion. See AGENTS.md → "Reduced motion". */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
 .su-credits-list { margin: 0 0 12px; padding-left: 20px; }
 .su-credits-list li { margin-bottom: 6px; }
 .su-credits-list li:last-child { margin-bottom: 0; }
@@ -319,7 +326,7 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
         </p>
     </footer>
 
-    <dialog id="privacyDialog" class="su-dialog" aria-labelledby="privacyDialogTitle">
+    <dialog id="privacyDialog" class="su-dialog" closedby="any" aria-labelledby="privacyDialogTitle">
         <header class="su-dialog-header">
             <h2 id="privacyDialogTitle">Privacy</h2>
             <button type="button" class="su-dialog-close" id="privacyClose" aria-label="Close">
@@ -333,7 +340,7 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
         </div>
     </dialog>
 
-    <dialog id="creditsDialog" class="su-dialog" aria-labelledby="creditsDialogTitle">
+    <dialog id="creditsDialog" class="su-dialog" closedby="any" aria-labelledby="creditsDialogTitle">
         <header class="su-dialog-header">
             <h2 id="creditsDialogTitle">Credits</h2>
             <button type="button" class="su-dialog-close" id="creditsClose" aria-label="Close">
@@ -388,6 +395,17 @@ main { flex: 1; padding: 24px 16px; display: flex; flex-direction: column; overf
     document.getElementById('creditsOpen').addEventListener('click', () => dlg.showModal());
     document.getElementById('creditsClose').addEventListener('click', () => dlg.close());
 })();
+
+// Safari fallback for closedby="any" (Newly Baseline elsewhere; limited in Safari as of Q2 2026).
+if (!('closedBy' in HTMLDialogElement.prototype)) {
+    for (const dlg of document.querySelectorAll('dialog.su-dialog')) {
+        dlg.addEventListener('click', (e) => {
+            if (e.target !== dlg) return;
+            const r = dlg.getBoundingClientRect();
+            if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dlg.close();
+        });
+    }
+}
 
 // URL state encoding: see dev/tools/AGENTS.md → "URL state encoding".
 const utf8Enc = new TextEncoder();

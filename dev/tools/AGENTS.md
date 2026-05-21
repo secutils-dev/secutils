@@ -2,6 +2,33 @@
 
 All tools in `dev/tools/` are standalone single-HTML-file apps (embedded CSS + JS) styled to look consistent with the Secutils.dev web application. Use `markdown-to-html.html` as the canonical reference implementation.
 
+## Browser-support policy
+
+Target **evergreen browsers** (current Chrome / Firefox / Safari / Edge). Allow **Baseline
+Newly Available** features when they meaningfully simplify a tool (replace ad-hoc
+JavaScript with native browser behaviour, drop a transitive CSS-positioning library, etc.).
+
+When a Newly Baseline feature is not yet supported in one evergreen engine, a custom
+fallback is allowed only if **all** of the following hold:
+
+- The fallback adds **≤20 lines** of inline code (HTML, CSS, or JS combined).
+- It does **not** require an external dependency, polyfill bundle, or CDN script.
+- The feature degrades gracefully — the tool stays usable when the fallback is absent.
+
+When a Newly Baseline feature does not meet the bar above (e.g. fallback would be more
+than 20 lines or would need a polyfill), **skip the feature** and stay on the existing
+pattern. Never load a polyfill bundle (no `invokers-polyfill`, no `@oddbird/popover-polyfill`,
+no `scroll-timeline-polyfill`); the tools are intentionally dependency-free.
+
+**Limited Availability** features (anything still missing in one of Chrome / Firefox /
+Safari) are out of scope. Scroll-driven animations, view transitions, and similar
+showcase-only APIs may be reconsidered when they reach Newly Baseline status.
+
+This policy is consumed by the Modern Web Guidance skill at install time
+(<https://developer.chrome.com/docs/modern-web-guidance>) and by any agent that asks
+"should I add a fallback for this Baseline feature?" — the answer is the four bullets
+above.
+
 ## Format
 
 - Single `.html` file, no external dependencies except CDN-hosted libraries (fonts, highlight.js, etc.)
@@ -924,6 +951,39 @@ math is involved. Adding a new tool is a one-row diff in `registry.ts` plus a
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
   ```
 
+### Typography polish (`text-wrap: balance` / `pretty`)
+
+Every tool ships the following single CSS block adjacent to the
+`.su-dialog-fineprint` rule (search anchor, present in every file):
+
+```css
+/* Typography polish (Baseline; selectors that don't exist in this tool are no-ops). */
+.page-title, .panel-label, .su-dialog-header h2, .card-header { text-wrap: balance; }
+.su-dialog-body p, .su-more-tools p, .tool-desc, .empty-state-sub, .progress-sub, .error-sub { text-wrap: pretty; }
+```
+
+Rules:
+
+- **`text-wrap: balance`** is reserved for short, deliberately-set text:
+  page titles, panel labels, dialog headings, card titles. The browser
+  balances line lengths so headings never leave a single word on the last
+  line. Baseline since 2024-05-13.
+- **`text-wrap: pretty`** goes on multi-line body copy where orphans look
+  worst: Privacy / Credits dialog paragraphs, the bottom "more tools" promo
+  copy, empty-state / progress / error sub-headings. Baseline Newly
+  Available since 2025-04 across all three engines.
+- **Never** use the global `* { text-wrap: balance; }` shortcut — the
+  balancing algorithm runs a binary search on line widths and is expensive
+  if applied to every node in the document. The selector list above
+  intentionally targets a few dozen elements at most.
+- Selectors that don't exist in a given tool (e.g. `.empty-state-sub` is
+  absent in `index.html`) are harmless no-ops. Keep the full list verbatim
+  so adding a new shared class later doesn't need a sweep across every
+  tool.
+- No fallback is needed; browsers without support fall back to default
+  `wrap` (the current behaviour) automatically. The block is a pure
+  progressive enhancement.
+
 ## Header
 
 - **Height**: `48px` (matches EUI `EuiHeader`)
@@ -1476,7 +1536,7 @@ goes earlier in `<head>`, between the meta tags.
 
 ```html
 <!-- Privacy-friendly analytics by Plausible -->
-<script defer src="https://tools.secutils.dev/js/script.js"></script>
+<script defer src="https://tools.secutils.dev/js/script.js" fetchpriority="low"></script>
 <script>
     window.plausible = window.plausible || function () { (plausible.q = plausible.q || []).push(arguments) };
     plausible.init = plausible.init || function (i) { plausible.o = i || {} };
@@ -1496,6 +1556,12 @@ Three load-bearing details:
   finishes) and avoids the tiny race where the queue stub might run before the
   loader is ready. Both work in practice; `defer` is the conservative choice
   for an in-`<head>` placement.
+- **`fetchpriority="low"`.** Analytics is never LCP-critical; the hint tells
+  the browser to keep fonts and the first meaningful render ahead of the
+  Plausible loader in the network queue. Pairs with `defer` (the priority
+  hint applies to the fetch, the timing hint applies to execution). Same
+  attribute is applied to every heavy third-party library (see "Resource
+  priority" below).
 - **`init()` form without `data-domain`.** Plausible auto-derives the domain
   from `location.hostname`, so a single snippet works on every page and the
   dashboard automatically attributes events to `tools.secutils.dev`. The
@@ -1555,7 +1621,7 @@ ships unchanged across every tool (the dialog enumerates payload types from
 every tool, not just the current page's):
 
 ```html
-<dialog id="privacyDialog" class="su-dialog" aria-labelledby="privacyDialogTitle">
+<dialog id="privacyDialog" class="su-dialog" closedby="any" aria-labelledby="privacyDialogTitle">
     <header class="su-dialog-header">
         <h2 id="privacyDialogTitle">Privacy</h2>
         <button type="button" class="su-dialog-close" id="privacyClose" aria-label="Close">
@@ -1646,7 +1712,7 @@ Place as the **next sibling after `#privacyDialog`** (so the two dialogs sit
 together at the end of `<body>`):
 
 ```html
-<dialog id="creditsDialog" class="su-dialog" aria-labelledby="creditsDialogTitle">
+<dialog id="creditsDialog" class="su-dialog" closedby="any" aria-labelledby="creditsDialogTitle">
     <header class="su-dialog-header">
         <h2 id="creditsDialogTitle">Credits</h2>
         <button type="button" class="su-dialog-close" id="creditsClose" aria-label="Close">
@@ -1703,6 +1769,352 @@ each other:
 })();
 ```
 
+## Dialog backdrop dismissal (`closedby="any"`)
+
+Every `.su-dialog` carries the HTML attribute `closedby="any"`. The native HTML
+`<dialog>` element then closes on:
+
+- the `Esc` key (native — always);
+- the close button (wired explicitly in the Privacy / Credits IIFEs above);
+- and a click on the backdrop (delivered by `closedby="any"`, Baseline Newly
+  Available since 2025).
+
+This removes the historical custom "click outside to dismiss" listener that older
+versions of the chrome carried (`addEventListener('click', e => { if (e.target === dlg) dlg.close(); })`).
+The browser also dispatches a synthetic `cancel` event when light-dismissed, which means
+any future cleanup logic can listen for `cancel` instead of `click`-on-backdrop.
+
+### Safari fallback (≤14 LOC)
+
+Safari was the last engine to ship `closedby` and may still be missing it on some
+in-support releases. The fallback below feature-detects `'closedBy' in HTMLDialogElement.prototype`
+and only registers manual backdrop listeners when the property is absent. Place
+it **immediately after the Credits IIFE** (or after the Privacy IIFE in tools
+that ship no Credits dialog — `index.html`, `echo.html`):
+
+```js
+// Safari fallback for closedby="any" (Newly Baseline elsewhere; limited in Safari as of Q2 2026).
+if (!('closedBy' in HTMLDialogElement.prototype)) {
+    for (const dlg of document.querySelectorAll('dialog.su-dialog')) {
+        dlg.addEventListener('click', (e) => {
+            if (e.target !== dlg) return;
+            const r = dlg.getBoundingClientRect();
+            if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dlg.close();
+        });
+    }
+}
+```
+
+The `e.target !== dlg` guard skips clicks that bubble from inside the dialog
+content. The `getBoundingClientRect` check is required because the dialog's
+hit-box covers the entire viewport when the backdrop is shown — the rectangle
+comparison is what distinguishes "clicked the backdrop" from "clicked a child
+form control whose own click handler stopped propagation". Tools that ship in
+ES5-style chrome (`index.html`) mirror the same logic with `var` and IIFE
+hoisting; the behaviour is identical and the LOC budget still holds.
+
+Drop the fallback once Safari's Baseline status flips to Widely Available
+(track via <https://webstatus.dev/features/dialog-closedby>); the `closedby="any"`
+attribute on the markup is the source of truth.
+
+## Tethered popovers (native `popover` + `commandfor`)
+
+For dropdown menus, options popovers, and any other element that "tethers" to
+an invoker button (Options gear, Export menu, OCR settings), use the native
+**Popover API** (`popover` attribute) and **Invoker Commands** (`commandfor` +
+`command="toggle-popover"`). The browser handles open/close, light-dismiss,
+`Esc`, focus return, and top-layer z-stacking — no `stopPropagation`, no
+document-level click listeners, no `aria-expanded` bookkeeping.
+
+`popover` is Baseline Newly Available; Invoker Commands rolled out across all
+three engines in late 2025. Both qualify under the Browser-support policy.
+
+### Markup (copy verbatim)
+
+```html
+<div class="options-anchor">
+    <button class="btn btn-sm" commandfor="optionsPopover" command="toggle-popover" aria-haspopup="true" title="Export options">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+        <span class="opt-label">Options</span>
+    </button>
+    <div id="optionsPopover" popover class="options-popover" role="dialog" aria-label="Export options">
+        …
+    </div>
+</div>
+```
+
+Notes:
+
+- **Always use an inline SVG cog** (24×24 viewBox, rendered 14×14, stroke 1.8).
+  The Unicode `&#9881;` gear glyph renders ~30 % smaller than a 14 px SVG icon
+  inside the same `.btn-sm`, which makes it look "tiny" next to the other
+  action icons (Copy / Export / Fullscreen are all stroke SVGs). The flex
+  `gap: 5px` from `.btn` handles the icon↔label spacing — no `&nbsp;`.
+- The invoker is **always** a `<button type="button">` (or a default-type
+  button inside a form that does not submit). `commandfor` references the
+  popover's `id`; `command="toggle-popover"` opens it if closed and vice
+  versa. `show-popover` / `hide-popover` are also valid commands.
+- Do **not** carry `aria-expanded` on the invoker. The user agent reflects
+  expanded state into the accessibility tree automatically when the invoker
+  is associated with a popover via `commandfor`. The literal HTML attribute
+  is **only** maintained by the fallback below (so CSS that targets
+  `[aria-expanded="true"]` for, e.g., chevron rotation must be paired with a
+  `:has(…:popover-open)` selector — see CSS below).
+- Keep `aria-haspopup="true"` (or `"menu"` for an action menu): it's still
+  the most reliable signal across screen readers and Invoker Commands does
+  not provide it.
+- Keep the `.options-anchor` / `.export-anchor` wrapper for visual layout
+  (it sits the button + popover together in the panel-actions flex row) and
+  so CSS `:has()` selectors can scope to "this invoker is open".
+
+### CSS (copy verbatim)
+
+```css
+.options-popover {
+    /* [popover] starts in the top layer; the UA stylesheet applies
+       `position: fixed; inset: 0; margin: auto;` (centered). Override `margin`
+       to 0 and let JS pin the popover next to its invoker on the `toggle`
+       event — see positionPopover() below. */
+    margin: 0;
+    max-width: min(360px, calc(100vw - 24px));
+    min-width: 260px; padding: 14px 16px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+}
+
+/* Long unbroken text in checkbox descriptions (URLs, identifier examples)
+   must wrap or the popover stretches across the viewport. */
+.options-popover .opt-desc { overflow-wrap: anywhere; }
+
+/* Menu-style popover (column of buttons). Layout the *items*, not the
+   popover, with full-width block + margin spacing. */
+.export-menu { margin: 0; min-width: 110px; max-width: calc(100vw - 24px); padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
+.export-item { display: block; width: 100%; padding: 7px 14px; ... }
+.export-item + .export-item { margin-top: 2px; }
+
+/* Chevron / caret rotation when the menu is open:
+   :popover-open wins in the native path; [aria-expanded] covers the no-popover JS fallback. */
+.export-anchor:has(.export-menu:popover-open) .chevron,
+#exportBtn[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+```
+
+**Cascade-origin trap: never set `display:` on the popover itself.** The UA
+stylesheet hides closed popovers with
+`[popover]:not(:popover-open) { display: none; }`. Author-origin rules beat
+UA-origin rules at *any* specificity — so an author `.export-menu { display:
+flex; }` will keep the popover permanently visible (and, paired with our
+`margin: 0` override, stuck at the `inset: 0` top-left corner because the JS
+tether only fires on open). Lay out menu items with per-item `display: block`
++ margin (above), or use a flex/grid container *inside* the popover. Other
+display-changing properties (`display: grid`, `display: contents`,
+`display: block !important`) all hit the same trap.
+
+Do **not** set `z-index` on the popover. `[popover]` shown elements are
+promoted to the top layer; they sit above any positioned siblings without
+any z-index dance and ignore `overflow: hidden` on their containing scroll
+parent. This is the main reason to migrate.
+
+**Why not CSS Anchor Positioning (`position-area`)?** It would replace the
+JS helper below with a one-liner, but as of Q2 2026 anchor positioning is
+still Chromium-only (Firefox / Safari have partial or flagged support). It
+is **not** Newly Baseline, so it fails the Browser-support policy. Once it
+flips to Baseline, the JS helper can be deleted and `position-area: bottom
+span-left; margin-top: 8px;` reintroduced.
+
+### JavaScript helpers
+
+Three helpers per tool: a uniform `hidePopoverEl()` for close paths, a
+viewport-coords `positionPopover()` for tethering, and a `wireTether()`
+that attaches both a `click` listener (synchronous, pre-open) and a
+`beforetoggle` listener (catches keyboard-driven opens) per invoker /
+popover pair. The same call site works in both the native and fallback
+paths because the fallback IIFE dispatches a synthetic `toggle` event.
+
+```js
+// Close any [popover] element across the native + fallback code paths.
+const hidePopoverEl = (el) => {
+    if (typeof el.hidePopover === 'function') { if (el.matches(':popover-open')) el.hidePopover(); }
+    else el.hidden = true;
+};
+
+// Pin an open [popover] right-aligned just below its invoker. No-op in the
+// fallback path: the fallback IIFE already positions the popover via inline
+// `position: absolute; top: calc(100% + 6px); right: 0;` styles, so guarding
+// on `showPopover` (absent in browsers without Popover API) lets the same
+// `beforetoggle` listener be wired unconditionally.
+const positionPopover = (popover, invoker) => {
+    if (typeof popover.showPopover !== 'function') return;
+    const r = invoker.getBoundingClientRect();
+    popover.style.position = 'fixed';
+    popover.style.top = `${Math.round(r.bottom + 6)}px`;
+    popover.style.left = 'auto';
+    popover.style.right = `${Math.round(window.innerWidth - r.right)}px`;
+    popover.style.bottom = 'auto';
+};
+
+// Wire both a `click` listener (synchronous, pre-open) and a `beforetoggle`
+// listener (catches programmatic showPopover() and keyboard-driven opens).
+// `click` is the primary path — it fires *before* the browser performs the
+// [commandfor] default action (showPopover), so the inline `top`/`right` are
+// already on the element by the time it enters the top layer.
+const wireTether = (invoker, popover) => {
+    invoker.addEventListener('click', () => positionPopover(popover, invoker));
+    popover.addEventListener('beforetoggle', (e) => { if (e.newState === 'open') positionPopover(popover, invoker); });
+};
+wireTether(els.optionsBtn, els.optionsPopover);
+wireTether(els.exportBtn, els.exportMenu);
+
+// `toggle` is the right place for post-open side-effects (refreshing menu
+// items, tearing down language suggestions, etc.) where a one-frame delay
+// is fine.
+els.exportMenu.addEventListener('toggle', (e) => {
+    if (e.newState === 'open') syncMenuItems();
+});
+```
+
+**Why both `click` and `beforetoggle`?** Some browsers (and some Chromium
+versions when the popover is opened through Invoker Commands) fire
+`beforetoggle` after the popover has already been laid out at the UA
+default `inset: 0` location, producing a visible top-left flash before
+the JS can reposition. The `click` listener on the invoker runs **inside
+the dispatch of the click event**, which is strictly before the browser
+performs the invoker's default action (showPopover) — so the inline
+position styles set there are already on the element when the popover
+enters the top layer. `beforetoggle` then covers paths that bypass a
+mouse click on the invoker (e.g. a `.showPopover()` from elsewhere, or
+keyboard activation that some browsers route differently).
+
+`beforetoggle` and `toggle` are the Popover API's lifecycle hooks. Both
+carry `e.newState` / `e.oldState` strings of `"open"` / `"closed"`. The
+fallback IIFE below dispatches a `toggle` event manually (with a matching
+`newState` property) but does **not** dispatch `beforetoggle` — it
+doesn't need to because the fallback path positions the popover with
+inline styles directly inside the click handler before showing it.
+
+The positioning runs **on every open** rather than just once, so the
+popover follows the invoker if the user has scrolled the panel-actions row
+sideways before re-opening. Resize listeners are deliberately not wired —
+the popover's light-dismiss model means a viewport resize that hides the
+invoker also closes the popover.
+
+### Fallback IIFE (≤14 LOC; copy verbatim)
+
+Place it **once per tool**, immediately after the per-popover
+`toggle`-event wiring. It feature-detects `'popover' in HTMLElement.prototype`
+and `'commandForElement' in HTMLButtonElement.prototype` and, on miss,
+wires every `[popover]` + `[commandfor]` pair in the document with the
+old "click invoker / click outside / Esc to close" behaviour:
+
+```js
+// Fallback for engines without Popover API + Invoker Commands (older Safari, older Firefox).
+if (!('popover' in HTMLElement.prototype) || !('commandForElement' in HTMLButtonElement.prototype)) {
+    const pops = document.querySelectorAll('[popover]');
+    for (const p of pops) { p.hidden = true; p.style.position = 'absolute'; p.style.top = 'calc(100% + 6px)'; p.style.right = '0'; }
+    const setState = (p, open) => { if (p.hidden === !open) return; p.hidden = !open; p.dispatchEvent(Object.assign(new Event('toggle'), { newState: open ? 'open' : 'closed' })); };
+    const closeAll = () => { for (const p of pops) setState(p, false); for (const i of document.querySelectorAll('[commandfor]')) i.setAttribute('aria-expanded', 'false'); };
+    for (const inv of document.querySelectorAll('[commandfor]')) {
+        const t = document.getElementById(inv.getAttribute('commandfor'));
+        if (!t) continue;
+        inv.addEventListener('click', (e) => { if (inv.disabled) return; e.stopPropagation(); const opening = t.hidden; closeAll(); if (opening) { setState(t, true); inv.setAttribute('aria-expanded', 'true'); } });
+    }
+    document.addEventListener('click', (e) => { for (const p of pops) if (!p.hidden && !p.contains(e.target)) closeAll(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAll(); });
+}
+```
+
+Behavioural notes:
+
+- The IIFE is **idempotent across popovers in the same document**: it picks
+  up every `[popover]` and every `[commandfor]` in one pass, so adding a new
+  popover to a tool needs zero new fallback wiring.
+- `inv.disabled` is honoured (the Export button starts disabled). The
+  short-circuit is required because clicks on a disabled button still
+  bubble in the fallback path.
+- The fallback sets the literal `aria-expanded` attribute (the native path
+  does not). The chevron-rotation CSS above includes both selectors so the
+  visual matches in either path.
+- The fallback dispatches a synthetic `toggle` event with `newState` so
+  call-site listeners (the OCR popover's language-suggestions teardown,
+  the Export menu's `syncMenuItems()` resync) work unchanged.
+- The fallback re-applies the historical `position: absolute; top:
+  calc(100% + 6px); right: 0;` rules via inline `style` so the popover
+  still tethers to the invoker without `position-area` support.
+
+### Reference implementations
+
+- [`dev/tools/markdown-to-html.html`](markdown-to-html.html) — Options gear
+  popover + Export dropdown menu (the canonical pair).
+- [`dev/tools/pdf-extractor.html`](pdf-extractor.html) — OCR settings popover
+  (uses the `toggle` event for language-suggestions teardown) + Export menu
+  (uses `toggle` for the per-open `syncExportMenuItems()` resync).
+
+Drop the fallback IIFE once `'commandForElement' in HTMLButtonElement.prototype`
+reaches Widely Available on the Baseline tracker. The HTML markup and the
+two helpers stay; everything in the `if (!('popover' …))` block becomes dead
+code that the minifier strips.
+
+## Form validation feedback (`:user-invalid` + `aria-invalid`)
+
+Inputs with `required`, `min`/`max`, `type="number"`, `type="email"`, or
+`pattern="…"` constraints must use **`:user-invalid`** for their red-border
+styling — never `:invalid`. `:invalid` fires the moment the page renders, so
+inputs hydrated from URL state (`echo.html`'s `status` field briefly fails
+`min=100/max=599` during parsing) or empty `required` fields on first load
+flash an error before the user has touched anything. `:user-invalid` defers
+until the user has either edited the field or attempted to submit — matching
+the way browsers themselves time native validation tooltips.
+
+Baseline Newly Available since 2024-12. No fallback is needed: browsers
+without `:user-invalid` simply never apply the rule, so the input gets no
+custom red border — strictly better than the historical `:invalid`-on-load
+flash.
+
+### CSS (copy verbatim, adjust selectors to the tool's input classes)
+
+```css
+.input:user-invalid, .textarea:user-invalid, .input-mono:user-invalid {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 1px var(--danger);
+}
+.form-input:user-invalid { border-color: var(--danger); }
+```
+
+Add a `--danger` color variable to **both** theme blocks if it isn't already
+there (the rest of the palette lives in the existing `:root` /
+`[data-theme="light"]` rules). The borealis dark danger is `#dc4a44`; the
+light counterpart is `#bd271e`:
+
+```css
+:root, [data-theme="dark"] { … --danger: #dc4a44; … }
+[data-theme="light"]       { … --danger: #bd271e; … }
+```
+
+### Accessibility sync (`aria-invalid`)
+
+CSS handles the visual; assistive tech still needs the literal `aria-invalid`
+attribute to announce the same state. Set it on `blur` (after the user has
+moved away from the field, matching the `:user-invalid` trigger) rather than
+on every keystroke:
+
+```js
+for (const i of document.querySelectorAll('input[required], input[type=number], input[type=email]')) {
+    i.addEventListener('blur', () => i.setAttribute('aria-invalid', String(!i.matches(':valid'))));
+}
+```
+
+`:valid` is the inverse of `:invalid` and works on every browser the tools
+target. The string-coerced boolean (`"true"` / `"false"`) is the
+`aria-invalid` contract (it is **not** boolean ARIA, so the literal string
+matters). Place this loop just after the dialog-fallback IIFE so it runs
+once the DOM is fully wired.
+
+### Reference implementations
+
+- [`dev/tools/echo.html`](echo.html) — status-code number input + header value
+  inputs; URL-hydrated state.
+- [`dev/tools/mock-saml-idp.html`](mock-saml-idp.html) — required username +
+  email form.
+
 ## Responsive (mobile)
 
 ```css
@@ -1713,6 +2125,69 @@ each other:
     .btn { padding: 6px 10px; font-size: 12px; }
 }
 ```
+
+### Reduced motion (`prefers-reduced-motion: reduce`)
+
+Every tool ships a single four-line override that flattens animations and
+transitions when the OS-level motion preference is set. Sits alongside the
+"Typography polish" rules added in the section above, and ships in every tool
+verbatim:
+
+```css
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+```
+
+Rules:
+
+- The selector is the universal `*`; `!important` is required to override
+  per-element `transition: … .25s` rules in the shared chrome (theme
+  toggle, header surface, panel header, button hovers) without modifying
+  each one individually.
+- `0.01ms` (not `0s`) so the `transitionend` / `animationend` events still
+  fire — required by EUI-style components that hide themselves on the
+  transition-end event (e.g. the toast notification).
+- `scroll-behavior: auto !important` cancels any smooth-scroll set via
+  `scroll-behavior: smooth` in third-party libraries (`marked`-rendered
+  anchor links, `pagedjs` page transitions, etc.).
+- No fallback is needed; browsers without the media query simply never
+  match it. Baseline since 2020.
+
+## Resource priority (`fetchpriority`)
+
+Heavy third-party libraries are demoted with **`defer` + `fetchpriority="low"`**
+so the browser fetches them after the LCP-critical resources (Google Fonts
+CSS, inline CSS, header logo) and the inline init shims have had a chance to
+run. Applies to:
+
+| Library                   | Tools                      | Notes                                                                                                                  |
+|---------------------------|----------------------------|------------------------------------------------------------------------------------------------------------------------|
+| `jose`                    | `jwt-debugger.html`        | Only used in async sign/verify handlers — `defer` is safe.                                                             |
+| `forge`                   | `certificate-decoder.html` | Only used in PEM decode handlers — `defer` is safe.                                                                    |
+| `jsrsasign` + `pako`      | `mock-saml-idp.html`       | Used inside `DOMContentLoaded` setup and click handlers — `defer` is safe.                                             |
+| `highlight.js` + `pako`   | `saml-decoder.html`        | Used in `buildStaticXmlView` and inflate handlers — `defer` is safe.                                                   |
+| `marked` + `highlight.js` | `markdown-to-html.html`    | `fetchpriority="low"` **only** — `defer` cannot be added because the inline script calls `marked.use(…)` at top-level. |
+| Plausible loader          | every tool                 | Already `defer`; add `fetchpriority="low"` next to it.                                                                 |
+
+Canonical snippet:
+
+```html
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jose/4.14.4/index.umd.min.js" defer fetchpriority="low"></script>
+```
+
+When in doubt, audit every reference to the library: any call at the
+top-level of a `<script>` (no `function`, `() =>`, or event listener
+wrapping it) blocks adding `defer`. Either restructure the call to live
+inside a `DOMContentLoaded` listener, or stop at `fetchpriority="low"`.
+
+`fetchpriority` is Baseline since 2024-09. Browsers without support ignore
+the attribute — no behaviour change.
 
 ## JavaScript Style
 
@@ -1764,6 +2239,151 @@ keep the embedded `<script>` blocks compact and idiomatic.
 The reference implementation in `markdown-to-html.html` follows all of the above and is
 the canonical example. When modifying an existing tool that still uses legacy syntax,
 modernize the surrounding code in the same edit.
+
+### Long tasks (`scheduler.yield()` + `content-visibility: auto`)
+
+Any synchronous loop that processes >50 ms of work is a long task. It blocks
+input handlers, kills Interaction-to-Next-Paint (INP), and on the tools
+the user-perceived symptom is "the page froze mid-render". Two
+complementary tools:
+
+#### `scheduler.yield()` for chunked work
+
+`scheduler.yield()` returns a Promise that resolves after the browser has
+had a chance to handle other work (input, paint, microtasks). Unlike
+`setTimeout(0)`, the continuation **stays in the same priority queue**, so
+yielding mid-loop doesn't lose ordering vs. concurrent click handlers.
+Baseline since 2025 in Chromium + Firefox; Safari is still missing it, so
+fall back to either `setTimeout(0)` (event-loop yield, no paint guarantee)
+or `requestAnimationFrame` (yields and waits for paint — better when the
+loop just appended a DOM node that needs to render).
+
+Canonical helper (copy verbatim):
+
+```js
+// scheduler.yield → setTimeout(0) for pure event-loop yielding.
+const yieldToMain = () => 'scheduler' in window && typeof scheduler.yield === 'function'
+    ? scheduler.yield()
+    : new Promise((r) => setTimeout(r, 0));
+
+// scheduler.yield → requestAnimationFrame when the loop needs a paint between chunks.
+const yieldToMain = () => 'scheduler' in window && typeof scheduler.yield === 'function'
+    ? scheduler.yield()
+    : new Promise((r) => requestAnimationFrame(() => r()));
+```
+
+Pick the fallback to match what the loop needs (event-loop slice vs paint).
+The Markdown renderer in `markdown-to-html.html` uses the first form
+(highlight blocks are cheap and don't need a paint between them); the PDF
+extractor's `renderShots` loop uses the second (each iteration appends an
+`<img>` whose paint the user sees as progress).
+
+Canonical 50 ms deadline pattern:
+
+```js
+let deadline = performance.now() + 50;
+for (const block of items) {
+    doWork(block);
+    if (performance.now() >= deadline) {
+        await yieldToMain();
+        deadline = performance.now() + 50;
+    }
+}
+```
+
+50 ms is the INP "long task" boundary — work below that doesn't trigger
+Chrome's `longtask` PerformanceObserver entry and doesn't show up in
+WebPageTest's Total Blocking Time. Don't yield more often than that: every
+yield costs a microtask + (optionally) a paint, and a too-aggressive
+deadline cuts throughput without improving INP.
+
+#### `content-visibility: auto` for long lists
+
+Any list of >20 items (PDF page captures, outline rows, search results,
+log entries) should carry `content-visibility: auto` plus a
+`contain-intrinsic-size` hint. The browser then skips painting and hit-
+testing for off-screen items, with the hint reserving scroll space so the
+scrollbar doesn't jump as items materialise.
+
+```css
+.shots-figure       { content-visibility: auto; contain-intrinsic-size: auto 800px; }
+.outline-list .outline-list { content-visibility: auto; contain-intrinsic-size: auto 200px; }
+```
+
+Widely Baseline; no fallback needed (older browsers ignore the property,
+content paints as before). The intrinsic-size value should match the
+typical rendered height of the element — too small causes scrollbar jumps
+when items hydrate, too large wastes scroll real estate. Eyeball the
+median height once and pin it.
+
+#### Reference implementations
+
+- [`dev/tools/markdown-to-html.html`](markdown-to-html.html) `render()` —
+  yields every 50 ms between hljs `highlightElement` calls. The 150 ms
+  `updatePreview` debounce hides the async hop from the user.
+- [`dev/tools/pdf-extractor.html`](pdf-extractor.html) `renderShots()` and
+  `parsePdf()` — uses `yieldToMain()` (`scheduler.yield` → rAF fallback)
+  so progress updates and freshly-appended page captures paint before the
+  next chunk of synchronous work runs.
+
+### Busy-state gating (long async pipelines)
+
+A long-running async pipeline (PDF parse, multi-second OCR, generation
+step) must put the whole UI into a busy state for the duration. Three
+hazards motivate this:
+
+- **Re-entrancy** — mid-flight clicks on the Clear / Replace / Parse
+  buttons restart the engine or detach an input buffer that the running
+  pipeline still owns (e.g. pdf.js transfers the ArrayBuffer to its
+  worker, so a second click on the same `pdfFile.bytes` view dispatches a
+  detached buffer).
+- **Stale state exposure** — switching view tabs while the result panel
+  shows `<progress>` exposes the *previous* parse's text/JSON/markdown,
+  which the user reasonably interprets as the new result.
+- **No-op interactions** — toggling OCR options or upload affordances
+  during a parse has no effect (the engine already snapshotted them) but
+  looks like it does, which is worse than disabling them.
+
+The canonical shape (see `setParsingBusy()` in
+[`dev/tools/pdf-extractor.html`](pdf-extractor.html)):
+
+```js
+function setParsingBusy(busy) {
+    // Always-gated controls: re-derive their non-busy enabled state from
+    // app-state predicates, not from a snapshot taken on entry. The
+    // pipeline itself flips Share/Copy/Export via setExportEnabled() inside
+    // the try block, and a snapshot-restore would clobber that work.
+    els.clearBtn.disabled = busy || !pdfFile;
+    els.replaceBtn.disabled = busy || !pdfFile;
+    els.ocrBtn.disabled = busy;
+    for (const t of [els.tabText, els.tabJson, /* … */]) t.disabled = busy;
+
+    // Output-side controls (Share/Copy/Export) are owned by setExportEnabled.
+    // Force-disable on entry; leave alone on exit so the pipeline's own
+    // setExportEnabled(true|false, …) call wins.
+    if (busy) { els.shareBtn.disabled = true; els.copyBtn.disabled = true; els.exportBtn.disabled = true; }
+
+    // Dropzone / large click-target areas: combine `pointer-events: none`
+    // (blocks click + drag) with `aria-busy="true"` (screen-reader signal)
+    // and `tabindex="-1"` (out of focus order, so keyboard Enter can't
+    // re-trigger the file picker).
+    els.dropzone.classList.toggle('is-busy', busy);
+    if (busy) els.dropzone.setAttribute('aria-busy', 'true');
+    else els.dropzone.removeAttribute('aria-busy');
+    els.dropzone.tabIndex = busy ? -1 : 0;
+}
+```
+
+```css
+.dropzone.is-busy { pointer-events: none; cursor: default; opacity: .85; }
+.dropzone.is-busy.dragover { border-color: var(--border); background: var(--surface); }
+```
+
+Call `setParsingBusy(true)` at the **top** of the async function (before
+any `await`) and `setParsingBusy(false)` in a `finally` so a thrown
+exception still releases the lock. The Parse-button restoration in the
+`finally` is separate (`els.parseBtn.disabled = !pdfFile`) because their
+disabled state mirrors file-loaded state, not the snapshot.
 
 ## Pre-deploy verification
 
