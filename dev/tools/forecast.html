@@ -1,0 +1,2199 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forecast: Trendlines, Predictions, Anomaly Detection | Secutils.dev</title>
+    <meta name="description" content="Free in-browser trend forecaster. Paste a numeric series, fit linear / polynomial / exponential / logarithmic curves, smooth with SMA/EMA/WMA, project N periods ahead, and spot anomalies via peaks or residual z-score. Browser-only, no signup.">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <link rel="canonical" href="https://{{TOOLS_HOST}}/forecast">
+    <meta name="su-tool-path" content="/forecast">
+    <meta name="su-tool-name" content="Forecast">
+    <meta name="su-tool-description" content="Fit trendlines, forecast future values, smooth noisy data, and spot anomalies in numeric series. Shareable URL state, no signup.">
+    <meta name="su-tool-promote" content="true">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Secutils.dev">
+    <meta property="og:title" content="Forecast: Trendlines, Predictions &amp; Anomaly Detection">
+    <meta property="og:description" content="Free trend forecaster. Fit curves, smooth noise, project N periods ahead, and spot anomalies. Browser-only, no signup.">
+    <meta property="og:url" content="https://{{TOOLS_HOST}}/forecast">
+    <meta property="og:image" content="https://secutils.dev/docs/img/og/og-forecast.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Forecast on Secutils.dev: trendlines, predictions, and anomaly detection in your browser.">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Forecast: Trendlines, Predictions &amp; Anomaly Detection">
+    <meta name="twitter:description" content="Free trend forecaster. Fit curves, smooth noise, project N periods ahead, and spot anomalies. No signup.">
+    <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-forecast.png">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Forecast","url":"https://{{TOOLS_HOST}}/forecast","applicationCategory":"DeveloperApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/forecast.html","description":"Free in-browser trend forecaster. Paste a numeric series, fit linear / polynomial / exponential / logarithmic curves, smooth with SMA/EMA/WMA, project N periods ahead, and detect anomalies via peaks or residual z-score. Powered by the WASM-based micro-ml library, fully self-contained, no signup."}</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
+    <!-- Privacy-friendly analytics by Plausible -->
+    <script defer src="https://tools.secutils.dev/js/script.js" fetchpriority="low"></script>
+    <script>
+        window.plausible = window.plausible || function () { (plausible.q = plausible.q || []).push(arguments) };
+        plausible.init = plausible.init || function (i) { plausible.o = i || {} };
+        plausible.init();
+    </script>
+    <style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* UA `[hidden] { display: none; }` rules lose to author `display: flex/block`
+   on the same element. The chart panes, output panel, and #chartActions all
+   declare `display: <something>` for layout, so we re-assert the UA rule at
+   author level (winning specificity ties) to keep `.hidden = true` working
+   from JS. */
+[hidden] { display: none !important; }
+:root, [data-theme="dark"] {
+    --bg: #141519; --surface: #1d1e24; --surface-hover: #2c2d33;
+    --border: #343741; --text: #dfe5ef; --text-muted: #98a2b3;
+    --primary: #fed047; --primary-hover: #fdc615;
+    --primary-text: #642340;
+    --primary-glow: rgba(254,208,71,0.10);
+    --accent: #642340;
+    --badge-bg: #2B394F; --badge-text: #98A8C3;
+    --radius: 12px;
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --mono: 'Roboto Mono', 'SF Mono', 'Fira Code', Consolas, monospace;
+    --code-bg: #16171c;
+    --chart-grid: rgba(220,229,239,0.07);
+    --chart-axis: #475066;
+    --chart-raw: #6a93c8;
+    --chart-smooth: #2bb3bf;
+    --chart-fit: #fed047;
+    --chart-forecast: #ff7e3a;
+    --chart-anomaly: #e94f64;
+}
+[data-theme="light"] {
+    --bg: #f5f7fa; --surface: #ffffff; --surface-hover: #f1f3f5;
+    --border: #d3dae6; --text: #343741; --text-muted: #69707d;
+    --primary: #fed047; --primary-hover: #fdc615;
+    --primary-text: #642340;
+    --primary-glow: rgba(254,208,71,0.15);
+    --accent: #642340;
+    --badge-bg: #E3E8F2; --badge-text: #505F79;
+    --code-bg: #f6f8fa;
+    --chart-grid: rgba(52,55,65,0.08);
+    --chart-axis: #98a2b3;
+    --chart-raw: #4a76b3;
+    --chart-smooth: #1f8a94;
+    --chart-fit: #c89a1a;
+    --chart-forecast: #d96a1f;
+    --chart-anomaly: #c2384e;
+}
+body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; transition: background .25s, color .25s; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 48px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; transition: background .25s, border-color .25s; }
+.logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.logo-svg { flex-shrink: 0; }
+.logo-svg .logo-text-fill { fill: var(--text); }
+.logo-badge { display: inline-flex; align-items: center; padding: 4px 16px; border-radius: 4px; border: none; background: var(--badge-bg); color: var(--badge-text); font-size: 12px; font-weight: 450; line-height: 16px; white-space: nowrap; }
+.header-right { display: flex; gap: 8px; align-items: center; }
+.btn { padding: 7px 14px; height: 29px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
+.btn:disabled { opacity: 0.55; cursor: default; }
+.btn-primary { background: var(--primary); border-color: var(--primary-text); color: var(--primary-text); font-weight: 500; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+.btn-sm { padding: 5px 10px; height: 24px; font-size: 12px; }
+.theme-toggle { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .2s; }
+.theme-toggle:hover { background: var(--surface-hover); color: var(--text); }
+.theme-toggle svg { width: 16px; height: 16px; fill: currentColor; }
+.theme-toggle .icon-sun { display: none; }
+.theme-toggle .icon-moon { display: block; }
+[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+.skill-link { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); color: var(--text-muted); font: 12px var(--font, system-ui), sans-serif; text-decoration: none; transition: all .15s; cursor: pointer; }
+.skill-link:hover { color: var(--text); border-color: var(--text-muted); background: var(--surface-hover); }
+.skill-link svg { width: 14px; height: 14px; fill: none; stroke: currentColor; }
+.su-more-tools { margin: 16px 0 0; padding: 12px 18px; text-align: center; border: 1px solid rgba(254, 208, 71, 0.35); border-radius: 12px; background: rgba(254, 208, 71, 0.06); font: 13px/1.55 var(--font); color: var(--text); transition: border-color .25s, background-color .25s, color .25s; }
+.su-more-tools p { margin: 0; }
+.su-more-tools a { color: var(--primary); font-weight: 700; text-decoration: none; white-space: nowrap; }
+.su-more-tools a:hover { color: var(--primary-hover); text-decoration: underline; }
+@media (max-width: 600px) { .su-more-tools { padding: 12px 14px; } .su-more-tools a { white-space: normal; } }
+.su-noscript { max-width: 720px; margin: 24px auto; padding: 16px; border: 1px solid var(--border); border-radius: 8px; font: 14px/1.5 var(--font, system-ui), sans-serif; background: var(--surface); color: var(--text); }
+
+main { flex: 1; padding: 24px 16px; max-width: 1280px; margin: 0 auto; width: 100%; }
+.layout { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(420px, 2fr); gap: 16px; align-items: stretch; }
+@media (max-width: 1000px) {
+    .layout { grid-template-columns: 1fr; }
+}
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; min-height: 0; transition: background .25s, border-color .25s; }
+.panel-bar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; gap: 8px; border-bottom: 1px solid var(--border); }
+.panel-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.yscale-label { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-right: -2px; }
+.yscale-select { padding: 0 6px; min-width: 64px; }
+.panel-label { font-size: 13px; font-weight: 600; color: var(--text); }
+.link-btn { border: none; background: none; font: 12px var(--font); color: var(--text-muted); cursor: pointer; padding: 2px 4px; transition: color .15s; }
+.link-btn:hover { color: var(--text); }
+.stats-text { font: 11px var(--mono); color: var(--text-muted); white-space: nowrap; }
+
+/* Input pane */
+#inputPane { min-height: 240px; }
+#dataInput { width: 100%; flex: 1; min-height: 220px; padding: 12px 14px; font: 13px/1.55 var(--mono); background: var(--surface); color: var(--text); border: none; outline: none; resize: vertical; border-bottom-left-radius: var(--radius); border-bottom-right-radius: var(--radius); }
+#dataInput::placeholder { color: var(--text-muted); opacity: 0.7; }
+
+/* Controls pane */
+.controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; padding: 14px; }
+.ctrl { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ctrl label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.ctrl select, .ctrl input[type="number"] { width: 100%; padding: 6px 10px; height: 30px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 12px var(--font); transition: border-color .15s; }
+.ctrl select:focus, .ctrl input:focus { outline: none; border-color: var(--primary); }
+.ctrl-row { display: flex; align-items: center; gap: 8px; }
+.ctrl-row input[type="range"] { flex: 1; accent-color: var(--primary); min-width: 0; }
+.ctrl-row .range-value { font: 11px var(--mono); color: var(--text); min-width: 28px; text-align: right; }
+.ctrl-row input[type="number"] { width: 70px; flex-shrink: 0; }
+.ctrl.is-disabled { opacity: 0.45; pointer-events: none; }
+.ctrl.is-disabled .range-value { color: var(--text-muted); }
+@media (max-width: 480px) {
+    .controls-grid { grid-template-columns: 1fr; }
+}
+
+/* Chart pane */
+#chartPanel { margin-top: 16px; }
+#chartHost { flex: 1; min-height: 320px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+#chartSvg { flex: 1; width: 100%; min-height: 280px; display: block; }
+#chartSvg .ax-line { stroke: var(--chart-axis); stroke-width: 1; }
+#chartSvg .grid-line { stroke: var(--chart-grid); stroke-width: 1; }
+#chartSvg .ax-text { font: 10px var(--mono); fill: var(--text-muted); }
+#chartSvg .series-raw { fill: none; stroke: var(--chart-raw); stroke-width: 1.5; stroke-linejoin: round; opacity: 0.85; }
+#chartSvg .series-raw-dot { fill: var(--chart-raw); }
+#chartSvg .series-smooth { fill: none; stroke: var(--chart-smooth); stroke-width: 2; stroke-linejoin: round; }
+#chartSvg .series-fit { fill: none; stroke: var(--chart-fit); stroke-width: 2; stroke-linejoin: round; }
+#chartSvg .series-forecast { fill: none; stroke: var(--chart-forecast); stroke-width: 2; stroke-dasharray: 6 4; stroke-linejoin: round; }
+#chartSvg .forecast-band { fill: var(--chart-forecast); opacity: 0.12; }
+#chartSvg .anomaly-marker { fill: var(--chart-anomaly); stroke: var(--surface); stroke-width: 1.5; }
+#chartSvg .anomaly-marker:hover { stroke: var(--chart-anomaly); }
+#chartSvg .forecast-divider { stroke: var(--chart-forecast); stroke-width: 1; stroke-dasharray: 2 3; opacity: 0.6; }
+#chartSvg .backtest-divider { stroke: var(--chart-anomaly); stroke-width: 1; stroke-dasharray: 4 3; opacity: 0.5; }
+#chartSvg .backtest-pred-dot { fill: var(--chart-anomaly); stroke: var(--surface); stroke-width: 1; opacity: 0.7; }
+#chartSvg .backtest-region { fill: var(--chart-anomaly); opacity: 0.04; }
+
+/* Legend */
+.legend { display: flex; flex-wrap: wrap; gap: 12px 16px; padding: 0 14px 8px; font-size: 11px; color: var(--text-muted); }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.legend-swatch { width: 18px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+.legend-swatch.dashed { background: transparent; border-top: 2px dashed currentColor; height: 0; border-radius: 0; }
+.legend-item.raw .legend-swatch { background: var(--chart-raw); }
+.legend-item.smooth .legend-swatch { background: var(--chart-smooth); }
+.legend-item.fit .legend-swatch { background: var(--chart-fit); }
+.legend-item.forecast .legend-swatch { color: var(--chart-forecast); }
+.legend-item.anomaly .legend-swatch { width: 8px; height: 8px; border-radius: 50%; background: var(--chart-anomaly); }
+.legend-item.backtest .backtest-swatch { width: 8px; height: 8px; border-radius: 50%; background: transparent; border: 1.5px solid var(--chart-anomaly); }
+.legend-item.legend-hint { color: var(--text-muted); font-style: italic; cursor: help; }
+/* Leaderboard occupies the full row of the output grid -- it has 7 numeric
+ * columns and is much denser than the other cards, so the auto-fit
+ * `minmax(220px, 1fr)` columns squeeze the Coverage column off-screen at
+ * typical desktop widths. */
+.output-card.bt-card { grid-column: 1 / -1; }
+.output-card .bt-scroll { overflow-x: auto; max-width: 100%; }
+.output-card table.bt-table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 11px; }
+.output-card table.bt-table th, .output-card table.bt-table td { text-align: right; padding: 3px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.output-card table.bt-table th:first-child, .output-card table.bt-table td:first-child { text-align: left; font-family: var(--mono); }
+.output-card table.bt-table th { color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; }
+.output-card table.bt-table tr.winner td { background: rgba(254, 208, 71, 0.10); font-weight: 600; }
+.output-card table.bt-table tr.naive td { color: var(--text-muted); font-style: italic; }
+.output-card table.bt-table td.warn { color: var(--chart-anomaly); }
+
+/* Chart empty / loading / error states */
+.chart-state { flex: 1; min-height: 280px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-muted); padding: 32px; text-align: center; }
+.chart-state .icon { width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.6; }
+.chart-state .title { font-size: 14px; font-weight: 600; margin-bottom: 4px; color: var(--text); }
+.chart-state .sub { font-size: 12px; max-width: 360px; }
+.chart-state .sub code { font-family: var(--mono); background: var(--surface-hover); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+
+/* Output panel */
+#outputPanel { margin-top: 16px; }
+.output-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; padding: 14px; }
+.output-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; transition: border-color .15s; }
+.output-card h3 { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+.output-card p, .output-card li { font-size: 13px; color: var(--text); line-height: 1.5; }
+.output-card .kv { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 12px; }
+.output-card .kv .k { color: var(--text-muted); }
+.output-card .kv .v { font-family: var(--mono); color: var(--text); }
+.output-card pre { margin: 4px 0 0; font: 11px var(--mono); white-space: pre-wrap; word-break: break-all; color: var(--text-muted); background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+.output-card ol, .output-card ul { padding-left: 18px; }
+.output-card li { font-family: var(--mono); font-size: 11px; padding: 1px 0; }
+.output-card.empty { opacity: 0.55; }
+.output-card.callout { border-color: rgba(254, 208, 71, 0.4); background: rgba(254, 208, 71, 0.06); }
+.output-card.warn { border-color: rgba(233, 79, 100, 0.4); background: rgba(233, 79, 100, 0.06); }
+
+/* Examples dropdown (uses <details>; popover-anchored) */
+.examples-anchor { position: relative; display: inline-flex; }
+.examples-anchor summary { list-style: none; cursor: pointer; }
+.examples-anchor summary::-webkit-details-marker { display: none; }
+.examples-anchor[open] summary .chevron { transform: rotate(180deg); }
+.examples-anchor .chevron { transition: transform .15s; }
+.examples-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 50; min-width: 260px; max-width: calc(100vw - 24px); padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
+@media (max-width: 480px) {
+    .examples-menu { left: auto; right: 0; }
+}
+.examples-group { padding: 6px 10px 4px; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.example-item { display: block; width: 100%; padding: 7px 10px; border: none; background: transparent; color: var(--text); font: 12px var(--font); cursor: pointer; border-radius: 6px; text-align: left; transition: background .15s; }
+.example-item:hover, .example-item:focus-visible { background: var(--surface-hover); outline: none; }
+.example-item .ex-name { font-weight: 600; font-size: 13px; }
+.example-item .ex-hint { display: block; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* Toast */
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); color: var(--text); padding: 10px 18px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.3); animation: toastIn .2s ease; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.su-footer { text-align: center; padding: 16px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; transition: border-color .25s, color .25s; }
+.su-footer p { margin: 0; }
+.su-footer-fineprint { margin-top: 6px !important; font-size: 0.7rem; opacity: 0.75; }
+.su-footer-link { background: none; border: none; padding: 0; color: inherit; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.su-footer-link:hover { color: var(--text); }
+.su-dialog { max-width: 520px; width: calc(100% - 32px); max-height: calc(100% - 32px); inset: 0; margin: auto; padding: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+.su-dialog::backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(2px); }
+.su-dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.su-dialog-header h2 { font-size: 1rem; font-weight: 600; }
+.su-dialog-close { width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .15s; }
+.su-dialog-close:hover { background: var(--surface-hover); color: var(--text); }
+.su-dialog-body { padding: 16px 18px; font-size: 0.875rem; line-height: 1.55; color: var(--text); }
+.su-dialog-body p { margin-bottom: 12px; }
+.su-dialog-body p:last-child { margin-bottom: 0; }
+.su-dialog-body code { font-family: var(--mono); background: var(--surface-hover); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
+.su-dialog-body a { color: var(--primary); text-decoration: none; }
+.su-dialog-body a:hover { text-decoration: underline; }
+.su-dialog-fineprint { font-size: 0.8rem; color: var(--text-muted); }
+.su-credits-list { margin: 0 0 12px; padding-left: 20px; }
+.su-credits-list li { margin-bottom: 6px; }
+.su-credits-list li:last-child { margin-bottom: 0; }
+
+/* Typography polish (Baseline; selectors that don't exist in this tool are no-ops). See AGENTS.md → "Typography polish". */
+.page-title, .panel-label, .su-dialog-header h2, .card-header { text-wrap: balance; }
+.su-dialog-body p, .su-more-tools p, .ex-hint, .chart-state .sub { text-wrap: pretty; }
+/* Respect prefers-reduced-motion. See AGENTS.md → "Reduced motion". */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+    </style>
+</head>
+<body>
+    <noscript>
+        <p class="su-noscript"><strong>Forecast</strong>: fit trendlines, forecast future values, smooth noisy data, and spot anomalies in numeric series. Browser-only. Requires JavaScript; please enable it. Source on <a href="https://github.com/secutils-dev/secutils/blob/main/dev/tools/forecast.html">GitHub</a>.</p>
+    </noscript>
+    <header>
+        <a class="logo" href="https://secutils.dev" target="_blank" rel="noopener">
+            <svg class="logo-svg" height="24" role="img" viewBox="0 0 98 16" xmlns="http://www.w3.org/2000/svg">
+                <path d="m3 0h10c1.662 0 3 1.338 3 3v10c0 1.662-1.338 3-3 3h-10c-1.662 0-3-1.338-3-3v-10c0-1.662 1.338-3 3-3z" fill="#fed047"/>
+                <path aria-label="SU" d="m11.285 12q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667t1.216-0.26667 1.216 0.26667q0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50133-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832t0.46933 1.4613q0 0.69334-0.30933 1.2053-0.30933 0.50133-0.864 0.77867-0.55467 0.27733-1.312 0.27733z" fill="#642340"/>
+                <path class="logo-text-fill" aria-label="SECUTILS.DEV" d="m93.158 12.117-1.9733-7.7867h1.1733l1.2587 5.184q0.11733 0.46933 0.20267 0.91734 0.08533 0.448 0.128 0.69334 0.04267-0.24533 0.128-0.69334 0.096-0.45867 0.21333-0.928l1.2053-5.1733h1.184l-1.984 7.7867zm-7.8294 0v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-6.5174 0v-7.7867h2.176q0.768 0 1.3333 0.29867 0.56534 0.288 0.87467 0.832 0.32 0.53334 0.32 1.248v3.008q0 0.736-0.32 1.2693-0.30933 0.53334-0.87467 0.832-0.56534 0.29867-1.3333 0.29867zm1.152-1.0347h1.024q0.62934 0 1.0027-0.36267 0.37333-0.36267 0.37333-1.0027v-3.008q0-0.61867-0.37333-0.98134-0.37334-0.37333-1.0027-0.37333h-1.024zm-5.2374 1.1413q-0.416 0-0.68267-0.24533-0.256-0.256-0.256-0.672 0-0.416 0.256-0.672 0.26667-0.26667 0.68267-0.26667 0.416 0 0.672 0.26667 0.26667 0.256 0.26667 0.672 0 0.416-0.26667 0.672-0.256 0.24533-0.672 0.24533zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733zm-8.288-0.10667v-7.7867h1.152v6.7414h3.4027v1.0453zm-6.6987 0v-1.0453h1.568v-5.696h-1.568v-1.0453h4.32v1.0453h-1.5787v5.696h1.5787v1.0453zm-4.8214 0v-6.7414h-2.08v-1.0453h5.3227v1.0453h-2.0907v6.7414zm-5.824 0.10667q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.3147 0q-1.0987 0-1.7493-0.608-0.64-0.61867-0.64-1.664v-3.456q0-1.056 0.64-1.664 0.65067-0.608 1.7493-0.608 1.088 0 1.728 0.61867 0.65067 0.608 0.65067 1.6533h-1.152q0-0.608-0.33067-0.928-0.32-0.32-0.896-0.32-0.58667 0-0.91734 0.32-0.32 0.32-0.32 0.928v3.456q0 0.608 0.32 0.928 0.33067 0.32 0.91734 0.32 0.576 0 0.896-0.32 0.33067-0.32 0.33067-0.928h1.152q0 1.0453-0.65067 1.664-0.64 0.608-1.728 0.608zm-8.6827-0.10667v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-4.1707 0.10667q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667-0.23467-0.32-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34134-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733z"/>
+            </svg>
+            <span class="logo-badge">Forecast</span>
+        </a>
+        <div class="header-right">
+            <a id="skillLink" class="skill-link" href="https://{{TOOLS_HOST}}/forecast.md" target="_blank" rel="noopener"
+               title="View AI agent skill (skill.md, opens in new tab)"
+               aria-label="View AI agent skill (opens in new tab)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+                    <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
+                </svg>
+                <span>Skill</span>
+            </a>
+            <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+                <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8.5 15h-1v-2h1v2Zm-3.674-3.107-1.414 1.414-.707-.707 1.414-1.415.707.708Zm8.479.707-.707.707-1.414-1.414.707-.708 1.414 1.415Z"/><path fill-rule="evenodd" d="M8 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 1a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" clip-rule="evenodd"/><path d="M3.005 8.505h-2v-1h2v1Zm12 0h-2v-1h2v1ZM4.82 4.114l-.708.707-1.414-1.414.707-.707L4.82 4.114Zm8.492-.707-1.414 1.414-.708-.707L12.605 2.7l.707.707ZM8.5 3h-1V1h1v2Z"/></svg>
+                <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4.05 12.95A6.982 6.982 0 0 1 2 8c0-1.79.684-3.583 2.05-4.95A6.982 6.982 0 0 1 9 1a1 1 0 0 1 .708 1.707 4.982 4.982 0 0 0-1.465 3.536 4.98 4.98 0 0 0 1.465 3.535 4.98 4.98 0 0 0 3.535 1.465 1 1 0 0 1 .707 1.707A6.981 6.981 0 0 1 9 15a6.983 6.983 0 0 1-4.95-2.05Zm.708-.707A5.983 5.983 0 0 0 9 14c1.535 0 3.07-.586 4.242-1.757a5.98 5.98 0 0 1-4.018-1.545L9 10.485a5.982 5.982 0 0 1-1.758-4.242A5.986 5.986 0 0 1 9 2a5.983 5.983 0 0 0-4.243 1.757A5.98 5.98 0 0 0 3 8l.006.288a5.978 5.978 0 0 0 1.75 3.955Z"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <div class="layout">
+            <section class="panel" id="inputPane" aria-labelledby="inputLabel">
+                <div class="panel-bar">
+                    <span class="panel-label" id="inputLabel">Data</span>
+                    <div class="panel-actions">
+                        <details class="examples-anchor" id="examplesDetails">
+                            <summary class="btn btn-sm" aria-haspopup="menu" aria-expanded="false">
+                                Load example
+                                <svg class="chevron" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 4l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </summary>
+                            <div class="examples-menu" role="menu" id="examplesMenu"></div>
+                        </details>
+                        <button type="button" class="btn btn-sm" id="clearBtn">Clear</button>
+                        <button type="button" class="btn btn-sm btn-primary" id="shareBtn">Share</button>
+                    </div>
+                </div>
+                <textarea id="dataInput" placeholder="Paste one number per line, two-column CSV (x,y), or a JSON array.
+First line may be a header.
+
+Examples:
+&#10;  42000
+  45000
+  48000
+&#10;or:
+&#10;  date,value
+  2024-01,42000
+  2024-02,45000"
+spellcheck="false" autocomplete="off"></textarea>
+            </section>
+
+            <section class="panel" id="controlsPane" aria-labelledby="controlsLabel">
+                <div class="panel-bar">
+                    <span class="panel-label" id="controlsLabel">Analysis</span>
+                    <span class="stats-text" id="dataStats" aria-live="polite"></span>
+                </div>
+                <div class="controls-grid">
+                    <div class="ctrl">
+                        <label for="fitSelect">Fit</label>
+                        <select id="fitSelect">
+                            <option value="none">None</option>
+                            <option value="auto" selected>Auto (best R²)</option>
+                            <option value="linear">Linear</option>
+                            <option value="poly2">Polynomial (deg 2)</option>
+                            <option value="poly3">Polynomial (deg 3)</option>
+                            <option value="poly4">Polynomial (deg 4)</option>
+                            <option value="exponential">Exponential</option>
+                            <option value="logarithmic">Logarithmic</option>
+                            <option value="power">Power</option>
+                        </select>
+                    </div>
+                    <div class="ctrl">
+                        <label for="smoothSelect">Smoothing</label>
+                        <select id="smoothSelect">
+                            <option value="none" selected>None</option>
+                            <option value="sma">SMA</option>
+                            <option value="ema">EMA</option>
+                            <option value="wma">WMA</option>
+                        </select>
+                    </div>
+                    <div class="ctrl">
+                        <label for="smoothWindow">Smoothing window</label>
+                        <div class="ctrl-row">
+                            <input type="range" id="smoothWindow" min="2" max="30" step="1" value="5" aria-label="Smoothing window">
+                            <span class="range-value" id="smoothWindowValue">5</span>
+                        </div>
+                    </div>
+                    <div class="ctrl">
+                        <label for="forecastHorizon">Forecast horizon</label>
+                        <div class="ctrl-row">
+                            <input type="range" id="forecastHorizon" min="0" max="50" step="1" value="0" aria-label="Forecast horizon">
+                            <span class="range-value" id="forecastHorizonValue">0</span>
+                        </div>
+                    </div>
+                    <div class="ctrl">
+                        <label for="anomalySelect">Anomalies</label>
+                        <select id="anomalySelect">
+                            <option value="none" selected>None</option>
+                            <option value="peaks">Peaks (findPeaks)</option>
+                            <option value="troughs">Troughs (findTroughs)</option>
+                            <option value="zscore">Residual z-score</option>
+                        </select>
+                    </div>
+                    <div class="ctrl">
+                        <label for="zThreshold">Z-score threshold</label>
+                        <div class="ctrl-row">
+                            <input type="range" id="zThreshold" min="1" max="5" step="0.1" value="2.5" aria-label="Z-score threshold">
+                            <span class="range-value" id="zThresholdValue">2.5</span>
+                        </div>
+                    </div>
+                    <div class="ctrl" style="grid-column: 1 / -1">
+                        <label for="seasonalityToggle" style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:12px;color:var(--text);font-weight:500;cursor:pointer">
+                            <input type="checkbox" id="seasonalityToggle" style="accent-color:var(--primary);cursor:pointer">
+                            Auto-detect seasonality (detectSeasonality)
+                        </label>
+                    </div>
+                    <div class="ctrl" style="grid-column: 1 / -1">
+                        <label for="backtestToggle" style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:12px;color:var(--text);font-weight:500;cursor:pointer">
+                            <input type="checkbox" id="backtestToggle" style="accent-color:var(--primary);cursor:pointer">
+                            Walk-forward backtest + conformal prediction band
+                        </label>
+                    </div>
+                    <div class="ctrl">
+                        <label for="backtestHoldout">Hold-out (% of n)</label>
+                        <div class="ctrl-row">
+                            <input type="range" id="backtestHoldout" min="10" max="40" step="5" value="20" aria-label="Backtest hold-out percentage">
+                            <span class="range-value" id="backtestHoldoutValue">20%</span>
+                        </div>
+                    </div>
+                    <div class="ctrl">
+                        <label for="backtestCoverage">Coverage target</label>
+                        <div class="ctrl-row">
+                            <input type="range" id="backtestCoverage" min="50" max="99" step="1" value="90" aria-label="Conformal coverage target">
+                            <span class="range-value" id="backtestCoverageValue">90%</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <section class="panel" id="chartPanel" aria-labelledby="chartLabel">
+            <div class="panel-bar">
+                <span class="panel-label" id="chartLabel">Chart</span>
+                <div class="panel-actions" id="chartActions" hidden>
+                    <label class="yscale-label" for="yScale" title="Y axis scale. Linear is the default; switch to Log10 for multi-decade series (e.g. exponential growth) where the lower values would otherwise be crushed near zero. Auto picks log10 when the data is strictly positive and spans more than 100x.">Y:</label>
+                    <select id="yScale" class="btn btn-sm yscale-select" aria-label="Y axis scale">
+                        <option value="linear" selected>Linear</option>
+                        <option value="log">Log₁₀</option>
+                        <option value="auto">Auto</option>
+                    </select>
+                    <button type="button" class="btn btn-sm" id="copyCsvBtn" title="Copy series as CSV">Copy CSV</button>
+                    <button type="button" class="btn btn-sm" id="copyJsonBtn" title="Copy series as JSON">Copy JSON</button>
+                </div>
+            </div>
+            <div id="chartHost">
+                <div class="chart-state" id="chartEmpty">
+                    <svg class="icon" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M8 56h48"/>
+                        <path d="M8 56V12"/>
+                        <path d="M14 46l10-14 10 6 14-22"/>
+                        <circle cx="48" cy="16" r="2.5" fill="currentColor"/>
+                    </svg>
+                    <div class="title">Paste some data, or pick an example</div>
+                    <div class="sub">Numbers one per line, two-column CSV (<code>x,y</code>), or a JSON array. The first row may be a header.</div>
+                </div>
+                <svg id="chartSvg" hidden viewBox="0 0 800 320" preserveAspectRatio="none" aria-label="Forecast chart"></svg>
+                <div class="legend" id="chartLegend" hidden></div>
+            </div>
+        </section>
+
+        <section class="panel" id="outputPanel" aria-labelledby="outputLabel" hidden>
+            <div class="panel-bar">
+                <span class="panel-label" id="outputLabel">Results</span>
+            </div>
+            <div class="output-grid" id="outputGrid"></div>
+        </section>
+
+        <aside class="su-more-tools" aria-label="More free tools">
+            <p>Other free, no-signup Secutils.dev tools for JWT, SAML, certificates, Markdown, PDFs, HTTP echo, and more - <a href="https://{{TOOLS_HOST}}/">Browse all tools &rarr;</a></p>
+        </aside>
+    </main>
+
+    <footer class="su-footer">
+        <p>Fit trendlines, forecast future values, and spot anomalies, in your browser.</p>
+        <p class="su-footer-fineprint">
+            <button type="button" class="su-footer-link" id="privacyOpen">Privacy</button>
+            <span aria-hidden="true"> &middot; </span>
+            <button type="button" class="su-footer-link" id="creditsOpen">Credits</button>
+        </p>
+    </footer>
+
+    <dialog id="creditsDialog" class="su-dialog" closedby="any" aria-labelledby="creditsDialogTitle">
+        <header class="su-dialog-header">
+            <h2 id="creditsDialogTitle">Credits</h2>
+            <button type="button" class="su-dialog-close" id="creditsClose" aria-label="Close">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>
+            </button>
+        </header>
+        <div class="su-dialog-body">
+            <p>This tool stands on these excellent open-source shoulders:</p>
+            <ul class="su-credits-list">
+                <li><a href="https://github.com/AdamPerlinski/micro-ml" target="_blank" rel="noopener noreferrer">micro-ml</a>: tiny Rust/WASM ML library (MIT) used for every regression / smoothing / forecasting / anomaly call. ~56&nbsp;KB gzipped on its own; we ship a slightly larger self-contained build with the WASM payload inlined.</li>
+            </ul>
+            <p class="su-dialog-fineprint">All processing happens locally in your browser. See Privacy for details.</p>
+        </div>
+    </dialog>
+
+    <dialog id="privacyDialog" class="su-dialog" closedby="any" aria-labelledby="privacyDialogTitle">
+        <header class="su-dialog-header">
+            <h2 id="privacyDialogTitle">Privacy</h2>
+            <button type="button" class="su-dialog-close" id="privacyClose" aria-label="Close">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>
+            </button>
+        </header>
+        <div class="su-dialog-body">
+            <p><strong>Your data stays in your browser.</strong> Parsing, regression, smoothing, forecasting, and anomaly detection all run client-side inside a WebAssembly module bundled with the page. Numeric series are never sent to the Secutils.dev server. State that needs to survive a reload (or be shared) lives in the URL fragment (<code>#&hellip;</code>), which browsers never transmit.</p>
+            <p><strong>Anonymous usage analytics.</strong> We use <a href="https://plausible.io/" target="_blank" rel="noopener noreferrer">Plausible Analytics</a>, a privacy-first, GDPR-compliant tool, to collect aggregate usage data. No cookies, no personal data, no individual tracking.</p>
+            <p class="su-dialog-fineprint">See the full <a href="https://secutils.dev/privacy" target="_blank" rel="noopener noreferrer">Secutils.dev privacy policy</a> for details on the wider service.</p>
+        </div>
+    </dialog>
+
+    <!-- Lazy-loaded micro-ml WASM bundle. Empty placeholder; deploy.ts
+         inlines `dev/tools/js/micro-ml/dist/micro-ml.js` (gzip+base64'd)
+         into this script's text content. The runtime decompresses on
+         first user action so a search-result visitor pays the HTML cost
+         but never the WASM parse cost unless they hit "Load example" or
+         change a control. -->
+    <script id="su-bundle-micro-ml" type="text/plain"
+            data-su-bundle="micro-ml"
+            data-su-bundle-encoding="gzip-base64"></script>
+
+<script>
+'use strict';
+
+// ---------------------------------------------------------------------------
+// URL state encoding (canonical; same scheme every Secutils.dev tool uses).
+// Layout: 4-byte LE u32 uncompressed length | raw-DEFLATE of UTF-8 string.
+// ---------------------------------------------------------------------------
+const utf8Enc = new TextEncoder();
+const utf8Dec = new TextDecoder();
+const toBase64Url = (bytes) => {
+    let s = '';
+    for (const b of bytes) s += String.fromCharCode(b);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+const fromBase64Url = (str) => {
+    const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '==='.slice(0, (4 - b64.length % 4) % 4);
+    const bin = atob(padded);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+};
+async function encodeState(text) {
+    const bytes = utf8Enc.encode(text);
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    const deflated = new Uint8Array(await new Response(stream).arrayBuffer());
+    const out = new Uint8Array(4 + deflated.length);
+    new DataView(out.buffer).setUint32(0, bytes.length, true);
+    out.set(deflated, 4);
+    return toBase64Url(out);
+}
+async function decodeState(str) {
+    try {
+        const bytes = fromBase64Url(str);
+        if (bytes.length < 4) return null;
+        const stream = new Blob([bytes.subarray(4)]).stream()
+            .pipeThrough(new DecompressionStream('deflate-raw'));
+        const inflated = new Uint8Array(await new Response(stream).arrayBuffer());
+        return utf8Dec.decode(inflated);
+    } catch { return null; }
+}
+
+// ---------------------------------------------------------------------------
+// Canonical loader for `data-su-bundle` placeholders. Handles both raw and
+// gzip+base64 encodings. Lazy: first call decompresses and Blob-URLs the
+// bundle, subsequent calls return the cached namespace.
+// ---------------------------------------------------------------------------
+let microMlPromise = null;
+async function loadSuBundle(name) {
+    const el = document.getElementById(`su-bundle-${name}`);
+    if (!el?.textContent) throw new Error(`Bundle "${name}" is not loaded (placeholder is empty -- did the deploy run?).`);
+    const encoding = el.getAttribute('data-su-bundle-encoding');
+    let src = el.textContent.trim();
+    if (encoding === 'gzip-base64') {
+        const bin = atob(src);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+        src = await new Response(stream).text();
+    }
+    const blob = new Blob([src], { type: 'text/javascript' });
+    return import(URL.createObjectURL(blob));
+}
+function loadMicroMl() {
+    if (!microMlPromise) microMlPromise = loadSuBundle('micro-ml');
+    return microMlPromise;
+}
+
+// ---------------------------------------------------------------------------
+// Deterministic PRNG for example datasets that would otherwise be too long to
+// list verbatim. mulberry32 -- 32-bit state, ~50 line-equivalent in source,
+// good enough for visually-realistic data. Same seed always produces the same
+// series so example URLs round-trip identically.
+// ---------------------------------------------------------------------------
+function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+        a = (a + 0x6d2b79f5) >>> 0;
+        let t = a;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Examples catalogue. Each entry has a curated dataset + preset config that
+// loads on click. The `data` field is rendered into the textarea verbatim
+// (so the share URL faithfully round-trips the example), and `preset` is
+// applied to the controls. Groups are rendered as disabled headers in the
+// dropdown.
+// ---------------------------------------------------------------------------
+function genApiLatency() {
+    // 90 daily p95 latency samples around ~220ms with three incident spikes.
+    const r = mulberry32(0xC0FFEE);
+    const out = [];
+    for (let i = 0; i < 90; i++) {
+        let v = 220 + Math.sin(i / 6) * 18 + (r() - 0.5) * 14;
+        if (i === 23) v = 612;
+        if (i === 49) v = 540;
+        if (i === 77) v = 698;
+        out.push(Math.round(v * 10) / 10);
+    }
+    return out.join('\n');
+}
+function genLoginAttempts() {
+    // 168 hourly login counts with a credential-stuffing burst hours 80-85.
+    const r = mulberry32(0x5AFE5);
+    const out = [];
+    for (let i = 0; i < 168; i++) {
+        const hourOfDay = i % 24;
+        // Diurnal pattern: low at night, high midday.
+        let base = 40 + 35 * Math.sin((hourOfDay - 7) / 24 * Math.PI * 2 - Math.PI / 2);
+        if (base < 8) base = 8;
+        let v = base + (r() - 0.5) * 14;
+        if (i >= 80 && i <= 85) v += 220 + r() * 80;
+        out.push(Math.max(0, Math.round(v)));
+    }
+    return out.join('\n');
+}
+function genCiBuilds() {
+    // 120 build durations in seconds: slow upward drift + two outlier weeks.
+    const r = mulberry32(0xBAADF00D);
+    const out = [];
+    for (let i = 0; i < 120; i++) {
+        let v = 240 + i * 0.4 + (r() - 0.5) * 18;
+        if (i >= 42 && i <= 47) v += 95;
+        if (i >= 88 && i <= 91) v += 130;
+        out.push(Math.round(v));
+    }
+    return out.join('\n');
+}
+function genWebhookTraffic() {
+    // 7 days x 24 hours = 168 hourly webhook hits. Daily rhythm + Saturday dip.
+    const r = mulberry32(0xFEEDFACE);
+    const out = [];
+    for (let i = 0; i < 168; i++) {
+        const hourOfDay = i % 24;
+        const dayOfWeek = Math.floor(i / 24); // 0..6, day 5 = Saturday
+        let amp = 1.0;
+        if (dayOfWeek === 5) amp = 0.55;
+        let v = (180 + 110 * Math.sin((hourOfDay - 6) / 24 * Math.PI * 2 - Math.PI / 2)) * amp;
+        v += (r() - 0.5) * 22;
+        out.push(Math.max(0, Math.round(v)));
+    }
+    return out.join('\n');
+}
+
+// Box-Muller wrapper around a uniform PRNG, returning a standard-normal
+// draw on each call. Used by the random-walk + heavy-tail examples below
+// to produce statistically meaningful demonstrations of overfitting and
+// non-Gaussian residuals.
+function gaussian(r) {
+    const u1 = Math.max(1e-12, r());
+    const u2 = r();
+    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+function genRandomWalk() {
+    // 80-step Gaussian random walk anchored at 100 with σ_step = 2.5. No
+    // exploitable trend exists -- every regression family will overfit the
+    // in-sample wiggles, but the walk-forward backtest exposes that the
+    // *naive last-value* baseline beats every model. The "naive beats all"
+    // banner fires; in-sample R² for poly3/poly4 will look respectable
+    // (~0.5+) while their out-of-sample MAE is worse than just predicting
+    // y[t] = y[t-1]. This is the core lesson the tool now teaches.
+    const r = mulberry32(0x5EED5);
+    const out = [100];
+    for (let i = 1; i < 80; i++) out.push(out[i - 1] + gaussian(r) * 2.5);
+    return out.map((v) => v.toFixed(2)).join('\n');
+}
+function genHeavyTailResiduals() {
+    // Linear trend (y = 50 + 0.3·x) with a 90/10 mixture noise model:
+    //   90% of points: Gaussian noise σ = 4
+    //   10% of points: Gaussian noise σ = 18 (six-fold variance, positive
+    //                  bias to mimic latency-style "long tail" shocks)
+    //
+    // The empirical residual distribution has fatter tails than the normal
+    // approximation predicts, so the in-sample ±2σ band under-covers (the
+    // tool will report a Forecast band that misses several hold-out points).
+    // The conformal width is the 95th percentile of |residuals|, which
+    // adapts to the actual tail and meets the 90% coverage target. Pair
+    // this example side-by-side with backtest-trap to demonstrate the two
+    // failure modes of the legacy ±2σ heuristic.
+    const r = mulberry32(0xCAFEBABE);
+    const out = [];
+    for (let i = 0; i < 100; i++) {
+        const base = 50 + 0.3 * i;
+        const isOutlier = r() < 0.10;
+        const noise = isOutlier ? gaussian(r) * 18 + 12 : gaussian(r) * 4;
+        out.push(Math.max(0, Math.round((base + noise) * 10) / 10));
+    }
+    return out.join('\n');
+}
+
+const EXAMPLES = [
+    // --- Forecasting -----------------------------------------------------
+    {
+        id: 'monthly-sales',
+        group: 'Forecasting',
+        name: 'Monthly sales',
+        hint: 'Linear growth, project 3 months ahead.',
+        data: '42000\n45000\n48000\n52000\n55000\n58000\n62000\n65000\n68000\n72000\n75000\n79000',
+        preset: { fit: 'linear', smooth: 'none', window: 5, horizon: 3, anomaly: 'none', z: 2.5, seasonality: false },
+    },
+    {
+        id: 'user-growth',
+        group: 'Forecasting',
+        name: 'User growth (exponential)',
+        hint: 'Exponential signups; surfaces doubling time.',
+        data: '1000\n1500\n2200\n3300\n5000\n7500',
+        preset: { fit: 'exponential', smooth: 'none', window: 5, horizon: 6, anomaly: 'none', z: 2.5, seasonality: false },
+    },
+    {
+        id: 'training-completion',
+        group: 'Forecasting',
+        name: 'Phishing-training completion',
+        hint: 'Logarithmic curve approaching 100%.',
+        data: '12\n28\n44\n56\n65\n72\n78\n83\n86\n89\n91\n93',
+        preset: { fit: 'logarithmic', smooth: 'none', window: 5, horizon: 4, anomaly: 'none', z: 2.5, seasonality: false },
+    },
+    {
+        id: 'cloud-bill',
+        group: 'Forecasting',
+        name: 'Cloud bill projection',
+        hint: 'Mostly linear with a step-up at month 12.',
+        data: '1820\n1910\n1985\n2055\n2120\n2230\n2350\n2410\n2495\n2580\n2640\n3450\n3520\n3610\n3705\n3780\n3870\n3960',
+        preset: { fit: 'poly2', smooth: 'ema', window: 3, horizon: 6, anomaly: 'none', z: 2.5, seasonality: false },
+    },
+    // --- Anomaly detection -----------------------------------------------
+    {
+        id: 'api-latency',
+        group: 'Anomaly detection',
+        name: 'API p95 latency',
+        hint: 'EMA baseline + residual z-score flags 3 incident days.',
+        data: () => genApiLatency(),
+        preset: { fit: 'linear', smooth: 'ema', window: 7, horizon: 0, anomaly: 'zscore', z: 2.5, seasonality: false },
+    },
+    {
+        id: 'login-attempts',
+        group: 'Anomaly detection',
+        name: 'Login attempts / hour',
+        hint: 'Credential-stuffing burst around hours 80-85.',
+        data: () => genLoginAttempts(),
+        preset: { fit: 'none', smooth: 'none', window: 5, horizon: 0, anomaly: 'peaks', z: 2.5, seasonality: false },
+    },
+    {
+        id: 'ci-builds',
+        group: 'Anomaly detection',
+        name: 'CI build duration',
+        hint: 'Slow drift upward + outlier weeks.',
+        data: () => genCiBuilds(),
+        preset: { fit: 'linear', smooth: 'none', window: 5, horizon: 0, anomaly: 'zscore', z: 2.0, seasonality: false },
+    },
+    // --- Finance --------------------------------------------------------
+    {
+        id: 'compound-interest',
+        group: 'Finance',
+        name: 'Compound interest',
+        hint: '$10k at 5% APY, compounded monthly; exponential fit + doubling time.',
+        // Pre-computed so the user can eyeball the curve without doing the
+        // math: 12 monthly balances, principal $10,000, rate 5%/yr -> monthly
+        // factor 1.00416..., rounded to cents. Slow enough that linear fit
+        // is visibly wrong, exponential nails it, doublingTime() reads as
+        // ~167 months (~13.9 years -- the classic "Rule of 72" answer).
+        data: '10000.00\n10041.67\n10083.51\n10125.52\n10167.71\n10210.07\n10252.61\n10295.32\n10338.22\n10381.30\n10424.55\n10467.99',
+        preset: { fit: 'exponential', smooth: 'none', window: 5, horizon: 12, anomaly: 'none', z: 2.5, seasonality: false },
+    },
+    {
+        id: 'inflation',
+        group: 'Finance',
+        name: 'US inflation (CPI YoY %)',
+        hint: '1994-2024 annual CPI; residual z-score flags 2021-2022 spike.',
+        // Annual CPI-U change, US Bureau of Labor Statistics. Stable ~2% for
+        // most of the series with a 2008 bump and the unmistakable 2021/22
+        // post-pandemic spike. Linear baseline + z-score 1.8 cleanly
+        // surfaces the outlier years; a tighter threshold also flags 2009
+        // (negative inflation -- the only deflation year in the series).
+        data: '2.7\n2.5\n3.3\n1.7\n1.6\n2.7\n3.4\n1.6\n2.4\n1.9\n3.3\n3.4\n2.5\n4.1\n0.1\n2.7\n1.5\n3.0\n1.7\n1.5\n0.8\n0.7\n2.1\n2.1\n1.9\n2.3\n1.4\n7.0\n6.5\n3.4\n2.9',
+        preset: { fit: 'linear', smooth: 'none', window: 5, horizon: 0, anomaly: 'zscore', z: 1.8, seasonality: false },
+    },
+    // --- Smoothing & seasonality ----------------------------------------
+    {
+        id: 'webhook-traffic',
+        group: 'Smoothing & seasonality',
+        name: 'Webhook hourly traffic',
+        hint: 'Daily rhythm + Saturday dip; auto-detect seasonality.',
+        data: () => genWebhookTraffic(),
+        preset: { fit: 'none', smooth: 'ema', window: 6, horizon: 0, anomaly: 'none', z: 2.5, seasonality: true },
+    },
+    // --- Backtest & conformal -------------------------------------------
+    {
+        id: 'backtest-trap',
+        group: 'Backtest & conformal',
+        name: 'Random walk (naive beats all)',
+        hint: '80-step Gaussian random walk; the leaderboard exposes that no model beats "tomorrow = today".',
+        data: () => genRandomWalk(),
+        preset: { fit: 'auto', smooth: 'none', window: 5, horizon: 6, anomaly: 'none', z: 2.5, seasonality: false, backtest: true, backtestHoldout: 25, backtestCoverage: 90 },
+    },
+    {
+        id: 'conformal-coverage',
+        group: 'Backtest & conformal',
+        name: 'Heavy-tailed residuals (conformal vs ±2σ)',
+        hint: '100-point linear series with 10% outlier shocks; the conformal band widens past 2σ to hit the 90% target.',
+        data: () => genHeavyTailResiduals(),
+        preset: { fit: 'linear', smooth: 'none', window: 5, horizon: 8, anomaly: 'none', z: 2.5, seasonality: false, backtest: true, backtestHoldout: 25, backtestCoverage: 90 },
+    },
+];
+function findExample(id) { return EXAMPLES.find((e) => e.id === id); }
+function exampleData(example) {
+    return typeof example.data === 'function' ? example.data() : example.data;
+}
+
+// ---------------------------------------------------------------------------
+// Data parsing. Accepts:
+//   - One number per line (header line allowed, auto-skipped if non-numeric).
+//   - Two-column CSV `x,y` (x can be a number or any string -- when non-
+//     numeric, we use the implicit index `0,1,2,...` for the X axis and just
+//     keep the label for display).
+//   - JSON array (`[1,2,3]` or `[[x,y],...]`).
+// Returns { x: number[], y: number[], xLabels: string[]|null } or null on
+// parse failure.
+// ---------------------------------------------------------------------------
+function parseData(text) {
+    const trimmed = text.trim();
+    if (!trimmed) return null;
+    // JSON array?
+    if (trimmed.startsWith('[')) {
+        try {
+            const parsed = JSON.parse(trimmed);
+            if (!Array.isArray(parsed) || parsed.length === 0) return null;
+            if (Array.isArray(parsed[0])) {
+                const x = [], y = [];
+                for (const pair of parsed) {
+                    if (!Array.isArray(pair) || pair.length < 2) return null;
+                    const xn = Number(pair[0]); const yn = Number(pair[1]);
+                    if (!Number.isFinite(xn) || !Number.isFinite(yn)) return null;
+                    x.push(xn); y.push(yn);
+                }
+                return { x, y, xLabels: null };
+            }
+            const y = parsed.map(Number);
+            if (y.some((v) => !Number.isFinite(v))) return null;
+            return { x: y.map((_, i) => i), y, xLabels: null };
+        } catch { return null; }
+    }
+    // CSV / one-per-line.
+    const lines = trimmed.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+    if (lines.length === 0) return null;
+    // Detect header: if the first line has non-numeric first cell, drop it.
+    const firstCells = lines[0].split(/[,;\t]/);
+    const firstIsHeader = firstCells.every((c) => !Number.isFinite(Number(c.trim())));
+    const dataLines = firstIsHeader ? lines.slice(1) : lines;
+    if (dataLines.length === 0) return null;
+    const xLabels = [];
+    const x = []; const y = [];
+    let anyXNumeric = true;
+    for (let i = 0; i < dataLines.length; i++) {
+        const cells = dataLines[i].split(/[,;\t]/).map((c) => c.trim());
+        if (cells.length === 1) {
+            const yn = Number(cells[0]);
+            if (!Number.isFinite(yn)) return null;
+            x.push(i); xLabels.push(String(i)); y.push(yn);
+        } else if (cells.length >= 2) {
+            const xn = Number(cells[0]); const yn = Number(cells[1]);
+            if (!Number.isFinite(yn)) return null;
+            xLabels.push(cells[0]);
+            if (Number.isFinite(xn)) {
+                x.push(xn);
+            } else {
+                anyXNumeric = false;
+                x.push(i);
+            }
+            y.push(yn);
+        } else {
+            return null;
+        }
+    }
+    return { x, y, xLabels: anyXNumeric ? null : xLabels };
+}
+
+// ---------------------------------------------------------------------------
+// State + DOM refs.
+// ---------------------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+// `<svg>` does NOT inherit the `hidden` IDL property from HTMLElement (it's
+// declared on HTMLElement, not Element). Writing `svg.hidden = false` only
+// creates a JS property -- the HTML attribute survives, and our
+// `[hidden] { display: none !important }` rule keeps it invisible. Use
+// attribute APIs throughout so the same helper works on every element type.
+const setHidden = (el, hidden) => {
+    if (hidden) el.setAttribute('hidden', '');
+    else el.removeAttribute('hidden');
+};
+const refs = {
+    input: $('dataInput'),
+    stats: $('dataStats'),
+    examplesDetails: $('examplesDetails'),
+    examplesMenu: $('examplesMenu'),
+    clear: $('clearBtn'),
+    share: $('shareBtn'),
+    fit: $('fitSelect'),
+    smooth: $('smoothSelect'),
+    smoothWindow: $('smoothWindow'),
+    smoothWindowValue: $('smoothWindowValue'),
+    horizon: $('forecastHorizon'),
+    horizonValue: $('forecastHorizonValue'),
+    anomaly: $('anomalySelect'),
+    z: $('zThreshold'),
+    zValue: $('zThresholdValue'),
+    seasonality: $('seasonalityToggle'),
+    backtest: $('backtestToggle'),
+    backtestHoldout: $('backtestHoldout'),
+    backtestHoldoutValue: $('backtestHoldoutValue'),
+    backtestCoverage: $('backtestCoverage'),
+    backtestCoverageValue: $('backtestCoverageValue'),
+    chartHost: $('chartHost'),
+    chartEmpty: $('chartEmpty'),
+    chartSvg: $('chartSvg'),
+    chartLegend: $('chartLegend'),
+    chartActions: $('chartActions'),
+    yScale: $('yScale'),
+    outputPanel: $('outputPanel'),
+    outputGrid: $('outputGrid'),
+    copyCsv: $('copyCsvBtn'),
+    copyJson: $('copyJsonBtn'),
+};
+
+const state = {
+    parsed: null,           // { x, y, xLabels }
+    smoothed: null,         // y' array, length === y.length, with `null` for the leading window
+    fit: null,              // { kind, eq, rSquared, predict(xArr): yArr, extras }
+    forecastY: null,        // array of length horizon, y values
+    forecastBand: null,     // { upper: y[], lower: y[], width: number, source: 'sigma2'|'conformal' }
+    anomalyIndices: [],     // indices into y
+    seasonality: null,      // { period, strength } | null
+    backtest: null,         // { holdoutK, coverage, leaderboard: [{ kind, params, inSampleR2, adjR2, mape, mae, rmse, coverage, predicted, actual }], winnerKind, q: number, foldStart: number }
+    warnings: [],
+};
+
+let recomputeTimer = null;
+function scheduleRecompute() {
+    clearTimeout(recomputeTimer);
+    recomputeTimer = setTimeout(recompute, 80);
+}
+
+// ---------------------------------------------------------------------------
+// Toast.
+// ---------------------------------------------------------------------------
+let toastTimer = null;
+function toast(msg) {
+    let el = document.querySelector('.toast');
+    if (!el) { el = document.createElement('div'); el.className = 'toast'; document.body.appendChild(el); }
+    el.textContent = msg;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.remove(), 2400);
+}
+
+// ---------------------------------------------------------------------------
+// Wire the controls + examples dropdown.
+// ---------------------------------------------------------------------------
+function renderExamplesMenu() {
+    const html = [];
+    let currentGroup = null;
+    for (const ex of EXAMPLES) {
+        if (ex.group !== currentGroup) {
+            currentGroup = ex.group;
+            html.push(`<div class="examples-group">${escapeHtml(currentGroup)}</div>`);
+        }
+        html.push(
+            `<button type="button" class="example-item" role="menuitem" data-example-id="${ex.id}">` +
+            `<span class="ex-name">${escapeHtml(ex.name)}</span>` +
+            `<span class="ex-hint">${escapeHtml(ex.hint)}</span>` +
+            `</button>`,
+        );
+    }
+    refs.examplesMenu.innerHTML = html.join('');
+    refs.examplesMenu.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-example-id]');
+        if (!btn) return;
+        const ex = findExample(btn.dataset.exampleId);
+        if (ex) loadExample(ex);
+        refs.examplesDetails.open = false;
+    });
+}
+function escapeHtml(s) { return s.replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;' }[c])); }
+
+function applyPreset(preset) {
+    refs.fit.value = preset.fit;
+    refs.smooth.value = preset.smooth;
+    refs.smoothWindow.value = String(preset.window);
+    refs.smoothWindowValue.textContent = String(preset.window);
+    refs.horizon.value = String(preset.horizon);
+    refs.horizonValue.textContent = String(preset.horizon);
+    refs.anomaly.value = preset.anomaly;
+    refs.z.value = String(preset.z);
+    refs.zValue.textContent = preset.z.toFixed(1);
+    refs.seasonality.checked = !!preset.seasonality;
+    refs.backtest.checked = !!preset.backtest;
+    const holdout = Number.isFinite(preset.backtestHoldout) ? preset.backtestHoldout : 20;
+    refs.backtestHoldout.value = String(holdout);
+    refs.backtestHoldoutValue.textContent = `${holdout}%`;
+    const coverage = Number.isFinite(preset.backtestCoverage) ? preset.backtestCoverage : 90;
+    refs.backtestCoverage.value = String(coverage);
+    refs.backtestCoverageValue.textContent = `${coverage}%`;
+    // Y-axis scale is a chart-presentation control with three modes. Defaults
+    // to `linear` (the least surprising; identity transform). `log` is opt-in
+    // for multi-decade data; `auto` picks log when data is all-positive AND
+    // spans more than 100x. Older share URLs omit the field, so default to
+    // `linear` in that case.
+    const yScale = ['linear', 'log', 'auto'].includes(preset.yScale) ? preset.yScale : 'linear';
+    refs.yScale.value = yScale;
+    syncControlEnablement();
+}
+
+// Some controls are only meaningful in combination with another control's
+// value (smoothing window is dead when smoothing = none; z-threshold only
+// applies to residual z-score anomaly mode). Disable them in those states
+// so the UI doesn't suggest they have an effect.
+function syncControlEnablement() {
+    const smoothActive = refs.smooth.value !== 'none';
+    setCtrlDisabled('smoothWindow', !smoothActive);
+    const zActive = refs.anomaly.value === 'zscore';
+    setCtrlDisabled('zThreshold', !zActive);
+    const backtestActive = refs.backtest.checked;
+    setCtrlDisabled('backtestHoldout', !backtestActive);
+    setCtrlDisabled('backtestCoverage', !backtestActive);
+}
+function setCtrlDisabled(inputId, disabled) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    input.disabled = disabled;
+    // The label + value-readout share a parent `.ctrl` div; tag it so CSS
+    // can grey out the label too.
+    const wrap = input.closest('.ctrl');
+    if (wrap) wrap.classList.toggle('is-disabled', disabled);
+}
+function readPreset() {
+    return {
+        fit: refs.fit.value,
+        smooth: refs.smooth.value,
+        window: Number(refs.smoothWindow.value),
+        horizon: Number(refs.horizon.value),
+        anomaly: refs.anomaly.value,
+        z: Number(refs.z.value),
+        seasonality: refs.seasonality.checked,
+        backtest: refs.backtest.checked,
+        backtestHoldout: Number(refs.backtestHoldout.value),
+        backtestCoverage: Number(refs.backtestCoverage.value),
+        yScale: refs.yScale.value,
+    };
+}
+
+function loadExample(ex) {
+    refs.input.value = exampleData(ex);
+    applyPreset(ex.preset);
+    plausible?.('forecast:example', { props: { id: ex.id } });
+    updateUrl({ exampleId: ex.id });
+    recompute();
+}
+
+function clearAll() {
+    refs.input.value = '';
+    state.parsed = null;
+    state.fit = null; state.smoothed = null; state.forecastY = null; state.forecastBand = null;
+    state.anomalyIndices = []; state.seasonality = null; state.backtest = null; state.warnings = [];
+    render();
+    history.replaceState(null, '', location.pathname);
+}
+
+// ---------------------------------------------------------------------------
+// Main compute pipeline. Lazy-loads the micro-ml bundle on first call.
+// ---------------------------------------------------------------------------
+async function recompute() {
+    state.warnings = [];
+    const parsed = parseData(refs.input.value);
+    state.parsed = parsed;
+    if (!parsed || parsed.y.length < 2) {
+        state.fit = null; state.smoothed = null; state.forecastY = null;
+        state.forecastBand = null; state.anomalyIndices = []; state.seasonality = null;
+        state.backtest = null;
+        render();
+        return;
+    }
+
+    let ml;
+    try {
+        ml = await loadMicroMl();
+    } catch (err) {
+        state.warnings.push(`Bundle failed to load: ${err.message || err}`);
+        render();
+        return;
+    }
+
+    const { x, y } = parsed;
+    const n = y.length;
+    const preset = readPreset();
+
+    // ---- Smoothing ----------------------------------------------------
+    state.smoothed = null;
+    if (preset.smooth !== 'none' && preset.window >= 2 && n >= preset.window) {
+        try {
+            let smoothed;
+            if (preset.smooth === 'sma') smoothed = await ml.sma(y, preset.window);
+            else if (preset.smooth === 'ema') smoothed = await ml.ema(y, preset.window);
+            else if (preset.smooth === 'wma') smoothed = await ml.wma(y, preset.window);
+            // micro-ml returns the smoothed array with leading items zero or
+            // partial-filled depending on the kind. Pad the first
+            // (window-1) values to `null` so the chart shows a clean break
+            // rather than spurious low values pulling the y-axis down.
+            const pad = preset.window - 1;
+            state.smoothed = smoothed.map((v, i) => (i < pad ? null : v));
+        } catch (err) {
+            state.warnings.push(`Smoothing failed: ${err.message || err}`);
+        }
+    }
+
+    // ---- Backtest ----------------------------------------------------
+    // Walk-forward 1-step-ahead validation across every fit family, plus a
+    // naive last-value baseline. Runs BEFORE the main fit so that:
+    //   1. `Fit = auto` can switch its tournament to out-of-sample MAE
+    //      (more honest than adjusted R² when n is big enough).
+    //   2. The forecast band can replace the in-sample ±2σ heuristic with a
+    //      *calibrated* conformal interval derived from the backtest's
+    //      absolute residuals (see "Conformal" notes inside `runBacktest`).
+    state.backtest = null;
+    const backtestEnabled = preset.backtest && n >= 12;
+    if (preset.backtest && !backtestEnabled) {
+        state.warnings.push(`Backtest skipped: need at least 12 data points (have ${n}).`);
+    }
+    if (backtestEnabled) {
+        try {
+            state.backtest = await runBacktest(ml, x, y, preset);
+        } catch (err) {
+            state.warnings.push(`Backtest failed: ${err.message || err}`);
+        }
+    }
+
+    // ---- Fit ---------------------------------------------------------
+    state.fit = null;
+    if (preset.fit !== 'none' && n >= 3) {
+        try {
+            // When backtest is on and `Fit = auto`, prefer the leaderboard
+            // winner -- that's the family with the lowest out-of-sample MAE,
+            // which beats any in-sample R²-based selection. We still re-fit
+            // on the full series here so the chart shows the model trained
+            // on every available point.
+            let fitKind = preset.fit;
+            if (fitKind === 'auto' && state.backtest?.winnerKind && state.backtest.winnerKind !== 'naive') {
+                fitKind = state.backtest.winnerKind;
+            }
+            state.fit = await fitModel(ml, x, y, fitKind);
+            // Stamp the resolved family onto the fit so the Fit card can
+            // disclose "Auto -> linear (chosen by backtest MAE)".
+            if (preset.fit === 'auto') state.fit.autoSource = state.backtest ? 'backtest-mae' : 'adj-r2';
+        } catch (err) {
+            state.warnings.push(`Fit failed (${preset.fit}): ${err.message || err}`);
+        }
+    }
+
+    // ---- Forecast ----------------------------------------------------
+    state.forecastY = null; state.forecastBand = null;
+    if (preset.horizon > 0 && state.fit) {
+        const lastX = x[n - 1];
+        const stepX = n >= 2 ? (x[n - 1] - x[0]) / (n - 1) : 1;
+        const fxs = [];
+        for (let i = 1; i <= preset.horizon; i++) fxs.push(lastX + stepX * i);
+        try {
+            state.forecastY = state.fit.predict(fxs);
+            // Confidence band: either the calibrated conformal width
+            // (preferred -- comes with a coverage guarantee under
+            // exchangeability) or the legacy ±2σ heuristic on the in-sample
+            // residuals (fallback when the user hasn't enabled backtest).
+            // The choice is recorded on the band so the chart's caption can
+            // distinguish the two.
+            let band, source;
+            if (state.backtest && Number.isFinite(state.backtest.q)) {
+                band = state.backtest.q;
+                source = 'conformal';
+            } else {
+                const fitted = state.fit.predict(x);
+                let sumSq = 0;
+                for (let i = 0; i < n; i++) {
+                    const r = y[i] - fitted[i];
+                    sumSq += r * r;
+                }
+                const sigma = Math.sqrt(sumSq / Math.max(1, n - 2));
+                band = 2 * sigma;
+                source = 'sigma2';
+            }
+            state.forecastBand = {
+                upper: state.forecastY.map((v) => v + band),
+                lower: state.forecastY.map((v) => v - band),
+                width: band,
+                source,
+            };
+        } catch (err) {
+            state.warnings.push(`Forecast failed: ${err.message || err}`);
+        }
+    }
+
+    // ---- Anomalies ---------------------------------------------------
+    state.anomalyIndices = [];
+    if (preset.anomaly === 'peaks') {
+        try { state.anomalyIndices = Array.from(await ml.findPeaks(y)); }
+        catch (err) { state.warnings.push(`Peak detection failed: ${err.message || err}`); }
+    } else if (preset.anomaly === 'troughs') {
+        try { state.anomalyIndices = Array.from(await ml.findTroughs(y)); }
+        catch (err) { state.warnings.push(`Trough detection failed: ${err.message || err}`); }
+    } else if (preset.anomaly === 'zscore') {
+        // Compute residuals against the fit (or against an EMA-baseline when
+        // there is no fit) and flag points with |z| > threshold.
+        const baseline = state.fit ? state.fit.predict(x) : (state.smoothed ?? y.map(() => y.reduce((a, b) => a + b, 0) / n));
+        try {
+            const r = await ml.residuals(y, baseline.map((v, i) => (v == null ? y[i] : v)));
+            const z = r.standardized;
+            for (let i = 0; i < z.length; i++) if (Math.abs(z[i]) > preset.z) state.anomalyIndices.push(i);
+        } catch (err) {
+            state.warnings.push(`Z-score anomaly detection failed: ${err.message || err}`);
+        }
+    }
+
+    // ---- Seasonality ------------------------------------------------
+    state.seasonality = null;
+    if (preset.seasonality && n >= 6) {
+        try {
+            const s = await ml.detectSeasonality(y);
+            state.seasonality = { period: s.period, strength: s.strength };
+        } catch (err) {
+            state.warnings.push(`Seasonality detection failed: ${err.message || err}`);
+        }
+    }
+
+    render();
+}
+
+async function fitModel(ml, x, y, kind) {
+    const n = y.length;
+    // Adjusted R²: R²_adj = 1 - (1 - R²) * (n - 1) / (n - p - 1), where p is
+    // the number of fitted parameters NOT counting the intercept (= degree
+    // for polynomials, 1 for linear / exponential / logarithmic / power).
+    // Penalises model complexity so the Auto tournament doesn't blindly
+    // reward higher-degree polynomials (R² is monotonically non-decreasing
+    // in degree). Returns NaN when the formula's denominator vanishes
+    // (n - p - 1 <= 0), in which case the candidate is skipped by Auto.
+    const adjR2 = (rSq, p) => {
+        if (!Number.isFinite(rSq)) return Number.NaN;
+        const denom = n - p - 1;
+        if (denom <= 0) return Number.NaN;
+        return 1 - (1 - rSq) * (n - 1) / denom;
+    };
+    const wrap = (m, kindLabel, params, extras = {}) => ({
+        kind: kindLabel,
+        eq: m.toString(),
+        rSquared: m.rSquared,
+        adjRSquared: adjR2(m.rSquared, params),
+        params,
+        predict: (xs) => Array.from(m.predict(xs)),
+        extras,
+    });
+    if (kind === 'linear') {
+        const m = await ml.linearRegression(x, y);
+        return wrap(m, 'linear', 1, { slope: m.slope, intercept: m.intercept });
+    }
+    if (kind.startsWith('poly')) {
+        const degree = Number(kind.slice(4));
+        const m = await ml.polynomialRegression(x, y, { degree });
+        return wrap(m, `polynomial (deg ${degree})`, degree);
+    }
+    if (kind === 'exponential') {
+        const m = await ml.exponentialRegression(x, y);
+        return wrap(m, 'exponential', 1, { a: m.a, b: m.b, doublingTime: m.doublingTime() });
+    }
+    if (kind === 'logarithmic' || kind === 'power') {
+        // Logarithmic (y = a + b·ln x) and power (y = a·x^b) regression are
+        // both undefined at x ≤ 0. The default auto-generated index (x = 0,
+        // 1, 2, …) starts at zero, so the upstream raises
+        // "All x values must be positive". Shift everything by (1 - xMin)
+        // when needed so the smallest x lands at 1; expose the shift in the
+        // displayed equation so the relationship stays honest.
+        const xMin = Math.min(...x);
+        const shift = xMin > 0 ? 0 : (1 - xMin);
+        const xShifted = shift === 0 ? x : x.map((v) => v + shift);
+        const m = kind === 'logarithmic'
+            ? await ml.logarithmicRegression(xShifted, y)
+            : await ml.powerRegression(xShifted, y);
+        const label = shift === 0
+            ? kind
+            : `${kind} (x shifted by +${fmtNum(shift)})`;
+        // The upstream's `toString()` is in terms of the shifted x; append a
+        // note so the equation card stays honest about what "x" means.
+        const eq = shift === 0
+            ? m.toString()
+            : `${m.toString()}    where x' = x + ${fmtNum(shift)}`;
+        // Wrap predict so the *caller* still passes the original x values;
+        // we re-apply the shift internally before delegating to the model.
+        const wrapped = {
+            kind: label,
+            eq,
+            rSquared: m.rSquared,
+            adjRSquared: adjR2(m.rSquared, 1),
+            params: 1,
+            predict: (xs) => Array.from(m.predict(shift === 0 ? xs : xs.map((v) => v + shift))),
+            extras: shift === 0 ? {} : { xShift: shift },
+        };
+        return wrapped;
+    }
+    if (kind === 'auto') {
+        // Try every supported family and return the candidate with the
+        // highest *adjusted* R² that is both finite and >= 0. Adjusted R²
+        // penalises extra parameters, so the tournament won't blindly favour
+        // poly4 over poly3 when the improvement is just absorbing noise.
+        // The fallback to plain R² is for the n ≤ p + 1 edge case where
+        // adj R² is undefined (e.g. n = 5, poly4).
+        const candidates = [
+            ['linear', () => fitModel(ml, x, y, 'linear')],
+            ['poly2', () => fitModel(ml, x, y, 'poly2')],
+            ['poly3', () => fitModel(ml, x, y, 'poly3')],
+            ['poly4', () => fitModel(ml, x, y, 'poly4')],
+            ['exponential', () => fitModel(ml, x, y, 'exponential')],
+            ['logarithmic', () => fitModel(ml, x, y, 'logarithmic')],
+            ['power', () => fitModel(ml, x, y, 'power')],
+        ];
+        let best = null;
+        for (const [, run] of candidates) {
+            try {
+                const m = await run();
+                const score = Number.isFinite(m.adjRSquared) ? m.adjRSquared : m.rSquared;
+                if (!Number.isFinite(score)) continue;
+                if (best == null || score > best._score) {
+                    best = m;
+                    best._score = score;
+                }
+            } catch { /* skip non-applicable */ }
+        }
+        if (!best) throw new Error('No regression model fit the data');
+        delete best._score;
+        return best;
+    }
+    throw new Error(`Unknown fit kind: ${kind}`);
+}
+
+// ---------------------------------------------------------------------------
+// Walk-forward backtest engine.
+// ---------------------------------------------------------------------------
+//
+// Algorithm:
+//
+//   1. Decide hold-out size K = clamp(round(n * holdoutPct / 100), 5, n - 5).
+//      The lower bound keeps the conformal quantile statistically meaningful
+//      (the band width is an order statistic of K residuals; below ~5
+//      samples the empirical quantile is essentially the max). The upper
+//      bound preserves at least 5 training points -- below that, even a
+//      linear fit is unstable.
+//
+//   2. For each candidate family, do *expanding-window* 1-step-ahead
+//      forecasting: at every fold start `t = n - K, n - K + 1, ..., n - 1`,
+//      fit on `x[0..t]`, predict `y[t]`, record (predicted, actual).
+//      This produces K out-of-sample errors per family.
+//
+//   3. Also evaluate a "naive last-value" baseline (ŷ_t = y_{t-1}) -- the
+//      single most useful diagnostic in time-series forecasting. If your
+//      fancy model can't beat "tomorrow = today," the trend you're fitting
+//      isn't predictive.
+//
+//   4. Score each family by:
+//        - MAE  = mean(|predicted - actual|)         <-- primary, robust
+//        - RMSE = sqrt(mean((predicted - actual)²))  <-- penalises outliers
+//        - MAPE = mean(|err| / |actual|) * 100       <-- shown only when all
+//                                                       actuals are positive
+//                                                       (otherwise undefined)
+//        - coverage at the conformal width q         <-- empirical %
+//      Pick the winner by MAE (tied: smaller params wins, Occam's razor).
+//
+//   5. Compute the *conformal* prediction width: take the winner's K
+//      absolute residuals, sort, return the
+//      ⌈(K + 1)(1 - α)⌉-th order statistic (capped at K).
+//      Under exchangeability of residuals (much weaker than i.i.d. Gaussian)
+//      this guarantees coverage >= 1 - α for the next out-of-sample point.
+//      Reference: Vovk, Gammerman & Shafer 2005; Angelopoulos & Bates 2021
+//      (https://arxiv.org/abs/2107.07511).
+//
+async function runBacktest(ml, x, y, preset) {
+    const n = y.length;
+    const holdoutPct = Math.max(10, Math.min(40, preset.backtestHoldout || 20));
+    const coveragePct = Math.max(50, Math.min(99, preset.backtestCoverage || 90));
+    const alpha = 1 - coveragePct / 100;
+    // K clamps:
+    //   - Upper bound `n - 5`: guarantees the smallest training set (the
+    //     first fold) has >= 5 points so that poly4 (5 coefficients) stays
+    //     identifiable. Any tighter and the leaderboard would silently lose
+    //     the polynomial families on short series.
+    //   - Upper bound 40: wall-clock cap. 7 families × K fits per recompute;
+    //     K = 40 keeps things snappy even on n = 1000, the marginal
+    //     statistical value of additional folds is negligible past 40.
+    //   - Lower bound 2: smallest K where the conformal quantile is
+    //     defined (the (1-α)·(K+1)-th order statistic of |residuals| still
+    //     resolves). Originally this floor was 5 -- defensive but wrong:
+    //     it silently overrode the slider on short series (n <= 16 with
+    //     pct <= 30 all collapsed to K = 5, producing the "slider does
+    //     nothing" bug). With K = 2 the band is statistically weak but
+    //     honest; the user sees the band visibly tighten as they raise the
+    //     slider.
+    const requestedK = Math.round(n * holdoutPct / 100);
+    const K = Math.max(2, Math.min(40, n - 5, requestedK));
+    const foldStart = n - K;
+
+    // Candidate families. Each entry is `[kind, paramCount, label]`. We do
+    // NOT exercise `auto` here -- it would recurse, and the leaderboard
+    // itself is a strictly better view of "which family wins out-of-sample"
+    // than any meta-choice.
+    const fitCandidates = [
+        ['linear',      1],
+        ['poly2',       2],
+        ['poly3',       3],
+        ['poly4',       4],
+        ['exponential', 1],
+        ['logarithmic', 1],
+        ['power',       1],
+    ];
+
+    const rows = [];
+    for (const [kind, params] of fitCandidates) {
+        const predicted = new Array(K);
+        const actual = new Array(K);
+        let viable = true;
+        for (let k = 0; k < K; k++) {
+            const t = foldStart + k;
+            try {
+                const m = await fitModel(ml, x.slice(0, t), y.slice(0, t), kind);
+                predicted[k] = m.predict([x[t]])[0];
+                actual[k] = y[t];
+                if (!Number.isFinite(predicted[k])) {
+                    viable = false;
+                    break;
+                }
+            } catch {
+                viable = false;
+                break;
+            }
+        }
+        if (!viable) continue;
+
+        // In-sample R² + Adj R² (for the leaderboard's overfit-detection
+        // column -- when in-sample R² is much higher than out-of-sample
+        // accuracy implies, the model is memorising noise).
+        let inSampleR2 = NaN;
+        let adjR2 = NaN;
+        try {
+            const fullFit = await fitModel(ml, x, y, kind);
+            inSampleR2 = fullFit.rSquared;
+            adjR2 = fullFit.adjRSquared;
+        } catch { /* fall through with NaN */ }
+
+        rows.push({ kind, params, ...scorePredictions(predicted, actual), predicted, actual, inSampleR2, adjR2 });
+    }
+
+    // Naive baseline -- last value carried forward. We do NOT skip the
+    // first fold; the training set always has at least `foldStart >= 5`
+    // points, so `y[foldStart - 1]` exists.
+    {
+        const predicted = new Array(K);
+        const actual = new Array(K);
+        for (let k = 0; k < K; k++) {
+            const t = foldStart + k;
+            predicted[k] = y[t - 1];
+            actual[k] = y[t];
+        }
+        rows.push({ kind: 'naive', params: 0, ...scorePredictions(predicted, actual), predicted, actual, inSampleR2: NaN, adjR2: NaN });
+    }
+
+    if (rows.length === 0) throw new Error('No family fit on every fold');
+
+    // Sort by MAE ascending; tie-break by params ascending (Occam).
+    rows.sort((a, b) => (a.mae - b.mae) || (a.params - b.params));
+
+    // Conformal quantile from the winner's absolute residuals. Exclude the
+    // naive baseline from the *primary* winner pick when any regression
+    // model is competitive (within 5% of naive's MAE) -- the naive winning
+    // outright is a useful warning, but the conformal band should still use
+    // a model that produces sensible forecasts. When naive is the only
+    // viable row, we use its residuals (correct behaviour: the band still
+    // calibrates against the naive predictions, which is what'll drive the
+    // chart).
+    const regressionRows = rows.filter((r) => r.kind !== 'naive');
+    const winner = regressionRows[0] || rows[0];
+    const absRes = winner.predicted.map((p, i) => Math.abs(p - winner.actual[i])).sort((a, b) => a - b);
+    const qIdx = Math.min(K - 1, Math.ceil((K + 1) * (1 - alpha)) - 1);
+    const q = absRes[qIdx];
+
+    // Empirical coverage of every row at width `q`, for the leaderboard.
+    for (const r of rows) {
+        let covered = 0;
+        for (let i = 0; i < K; i++) {
+            if (Math.abs(r.predicted[i] - r.actual[i]) <= q) covered++;
+        }
+        r.empiricalCoverage = covered / K;
+    }
+
+    return {
+        holdoutK: K,
+        coverage: coveragePct,
+        alpha,
+        leaderboard: rows,
+        winnerKind: winner.kind,
+        q,
+        foldStart,
+    };
+}
+
+// `predicted` and `actual` are equal-length arrays of out-of-sample
+// 1-step-ahead forecasts and ground truths. Returns the standard regression
+// error suite. `mape` is left as NaN when any actual is zero or negative
+// (the percentage is undefined / explodes near zero).
+function scorePredictions(predicted, actual) {
+    const K = predicted.length;
+    let sumAbs = 0, sumSq = 0, sumAbsPct = 0;
+    let mapeDefined = true;
+    for (let i = 0; i < K; i++) {
+        const err = predicted[i] - actual[i];
+        sumAbs += Math.abs(err);
+        sumSq += err * err;
+        if (actual[i] <= 0) mapeDefined = false;
+        else sumAbsPct += Math.abs(err / actual[i]);
+    }
+    return {
+        mae: sumAbs / K,
+        rmse: Math.sqrt(sumSq / K),
+        mape: mapeDefined ? (sumAbsPct / K) * 100 : NaN,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Rendering.
+// ---------------------------------------------------------------------------
+function render() {
+    renderStats();
+    renderChart();
+    renderOutputs();
+    renderShareDisabledHint();
+}
+
+function renderStats() {
+    if (!state.parsed) { refs.stats.textContent = ''; return; }
+    const n = state.parsed.y.length;
+    const min = Math.min(...state.parsed.y);
+    const max = Math.max(...state.parsed.y);
+    const range = max - min;
+    refs.stats.textContent = `n=${n}  min=${fmtNum(min)}  max=${fmtNum(max)}  range=${fmtNum(range)}`;
+}
+
+function renderShareDisabledHint() {
+    refs.share.disabled = !state.parsed;
+}
+
+function renderChart() {
+    const p = state.parsed;
+    if (!p) {
+        setHidden(refs.chartEmpty, false);
+        setHidden(refs.chartSvg, true);
+        setHidden(refs.chartLegend, true);
+        setHidden(refs.chartActions, true);
+        return;
+    }
+    setHidden(refs.chartEmpty, true);
+    setHidden(refs.chartSvg, false);
+    setHidden(refs.chartActions, false);
+
+    const w = 800, h = 320;
+    const pad = { l: 48, r: 14, t: 14, b: 28 };
+    const innerW = w - pad.l - pad.r;
+    const innerH = h - pad.t - pad.b;
+    const horizon = state.forecastY ? state.forecastY.length : 0;
+
+    // X scale: extend by horizon steps if forecast exists.
+    const xs = p.x.slice();
+    const stepX = xs.length >= 2 ? (xs[xs.length - 1] - xs[0]) / (xs.length - 1) : 1;
+    for (let i = 1; i <= horizon; i++) xs.push(xs[xs.length - 1] + stepX);
+    const xMin = Math.min(...xs), xMax = Math.max(...xs);
+    const xRange = xMax - xMin || 1;
+    const xToPx = (v) => pad.l + ((v - xMin) / xRange) * innerW;
+
+    // Y scale: include forecast band, smoothed, fitted, raw. Two regimes:
+    //
+    //   - linear (default): 8 % pad above/below, but snapped to 0 when every
+    //     observed/derived candidate is non-negative -- otherwise we get
+    //     nonsensical "axis dips to -42514" labels on all-positive series.
+    //   - log10 (auto): when every candidate is strictly positive AND the
+    //     max/min ratio exceeds 100×, linear scaling crushes the training
+    //     range into invisibility (e.g. y = 3^x extrapolated to x = 12 spans
+    //     six orders of magnitude). Switching to log10 keeps every fold
+    //     visible. We mirror this on the gridline labels via `yTicks`.
+    const yCandidatesAll = p.y.slice();
+    if (state.smoothed) yCandidatesAll.push(...state.smoothed.filter((v) => v != null));
+    if (state.fit) yCandidatesAll.push(...state.fit.predict(p.x));
+    if (state.forecastY) yCandidatesAll.push(...state.forecastY);
+    if (state.forecastBand) {
+        yCandidatesAll.push(...state.forecastBand.upper);
+        yCandidatesAll.push(...state.forecastBand.lower);
+    }
+    const yCandidates = yCandidatesAll.filter((v) => Number.isFinite(v));
+    const yMinRaw = Math.min(...yCandidates);
+    const yMaxRaw = Math.max(...yCandidates);
+    // Y axis scale is a user choice (`refs.yScale.value`):
+    //   - `linear` (default): identity scale, snapped to 0 when the observed
+    //     data is non-negative. Predictions that go below the floor clip at
+    //     the SVG viewBox boundary; the user sees a fit that exits the bottom
+    //     of the chart -- a clear "model unsuitable" signal.
+    //   - `log`: explicit log10. The user opts in for multi-decade data; the
+    //     `isInDomain` predicate below switches to "v > 0" so pathFor()
+    //     breaks the path at every domain crossing (no scuttling along the
+    //     floor). Non-positive predictions are simply not drawn.
+    //   - `auto`: pick `log` when the observed data is all-positive AND
+    //     spans more than 100x; otherwise `linear`. NOT the default --
+    //     auto-switching surprises users when a poorly-chosen fit family
+    //     renders as gaps on log scale.
+    const observedPositive = p.y.length > 0 && p.y.every((v) => Number.isFinite(v) && v > 0);
+    const observedDynamicRange = observedPositive ? Math.max(...p.y) / Math.min(...p.y) : Infinity;
+    const observedNonNegative = p.y.length > 0 && p.y.every((v) => Number.isFinite(v) && v >= 0);
+    const yScaleMode = refs.yScale ? refs.yScale.value : 'linear';
+    const autoLogPick = observedPositive && observedDynamicRange > 100;
+    let useLog;
+    if (yScaleMode === 'log') useLog = observedPositive; // ignore opt-in if data has zeros / negatives
+    else if (yScaleMode === 'auto') useLog = autoLogPick;
+    else useLog = false;
+    // If the user picked `log` but the data isn't strictly positive, surface
+    // that as a warning so the silent fallback to linear isn't mysterious.
+    state._chartYLogRequested = yScaleMode === 'log';
+    state._chartYLogApplied = useLog;
+    state._chartYAutoSuggest = yScaleMode !== 'log' && autoLogPick && !useLog;
+
+    let yToPx, yTicks;
+    if (useLog) {
+        // Log10: domain is computed from observed data only; fit/forecast/band
+        // candidates that go non-positive are clamped to the floor.
+        const obsMin = Math.min(...p.y);
+        const obsMax = Math.max(...p.y);
+        // Pull the upper edge up so a runaway forecast (e.g. exponential
+        // extrapolation) still has room to render -- cap at 1.5× decades.
+        const upperCandidate = Math.max(obsMax, ...yCandidates.filter((v) => v > 0));
+        const lMin = Math.log10(obsMin);
+        const lMaxBase = Math.log10(obsMax);
+        const lMaxStretch = Math.min(Math.log10(upperCandidate), lMaxBase + 1.5);
+        const lPad = (lMaxStretch - lMin) * 0.05 || 0.1;
+        const lo = lMin - lPad, hi = lMaxStretch + lPad;
+        yToPx = (v) => {
+            if (!(v > 0)) return pad.t + innerH; // clamp non-positive to the floor
+            return pad.t + innerH - ((Math.log10(v) - lo) / (hi - lo)) * innerH;
+        };
+        yTicks = [];
+        for (let i = 0; i <= 4; i++) yTicks.push(Math.pow(10, lo + ((hi - lo) * i) / 4));
+    } else {
+        let yMin = yMinRaw, yMax = yMaxRaw;
+        const yPad = (yMax - yMin) * 0.08 || 1;
+        yMin -= yPad; yMax += yPad;
+        // If the observed data is all non-negative, snap the axis bottom to 0
+        // regardless of what the fit / forecast / band predicts below zero.
+        // A model whose predictions clip below the floor is a visual signal
+        // that the chosen family is wrong for this series.
+        if (observedNonNegative && yMin < 0) yMin = 0;
+        yToPx = (v) => pad.t + innerH - ((v - yMin) / (yMax - yMin)) * innerH;
+        yTicks = [];
+        for (let i = 0; i <= 4; i++) yTicks.push(yMin + ((yMax - yMin) * i) / 4);
+    }
+
+    // Domain predicate used by every chart path/circle below. On log scale,
+    // a non-positive predicted value cannot be plotted -- previously yToPx
+    // clamped it to the chart floor and the path-drawing connected the
+    // clamped point with `L` commands, producing vertical drops/rises that
+    // looked like a broken UI (see e.g. polynomial-deg-2 fit on 2,4,8,...,1024:
+    // the parabola passes through zero twice and dives well below).
+    // With this predicate, pathFor() *breaks* the SVG path with a fresh `M`
+    // at every domain crossing, and dot/circle markers are skipped for
+    // out-of-domain values. The forecast-band polygon retains its current
+    // floor-clamp behaviour because a closed polygon must remain closed.
+    const isInDomain = useLog
+        ? (v) => Number.isFinite(v) && v > 0
+        : (v) => Number.isFinite(v);
+
+    const parts = [];
+
+    // Clip every chart series (raw, smooth, fit, forecast, band, dots,
+    // anomaly markers) to the inner plot rectangle. Without this, a line
+    // whose mathematical y goes off-axis (e.g. a linear fit's negative
+    // predictions at low x on a 2^x series) would render through the
+    // x-axis labels area before SVG's viewport clipping kicked in. With
+    // the clip, the line appears to emerge exactly at the visible axis
+    // boundary -- which is what the eye expects. Grid lines and axis
+    // labels are deliberately drawn *outside* the clipped group so they
+    // never get truncated by sub-pixel rounding at the rectangle's edges.
+    const clipId = 'fchart-clip';
+    parts.push(`<defs><clipPath id="${clipId}"><rect x="${pad.l}" y="${pad.t}" width="${innerW}" height="${innerH}"/></clipPath></defs>`);
+
+    // Gridlines (5 horizontal, 5 vertical).
+    for (let i = 0; i <= 4; i++) {
+        const yv = yTicks[i];
+        const py = yToPx(yv);
+        parts.push(`<line class="grid-line" x1="${pad.l}" x2="${pad.l + innerW}" y1="${py.toFixed(1)}" y2="${py.toFixed(1)}"/>`);
+        parts.push(`<text class="ax-text" x="${pad.l - 6}" y="${(py + 3).toFixed(1)}" text-anchor="end">${fmtNum(yv)}</text>`);
+    }
+    for (let i = 0; i <= 4; i++) {
+        const xv = xMin + ((xMax - xMin) * i) / 4;
+        const px = xToPx(xv);
+        parts.push(`<line class="grid-line" x1="${px.toFixed(1)}" x2="${px.toFixed(1)}" y1="${pad.t}" y2="${pad.t + innerH}"/>`);
+        parts.push(`<text class="ax-text" x="${px.toFixed(1)}" y="${(pad.t + innerH + 16).toFixed(1)}" text-anchor="middle">${fmtNum(xv)}</text>`);
+    }
+    // Axis lines.
+    parts.push(`<line class="ax-line" x1="${pad.l}" x2="${pad.l + innerW}" y1="${pad.t + innerH}" y2="${pad.t + innerH}"/>`);
+    parts.push(`<line class="ax-line" x1="${pad.l}" x2="${pad.l}" y1="${pad.t}" y2="${pad.t + innerH}"/>`);
+
+    // Open the clipped group. Everything below this point through the
+    // matching `</g>` is bounded by the plot rectangle defined above.
+    parts.push(`<g clip-path="url(#${clipId})">`);
+
+    // Backtest hold-out region: faint background tint + dashed divider at
+    // the fold start so it's visually obvious where in-sample ends and the
+    // walk-forward evaluation begins. Drawn first so every other layer
+    // paints on top.
+    if (state.backtest) {
+        const foldX = p.x[state.backtest.foldStart];
+        const fx = xToPx(foldX).toFixed(1);
+        const endX = xToPx(p.x[p.x.length - 1]).toFixed(1);
+        parts.push(`<rect class="backtest-region" x="${fx}" y="${pad.t}" width="${(endX - fx).toFixed(1)}" height="${innerH}"/>`);
+        parts.push(`<line class="backtest-divider" x1="${fx}" x2="${fx}" y1="${pad.t}" y2="${pad.t + innerH}"><title>Backtest hold-out starts at index ${state.backtest.foldStart}</title></line>`);
+    }
+
+    // Forecast band (drawn behind everything else).
+    if (state.forecastBand && horizon > 0) {
+        const last = p.x[p.x.length - 1];
+        const bx = [last, ...xs.slice(p.x.length)];
+        const by = [state.fit.predict([last])[0], ...state.forecastBand.upper];
+        const cy = [state.fit.predict([last])[0], ...state.forecastBand.lower];
+        const top = bx.map((v, i) => `${xToPx(v).toFixed(1)},${yToPx(by[i]).toFixed(1)}`).join(' L');
+        const bot = bx.slice().reverse().map((v, i) => `${xToPx(v).toFixed(1)},${yToPx(cy[cy.length - 1 - i]).toFixed(1)}`).join(' L');
+        parts.push(`<path class="forecast-band" d="M${top} L${bot} Z"/>`);
+    }
+
+    // Raw series. The connecting line is drawn here so it sits *under* the
+    // smoothed/fit/forecast curves -- a good fit is supposed to hug the raw
+    // data, and stacking blue on top would hide the model from the eye. The
+    // raw dots, however, are drawn near the end of this function (after the
+    // fit/forecast paths) so the individual observations remain visible even
+    // when the fit lies pixel-perfectly on top of them (see e.g. the
+    // `backtest-trap` example: 6 points + tight power fit = invisible blue
+    // line unless the dots are on the top layer).
+    parts.push(`<path class="series-raw" d="${pathFor(p.x, p.y, xToPx, yToPx, isInDomain)}"/>`);
+
+    // Smoothed series.
+    if (state.smoothed) {
+        const sx = []; const sy = [];
+        for (let i = 0; i < state.smoothed.length; i++) {
+            if (state.smoothed[i] == null) continue;
+            sx.push(p.x[i]); sy.push(state.smoothed[i]);
+        }
+        if (sx.length > 1) parts.push(`<path class="series-smooth" d="${pathFor(sx, sy, xToPx, yToPx, isInDomain)}"/>`);
+    }
+
+    // Fitted curve.
+    if (state.fit) {
+        // Sample 60 evenly spaced X points over the observed range for a
+        // smooth curve, even when the underlying X values are sparse.
+        const sx = []; for (let i = 0; i <= 60; i++) sx.push(p.x[0] + (p.x[p.x.length - 1] - p.x[0]) * (i / 60));
+        const sy = state.fit.predict(sx);
+        parts.push(`<path class="series-fit" d="${pathFor(sx, sy, xToPx, yToPx, isInDomain)}"/>`);
+    }
+
+    // Forecast extension.
+    if (state.forecastY && state.forecastY.length > 0 && state.fit) {
+        const last = p.x[p.x.length - 1];
+        const fx = [last, ...xs.slice(p.x.length)];
+        const fy = [state.fit.predict([last])[0], ...state.forecastY];
+        parts.push(`<line class="forecast-divider" x1="${xToPx(last).toFixed(1)}" x2="${xToPx(last).toFixed(1)}" y1="${pad.t}" y2="${pad.t + innerH}"/>`);
+        parts.push(`<path class="series-forecast" d="${pathFor(fx, fy, xToPx, yToPx, isInDomain)}"/>`);
+    }
+
+    // Backtest winner's 1-step-ahead predictions over the hold-out region.
+    // Painted as small open-circle markers (distinct from anomaly markers,
+    // which are filled) so the eye can compare predicted-vs-actual directly.
+    if (state.backtest) {
+        const winnerRow = state.backtest.leaderboard.find((r) => r.kind === state.backtest.winnerKind);
+        if (winnerRow && winnerRow.predicted) {
+            for (let k = 0; k < winnerRow.predicted.length; k++) {
+                const t = state.backtest.foldStart + k;
+                const pv = winnerRow.predicted[k];
+                if (!isInDomain(pv) || t >= p.x.length) continue;
+                parts.push(`<circle class="backtest-pred-dot" cx="${xToPx(p.x[t]).toFixed(1)}" cy="${yToPx(pv).toFixed(1)}" r="2.5"><title>Backtest predicted ${fmtNum(pv)} vs actual ${fmtNum(p.y[t])} (idx ${t})</title></circle>`);
+            }
+        }
+    }
+
+    // Raw dots are drawn here (after fit / forecast paths) so individual
+    // observations stay visible even when the fit lies on top of them.
+    if (p.y.length <= 30) {
+        for (let i = 0; i < p.y.length; i++) {
+            if (!isInDomain(p.y[i])) continue;
+            parts.push(`<circle class="series-raw-dot" cx="${xToPx(p.x[i]).toFixed(1)}" cy="${yToPx(p.y[i]).toFixed(1)}" r="2"/>`);
+        }
+    }
+
+    // Anomaly markers.
+    for (const idx of state.anomalyIndices) {
+        if (idx < 0 || idx >= p.y.length) continue;
+        if (!isInDomain(p.y[idx])) continue;
+        parts.push(`<circle class="anomaly-marker" cx="${xToPx(p.x[idx]).toFixed(1)}" cy="${yToPx(p.y[idx]).toFixed(1)}" r="5"><title>Index ${idx}, value ${fmtNum(p.y[idx])}</title></circle>`);
+    }
+
+    // Close the clipped group.
+    parts.push('</g>');
+
+    refs.chartSvg.innerHTML = parts.join('');
+
+    // Legend.
+    const legend = [];
+    legend.push(`<span class="legend-item raw"><span class="legend-swatch"></span>Raw</span>`);
+    if (state.smoothed) legend.push(`<span class="legend-item smooth"><span class="legend-swatch"></span>Smoothed</span>`);
+    if (state.fit) legend.push(`<span class="legend-item fit"><span class="legend-swatch"></span>Fit</span>`);
+    if (state.forecastY) legend.push(`<span class="legend-item forecast"><span class="legend-swatch dashed"></span>Forecast</span>`);
+    if (state.anomalyIndices.length) legend.push(`<span class="legend-item anomaly"><span class="legend-swatch"></span>Anomaly</span>`);
+    if (state.backtest) legend.push(`<span class="legend-item backtest"><span class="legend-swatch backtest-swatch"></span>Backtest predictions</span>`);
+    if (state._chartYLogApplied) {
+        const reason = state._chartYLogRequested
+            ? 'Y axis set to log10 (user choice).'
+            : 'Y axis set to log10 by Auto because data is strictly positive and spans more than 100x.';
+        legend.push(`<span class="legend-item" title="${reason}">Y: log₁₀</span>`);
+    } else if (state._chartYAutoSuggest) {
+        legend.push(`<span class="legend-item legend-hint" title="Your data spans more than 100x. The first values may be hard to read on a linear axis; try switching the Y dropdown to Log₁₀ or Auto.">Y: linear (try Log₁₀)</span>`);
+    }
+    refs.chartLegend.innerHTML = legend.join('');
+    setHidden(refs.chartLegend, legend.length === 0);
+}
+
+function pathFor(xs, ys, xToPx, yToPx, isInDomain) {
+    // SVG path builder that emits a fresh `M` (move) at every domain
+    // crossing instead of drawing a continuous polyline. This keeps log-scale
+    // fit curves visually honest -- e.g. a polynomial fit on an exponential
+    // series passes through y=0 twice; the curve must show two disjoint
+    // arcs rather than a single zigzag through the chart floor.
+    const validate = typeof isInDomain === 'function' ? isInDomain : (v) => Number.isFinite(v);
+    let d = '';
+    let needMove = true;
+    for (let i = 0; i < xs.length; i++) {
+        if (!validate(ys[i])) {
+            needMove = true;
+            continue;
+        }
+        const cmd = needMove ? 'M' : 'L';
+        d += `${cmd}${xToPx(xs[i]).toFixed(1)},${yToPx(ys[i]).toFixed(1)} `;
+        needMove = false;
+    }
+    return d.trim();
+}
+
+function fmtNum(v) {
+    if (!Number.isFinite(v)) return 'n/a';
+    const abs = Math.abs(v);
+    if (abs >= 100000 || (abs > 0 && abs < 0.01)) return v.toExponential(2);
+    if (abs >= 100) return v.toFixed(0);
+    if (abs >= 10) return v.toFixed(1);
+    return v.toFixed(2);
+}
+
+function renderOutputs() {
+    if (!state.parsed) { setHidden(refs.outputPanel, true); return; }
+    setHidden(refs.outputPanel, false);
+    const cards = [];
+
+    if (state.fit) {
+        const kv = [];
+        kv.push(`<div class="kv"><span class="k">Model</span><span class="v">${escapeHtml(state.fit.kind)}</span></div>`);
+        if (state.fit.autoSource === 'backtest-mae')
+            kv.push(`<div class="kv" title="Selected by the walk-forward backtest's MAE leaderboard (lowest 1-step-ahead error wins)."><span class="k">Selected by</span><span class="v">Auto &rarr; backtest MAE</span></div>`);
+        else if (state.fit.autoSource === 'adj-r2')
+            kv.push(`<div class="kv" title="Selected by the in-sample adjusted-R² tournament. Enable Walk-forward backtest for a stronger out-of-sample selection."><span class="k">Selected by</span><span class="v">Auto &rarr; adjusted R&sup2;</span></div>`);
+        kv.push(`<div class="kv"><span class="k">R&sup2;</span><span class="v">${state.fit.rSquared.toFixed(4)}</span></div>`);
+        if (Number.isFinite(state.fit.adjRSquared))
+            kv.push(`<div class="kv" title="Adjusted R² penalises models with more fitted parameters; Auto uses it to compare candidates."><span class="k">Adj. R&sup2;</span><span class="v">${state.fit.adjRSquared.toFixed(4)}</span></div>`);
+        if (state.fit.extras?.slope !== undefined)
+            kv.push(`<div class="kv"><span class="k">Slope</span><span class="v">${fmtNum(state.fit.extras.slope)}</span></div>`);
+        if (state.fit.extras?.intercept !== undefined)
+            kv.push(`<div class="kv"><span class="k">Intercept</span><span class="v">${fmtNum(state.fit.extras.intercept)}</span></div>`);
+        if (state.fit.extras?.doublingTime !== undefined)
+            kv.push(`<div class="kv"><span class="k">Doubling time</span><span class="v">${fmtNum(state.fit.extras.doublingTime)} steps</span></div>`);
+        cards.push(`<div class="output-card"><h3>Fit</h3>${kv.join('')}<pre>${escapeHtml(state.fit.eq)}</pre></div>`);
+    }
+
+    if (state.forecastY?.length) {
+        const items = state.forecastY.slice(0, 10).map((v, i) => `<li>+${i + 1}: ${fmtNum(v)}</li>`).join('');
+        const extra = state.forecastY.length > 10 ? `<p style="font-size:11px;color:var(--text-muted);margin-top:6px">&hellip; +${state.forecastY.length - 10} more</p>` : '';
+        const band = state.forecastBand;
+        const bandNote = band?.source === 'conformal'
+            ? `Conformal band &pm;${fmtNum(band.width)} at ${state.backtest.coverage}% target coverage (calibrated against the ${state.backtest.holdoutK}-fold backtest).`
+            : `&pm;2&sigma; band from in-sample fit residuals; not a calibrated confidence interval. Enable <em>Walk-forward backtest</em> for a calibrated conformal interval instead.`;
+        cards.push(`<div class="output-card"><h3>Forecast (${state.forecastY.length} step${state.forecastY.length === 1 ? '' : 's'})</h3><ol>${items}</ol>${extra}<p style="font-size:11px;color:var(--text-muted);margin-top:8px">${bandNote}</p></div>`);
+    }
+
+    if (state.backtest) {
+        const bt = state.backtest;
+        const winnerKind = bt.winnerKind;
+        // Detect the "naive beats every regression" trap: when the naive
+        // baseline's MAE is lower than the regression winner's, flag it
+        // loudly. This is the most actionable diagnostic the table offers.
+        const naiveRow = bt.leaderboard.find((r) => r.kind === 'naive');
+        const regWinner = bt.leaderboard.find((r) => r.kind === winnerKind);
+        const naiveBeatsAll = naiveRow && regWinner && naiveRow.mae < regWinner.mae;
+
+        const fmtPct = (v) => Number.isFinite(v) ? `${v.toFixed(1)}%` : 'n/a';
+        const fmtMape = (v) => Number.isFinite(v) ? `${v.toFixed(2)}%` : 'n/a';
+        const fmtR2 = (v) => Number.isFinite(v) ? v.toFixed(4) : 'n/a';
+
+        const headers = `<tr><th>Model</th><th>In-sample R&sup2;</th><th>Adj. R&sup2;</th><th>MAE</th><th>RMSE</th><th>MAPE</th><th>Coverage</th></tr>`;
+        const rows = bt.leaderboard.map((r) => {
+            const isWinner = r.kind === winnerKind;
+            const isNaive = r.kind === 'naive';
+            const cls = [isWinner ? 'winner' : '', isNaive ? 'naive' : ''].filter(Boolean).join(' ');
+            const covCell = `<td${r.empiricalCoverage * 100 < bt.coverage - 5 ? ' class="warn" title="Empirical coverage falls below the target -- this model\'s residuals are not well calibrated"' : ''}>${fmtPct(r.empiricalCoverage * 100)}</td>`;
+            return `<tr class="${cls}"><td>${escapeHtml(r.kind)}</td><td>${fmtR2(r.inSampleR2)}</td><td>${fmtR2(r.adjR2)}</td><td>${fmtNum(r.mae)}</td><td>${fmtNum(r.rmse)}</td><td>${fmtMape(r.mape)}</td>${covCell}</tr>`;
+        }).join('');
+
+        const trap = naiveBeatsAll
+            ? `<p style="font-size:11px;color:var(--chart-anomaly);margin-top:8px"><strong>&#9888; Naive last-value beats every regression.</strong> The series has no exploitable trend at this horizon; "tomorrow = today" is your best forecast. Trying harder will overfit.</p>`
+            : '';
+        const note = `<p style="font-size:11px;color:var(--text-muted);margin-top:8px">Expanding-window 1-step-ahead validation, K = ${bt.holdoutK} folds, ranked by MAE. Conformal width q = ${fmtNum(bt.q)} at ${bt.coverage}% target coverage (Vovk; Angelopoulos &amp; Bates 2021). The <strong>${escapeHtml(winnerKind)}</strong> row is the winner.</p>`;
+        cards.push(`<div class="output-card callout bt-card"><h3>Backtest leaderboard</h3><div class="bt-scroll"><table class="bt-table">${headers}${rows}</table></div>${trap}${note}</div>`);
+    }
+
+    if (state.anomalyIndices.length) {
+        const items = state.anomalyIndices.slice(0, 8).map((i) => `<li>idx ${i}: ${fmtNum(state.parsed.y[i])}</li>`).join('');
+        const extra = state.anomalyIndices.length > 8 ? `<p style="font-size:11px;color:var(--text-muted);margin-top:6px">&hellip; +${state.anomalyIndices.length - 8} more</p>` : '';
+        cards.push(`<div class="output-card"><h3>Anomalies (${state.anomalyIndices.length})</h3><ul>${items}</ul>${extra}</div>`);
+    }
+
+    if (state.seasonality) {
+        const sb = state.seasonality;
+        cards.push(`<div class="output-card callout"><h3>Seasonality</h3><div class="kv"><span class="k">Period</span><span class="v">${sb.period}</span></div><div class="kv"><span class="k">Strength</span><span class="v">${sb.strength.toFixed(3)}</span></div><p style="font-size:11px;color:var(--text-muted);margin-top:6px">Auto-detected via micro-ml's <code>detectSeasonality</code>.</p></div>`);
+    }
+
+    if (state.warnings.length) {
+        cards.push(`<div class="output-card warn"><h3>Warnings</h3><ul style="padding-left:18px">${state.warnings.map((w) => `<li style="font-family:var(--font);font-size:12px">${escapeHtml(w)}</li>`).join('')}</ul></div>`);
+    }
+
+    if (cards.length === 0) {
+        cards.push(`<div class="output-card empty"><h3>Results</h3><p style="font-size:12px;color:var(--text-muted)">Pick a fit, smoothing, forecast horizon, or anomaly mode to see results here.</p></div>`);
+    }
+
+    refs.outputGrid.innerHTML = cards.join('');
+}
+
+// ---------------------------------------------------------------------------
+// Share / Copy / clear / URL routing.
+// ---------------------------------------------------------------------------
+async function shareLink() {
+    if (!state.parsed) return;
+    const payload = {
+        d: refs.input.value,
+        c: readPreset(),
+    };
+    const encoded = await encodeState(JSON.stringify(payload));
+    const shareUrl = `${location.origin}${location.pathname}#${encoded}`;
+    history.replaceState(null, '', shareUrl);
+    try {
+        await navigator.clipboard.writeText(shareUrl);
+        toast('Share link copied');
+    } catch {
+        toast('Failed to copy share link');
+    }
+}
+
+function updateUrl({ exampleId } = {}) {
+    // When loading an example, prefer the short `?example=<id>` form so the
+    // URL stays human-readable. Manual edits use the encoded `#<state>` form
+    // (populated on Share, debounced on input).
+    if (exampleId) {
+        history.replaceState(null, '', `${location.pathname}?example=${encodeURIComponent(exampleId)}`);
+    }
+}
+
+async function loadFromUrl() {
+    // 1) ?example=<id>
+    const search = new URLSearchParams(location.search);
+    const exampleId = search.get('example');
+    if (exampleId) {
+        const ex = findExample(exampleId);
+        if (ex) {
+            applyPreset(ex.preset);
+            refs.input.value = exampleData(ex);
+            await recompute();
+            return;
+        }
+    }
+    // 2) #<encoded>
+    if (location.hash.length > 1) {
+        const text = await decodeState(location.hash.slice(1));
+        if (text) {
+            try {
+                const payload = JSON.parse(text);
+                if (typeof payload?.d === 'string') refs.input.value = payload.d;
+                if (payload?.c) applyPreset(payload.c);
+                await recompute();
+                return;
+            } catch { /* fall through to empty */ }
+        }
+    }
+}
+
+async function copyCsv() {
+    if (!state.parsed) return;
+    const rows = [['idx', 'x', 'y']];
+    if (state.smoothed) rows[0].push('smoothed');
+    if (state.fit) rows[0].push('fit');
+    const fittedAtX = state.fit ? state.fit.predict(state.parsed.x) : null;
+    for (let i = 0; i < state.parsed.y.length; i++) {
+        const row = [String(i), String(state.parsed.x[i]), String(state.parsed.y[i])];
+        if (state.smoothed) row.push(state.smoothed[i] == null ? '' : String(state.smoothed[i]));
+        if (fittedAtX) row.push(String(fittedAtX[i]));
+        rows.push(row);
+    }
+    if (state.forecastY) {
+        const lastX = state.parsed.x[state.parsed.x.length - 1];
+        const step = state.parsed.x.length >= 2
+            ? (state.parsed.x[state.parsed.x.length - 1] - state.parsed.x[0]) / (state.parsed.x.length - 1)
+            : 1;
+        for (let i = 0; i < state.forecastY.length; i++) {
+            const row = [String(state.parsed.y.length + i), String(lastX + step * (i + 1)), ''];
+            if (state.smoothed) row.push('');
+            if (fittedAtX) row.push('');
+            row.push(); // forecast column added below
+            // Append forecast as last column.
+            row.push(String(state.forecastY[i]));
+            rows.push(row);
+        }
+        rows[0].push('forecast');
+    }
+    const csv = rows.map((r) => r.join(',')).join('\n');
+    try { await navigator.clipboard.writeText(csv); toast('CSV copied'); }
+    catch { toast('Failed to copy CSV'); }
+}
+
+async function copyJson() {
+    if (!state.parsed) return;
+    const out = {
+        x: state.parsed.x,
+        y: state.parsed.y,
+    };
+    if (state.smoothed) out.smoothed = state.smoothed;
+    if (state.fit) {
+        out.fit = {
+            kind: state.fit.kind,
+            equation: state.fit.eq,
+            rSquared: state.fit.rSquared,
+            ...(Number.isFinite(state.fit.adjRSquared) ? { adjRSquared: state.fit.adjRSquared } : {}),
+            fittedAtX: state.fit.predict(state.parsed.x),
+            ...state.fit.extras,
+        };
+    }
+    if (state.forecastY) out.forecast = state.forecastY;
+    if (state.forecastBand) out.forecastBand = state.forecastBand;
+    if (state.anomalyIndices.length) out.anomalies = state.anomalyIndices;
+    if (state.seasonality) out.seasonality = state.seasonality;
+    if (state.backtest) {
+        // Strip the per-row `predicted` / `actual` arrays from the JSON
+        // export -- they're redundant (re-derivable from `foldStart` +
+        // `holdoutK` and the original series) and bloat the payload by ~4x
+        // on a 120-point series. Keep the scalar scores + the conformal
+        // width, which are the actually-useful summary.
+        out.backtest = {
+            holdoutK: state.backtest.holdoutK,
+            foldStart: state.backtest.foldStart,
+            coverage: state.backtest.coverage,
+            alpha: state.backtest.alpha,
+            conformalWidth: state.backtest.q,
+            winnerKind: state.backtest.winnerKind,
+            leaderboard: state.backtest.leaderboard.map((r) => ({
+                kind: r.kind,
+                params: r.params,
+                inSampleR2: r.inSampleR2,
+                adjR2: r.adjR2,
+                mae: r.mae,
+                rmse: r.rmse,
+                mape: r.mape,
+                empiricalCoverage: r.empiricalCoverage,
+            })),
+        };
+    }
+    try { await navigator.clipboard.writeText(JSON.stringify(out, null, 2)); toast('JSON copied'); }
+    catch { toast('Failed to copy JSON'); }
+}
+
+// ---------------------------------------------------------------------------
+// Bootstrap.
+// ---------------------------------------------------------------------------
+(function () {
+    renderExamplesMenu();
+    refs.input.addEventListener('input', scheduleRecompute);
+    refs.clear.addEventListener('click', clearAll);
+    refs.share.addEventListener('click', shareLink);
+    refs.copyCsv.addEventListener('click', copyCsv);
+    refs.copyJson.addEventListener('click', copyJson);
+    for (const el of [refs.fit, refs.smooth, refs.anomaly, refs.seasonality, refs.backtest]) {
+        el.addEventListener('change', () => {
+            syncControlEnablement();
+            scheduleRecompute();
+        });
+    }
+    refs.smoothWindow.addEventListener('input', () => {
+        refs.smoothWindowValue.textContent = refs.smoothWindow.value;
+        scheduleRecompute();
+    });
+    refs.horizon.addEventListener('input', () => {
+        refs.horizonValue.textContent = refs.horizon.value;
+        scheduleRecompute();
+    });
+    refs.z.addEventListener('input', () => {
+        refs.zValue.textContent = Number(refs.z.value).toFixed(1);
+        scheduleRecompute();
+    });
+    refs.backtestHoldout.addEventListener('input', () => {
+        refs.backtestHoldoutValue.textContent = `${refs.backtestHoldout.value}%`;
+        scheduleRecompute();
+    });
+    refs.backtestCoverage.addEventListener('input', () => {
+        refs.backtestCoverageValue.textContent = `${refs.backtestCoverage.value}%`;
+        scheduleRecompute();
+    });
+    // Y axis scale only affects the chart -- no need to refit / re-backtest.
+    refs.yScale.addEventListener('change', () => {
+        renderChart();
+    });
+    syncControlEnablement();
+    // Close the examples dropdown when clicking outside (the native <details>
+    // behaviour keeps it open on outside clicks).
+    document.addEventListener('click', (e) => {
+        if (!refs.examplesDetails.contains(e.target)) refs.examplesDetails.open = false;
+    });
+
+    // Initial state.
+    render();
+    loadFromUrl().catch((err) => console.error('[forecast] loadFromUrl failed', err));
+})();
+
+// ---------------------------------------------------------------------------
+// Theme toggle.
+// ---------------------------------------------------------------------------
+(function () {
+    const toggle = document.getElementById('themeToggle');
+    const root = document.documentElement;
+    function setTheme(t) {
+        root.setAttribute('data-theme', t);
+        try { localStorage.setItem('su-tool-theme', t); } catch {}
+    }
+    toggle.addEventListener('click', () => {
+        setTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    });
+    try {
+        const saved = localStorage.getItem('su-tool-theme');
+        if (saved) setTheme(saved);
+        else if (window.matchMedia('(prefers-color-scheme: light)').matches) setTheme('light');
+    } catch {}
+})();
+
+// ---------------------------------------------------------------------------
+// Credits / Privacy dialogs.
+// ---------------------------------------------------------------------------
+(function () {
+    for (const [openId, closeId, dlgId] of [
+        ['creditsOpen', 'creditsClose', 'creditsDialog'],
+        ['privacyOpen', 'privacyClose', 'privacyDialog'],
+    ]) {
+        const dlg = document.getElementById(dlgId);
+        document.getElementById(openId).addEventListener('click', () => dlg.showModal());
+        document.getElementById(closeId).addEventListener('click', () => dlg.close());
+    }
+    // Safari fallback for closedby="any" (limited in Safari as of Q2 2026).
+    if (!('closedBy' in HTMLDialogElement.prototype)) {
+        for (const d of document.querySelectorAll('dialog.su-dialog')) {
+            d.addEventListener('click', (e) => {
+                if (e.target !== d) return;
+                const r = d.getBoundingClientRect();
+                if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) d.close();
+            });
+        }
+    }
+})();
+</script>
+</body>
+</html>

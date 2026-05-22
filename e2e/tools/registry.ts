@@ -30,7 +30,7 @@ export interface Tool {
   /** Per-tool accent color for OG images. Hex, lowercase. */
   accent: string;
   /** Symbolic icon id understood by `dev/tools/og-template.html`. */
-  icon: 'key' | 'shield' | 'cert' | 'doc' | 'bolt' | 'id' | 'grid' | 'pdf';
+  icon: 'key' | 'shield' | 'cert' | 'doc' | 'bolt' | 'id' | 'grid' | 'pdf' | 'chart';
 }
 
 export const TOOLS: readonly Tool[] = [
@@ -99,6 +99,17 @@ export const TOOLS: readonly Tool[] = [
     promote: true,
     accent: '#fed047',
     icon: 'bolt',
+  },
+  {
+    slug: 'forecast',
+    source: 'forecast.html',
+    name: 'Forecast',
+    path: '/forecast',
+    description: 'Fit trendlines, forecast future values, and spot anomalies in numeric series.',
+    applicationCategory: 'DeveloperApplication',
+    promote: true,
+    accent: '#3aa3ff',
+    icon: 'chart',
   },
   {
     slug: 'mock-saml-idp',

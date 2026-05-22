@@ -13,7 +13,7 @@
     path   = URL path on tools host   (e.g. "/jwt")
     desc   = single-line description  (e.g. "Decode, verify, sign HMAC JWTs.")
     accent = hex color for accent bar (e.g. "%237b6ff7" -> "#7b6ff7"); default brand yellow
-    icon   = symbolic id for the inline SVG icon (key | shield | cert | doc | bolt | id | grid)
+    icon   = symbolic id for the inline SVG icon (key | shield | cert | doc | bolt | id | grid | pdf | chart)
     theme  = "dark" (default, brand) or "light"
 
   This file is local-only (no fonts loaded from the network -> deterministic
@@ -240,6 +240,8 @@ const ICONS = {
   grid:   '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3"  width="7" height="7" rx="1"/><rect x="14" y="3"  width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
   // Document with a downward-extract arrow, evoking "pull text out of a PDF".
   pdf:    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 12v6"/><path d="M9 15l3 3 3-3"/></svg>',
+  // Trendline rising across axes + endpoint marker -- visualises "fit a curve / forecast next point".
+  chart:  '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 21 3 3"/><polyline points="3 21 21 21"/><polyline points="5 17 9 12 13 14 19 6"/><circle cx="19" cy="6" r="1.6" fill="currentColor" stroke="none"/></svg>',
 };
 
 const params = new URLSearchParams(location.search);

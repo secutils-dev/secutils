@@ -1,0 +1,18 @@
+{
+  "name": "@secutils-dev/micro-ml-browser",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser-compatible build of micro-ml (with the .wasm payload inlined as base64), inlined into the dev/tools/forecast.html responder by dev/tools/deploy.ts via data-su-bundle=\"micro-ml\". Not published.",
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "micro-ml": "1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.11.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.13"
+  }
+}
