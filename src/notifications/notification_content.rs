@@ -18,14 +18,23 @@ pub enum NotificationContent {
 
 impl NotificationContent {
     /// Consumes notification content and return its email representation if supported.
+    ///
+    /// `unsubscribe_url`, when set, is propagated to template renderers so they can include a
+    /// visible unsubscribe footer alongside the RFC 8058 `List-Unsubscribe` header. Only product
+    /// mail (today: tracker change emails routed via [`NotificationDestination::User`]) receives
+    /// a non-`None` value, transactional templates (account activation/recovery, destination
+    /// verification) silently ignore it.
     pub async fn into_email<DR: DnsResolver, ET: EmailTransport>(
         self,
         api: &Api<DR, ET>,
+        unsubscribe_url: Option<&str>,
     ) -> anyhow::Result<EmailNotificationContent> {
         Ok(match self {
             NotificationContent::Text(text) => EmailNotificationContent::text("[NO SUBJECT]", text),
             NotificationContent::Email(email) => email,
-            NotificationContent::Template(template) => template.compile_to_email(api).await?,
+            NotificationContent::Template(template) => {
+                template.compile_to_email(api, unsubscribe_url).await?
+            }
         })
     }
 }
@@ -80,7 +89,7 @@ mod tests {
 
         assert_eq!(
             NotificationContent::Text("text".to_string())
-                .into_email(&api)
+                .into_email(&api, None)
                 .await?,
             EmailNotificationContent {
                 subject: "[NO SUBJECT]".to_string(),
@@ -99,7 +108,7 @@ mod tests {
 
         assert_eq!(
             NotificationContent::Email(EmailNotificationContent::text("subject", "text"))
-                .into_email(&api)
+                .into_email(&api, None)
                 .await?,
             EmailNotificationContent {
                 subject: "subject".to_string(),
@@ -111,7 +120,7 @@ mod tests {
 
         assert_eq!(
             NotificationContent::Email(EmailNotificationContent::html("subject", "text", "html"))
-                .into_email(&api)
+                .into_email(&api, None)
                 .await?,
             EmailNotificationContent {
                 subject: "subject".to_string(),
@@ -132,7 +141,7 @@ mod tests {
                     vec![1, 2, 3]
                 )]
             ))
-            .into_email(&api)
+            .into_email(&api, None)
             .await?,
             EmailNotificationContent {
                 subject: "subject".to_string(),
@@ -158,7 +167,7 @@ mod tests {
                 flow_id: uuid!("00000000-0000-0000-0000-000000000001"),
                 code: activation_code.to_string(),
             })
-            .into_email(&api)
+            .into_email(&api, None)
             .await?;
         template
             .attachments
@@ -174,7 +183,7 @@ mod tests {
             subject: "Activate your Secutils.dev account",
             text: "To activate your Secutils.dev account, please use the following code: some-code. Alternatively, navigate to the following URL in your browser: https://secutils.dev/activate?code=some-code&flow=00000000-0000-0000-0000-000000000001",
             html: Some(
-                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>Activate your Secutils.dev account</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n    .numeric-code {\n      display: block;\n      width: 100px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <p>Hi there,</p>\n  <p>Thanks for signing up! To activate your account, please click the button below:</p>\n  <a class=\"navigate-link\" href=\"https://secutils.dev/activate?code=some-code&flow=00000000-0000-0000-0000-000000000001\">Activate my account</a>\n  <p>Alternatively, copy and paste the following URL into your browser:</p>\n  <p>https://secutils.dev/activate?code=some-code&flow=00000000-0000-0000-0000-000000000001</p>\n  <p>Or, simply copy and paste the following code into the account activation form:</p>\n  <p class=\"numeric-code\">some-code</p>\n  <p>If you have any trouble activating your account, please email us at <a href=\"mailto: contact@secutils.dev\">contact@secutils.dev</a>\n    or simply reply to this email.</p>\n  <a href=\"https://secutils.dev/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
+                "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <title>Activate your Secutils.dev account</title>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background-color: #f1f1f1;\n      margin: 0;\n      padding: 0;\n    }\n    .container {\n      max-width: 600px;\n      margin: 0 auto;\n      background-color: #fff;\n      padding: 20px;\n      border-radius: 5px;\n      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);\n    }\n    h1 {\n      font-size: 24px;\n      margin-top: 0;\n    }\n    p {\n      font-size: 16px;\n      line-height: 1.5;\n      margin-bottom: 20px;\n    }\n    .navigate-link {\n      display: block;\n      width: 250px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      text-decoration: none;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n    .numeric-code {\n      display: block;\n      width: 100px;\n      margin: auto;\n      padding: 10px 20px;\n      text-align: center;\n      color: #5e1d3f;\n      background-color: #fed047;\n      border-radius: 5px;\n      font-weight: bold;\n    }\n    .email-footer {\n      margin-top: 24px;\n      padding-top: 16px;\n      border-top: 1px solid #e5e7eb;\n      text-align: center;\n    }\n    .email-footer p {\n      font-size: 12px;\n      line-height: 1.5;\n      color: #6b7280;\n      margin: 0 0 4px 0;\n    }\n    .email-footer a {\n      color: #4b5563;\n      text-decoration: underline;\n    }\n  </style>\n</head>\n<body>\n<div class=\"container\">\n  <p>Hi there,</p>\n  <p>Thanks for signing up! To activate your account, please click the button below:</p>\n  <a class=\"navigate-link\" href=\"https://secutils.dev/activate?code=some-code&flow=00000000-0000-0000-0000-000000000001\">Activate my account</a>\n  <p>Alternatively, copy and paste the following URL into your browser:</p>\n  <p>https://secutils.dev/activate?code=some-code&flow=00000000-0000-0000-0000-000000000001</p>\n  <p>Or, simply copy and paste the following code into the account activation form:</p>\n  <p class=\"numeric-code\">some-code</p>\n  <p>If you have any trouble activating your account, please email us at <a href=\"mailto: contact@secutils.dev\">contact@secutils.dev</a>\n    or simply reply to this email.</p>\n  <a href=\"https://secutils.dev/\"><img src=\"cid:secutils-logo\" alt=\"Secutils.dev logo\" width=\"89\" height=\"14\" /></a>\n</div>\n</body>\n</html>\n",
             ),
             attachments: Some(
                 [

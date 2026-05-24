@@ -42,7 +42,8 @@ export default function Steps({ steps }: StepsProps): React.ReactElement {
   return (
     <div className="su-steps">
       {steps.map((step, index) => {
-        const alt = step.alt ?? typeof step.caption === 'string' ? step.caption as string : `Step ${index + 1}`;
+        const alt =
+          step.alt ?? (typeof step.caption === 'string' ? (step.caption as string) : `Step ${index + 1}`);
         return (
           <div key={index} className="su-steps__step">
             <div className="su-steps__indicator">{index + 1}</div>

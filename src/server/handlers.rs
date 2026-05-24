@@ -2,6 +2,7 @@ pub mod api_trackers;
 pub mod certificate_templates;
 pub mod content_security_policies;
 mod home_summary_get;
+pub mod notifications_unsubscribe;
 pub mod page_trackers;
 pub mod private_keys;
 pub mod responders;
@@ -21,6 +22,7 @@ mod ui_state_get;
 pub mod user_api_keys;
 pub mod user_data_export;
 pub mod user_data_import;
+pub mod user_notification_email;
 pub mod user_scripts;
 pub mod user_secrets;
 pub mod user_settings_get;
@@ -122,7 +124,8 @@ pub(crate) async fn resolve_shared_user(
         (name = "search", description = "Full-text search across user resources."),
         (name = "messages", description = "Send messages and notifications."),
         (name = "web_scraping", description = "Track changes to web pages and API endpoints."),
-        (name = "api_keys", description = "Create and manage API keys for programmatic access.")
+        (name = "api_keys", description = "Create and manage API keys for programmatic access."),
+        (name = "notifications", description = "Public endpoints for managing notification delivery.")
     ),
     paths(
         // API keys
@@ -151,6 +154,14 @@ pub(crate) async fn resolve_shared_user(
         // Settings
         user_settings_get::user_settings_get,
         user_settings_set::user_settings_set,
+        user_notification_email::user_notification_email_get,
+        user_notification_email::user_notification_email_set,
+        user_notification_email::user_notification_email_verify,
+        user_notification_email::user_notification_email_resend,
+        user_notification_email::user_notification_email_delete,
+        // Notifications (public)
+        notifications_unsubscribe::notifications_unsubscribe,
+        notifications_unsubscribe::notifications_unsubscribe_get,
         // User data
         user_data_export::user_data_export,
         user_data_import::user_data_import_preview,
@@ -259,6 +270,11 @@ pub(crate) async fn resolve_shared_user(
         // Settings
         crate::users::UserSettings,
         crate::users::UserSettingsSetter,
+        crate::users::NotificationChannelKind,
+        crate::users::UserNotificationDestination,
+        crate::users::NotificationEmailSetParams,
+        crate::users::NotificationEmailVerifyParams,
+        notifications_unsubscribe::NotificationsUnsubscribeParams,
         // Status
         crate::server::DatabaseStatus,
         crate::server::Status,
@@ -392,6 +408,7 @@ mod tests {
           "/api/certificates/templates/{template_id}/_generate",
           "/api/certificates/templates/{template_id}/_share",
           "/api/certificates/templates/{template_id}/_unshare",
+          "/api/notifications/unsubscribe",
           "/api/scheduler/parse_schedule",
           "/api/search",
           "/api/send_message",
@@ -402,6 +419,9 @@ mod tests {
           "/api/user/data/_export",
           "/api/user/data/_import",
           "/api/user/data/_import_preview",
+          "/api/user/notification_email",
+          "/api/user/notification_email/_resend",
+          "/api/user/notification_email/_verify",
           "/api/user/scripts",
           "/api/user/scripts/{script_id}",
           "/api/user/secrets",
@@ -513,6 +533,10 @@ mod tests {
           "ImportedScript",
           "KdfParams",
           "KeyUsage",
+          "NotificationChannelKind",
+          "NotificationEmailSetParams",
+          "NotificationEmailVerifyParams",
+          "NotificationsUnsubscribeParams",
           "PageTarget",
           "PageTracker",
           "PageTrackerConfig",
@@ -577,6 +601,7 @@ mod tests {
           "UserDataImportFileData",
           "UserDataImportParams",
           "UserDataImportPreviewParams",
+          "UserNotificationDestination",
           "UserScript",
           "UserScriptType",
           "UserSecret",

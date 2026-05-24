@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Unsubscribed · Secutils.dev</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  {{> email_styles}}
+  <style>
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    h1 {
+      text-align: center;
+    }
+    .success-icon {
+      display: block;
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 16px;
+      color: #5e1d3f;
+    }
+    .actions {
+      margin-top: 28px;
+      text-align: center;
+    }
+    .brand {
+      display: block;
+      text-align: center;
+      margin-top: 24px;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <svg class="success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="10"></circle>
+    <path d="M9 12l2 2 4-4"></path>
+  </svg>
+  <h1>You've been unsubscribed</h1>
+  <p>You will no longer receive Secutils.dev product notifications at this address.</p>
+  <p>Account activation, password recovery, and other security messages still go to your login email. Those aren't affected by this setting.</p>
+  <div class="actions">
+    <a class="navigate-link" href="{{home_link}}">Return to Secutils.dev</a>
+  </div>
+  <a class="brand" href="{{home_link}}"><img src="data:image/png;base64,{{logo_data_uri}}" alt="Secutils.dev logo" width="89" height="14" /></a>
+</div>
+</body>
+</html>

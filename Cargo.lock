@@ -5023,6 +5023,7 @@ dependencies = [
  "anyhow",
  "argon2",
  "async-stream",
+ "base64ct",
  "brotli",
  "byte-unit",
  "bytes",

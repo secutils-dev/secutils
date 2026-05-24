@@ -20,6 +20,18 @@ pub async fn ui_state_get(
         None
     };
 
+    // Notification email destination only available for authenticated users, lets the Settings
+    // flyout render its current state without an extra round-trip.
+    let notification_email = if let Some(ref user) = user {
+        state
+            .api
+            .notification_destinations(user)
+            .get_email()
+            .await?
+    } else {
+        None
+    };
+
     // Utils are only available for authenticated users or when accessing shared resources.
     let utils = if user.is_some() || user_share.is_some() {
         state.api.utils().get_all().await?
@@ -44,6 +56,7 @@ pub async fn ui_state_get(
         subscription,
         user_share: user_share.map(ClientUserShare::from),
         settings,
+        notification_email,
         utils,
         platform: UiPlatformState {
             max_import_file_size: state.config.platform.max_import_file_size,

@@ -151,6 +151,15 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
             // Settings
             .service(handlers::user_settings_get::user_settings_get)
             .service(handlers::user_settings_set::user_settings_set)
+            // Notification email (settings tab)
+            .service(handlers::user_notification_email::user_notification_email_get)
+            .service(handlers::user_notification_email::user_notification_email_set)
+            .service(handlers::user_notification_email::user_notification_email_verify)
+            .service(handlers::user_notification_email::user_notification_email_resend)
+            .service(handlers::user_notification_email::user_notification_email_delete)
+            // Public notification endpoints (RFC 8058 one-click unsubscribe)
+            .service(handlers::notifications_unsubscribe::notifications_unsubscribe)
+            .service(handlers::notifications_unsubscribe::notifications_unsubscribe_get)
             // User data (scoped for custom JSON payload size limit)
             .service(
                 web::scope("/api/user/data")

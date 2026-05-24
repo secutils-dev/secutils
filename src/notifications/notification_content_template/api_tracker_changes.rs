@@ -3,7 +3,7 @@ use crate::{
     network::{DnsResolver, EmailTransport},
     notifications::{
         EmailNotificationAttachment, EmailNotificationContent,
-        notification_content_template::SECUTILS_LOGO_BYTES,
+        notification_content_template::{SECUTILS_LOGO_BYTES, plain_text_footer},
     },
 };
 use serde_json::json;
@@ -11,18 +11,22 @@ use uuid::Uuid;
 
 const DIFF_CONTENT_LENGTH_THRESHOLD: usize = 200;
 
+/// Compiles API tracker changes template as an email. See
+/// [`super::page_tracker_changes::compile_to_email`] for the unsubscribe-footer contract, the two
+/// paths differ only in `back_link` formatting and Handlebars template names.
 pub async fn compile_to_email<DR: DnsResolver, ET: EmailTransport>(
     api: &Api<DR, ET>,
     tracker_id: Uuid,
     tracker_name: &str,
     content: &Result<String, String>,
     diff: Option<&str>,
+    unsubscribe_url: Option<&str>,
 ) -> anyhow::Result<EmailNotificationContent> {
     let back_link = format!(
         "{}ws/web_scraping__api?q={}",
         api.config.public_url, tracker_id
     );
-    let (subject, text, html) = match content {
+    let (subject, mut text, html) = match content {
         Ok(content) => {
             let diff_html = diff
                 .filter(|_| content.len() > DIFF_CONTENT_LENGTH_THRESHOLD)
@@ -40,6 +44,7 @@ pub async fn compile_to_email<DR: DnsResolver, ET: EmailTransport>(
                         "diff_html": diff_html,
                         "back_link": back_link,
                         "home_link": api.config.public_url.as_str(),
+                        "unsubscribe_url": unsubscribe_url,
                     }),
                 )?,
             )
@@ -56,10 +61,15 @@ pub async fn compile_to_email<DR: DnsResolver, ET: EmailTransport>(
                     "error_message": error_message,
                     "back_link": back_link,
                     "home_link": api.config.public_url.as_str(),
+                    "unsubscribe_url": unsubscribe_url,
                 }),
             )?,
         ),
     };
+
+    if let Some(url) = unsubscribe_url {
+        text.push_str(&plain_text_footer(url));
+    }
 
     Ok(EmailNotificationContent::html_with_attachments(
         subject,

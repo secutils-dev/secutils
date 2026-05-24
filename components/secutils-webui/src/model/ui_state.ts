@@ -1,3 +1,4 @@
+import type { UserNotificationDestination } from './notification_email';
 import type { ServerStatus } from './server_status';
 import type { User } from './user';
 import type { UserSettings } from './user_settings';
@@ -55,4 +56,11 @@ export interface UiState {
   utils: Util[];
   subscription?: SubscriptionState;
   platform: PlatformState;
+  /**
+   * Optional custom notification email for product notifications. When verified, Secutils
+   * routes tracker change emails (and other `NotificationDestination::User` traffic) here
+   * instead of the login email. Login, account recovery, and other security messages always
+   * go to the login email and are unaffected by this setting.
+   */
+  notificationEmail?: UserNotificationDestination;
 }

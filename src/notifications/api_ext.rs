@@ -5,12 +5,16 @@ use crate::{
         EmailNotificationAttachmentDisposition, EmailNotificationContent, Notification,
         NotificationContent, NotificationDestination, NotificationId,
     },
+    users::{ResolvedRecipient, resolve_recipient_for_user_id, unsubscribe_url},
 };
-use anyhow::{Context, anyhow, bail};
+use anyhow::{Context, bail};
 use futures::{StreamExt, pin_mut};
 use lettre::{
     Message,
-    message::{Attachment, MultiPart, SinglePart, header::ContentType},
+    message::{
+        Attachment, MultiPart, SinglePart,
+        header::{ContentType, HeaderName, HeaderValue},
+    },
 };
 use std::cmp;
 use time::OffsetDateTime;
@@ -78,23 +82,40 @@ where
     async fn send_notification(&self, notification: Notification) -> anyhow::Result<()> {
         match notification.destination {
             NotificationDestination::User(user_id) => {
-                let user = self
-                    .api
-                    .users()
-                    .get(user_id)
-                    .await?
-                    .ok_or_else(|| anyhow!("User ({}) is not found.", *user_id))?;
+                // Resolve to a verified custom notification address when present, otherwise fall
+                // back to the user's login email.
+                let recipient = resolve_recipient_for_user_id(self.api, user_id).await?;
+
+                // The unsubscribe URL is built once and threaded into both the rendered body
+                // (visible footer) and the outgoing message (`List-Unsubscribe` /
+                // `List-Unsubscribe-Post` headers). Tying both to the same source
+                // (`recipient.unsubscribe_token`) guarantees the footer never appears without the
+                // header (and vice versa) - Gmail's bulk-sender chip is unreliable for low-volume
+                // senders, so the body link is the failsafe.
+                let unsubscribe_url = recipient
+                    .unsubscribe_token
+                    .as_deref()
+                    .map(|token| unsubscribe_url(self.api, token));
                 self.send_email_notification(
-                    user.email,
-                    notification.content.into_email(self.api).await?,
+                    recipient,
+                    notification
+                        .content
+                        .into_email(self.api, unsubscribe_url.as_deref())
+                        .await?,
                     notification.scheduled_at,
                 )
                 .await?;
             }
             NotificationDestination::Email(email_address) => {
+                // Literal-address destinations (Kratos courier traffic, in-app verification
+                // emails, etc.) bypass the resolver and never carry `List-Unsubscribe`
+                // headers; they are transactional and exempt under RFC 8058.
                 self.send_email_notification(
-                    email_address,
-                    notification.content.into_email(self.api).await?,
+                    ResolvedRecipient {
+                        address: email_address,
+                        unsubscribe_token: None,
+                    },
+                    notification.content.into_email(self.api, None).await?,
                     notification.scheduled_at,
                 )
                 .await?;
@@ -110,7 +131,7 @@ where
     /// Send email notification using configured SMTP server.
     async fn send_email_notification(
         &self,
-        recipient: String,
+        recipient: ResolvedRecipient,
         email: EmailNotificationContent,
         timestamp: OffsetDateTime,
     ) -> anyhow::Result<()> {
@@ -129,22 +150,44 @@ where
             }
         });
 
-        let recipient = if let Some(catch_all_recipient) = catch_all_recipient {
+        let parsed_recipient = if let Some(catch_all_recipient) = catch_all_recipient {
             catch_all_recipient.parse().with_context(|| {
                 format!("Cannot parse catch-all TO address: {catch_all_recipient}")
             })?
         } else {
             recipient
+                .address
                 .parse()
-                .with_context(|| format!("Cannot parse TO address: {recipient}"))?
+                .with_context(|| format!("Cannot parse TO address: {}", recipient.address))?
         };
 
-        let message_builder = Message::builder()
+        let mut message_builder = Message::builder()
             .from(smtp_config.username.parse()?)
             .reply_to(smtp_config.username.parse()?)
-            .to(recipient)
+            .to(parsed_recipient)
             .subject(&email.subject)
             .date(timestamp.into());
+
+        // RFC 8058 one-click unsubscribe headers, attached only when the recipient came from a
+        // verified custom notification destination. Kratos courier mail (auth/recovery) and
+        // the in-app verification flow itself never carry these headers; they are transactional
+        // and explicitly exempt by the spec.
+        if let Some(token) = &recipient.unsubscribe_token {
+            let url = unsubscribe_url(self.api, token);
+            let mailto = format!(
+                "mailto:unsubscribe+{token}@{}",
+                smtp_host(&smtp_config.username)
+            );
+            message_builder = message_builder
+                .raw_header(HeaderValue::new(
+                    HeaderName::new_from_ascii_str("List-Unsubscribe"),
+                    format!("<{url}>, <{mailto}>"),
+                ))
+                .raw_header(HeaderValue::new(
+                    HeaderName::new_from_ascii_str("List-Unsubscribe-Post"),
+                    "List-Unsubscribe=One-Click".to_owned(),
+                ));
+        }
 
         let message = match email.html {
             Some(html) => {
@@ -187,6 +230,17 @@ where
     }
 }
 
+/// Extracts the host portion of an SMTP "user@host" address used for the one-click
+/// `mailto:unsubscribe+token@host` fallback. Falls back to a placeholder when the configured
+/// username is not in the standard "local@host" form (e.g. local relay setups), so we never
+/// emit a malformed `mailto:` URI.
+fn smtp_host(smtp_username: &str) -> &str {
+    smtp_username
+        .rsplit_once('@')
+        .map(|(_, host)| host)
+        .unwrap_or("localhost")
+}
+
 impl<DR: DnsResolver, ET: EmailTransport> Api<DR, ET>
 where
     ET::Error: EmailTransportError,
@@ -199,13 +253,18 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::smtp_host;
     use crate::{
         config::{SmtpCatchAllConfig, SmtpConfig},
         notifications::{
             EmailNotificationAttachment, EmailNotificationContent, Notification,
-            NotificationContent, NotificationDestination,
+            NotificationContent, NotificationContentTemplate, NotificationDestination,
         },
         tests::{mock_api, mock_api_with_config, mock_config, mock_user},
+        users::{
+            NotificationChannelKind,
+            notification_destinations_tests::{PendingDestinationUpsert, verification_expiry},
+        },
     };
     use insta::assert_debug_snapshot;
     use sqlx::PgPool;
@@ -812,6 +871,368 @@ mod tests {
             ),
         ]
         "###);
+
+        Ok(())
+    }
+
+    #[test]
+    fn smtp_host_extracts_host_from_username() {
+        // Standard local@host form: pull off everything to the right of '@'.
+        assert_eq!(smtp_host("user@example.com"), "example.com");
+        assert_eq!(
+            smtp_host("svc@host.subdomain.example.com"),
+            "host.subdomain.example.com"
+        );
+        // The implementation uses `rsplit_once`, so multi-`@` strings keep the right-most host.
+        assert_eq!(smtp_host("a@b@example.com"), "example.com");
+        // Non-standard inputs (relay setups without a host part) fall back to a placeholder
+        // to guarantee the emitted `mailto:unsubscribe+token@…` URI is at least syntactically
+        // valid.
+        assert_eq!(smtp_host("not-an-email"), "localhost");
+        assert_eq!(smtp_host(""), "localhost");
+    }
+
+    /// Sets up a fully-verified custom notification email for `user_id` directly via the DB,
+    /// bypassing the rate-limiter and verification flow that `NotificationDestinationsApi`
+    /// would normally enforce. Returns the unsubscribe token persisted on the row so tests
+    /// can assert `List-Unsubscribe` URLs verbatim.
+    async fn setup_verified_email(
+        db: &crate::database::Database,
+        user_id: crate::users::UserId,
+        address: &str,
+        token: &str,
+    ) -> anyhow::Result<()> {
+        let now = OffsetDateTime::from_unix_timestamp(1700000000)?;
+        db.upsert_pending_notification_destination(PendingDestinationUpsert {
+            user_id,
+            kind: NotificationChannelKind::Email,
+            address,
+            verification_code_hash: "phc-test-hash",
+            verification_expires_at: verification_expiry(now),
+            verification_sent_at: now,
+            unsubscribe_token: token,
+            now,
+        })
+        .await?;
+        db.mark_notification_destination_verified(user_id, NotificationChannelKind::Email, now)
+            .await?;
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn user_destination_routes_to_verified_custom_email_with_unsubscribe_headers(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+        let api = mock_api(pool).await?;
+        api.db.upsert_user(&mock_user).await?;
+        setup_verified_email(&api.db, mock_user.id, "alerts@example.com", "tok-abc-123").await?;
+
+        api.notifications()
+            .schedule_notification(
+                NotificationDestination::User(mock_user.id),
+                NotificationContent::Email(EmailNotificationContent::html(
+                    "subject", "text", "html",
+                )),
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            )
+            .await?;
+        assert_eq!(api.notifications().send_pending_notifications(1).await?, 1);
+
+        let messages = api.network.email_transport.messages().await;
+        assert_eq!(messages.len(), 1);
+        let (envelope, content) = &messages[0];
+
+        // Routed to the verified custom address rather than the login email.
+        assert_eq!(envelope.to().len(), 1);
+        assert_eq!(envelope.to()[0].to_string(), "alerts@example.com");
+
+        // Both `List-Unsubscribe` and `List-Unsubscribe-Post` headers are present, and the
+        // URL form encodes the persisted unsubscribe token. Lettre may fold the header value
+        // across CRLF + space so each URI is asserted independently rather than as one
+        // contiguous string.
+        assert!(
+            content.contains("List-Unsubscribe:"),
+            "missing List-Unsubscribe header in:\n{content}"
+        );
+        assert!(
+            content
+                .contains("<https://secutils.dev/api/notifications/unsubscribe?token=tok-abc-123>"),
+            "missing HTTPS unsubscribe URL in List-Unsubscribe header:\n{content}"
+        );
+        assert!(
+            content.contains("<mailto:unsubscribe+tok-abc-123@secutils.dev>"),
+            "missing mailto unsubscribe URI in List-Unsubscribe header:\n{content}"
+        );
+        assert!(
+            content.contains("List-Unsubscribe-Post: List-Unsubscribe=One-Click"),
+            "missing List-Unsubscribe-Post header in:\n{content}"
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn user_destination_falls_back_to_login_when_no_custom_email_configured(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+        let api = mock_api(pool).await?;
+        api.db.upsert_user(&mock_user).await?;
+
+        api.notifications()
+            .schedule_notification(
+                NotificationDestination::User(mock_user.id),
+                NotificationContent::Email(EmailNotificationContent::html(
+                    "subject", "text", "html",
+                )),
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            )
+            .await?;
+        assert_eq!(api.notifications().send_pending_notifications(1).await?, 1);
+
+        let messages = api.network.email_transport.messages().await;
+        assert_eq!(messages.len(), 1);
+        let (envelope, content) = &messages[0];
+
+        // Falls back to the user's login email — no custom destination configured.
+        assert_eq!(
+            envelope.to()[0].to_string(),
+            "dev-00000000-0000-0000-0000-000000000001@secutils.dev"
+        );
+        // No unsubscribe headers when routing to the login email.
+        assert!(
+            !content.contains("List-Unsubscribe"),
+            "login-email fallback must not carry List-Unsubscribe headers, got:\n{content}"
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn user_destination_falls_back_to_login_when_custom_email_unverified(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+        let api = mock_api(pool).await?;
+        api.db.upsert_user(&mock_user).await?;
+
+        // Pending (unverified) row — no `verified_at`.
+        let now = OffsetDateTime::from_unix_timestamp(1700000000)?;
+        api.db
+            .upsert_pending_notification_destination(PendingDestinationUpsert {
+                user_id: mock_user.id,
+                kind: NotificationChannelKind::Email,
+                address: "alerts@example.com",
+                verification_code_hash: "phc-test-hash",
+                verification_expires_at: verification_expiry(now),
+                verification_sent_at: now,
+                unsubscribe_token: "tok-pending",
+                now,
+            })
+            .await?;
+
+        api.notifications()
+            .schedule_notification(
+                NotificationDestination::User(mock_user.id),
+                NotificationContent::Email(EmailNotificationContent::html(
+                    "subject", "text", "html",
+                )),
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            )
+            .await?;
+        assert_eq!(api.notifications().send_pending_notifications(1).await?, 1);
+
+        let messages = api.network.email_transport.messages().await;
+        let (envelope, content) = &messages[0];
+        assert_eq!(
+            envelope.to()[0].to_string(),
+            "dev-00000000-0000-0000-0000-000000000001@secutils.dev",
+            "unverified custom email must not be used as recipient"
+        );
+        assert!(
+            !content.contains("List-Unsubscribe"),
+            "unverified-fallback must not carry List-Unsubscribe headers"
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn user_destination_falls_back_to_login_when_custom_email_unsubscribed(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+        let api = mock_api(pool).await?;
+        api.db.upsert_user(&mock_user).await?;
+        setup_verified_email(&api.db, mock_user.id, "alerts@example.com", "tok-unsub").await?;
+
+        // Unsubscribe via the same token; the row stays in the table but is filtered out
+        // by `resolve_recipient_for_user_id`.
+        let now = OffsetDateTime::from_unix_timestamp(1700001000)?;
+        api.db
+            .mark_notification_destination_unsubscribed("tok-unsub", now)
+            .await?;
+
+        api.notifications()
+            .schedule_notification(
+                NotificationDestination::User(mock_user.id),
+                NotificationContent::Email(EmailNotificationContent::html(
+                    "subject", "text", "html",
+                )),
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            )
+            .await?;
+        assert_eq!(api.notifications().send_pending_notifications(1).await?, 1);
+
+        let messages = api.network.email_transport.messages().await;
+        let (envelope, content) = &messages[0];
+        assert_eq!(
+            envelope.to()[0].to_string(),
+            "dev-00000000-0000-0000-0000-000000000001@secutils.dev",
+            "unsubscribed custom email must not be used as recipient"
+        );
+        assert!(
+            !content.contains("List-Unsubscribe"),
+            "unsubscribed-fallback must not carry List-Unsubscribe headers"
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn user_destination_with_template_content_emits_body_footer_alongside_header(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+        let api = mock_api(pool).await?;
+        api.db.upsert_user(&mock_user).await?;
+        setup_verified_email(&api.db, mock_user.id, "alerts@example.com", "tok-paired").await?;
+
+        // Use a real template — the visible-footer contract only kicks in for product-mail
+        // templates, so a `Template`-backed notification is the right vehicle to assert the
+        // wire output (the previous routing tests use literal `Email` content which has no
+        // footer concept).
+        api.notifications()
+            .schedule_notification(
+                NotificationDestination::User(mock_user.id),
+                NotificationContent::Template(NotificationContentTemplate::PageTrackerChanges {
+                    tracker_id: uuid!("00000000-0000-0000-0000-000000000001"),
+                    tracker_name: "tracker".to_string(),
+                    content: Ok("content".to_string()),
+                    diff: None,
+                }),
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            )
+            .await?;
+        assert_eq!(api.notifications().send_pending_notifications(1).await?, 1);
+
+        let messages = api.network.email_transport.messages().await;
+        let (envelope, content) = &messages[0];
+        assert_eq!(envelope.to()[0].to_string(), "alerts@example.com");
+
+        // Body footer (HTML) is emitted alongside the RFC 8058 header. The HTML body is
+        // base64-or-quoted-printable-encoded inside the wire content, so we can't just
+        // grep raw markup; instead we check for stable substrings the encoder preserves
+        // verbatim. The token is URL-encoded the same way `unsubscribe_url()` does.
+        assert!(
+            content.contains("List-Unsubscribe"),
+            "header must accompany body footer"
+        );
+        assert!(
+            content.contains("Unsubscribe"),
+            "rendered HTML body must contain a visible Unsubscribe link"
+        );
+        assert!(
+            content.contains("tok-paired"),
+            "the verified destination's unsubscribe token must round-trip through both header and body URL"
+        );
+        // The plain-text alternative carries the matching footer - the `To unsubscribe,
+        // visit:` copy is a stable, encoder-preserved marker because it has no special
+        // characters that QP/base64 transforms into something else.
+        assert!(
+            content.contains("To unsubscribe, visit:"),
+            "plain-text alternative must carry the matching footer line"
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn user_destination_login_fallback_omits_body_footer(pool: PgPool) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+        let api = mock_api(pool).await?;
+        api.db.upsert_user(&mock_user).await?;
+        // No verified custom email - routes to login, no token, no footer, no header.
+
+        api.notifications()
+            .schedule_notification(
+                NotificationDestination::User(mock_user.id),
+                NotificationContent::Template(NotificationContentTemplate::PageTrackerChanges {
+                    tracker_id: uuid!("00000000-0000-0000-0000-000000000001"),
+                    tracker_name: "tracker".to_string(),
+                    content: Ok("content".to_string()),
+                    diff: None,
+                }),
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            )
+            .await?;
+        assert_eq!(api.notifications().send_pending_notifications(1).await?, 1);
+
+        let messages = api.network.email_transport.messages().await;
+        let (_, content) = &messages[0];
+
+        assert!(
+            !content.contains("List-Unsubscribe"),
+            "no header on login-email fallback"
+        );
+        assert!(
+            !content.contains("To unsubscribe, visit:"),
+            "no plain-text footer on login-email fallback"
+        );
+        // The wire contains an "Unsubscribe" string only inside the HTML body footer block,
+        // so its absence is a tighter check than scanning the whole message.
+        assert!(
+            !content.contains(r#"class=3D&quot;email-footer&quot;"#)
+                && !content.contains(r#"class="email-footer""#)
+                && !content.contains("class=3D\"email-footer\""),
+            "no body footer wrapper on login-email fallback"
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn email_destination_never_carries_unsubscribe_headers(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        let mock_user = mock_user()?;
+        let api = mock_api(pool).await?;
+        api.db.upsert_user(&mock_user).await?;
+
+        // Even when the user *does* have a verified custom email configured, a literal
+        // `Email` destination (Kratos courier mail, in-app verification) is transactional
+        // and must bypass the resolver entirely — RFC 8058 explicitly exempts it.
+        setup_verified_email(&api.db, mock_user.id, "alerts@example.com", "tok-mixed").await?;
+
+        api.notifications()
+            .schedule_notification(
+                NotificationDestination::Email("ops@secutils.dev".to_string()),
+                NotificationContent::Email(EmailNotificationContent::html(
+                    "subject", "text", "html",
+                )),
+                OffsetDateTime::from_unix_timestamp(946720800)?,
+            )
+            .await?;
+        assert_eq!(api.notifications().send_pending_notifications(1).await?, 1);
+
+        let messages = api.network.email_transport.messages().await;
+        let (envelope, content) = &messages[0];
+        assert_eq!(envelope.to()[0].to_string(), "ops@secutils.dev");
+        assert!(
+            !content.contains("List-Unsubscribe"),
+            "literal Email destinations are transactional — no List-Unsubscribe headers, got:\n{content}"
+        );
 
         Ok(())
     }

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Verify your Secutils.dev notification email</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {{> email_styles}}
+</head>
+<body>
+<div class="container">
+  <p>Hi there,</p>
+  <p>You asked Secutils.dev to start sending product notifications to this address. To confirm that you control this inbox, please copy the following code into the verification form on the Settings page:</p>
+  <p class="numeric-code">{{{encoded_verification_code}}}</p>
+  <p>The code expires in 15 minutes. If you did not request this change, you can safely ignore this email, nothing will be sent here without your confirmation.</p>
+  <p><b>Important:</b> account activation, password recovery, and other security messages always go to your login email and are not affected by this setting.</p>
+  <p>If you run into any trouble, please email us at <a href="mailto: contact@secutils.dev">contact@secutils.dev</a> or simply reply to this email.</p>
+  <a href="{{home_link}}"><img src="cid:secutils-logo" alt="Secutils.dev logo" width="89" height="14" /></a>
+</div>
+</body>
+</html>

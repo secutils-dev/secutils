@@ -90,6 +90,7 @@ uuid = "1.23.1"
 zip = { version = "8.6.0", default-features = false }
 zstd = "0.13.3"
 argon2 = "0.5.3"
+base64ct = "1.8.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 tikv-jemallocator = "0.6.1"

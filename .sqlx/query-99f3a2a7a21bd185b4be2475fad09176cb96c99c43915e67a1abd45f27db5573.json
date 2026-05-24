@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nINSERT INTO user_notification_destinations (\n    user_id, kind, address, verified_at, verification_code_hash, verification_expires_at,\n    verification_sent_at, verification_attempts, unsubscribe_token, unsubscribed_at,\n    created_at, updated_at\n)\nVALUES ($1, $2, $3, NULL, $4, $5, $6, 0, $7, NULL, $8, $8)\nON CONFLICT (user_id, kind) DO UPDATE SET\n    address = EXCLUDED.address,\n    verified_at = NULL,\n    verification_code_hash = EXCLUDED.verification_code_hash,\n    verification_expires_at = EXCLUDED.verification_expires_at,\n    verification_sent_at = EXCLUDED.verification_sent_at,\n    verification_attempts = 0,\n    unsubscribed_at = NULL,\n    -- The unsubscribe token is *not* rotated on every re-issue; it stays valid across the\n    -- verify/unsubscribe lifecycle of the same row. We only generate a fresh one when the row\n    -- is created, or when the address changes. Rotating it on every code resend would\n    -- invalidate any in-flight `List-Unsubscribe` headers users already received.\n    unsubscribe_token = CASE\n        WHEN user_notification_destinations.address = EXCLUDED.address\n        THEN user_notification_destinations.unsubscribe_token\n        ELSE EXCLUDED.unsubscribe_token\n    END,\n    updated_at = EXCLUDED.updated_at\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "99f3a2a7a21bd185b4be2475fad09176cb96c99c43915e67a1abd45f27db5573"
+}

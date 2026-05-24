@@ -1,6 +1,7 @@
 pub mod api_ext;
 mod api_keys;
 mod database_ext;
+mod notification_destinations;
 mod scripts;
 mod secrets;
 mod settings;
@@ -16,6 +17,11 @@ pub use self::{
     api_keys::{
         ApiKeyCreateParams, ApiKeyCreateResponse, ApiKeyRegenerateParams, ApiKeyUpdateParams,
         UserApiKey,
+    },
+    notification_destinations::{
+        NotificationChannelKind, NotificationEmailSetParams, NotificationEmailVerifyParams,
+        ResolvedRecipient, UserNotificationDestination, resolve_recipient_for_user_id,
+        unsubscribe_url,
     },
     scripts::{ScriptContext, ScriptCreateParams, ScriptUpdateParams, UserScript, UserScriptType},
     secrets::{SecretCreateParams, SecretUpdateParams, SecretsAccess, UserSecret},
@@ -34,3 +40,6 @@ pub use self::{
 };
 
 pub(crate) use self::secrets::RawSecretsAccess;
+
+#[cfg(test)]
+pub use self::notification_destinations::tests as notification_destinations_tests;

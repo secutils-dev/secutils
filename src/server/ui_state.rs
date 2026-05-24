@@ -9,7 +9,7 @@ pub use self::{
     subscription_state::SubscriptionState,
 };
 use crate::{
-    users::{ClientUserShare, User, UserSettings},
+    users::{ClientUserShare, User, UserNotificationDestination, UserSettings},
     utils::Util,
 };
 use serde::Serialize;
@@ -26,6 +26,11 @@ pub struct UiState<'a> {
     pub user_share: Option<ClientUserShare>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub settings: Option<UserSettings>,
+    /// Pre-fetched notification email destination so the Settings flyout can render the right
+    /// state on first load without an extra round-trip. `None` for unauthenticated requests
+    /// and for users who have not configured an override.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notification_email: Option<UserNotificationDestination>,
     pub utils: Vec<Util>,
     pub platform: UiPlatformState,
 }
@@ -90,6 +95,22 @@ mod tests {
                     .into_iter()
                     .collect::<BTreeMap<_, _>>(),
             )?)?),
+            notification_email: Some(crate::users::UserNotificationDestination {
+                id: uuid!("00000000-0000-0000-0000-000000000010"),
+                user_id: uuid!("00000000-0000-0000-0000-000000000001").into(),
+                kind: crate::users::NotificationChannelKind::Email,
+                address: "alerts@example.com".to_string(),
+                config: json!({}),
+                verification_code_hash: None,
+                verification_attempts: 0,
+                unsubscribe_token: "tok-secret".to_string(),
+                verified_at: Some(OffsetDateTime::from_unix_timestamp(1700000000)?),
+                verification_expires_at: None,
+                verification_sent_at: None,
+                unsubscribed_at: None,
+                created_at: OffsetDateTime::from_unix_timestamp(1700000000)?,
+                updated_at: OffsetDateTime::from_unix_timestamp(1700000000)?,
+            }),
             utils: vec![Util {
                 id: 1,
                 handle: "some-handle".to_string(),
@@ -147,6 +168,14 @@ mod tests {
           "settings": {
             "common.uiTheme": "light"
           },
+          "notificationEmail": {
+            "id": "00000000-0000-0000-0000-000000000010",
+            "kind": "email",
+            "address": "alerts@example.com",
+            "verifiedAt": 1700000000,
+            "createdAt": 1700000000,
+            "updatedAt": 1700000000
+          },
           "utils": [
             {
               "handle": "some-handle",
@@ -174,6 +203,7 @@ mod tests {
             subscription: Default::default(),
             user_share: None,
             settings: None,
+            notification_email: None,
             utils: vec![],
             platform: UiPlatformState {
                 max_import_file_size: 10 * 1024 * 1024,

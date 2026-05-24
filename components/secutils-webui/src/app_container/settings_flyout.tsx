@@ -24,6 +24,7 @@ import { unix, utc } from 'moment/moment';
 import type { ChangeEvent } from 'react';
 import { lazy, Suspense, useCallback, useState } from 'react';
 
+import NotificationEmailSection from './notification_email_section';
 import { useAppContext } from '../hooks';
 import type { AsyncData, SerializedPublicKeyCredentialCreationOptions } from '../model';
 import {
@@ -392,10 +393,16 @@ export default function SettingsFlyout({ onClose, importUrl, onImportUrlConsumed
             </>
           }
         >
-          <EuiFormRow label={'Email'} helpText={'Used for all communications and notifications.'} fullWidth isDisabled>
+          <EuiFormRow
+            label={'Email'}
+            helpText={'Used for sign-in, account recovery, and other security messages.'}
+            fullWidth
+            isDisabled
+          >
             <EuiFieldText type={'email'} value={uiState.user?.email} />
           </EuiFormRow>
         </EuiDescribedFormGroup>
+        <NotificationEmailSection />
         <EuiDescribedFormGroup
           title={<h3>Subscription</h3>}
           description={

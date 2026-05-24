@@ -15,6 +15,12 @@
   <p>If the button above doesn't work, you can navigate to the following URL directly: </p>
   <p>{{back_link}}</p>
   <a href="{{home_link}}"><img src="cid:secutils-logo" alt="Secutils.dev logo" width="89" height="14" /></a>
+  {{#if unsubscribe_url}}
+  <div class="email-footer">
+    <p>You're receiving this email because Secutils.dev product notifications are enabled for this address.</p>
+    <p><a href="{{unsubscribe_url}}">Unsubscribe</a></p>
+  </div>
+  {{/if}}
 </div>
 </body>
 </html>

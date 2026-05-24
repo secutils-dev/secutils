@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nUPDATE user_notification_destinations\nSET verified_at = $3,\n    verification_code_hash = NULL,\n    verification_expires_at = NULL,\n    verification_attempts = 0,\n    updated_at = $3\nWHERE user_id = $1 AND kind = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "58606a31c8e183b96150f646374ae59b49f4003b1c5f23259a48af9f119e393c"
+}

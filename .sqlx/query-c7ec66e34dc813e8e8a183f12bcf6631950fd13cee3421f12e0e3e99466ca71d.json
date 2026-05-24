@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nDELETE FROM user_notification_destinations\nWHERE user_id = $1 AND kind = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c7ec66e34dc813e8e8a183f12bcf6631950fd13cee3421f12e0e3e99466ca71d"
+}

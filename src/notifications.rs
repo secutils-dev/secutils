@@ -14,7 +14,7 @@ pub use self::{
     },
     notification::Notification,
     notification_content::NotificationContent,
-    notification_content_template::NotificationContentTemplate,
+    notification_content_template::{NotificationContentTemplate, SECUTILS_LOGO_BYTES},
     notification_destination::NotificationDestination,
     notification_id::NotificationId,
 };

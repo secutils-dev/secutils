@@ -39,6 +39,17 @@ export {
 export type { EntityTag, UserTag } from './user_tags';
 export { TAG_COLOR_SWATCHES, getUserTags, createUserTag, updateUserTag, deleteUserTag } from './user_tags';
 export type { UserScript, UserScriptType, UserScriptWithContent } from './user_scripts';
+export type { UserNotificationDestination } from './notification_email';
+export {
+  getNotificationEmail,
+  setNotificationEmail,
+  verifyNotificationEmail,
+  resendNotificationEmailCode,
+  clearNotificationEmail,
+  isVerified as isNotificationDestinationVerified,
+  isUnsubscribed as isNotificationDestinationUnsubscribed,
+  isVerificationPending as isNotificationDestinationVerificationPending,
+} from './notification_email';
 export {
   getUserScripts,
   getUserScript,

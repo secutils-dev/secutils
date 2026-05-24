@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\nUPDATE user_notification_destinations\nSET unsubscribed_at = COALESCE(unsubscribed_at, $2),\n    updated_at = $2\nWHERE unsubscribe_token = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "65acf974dc9fe38a72e63173735e41d36fb5a57ee1c84530ae4fe7620c2560e5"
+}
