@@ -19,10 +19,10 @@ library and report results in chat.
 
 ## Inputs
 
-| Field    | Type   | Default  | Notes                                                                                 |
-|----------|--------|----------|---------------------------------------------------------------------------------------|
-| `jwt`    | string | required | The compact-form token: `header.payload.signature`. Strip any `Bearer ` prefix first. |
-| `secret` | string | `""`     | Optional HMAC secret used for verification or re-signing. Empty string when unknown.  |
+| Field    | Type   | Default  | Notes                                                                                                                                  |
+|----------|--------|----------|----------------------------------------------------------------------------------------------------------------------------------------|
+| `jwt`    | string | required | The compact-form token: `header.payload.signature`. The UI also accepts `Bearer ...`, base64-wrapped JWTs, and Elastic `essu_` tokens. |
+| `secret` | string | `""`     | Optional HMAC secret used for verification or re-signing. Empty string when unknown.                                                   |
 
 State object shape (keys are exactly `j`, `s`):
 
@@ -82,8 +82,9 @@ sentence; don't paraphrase the payload contents.
   Secutils server but is fully visible to anyone with the link. Never paste
   high-value production secrets into a share URL - generate or rotate the
   secret first.
-- Strip `Bearer ` (and any surrounding whitespace) from the JWT before
-  encoding; the tool expects the raw three-segment token.
+- Prefer encoding the raw three-segment JWT. The tool can unwrap `Bearer `,
+  base64-wrapped JWTs, and Elastic `essu_` tokens pasted directly into the UI, but
+  share URLs are smallest when they store the compact JWT itself.
 - Asymmetric algorithms (RS*, ES*, PS*) are not supported by this tool. If
   the header `alg` is one of those, decode in chat and tell the user to use a
   server-side library for verification.

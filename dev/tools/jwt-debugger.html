@@ -564,10 +564,23 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { return false; }
     };
 
-    const tryBase64Decode = (str) => {
+    const tryBase64DecodeBytes = (str) => {
         let padded = str.replace(/-/g, '+').replace(/_/g, '/');
         while (padded.length % 4) padded += '=';
-        try { return atob(padded); } catch (e) { return null; }
+        try {
+            const decoded = atob(padded);
+            const bytes = new Uint8Array(decoded.length);
+            for (let i = 0; i < decoded.length; i++) bytes[i] = decoded.charCodeAt(i);
+            return bytes;
+        } catch (e) { return null; }
+    };
+
+    const tryBase64Decode = (str) => {
+        const bytes = tryBase64DecodeBytes(str);
+        if (!bytes) return null;
+        let decoded = '';
+        for (let i = 0; i < bytes.length; i++) decoded += String.fromCharCode(bytes[i]);
+        return decoded;
     };
 
     const findJWTInString = (str) => {
@@ -579,11 +592,134 @@ document.addEventListener('DOMContentLoaded', () => {
         return null;
     };
 
+    const escapeHtml = (value) => value.replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[ch]);
+
+    const bytesToUtf8 = (bytes) => {
+        try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch (e) { return null; }
+    };
+
+    const readUint32BE = (bytes, offset) => (
+        ((bytes[offset] << 24) >>> 0) + (bytes[offset + 1] << 16) + (bytes[offset + 2] << 8) + bytes[offset + 3]
+    ) >>> 0;
+
+    const CRC32_TABLE = (() => {
+        const table = new Uint32Array(256);
+        for (let n = 0; n < table.length; n++) {
+            let c = n;
+            for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+            table[n] = c >>> 0;
+        }
+        return table;
+    })();
+
+    const crc32 = (bytes) => {
+        let crc = 0xffffffff;
+        for (let i = 0; i < bytes.length; i++) crc = CRC32_TABLE[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+        return (crc ^ 0xffffffff) >>> 0;
+    };
+
+    const unwrapElasticChecksum = (bytes) => {
+        if (bytes.length < 8) return null;
+        const separatorOffset = bytes.length - 8;
+        if (
+            bytes[separatorOffset] !== 0 || bytes[separatorOffset + 1] !== 0 ||
+            bytes[separatorOffset + 2] !== 0 || bytes[separatorOffset + 3] !== 0
+        ) {
+            return null;
+        }
+
+        const payload = bytes.subarray(0, separatorOffset);
+        return crc32(payload) === readUint32BE(bytes, bytes.length - 4) ? payload : null;
+    };
+
+    const readLz4Length = (bytes, state, initialLength) => {
+        let length = initialLength;
+        if (length !== 15) return length;
+
+        let next;
+        do {
+            if (state.offset >= bytes.length) throw new Error('Invalid LZ4 length');
+            next = bytes[state.offset++];
+            length += next;
+        } while (next === 255);
+        return length;
+    };
+
+    const decompressLz4BlockWithLength = (bytes) => {
+        if (bytes.length < 4) return null;
+
+        const outputLength = readUint32BE(bytes, 0);
+        if (outputLength === 0 || outputLength > 1024 * 1024) return null;
+
+        const output = new Uint8Array(outputLength);
+        const state = { offset: 4 };
+        let outputOffset = 0;
+
+        try {
+            while (state.offset < bytes.length) {
+                const token = bytes[state.offset++];
+                const literalLength = readLz4Length(bytes, state, token >> 4);
+                if (state.offset + literalLength > bytes.length || outputOffset + literalLength > outputLength) return null;
+
+                output.set(bytes.subarray(state.offset, state.offset + literalLength), outputOffset);
+                state.offset += literalLength;
+                outputOffset += literalLength;
+
+                if (state.offset >= bytes.length) break;
+                if (state.offset + 2 > bytes.length) return null;
+
+                const matchOffset = bytes[state.offset] | (bytes[state.offset + 1] << 8);
+                state.offset += 2;
+                if (matchOffset === 0 || matchOffset > outputOffset) return null;
+
+                const matchLength = readLz4Length(bytes, state, token & 0x0f) + 4;
+                if (outputOffset + matchLength > outputLength) return null;
+
+                for (let i = 0; i < matchLength; i++) {
+                    output[outputOffset + i] = output[outputOffset - matchOffset + i];
+                }
+                outputOffset += matchLength;
+            }
+        } catch (e) {
+            return null;
+        }
+
+        return outputOffset === outputLength ? output : null;
+    };
+
+    const decodeElasticWrappedJWT = (encoded) => {
+        const bytes = tryBase64DecodeBytes(encoded);
+        if (!bytes) return null;
+
+        const checksumPayload = unwrapElasticChecksum(bytes);
+        if (!checksumPayload) return null;
+
+        const decompressed = decompressLz4BlockWithLength(checksumPayload);
+        const decodedPayload = decompressed ? bytesToUtf8(decompressed) : bytesToUtf8(checksumPayload);
+        if (!decodedPayload) return null;
+
+        const jwt = findJWTInString(decodedPayload);
+        if (!jwt) return null;
+
+        const transforms = ['Base64-decoded', 'Verified Elastic checksum'];
+        if (decompressed) transforms.push('LZ4-decompressed');
+        transforms.push('Extracted JWT from Elastic token');
+        return { jwt, transforms };
+    };
+
     // Unwraps Bearer prefixes, opaque session tokens, and base64-wrapped envelopes
     // around a real JWT, so users can paste whatever their HTTP tooling shows.
     const extractJWT = (input) => {
         input = input.trim();
         if (!input) return null;
+
+        const bearerMatch = input.match(/^Bearer\s+(.+)$/i);
+        if (bearerMatch) {
+            const result = extractJWT(bearerMatch[1]);
+            if (result) return { jwt: result.jwt, transforms: ['Stripped <code>Bearer</code> prefix', ...result.transforms] };
+        }
 
         if (isValidJWT(input)) return { jwt: input, transforms: [] };
 
@@ -591,16 +727,22 @@ document.addEventListener('DOMContentLoaded', () => {
         for (let i = 1; i < segments.length && i <= 5; i++) {
             const remainder = segments.slice(i).join('_');
             const prefix = segments.slice(0, i).join('_') + '_';
+            const prefixLabel = `<code>${escapeHtml(prefix)}</code>`;
 
             if (isValidJWT(remainder)) {
-                return { jwt: remainder, transforms: [`Stripped prefix <code>${prefix}</code>`] };
+                return { jwt: remainder, transforms: [`Stripped prefix ${prefixLabel}`] };
+            }
+
+            const elasticWrapped = decodeElasticWrappedJWT(remainder);
+            if (elasticWrapped) {
+                return { jwt: elasticWrapped.jwt, transforms: [`Stripped prefix ${prefixLabel}`, ...elasticWrapped.transforms] };
             }
 
             const decoded = tryBase64Decode(remainder);
             if (decoded) {
                 const jwt = findJWTInString(decoded);
                 if (jwt) {
-                    return { jwt, transforms: [`Stripped prefix <code>${prefix}</code>`, 'Base64-decoded', 'Extracted JWT from decoded payload'] };
+                    return { jwt, transforms: [`Stripped prefix ${prefixLabel}`, 'Base64-decoded', 'Extracted JWT from decoded payload'] };
                 }
             }
         }

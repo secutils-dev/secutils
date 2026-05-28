@@ -10,6 +10,8 @@ const tool = getTool('jwt');
 const SAMPLE_JWT =
   'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
 const SAMPLE_SECRET = 'your-256-bit-secret';
+const ELASTIC_REFRESH_TOKEN =
+  'essu_AAABc/AIZXlKMGVYQWlPaUpLVjFRaUxDSmhiR2MQAPAySVV6STFOaUo5LmV5SnpkV0lpT2lJek9URXlORFExTWpJeUlpd2libUptSWpveE56YzVPREE1TkRZeUxDSnBjM01FAPBHbGJHRnpkR2xqTFdOc2IzVmtJaXdpZEhsd0lqb2ljbVZtY21WemFDMTBiMnRsYmlJc0luTmxjM05wYjI1ZlkzSmxZWFJsWkNJNk1UYzNPVGd3T1RVeU14ADAybGtEAPIGTVRNeE56STBNREUzT1NJc0ltVjRjMACBNE1EQTJPRGMwAEBjMnAwMABQZFhObGNoAEJtbGhkKAAJWABAYW5ScCgA8EtNR1F6TnpFeU5qUXdZVGRrTkRnNVlXRmhPR1pqTURreU9ETXhPVEV3TUdJaWZRLlM1SWdvZXlQSFNYOGIxU0hoZmdGT2EtRUV4ZDk0dl9YdmtIT09lZ1RkX1UAAAAAtnky3g==';
 
 test.describe(`${tool.name} (${tool.path})`, () => {
   test('SEO head block matches the AGENTS.md SEO budget', async ({ page }) => {
@@ -27,8 +29,19 @@ test.describe(`${tool.name} (${tool.path})`, () => {
     const encoded = page.locator('#encoded-output');
     await expect(encoded).toBeVisible();
     await encoded.fill(SAMPLE_JWT);
-    await expect(page.locator('#header-output')).toContainText('HS256');
-    await expect(page.locator('#payload-output')).toContainText('John Doe');
+    await expect(page.locator('#decoded-header')).toHaveValue(/"alg": "HS256"/);
+    await expect(page.locator('#decoded-payload')).toHaveValue(/"name": "John Doe"/);
+  });
+
+  test('unwraps an Elastic essu-prefixed LZ4 token', async ({ page }) => {
+    await page.goto(tool.path);
+    const encoded = page.locator('#encoded-output');
+    await expect(encoded).toBeVisible();
+    await encoded.fill(ELASTIC_REFRESH_TOKEN);
+    await expect(page.locator('#transform-info')).toContainText('LZ4-decompressed');
+    await expect(encoded).toContainText(/^eyJ/);
+    await expect(page.locator('#decoded-header')).toHaveValue(/"alg": "HS256"/);
+    await expect(page.locator('#decoded-payload')).toHaveValue(/"typ": "refresh-token"/);
   });
 
   test('verifies the signature once the secret is provided', async ({ page }) => {
@@ -40,8 +53,10 @@ test.describe(`${tool.name} (${tool.path})`, () => {
 
   test('Share button produces a shareable URL with state in the fragment', async ({ page }) => {
     await page.goto(tool.path);
-    await page.locator('#encoded-output').fill(SAMPLE_JWT);
+    const encoded = page.locator('#encoded-output');
+    await encoded.fill(SAMPLE_JWT);
     await page.locator('#secret-input').fill(SAMPLE_SECRET);
+    const sharedJwt = await encoded.innerText();
 
     // Capture the URL the page wants to share by stubbing the clipboard.
     let copied = '';
@@ -61,7 +76,7 @@ test.describe(`${tool.name} (${tool.path})`, () => {
 
     const fragment = new URL(copied).hash;
     await page.goto(`${tool.path}${fragment}`);
-    await expect(page.locator('#encoded-output')).toHaveValue(SAMPLE_JWT);
+    await expect(page.locator('#encoded-output')).toContainText(sharedJwt);
     await expect(page.locator('#secret-input')).toHaveValue(SAMPLE_SECRET);
   });
 });
