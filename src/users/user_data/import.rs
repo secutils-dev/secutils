@@ -9,14 +9,14 @@ mod results;
 mod should_skip;
 
 pub use self::{
-    file::ImportedScript,
+    file::{ImportedScript, UserDataImportFile, UserDataImportFileData},
     importers::tags::remap_tag_ids,
     params::{
-        ConflictResolution, ImportAction, ImportEntitySelection, ImportMode, UserDataImportParams,
-        UserDataImportPreviewParams,
+        ConflictResolution, ImportAction, ImportEntitySelection, ImportMode, ImportSelections,
+        UserDataImportParams, UserDataImportPreviewParams,
     },
     resolve_name::resolve_name,
-    results::ImportEntityResult,
+    results::{ImportEntityResult, UserDataImportResult},
     should_skip::should_skip,
 };
 
@@ -38,7 +38,7 @@ use importers::{
 };
 use results::{
     ApplyDeleteItem, ApplyDeleteSummary, ImportEntitySummary, ImportPreviewSummary,
-    ImportResultsSummary, ImportSettingsSummary, UserDataImportPreview, UserDataImportResult,
+    ImportResultsSummary, ImportSettingsSummary, UserDataImportPreview,
 };
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;

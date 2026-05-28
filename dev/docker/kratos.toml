@@ -29,7 +29,7 @@ password = { enabled = true }
 webauthn = { enabled = true, config = { passwordless = true, rp = { display_name = "Secutils.dev", id = "localhost", origin = "http://localhost:7171" } } }
 
 [selfservice.flows]
-recovery = { enabled = true, lifespan = "15m", use = "code", notify_unknown_recipients = false, after = { hooks = [{  hook = "revoke_active_sessions" }] } }
+recovery = { enabled = true, lifespan = "15m", use = "code", ui_url = "http://127.0.0.1:7171/signin?recover=1", notify_unknown_recipients = false, after = { hooks = [{  hook = "revoke_active_sessions" }] } }
 settings = { privileged_session_max_age = "15m" }
 verification = { enabled = true }
 

@@ -1,0 +1,32 @@
+### Clone user by email (creates a sandbox copy + returns Kratos recovery link)
+POST {{host}}/api/users/_clone
+Accept: application/json
+Content-Type: application/json
+Authorization: {{api-credentials}}
+
+{
+  "source": { "email": "demo@secutils.dev" },
+  "destination": { "email": "demo+clone@secutils.dev", "handle": "clone" },
+  "includeHistory": true,
+  "copySubscription": true,
+  "recoveryLinkExpiresIn": "1h"
+}
+
+### Clone user by ID (alternative selector) with explicit handle
+POST {{host}}/api/users/_clone
+Accept: application/json
+Content-Type: application/json
+Authorization: {{api-credentials}}
+
+{
+  "source": { "id": "00000000-0000-0000-0000-000000000001" },
+  "destination": {
+    "email": "support+u123@secutils.dev",
+    "handle": "supportu123"
+  }
+}
+
+### Remove the clone by ID (sibling of POST /api/users/remove)
+DELETE {{host}}/api/users/{{user-id}}
+Accept: application/json
+Authorization: {{api-credentials}}

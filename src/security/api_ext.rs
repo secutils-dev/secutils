@@ -5,15 +5,18 @@ use crate::{
         Operator,
         credentials::Credentials,
         jwt::Claims,
-        kratos::{Identity, Session},
+        kratos::{Identity, RecoveryLink, Session},
     },
-    users::{User, UserId, UserSignupError, UserSubscription},
+    users::{
+        User, UserDataCloneSummary, UserId, UserSignupError, UserSubscription, clone_user_data,
+    },
 };
 use actix_web::cookie::Cookie;
 use anyhow::{Context, anyhow, bail};
 use hex::ToHex;
 use jsonwebtoken::{DecodingKey, Validation, decode};
 use reqwest::StatusCode;
+use serde_json::json;
 use tracing::{error, warn};
 use uuid::Uuid;
 
@@ -117,6 +120,137 @@ where
             .remove_user_by_email(user_email)
             .await?
             .or(user_id))
+    }
+
+    /// Creates a brand-new Kratos identity for the specified email. The identity is created
+    /// without any credentials (the operator is expected to mint a recovery link via
+    /// [`Self::create_recovery_link`] and let the destination user set a password through it).
+    /// When `verified` is true, the email address is marked as already verified, skipping the
+    /// usual email round-trip - appropriate for operator-driven clone flows.
+    pub async fn create_identity(&self, email: &str, verified: bool) -> anyhow::Result<Identity> {
+        let body = json!({
+            "schema_id": "user",
+            "traits": { "email": email },
+            "verifiable_addresses": [{
+                "value": email,
+                "verified": verified,
+                "via": "email",
+                "status": if verified { "completed" } else { "pending" }
+            }]
+        });
+
+        let request = self
+            .api
+            .network
+            .http_client
+            .request(
+                reqwest::Method::POST,
+                format!(
+                    "{}admin/identities",
+                    self.api.config.components.kratos_admin_url.as_str()
+                ),
+            )
+            .json(&body)
+            .build()
+            .map_err(|err| {
+                error!("Cannot build Kratos create-identity request: {err:?}");
+                anyhow!(err)
+            })?;
+
+        let response = self
+            .api
+            .network
+            .http_client
+            .execute(request)
+            .await
+            .map_err(|err| {
+                error!("Cannot execute Kratos create-identity request: {err:?}");
+                anyhow!(err)
+            })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            error!("Kratos create-identity request failed with status `{status}` and body: {body}");
+            bail!("Kratos create-identity request failed with status `{status}`.");
+        }
+
+        Ok(response.json::<Identity>().await?)
+    }
+
+    /// Mints a single-use Kratos admin recovery link for the specified identity. The operator
+    /// follows the returned URL to set a password and complete the login.
+    ///
+    /// Uses Kratos's `POST /admin/recovery/code` endpoint (`createRecoveryCodeForIdentity`),
+    /// which is the supported admin-driven flow regardless of whether the deployment is
+    /// configured with `recovery.use = "code"` or `"link"`. The response shape is identical
+    /// in both modes (a recovery URL + expiry), under the `code` strategy the response
+    /// additionally carries a `recovery_code` the user enters at the URL.
+    pub async fn create_recovery_link(
+        &self,
+        identity_id: Uuid,
+        expires_in: &str,
+    ) -> anyhow::Result<RecoveryLink> {
+        let body = json!({
+            "identity_id": identity_id,
+            "expires_in": expires_in,
+        });
+
+        let request = self
+            .api
+            .network
+            .http_client
+            .request(
+                reqwest::Method::POST,
+                format!(
+                    "{}admin/recovery/code",
+                    self.api.config.components.kratos_admin_url.as_str()
+                ),
+            )
+            .json(&body)
+            .build()
+            .map_err(|err| {
+                error!("Cannot build Kratos create-recovery-link request: {err:?}");
+                anyhow!(err)
+            })?;
+
+        let response = self
+            .api
+            .network
+            .http_client
+            .execute(request)
+            .await
+            .map_err(|err| {
+                error!("Cannot execute Kratos create-recovery-link request: {err:?}");
+                anyhow!(err)
+            })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            error!(
+                "Kratos create-recovery-link request failed with status `{status}` and body: {body}"
+            );
+            bail!("Kratos create-recovery-link request failed with status `{status}`.");
+        }
+
+        Ok(response.json::<RecoveryLink>().await?)
+    }
+
+    /// Copies every entity owned by `source` (tags, scripts, secrets, responders, certificate
+    /// templates, private keys, content security policies, page/API trackers, settings) into
+    /// `destination`, regenerating IDs as needed. Reuses the standard export/import pipeline,
+    /// including history when `include_history` is true, so the same code paths that the public
+    /// `/api/user/data/_export` and `/api/user/data/_import` endpoints traverse are exercised here.
+    /// Secrets are round-tripped through the export-encryption layer using an ephemeral passphrase
+    /// generated only for the duration of this call, the passphrase never leaves the process.
+    pub async fn clone_data(
+        &self,
+        source: &User,
+        destination: &User,
+        include_history: bool,
+    ) -> anyhow::Result<UserDataCloneSummary> {
+        clone_user_data(self.api, source, destination, include_history).await
     }
 
     /// Checks if the user or service account with specified credentials is an operator.
@@ -751,6 +885,150 @@ mod tests {
         let terminated_id = api.security().terminate(&mock_user.email).await?.unwrap();
         assert_eq!(terminated_id, mock_user.id);
         assert!(api.users().get(mock_user.id).await?.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_create_identity(pool: PgPool) -> anyhow::Result<()> {
+        let server = MockServer::start();
+        let new_id = "11111111-1111-1111-1111-111111111111";
+        let new_email = "clone@secutils.dev";
+        server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/admin/identities");
+            then.status(201)
+                .header("Content-Type", "application/json")
+                .json_body(mock_identity_json(new_id, new_email));
+        });
+
+        let mut config = mock_config()?;
+        config.components.kratos_admin_url = Url::parse(&server.base_url())?;
+        let api = mock_api_with_config(pool, config).await?;
+
+        let identity = api.security().create_identity(new_email, true).await?;
+        assert_eq!(identity.id.to_string(), new_id);
+        assert_eq!(identity.traits.email, new_email);
+        assert!(identity.is_activated());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn create_identity_propagates_kratos_error(pool: PgPool) -> anyhow::Result<()> {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/admin/identities");
+            then.status(409).body("identity already exists");
+        });
+
+        let mut config = mock_config()?;
+        config.components.kratos_admin_url = Url::parse(&server.base_url())?;
+        let api = mock_api_with_config(pool, config).await?;
+
+        let result = api
+            .security()
+            .create_identity("dup@secutils.dev", true)
+            .await;
+        assert!(result.is_err());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn can_create_recovery_link(pool: PgPool) -> anyhow::Result<()> {
+        let server = MockServer::start();
+        let identity_id = uuid::uuid!("22222222-2222-2222-2222-222222222222");
+        let expected_link =
+            "http://127.0.0.1:7171/self-service/recovery?flow=abc&token=xyz".to_string();
+        server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/admin/recovery/code");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({
+                    "recovery_link": expected_link,
+                    "recovery_code": "123456",
+                    "expires_at": "2030-01-01T10:00:00Z"
+                }));
+        });
+
+        let mut config = mock_config()?;
+        config.components.kratos_admin_url = Url::parse(&server.base_url())?;
+        let api = mock_api_with_config(pool, config).await?;
+
+        let link = api
+            .security()
+            .create_recovery_link(identity_id, "1h")
+            .await?;
+        assert_eq!(link.recovery_link, expected_link);
+        assert_eq!(link.recovery_code.as_deref(), Some("123456"));
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn create_recovery_link_propagates_kratos_error(pool: PgPool) -> anyhow::Result<()> {
+        let server = MockServer::start();
+        server.mock(|when, then| {
+            when.method(httpmock::Method::POST)
+                .path("/admin/recovery/code");
+            then.status(400).body("invalid identity");
+        });
+
+        let mut config = mock_config()?;
+        config.components.kratos_admin_url = Url::parse(&server.base_url())?;
+        let api = mock_api_with_config(pool, config).await?;
+
+        let result = api
+            .security()
+            .create_recovery_link(uuid::Uuid::new_v4(), "1h")
+            .await;
+        assert!(result.is_err());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn clone_data_round_trips_secrets_through_ephemeral_passphrase(
+        pool: PgPool,
+    ) -> anyhow::Result<()> {
+        use crate::{tests::mock_user_with_id, users::SecretCreateParams};
+
+        let mut config = mock_config()?;
+        // Required so `secrets(user)` can encrypt/decrypt server-side.
+        config.security.secrets_encryption_key =
+            Some("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2".to_string());
+        let api = mock_api_with_config(pool, config).await?;
+
+        let source = mock_user_with_id(uuid::uuid!("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"))?;
+        let destination = mock_user_with_id(uuid::uuid!("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"))?;
+        api.db.insert_user(&source).await?;
+        api.db.insert_user(&destination).await?;
+
+        api.secrets(&source)
+            .create_secret(SecretCreateParams {
+                name: "MY_KEY".to_string(),
+                value: "super-secret-value".to_string(),
+                tag_ids: vec![],
+            })
+            .await?;
+
+        let summary = api
+            .security()
+            .clone_data(&source, &destination, false)
+            .await?;
+        assert_eq!(summary.results.secrets.imported, 1);
+        assert_eq!(summary.results.secrets.failed, 0);
+
+        // Verify the destination's copy decrypts back to the original plaintext (proves the
+        // ephemeral passphrase round-trip actually re-encrypted the value under the global key).
+        let decrypted = api.secrets(&destination).decrypt_all_secrets().await?;
+        let cloned_value = decrypted
+            .get("MY_KEY")
+            .expect("MY_KEY should be present in the destination");
+        assert_eq!(cloned_value, "super-secret-value");
 
         Ok(())
     }

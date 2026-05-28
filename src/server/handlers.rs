@@ -9,6 +9,7 @@ pub mod responders;
 pub mod scheduler_parse_schedule;
 pub mod search;
 pub mod security_subscription_update;
+pub mod security_users_clone;
 pub mod security_users_email;
 pub mod security_users_get;
 pub mod security_users_get_by_email;
@@ -178,6 +179,8 @@ pub(crate) async fn resolve_shared_user(
         security_users_signup::security_users_signup,
         security_users_email::security_users_email,
         security_users_remove::security_users_remove,
+        security_users_remove::security_users_remove_by_id,
+        security_users_clone::security_users_clone,
         security_subscription_update::security_subscription_update,
         // Scheduler
         scheduler_parse_schedule::scheduler_parse_schedule,
@@ -286,6 +289,12 @@ pub(crate) async fn resolve_shared_user(
         crate::security::kratos::Identity,
         crate::security::kratos::IdentityTraits,
         crate::security::kratos::IdentityVerifiableAddress,
+        crate::security::kratos::RecoveryLink,
+        // Clone
+        security_users_clone::CloneParams,
+        security_users_clone::CloneSource,
+        security_users_clone::CloneDestination,
+        security_users_clone::CloneResponse,
         // Certificate templates
         crate::utils::certificates::CertificateTemplate,
         crate::utils::certificates::CertificateAttributes,
@@ -431,6 +440,7 @@ mod tests {
           "/api/user/tags",
           "/api/user/tags/{tag_id}",
           "/api/users",
+          "/api/users/_clone",
           "/api/users/email",
           "/api/users/remove",
           "/api/users/self",
@@ -496,6 +506,10 @@ mod tests {
           "CertificateTemplateGetResponse",
           "ClientSharedResource",
           "ClientUserShare",
+          "CloneDestination",
+          "CloneParams",
+          "CloneResponse",
+          "CloneSource",
           "ConflictResolution",
           "ContentSecurityPoliciesCreateParams",
           "ContentSecurityPoliciesSerializeParams",
@@ -552,6 +566,7 @@ mod tests {
           "PrivateKeysCreateParams",
           "PrivateKeysExportParams",
           "PrivateKeysUpdateParams",
+          "RecoveryLink",
           "RemoveParams",
           "Responder",
           "ResponderLocation",

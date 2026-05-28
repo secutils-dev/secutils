@@ -23,6 +23,12 @@ import { getOryApi } from '../../tools/ory';
 
 export interface RecoverAccountModalProps {
   email?: string;
+  /**
+   * Optional pre-existing Kratos recovery flow ID. When provided (e.g. via the `/signin?recover=1&flow=...` deep-link
+   * Kratos uses for admin-issued recovery codes), the modal jumps straight to the "enter recovery code" step instead of
+   * asking the user to request a new code.
+   */
+  flowId?: string;
   onClose: () => void;
 }
 
@@ -39,7 +45,7 @@ async function getRecoverFlow(api: FrontendApi, flowId?: string) {
   return await api.createBrowserRecoveryFlow();
 }
 
-export function RecoverAccountModal({ email, onClose }: RecoverAccountModalProps) {
+export function RecoverAccountModal({ email, flowId, onClose }: RecoverAccountModalProps) {
   const { addToast, uiState, refreshUiState } = useAppContext();
   const navigate = useNavigate();
 
@@ -47,6 +53,30 @@ export function RecoverAccountModal({ email, onClose }: RecoverAccountModalProps
   const [recoveryCode, setRecoveryCode] = useState<string>('');
 
   const [accountRecoveryStatus, setAccountRecoveryStatus] = useState<AsyncData<undefined, RecoveryFlow> | null>(null);
+
+  // When a Kratos recovery flow ID is supplied via deep-link, hydrate it on mount so the
+  // submit step is wired up to the same flow Kratos already issued the code for.
+  useEffect(() => {
+    if (!flowId) {
+      return;
+    }
+
+    let cancelled = false;
+    getOryApi()
+      .then(async (api) => {
+        const flow = await getRecoverFlow(api, flowId);
+        if (cancelled) {
+          return;
+        }
+        setAccountRecoveryStatus({ status: 'succeeded', data: undefined, state: flow });
+      })
+      .catch((err: unknown) => {
+        console.error('Failed to load recovery flow from deep-link.', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [flowId]);
   const onSendRecoveryCode: MouseEventHandler<HTMLButtonElement> = (e) => {
     e.preventDefault();
 
@@ -156,6 +186,10 @@ export function RecoverAccountModal({ email, onClose }: RecoverAccountModalProps
   }, [uiState, navigate]);
 
   const awaitingRecoveryCode = !!accountRecoveryStatus?.state;
+  // True only when the modal was opened by following a Kratos-issued recovery link and the referenced flow has been
+  // successfully hydrated. In this mode the email step is bypassed because the flow is already bound to a specific
+  // identity server-side.
+  const isDeepLinkMode = !!flowId && accountRecoveryStatus?.state?.id === flowId;
   return (
     <EuiModal onClose={onClose}>
       <EuiModalHeader>
@@ -167,23 +201,32 @@ export function RecoverAccountModal({ email, onClose }: RecoverAccountModalProps
       </EuiModalHeader>
       <EuiModalBody>
         <EuiForm id="account-recovery-form" component="form">
-          <EuiFormRow label="Email">
-            <EuiFieldText
-              value={userEmail}
-              autoComplete={'email'}
-              type={'email'}
-              required
-              disabled={awaitingRecoveryCode}
-              onChange={(e) => setUserEmail(e.target.value)}
-            />
-          </EuiFormRow>
+          {isDeepLinkMode ? null : (
+            <EuiFormRow label="Email">
+              <EuiFieldText
+                value={userEmail}
+                autoComplete={'email'}
+                type={'email'}
+                required
+                disabled={awaitingRecoveryCode}
+                onChange={(e) => setUserEmail(e.target.value)}
+              />
+            </EuiFormRow>
+          )}
           {awaitingRecoveryCode ? (
-            <EuiFormRow label={'Recovery code'}>
+            <EuiFormRow
+              label={'Recovery code'}
+              helpText={isDeepLinkMode ? 'Enter the code that was issued for your account.' : undefined}
+            >
               <EuiFieldText
                 value={recoveryCode}
                 autoComplete={'off'}
                 type={'text'}
-                append={<EuiButtonIcon iconType="refresh" onClick={onSendRecoveryCode} aria-label="Resend code" />}
+                append={
+                  isDeepLinkMode ? undefined : (
+                    <EuiButtonIcon iconType="refresh" onClick={onSendRecoveryCode} aria-label="Resend code" />
+                  )
+                }
                 onChange={(e) => setRecoveryCode(e.target.value)}
               />
             </EuiFormRow>
@@ -199,7 +242,7 @@ export function RecoverAccountModal({ email, onClose }: RecoverAccountModalProps
             type="submit"
             form="account-recovery-form"
             fill
-            disabled={accountRecoveryStatus?.status === 'pending' || !userEmail?.trim() || !recoveryCode?.trim()}
+            disabled={accountRecoveryStatus?.status === 'pending' || !recoveryCode?.trim()}
             onClick={onRecoverAccount}
             isLoading={accountRecoveryStatus?.status === 'pending'}
           >

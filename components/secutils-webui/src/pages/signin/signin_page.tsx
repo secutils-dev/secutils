@@ -9,7 +9,7 @@ import {
 } from '@elastic/eui';
 import type { FrontendApi, LoginFlow, UiNodeInputAttributes } from '@ory/kratos-client-fetch';
 import type { ChangeEvent } from 'react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router';
 
 import { RecoverAccountModal } from './recover_account_modal';
@@ -89,12 +89,34 @@ export function SigninPage() {
 
   const [signinStatus, setSigninStatus] = useState<AsyncData<null, { isPasskey: boolean }> | null>(null);
   const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] = useState(false);
-  const onToggleResetPasswordModal = useCallback(() => {
-    setIsResetPasswordModalOpen((isOpen) => !isOpen);
-  }, []);
+
+  // Kratos lands users on `/signin?recover=1[&flow=<recovery-flow-id>]` after an admin- or user-initiated recovery
+  // flow. Auto-open the modal with the flow ID so the user only has to enter the code.
+  const recoverParam = searchParams.get('recover');
+  const recoveryFlowId = searchParams.get('flow');
+  useEffect(() => {
+    if (recoverParam === '1') {
+      setIsResetPasswordModalOpen(true);
+    }
+  }, [recoverParam]);
+
+  const onCloseResetPasswordModal = useCallback(() => {
+    setIsResetPasswordModalOpen(false);
+    // Clear the deep-link params so refreshing/navigating away no longer reopens the modal and the signin flow's own
+    // `flow` param isn't confused with the recovery one.
+    if (searchParams.has('recover') || (recoverParam === '1' && searchParams.has('flow'))) {
+      searchParams.delete('recover');
+      searchParams.delete('flow');
+      setSearchParams(searchParams);
+    }
+  }, [recoverParam, searchParams, setSearchParams]);
 
   const resetPasswordModal = isResetPasswordModalOpen ? (
-    <RecoverAccountModal onClose={onToggleResetPasswordModal} email={email} />
+    <RecoverAccountModal
+      onClose={onCloseResetPasswordModal}
+      email={email}
+      flowId={recoverParam === '1' ? (recoveryFlowId ?? undefined) : undefined}
+    />
   ) : null;
 
   if (uiState.user) {

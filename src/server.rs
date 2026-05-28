@@ -192,6 +192,8 @@ pub async fn run(config: Config, http_port: u16) -> Result<(), anyhow::Error> {
             .service(handlers::security_users_signup::security_users_signup)
             .service(handlers::security_users_email::security_users_email)
             .service(handlers::security_users_remove::security_users_remove)
+            .service(handlers::security_users_remove::security_users_remove_by_id)
+            .service(handlers::security_users_clone::security_users_clone)
             .service(handlers::security_subscription_update::security_subscription_update)
             // Scheduler
             .service(handlers::scheduler_parse_schedule::scheduler_parse_schedule)

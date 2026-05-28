@@ -29,8 +29,9 @@ pub use self::{
     tags::{EntityTag, RawEntityTag, TagCreateParams, TagUpdateParams, UserTag, group_entity_tags},
     user::User,
     user_data::{
-        UserDataExportParams, UserDataImportParams, UserDataImportPreviewParams, execute_import,
-        generate_export, generate_import_preview,
+        UserDataCloneSummary, UserDataExportParams, UserDataImportParams,
+        UserDataImportPreviewParams, clone_user_data, execute_import, generate_export,
+        generate_import_preview,
     },
     user_id::UserId,
     user_share::{ClientSharedResource, ClientUserShare, SharedResource, UserShare, UserShareId},

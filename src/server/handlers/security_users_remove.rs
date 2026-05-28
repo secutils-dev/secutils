@@ -1,12 +1,13 @@
 use crate::{
     security::Operator,
     server::{app_state::AppState, http_errors::generic_internal_server_error},
+    users::UserId,
 };
-use actix_web::{Error, HttpResponse, Responder, post, web};
+use actix_web::{Error, HttpResponse, Responder, delete, post, web};
 use serde::Deserialize;
 use serde_json::json;
 use tracing::{error, info, warn};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 #[derive(Deserialize, ToSchema)]
 #[schema(example = json!({"email": "user@example.com"}))]
@@ -53,6 +54,83 @@ pub async fn security_users_remove(
         }
         Err(err) => {
             error!(operator = operator.id(), "Failed to remove user: {err:?}");
+            return Ok(generic_internal_server_error());
+        }
+    }
+
+    Ok(HttpResponse::NoContent().finish())
+}
+
+#[derive(Deserialize, IntoParams)]
+pub struct UserIdPath {
+    /// The user ID to remove.
+    #[param(value_type = String, format = Uuid)]
+    pub user_id: UserId,
+}
+
+/// Removes a user by ID (operator-only). Sibling of `POST /api/users/remove` for cases
+/// where the operator has the user's UUID (e.g. a clone they just created) but not their
+/// email.
+#[utoipa::path(
+    tags = ["users"],
+    params(UserIdPath),
+    responses(
+        (status = 204, description = "User was successfully removed."),
+        (status = UNAUTHORIZED, description = "Missing or invalid authentication credentials."),
+        (status = FORBIDDEN, description = "Caller is not an operator."),
+        (status = NOT_FOUND, description = "User not found.")
+    )
+)]
+#[delete("/api/users/{user_id}")]
+pub async fn security_users_remove_by_id(
+    state: web::Data<AppState>,
+    operator: Operator,
+    path: web::Path<UserIdPath>,
+) -> impl Responder {
+    let user_id = path.user_id;
+
+    // Resolve the email so we can reuse `terminate(email)` (which handles Kratos + DB).
+    let user_email = match state.api.users().get(user_id).await {
+        Ok(Some(user)) => user.email,
+        Ok(None) => {
+            warn!(
+                operator = operator.id(),
+                user.id = %user_id,
+                "Cannot remove non-existent user by ID."
+            );
+            return Ok::<HttpResponse, Error>(HttpResponse::NotFound().finish());
+        }
+        Err(err) => {
+            error!(
+                operator = operator.id(),
+                user.id = %user_id,
+                "Failed to look up user by ID for removal: {err:?}"
+            );
+            return Ok(generic_internal_server_error());
+        }
+    };
+
+    match state.api.security().terminate(&user_email).await {
+        Ok(Some(removed_id)) => {
+            info!(
+                operator = operator.id(),
+                user.id = %removed_id,
+                "Successfully removed user by ID."
+            );
+        }
+        Ok(None) => {
+            warn!(
+                operator = operator.id(),
+                user.id = %user_id,
+                "Cannot remove non-existent user by ID (race after lookup)."
+            );
+        }
+        Err(err) => {
+            error!(
+                operator = operator.id(),
+                user.id = %user_id,
+                "Failed to remove user by ID: {err:?}"
+            );
             return Ok(generic_internal_server_error());
         }
     }

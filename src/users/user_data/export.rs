@@ -2,7 +2,9 @@ mod params;
 mod types;
 
 pub use self::{
-    params::{ExportSelection, ExportTrackableSelection, UserDataExportParams},
+    params::{
+        ExportSelection, ExportTrackableSelection, UserDataExportInclude, UserDataExportParams,
+    },
     types::{
         EXPORT_VERSION, ExportedPrivateKey, ExportedResponder, ExportedResponderRequest,
         ExportedTracker, UserDataExport, UserDataExportData,
