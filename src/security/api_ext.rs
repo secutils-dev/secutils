@@ -1000,6 +1000,17 @@ mod tests {
         // Required so `secrets(user)` can encrypt/decrypt server-side.
         config.security.secrets_encryption_key =
             Some("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2".to_string());
+        // `clone_data` calls `generate_export` which unconditionally queries Retrack for the
+        // user's page/api trackers - point it at a local mock that returns an empty list so
+        // the test doesn't depend on a live Retrack (the source has no trackers anyway).
+        let retrack_server = MockServer::start();
+        retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!([]));
+        });
+        config.retrack.host = Url::parse(&retrack_server.base_url())?;
         let api = mock_api_with_config(pool, config).await?;
 
         let source = mock_user_with_id(uuid::uuid!("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"))?;

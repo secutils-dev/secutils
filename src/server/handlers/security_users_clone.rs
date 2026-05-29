@@ -416,6 +416,13 @@ mod tests {
     > {
         let mut config = mock_config()?;
         config.components.kratos_admin_url = Url::parse(kratos_admin_url)?;
+        // The mock server doubles as Retrack: `clone_data` calls `generate_export`, which
+        // always issues `GET /api/trackers` against `config.retrack.host` regardless of
+        // whether the source has any trackers. Tests that reach the clone-data stage rely
+        // on this catch-all 200/[] response (registered alongside the Kratos mocks at the
+        // call site - see `rolls_back_when_recovery_link_minting_fails` and
+        // `happy_path_returns_id_and_recovery_link`).
+        config.retrack.host = Url::parse(kratos_admin_url)?;
         // Required so cloned secrets can be re-encrypted in clone_data() runs.
         config.security.secrets_encryption_key =
             Some("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2".to_string());
@@ -690,6 +697,15 @@ mod tests {
                 .header("Content-Type", "application/json")
                 .json_body(identity_json(destination_id, destination_email));
         });
+        // Retrack tracker-list call made by `clone_data` -> `generate_export`. Returning an
+        // empty array lets clone_data succeed, so the failure mode under test (recovery-link
+        // minting) is the one that actually trips the rollback.
+        server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!([]));
+        });
         let recovery_mock = server.mock(|when, then| {
             when.method(httpmock::Method::POST)
                 .path("/admin/recovery/code");
@@ -749,6 +765,14 @@ mod tests {
             then.status(201)
                 .header("Content-Type", "application/json")
                 .json_body(identity_json(destination_id, destination_email));
+        });
+        // Retrack tracker-list call made by `clone_data` -> `generate_export`. Source user
+        // has no trackers so an empty array is the correct response.
+        server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!([]));
         });
         let recovery_mock = server.mock(|when, then| {
             when.method(httpmock::Method::POST)

@@ -141,6 +141,8 @@ mod tests {
             ContentSecurityPolicyDirective,
         },
     };
+    use httpmock::MockServer;
+    use serde_json::json;
     use sqlx::PgPool;
     use uuid::uuid;
 
@@ -163,12 +165,29 @@ mod tests {
     }
 
     /// Returns a `Config` configured for clone tests: a secrets encryption key is required
-    /// so the ephemeral-passphrase round-trip in `clone_user_data` can encrypt/decrypt.
-    fn clone_test_config() -> anyhow::Result<crate::config::Config> {
+    /// so the ephemeral-passphrase round-trip in `clone_user_data` can encrypt/decrypt, and
+    /// `retrack.host` is pointed at the supplied mock server so the export side's
+    /// unconditional `GET /api/trackers` doesn't try to reach a real Retrack.
+    ///
+    /// The returned `MockServer` must be kept alive for the duration of the test; dropping
+    /// it tears the listener down. We also pre-register a catch-all `GET /api/trackers`
+    /// handler that returns an empty array, which is what every clone test in this file
+    /// expects (none of them seed page/api trackers).
+    fn clone_test_config() -> anyhow::Result<(crate::config::Config, MockServer)> {
         let mut config = mock_config()?;
         config.security.secrets_encryption_key =
             Some("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2".to_string());
-        Ok(config)
+
+        let retrack_server = MockServer::start();
+        retrack_server.mock(|when, then| {
+            when.method(httpmock::Method::GET).path("/api/trackers");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!([]));
+        });
+        config.retrack.host = url::Url::parse(&retrack_server.base_url())?;
+
+        Ok((config, retrack_server))
     }
 
     fn source_id() -> uuid::Uuid {
@@ -183,7 +202,8 @@ mod tests {
     /// touches no destination tables (the destination user is brand-new).
     #[sqlx::test]
     async fn clones_empty_user_with_zero_counts(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api_with_config(pool, clone_test_config()?).await?;
+        let (config, _retrack) = clone_test_config()?;
+        let api = mock_api_with_config(pool, config).await?;
         let source = mock_user_with_id(source_id())?;
         let destination = mock_user_with_id(destination_id())?;
         api.db.insert_user(&source).await?;
@@ -207,7 +227,8 @@ mod tests {
     /// content of each entity is preserved verbatim on the destination side.
     #[sqlx::test]
     async fn clones_scripts_and_csps_under_new_ids(pool: PgPool) -> anyhow::Result<()> {
-        let api = mock_api_with_config(pool, clone_test_config()?).await?;
+        let (config, _retrack) = clone_test_config()?;
+        let api = mock_api_with_config(pool, config).await?;
         let source = mock_user_with_id(source_id())?;
         let destination = mock_user_with_id(destination_id())?;
         api.db.insert_user(&source).await?;
@@ -274,7 +295,8 @@ mod tests {
     async fn clones_secrets_via_ephemeral_passphrase_round_trip(
         pool: PgPool,
     ) -> anyhow::Result<()> {
-        let api = mock_api_with_config(pool, clone_test_config()?).await?;
+        let (config, _retrack) = clone_test_config()?;
+        let api = mock_api_with_config(pool, config).await?;
         let source = mock_user_with_id(source_id())?;
         let destination = mock_user_with_id(destination_id())?;
         api.db.insert_user(&source).await?;
@@ -320,7 +342,8 @@ mod tests {
     async fn include_history_toggle_compiles_into_export_selection(
         pool: PgPool,
     ) -> anyhow::Result<()> {
-        let api = mock_api_with_config(pool, clone_test_config()?).await?;
+        let (config, _retrack) = clone_test_config()?;
+        let api = mock_api_with_config(pool, config).await?;
         let source = mock_user_with_id(source_id())?;
         let destination = mock_user_with_id(destination_id())?;
         api.db.insert_user(&source).await?;
@@ -356,7 +379,8 @@ mod tests {
             },
         };
 
-        let api = mock_api_with_config(pool, clone_test_config()?).await?;
+        let (config, _retrack) = clone_test_config()?;
+        let api = mock_api_with_config(pool, config).await?;
         let source = mock_user_with_id(source_id())?;
         api.db.insert_user(&source).await?;
 
