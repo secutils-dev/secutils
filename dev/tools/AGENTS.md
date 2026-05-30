@@ -213,6 +213,21 @@ Rules and caveats:
   warning in the deploy log.
 - **Marker is opt-in**: most tools are static HTML and don't need this - leave it off and
   deploy ships the body alone.
+- **Path type is NOT deployed - configure it on the responder.** `deploy.ts` PUTs only
+  `settings` (body + script + headers); it never touches the responder's `location`, so the
+  responder's `pathType` is whatever it was created with. Tools that route on a **sub-path**
+  (e.g. `webhook.html` captures requests at `/webhook/<token>` while serving its configurator
+  at the bare `/webhook`) **require a prefix responder** (`location.pathType: "^"`). If such a
+  responder is created as an exact match (`pathType: "="`), the bare mount works but every
+  sub-path returns an empty server-level `404` (no body, no `Content-Type`) because no
+  responder matches - the request never reaches the script. Symptom to recognise: management
+  calls (`/webhook?t=…`) succeed, but `/webhook/<token>` 404s with an empty body. Fix by
+  switching the responder to prefix:
+  ```bash
+  curl -X PUT "$API/api/webhooks/responders/$RID" -H "Authorization: Bearer $KEY" \
+    -H 'Content-Type: application/json' \
+    -d '{"location":{"pathType":"^","path":"/webhook","subdomainPrefix":"tools"}}'
+  ```
 - **Composes with the auto-injected Markdown-negotiation prelude.** `deploy.ts` always
   wraps every HTML responder's script (whether opt-in or empty) with a ~250 B prelude
   that 302-redirects `Accept: text/markdown` requests to the `<slug>.md` sibling. Your

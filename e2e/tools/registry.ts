@@ -101,6 +101,17 @@ export const TOOLS: readonly Tool[] = [
     icon: 'bolt',
   },
   {
+    slug: 'webhook',
+    source: 'webhook.html',
+    name: 'Webhook Inspector',
+    path: '/webhook',
+    description: 'Ephemeral webhook URL that captures and decrypts incoming HTTP requests live.',
+    applicationCategory: 'DeveloperApplication',
+    promote: true,
+    accent: '#34d399',
+    icon: 'grid',
+  },
+  {
     slug: 'forecast',
     source: 'forecast.html',
     name: 'Forecast',

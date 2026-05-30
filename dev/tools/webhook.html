@@ -1,0 +1,1612 @@
+<!DOCTYPE html>
+<!-- @su:responder-script
+// =============================================================================
+// RESPONDER SCRIPT - paired with webhook.html, auto-deployed to the responder's
+// `script` setting by dev/tools/deploy.ts. This HTML comment is stripped from
+// the served body by html-minifier-terser (`removeComments: true`).
+// See dev/tools/AGENTS.md -> "Responder Script (`@su:responder-script`)".
+//
+// The responder is mounted as a PREFIX responder and plays three roles, keyed
+// off the request shape so a third-party caller (the thing being inspected) and
+// the inspector UI never collide:
+//
+//   1. CAPTURE   ANY  <mount>/<token>          (a path segment after the mount)
+//        Seals the incoming request against the token's registered public key
+//        and appends it to the per-token KV log. The server only ever stores
+//        ciphertext - it cannot read what it captured (end-to-end encrypted).
+//   2. MANAGEMENT GET/PUT/DELETE <mount>?t=<token>   (bare mount + ?t=)
+//        GET    -> list (or, with &live=1, long-poll watch) sealed records.
+//        PUT    -> register the recipient public key (first-writer-wins).
+//        DELETE -> purge the token's records (and, once drained, its key).
+//   3. CONFIGURATOR  GET <mount>               (no token anywhere)
+//        Returns null so the static inspector HTML body is served.
+//
+// KV + crypto primitives come from the sandbox-injected `globalThis.secutils`
+// (see src/js_runtime/op_responder_kv.rs and op_crypto_seal.rs). Binary values
+// cross the boundary as base64url strings.
+// =============================================================================
+(() => {
+  // The webhook's default absolute lifetime. The key is written with this TTL, so its
+  // birth-anchored deadline is owned by the responder script and the whole webhook (key,
+  // config, requests) disappears together after this window - even when the server-side
+  // `responder_kv_max_lifespan_sec` backstop is disabled (its default). When that backstop
+  // *is* enabled it only clamps the deadline shorter; it can never extend it.
+  const LIFESPAN_FALLBACK_SEC = 604800; // 7 days.
+  const PAGE_LIMIT = 200;
+  const WATCH_TIMEOUT_MS = 25000;
+  // Remaining seconds until the webhook's absolute deadline (`exp`, unix seconds),
+  // so dependent writes never outlive the key. Floors at 1s so a near-deadline
+  // write still lands rather than being rejected as a zero/negative TTL.
+  const ttlForDeadline = (exp) => (exp ? Math.max(1, exp - Math.floor(Date.now() / 1000)) : LIFESPAN_FALLBACK_SEC);
+  const TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
+  const PUBKEY_RE = /^[A-Za-z0-9_-]{80,200}$/;
+  const MOCK_MAX_HEADERS = 20;
+  const MOCK_MAX_BODY = 64 * 1024; // 64 KiB plaintext response body.
+
+  // Normalise + clamp a user-authored mock-response config to the on-disk shape
+  // `{ s, h, b }` (status, header pairs, body). Mirrors echo.html's wire format so
+  // a config built there is interchangeable here.
+  const normalizeMock = (m) => {
+    const s = Number.isInteger(m && m.s) && m.s >= 100 && m.s <= 599 ? m.s : 200;
+    const h = [];
+    if (m && Array.isArray(m.h)) {
+      for (const pair of m.h.slice(0, MOCK_MAX_HEADERS)) {
+        if (Array.isArray(pair) && pair[0]) {
+          h.push([String(pair[0]).slice(0, 256), String(pair[1] ?? '').slice(0, 1024)]);
+        }
+      }
+    }
+    let b = m && typeof m.b === 'string' ? m.b : '';
+    if (b.length > MOCK_MAX_BODY) b = b.slice(0, MOCK_MAX_BODY);
+    return { s, h, b };
+  };
+
+  const method = (context.method || 'GET').toUpperCase();
+  const path = context.path || '';
+  const query = context.query || {};
+  const parts = path.split('/').filter(Boolean);
+
+  const cors = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, PUT, DELETE, POST, OPTIONS',
+    'Access-Control-Allow-Headers': '*',
+  };
+  const json = (statusCode, obj) => ({
+    statusCode,
+    headers: Object.assign({ 'Content-Type': 'application/json; charset=utf-8' }, cors),
+    body: JSON.stringify(obj),
+  });
+  const notFound = () => ({
+    statusCode: 404,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    body: 'Not found',
+  });
+
+  // CORS preflight - never recorded.
+  if (method === 'OPTIONS') {
+    return { statusCode: 204, headers: cors, body: '' };
+  }
+
+  // base64url encoder for raw bytes (the Deno sandbox has no btoa).
+  const B = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const b64url = (bytes) => {
+    let out = '';
+    const len = bytes.length;
+    for (let i = 0; i < len; i += 3) {
+      const a = bytes[i];
+      const b = i + 1 < len ? bytes[i + 1] : undefined;
+      const c = i + 2 < len ? bytes[i + 2] : undefined;
+      out += B[a >> 2];
+      out += B[((a & 3) << 4) | ((b ?? 0) >> 4)];
+      if (b === undefined) break;
+      out += B[((b & 15) << 2) | ((c ?? 0) >> 6)];
+      if (c === undefined) break;
+      out += B[c & 63];
+    }
+    return out;
+  };
+  // Inverse of `b64url`: decode an unpadded base64url string back to bytes.
+  const fromB64url = (str) => {
+    const out = [];
+    for (let i = 0; i < str.length; i += 4) {
+      const a = B.indexOf(str[i]);
+      const b = B.indexOf(str[i + 1]);
+      const c = B.indexOf(str[i + 2]);
+      const d = B.indexOf(str[i + 3]);
+      out.push((a << 2) | (b >> 4));
+      if (c >= 0) out.push(((b & 15) << 4) | (c >> 2));
+      if (d >= 0) out.push(((c & 3) << 6) | d);
+    }
+    return new Uint8Array(out);
+  };
+
+  // -------------------------------------------------------------------------
+  // 1. CAPTURE: a path segment after the mount means "inspect this request".
+  // -------------------------------------------------------------------------
+  if (parts.length >= 2) {
+    const token = parts[parts.length - 1];
+    if (!TOKEN_RE.test(token)) return notFound();
+    return (async () => {
+      // Read the key together with its expiry so the captured request inherits the
+      // webhook's birth-anchored deadline (everything expires together).
+      const pkEntry = await secutils.kv.getEntry('pk/' + token);
+      const pub = pkEntry && pkEntry.value;
+      // No registered (live) key => the token was never initialised, or the webhook
+      // already expired and was swept; indistinguishable from an unknown one by design.
+      if (!pub) return notFound();
+      const exp = pkEntry.expiresAt;
+
+      const record = {
+        at: Date.now(),
+        method,
+        path,
+        query: context.rawQuery || '',
+        headers: context.headers || {},
+        clientAddress: context.clientAddress || null,
+        bodyB64: b64url(context.body || []),
+      };
+
+      let sealed;
+      try {
+        sealed = await secutils.crypto.seal(pub, JSON.stringify(record));
+      } catch (_e) {
+        return json(500, { ok: false, reason: 'seal-failed' });
+      }
+
+      // Time-ordered key: zero-padded epoch ms + random tiebreak. The KV `key`
+      // column is COLLATE "C", so lexicographic order == chronological order.
+      const ts = String(record.at).padStart(15, '0');
+      const rnd = Math.random().toString(36).slice(2, 10).padEnd(8, '0');
+      const key = 'req/' + token + '/' + ts + '-' + rnd;
+      try {
+        await secutils.kv.set(key, sealed, { ttlSec: ttlForDeadline(exp) });
+      } catch (_e) {
+        // Quota exhausted (per-tier entry/byte cap). Keep the caller happy; the
+        // inspector simply won't see this record until TTL frees capacity.
+        return json(200, { ok: false, reason: 'full' });
+      }
+
+      // Reply with the visitor's configured mock response when present; otherwise
+      // a friendly default 200. The config is plaintext (the server has no private
+      // key) - only the captured request itself is sealed above.
+      const cfgRaw = await secutils.kv.get('cfg/' + token);
+      if (cfgRaw) {
+        try {
+          // KV values are stored as base64url bytes; cfg is base64url(JSON).
+          const cfg = normalizeMock(JSON.parse(Deno.core.decode(fromB64url(cfgRaw))));
+          const headers = {};
+          for (const pair of cfg.h) headers[pair[0]] = pair[1];
+          if (!Object.keys(headers).some((h) => h.toLowerCase() === 'content-type')) {
+            headers['Content-Type'] = 'text/plain; charset=utf-8';
+          }
+          return { statusCode: cfg.s, headers, body: cfg.b };
+        } catch (_e) {
+          // Corrupt config - fall back to the default OK below.
+        }
+      }
+      return json(200, { ok: true });
+    })();
+  }
+
+  // -------------------------------------------------------------------------
+  // 2. MANAGEMENT: bare mount + ?t=<token>. Token is a bearer capability for
+  //    the (still encrypted) log; only the private-key holder can read it.
+  // -------------------------------------------------------------------------
+  const token = query.t;
+  if (token) {
+    if (!TOKEN_RE.test(token)) return json(400, { error: 'invalid token' });
+    const reqPrefix = 'req/' + token + '/';
+
+    if (method === 'PUT' || method === 'POST') {
+      let pub = '';
+      // `mock`: undefined = leave config unchanged, null = delete it, object = set it.
+      let mock;
+      const body = context.body || [];
+      if (body.length) {
+        const raw = Deno.core.decode(new Uint8Array(body)).trim();
+        if (raw.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(raw);
+            pub = String(parsed.pk || '');
+            if (Object.prototype.hasOwnProperty.call(parsed, 'mock')) {
+              mock = parsed.mock === null ? null : (parsed.mock && typeof parsed.mock === 'object' ? parsed.mock : undefined);
+            }
+          } catch (_e) { pub = ''; }
+        } else {
+          pub = raw;
+        }
+      }
+      const havePub = PUBKEY_RE.test(pub);
+      if (!havePub && mock === undefined) return json(400, { error: 'invalid public key' });
+      return (async () => {
+        // First-writer-wins: a later visitor cannot hijack an existing token's key.
+        // The key is written with the webhook's absolute birth-anchored deadline so it
+        // can never become eternal: `ttlForDeadline()` resolves to `LIFESPAN_FALLBACK_SEC`
+        // (the default lifetime), and the server's `responder_kv_max_lifespan_sec` backstop,
+        // when enabled, only clamps it *shorter*. `ifAbsent` makes this a no-op on a live
+        // row, so re-registration never refreshes the TTL and the deadline stays anchored
+        // to creation. Config and requests inherit this exact deadline via `expiresAt` below.
+        if (havePub) await secutils.kv.set('pk/' + token, pub, { ifAbsent: true, ttlSec: ttlForDeadline() });
+        // Read back the (possibly pre-existing) key + its server-assigned deadline so
+        // the config inherits exactly the webhook's lifetime and the client learns it.
+        const pkEntry = await secutils.kv.getEntry('pk/' + token);
+        const storedPub = pkEntry && pkEntry.value;
+        const exp = pkEntry && pkEntry.expiresAt;
+        if (mock === null) {
+          await secutils.kv.delete('cfg/' + token);
+        } else if (mock !== undefined && storedPub) {
+          // KV only accepts base64url values, so store base64url(JSON-bytes). Clamp
+          // the config to the webhook deadline so it never outlives (or under-lives) it.
+          const encoded = b64url(Deno.core.encode(JSON.stringify(normalizeMock(mock))));
+          await secutils.kv.set('cfg/' + token, encoded, { ttlSec: ttlForDeadline(exp) });
+        }
+        const fingerprint = storedPub ? await secutils.crypto.sha256(storedPub) : null;
+        return json(200, { ok: true, fingerprint, mine: storedPub === pub, exp: exp || null });
+      })();
+    }
+
+    if (method === 'DELETE') {
+      return (async () => {
+        const page = await secutils.kv.list({ prefix: reqPrefix, limit: PAGE_LIMIT, valuesIncluded: false });
+        for (const entry of page.entries) await secutils.kv.delete(entry.key);
+        const remaining = page.entries.length >= PAGE_LIMIT;
+        // Once the log is drained, drop the key registration too (full delete).
+        if (!remaining && query.keep !== '1') await secutils.kv.delete('pk/' + token);
+        return json(200, { ok: true, removed: page.entries.length, remaining });
+      })();
+    }
+
+    // GET -> list, or long-poll watch when &live=1.
+    return (async () => {
+      const after = query.after || undefined;
+      const result = query.live === '1'
+        ? await secutils.kv.watch({ prefix: reqPrefix, after, limit: PAGE_LIMIT, timeoutMs: WATCH_TIMEOUT_MS })
+        : await secutils.kv.list({ prefix: reqPrefix, after, limit: PAGE_LIMIT });
+      return json(200, result);
+    })();
+  }
+
+  // -------------------------------------------------------------------------
+  // 3. CONFIGURATOR: nothing token-shaped -> serve the static inspector HTML.
+  // -------------------------------------------------------------------------
+  return null;
+})();
+-->
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webhook Inspector | Secutils.dev</title>
+    <meta name="description" content="Free ephemeral webhook & HTTP request inspector. Get a unique URL, point any service at it, and watch requests arrive live. End-to-end encrypted, no signup.">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <link rel="canonical" href="https://{{TOOLS_HOST}}/webhook">
+    <meta name="su-tool-path" content="/webhook">
+    <meta name="su-tool-name" content="Webhook Inspector">
+    <meta name="su-tool-description" content="Get a unique, ephemeral webhook URL and watch incoming HTTP requests arrive live in a grid. End-to-end encrypted, browser-only, no signup.">
+    <meta name="su-tool-promote" content="true">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Secutils.dev">
+    <meta property="og:title" content="Webhook Inspector">
+    <meta property="og:description" content="Free ephemeral webhook & HTTP request inspector. Unique URL, live request grid, end-to-end encrypted. No signup.">
+    <meta property="og:url" content="https://{{TOOLS_HOST}}/webhook">
+    <meta property="og:image" content="https://secutils.dev/docs/img/og/og-webhook.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Webhook Inspector on Secutils.dev.">
+    <meta property="og:locale" content="en_US">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Webhook Inspector">
+    <meta name="twitter:description" content="Free ephemeral webhook inspector. Unique URL, live request grid, end-to-end encrypted. No signup.">
+    <meta name="twitter:image" content="https://secutils.dev/docs/img/og/og-webhook.png">
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Webhook Inspector","url":"https://{{TOOLS_HOST}}/webhook","applicationCategory":"DeveloperApplication","operatingSystem":"Any","browserRequirements":"Requires JavaScript","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@type":"Organization","name":"Secutils.dev","url":"https://secutils.dev"},"sameAs":"https://github.com/secutils-dev/secutils/blob/main/dev/tools/webhook.html","description":"Free ephemeral webhook & HTTP request inspector. Unique URL, live request grid, end-to-end encrypted, no signup."}</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Roboto+Mono:wght@400..700&display=swap" rel="stylesheet">
+    <!-- Privacy-friendly analytics by Plausible -->
+    <script defer src="https://tools.secutils.dev/js/script.js" fetchpriority="low"></script>
+    <script>
+        window.plausible = window.plausible || function () { (plausible.q = plausible.q || []).push(arguments) };
+        plausible.init = plausible.init || function (i) { plausible.o = i || {} };
+        plausible.init();
+    </script>
+    <style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* Elements like .reg-overlay set an explicit `display`, which would
+   otherwise defeat the `hidden` attribute (author display beats the UA
+   `[hidden]{display:none}`). This keeps `hidden` authoritative everywhere. */
+[hidden] { display: none !important; }
+:root, [data-theme="dark"] {
+    --bg: #141519; --surface: #1d1e24; --surface-hover: #2c2d33;
+    --border: #343741; --text: #dfe5ef; --text-muted: #98a2b3;
+    --primary: #fed047; --primary-hover: #fdc615;
+    --primary-text: #642340;
+    --accent: #642340;
+    --badge-bg: #2B394F; --badge-text: #98A8C3;
+    --danger: #dc4a44;
+    --success: #3aa76d;
+    --radius: 12px;
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --mono: 'Roboto Mono', 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+[data-theme="light"] {
+    --bg: #f5f7fa; --surface: #ffffff; --surface-hover: #f1f3f5;
+    --border: #d3dae6; --text: #343741; --text-muted: #69707d;
+    --primary: #fed047; --primary-hover: #fdc615;
+    --primary-text: #642340;
+    --accent: #642340;
+    --badge-bg: #E3E8F2; --badge-text: #505F79;
+    --danger: #bd271e;
+    --success: #2e8b57;
+}
+body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; transition: background .25s, color .25s; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 48px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; transition: background .25s, border-color .25s; }
+.logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.logo-svg { flex-shrink: 0; }
+.logo-svg .logo-text-fill { fill: var(--text); }
+.logo-badge { display: inline-flex; align-items: center; padding: 4px 16px; border-radius: 4px; border: none; background: var(--badge-bg); color: var(--badge-text); font-size: 12px; font-weight: 450; line-height: 16px; white-space: nowrap; }
+.header-right { display: flex; align-items: center; gap: 8px; }
+.skill-link { height: 36px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); color: var(--text-muted); font: 12px var(--font); text-decoration: none; transition: all .15s; cursor: pointer; }
+.skill-link:hover { color: var(--text); border-color: var(--text-muted); background: var(--surface-hover); }
+.skill-link svg { width: 14px; height: 14px; fill: none; stroke: currentColor; }
+.su-more-tools { margin: 8px 0 0; padding: 12px 18px; text-align: center; border: 1px solid rgba(254, 208, 71, 0.35); border-radius: 12px; background: rgba(254, 208, 71, 0.06); font: 13px/1.55 var(--font); color: var(--text); transition: border-color .25s, background-color .25s, color .25s; }
+.su-more-tools p { margin: 0; }
+.su-more-tools a { color: var(--primary); font-weight: 700; text-decoration: none; white-space: nowrap; }
+.su-more-tools a:hover { color: var(--primary-hover); text-decoration: underline; }
+@media (max-width: 600px) { .su-more-tools { padding: 12px 14px; } .su-more-tools a { white-space: normal; } }
+.su-noscript { max-width: 720px; margin: 24px auto; padding: 16px; border: 1px solid var(--border); border-radius: 8px; font: 14px/1.5 var(--font); background: var(--surface); color: var(--text); }
+.theme-toggle { width: 36px; height: 36px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .2s; }
+.theme-toggle:hover { background: var(--surface-hover); color: var(--text); }
+.theme-toggle svg { width: 16px; height: 16px; fill: currentColor; }
+.theme-toggle .icon-sun { display: none; }
+.theme-toggle .icon-moon { display: block; }
+[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+main { flex: 1; padding: 32px 16px 48px; max-width: 980px; margin: 0 auto; width: 100%; }
+.page-title { font-size: 1.5rem; font-weight: 700; margin-bottom: 6px; }
+.page-subtitle { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 24px; line-height: 1.5; }
+.page-subtitle code { font-family: var(--mono); font-size: 0.85em; padding: 1px 6px; border-radius: 4px; background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; margin-bottom: 14px; transition: background .25s, border-color .25s; }
+.card label { display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+.label-hint { font-weight: 400; text-transform: none; letter-spacing: 0; opacity: 0.75; margin-left: 6px; }
+.url-label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.input, .input-mono, .select {
+    width: 100%; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text); font-family: inherit; font-size: 14px;
+    height: 38px; outline: none; transition: border-color .15s, box-shadow .15s, background .25s, color .25s;
+}
+.input-mono { font-family: var(--mono); font-size: 13px; }
+.input:focus, .input-mono:focus, .select:focus { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.input[readonly] { color: var(--text-muted); cursor: text; }
+
+.session-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.session-bar .select { flex: 1; min-width: 180px; }
+
+.url-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.url-row .input-mono { flex: 1; }
+
+.fp { margin-top: 10px; font: 12px var(--mono); color: var(--text-muted); display: flex; align-items: center; gap: 8px; }
+.fp .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
+.fp.ok .dot { background: var(--success); }
+.fp.warn .dot { background: var(--danger); }
+
+.btn { padding: 0 14px; height: 38px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: 13px/1 var(--font); cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--text-muted); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: var(--primary); border-color: var(--primary-text); color: var(--primary-text); font-weight: 500; }
+.btn-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+.btn-danger { color: var(--danger); border-color: var(--danger); }
+.btn-danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
+.btn-icon { width: 38px; height: 38px; padding: 0; justify-content: center; color: var(--text-muted); font-size: 18px; line-height: 1; flex-shrink: 0; }
+.btn-icon:hover { color: var(--text); }
+
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+.actions .spacer { flex: 1; }
+
+/* Single control: the blinking "Live" pill *is* the on/off switch. */
+.live-btn { display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 16px; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); font: 12px/1 var(--font); cursor: pointer; white-space: nowrap; transition: color .15s, border-color .15s; }
+.live-btn:hover { color: var(--text); border-color: var(--text-muted); }
+.live-btn .ring { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; transition: background .15s; }
+.live-btn[aria-checked="true"] { color: var(--success); border-color: color-mix(in srgb, var(--success) 50%, transparent); }
+.live-btn[aria-checked="true"] .ring { background: var(--success); animation: pulse 1.4s ease-in-out infinite; }
+
+.grid-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px; flex-wrap: wrap; }
+.grid-head h2 { font-size: 1.05rem; font-weight: 600; }
+.grid-head .count { color: var(--text-muted); font-size: 13px; font-weight: 400; margin-left: 6px; }
+.card-hint { color: var(--text-muted); font-size: 12px; margin-bottom: 12px; text-wrap: pretty; }
+.card-hint a { color: var(--primary); font-weight: 600; text-decoration: none; }
+.card-hint a:hover { text-decoration: underline; }
+.ephemeral-note { display: flex; gap: 10px; align-items: center; padding: 10px 12px; margin-bottom: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text-muted); font-size: 12px; line-height: 1.5; text-wrap: pretty; }
+.ephemeral-note svg { flex-shrink: 0; color: var(--text-muted); }
+.ephemeral-text { flex: 1; min-width: 0; text-align: center; }
+.ephemeral-text p { margin: 0; }
+.ephemeral-cta { margin-top: 4px; }
+.ephemeral-note strong { color: var(--text); font-weight: 600; }
+#ephemeralWhen { color: var(--text); font-weight: 700; background: var(--surface-hover); border-radius: 5px; padding: 1px 6px; }
+.ephemeral-note a { color: var(--primary); font-weight: 600; text-decoration: none; white-space: nowrap; }
+.ephemeral-note a:hover { text-decoration: underline; }
+.textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: 13px/1.5 var(--mono); resize: vertical; min-height: 120px; outline: none; transition: border-color .15s, box-shadow .15s, background .25s, color .25s; }
+.textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.textarea-sm { min-height: 60px; font-family: var(--font); }
+.input-status { width: 120px; font-family: var(--mono); }
+.row-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.row-head label { margin: 0; }
+.hdr-table { width: 100%; border-collapse: separate; border-spacing: 0 6px; }
+.hdr-table td { padding: 0 4px 0 0; vertical-align: middle; }
+.hdr-table td:first-child { width: 36%; padding-left: 0; }
+.hdr-table td:last-child { width: 38px; padding-right: 0; }
+.hdr-empty { color: var(--text-muted); font-size: 13px; padding: 6px 0 2px; }
+.hdr-empty code { font-family: var(--mono); font-size: 0.85em; padding: 1px 6px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); color: var(--text); }
+.resp-card > summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.resp-card > summary::-webkit-details-marker { display: none; }
+.resp-card[open] > summary { margin-bottom: 14px; }
+.resp-summary-title { font-size: 1.05rem; font-weight: 600; }
+.resp-summary-hint { color: var(--text-muted); font-size: 12px; font-weight: 400; }
+.resp-field { margin-top: 14px; }
+
+.req-list { display: flex; flex-direction: column; gap: 8px; }
+.req { border: 1px solid var(--border); border-radius: 10px; background: var(--bg); overflow: hidden; }
+.req-summary { display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer; list-style: none; }
+.req-summary::-webkit-details-marker { display: none; }
+.req-summary:hover { background: var(--surface-hover); }
+.method { font: 600 11px var(--mono); padding: 3px 7px; border-radius: 5px; background: var(--badge-bg); color: var(--badge-text); flex-shrink: 0; min-width: 56px; text-align: center; }
+.method.GET { background: #20384f; color: #6cb6ff; }
+.method.POST { background: #1f3d2b; color: #6fd99f; }
+.method.PUT { background: #3d3520; color: #e3c14a; }
+.method.DELETE { background: #3d2222; color: #ff8a84; }
+.method.PATCH { background: #33243d; color: #d09bff; }
+.req-path { font: 13px var(--mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.req-time { font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
+.req-body { padding: 0 12px 12px; border-top: 1px solid var(--border); }
+.req-section { margin-top: 12px; }
+.req-section h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 6px; }
+.kv-table { width: 100%; border-collapse: collapse; font: 12px var(--mono); }
+.kv-table td { padding: 3px 8px 3px 0; vertical-align: top; word-break: break-all; }
+.kv-table td:first-child { color: var(--text-muted); white-space: nowrap; width: 1%; padding-right: 14px; }
+pre.body-pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-all; max-height: 320px; overflow: auto; margin: 0; }
+
+.empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+.empty-state .es-icon { font-size: 28px; margin-bottom: 10px; opacity: 0.6; }
+.empty-state p { font-size: 14px; margin-bottom: 4px; }
+.empty-state .es-sub { font-size: 12px; }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.7); } }
+
+/* Webhook lifetime badge sitting next to the URL label. Colour escalates as the
+   absolute deadline approaches (neutral -> amber under 24h -> red under 1h). */
+.life-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 16px; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); font: 600 11px/1.4 var(--font); text-transform: none; letter-spacing: 0; vertical-align: middle; cursor: help; }
+.life-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.7; }
+.life-chip.warn { color: #b25e00; border-color: #f3c98b; background: #fff7ec; }
+.life-chip.danger { color: #b42318; border-color: #f1b0aa; background: #fdeceb; }
+
+/* Expired webhook take-over card with the clone / sign-up lead-magnet CTAs. */
+.expired-card { text-align: center; }
+.expired-card .es-icon { font-size: 30px; margin-bottom: 10px; }
+.expired-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+.expired-sub { font-size: 13px; color: var(--text-muted); max-width: 540px; margin: 0 auto 8px; line-height: 1.5; }
+.expired-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin: 16px 0; }
+
+.spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.reg-overlay { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px dashed var(--border); border-radius: 10px; color: var(--text-muted); font-size: 13px; }
+
+.toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface); color: var(--text); padding: 10px 18px; border-radius: 8px; border: 1px solid var(--border); font-size: 13px; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 8px; animation: toastIn .2s ease; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.su-footer { text-align: center; padding: 16px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; transition: border-color .25s, color .25s; }
+.su-footer p { margin: 0; }
+.su-footer-fineprint { margin-top: 6px !important; font-size: 0.7rem; opacity: 0.75; }
+.su-footer-link { background: none; border: none; padding: 0; color: inherit; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.su-footer-link:hover { color: var(--text); }
+.su-dialog { max-width: 560px; width: calc(100% - 32px); max-height: calc(100% - 32px); inset: 0; margin: auto; padding: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); box-shadow: 0 20px 60px rgba(0,0,0,0.4); }
+.su-dialog::backdrop { background: rgba(0,0,0,0.45); backdrop-filter: blur(2px); }
+.su-dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.su-dialog-header h2 { font-size: 1rem; font-weight: 600; }
+.su-dialog-close { width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; transition: all .15s; }
+.su-dialog-close:hover { background: var(--surface-hover); color: var(--text); }
+.su-dialog-body { padding: 16px 18px; font-size: 0.875rem; line-height: 1.55; color: var(--text); }
+.su-dialog-body p { margin-bottom: 12px; }
+.su-dialog-body p:last-child { margin-bottom: 0; }
+.su-dialog-body code { font-family: var(--mono); background: var(--surface-hover); padding: 1px 5px; border-radius: 4px; font-size: 0.85em; }
+.su-dialog-body a { color: var(--primary); text-decoration: none; }
+.su-dialog-body a:hover { text-decoration: underline; }
+.su-dialog-fineprint { font-size: 0.8rem; color: var(--text-muted); }
+.su-dialog-body label { display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+.su-dialog-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); }
+.page-title, .su-dialog-header h2 { text-wrap: balance; }
+.su-dialog-body p, .su-more-tools p, .empty-state p { text-wrap: pretty; }
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+@media (max-width: 640px) {
+    header { padding: 0 12px; }
+    .logo-svg { height: 20px; }
+    .logo-badge { font-size: 11px; padding: 2px 7px; }
+    .skill-link span { display: none; }
+    .skill-link { padding: 0 10px; }
+    main { padding: 20px 12px 32px; }
+    .card { padding: 14px 14px; }
+    .btn { padding: 6px 10px; font-size: 12px; }
+}
+    </style>
+</head>
+<body>
+    <noscript>
+        <p class="su-noscript"><strong>Webhook Inspector</strong>. Get a unique webhook URL, point any service at it, and watch incoming HTTP requests arrive live. Captured requests are end-to-end encrypted with a key that never leaves your browser. Requires JavaScript; please enable it. Source on <a href="https://github.com/secutils-dev/secutils/blob/main/dev/tools/webhook.html">GitHub</a>.</p>
+    </noscript>
+    <header>
+        <a class="logo" href="https://secutils.dev" target="_blank" rel="noopener">
+            <svg class="logo-svg" height="24" role="img" viewBox="0 0 98 16" xmlns="http://www.w3.org/2000/svg">
+                <path d="m3 0h10c1.662 0 3 1.338 3 3v10c0 1.662-1.338 3-3 3h-10c-1.662 0-3-1.338-3-3v-10c0-1.662 1.338-3 3-3z" fill="#fed047"/>
+                <path aria-label="SU" d="m11.285 12q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667t1.216-0.26667 1.216 0.26667q0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50133-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832t0.46933 1.4613q0 0.69334-0.30933 1.2053-0.30933 0.50133-0.864 0.77867-0.55467 0.27733-1.312 0.27733z" fill="#642340"/>
+                <path class="logo-text-fill" aria-label="SECUTILS.DEV" d="m93.158 12.117-1.9733-7.7867h1.1733l1.2587 5.184q0.11733 0.46933 0.20267 0.91734 0.08533 0.448 0.128 0.69334 0.04267-0.24533 0.128-0.69334 0.096-0.45867 0.21333-0.928l1.2053-5.1733h1.184l-1.984 7.7867zm-7.8294 0v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-6.5174 0v-7.7867h2.176q0.768 0 1.3333 0.29867 0.56534 0.288 0.87467 0.832 0.32 0.53334 0.32 1.248v3.008q0 0.736-0.32 1.2693-0.30933 0.53334-0.87467 0.832-0.56534 0.29867-1.3333 0.29867zm1.152-1.0347h1.024q0.62934 0 1.0027-0.36267 0.37333-0.36267 0.37333-1.0027v-3.008q0-0.61867-0.37333-0.98134-0.37334-0.37333-1.0027-0.37333h-1.024zm-5.2374 1.1413q-0.416 0-0.68267-0.24533-0.256-0.256-0.256-0.672 0-0.416 0.256-0.672 0.26667-0.26667 0.68267-0.26667 0.416 0 0.672 0.26667 0.26667 0.256 0.26667 0.672 0 0.416-0.26667 0.672-0.256 0.24533-0.672 0.24533zm-6.368 0q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667t-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34133-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733zm-8.288-0.10667v-7.7867h1.152v6.7414h3.4027v1.0453zm-6.6987 0v-1.0453h1.568v-5.696h-1.568v-1.0453h4.32v1.0453h-1.5787v5.696h1.5787v1.0453zm-4.8214 0v-6.7414h-2.08v-1.0453h5.3227v1.0453h-2.0907v6.7414zm-5.824 0.10667q-1.12 0-1.728-0.608-0.608-0.61867-0.608-1.6747v-5.6107h1.152v5.6q0 0.59733 0.29867 0.93867 0.29867 0.34133 0.88534 0.34133 0.58667 0 0.88534-0.34133 0.29867-0.34134 0.29867-0.93867v-5.6h1.152v5.6107q0 1.0667-0.608 1.6747t-1.728 0.608zm-6.3147 0q-1.0987 0-1.7493-0.608-0.64-0.61867-0.64-1.664v-3.456q0-1.056 0.64-1.664 0.65067-0.608 1.7493-0.608 1.088 0 1.728 0.61867 0.65067 0.608 0.65067 1.6533h-1.152q0-0.608-0.33067-0.928-0.32-0.32-0.896-0.32-0.58667 0-0.91734 0.32-0.32 0.32-0.32 0.928v3.456q0 0.608 0.32 0.928 0.33067 0.32 0.91734 0.32 0.576 0 0.896-0.32 0.33067-0.32 0.33067-0.928h1.152q0 1.0453-0.65067 1.664-0.64 0.608-1.728 0.608zm-8.6827-0.10667v-7.7867h4.576v1.024h-3.4453v2.2187h3.072v0.992h-3.072v2.528h3.4453v1.024zm-4.1707 0.10667q-1.152 0-1.8453-0.608-0.69334-0.608-0.69334-1.664h1.1307q0 0.58667 0.384 0.928 0.384 0.33067 1.024 0.33067 0.62934 0 0.992-0.34133 0.36267-0.34134 0.36267-0.90667 0-0.42667-0.23467-0.74667-0.23467-0.32-0.672-0.43733l-1.12-0.29867q-0.78934-0.21333-1.248-0.77867-0.448-0.56534-0.448-1.3547 0-0.64 0.27733-1.1093 0.288-0.48 0.81067-0.74667 0.52267-0.26667 1.216-0.26667 0.69334 0 1.216 0.26667 0.53334 0.26667 0.82134 0.74667 0.29867 0.46933 0.29867 1.0987h-1.1307q0-0.50134-0.34134-0.8-0.33067-0.30933-0.864-0.30933t-0.864 0.30933q-0.32 0.29867-0.32 0.78934 0 0.39467 0.21333 0.66134 0.224 0.26667 0.61867 0.37333l1.152 0.30933q0.81067 0.21333 1.28 0.832 0.46934 0.61867 0.46934 1.4613 0 0.69334-0.30934 1.2053-0.30933 0.50134-0.864 0.77867-0.55467 0.27733-1.312 0.27733z"/>
+            </svg>
+            <span class="logo-badge">Webhook</span>
+        </a>
+        <div class="header-right">
+            <a id="skillLink" class="skill-link" href="#" target="_blank" rel="noopener"
+               title="View AI agent skill (skill.md, opens in new tab)"
+               aria-label="View AI agent skill (opens in new tab)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+                    <path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>
+                </svg>
+                <span>Skill</span>
+            </a>
+            <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+                <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8.5 15h-1v-2h1v2Zm-3.674-3.107-1.414 1.414-.707-.707 1.414-1.415.707.708Zm8.479.707-.707.707-1.414-1.414.707-.708 1.414 1.415Z"/><path fill-rule="evenodd" d="M8 4a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 1a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" clip-rule="evenodd"/><path d="M3.005 8.505h-2v-1h2v1Zm12 0h-2v-1h2v1ZM4.82 4.114l-.708.707-1.414-1.414.707-.707L4.82 4.114Zm8.492-.707-1.414 1.414-.708-.707L12.605 2.7l.707.707ZM8.5 3h-1V1h1v2Z"/></svg>
+                <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M4.05 12.95A6.982 6.982 0 0 1 2 8c0-1.79.684-3.583 2.05-4.95A6.982 6.982 0 0 1 9 1a1 1 0 0 1 .708 1.707 4.982 4.982 0 0 0-1.465 3.536 4.98 4.98 0 0 0 1.465 3.535 4.98 4.98 0 0 0 3.535 1.465 1 1 0 0 1 .707 1.707A6.981 6.981 0 0 1 9 15a6.983 6.983 0 0 1-4.95-2.05Zm.708-.707A5.983 5.983 0 0 0 9 14c1.535 0 3.07-.586 4.242-1.757a5.98 5.98 0 0 1-4.018-1.545L9 10.485a5.982 5.982 0 0 1-1.758-4.242A5.986 5.986 0 0 1 9 2a5.983 5.983 0 0 0-4.243 1.757A5.98 5.98 0 0 0 3 8l.006.288a5.978 5.978 0 0 0 1.75 3.955Z"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <h1 class="page-title">Webhook inspector</h1>
+        <p class="page-subtitle">Get a unique URL, point any service at it, and watch requests arrive live.</p>
+
+        <section class="card">
+            <label for="sessionSelect">Your webhooks</label>
+            <div class="session-bar">
+                <select id="sessionSelect" class="select"></select>
+                <button id="newBtn" type="button" class="btn btn-primary" title="Create a fresh webhook">New</button>
+                <button id="cloneBtn" type="button" class="btn" title="Copy this webhook's response settings into a brand-new webhook URL">Clone</button>
+                <button id="renameBtn" type="button" class="btn" title="Rename this webhook">Rename</button>
+            </div>
+
+            <div id="regOverlay" class="reg-overlay" style="margin-top:12px" hidden>
+                <span class="spinner"></span>
+                <span id="regOverlayMsg">Generating encryption keys and registering your webhook&hellip;</span>
+            </div>
+
+            <div id="urlBlock" hidden>
+                <label class="url-label" style="margin-top:16px">Webhook URL <span id="lifeChip" class="life-chip" hidden></span></label>
+                <div class="url-row">
+                    <input id="webhookUrl" class="input-mono" readonly>
+                    <button id="copyUrl" type="button" class="btn" title="Copy webhook URL">
+                        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="9" height="10" rx="1.5"/><path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H10"/></svg>
+                        <span>Copy</span>
+                    </button>
+                </div>
+                <div id="fingerprint" class="fp"><span class="dot"></span><span id="fpText">Setting up encryption&hellip;</span></div>
+                <label for="webhookDesc" style="margin-top:16px">Description <span class="label-hint">(a private note kept in this browser &amp; the share link, never sent to the server)</span></label>
+                <textarea id="webhookDesc" class="textarea textarea-sm" placeholder="What is this webhook for? Notes for whoever opens the share link."></textarea>
+            </div>
+        </section>
+
+        <section class="card expired-card" id="expiredState" hidden>
+            <div class="es-icon">&#9203;</div>
+            <p class="expired-title">This webhook has expired.</p>
+            <p class="expired-sub">Its URL, response settings, and every captured request have been permanently deleted. Ephemeral webhooks live for a limited time and cannot be revived.</p>
+            <div class="expired-actions">
+                <button id="expiredCloneBtn" type="button" class="btn btn-primary">Clone to a new webhook</button>
+                <a class="btn" href="https://secutils.dev/signup" target="_blank" rel="noopener noreferrer">Create a free account &rarr;</a>
+            </div>
+            <p class="expired-sub">A free Secutils.dev account gives you <strong>permanent</strong> webhooks that never expire, plus scheduled checks, notifications, and more.</p>
+        </section>
+
+        <details class="card resp-card" id="respCard">
+            <summary>
+                <span class="resp-summary-title">Response</span>
+                <span id="respSummaryHint" class="resp-summary-hint">Returns 200 OK</span>
+            </summary>
+            <p class="card-hint">What every caller receives. Stored unencrypted so the server can reply without your key; captured requests stay end-to-end encrypted.</p>
+            <div class="resp-field">
+                <label for="respStatus">Status code</label>
+                <input id="respStatus" class="input input-status" type="number" min="100" max="599" value="200">
+            </div>
+            <div class="resp-field">
+                <div class="row-head">
+                    <label>Headers</label>
+                    <button id="respAddHeader" type="button" class="btn">+ Add header</button>
+                </div>
+                <table id="respHeaders" class="hdr-table"><tbody></tbody></table>
+                <div id="respHeadersEmpty" class="hdr-empty" hidden>No headers. <code>Content-Type: text/plain; charset=utf-8</code> is added automatically.</div>
+            </div>
+            <div class="resp-field">
+                <label for="respBody">Body</label>
+                <textarea id="respBody" class="textarea" placeholder="Response body (text)"></textarea>
+            </div>
+            <div class="actions">
+                <button id="respSave" type="button" class="btn btn-primary">Save response</button>
+                <span id="respSaveMsg" class="resp-summary-hint" role="status"></span>
+                <span class="spacer"></span>
+                <button id="respReset" type="button" class="btn">Reset to default</button>
+            </div>
+        </details>
+
+        <section class="card" id="requestsCard">
+            <div class="grid-head">
+                <h2>Requests <span id="reqCount" class="count"></span></h2>
+                <button id="liveToggle" type="button" class="live-btn" role="switch" aria-checked="false" title="Stream new requests as they arrive">
+                    <span class="ring"></span> Live
+                </button>
+            </div>
+            <div class="ephemeral-note">
+                <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="8" cy="8" r="6.4"/><path d="M8 4.6V8l2.2 1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <div class="ephemeral-text">
+                    <p>This webhook is <strong>ephemeral</strong> - its URL, settings, and every captured request are deleted automatically <span id="ephemeralWhen">when it expires</span>.</p>
+                    <p class="ephemeral-cta">Need it to stick around? <a href="https://secutils.dev/signup" target="_blank" rel="noopener noreferrer">Create a free account</a> for permanent, more feature-rich webhooks.</p>
+                </div>
+            </div>
+            <div id="reqList" class="req-list"></div>
+            <div id="emptyState" class="empty-state">
+                <div class="es-icon">&#128225;</div>
+                <p>No requests captured yet.</p>
+                <p class="es-sub">Send an HTTP request to your webhook URL above and it will show up here.</p>
+            </div>
+            <div class="actions">
+                <button id="refreshBtn" type="button" class="btn" title="Fetch the latest requests">Refresh</button>
+                <span class="spacer"></span>
+                <button id="clearBtn" type="button" class="btn" title="Delete all captured requests for this webhook">Clear history</button>
+                <button id="deleteBtn" type="button" class="btn btn-danger" title="Delete this webhook and all its data">Delete webhook</button>
+            </div>
+        </section>
+
+        <aside class="su-more-tools" aria-label="More free tools">
+            <p>Other free, no-signup Secutils.dev tools for HTTP mocking, JWT, SAML, certificates, and more - <a href="https://{{TOOLS_HOST}}/">Browse all tools &rarr;</a></p>
+        </aside>
+    </main>
+
+    <footer class="su-footer">
+        <p>Get a unique webhook URL and watch incoming requests arrive live. End-to-end encrypted, no signup.</p>
+        <p class="su-footer-fineprint"><button type="button" class="su-footer-link" id="privacyOpen">Privacy</button></p>
+    </footer>
+
+    <dialog id="privacyDialog" class="su-dialog" closedby="any" aria-labelledby="privacyDialogTitle">
+        <header class="su-dialog-header">
+            <h2 id="privacyDialogTitle">Privacy</h2>
+            <button type="button" class="su-dialog-close" id="privacyClose" aria-label="Close">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>
+            </button>
+        </header>
+        <div class="su-dialog-body">
+            <p><strong>Captured requests are end-to-end encrypted.</strong> When you create a webhook, this page generates an elliptic-curve key pair (ECDH P-256) directly in your browser. Only the <em>public</em> key is registered with the server. Every request that hits your webhook URL is sealed on the server against that public key (ECDH &rarr; HKDF-SHA256 &rarr; AES-256-GCM, libsodium-style sealed box) and stored as <strong>ciphertext only</strong>. The matching <em>private</em> key never leaves your browser, so the server (and anyone who can read the database) cannot decrypt what was captured.</p>
+            <p><strong>Your response template is not encrypted.</strong> The status code, headers, and body you configure as the reply are stored in plaintext on the server, because the server has to answer callers without your key. Avoid putting secrets in the response template.</p>
+            <p><strong>Your webhook lives in this browser.</strong> The private key, token, label, and description are kept in <code>localStorage</code> and encoded into the page&rsquo;s URL fragment (<code>#&hellip;</code>), which browsers never transmit to the server. Share that full URL, including the fragment, to open the same webhook (and the ability to decrypt it) on another device. Lose the fragment and the captured data is unrecoverable by design.</p>
+            <p><strong>Ephemeral by default.</strong> Captured requests expire automatically after 7 days and a background job reaps them. There is no account and no long-term storage.</p>
+            <p><strong>Anonymous usage analytics.</strong> We use <a href="https://plausible.io/" target="_blank" rel="noopener noreferrer">Plausible Analytics</a>, a privacy-first, GDPR-compliant tool, to collect aggregate usage data. No cookies, no personal data, no individual tracking.</p>
+            <p class="su-dialog-fineprint">See the full <a href="https://secutils.dev/privacy" target="_blank" rel="noopener noreferrer">Secutils.dev privacy policy</a> for details on the wider service.</p>
+        </div>
+    </dialog>
+
+    <dialog id="renameDialog" class="su-dialog" closedby="any" aria-labelledby="renameDialogTitle">
+        <header class="su-dialog-header">
+            <h2 id="renameDialogTitle">Rename webhook</h2>
+            <button type="button" class="su-dialog-close" id="renameClose" aria-label="Close">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>
+            </button>
+        </header>
+        <form id="renameForm" method="dialog">
+            <div class="su-dialog-body">
+                <label for="renameInput">Label</label>
+                <input id="renameInput" class="input" type="text" maxlength="80" placeholder="My webhook" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="su-dialog-footer">
+                <button type="button" class="btn" id="renameCancel">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="confirmDialog" class="su-dialog" closedby="any" aria-labelledby="confirmDialogTitle">
+        <header class="su-dialog-header">
+            <h2 id="confirmDialogTitle">Confirm</h2>
+            <button type="button" class="su-dialog-close" id="confirmClose" aria-label="Close">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"/></svg>
+            </button>
+        </header>
+        <div class="su-dialog-body">
+            <p id="confirmDialogMsg"></p>
+        </div>
+        <div class="su-dialog-footer">
+            <button type="button" class="btn" id="confirmCancel">Cancel</button>
+            <button type="button" class="btn btn-danger" id="confirmOk">Delete</button>
+        </div>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" style="display:none">
+        <span id="toastMsg"></span>
+    </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const els = Object.freeze({
+    sessionSelect: $('sessionSelect'),
+    newBtn: $('newBtn'),
+    cloneBtn: $('cloneBtn'),
+    renameBtn: $('renameBtn'),
+    regOverlay: $('regOverlay'),
+    regOverlayMsg: $('regOverlayMsg'),
+    urlBlock: $('urlBlock'),
+    webhookDesc: $('webhookDesc'),
+    lifeChip: $('lifeChip'),
+    expiredState: $('expiredState'),
+    expiredCloneBtn: $('expiredCloneBtn'),
+    requestsCard: $('requestsCard'),
+    ephemeralWhen: $('ephemeralWhen'),
+    webhookUrl: $('webhookUrl'),
+    copyUrl: $('copyUrl'),
+    fingerprint: $('fingerprint'),
+    fpText: $('fpText'),
+    reqList: $('reqList'),
+    emptyState: $('emptyState'),
+    reqCount: $('reqCount'),
+    liveToggle: $('liveToggle'),
+    refreshBtn: $('refreshBtn'),
+    clearBtn: $('clearBtn'),
+    deleteBtn: $('deleteBtn'),
+    themeToggle: $('themeToggle'),
+    toast: $('toast'),
+    toastMsg: $('toastMsg'),
+    respCard: $('respCard'),
+    respSummaryHint: $('respSummaryHint'),
+    respStatus: $('respStatus'),
+    respHeaders: $('respHeaders').querySelector('tbody'),
+    respHeadersEmpty: $('respHeadersEmpty'),
+    respBody: $('respBody'),
+    respAddHeader: $('respAddHeader'),
+    respSave: $('respSave'),
+    respSaveMsg: $('respSaveMsg'),
+    respReset: $('respReset'),
+});
+
+// The effective default response when a webhook has no custom mock configured.
+const DEFAULT_MOCK = { s: 200, h: [['Content-Type', 'application/json; charset=utf-8']], b: '{"ok":true}' };
+function normalizeMock(m) {
+    const s = Number.isInteger(m && m.s) && m.s >= 100 && m.s <= 599 ? m.s : 200;
+    const h = [];
+    if (m && Array.isArray(m.h)) {
+        for (const pair of m.h) {
+            if (Array.isArray(pair) && String(pair[0] || '').trim()) {
+                h.push([String(pair[0]).slice(0, 256), String(pair[1] ?? '').slice(0, 1024)]);
+            }
+        }
+    }
+    let b = m && typeof m.b === 'string' ? m.b : '';
+    if (b.length > 64 * 1024) b = b.slice(0, 64 * 1024);
+    return { s, h, b };
+}
+
+const MOUNT = location.pathname.replace(/\/$/, '') || '/webhook';
+const CATALOG_KEY = 'webhook.sessions';
+const ACTIVE_KEY = 'webhook.active';
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+// ---- base64url helpers (browser side; atob/btoa available here) ----
+const bytesToB64url = (bytes) => {
+    let s = '';
+    for (const b of bytes) s += String.fromCharCode(b);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+const b64urlToBytes = (str) => {
+    const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '==='.slice(0, (4 - (b64.length % 4)) % 4);
+    const bin = atob(padded);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+};
+
+// ---- session catalog (localStorage) ----
+// Each session: { t: token, k: privateKeyJwk, p: publicKeyRawB64url, l: label,
+//                 d?: free-text description (local-only), createdAt,
+//                 exp?: absolute deadline (unix s, from server), m?: mock config }
+function loadCatalog() {
+    try { return JSON.parse(localStorage.getItem(CATALOG_KEY)) || []; } catch { return []; }
+}
+function saveCatalog(catalog) {
+    try { localStorage.setItem(CATALOG_KEY, JSON.stringify(catalog)); } catch {}
+}
+function upsertSession(session) {
+    const catalog = loadCatalog();
+    const idx = catalog.findIndex((s) => s.t === session.t);
+    if (idx >= 0) catalog[idx] = session; else catalog.push(session);
+    saveCatalog(catalog);
+}
+function getSession(token) {
+    return loadCatalog().find((s) => s.t === token) || null;
+}
+function setActive(token) {
+    try { localStorage.setItem(ACTIVE_KEY, token); } catch {}
+}
+function getActive() {
+    try { return localStorage.getItem(ACTIVE_KEY); } catch { return null; }
+}
+
+// ---- session fragment encode/decode (4-byte LE ulen + raw-deflate JSON) ----
+const encodeSession = async (session) => {
+    const text = JSON.stringify(session);
+    const bytes = enc.encode(text);
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    const deflated = new Uint8Array(await new Response(stream).arrayBuffer());
+    const out = new Uint8Array(4 + deflated.length);
+    new DataView(out.buffer).setUint32(0, bytes.length, true);
+    out.set(deflated, 4);
+    return bytesToB64url(out);
+};
+const decodeSession = async (str) => {
+    try {
+        const bytes = b64urlToBytes(str);
+        if (bytes.length < 4) return null;
+        const stream = new Blob([bytes.subarray(4)]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+        const inflated = new Uint8Array(await new Response(stream).arrayBuffer());
+        return JSON.parse(dec.decode(inflated));
+    } catch { return null; }
+};
+
+// ---- crypto: keygen + decrypt sealed boxes (mirrors src/js_runtime/op_crypto_seal.rs) ----
+async function generateKeyPair() {
+    const pair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+    const jwk = await crypto.subtle.exportKey('jwk', pair.privateKey);
+    const raw = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey));
+    return { jwk, pubRaw: bytesToB64url(raw) };
+}
+
+async function decryptSealed(privJwk, myPubRawB64, sealedB64) {
+    const sealed = b64urlToBytes(sealedB64);
+    if (sealed.length < 65 + 12 + 16) throw new Error('sealed blob too short');
+    const ephPubRaw = sealed.subarray(0, 65);
+    const iv = sealed.subarray(65, 77);
+    const ct = sealed.subarray(77);
+    const myPubRaw = b64urlToBytes(myPubRawB64);
+
+    const privKey = await crypto.subtle.importKey('jwk', privJwk, { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
+    const ephPub = await crypto.subtle.importKey('raw', ephPubRaw, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+    const shared = await crypto.subtle.deriveBits({ name: 'ECDH', public: ephPub }, privKey, 256);
+
+    const hkdfKey = await crypto.subtle.importKey('raw', shared, 'HKDF', false, ['deriveBits']);
+    const aesBits = await crypto.subtle.deriveBits(
+        { name: 'HKDF', hash: 'SHA-256', salt: myPubRaw, info: ephPubRaw },
+        hkdfKey, 256,
+    );
+    const aesKey = await crypto.subtle.importKey('raw', aesBits, { name: 'AES-GCM' }, false, ['decrypt']);
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ct);
+    return JSON.parse(dec.decode(new Uint8Array(plain)));
+}
+
+async function sha256Hex(b64url) {
+    const digest = await crypto.subtle.digest('SHA-256', b64urlToBytes(b64url));
+    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ---- token generation ----
+function randomToken() {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    let out = '';
+    for (const b of bytes) out += alphabet[b % alphabet.length];
+    return out;
+}
+
+// ---- toast ----
+let toastTimer;
+function toast(msg) {
+    els.toastMsg.textContent = msg;
+    els.toast.style.display = 'flex';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { els.toast.style.display = 'none'; }, 2200);
+}
+
+// ---- cross-tab sync ----
+let channel = null;
+try { channel = new BroadcastChannel('webhook'); } catch {}
+function broadcast(type) { try { channel && channel.postMessage({ type }); } catch {} }
+
+// ---- application state ----
+let current = null;        // active session object
+let watchAbort = null;     // AbortController for the live watch loop
+let liveRunning = false;
+let liveEnabled = false;   // user intent: keep streaming across session switches
+const seenKeys = new Set();
+let cursor = undefined;
+
+function setRegistering(on, msg) {
+    els.regOverlay.hidden = !on;
+    if (msg) els.regOverlayMsg.textContent = msg;
+    els.newBtn.disabled = on;
+    els.cloneBtn.disabled = on;
+    els.deleteBtn.disabled = on;
+    els.clearBtn.disabled = on;
+}
+
+function renderSessionSelect() {
+    const catalog = loadCatalog();
+    els.sessionSelect.replaceChildren();
+    if (!catalog.length) {
+        const opt = document.createElement('option');
+        opt.textContent = 'No webhooks yet';
+        opt.value = '';
+        els.sessionSelect.appendChild(opt);
+        return;
+    }
+    for (const s of catalog) {
+        const opt = document.createElement('option');
+        opt.value = s.t;
+        opt.textContent = s.l || `webhook ${s.t.slice(0, 6)}`;
+        if (current && s.t === current.t) opt.selected = true;
+        els.sessionSelect.appendChild(opt);
+    }
+}
+
+function webhookUrlFor(token) {
+    return `${location.origin}${MOUNT}/${token}`;
+}
+
+async function updateFragment() {
+    if (!current) return;
+    const fragment = await encodeSession(current);
+    history.replaceState(null, '', `#${fragment}`);
+}
+
+// PUT to the management endpoint. `mock` is omitted to leave the response config
+// untouched, an object to set it, or null to delete it. A hard timeout guarantees
+// the UI can never hang forever on a stalled connection.
+async function putManagement(session, mock) {
+    const payload = { pk: session.p };
+    if (mock !== undefined) payload.mock = mock;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    try {
+        const res = await fetch(`${MOUNT}?t=${encodeURIComponent(session.t)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: ctrl.signal,
+        });
+        if (!res.ok) throw new Error(`register failed: ${res.status}`);
+        return await res.json();
+    } catch (e) {
+        throw e.name === 'AbortError' ? new Error('timed out') : e;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+// Register (or confirm) the public key, also re-asserting any custom response
+// config so its TTL stays fresh.
+function registerKey(session) {
+    return putManagement(session, session.m || undefined);
+}
+
+// ---- webhook lifetime (absolute, server-assigned deadline) ----
+const nowSec = () => Math.floor(Date.now() / 1000);
+const isExpired = (s) => !!(s && s.exp && nowSec() >= s.exp);
+
+// Coarse, human-friendly countdown ("in 6 days", "in 3 hours", ...). Granularity
+// tightens as the deadline nears so the badge stays informative to the last minute.
+function humanizeRemaining(sec) {
+    if (sec <= 0) return 'now';
+    const d = Math.floor(sec / 86400);
+    if (d >= 1) return `in ${d} day${d === 1 ? '' : 's'}`;
+    const h = Math.floor(sec / 3600);
+    if (h >= 1) return `in ${h} hour${h === 1 ? '' : 's'}`;
+    const m = Math.floor(sec / 60);
+    if (m >= 1) return `in ${m} minute${m === 1 ? '' : 's'}`;
+    return 'in under a minute';
+}
+
+// Absolute deletion instant in the visitor's own locale + timezone, for the tooltip.
+function formatDeadline(expSec) {
+    const dt = new Date(expSec * 1000);
+    try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(dt)
+            + (tz ? ` (${tz})` : '');
+    } catch { return dt.toLocaleString(); }
+}
+
+let lifeTimer = null;
+// Single source of truth for the lifetime badge AND the alive/expired layout. Re-arms
+// itself on a timer so the countdown stays fresh and flips to the expired take-over the
+// moment the deadline passes - even if the tab was left open untouched.
+function renderLifetime() {
+    if (lifeTimer) { clearInterval(lifeTimer); lifeTimer = null; }
+    if (!current) { els.lifeChip.hidden = true; return; }
+    const expired = isExpired(current);
+    els.expiredState.hidden = !expired;
+    els.urlBlock.hidden = expired;
+    els.respCard.hidden = expired;
+    els.requestsCard.hidden = expired;
+    if (expired) {
+        els.lifeChip.hidden = true;
+        stopLive();
+        return;
+    }
+    const exp = current.exp;
+    if (!exp) {
+        els.lifeChip.hidden = true;
+        // Deadline not known yet (registration still in flight); keep the generic phrasing.
+        if (els.ephemeralWhen) els.ephemeralWhen.textContent = 'when it expires';
+        return;
+    }
+    const remaining = exp - nowSec();
+    els.lifeChip.hidden = false;
+    els.lifeChip.textContent = `Expires ${humanizeRemaining(remaining)}`;
+    // Spell out the absolute deletion instant inline (the badge shows the relative countdown).
+    if (els.ephemeralWhen) els.ephemeralWhen.textContent = `on ${formatDeadline(exp)}`;
+    els.lifeChip.title = `This webhook and all its data are deleted on ${formatDeadline(exp)}.`;
+    els.lifeChip.classList.toggle('warn', remaining <= 86400 && remaining > 3600);
+    els.lifeChip.classList.toggle('danger', remaining <= 3600);
+    lifeTimer = setInterval(renderLifetime, remaining <= 3600 ? 15000 : 60000);
+}
+
+async function activateSession(session, { register }) {
+    stopLive();
+    current = session;
+    setActive(session.t);
+    upsertSession(session);
+    seenKeys.clear();
+    cursor = undefined;
+    els.reqList.replaceChildren();
+    els.reqCount.textContent = '';
+    els.webhookUrl.value = webhookUrlFor(session.t);
+    els.webhookDesc.value = session.d || '';
+    renderSessionSelect();
+    renderMockEditor();
+    await updateFragment();
+    renderLifetime();
+
+    // An already-expired webhook no longer exists server-side; re-registering it here
+    // would silently resurrect it with a brand-new deadline, defeating the point of an
+    // ephemeral URL. Present the expired take-over (clone / sign-up) instead.
+    if (isExpired(session)) { setRegistering(false); return; }
+
+    const localFp = await sha256Hex(session.p);
+    const applyResult = (result) => {
+        setFingerprint(result.fingerprint, localFp);
+        // Adopt the server's authoritative absolute deadline so every browser that opens
+        // this webhook (including via a shared link) sees the same countdown.
+        if (result && typeof result.exp === 'number' && result.exp !== current.exp) {
+            current.exp = result.exp;
+            upsertSession(current);
+            updateFragment();
+            renderLifetime();
+        }
+    };
+    if (register) setRegistering(true);
+    try {
+        // Confirm the server holds our key (re-register is idempotent / first-writer-wins).
+        applyResult(await registerKey(session));
+    } catch (e) {
+        setFingerprint(null, localFp, e.message);
+    } finally {
+        if (register) setRegistering(false);
+    }
+
+    await refresh();
+    if (liveEnabled) startLive();
+}
+
+function setFingerprint(serverFp, localFp, errMsg) {
+    els.fingerprint.className = 'fp';
+    // The full key fingerprint stays available on hover for the curious / for support.
+    els.fingerprint.title = localFp ? `Key fingerprint: ${localFp}` : '';
+    if (errMsg) {
+        els.fingerprint.classList.add('warn');
+        els.fpText.textContent = 'Could not reach the server to confirm encryption. Retry, or create a new webhook.';
+        return;
+    }
+    if (serverFp && serverFp === localFp) {
+        els.fingerprint.classList.add('ok');
+        els.fpText.textContent = 'End-to-end encrypted. Only this browser can read the captured requests.';
+    } else if (serverFp && serverFp !== localFp) {
+        els.fingerprint.classList.add('warn');
+        els.fpText.textContent = 'This webhook URL is already in use by another browser, so requests sent here cannot be decrypted. Create a new webhook.';
+    } else {
+        els.fpText.textContent = 'Setting up encryption\u2026';
+    }
+}
+
+// ---- request fetching + rendering ----
+function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function decodeEntry(entry) {
+    const record = await decryptSealed(current.k, current.p, entry.value);
+    return { key: entry.key, createdAt: entry.createdAt, record };
+}
+
+function renderEntry(item) {
+    const { record } = item;
+    const details = document.createElement('details');
+    details.className = 'req';
+
+    const summary = document.createElement('summary');
+    summary.className = 'req-summary';
+    const method = (record.method || 'GET').toUpperCase();
+    const time = new Date((record.at || item.createdAt * 1000)).toLocaleString();
+    summary.innerHTML =
+        `<span class="method ${escapeHtml(method)}">${escapeHtml(method)}</span>` +
+        `<span class="req-path">${escapeHtml(record.path || '')}${record.query ? '?' + escapeHtml(record.query) : ''}</span>` +
+        `<span class="req-time">${escapeHtml(time)}</span>`;
+    details.appendChild(summary);
+
+    const body = document.createElement('div');
+    body.className = 'req-body';
+
+    const meta = [];
+    if (record.clientAddress) meta.push(['Client', record.clientAddress]);
+    meta.push(['Captured', time]);
+    body.appendChild(section('Details', kvTable(meta)));
+
+    const headers = record.headers && typeof record.headers === 'object' ? Object.entries(record.headers) : [];
+    if (headers.length) body.appendChild(section('Headers', kvTable(headers)));
+
+    let decoded = '';
+    try {
+        const bytes = b64urlToBytes(record.bodyB64 || '');
+        decoded = bytes.length ? new TextDecoder('utf-8', { fatal: false }).decode(bytes) : '';
+    } catch { decoded = ''; }
+    if (decoded) {
+        const pre = document.createElement('pre');
+        pre.className = 'body-pre';
+        let pretty = decoded;
+        try { pretty = JSON.stringify(JSON.parse(decoded), null, 2); } catch {}
+        pre.textContent = pretty;
+        body.appendChild(section('Body', pre));
+    }
+
+    details.appendChild(body);
+    return details;
+}
+
+function section(title, child) {
+    const wrap = document.createElement('div');
+    wrap.className = 'req-section';
+    const h = document.createElement('h4');
+    h.textContent = title;
+    wrap.append(h, child);
+    return wrap;
+}
+function kvTable(pairs) {
+    const table = document.createElement('table');
+    table.className = 'kv-table';
+    const tbody = document.createElement('tbody');
+    for (const [k, v] of pairs) {
+        const tr = document.createElement('tr');
+        const tdK = document.createElement('td'); tdK.textContent = k;
+        const tdV = document.createElement('td'); tdV.textContent = String(v);
+        tr.append(tdK, tdV);
+        tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    return table;
+}
+
+async function appendEntries(entries) {
+    const fresh = entries.filter((e) => !seenKeys.has(e.key));
+    if (!fresh.length) return 0;
+    let added = 0;
+    for (const entry of fresh) {
+        seenKeys.add(entry.key);
+        cursor = entry.key;
+        try {
+            const item = await decodeEntry(entry);
+            // Newest on top.
+            els.reqList.prepend(renderEntry(item));
+            added++;
+        } catch (e) {
+            // A record we cannot decrypt (wrong key) - skip silently.
+        }
+    }
+    updateCount();
+    return added;
+}
+
+function updateCount() {
+    const n = seenKeys.size;
+    els.reqCount.textContent = n ? `(${n})` : '';
+    els.emptyState.hidden = n > 0;
+}
+
+async function refresh() {
+    if (!current) return;
+    try {
+        const url = `${MOUNT}?t=${encodeURIComponent(current.t)}` + (cursor ? `&after=${encodeURIComponent(cursor)}` : '');
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`list failed: ${res.status}`);
+        const data = await res.json();
+        await appendEntries(data.entries || []);
+    } catch (e) {
+        toast(`Failed to load requests: ${e.message}`);
+    }
+}
+
+// ---- live watch (long-poll loop) ----
+function startLive() {
+    if (liveRunning || !current) return;
+    liveRunning = true;
+    liveEnabled = true;
+    els.liveToggle.setAttribute('aria-checked', 'true');
+    watchAbort = new AbortController();
+    (async () => {
+        const token = current.t;
+        while (liveRunning && current && current.t === token) {
+            try {
+                const url = `${MOUNT}?t=${encodeURIComponent(token)}&live=1` + (cursor ? `&after=${encodeURIComponent(cursor)}` : '');
+                const res = await fetch(url, { signal: watchAbort.signal });
+                if (!res.ok) { await sleep(2000); continue; }
+                const data = await res.json();
+                await appendEntries(data.entries || []);
+                // timedOut just means "no new data within the long-poll window"; loop again.
+            } catch (e) {
+                if (e.name === 'AbortError') break;
+                await sleep(2000);
+            }
+        }
+    })();
+}
+function stopLive() {
+    liveRunning = false;
+    els.liveToggle.setAttribute('aria-checked', 'false');
+    if (watchAbort) { try { watchAbort.abort(); } catch {} watchAbort = null; }
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ---- mock response editor ----
+const cloneMock = (m) => ({ s: m.s, h: m.h.map((p) => [p[0], p[1]]), b: m.b });
+let mockState = cloneMock(DEFAULT_MOCK);
+
+function updateRespSummary() {
+    // The summary reflects what the server actually returns (current.m), not unsaved edits.
+    els.respSummaryHint.textContent = current && current.m ? `Returns ${current.m.s}` : 'Returns 200 OK';
+}
+function markMockDirty() { els.respSaveMsg.textContent = 'Unsaved changes'; }
+
+function renderMockHeaders() {
+    els.respHeaders.replaceChildren();
+    mockState.h.forEach((row, i) => {
+        const tr = document.createElement('tr');
+        const nameInput = document.createElement('input');
+        nameInput.className = 'input input-mono';
+        nameInput.placeholder = 'Header name';
+        nameInput.value = row[0];
+        const valueInput = document.createElement('input');
+        valueInput.className = 'input input-mono';
+        valueInput.placeholder = 'Header value';
+        valueInput.value = row[1];
+        nameInput.addEventListener('input', (e) => { mockState.h[i][0] = e.target.value; markMockDirty(); });
+        valueInput.addEventListener('input', (e) => { mockState.h[i][1] = e.target.value; markMockDirty(); });
+        const tdK = document.createElement('td'); tdK.appendChild(nameInput);
+        const tdV = document.createElement('td'); tdV.appendChild(valueInput);
+        const tdRm = document.createElement('td');
+        const rm = document.createElement('button');
+        rm.type = 'button'; rm.className = 'btn btn-icon'; rm.title = 'Remove header';
+        rm.setAttribute('aria-label', 'Remove header'); rm.textContent = '\u00d7';
+        rm.addEventListener('click', () => { mockState.h.splice(i, 1); renderMockHeaders(); markMockDirty(); });
+        tdRm.appendChild(rm);
+        tr.append(tdK, tdV, tdRm);
+        els.respHeaders.appendChild(tr);
+    });
+    els.respHeadersEmpty.hidden = mockState.h.length > 0;
+}
+
+function renderMockEditor() {
+    mockState = cloneMock(current && current.m ? current.m : DEFAULT_MOCK);
+    els.respStatus.value = mockState.s;
+    els.respBody.value = mockState.b;
+    renderMockHeaders();
+    els.respSaveMsg.textContent = '';
+    updateRespSummary();
+}
+
+els.respStatus.addEventListener('input', (e) => {
+    const n = parseInt(e.target.value, 10);
+    mockState.s = Number.isNaN(n) ? 200 : Math.max(100, Math.min(599, n));
+    markMockDirty();
+});
+els.respBody.addEventListener('input', (e) => { mockState.b = e.target.value; markMockDirty(); });
+els.respAddHeader.addEventListener('click', () => { mockState.h.push(['', '']); renderMockHeaders(); markMockDirty(); });
+
+els.respSave.addEventListener('click', async () => {
+    if (!current) return;
+    const mock = normalizeMock(mockState);
+    els.respSave.disabled = true;
+    try {
+        await putManagement(current, mock);
+        current.m = mock;
+        upsertSession(current);
+        await updateFragment();
+        broadcast('catalog');
+        renderMockEditor();
+        toast('Response saved');
+    } catch (e) {
+        toast(`Failed to save response: ${e.message}`);
+    } finally {
+        els.respSave.disabled = false;
+    }
+});
+
+els.respReset.addEventListener('click', async () => {
+    if (!current) return;
+    els.respReset.disabled = true;
+    try {
+        await putManagement(current, null);
+        delete current.m;
+        upsertSession(current);
+        await updateFragment();
+        broadcast('catalog');
+        renderMockEditor();
+        toast('Response reset to default');
+    } catch (e) {
+        toast(`Failed to reset response: ${e.message}`);
+    } finally {
+        els.respReset.disabled = false;
+    }
+});
+
+// ---- actions ----
+// Mints a fresh webhook (new token + new key pair => a new absolute deadline). When
+// `mock` is supplied (the Clone flow) its response template is carried over; captured
+// requests are intentionally never copied - only the holder of the old key could read
+// them, and the clone has a brand-new key.
+async function createNewSession(label, mock, desc) {
+    const cloning = !!mock;
+    setRegistering(true, 'Generating encryption keys and registering your webhook\u2026');
+    try {
+        const { jwk, pubRaw } = await generateKeyPair();
+        const session = { t: randomToken(), k: jwk, p: pubRaw, l: label || '', d: desc || '', createdAt: Date.now() };
+        if (cloning) session.m = cloneMock(normalizeMock(mock));
+        if (!session.l) session.l = `webhook ${session.t.slice(0, 6)}`;
+        await activateSession(session, { register: true });
+        broadcast('catalog');
+        toast(cloning ? 'Cloned to a new webhook' : 'New webhook ready');
+    } catch (e) {
+        toast(`Failed to ${cloning ? 'clone' : 'create'} webhook: ${e.message}`);
+        setRegistering(false);
+    }
+}
+
+// Clone the active webhook's label, description + response template into a brand-new
+// webhook (new token + key => fresh deadline; captured requests are never copied).
+function cloneCurrentSession() {
+    if (!current) return;
+    const base = current.l && current.l.trim() ? current.l.trim() : `webhook ${current.t.slice(0, 6)}`;
+    return createNewSession(`${base} (copy)`.slice(0, 80), current.m, current.d);
+}
+
+els.newBtn.addEventListener('click', () => createNewSession());
+els.cloneBtn.addEventListener('click', () => cloneCurrentSession());
+els.expiredCloneBtn.addEventListener('click', () => cloneCurrentSession());
+
+// Free-text note for this webhook. Local-only: it round-trips through the URL fragment
+// and localStorage (so it survives reloads and shared links) but is never sent to the
+// server or to callers.
+els.webhookDesc.addEventListener('input', (e) => {
+    if (!current) return;
+    current.d = e.target.value;
+    upsertSession(current);
+    updateFragment();
+});
+
+// Reusable confirmation dialog (replaces native confirm() for destructive
+// actions). Resolves true when the danger button is pressed, false otherwise.
+const confirmAction = (() => {
+    const dlg = $('confirmDialog');
+    const titleEl = $('confirmDialogTitle');
+    const msgEl = $('confirmDialogMsg');
+    const okBtn = $('confirmOk');
+    let resolver = null;
+    const settle = (val) => { const r = resolver; resolver = null; if (r) r(val); };
+    okBtn.addEventListener('click', () => { settle(true); dlg.close(); });
+    $('confirmCancel').addEventListener('click', () => dlg.close());
+    $('confirmClose').addEventListener('click', () => dlg.close());
+    // Fires on Esc, backdrop click (closedby="any") and explicit close(); any
+    // path that isn't the danger button resolves false.
+    dlg.addEventListener('close', () => settle(false));
+    return ({ title, message, confirmLabel }) => new Promise((resolve) => {
+        resolver = resolve;
+        titleEl.textContent = title;
+        msgEl.textContent = message;
+        okBtn.textContent = confirmLabel || 'Delete';
+        dlg.showModal();
+    });
+})();
+
+(() => {
+    const dlg = $('renameDialog');
+    const form = $('renameForm');
+    const input = $('renameInput');
+    els.renameBtn.addEventListener('click', () => {
+        if (!current) return;
+        input.value = current.l || '';
+        dlg.showModal();
+        input.focus();
+        input.select();
+    });
+    $('renameClose').addEventListener('click', () => dlg.close());
+    $('renameCancel').addEventListener('click', () => dlg.close());
+    form.addEventListener('submit', () => {
+        // method="dialog" closes the dialog automatically on submit.
+        if (!current) return;
+        current.l = input.value.trim() || `webhook ${current.t.slice(0, 6)}`;
+        upsertSession(current);
+        renderSessionSelect();
+        updateFragment();
+        broadcast('catalog');
+    });
+})();
+els.sessionSelect.addEventListener('change', async (e) => {
+    const session = getSession(e.target.value);
+    if (session) await activateSession(session, { register: false });
+});
+els.copyUrl.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(els.webhookUrl.value); toast('Webhook URL copied'); }
+    catch { toast('Failed to copy'); }
+});
+els.refreshBtn.addEventListener('click', () => refresh());
+els.liveToggle.addEventListener('click', () => {
+    if (liveRunning) { liveEnabled = false; stopLive(); }
+    else startLive();
+});
+els.clearBtn.addEventListener('click', async () => {
+    if (!current) return;
+    const ok = await confirmAction({
+        title: 'Clear history',
+        message: 'Delete all captured requests for this webhook? This cannot be undone.',
+        confirmLabel: 'Clear history',
+    });
+    if (!ok) return;
+    els.clearBtn.disabled = true;
+    try {
+        let remaining = true;
+        while (remaining) {
+            const res = await fetch(`${MOUNT}?t=${encodeURIComponent(current.t)}&keep=1`, { method: 'DELETE' });
+            if (!res.ok) throw new Error(`clear failed: ${res.status}`);
+            remaining = (await res.json()).remaining;
+        }
+        seenKeys.clear();
+        cursor = undefined;
+        els.reqList.replaceChildren();
+        updateCount();
+        toast('History cleared');
+    } catch (e) {
+        toast(`Failed to clear: ${e.message}`);
+    } finally {
+        els.clearBtn.disabled = false;
+    }
+});
+els.deleteBtn.addEventListener('click', async () => {
+    if (!current) return;
+    const ok = await confirmAction({
+        title: 'Delete webhook',
+        message: 'Delete this webhook entirely (its key and all captured requests)? This cannot be undone.',
+        confirmLabel: 'Delete webhook',
+    });
+    if (!ok) return;
+    liveEnabled = false;
+    stopLive();
+    els.deleteBtn.disabled = true;
+    const token = current.t;
+    try {
+        let remaining = true;
+        while (remaining) {
+            const res = await fetch(`${MOUNT}?t=${encodeURIComponent(token)}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error(`delete failed: ${res.status}`);
+            remaining = (await res.json()).remaining;
+        }
+    } catch (e) {
+        toast(`Server delete failed: ${e.message}`);
+    }
+    // Remove from local catalog regardless of server outcome.
+    const catalog = loadCatalog().filter((s) => s.t !== token);
+    saveCatalog(catalog);
+    broadcast('catalog');
+    els.deleteBtn.disabled = false;
+    if (catalog.length) {
+        await activateSession(catalog[0], { register: false });
+    } else {
+        await createNewSession();
+    }
+    toast('Webhook deleted');
+});
+
+if (channel) {
+    channel.onmessage = (e) => {
+        if (e.data && e.data.type === 'catalog') renderSessionSelect();
+    };
+}
+
+// ---- bootstrap ----
+(async () => {
+    let fromFragment = null;
+    if (location.hash.length > 1) {
+        const frag = location.hash.slice(1);
+        if (frag === 'new' || frag === 'create') {
+            history.replaceState(null, '', location.pathname);
+            await createNewSession();
+            return;
+        }
+        fromFragment = await decodeSession(frag);
+    }
+
+    if (fromFragment && fromFragment.t && fromFragment.k && fromFragment.p) {
+        const session = {
+            t: String(fromFragment.t),
+            k: fromFragment.k,
+            p: String(fromFragment.p),
+            l: typeof fromFragment.l === 'string' ? fromFragment.l : '',
+            d: typeof fromFragment.d === 'string' ? fromFragment.d : '',
+            createdAt: fromFragment.createdAt || Date.now(),
+        };
+        if (typeof fromFragment.exp === 'number') session.exp = fromFragment.exp;
+        if (fromFragment.m && typeof fromFragment.m === 'object') session.m = normalizeMock(fromFragment.m);
+        if (!session.l) session.l = `webhook ${session.t.slice(0, 6)}`;
+        await activateSession(session, { register: false });
+        return;
+    }
+
+    const catalog = loadCatalog();
+    const active = getActive();
+    const chosen = catalog.find((s) => s.t === active) || catalog[0];
+    if (chosen) {
+        await activateSession(chosen, { register: false });
+    } else {
+        await createNewSession();
+    }
+})();
+
+// ---- skill link, theme, dialog (shared boilerplate) ----
+{
+    const skillLinkEl = document.getElementById('skillLink');
+    if (skillLinkEl) {
+        const p = location.pathname;
+        skillLinkEl.href = (p === '/' || p === '') ? '/llms.txt' : p.replace(/\/$/, '') + '.md';
+    }
+}
+(() => {
+    const root = document.documentElement;
+    const setTheme = (t) => {
+        root.setAttribute('data-theme', t);
+        try { localStorage.setItem('su-tool-theme', t); } catch {}
+    };
+    els.themeToggle.addEventListener('click', () => {
+        setTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    });
+    try {
+        const saved = localStorage.getItem('su-tool-theme');
+        if (saved) setTheme(saved);
+        else if (window.matchMedia('(prefers-color-scheme: light)').matches) setTheme('light');
+    } catch {}
+})();
+(() => {
+    const dlg = document.getElementById('privacyDialog');
+    document.getElementById('privacyOpen').addEventListener('click', () => dlg.showModal());
+    document.getElementById('privacyClose').addEventListener('click', () => dlg.close());
+})();
+if (!('closedBy' in HTMLDialogElement.prototype)) {
+    for (const dlg of document.querySelectorAll('dialog.su-dialog')) {
+        dlg.addEventListener('click', (e) => {
+            if (e.target !== dlg) return;
+            const r = dlg.getBoundingClientRect();
+            if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dlg.close();
+        });
+    }
+}
+</script>
+</body>
+</html>
